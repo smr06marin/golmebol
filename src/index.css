@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&display=swap');
+@import './styles/animations.css';
+
+*, *::before, *::after {
+  margin: 0; padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --color-bg: #07070e;
+  --color-primary: #00ddd0;
+  --color-secondary: #9955ff;
+  --color-gold: #ffd700;
+  --color-success: #00e87a;
+  --color-danger: #ff4466;
+  --font-display: 'Bebas Neue', 'Impact', sans-serif;
+  --font-body: 'Barlow Condensed', Arial, sans-serif;
+  --max-width: 420px;
+}
+
+html, body {
+  width: 100%; min-height: 100vh;
+  background: var(--color-bg);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}

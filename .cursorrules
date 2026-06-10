@@ -1,0 +1,159 @@
+# .cursorrules — Golmebol App
+
+## Proyecto
+App móvil-first de tarjeta FUT para jugadores de fútbol sala amateur.
+Stack: React 18 + Vite + Supabase + React Router v6 + Zustand.
+
+---
+
+## Reglas Generales
+
+- Siempre escribe código en **español para nombres de variables de negocio** (torneo, jugador, equipo) y **inglés para nombres técnicos** (handler, callback, props, state).
+- Usa **functional components** con hooks. Nunca class components.
+- Usa **named exports** siempre. Solo `default export` en páginas/routes.
+- Todos los archivos de componentes: `.jsx`. Hooks y utils: `.js`.
+- Máximo **150 líneas por componente**. Si supera, extraer subcomponentes.
+- No instales librerías sin consultarlo primero. El proyecto es intencionalmente lean.
+
+---
+
+## React
+
+- Props siempre desestructuradas: `function Card({ jugador, onPress })` ✅
+- Eventos: prefijo `handle` → `handlePhotoUpload`, `handleCloseModal`
+- Callbacks que se pasan como props: prefijo `on` → `onClose`, `onChange`
+- Usa `useMemo` y `useCallback` solo cuando hay evidencia de re-renders costosos, no por defecto.
+- No uses `useEffect` para derivar estado — usa variables calculadas en el render.
+- Imports de React siempre arriba, luego librerías externas, luego internos.
+
+---
+
+## Estilos
+
+- **CSS Modules** para estilos específicos de componente: `Card.module.css`
+- Variables CSS globales en `src/styles/globals.css`
+- **NO usar inline styles** salvo para valores verdaderamente dinámicos (color generado en runtime, transforms con JS).
+- Usar las variables CSS del proyecto:
+
+```css
+--color-bg: #07070e;
+--color-primary: #00ddd0;
+--color-secondary: #9955ff;
+--color-gold: #ffd700;
+--color-danger: #ff4466;
+--color-success: #00e87a;
+--font-display: 'Bebas Neue', sans-serif;
+--font-body: 'Barlow Condensed', Arial, sans-serif;
+--max-width: 420px;
+```
+
+- Mobile-first siempre. El breakpoint principal es `max-width: 420px` centrado.
+- Nunca hardcodear colores hex en componentes — usar variables CSS.
+
+---
+
+## Supabase
+
+- El cliente Supabase vive **solo** en `src/lib/supabase.js`. No importar `createClient` en otro lado.
+- Todas las queries van en **custom hooks** dentro de `src/hooks/`.
+- Manejo de errores siempre explícito:
+
+```javascript
+const { data, error } = await supabase.from('players').select('*')
+if (error) {
+  console.error('[usePlayer]', error.message)
+  return null
+}
+```
+
+- Usa `.select()` con columnas explícitas, nunca `select('*')` en producción.
+- Para realtime, siempre limpiar subscripción en el cleanup del useEffect.
+
+---
+
+## Zustand (Store)
+
+- Stores en `src/store/`. Un archivo por dominio.
+- Estructura estándar:
+
+```javascript
+import { create } from 'zustand'
+
+export const useAuthStore = create((set) => ({
+  user: null,
+  player: null,
+  setUser: (user) => set({ user }),
+  setPlayer: (player) => set({ player }),
+  logout: () => set({ user: null, player: null }),
+}))
+```
+
+- No usar `persist` middleware salvo para preferencias de UI (no datos sensibles).
+
+---
+
+## Componentes de la Tarjeta FUT
+
+- `PlayerCard` es el componente root de la tarjeta. Solo orquesta, no tiene lógica de negocio.
+- El clip-path SVG de la tarjeta está definido en `CardBackground.jsx` y NO se modifica.
+- Las animaciones CSS de la tarjeta (partículas, pulso del PJ) están en `animations.css`.
+- El avatar SVG del jugador por defecto está en `src/assets/player-default.svg`.
+
+---
+
+## Routing
+
+```jsx
+// Estructura de rutas en App.jsx
+<Routes>
+  <Route path="/" element={<ProtectedRoute />}>
+    <Route index element={<HomePage />} />
+    <Route path="ranking" element={<RankingPage />} />
+    <Route path="torneos" element={<TorneosPage />} />
+    <Route path="torneos/:id" element={<TorneoDetailPage />} />
+    <Route path="equipos" element={<EquiposPage />} />
+    <Route path="equipos/:id" element={<EquipoDetailPage />} />
+    <Route path="especiales" element={<EspecialesPage />} />
+    <Route path="perfil" element={<PerfilPage />} />
+  </Route>
+  <Route path="/login" element={<LoginPage />} />
+</Routes>
+```
+
+---
+
+## Patrones Prohibidos
+
+- ❌ `document.getElementById` — usar refs de React
+- ❌ `innerHTML` — usar JSX
+- ❌ `var` — solo `const` y `let`
+- ❌ Fetch directo a Supabase fuera de hooks
+- ❌ Estilos en línea con valores estáticos
+- ❌ `any` implícito en lógica crítica (si tipas, usa JSDoc)
+- ❌ `console.log` en producción (usar solo en desarrollo con prefijo `[NombreHook]`)
+
+---
+
+## Convenciones de Nombres
+
+| Tipo | Convención | Ejemplo |
+|------|-----------|---------|
+| Componente | PascalCase | `PlayerCard.jsx` |
+| Hook | camelCase con `use` | `usePlayer.js` |
+| Store | camelCase con `use` + `Store` | `useAuthStore.js` |
+| CSS Module | PascalCase mismo nombre | `PlayerCard.module.css` |
+| Constante global | UPPER_SNAKE | `CARD_TYPES` |
+| Función helper | camelCase | `formatStat()` |
+
+---
+
+## Commits
+
+Usar convención Conventional Commits:
+```
+feat: agregar foto de jugador en la tarjeta
+fix: corregir calculo de promedio de goles
+style: ajustar padding del modal en mobile
+refactor: extraer ShieldSlot de PlayerCard
+chore: actualizar dependencias
+```
