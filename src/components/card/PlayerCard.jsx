@@ -3,6 +3,7 @@ import CardBackground from './CardBackground'
 import CardEffects from './designs/CardEffects'
 import CardDecorations from './designs/CardDecorations'
 import { CARD_DESIGNS } from './designs/cardDesigns'
+import DesignPremium from './designs/DesignPremium'
 
 const CARD_PATH = "M 20 0 L 120 0 L 134 10 L 154 2 L 170 0 L 186 2 L 206 10 L 220 0 L 320 0 Q 338 0 340 17 L 340 380 Q 340 422 305 448 Q 278 466 244 476 Q 218 485 170 486 Q 122 485 96 476 Q 62 466 35 448 Q 0 422 0 380 L 0 17 Q 2 0 20 0 Z"
 
@@ -41,11 +42,13 @@ export default function PlayerCard({
   const [photoUrl, setPhotoUrl] = useState(null)
 
   const design = CARD_DESIGNS.find(d => d.id === cardType) || CARD_DESIGNS[0]
+  const isPremium = design.premium === true
   const fondo = design.fondo || ['#00e8d8', '#1558e2', '#110450']
   const color = design.color || '#00ddd0'
   const color2 = design.colorSecundario || color
   const color3 = design.colorTerciario || color2
   const borde = getBorderStyle(design)
+  const gradienteFondo = `linear-gradient(168deg, ${fondo[0]} 0%, ${fondo[1] || fondo[0]} 35%, ${fondo[2] || fondo[1]} 70%, ${fondo[3] || fondo[2]} 100%)`
 
   function handlePhoto(e) {
     const file = e.target.files[0]
@@ -55,125 +58,114 @@ export default function PlayerCard({
     reader.readAsDataURL(file)
   }
 
-  const gradienteFondo = `linear-gradient(168deg, ${fondo[0]} 0%, ${fondo[1] || fondo[0]} 35%, ${fondo[2] || fondo[1]} 70%, ${fondo[3] || fondo[2]} 100%)`
-
   return (
     <div style={{
       position: 'relative',
       width: '100%',
-      maxWidth: '345px',
+      maxWidth: '400px',
       margin: '0 auto',
       filter: `drop-shadow(0 10px 40px rgba(0,0,0,.78)) drop-shadow(0 0 14px ${color}40) drop-shadow(0 0 2px ${color}cc)`
     }}>
-      <div style={{ position: 'relative', width: '100%', paddingBottom: '145%' }}>
+     <div style={{ position: 'relative', width: '100%', paddingBottom: '155%', }}>
 
-        {/* SVG borde + clipPath */}
-        <svg
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
-          viewBox="0 0 340 492" fill="none"
-        >
-          <defs>
-            <linearGradient id="brdFuego" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ff4400"/>
-              <stop offset="50%" stopColor="#ff8800"/>
-              <stop offset="100%" stopColor="#ffcc00"/>
-            </linearGradient>
-            <linearGradient id="brdGalaxia" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#0a003c"/>
-              <stop offset="50%" stopColor="#6432ff"/>
-              <stop offset="100%" stopColor="#ff00c8"/>
-            </linearGradient>
-            <linearGradient id="brdDiamante" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#a0d8ff"/>
-              <stop offset="50%" stopColor="#ffffff"/>
-              <stop offset="100%" stopColor="#a0d8ff"/>
-            </linearGradient>
-            <linearGradient id="brdArcoiris" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ff0064"/>
-              <stop offset="25%" stopColor="#ff8800"/>
-              <stop offset="50%" stopColor="#00ff96"/>
-              <stop offset="75%" stopColor="#0064ff"/>
-              <stop offset="100%" stopColor="#ff00c8"/>
-            </linearGradient>
-            <linearGradient id="brdNegroOro" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ffd700"/>
-              <stop offset="50%" stopColor="#ff8800"/>
-              <stop offset="100%" stopColor="#ffd700"/>
-            </linearGradient>
-            <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
-              <path d={CARD_PATH}/>
-            </clipPath>
-          </defs>
+        {/* ── CAPA 1: Diseño premium o normal ── */}
+        {isPremium ? (
+          <DesignPremium />
+        ) : (
+          <svg
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
+            viewBox="0 0 340 492" fill="none"
+          >
+            <defs>
+              <linearGradient id="brdFuego" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ff4400"/>
+                <stop offset="50%" stopColor="#ff8800"/>
+                <stop offset="100%" stopColor="#ffcc00"/>
+              </linearGradient>
+              <linearGradient id="brdGalaxia" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#0a003c"/>
+                <stop offset="50%" stopColor="#6432ff"/>
+                <stop offset="100%" stopColor="#ff00c8"/>
+              </linearGradient>
+              <linearGradient id="brdDiamante" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#a0d8ff"/>
+                <stop offset="50%" stopColor="#ffffff"/>
+                <stop offset="100%" stopColor="#a0d8ff"/>
+              </linearGradient>
+              <linearGradient id="brdArcoiris" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ff0064"/>
+                <stop offset="25%" stopColor="#ff8800"/>
+                <stop offset="50%" stopColor="#00ff96"/>
+                <stop offset="75%" stopColor="#0064ff"/>
+                <stop offset="100%" stopColor="#ff00c8"/>
+              </linearGradient>
+              <linearGradient id="brdNegroOro" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ffd700"/>
+                <stop offset="50%" stopColor="#ff8800"/>
+                <stop offset="100%" stopColor="#ffd700"/>
+              </linearGradient>
+              <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
+                <path d={CARD_PATH}/>
+              </clipPath>
+            </defs>
+            <path d={CARD_PATH} fill="none" stroke={borde} strokeWidth="3.5"/>
+            <path d="M 23 4 L 121 4 L 134 13 L 153 5.5 L 170 4 L 187 5.5 L 206 13 L 217 4 L 317 4 Q 333 4 335 20 L 335 379 Q 335 417 302 442 Q 276 459 242 469 Q 217 477 170 478 Q 123 477 98 469 Q 64 459 38 442 Q 5 417 5 379 L 5 20 Q 7 4 23 4 Z"
+              fill="none" stroke={`${color}28`} strokeWidth="1"/>
+            <line x1="170" y1="0" x2="170" y2="29" stroke={`${color}aa`} strokeWidth="1.5"/>
+            <line x1="134" y1="10" x2="134" y2="27" stroke={`${color}77`} strokeWidth="1"/>
+            <line x1="206" y1="10" x2="206" y2="27" stroke={`${color}77`} strokeWidth="1"/>
+            <path d="M 96 476 Q 133 490 170 492 Q 207 490 244 476" fill="none" stroke={`${color}44`} strokeWidth="1.2"/>
+          </svg>
+        )}
 
-          {/* Borde exterior */}
-          <path d={CARD_PATH} fill="none" stroke={borde} strokeWidth="3.5"/>
-          {/* Borde interior */}
-          <path d="M 23 4 L 121 4 L 134 13 L 153 5.5 L 170 4 L 187 5.5 L 206 13 L 217 4 L 317 4 Q 333 4 335 20 L 335 379 Q 335 417 302 442 Q 276 459 242 469 Q 217 477 170 478 Q 123 477 98 469 Q 64 459 38 442 Q 5 417 5 379 L 5 20 Q 7 4 23 4 Z"
-            fill="none" stroke={`${color}28`} strokeWidth="1"/>
-          <line x1="170" y1="0" x2="170" y2="29" stroke={`${color}aa`} strokeWidth="1.5"/>
-          <line x1="134" y1="10" x2="134" y2="27" stroke={`${color}77`} strokeWidth="1"/>
-          <line x1="206" y1="10" x2="206" y2="27" stroke={`${color}77`} strokeWidth="1"/>
-          <path d="M 96 476 Q 133 490 170 492 Q 207 490 244 476" fill="none" stroke={`${color}44`} strokeWidth="1.2"/>
-        </svg>
+        {/* Decoraciones exteriores — solo en diseños no premium */}
+        {!isPremium && (
+          <CardDecorations
+            decoracion={design.decoracion}
+            color={color}
+            colorSecundario={color2}
+            colorTerciario={color3}
+          />
+        )}
 
-        {/* Decoraciones exteriores */}
-        <CardDecorations
-          decoracion={design.decoracion}
-          color={color}
-          colorSecundario={color2}
-          colorTerciario={color3}
-        />
-
-        {/* Contenido recortado */}
+        {/* ── CAPA 2: Contenido recortado ── */}
         <div style={{
           position: 'absolute', inset: 0,
           clipPath: 'url(#activeCardClip)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
         }}>
-          {/* Fondo del diseño */}
-          <div style={{ position: 'absolute', inset: 0, background: gradienteFondo, zIndex: 0 }} />
+          {/* Fondo */}
+          {isPremium ? (
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(168deg, #0D2B8E 0%, #091F7A 35%, #071660 70%, #040E40 100%)', zIndex: 0 }} />
+          ) : (
+            <div style={{ position: 'absolute', inset: 0, background: gradienteFondo, zIndex: 0 }} />
+          )}
 
           {/* Efectos internos */}
-          <CardEffects efectos={design.efectos} color={color} />
+          {!isPremium && <CardEffects efectos={design.efectos} color={color} />}
 
-        {/* Foto de fondo */}
-{photoUrl && (
-  <>
-    <img src={photoUrl} style={{
-      position: 'absolute', top: 0, left: 0,
-      width: '100%', height: '100%',
-      objectFit: 'cover', objectPosition: 'top center',
-      zIndex: 2, pointerEvents: 'none',
-      opacity: 0.55,
-    }} alt="jugador" />
-    {/* Overlay con color del diseño */}
-    <div style={{
-      position: 'absolute', top: 0, left: 0,
-      width: '100%', height: '100%',
-      zIndex: 3, pointerEvents: 'none',
-      background: `linear-gradient(168deg, ${fondo[0]}99 0%, ${fondo[1] || fondo[0]}88 35%, ${fondo[2] || fondo[1]}77 70%, ${fondo[3] || fondo[2]}99 100%)`,
-      mixBlendMode: 'multiply',
-    }} />
-    {/* Brillo del color encima */}
-    <div style={{
-      position: 'absolute', top: 0, left: 0,
-      width: '100%', height: '100%',
-      zIndex: 4, pointerEvents: 'none',
-      background: `radial-gradient(ellipse 80% 60% at 50% 20%, ${color}33 0%, transparent 70%)`,
-    }} />
-  </>
+          {/* Foto de fondo */}
+          {photoUrl && (
+  <img src={photoUrl} style={{
+    position: 'absolute', top: 0, left: 0,
+    width: '100%', height: '100%',
+    objectFit: 'cover', objectPosition: 'top center',
+    zIndex: 2, pointerEvents: 'none',
+    opacity: 1,
+  }} alt="jugador" />
 )}
+
           {/* PJ arriba */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '6% 6% 0 6%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '24% 6% 0 13%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div onClick={() => onStatClick?.('pj')} style={{ cursor: 'pointer', lineHeight: 1 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(3rem,13vw,4.2rem)', lineHeight: '.86', color: '#fff', animation: 'pjp 3.5s ease-in-out infinite' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(3rem,1vw,4.2rem)', lineHeight: '.80', color: isPremium ? '#F4E6A1' : '#fff', animation: 'pjp 3.5s ease-in-out infinite', marginTop: '30px' }}>
                 {stats.pj}
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '.62rem', letterSpacing: '.28em', color: `${color}cc`, marginTop: '2px' }}>PJ</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '.62rem', letterSpacing: '.28em', color: isPremium ? '#D6B65Dcc' : `${color}cc`, marginTop: '2px' }}>PJ</div>
             </div>
             {photoUrl && (
-              <label style={{ fontFamily: 'var(--font-display)', fontSize: '.3rem', color: `${color}99`, border: `1px dashed ${color}55`, padding: '3px 6px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.5)', marginTop: '4px' }}>
+              <label style={{ fontFamily: 'var(--font-display)', fontSize: '.3rem', color: isPremium ? '#D6B65D99' : `${color}99`, border: `1px dashed ${isPremium ? '#D6B65D55' : `${color}55`}`, padding: '3px 6px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.5)', marginTop: '4px' }}>
                 ✎
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
               </label>
@@ -185,50 +177,53 @@ export default function PlayerCard({
 
             {/* Panel izquierdo escudos */}
             <div style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: '36%', zIndex: 12,
-              display: 'flex', flexDirection: 'column',
-              padding: '4% 0 2% 6%', gap: '5px'
-            }}>
+  position: 'absolute', left: 0, top: 0, bottom: 0,
+  width: '25%', zIndex: 12,
+  display: 'flex', flexDirection: 'column',
+  padding: '4% 0 2% 8%', gap: '5px',
+  background: 'rgba(0,0,0,.25)',
+  backdropFilter: 'blur(4px)',
+  borderRight: '1px solid rgba(255,255,255,.08)',
+}}>
               {/* Torneo */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: `${color}99` }}>TORNEO</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
                 <div onClick={() => onStatClick?.(TORNEOS[tI].id)}
                   style={{ width: '62px', height: '62px', cursor: 'pointer', animation: 'sflt 4.2s ease-in-out infinite', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))' }}
                   dangerouslySetInnerHTML={{ __html: TORNEOS[tI].svg }}
                 />
                 <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
                   <button onClick={() => setTI(i => (i - 1 + TORNEOS.length) % TORNEOS.length)}
-                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${color}66`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
                   <div style={{ display: 'flex', gap: '2px' }}>
                     {TORNEOS.map((_, i) => (
-                      <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: i === tI ? color : 'rgba(255,255,255,.3)' }} />
+                      <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: i === tI ? (isPremium ? '#D6B65D' : color) : 'rgba(255,255,255,.3)' }} />
                     ))}
                   </div>
                   <button onClick={() => setTI(i => (i + 1) % TORNEOS.length)}
-                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${color}66`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                 </div>
               </div>
 
-              <div style={{ height: '1px', background: `linear-gradient(90deg,rgba(255,255,255,.06),${color}44,rgba(255,255,255,.06))`, marginRight: '6px' }} />
+              <div style={{ height: '1px', background: `linear-gradient(90deg,rgba(255,255,255,.06),${isPremium ? '#D6B65D44' : `${color}44`},rgba(255,255,255,.06))`, marginRight: '6px' }} />
 
               {/* Equipo */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: `${color}99` }}>EQUIPO</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>EQUIPO</span>
                 <div onClick={() => onStatClick?.(EQUIPOS[eI].id)}
                   style={{ width: '62px', height: '62px', cursor: 'pointer', animation: 'sflt 4.2s ease-in-out infinite', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))' }}
                   dangerouslySetInnerHTML={{ __html: EQUIPOS[eI].svg }}
                 />
                 <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
                   <button onClick={() => setEI(i => (i - 1 + EQUIPOS.length) % EQUIPOS.length)}
-                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${color}66`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
                   <div style={{ display: 'flex', gap: '2px' }}>
                     {EQUIPOS.map((_, i) => (
-                      <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: i === eI ? color : 'rgba(255,255,255,.3)' }} />
+                      <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: i === eI ? (isPremium ? '#D6B65D' : color) : 'rgba(255,255,255,.3)' }} />
                     ))}
                   </div>
                   <button onClick={() => setEI(i => (i + 1) % EQUIPOS.length)}
-                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${color}66`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                    style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                 </div>
               </div>
             </div>
@@ -261,7 +256,7 @@ export default function PlayerCard({
             {/* Botón subir foto */}
             {!photoUrl && (
               <div style={{ position: 'absolute', bottom: '42%', left: '30%', right: 0, zIndex: 8, display: 'flex', justifyContent: 'center' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '.36rem', letterSpacing: '.12em', color: `${color}77`, border: `1px dashed ${color}44`, padding: '3px 8px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.3)' }}>
+                <label style={{ fontFamily: 'var(--font-display)', fontSize: '.36rem', letterSpacing: '.12em', color: isPremium ? '#D6B65D77' : `${color}77`, border: `1px dashed ${isPremium ? '#D6B65D44' : `${color}44`}`, padding: '3px 8px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.3)' }}>
                   + SUBIR FOTO
                   <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} />
                 </label>
@@ -271,14 +266,14 @@ export default function PlayerCard({
 
           {/* Nombre */}
           <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, textAlign: 'center', padding: '1.3% 4% .5%', background: 'linear-gradient(0deg,rgba(10,2,44,.98) 0%,rgba(10,2,44,.84) 46%,transparent 100%)' }}>
-            <div style={{ height: '1.5px', width: '82%', margin: '0 auto 4px', background: `linear-gradient(90deg,transparent,${color}bb,transparent)` }} />
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2rem,10vw,2.8rem)', letterSpacing: '.1em', color: '#fff', lineHeight: 1, textShadow: `0 2px 14px rgba(0,0,0,.98),0 0 28px ${color}44` }}>
+            <div style={{ height: '1.5px', width: '82%', margin: '0 auto 4px', background: `linear-gradient(90deg,transparent,${isPremium ? '#D6B65Dbb' : `${color}bb`},transparent)` }} />
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2rem,10vw,2.8rem)', letterSpacing: '.1em', color: '#fff', lineHeight: 1, textShadow: `0 2px 14px rgba(0,0,0,.98),0 0 28px ${isPremium ? '#D6B65D44' : `${color}44`}` }}>
               {playerName}
             </div>
           </div>
 
           {/* Stats */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '1.5% 5% 1%', background: 'rgba(4,1,22,.92)', borderTop: `1.5px solid ${color}44` }}>
+          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '1.5% 12% 1% 12%', background: 'rgba(4,1,22,.92)', borderTop: `1.5px solid ${isPremium ? '#D6B65D44' : `${color}44`}` }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 {[
@@ -291,15 +286,15 @@ export default function PlayerCard({
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.58rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', color: '#fff' }}>
-                      {dot && <span style={{ fontSize: '.3rem', color: color, marginRight: '2px', verticalAlign: 'middle' }}>●</span>}
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>
+                      {dot && <span style={{ fontSize: '.3rem', color: isPremium ? '#D6B65D' : color, marginRight: '1.5px', verticalAlign: 'middle' }}>●</span>}
                       {value}
                     </span>
                   </div>
                 ))}
               </div>
-              <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${color}99,transparent)`, flexShrink: 0 }} />
+              <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }} />
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 {[
                   { label: 'P.G', value: stats.pg, key: 'pg' },
@@ -311,8 +306,8 @@ export default function PlayerCard({
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', color: '#fff' }}>{value}</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.58rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
                   </div>
                 ))}
               </div>
@@ -320,14 +315,15 @@ export default function PlayerCard({
           </div>
 
           {/* Ribbon */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, textAlign: 'center', padding: '.7% 4% .55%', background: 'rgba(2,0,14,.88)', borderTop: `1px solid ${color}33` }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '.42rem', letterSpacing: '.16em', color: `${color}dd` }}>⬡ VALLA MENOS VENCIDA · T1 2025 ⬡</span>
+          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, textAlign: 'center', padding: '.7% 4% .55%', background: 'rgba(2,0,14,.88)', borderTop: `1px solid ${isPremium ? '#D6B65D33' : `${color}33`}` }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.16em', color: isPremium ? '#D6B65Ddd' : `${color}dd` }}>GOLMEBOL</span>
           </div>
 
           {/* Emblem */}
           <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '.4% 0 .95%', background: 'rgba(2,0,14,.88)' }}>
             <svg width="20" height="20" viewBox="0 0 28 28" fill="none" style={{ opacity: .5 }}>
-              <path d="M14 3 L17 10 L25 10 L19 15 L21 22 L14 18 L7 22 L9 15 L3 10 L11 10 Z" stroke={color} strokeWidth="1.3" fill={`${color}11`}/>
+              <path d="M14 3 L17 10 L25 10 L19 15 L21 22 L14 18 L7 22 L9 15 L3 10 L11 10 Z"
+                stroke={isPremium ? '#D6B65D' : color} strokeWidth="1.3" fill={isPremium ? '#D6B65D11' : `${color}11`}/>
             </svg>
           </div>
 

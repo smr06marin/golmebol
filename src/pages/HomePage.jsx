@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { supabase } from '../lib/supabase'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS, NIVEL_COLORES, NIVEL_NOMBRES } from '../components/card/designs/cardDesigns'
+import DesignPremium from '../components/card/designs/DesignPremium'
 
 const FONDOS = {
   normal_teal:    'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=800&q=80',
@@ -148,12 +149,27 @@ export default function HomePage({ cardType: cardTypeProp = 'normal_teal' }) {
       </div>
 
       {/* Tarjeta */}
-      <div style={{ position: 'relative', zIndex: 10, width: '100%', padding: '.15rem .7rem .8rem', display: 'flex', justifyContent: 'center' }}>
-        <PlayerCard
-          playerName="JHONATAN"
-          cardType={currentDesign.id}
-        />
-      </div>
+      <div
+  key={cardIndex}
+  style={{
+    position: 'relative', zIndex: 10, width: '100%',
+    padding: '.15rem .7rem .8rem', display: 'flex', justifyContent: 'center',
+    animation: `${
+      currentDesign.premium ? 'entrancePremium .8s' :
+      currentDesign.nivel === 6 ? 'entranceLeyenda .6s' :
+      currentDesign.nivel === 5 ? 'entranceElite .5s' :
+      currentDesign.nivel === 4 ? 'entranceOro .5s' :
+      currentDesign.nivel === 3 ? 'entrancePlata .4s' :
+      currentDesign.nivel === 2 ? 'entranceBronce .45s' :
+      'entranceNormal .35s'
+    } cubic-bezier(0.34, 1.56, 0.64, 1) forwards`,
+  }}
+>
+  <PlayerCard
+    playerName="JHONATAN"
+    cardType={currentDesign.id}
+  />
+</div>
 
       {/* Navegación de tarjetas */}
       <div style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '.8rem' }}>

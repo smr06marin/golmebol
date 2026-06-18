@@ -465,6 +465,22 @@ export const CARD_DESIGNS = [
     progreso_key: 'leyenda',
     progreso_meta: 1,
   },
+  {
+    id: 'premium',
+    nombre: 'PREMIUM',
+    nivel: 6,
+    color: '#D6B65D',
+    colorSecundario: '#F4E6A1',
+    fondo: ['#0D2B8E', '#091F7A', '#071660', '#040E40'],
+    borde: 'gradiente_negro_oro',
+    decoracion: null,
+    efectos: [],
+    premium: true,
+    bloqueado: true,
+    requisito: '5 títulos + 100 PJ',
+    progreso_key: 'leyenda',
+    progreso_meta: 1,
+  },
 ]
 
 export const NIVEL_NOMBRES = {
@@ -484,3 +500,4 @@ export const NIVEL_COLORES = {
   5: '#9955ff',
   6: '#ff8800',
 }
+

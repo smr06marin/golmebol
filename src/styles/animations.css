@@ -17,3 +17,67 @@
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes cardEntrance {
+    0% {
+      opacity: 0;
+      transform: scale(0.85) translateY(20px) rotateY(8deg);
+      filter: brightness(2);
+    }
+    60% {
+      filter: brightness(1.2);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0) rotateY(0deg);
+      filter: brightness(1);
+    }
+  }
+  /* Normal — fade suave */
+@keyframes entranceNormal {
+  0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Bronce — desliza desde abajo */
+@keyframes entranceBronce {
+  0% { opacity: 0; transform: translateY(40px) scale(0.9); }
+  60% { transform: translateY(-8px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Plata — gira suave */
+@keyframes entrancePlata {
+  0% { opacity: 0; transform: rotateY(45deg) scale(0.9); }
+  100% { opacity: 1; transform: rotateY(0) scale(1); }
+}
+
+/* Oro — zoom con brillo */
+@keyframes entranceOro {
+  0% { opacity: 0; transform: scale(0.7); filter: brightness(3); }
+  50% { filter: brightness(2); }
+  100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+}
+
+/* Élite — cae desde arriba */
+@keyframes entranceElite {
+  0% { opacity: 0; transform: translateY(-60px) scale(1.1); }
+  60% { transform: translateY(8px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Leyenda — explosión */
+@keyframes entranceLeyenda {
+  0% { opacity: 0; transform: scale(0.3) rotate(-8deg); filter: brightness(5); }
+  40% { transform: scale(1.12) rotate(2deg); filter: brightness(2); }
+  70% { transform: scale(0.96) rotate(-1deg); filter: brightness(1.2); }
+  100% { opacity: 1; transform: scale(1) rotate(0); filter: brightness(1); }
+}
+
+/* Premium — explosión máxima */
+@keyframes entrancePremium {
+  0% { opacity: 0; transform: scale(0.1) rotate(-15deg); filter: brightness(8) saturate(3); }
+  30% { opacity: 1; transform: scale(1.2) rotate(3deg); filter: brightness(3) saturate(2); }
+  55% { transform: scale(0.94) rotate(-1deg); filter: brightness(1.5); }
+  75% { transform: scale(1.04) rotate(0.5deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); filter: brightness(1); }
+}
