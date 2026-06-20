@@ -4,6 +4,9 @@ import CardEffects from './designs/CardEffects'
 import CardDecorations from './designs/CardDecorations'
 import { CARD_DESIGNS } from './designs/cardDesigns'
 import DesignPremium from './designs/DesignPremium'
+import DesignNivel1 from './designs/DesignNivel1'
+import DesignNivel2 from './designs/DesignNivel2'
+import DesignNivel3 from './designs/DesignNivel3'
 
 const CARD_PATH = "M 20 0 L 120 0 L 134 10 L 154 2 L 170 0 L 186 2 L 206 10 L 220 0 L 320 0 Q 338 0 340 17 L 340 380 Q 340 422 305 448 Q 278 466 244 476 Q 218 485 170 486 Q 122 485 96 476 Q 62 466 35 448 Q 0 422 0 380 L 0 17 Q 2 0 20 0 Z"
 
@@ -49,6 +52,9 @@ export default function PlayerCard({
   const color3 = design.colorTerciario || color2
   const borde = getBorderStyle(design)
   const gradienteFondo = `linear-gradient(168deg, ${fondo[0]} 0%, ${fondo[1] || fondo[0]} 35%, ${fondo[2] || fondo[1]} 70%, ${fondo[3] || fondo[2]} 100%)`
+  const isNivel1 = design.nivel === 1
+  const isNivel2 = design.nivel === 2
+  const isNivel3 = design.nivel === 3
 
   function handlePhoto(e) {
     const file = e.target.files[0]
@@ -66,11 +72,17 @@ export default function PlayerCard({
       margin: '0 auto',
       filter: `drop-shadow(0 10px 40px rgba(0,0,0,.78)) drop-shadow(0 0 14px ${color}40) drop-shadow(0 0 2px ${color}cc)`
     }}>
-     <div style={{ position: 'relative', width: '100%', paddingBottom: '155%', }}>
+      <div style={{ position: 'relative', width: '100%', paddingBottom: '155%' }}>
 
-        {/* ── CAPA 1: Diseño premium o normal ── */}
+        {/* ── CAPA 1: Diseño por nivel ── */}
         {isPremium ? (
-          <DesignPremium />
+          <DesignPremium variant={design.premiumVariant || 'inicio'} />
+        ) : isNivel1 ? (
+          <DesignNivel1 color={color} colorSecundario={color2} cardId={design.id} />
+        ) : isNivel2 ? (
+          <DesignNivel2 variant={design.nivel2Variant || 'inicio'} />
+        ) : isNivel3 ? (
+          <DesignNivel3 variant={design.nivel3Variant || 'inicio'} />
         ) : (
           <svg
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
@@ -118,8 +130,19 @@ export default function PlayerCard({
           </svg>
         )}
 
-        {/* Decoraciones exteriores — solo en diseños no premium */}
-        {!isPremium && (
+        {/* ClipPath para nivel 3 */}
+        {isNivel3 && (
+          <svg style={{ position: 'absolute', width: 0, height: 0 }} viewBox="0 0 340 510">
+            <defs>
+              <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001957)">
+                <path d="M 0 52 L 0 420 Q 0 460 35 478 Q 62 490 96 496 Q 122 502 170 503 Q 218 502 244 496 Q 278 490 305 478 Q 340 460 340 420 L 340 52 L 268 52 L 268 0 L 72 0 L 72 52 Z"/>
+              </clipPath>
+            </defs>
+          </svg>
+        )}
+
+        {/* Decoraciones exteriores */}
+        {!isPremium && !isNivel2 && !isNivel3 && (
           <CardDecorations
             decoracion={design.decoracion}
             color={color}
@@ -137,9 +160,30 @@ export default function PlayerCard({
         }}>
           {/* Fondo */}
           {isPremium ? (
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(168deg, #0D2B8E 0%, #091F7A 35%, #071660 70%, #040E40 100%)', zIndex: 0 }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: `linear-gradient(168deg, ${design.fondo[0]} 0%, ${design.fondo[1]} 35%, ${design.fondo[2]} 70%, ${design.fondo[3]} 100%)`,
+              zIndex: 0
+            }} />
           ) : (
-            <div style={{ position: 'absolute', inset: 0, background: gradienteFondo, zIndex: 0 }} />
+            <>
+              <div style={{ position: 'absolute', inset: 0, background: gradienteFondo, zIndex: 0 }} />
+              {isNivel1 && (
+                <div style={{
+                  position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
+                  backgroundImage:
+                    design.id === 'nivel1_verde'
+                      ? `repeating-linear-gradient(0deg, rgba(0,255,68,.06) 0px, rgba(0,255,68,.06) 26px, transparent 26px, transparent 52px)`
+                      : design.id === 'nivel1_azul'
+                      ? `repeating-linear-gradient(135deg, rgba(0,153,255,.05) 0px, rgba(0,153,255,.05) 2px, transparent 2px, transparent 20px)`
+                      : design.id === 'nivel1_bronce'
+                      ? `repeating-linear-gradient(45deg, rgba(221,136,51,.06) 0px, rgba(221,136,51,.06) 2px, transparent 2px, transparent 14px)`
+                      : design.id === 'nivel1_plata'
+                      ? `repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0px, rgba(255,255,255,.04) 1px, transparent 1px, transparent 8px)`
+                      : `radial-gradient(circle at 30% 40%, rgba(255,204,0,.08) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(255,238,0,.06) 0%, transparent 40%)`
+                }} />
+              )}
+            </>
           )}
 
           {/* Efectos internos */}
@@ -147,14 +191,14 @@ export default function PlayerCard({
 
           {/* Foto de fondo */}
           {photoUrl && (
-  <img src={photoUrl} style={{
-    position: 'absolute', top: 0, left: 0,
-    width: '100%', height: '100%',
-    objectFit: 'cover', objectPosition: 'top center',
-    zIndex: 2, pointerEvents: 'none',
-    opacity: 1,
-  }} alt="jugador" />
-)}
+            <img src={photoUrl} style={{
+              position: 'absolute', top: 0, left: 0,
+              width: '100%', height: '100%',
+              objectFit: 'cover', objectPosition: 'top center',
+              zIndex: 2, pointerEvents: 'none',
+              opacity: 1,
+            }} alt="jugador" />
+          )}
 
           {/* PJ arriba */}
           <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '24% 6% 0 13%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -177,14 +221,14 @@ export default function PlayerCard({
 
             {/* Panel izquierdo escudos */}
             <div style={{
-  position: 'absolute', left: 0, top: 0, bottom: 0,
-  width: '25%', zIndex: 12,
-  display: 'flex', flexDirection: 'column',
-  padding: '4% 0 2% 8%', gap: '5px',
-  background: 'rgba(0,0,0,.25)',
-  backdropFilter: 'blur(4px)',
-  borderRight: '1px solid rgba(255,255,255,.08)',
-}}>
+              position: 'absolute', left: 0, top: 0, bottom: 0,
+              width: '25%', zIndex: 12,
+              display: 'flex', flexDirection: 'column',
+              padding: '4% 0 2% 8%', gap: '5px',
+              background: 'rgba(0,0,0,.25)',
+              backdropFilter: 'blur(4px)',
+              borderRight: '1px solid rgba(255,255,255,.08)',
+            }}>
               {/* Torneo */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>

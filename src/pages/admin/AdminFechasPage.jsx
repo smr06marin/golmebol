@@ -1,0 +1,1 @@
+export default function AdminEquiposPage() { return <div>EQUIPOS</div> }

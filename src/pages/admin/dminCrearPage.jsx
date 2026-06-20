@@ -1,0 +1,1 @@
+export default function AdminCrearPage() { return <div>CREAR</div> }

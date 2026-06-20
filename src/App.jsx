@@ -5,10 +5,20 @@ import { useAuthStore } from './store/authStore'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import ElegirTarjetaPage from './pages/ElegirTarjetaPage'
+import AdminLayout from './pages/admin/AdminLayout'
+import AdminDashboard from './pages/admin/AdminDashboard'
+import AdminCrearPage from './pages/admin/AdminCrearPage'
+import AdminTorneosPage from './pages/admin/AdminTorneosPage'
+import AdminEquiposPage from './pages/admin/AdminEquiposPage'
+import AdminJugadoresPage from './pages/admin/AdminJugadoresPage'
+import AdminCalendarioPage from './pages/admin/AdminCalendarioPage'
+import AdminSponsorsPage from './pages/admin/AdminSponsorsPage'
+import AdminEquipoDetallePage from './pages/admin/AdminEquipoDetallePage'
+import AdminTorneoDetallePage from './pages/admin/AdminTorneoDetallePage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
-  if (loading) return <div style={{ color: 'var(--color-primary)', padding: '2rem', fontFamily: 'var(--font-display)', fontSize: '1.5rem' }}>CARGANDO...</div>
+  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.2rem', color: '#1a73e8', fontWeight: '600' }}>Cargando...</div>
   if (!user) return <Navigate to="/login" replace />
   return children
 }
@@ -33,16 +43,21 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
-        <Route path="/" element={
-          <ProtectedRoute>
-            <HomePage cardType={cardType} />
-          </ProtectedRoute>
-        } />
-        <Route path="/elegir-tarjeta" element={
-          <ProtectedRoute>
-            <ElegirTarjetaPage onSelect={setCardType} currentDesign={cardType} />
-          </ProtectedRoute>
-        } />
+        <Route path="/" element={<ProtectedRoute><HomePage cardType={cardType} /></ProtectedRoute>} />
+        <Route path="/elegir-tarjeta" element={<ProtectedRoute><ElegirTarjetaPage onSelect={setCardType} currentDesign={cardType} /></ProtectedRoute>} />
+
+        {/* ── Panel Admin con layout ── */}
+        <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+          <Route index element={<AdminDashboard />} />
+          <Route path="crear"      element={<AdminCrearPage />} />
+          <Route path="torneos"    element={<AdminTorneosPage />} />
+<Route path="torneos/:id" element={<AdminTorneoDetallePage />} />
+          <Route path="equipos"     element={<AdminEquiposPage />} />
+<Route path="equipos/:id" element={<AdminEquipoDetallePage />} />
+          <Route path="jugadores"  element={<AdminJugadoresPage />} />
+          <Route path="calendario" element={<AdminCalendarioPage />} />
+          <Route path="sponsors"   element={<AdminSponsorsPage />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   )
