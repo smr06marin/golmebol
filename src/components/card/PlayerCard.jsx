@@ -257,7 +257,7 @@ export default function PlayerCard({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
                   <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)}>
-                    <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={50}/>
+                    <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={70}/>
                   </div>
                   {TORNEOS.length > 1 && (
                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
@@ -276,7 +276,7 @@ export default function PlayerCard({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>EQUIPO</span>
                   <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)}>
-                    <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={50}/>
+                    <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={70}/>
                   </div>
                   {EQUIPOS.length > 1 && (
                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
