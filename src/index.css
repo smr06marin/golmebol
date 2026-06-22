@@ -1,12 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&display=swap');
-@import './styles/animations.css';
-
-*, *::before, *::after {
-  margin: 0; padding: 0;
-  box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent;
-}
-
 :root {
   --color-bg: #07070e;
   --color-primary: #00ddd0;
@@ -16,7 +7,7 @@
   --color-danger: #ff4466;
   --font-display: 'Bebas Neue', 'Impact', sans-serif;
   --font-body: 'Barlow Condensed', Arial, sans-serif;
-  --max-width: 420px;
+  --max-width: 100%;
 }
 
 html, body {
@@ -29,6 +20,6 @@ html, body {
 #root {
   display: flex;
   flex-direction: column;
-  align-items: center;
   min-height: 100vh;
+  width: 100%;
 }
