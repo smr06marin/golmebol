@@ -1,95 +1,325 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Printer, Plus, Play, Pause, RotateCcw, Clock } from 'lucide-react'
+import { X, Printer, Plus, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
 
-export default function PlanillaPartido({ partido, onClose, onGuardarResultado }) {
-  const printRef = useRef(null)
-  const timerRef = useRef(null)
+function FirmaCanvas({ titulo, onSave, onClose }) {
+  const canvasRef = useRef(null)
+  const drawing = useRef(false)
+  useEffect(() => {
+    const c = canvasRef.current, ctx = c.getContext('2d')
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height)
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+  }, [])
+  function getPos(e, c) {
+    const r = c.getBoundingClientRect()
+    if (e.touches) return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top }
+    return { x: e.clientX - r.left, y: e.clientY - r.top }
+  }
+  function start(e) { e.preventDefault(); drawing.current = true; const c = canvasRef.current, ctx = c.getContext('2d'), p = getPos(e, c); ctx.beginPath(); ctx.moveTo(p.x, p.y) }
+  function draw(e) { e.preventDefault(); if (!drawing.current) return; const c = canvasRef.current, ctx = c.getContext('2d'), p = getPos(e, c); ctx.lineTo(p.x, p.y); ctx.stroke() }
+  function stop(e) { e.preventDefault(); drawing.current = false }
+  function limpiar() { const c = canvasRef.current, ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height) }
+  function guardar() { onSave(canvasRef.current.toDataURL('image/png')); onClose() }
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 8px 32px rgba(0,0,0,.3)' }}>
+        <div style={{ fontWeight: '600', color: '#202124', marginBottom: '12px', textAlign: 'center', fontSize: '.9rem' }}>✍ Firma: {titulo}</div>
+        <canvas ref={canvasRef} width={320} height={120} style={{ border: '2px solid #dadce0', borderRadius: '8px', cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+          onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={draw} onTouchEnd={stop}/>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
+          <button onClick={limpiar} style={{ padding: '7px 14px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', fontSize: '.85rem' }}>Limpiar</button>
+          <button onClick={guardar} style={{ padding: '7px 18px', background: AZUL, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600' }}>Guardar</button>
+          <button onClick={onClose} style={{ padding: '7px 14px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', fontSize: '.85rem' }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
+function FirmaSlot({ label, firma, onFirmar }) {
+  return (
+    <div onClick={onFirmar} title="Click para firmar" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed #9aa0a6', borderRadius: '3px', minWidth: '60px', minHeight: '22px', background: '#fafafa', verticalAlign: 'middle' }}>
+      {firma ? <img src={firma} style={{ maxWidth: '60px', maxHeight: '20px', objectFit: 'contain' }}/> : <span style={{ fontSize: '7px', color: '#9aa0a6' }}>✍ Firmar</span>}
+    </div>
+  )
+}
+
+function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
+  const [local, setLocal] = useState(String(value ?? ''))
+  const ref = useRef(null)
+  useEffect(() => {
+    if (document.activeElement !== ref.current) setLocal(String(value ?? ''))
+  }, [value])
+  function handleChange(e) {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 2)
+    setLocal(val); onChange(val)
+  }
+  function handleBlur() { setLocal(String(value ?? '')) }
+  const bg = !local ? '#fff3cd' : repetido ? '#ff4444' : '#111'
+  const color = !local ? '#e8710a' : '#fff'
+  return (
+    <td style={{ border: '1px solid #000', padding: '1px', background: bg, textAlign: 'center', verticalAlign: 'middle' }}
+      title={repetido ? '⚠ Número repetido' : !local ? 'Número obligatorio' : ''}>
+      <input ref={ref} value={local} onChange={handleChange} onBlur={handleBlur}
+        onDoubleClick={() => { setLocal(''); onDoubleClick() }}
+        placeholder="N°" maxLength={2}
+        style={{ border: 'none', outline: 'none', width: '100%', fontSize: '11px', fontWeight: '900', textAlign: 'center', background: 'transparent', color }}/>
+    </td>
+  )
+}
+
+export default function PlanillaPartido({ partido, onClose, onGuardarResultado }) {
   const [loading, setLoading] = useState(true)
   const [arbitros, setArbitros] = useState([])
   const [nuevoArbitro, setNuevoArbitro] = useState('')
-
-  // Jugadores
   const [jugadoresLocal, setJugadoresLocal] = useState([])
   const [jugadoresVisitante, setJugadoresVisitante] = useState([])
+  const [torneo, setTorneo] = useState(null)
+  const [guardandoDB, setGuardandoDB] = useState(false)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [hayDatosLocales, setHayDatosLocales] = useState(false)
 
-  // Cronómetro
+  const [colorLocal, setColorLocal] = useState('#1a3a8a')
+  const [colorVisitante, setColorVisitante] = useState('#d93025')
+
   const [periodo, setPeriodo] = useState(1)
   const [segundos, setSegundos] = useState(0)
   const [corriendo, setCorriendo] = useState(false)
+  const [miniCrono, setMiniCrono] = useState(false)
+  const [tiempoAgotado, setTiempoAgotado] = useState(false)
+  const [tiempoExtra, setTiempoExtra] = useState(0)
+  const [duracionMinutos, setDuracionMinutos] = useState(20)
+  const [editandoDuracion, setEditandoDuracion] = useState(false)
+  const [duracionInput, setDuracionInput] = useState('20')
 
-  // Goles
-  const [golesLocal, setGolesLocal] = useState([]) // [{numero, minuto, periodo}]
-  const [golesVisitante, setGolesVisitante] = useState([])
-  const [inputGolLocal, setInputGolLocal] = useState('')
-  const [inputGolVisitante, setInputGolVisitante] = useState('')
+  const timerRef = useRef(null)
+  const [cronoPos, setCronoPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 200, y: 20 })
+  const dragStart = useRef(null)
 
-  // Faltas acumuladas
-  const [faltasAcumLocal1, setFaltasAcumLocal1] = useState([])
-  const [faltasAcumLocal2, setFaltasAcumLocal2] = useState([])
-  const [faltasAcumVis1, setFaltasAcumVis1] = useState([])
-  const [faltasAcumVis2, setFaltasAcumVis2] = useState([])
-  const [inputFaltaLocal, setInputFaltaLocal] = useState('')
-  const [inputFaltaVis, setInputFaltaVis] = useState('')
+  const [golesLocal, setGolesLocal] = useState(Array(24).fill(null))
+  const [golesVisitante, setGolesVisitante] = useState(Array(24).fill(null))
+  const [faltasAcumLocal, setFaltasAcumLocal] = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
+  const [faltasAcumVis, setFaltasAcumVis] = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
+  const [dropdownOpen, setDropdownOpen] = useState(null)
+  const [tiroInicial, setTiroInicial] = useState(null)
 
-  // Otros datos
+  const [finalistasLocal, setFinalistasLocal] = useState(Array(5).fill(''))
+  const [finalistasVis, setFinalistasVis] = useState(Array(5).fill(''))
+  const [ingresosLocal, setIngresosLocal] = useState(Array(7).fill(''))
+  const [ingresosVis, setIngresosVis] = useState(Array(7).fill(''))
+
+  const [firmaModal, setFirmaModal] = useState(null)
+  const [firmas, setFirmas] = useState({ capitanLocal: null, capitanVisitante: null, arbitro1: null, arbitro2: null, anotador: null })
+
+  const CUERPO_ROLES = ['TECNICO', 'A. TECNICO', 'MASAJISTA', 'MEDICO', 'P. FISICO']
+  const [cuerpoLocal, setCuerpoLocal] = useState(CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+  const [cuerpoVis, setCuerpoVis] = useState(CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+
   const [arbitro1, setArbitro1] = useState('')
   const [arbitro2, setArbitro2] = useState('')
   const [anotador, setAnotador] = useState('')
-  const [cronometro, setCronometro] = useState('')
+  const [cronometroNombre, setCronometroNombre] = useState('')
   const [observaciones, setObservaciones] = useState('')
-  const [etapa, setEtapa] = useState('')
   const [horaInicio1, setHoraInicio1] = useState('')
   const [horaFin1, setHoraFin1] = useState('')
   const [horaInicio2, setHoraInicio2] = useState('')
   const [horaFin2, setHoraFin2] = useState('')
 
-  useEffect(() => { fetchTodo() }, [])
+  const localKey = `planilla_${partido.id}`
+  const limiteSegundos = duracionMinutos * 60 + tiempoExtra * 60
+
+  useEffect(() => {
+    const on = () => setIsOnline(true)
+    const off = () => setIsOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
 
   useEffect(() => {
     if (corriendo) {
-      timerRef.current = setInterval(() => setSegundos(s => s + 1), 1000)
-    } else {
-      clearInterval(timerRef.current)
-    }
+      timerRef.current = setInterval(() => {
+        setSegundos(s => {
+          const next = s + 1
+          if (next >= limiteSegundos && !tiempoAgotado) {
+            setTiempoAgotado(true); setCorriendo(false)
+            try {
+              const ctx = new (window.AudioContext || window.webkitAudioContext)()
+              const beep = (freq, start, dur) => {
+                const o = ctx.createOscillator(), g = ctx.createGain()
+                o.connect(g); g.connect(ctx.destination); o.frequency.value = freq
+                o.start(ctx.currentTime + start); o.stop(ctx.currentTime + start + dur)
+                g.gain.setValueAtTime(0.3, ctx.currentTime + start)
+                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur)
+              }
+              beep(880, 0, 0.3); beep(880, 0.4, 0.3); beep(1100, 0.8, 0.6)
+            } catch(e) {}
+          }
+          return next
+        })
+      }, 1000)
+    } else clearInterval(timerRef.current)
     return () => clearInterval(timerRef.current)
-  }, [corriendo])
+  }, [corriendo, limiteSegundos, tiempoAgotado])
+
+  useEffect(() => {
+    if (loading) return
+    const snap = {
+      jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante,
+      faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis,
+      ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis,
+      arbitro1, arbitro2, anotador, cronometroNombre, observaciones,
+      horaInicio1, horaFin1, horaInicio2, horaFin2,
+      tiroInicial, colorLocal, colorVisitante, duracionMinutos,
+      savedAt: new Date().toISOString(), pendienteSync: true,
+    }
+    try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
+  }, [
+    jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante,
+    faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis,
+    ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis,
+    arbitro1, arbitro2, anotador, cronometroNombre, observaciones,
+    horaInicio1, horaFin1, horaInicio2, horaFin2,
+    tiroInicial, colorLocal, colorVisitante, duracionMinutos
+  ])
+
+  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => {
+    const close = () => setDropdownOpen(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [])
+
+  function getDefaultDuracion(modalidad) {
+    if (modalidad === 'Fútbol 5')  return 20
+    if (modalidad === 'Fútbol 7')  return 25
+    if (modalidad === 'Fútbol 11') return 45
+    return 20
+  }
 
   async function fetchTodo() {
     setLoading(true)
-    const [jugsL, jugsV, arbs] = await Promise.all([
+    const [jugsL, jugsV, arbs, torn, eventos, statsDB] = await Promise.all([
+      // ── Traer posiciones para detectar porteros ──
       supabase.from('tournament_player_registrations')
-        .select('*, players(id,name,numero_cedula)')
-        .eq('tournament_id', partido.tournament_id)
-        .eq('team_id', partido.home_team_id)
-        .eq('activo', true),
+        .select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
+        .eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations')
-        .select('*, players(id,name,numero_cedula)')
-        .eq('tournament_id', partido.tournament_id)
-        .eq('team_id', partido.away_team_id)
-        .eq('activo', true),
+        .select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
+        .eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('arbitros').select('*').eq('activo', true).order('nombre'),
+      supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
+      supabase.from('match_events').select('*').eq('match_id', partido.id).order('created_at', { ascending: true }),
+      supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('match_id', partido.id),
     ])
 
-    const mapJug = (data) => (data || []).map((r, i) => ({
+    const evs = eventos.data || []
+    const stats = statsDB.data || []
+    const yaJugado = stats.length > 0
+    const torneoData = torn.data
+
+    // ── mapJug incluye posiciones para detectar porteros en guardarEnDB ──
+    const mapJug = (data) => (data || []).map(r => ({
       id: r.players?.id,
       nombre: r.players?.name || '',
       cedula: r.players?.numero_cedula || '',
-      numero: i + 1,
-      faltas1: 0,
-      faltas2: 0,
-      amarilla: false,
-      azul: false,
-      roja: false,
+      numero: '',
+      faltasPeriodo: [],
+      amarilla: false, azul: false, roja: false,
+      posicion_futbol5:  r.players?.posicion_futbol5  || '',
+      posicion_futbol7:  r.players?.posicion_futbol7  || '',
+      posicion_futbol11: r.players?.posicion_futbol11 || '',
     }))
 
-    setJugadoresLocal(mapJug(jugsL.data))
-    setJugadoresVisitante(mapJug(jugsV.data))
+    let jugsLocalBase, jugsVisBase
+    if (yaJugado) {
+      const sL = stats.filter(s => s.team_id === partido.home_team_id)
+      const sV = stats.filter(s => s.team_id === partido.away_team_id)
+      jugsLocalBase = sL.map(s => ({
+        id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '',
+        numero: '', faltasPeriodo: [],
+        amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0,
+        posicion_futbol5:  s.players?.posicion_futbol5  || '',
+        posicion_futbol7:  s.players?.posicion_futbol7  || '',
+        posicion_futbol11: s.players?.posicion_futbol11 || '',
+      }))
+      jugsVisBase = sV.map(s => ({
+        id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '',
+        numero: '', faltasPeriodo: [],
+        amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0,
+        posicion_futbol5:  s.players?.posicion_futbol5  || '',
+        posicion_futbol7:  s.players?.posicion_futbol7  || '',
+        posicion_futbol11: s.players?.posicion_futbol11 || '',
+      }))
+    } else {
+      jugsLocalBase = mapJug(jugsL.data)
+      jugsVisBase   = mapJug(jugsV.data)
+    }
+
+    const golesLocRec = Array(24).fill(null)
+    const golesVisRec = Array(24).fill(null)
+    let slotL = 0, slotV = 0
+    evs.filter(e => e.event_type === 'goal').forEach(e => {
+      const esLocal = e.team_id === partido.home_team_id
+      const jugs = esLocal ? jugsLocalBase : jugsVisBase
+      const jugador = jugs.find(j => j.id === e.player_id)
+      const gol = { numero: jugador?.numero || 0, minuto: e.minute || '', periodo: e.periodo || 1 }
+      if (esLocal && slotL < 24) { golesLocRec[slotL] = gol; slotL++ }
+      else if (!esLocal && slotV < 24) { golesVisRec[slotV] = gol; slotV++ }
+    })
+
+    let restaurado = false
+    try {
+      const local = localStorage.getItem(localKey)
+      if (local) {
+        const snap = JSON.parse(local)
+        if (snap.pendienteSync) {
+          setJugadoresLocal(snap.jugadoresLocal)
+          setJugadoresVisitante(snap.jugadoresVisitante)
+          setGolesLocal(snap.golesLocal)
+          setGolesVisitante(snap.golesVisitante)
+          setFaltasAcumLocal(snap.faltasAcumLocal)
+          setFaltasAcumVis(snap.faltasAcumVis)
+          setFinalistasLocal(snap.finalistasLocal)
+          setFinalistasVis(snap.finalistasVis)
+          setIngresosLocal(snap.ingresosLocal)
+          setIngresosVis(snap.ingresosVis)
+          setCuerpoLocal(snap.cuerpoLocal)
+          setCuerpoVis(snap.cuerpoVis)
+          setArbitro1(snap.arbitro1 || '')
+          setArbitro2(snap.arbitro2 || '')
+          setAnotador(snap.anotador || '')
+          setCronometroNombre(snap.cronometroNombre || '')
+          setObservaciones(snap.observaciones || '')
+          setHoraInicio1(snap.horaInicio1 || '')
+          setHoraFin1(snap.horaFin1 || '')
+          setHoraInicio2(snap.horaInicio2 || '')
+          setHoraFin2(snap.horaFin2 || '')
+          setTiroInicial(snap.tiroInicial || null)
+          setColorLocal(snap.colorLocal || '#1a3a8a')
+          setColorVisitante(snap.colorVisitante || '#d93025')
+          const dur = snap.duracionMinutos || getDefaultDuracion(torneoData?.modalidad)
+          setDuracionMinutos(dur); setDuracionInput(String(dur))
+          setHayDatosLocales(true)
+          restaurado = true
+        }
+      }
+    } catch(e) {}
+
+    if (!restaurado) {
+      setJugadoresLocal(jugsLocalBase)
+      setJugadoresVisitante(jugsVisBase)
+      setGolesLocal(golesLocRec)
+      setGolesVisitante(golesVisRec)
+      const dur = getDefaultDuracion(torneoData?.modalidad)
+      setDuracionMinutos(dur); setDuracionInput(String(dur))
+    }
+
     setArbitros(arbs.data || [])
+    setTorneo(torneoData)
     setLoading(false)
   }
 
@@ -99,190 +329,433 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (data) { setArbitros(prev => [...prev, data]); setNuevoArbitro('') }
   }
 
-  function formatTiempo(s) {
-    const m = Math.floor(s / 60)
-    const ss = s % 60
-    return `${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-  }
+  async function guardarEnDB() {
+    setGuardandoDB(true)
+    const golesLocalTotal   = golesLocal.filter(Boolean).length
+    const golesVisTotal     = golesVisitante.filter(Boolean).length
 
-  function handleCambiarPeriodo() {
-    setCorriendo(false)
-    setSegundos(0)
-    setPeriodo(2)
-  }
-
-  function updateJugador(equipo, idx, campo, valor) {
-    const setter = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
-    setter(prev => prev.map((j, i) => i === idx ? { ...j, [campo]: valor } : j))
-  }
-
-  function toggleFalta(equipo, idx) {
-    const jugs = equipo === 'local' ? jugadoresLocal : jugadoresVisitante
-    const setter = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
-    const j = jugs[idx]
-    if (periodo === 1) {
-      const nuevasFaltas = Math.min((j.faltas1 || 0) + 1, 5)
-      setter(prev => prev.map((jj, i) => i === idx ? { ...jj, faltas1: nuevasFaltas } : jj))
-    } else {
-      const nuevasFaltas = Math.min((j.faltas2 || 0) + 1, 5)
-      setter(prev => prev.map((jj, i) => i === idx ? { ...jj, faltas2: nuevasFaltas } : jj))
+    const eventosGolLocal = golesLocal.filter(Boolean).map(g => {
+      const jugador = jugadoresLocal.find(j => String(j.numero) === String(g.numero))
+      return { match_id: partido.id, tournament_id: partido.tournament_id, team_id: partido.home_team_id, player_id: jugador?.id || null, event_type: 'goal', minute: g.minuto, periodo: g.periodo }
+    })
+    const eventosGolVis = golesVisitante.filter(Boolean).map(g => {
+      const jugador = jugadoresVisitante.find(j => String(j.numero) === String(g.numero))
+      return { match_id: partido.id, tournament_id: partido.tournament_id, team_id: partido.away_team_id, player_id: jugador?.id || null, event_type: 'goal', minute: g.minuto, periodo: g.periodo }
+    })
+    const eventosTarjetas = []
+    const procesarTarjetas = (jugadores, team_id) => {
+      jugadores.forEach(j => {
+        if (!j.id) return
+        if (j.amarilla) eventosTarjetas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'yellow_card', periodo })
+        if (j.azul)    eventosTarjetas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'blue_card', periodo })
+        if (j.roja)    eventosTarjetas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'red_card', periodo })
+      })
     }
-  }
+    procesarTarjetas(jugadoresLocal, partido.home_team_id)
+    procesarTarjetas(jugadoresVisitante, partido.away_team_id)
 
-  function registrarGol(equipo) {
-    const numCamiseta = equipo === 'local' ? inputGolLocal : inputGolVisitante
-    if (!numCamiseta) return
-    const minuto = formatTiempo(segundos)
-    const gol = { numero: parseInt(numCamiseta), minuto, periodo }
-    if (equipo === 'local') { setGolesLocal(prev => [...prev, gol]); setInputGolLocal('') }
-    else { setGolesVisitante(prev => [...prev, gol]); setInputGolVisitante('') }
-  }
-
-  function registrarFaltaAcum(equipo) {
-    const num = equipo === 'local' ? inputFaltaLocal : inputFaltaVis
-    if (!num) return
-    const numero = parseInt(num)
-    // Sumar falta personal al jugador con ese número
-    const jugs = equipo === 'local' ? jugadoresLocal : jugadoresVisitante
-    const setter = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
-    const idx = jugs.findIndex(j => j.numero === numero)
-    if (idx >= 0) toggleFalta(equipo, idx)
-    // Agregar a acumuladas
-    if (equipo === 'local') {
-      if (periodo === 1) setFaltasAcumLocal1(prev => [...prev, numero])
-      else setFaltasAcumLocal2(prev => [...prev, numero])
-      setInputFaltaLocal('')
-    } else {
-      if (periodo === 1) setFaltasAcumVis1(prev => [...prev, numero])
-      else setFaltasAcumVis2(prev => [...prev, numero])
-      setInputFaltaVis('')
+    await supabase.from('match_events').delete().eq('match_id', partido.id)
+    const todosEventos = [...eventosGolLocal, ...eventosGolVis, ...eventosTarjetas]
+    if (todosEventos.length > 0) {
+      const { error: errEv } = await supabase.from('match_events').insert(todosEventos)
+      if (errEv) { setGuardandoDB(false); return }
     }
+
+    const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
+    const statsRows = []
+
+    const procesarStats = (jugadores, goles, team_id, esLocal) => {
+      const gF = esLocal ? golesLocalTotal : golesVisTotal   // goles a favor del equipo
+      const gC = esLocal ? golesVisTotal : golesLocalTotal   // goles en contra del equipo
+
+      jugadores.forEach(j => {
+        if (!j.id) return
+
+        // Detectar si el jugador es portero en cualquier modalidad
+        const esPorteroJugador =
+          j.posicion_futbol5  === 'Portero' ||
+          j.posicion_futbol7  === 'Portero' ||
+          j.posicion_futbol11 === 'Portero'
+
+        // Portero: goals_conceded = goles que le metieron (gC del equipo)
+        // Jugador de campo: goals_conceded = 0
+        const golesRecibidos = esPorteroJugador ? gC : 0
+
+        statsRows.push({
+          match_id:       partido.id,
+          tournament_id:  partido.tournament_id,
+          player_id:      j.id,
+          team_id,
+          goals_scored:   goles.filter(g => g && String(g.numero) === String(j.numero)).length,
+          goals_conceded: golesRecibidos,
+          own_goals:      0,
+          yellow_cards:   j.amarilla ? 1 : 0,
+          blue_cards:     j.azul     ? 1 : 0,
+          red_cards:      j.roja     ? 1 : 0,
+          fouls:          (j.faltasPeriodo || []).length,
+          team_result:    calcResultado(gF, gC),
+        })
+      })
+    }
+
+    procesarStats(jugadoresLocal,     golesLocal,     partido.home_team_id, true)
+    procesarStats(jugadoresVisitante, golesVisitante, partido.away_team_id, false)
+
+    if (statsRows.length > 0) {
+      const { error: errSt } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
+      if (errSt) { setGuardandoDB(false); return }
+    }
+
+    try { localStorage.removeItem(localKey) } catch(e) {}
+    setHayDatosLocales(false)
+    setGuardandoDB(false)
+    onGuardarResultado(golesLocalTotal, golesVisTotal)
   }
 
-  const golesLocalTotal = golesLocal.length
-  const golesVisTotal = golesVisitante.length
+  function formatTiempo(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}` }
 
-  async function handleGuardar() {
-    await onGuardarResultado(golesLocalTotal, golesVisTotal)
+  const updateJugador = useCallback((equipo, idx, campo, valor) => {
+    const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
+    s(prev => prev.map((j, i) => i === idx ? { ...j, [campo]: valor } : j))
+  }, [])
+
+  function numeroRepetido(equipo, numero, idxActual) {
+    if (numero === '' || numero === null || numero === undefined) return false
+    const jugs = equipo === 'local' ? jugadoresLocal : jugadoresVisitante
+    return jugs.some((j, i) => i !== idxActual && String(j.numero) === String(numero) && String(numero) !== '')
   }
 
-  const fecha = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
-  const hora = partido.played_at ? new Date(partido.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''
+  function addFaltaAJugador(equipo, numero) {
+    const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
+    s(prev => prev.map(j => String(j.numero) !== String(numero) ? j : { ...j, faltasPeriodo: [...(j.faltasPeriodo || []), periodo] }))
+  }
+  function quitarFaltaDeJugador(equipo, numero, per) {
+    const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
+    s(prev => prev.map(j => {
+      if (String(j.numero) !== String(numero)) return j
+      const fp = [...(j.faltasPeriodo || [])]; const idx = fp.indexOf(per); if (idx >= 0) fp.splice(idx, 1)
+      return { ...j, faltasPeriodo: fp }
+    }))
+  }
+  function registrarGol(equipo, slotIdx, numero) {
+    const goles = equipo === 'local' ? golesLocal : golesVisitante
+    if (slotIdx > 0 && goles[slotIdx - 1] === null) return
+    const gol = { numero, minuto: formatTiempo(segundos), periodo }
+    if (equipo === 'local') setGolesLocal(prev => { const n = [...prev]; n[slotIdx] = gol; return n })
+    else setGolesVisitante(prev => { const n = [...prev]; n[slotIdx] = gol; return n })
+    setDropdownOpen(null)
+  }
+  function eliminarGol(equipo, slotIdx) {
+    const goles = equipo === 'local' ? golesLocal : golesVisitante
+    const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1); if (slotIdx !== ul) return
+    if (equipo === 'local') setGolesLocal(prev => { const n = [...prev]; n[slotIdx] = null; return n })
+    else setGolesVisitante(prev => { const n = [...prev]; n[slotIdx] = null; return n })
+  }
+  function registrarFaltaAcum(equipo, per, slotIdx, numero) {
+    const key = `p${per}`, fa = equipo === 'local' ? faltasAcumLocal : faltasAcumVis
+    if (slotIdx > 0 && fa[key][slotIdx - 1] === null) return
+    if (equipo === 'local') setFaltasAcumLocal(prev => { const arr = [...prev[key]]; arr[slotIdx] = numero; return { ...prev, [key]: arr } })
+    else setFaltasAcumVis(prev => { const arr = [...prev[key]]; arr[slotIdx] = numero; return { ...prev, [key]: arr } })
+    addFaltaAJugador(equipo, numero); setDropdownOpen(null)
+  }
+  function eliminarFaltaAcum(equipo, per, slotIdx) {
+    const key = `p${per}`, fa = equipo === 'local' ? faltasAcumLocal : faltasAcumVis
+    const numero = fa[key][slotIdx]; if (numero === null) return
+    quitarFaltaDeJugador(equipo, numero, per)
+    if (equipo === 'local') setFaltasAcumLocal(prev => { const arr = [...prev[key]]; arr[slotIdx] = null; return { ...prev, [key]: arr } })
+    else setFaltasAcumVis(prev => { const arr = [...prev[key]]; arr[slotIdx] = null; return { ...prev, [key]: arr } })
+  }
+  function puedeAbrirFalta(fa, key, i) { return i === 0 ? fa[key][0] === null : fa[key][i-1] !== null && fa[key][i] === null }
+  function puedeAbrirGol(goles, si) { return si === 0 ? goles[0] === null : goles[si-1] !== null && goles[si] === null }
+  function onDragStart(e) { dragStart.current = { mx: e.clientX, my: e.clientY, ox: cronoPos.x, oy: cronoPos.y }; window.addEventListener('mousemove', onDrag); window.addEventListener('mouseup', onDragEnd) }
+  function onDrag(e) { if (!dragStart.current) return; setCronoPos({ x: dragStart.current.ox + (e.clientX - dragStart.current.mx), y: dragStart.current.oy + (e.clientY - dragStart.current.my) }) }
+  function onDragEnd() { dragStart.current = null; window.removeEventListener('mousemove', onDrag); window.removeEventListener('mouseup', onDragEnd) }
+  function iniciarPeriodo2() { setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setPeriodo(2) }
+  function agregarTiempoExtra(mins) { setTiempoExtra(prev => prev + mins); setTiempoAgotado(false); setCorriendo(true) }
+  function confirmarDuracion() {
+    const val = parseInt(duracionInput)
+    if (!isNaN(val) && val > 0 && val <= 90) {
+      setDuracionMinutos(val); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setCorriendo(false)
+    }
+    setEditandoDuracion(false)
+  }
 
-  const cell = { border: '1px solid #000', padding: '2px 4px', fontSize: '10px', textAlign: 'center' }
-  const cellL = { border: '1px solid #000', padding: '2px 4px', fontSize: '10px', textAlign: 'left' }
-  const inp = { border: 'none', outline: 'none', width: '100%', fontSize: '10px', textAlign: 'center', background: 'transparent' }
-  const inpL = { border: 'none', outline: 'none', width: '100%', fontSize: '10px', textAlign: 'left', background: 'transparent' }
+  const golesLocalTotal = golesLocal.filter(Boolean).length
+  const golesVisTotal   = golesVisitante.filter(Boolean).length
+  const fecha   = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+  const hora    = partido.played_at ? new Date(partido.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''
+  const etapaNombre = partido.matchday ? `Jornada ${partido.matchday}` : ''
+  const B    = '1px solid #000'
+  const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle' }
+  const cellL = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'left',   verticalAlign: 'middle' }
+  const inp   = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'center', background: 'transparent', color: '#111' }
+  const inpL  = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'left',   background: 'transparent', color: '#111' }
+  const progreso = Math.min(segundos / limiteSegundos, 1)
+  const cronoBg  = tiempoAgotado ? '#b71c1c' : periodo === 1 ? AZUL : ROJO
 
-  const TablaJugadores = ({ jugs, equipo }) => (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', marginBottom: '4px' }}>
+  const DropdownCamisetas = ({ jugs, dropKey, onSelect }) => {
+    if (dropdownOpen !== dropKey) return null
+    const jugsConNumero = jugs.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined)
+    return (
+      <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,.2)', minWidth: '160px', maxHeight: '180px', overflowY: 'auto' }}>
+        {jugsConNumero.length === 0 && <div style={{ padding: '8px 12px', fontSize: '9px', color: '#9aa0a6' }}>Sin números asignados</div>}
+        {jugsConNumero.map(j => (
+          <div key={j.numero} onClick={() => onSelect(j.numero)}
+            style={{ padding: '5px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f3f4' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
+            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+            <span style={{ fontWeight: '700', color: '#111', minWidth: '26px', background: '#e8f0fe', borderRadius: '4px', textAlign: 'center', padding: '1px 3px', fontSize: '10px' }}>#{j.numero}</span>
+            <span style={{ fontSize: '10px', color: '#111' }}>{j.nombre}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const SlotGol = ({ equipo, slotIdx, goles, jugs, colorEquipo = '#1a3a8a' }) => {
+    const gol = goles[slotIdx], num = slotIdx + 1, dropKey = `gol-${equipo}-${slotIdx}`
+    const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1), esUl = ul === slotIdx
+    const puedeClic = puedeAbrirGol(goles, slotIdx)
+    return (
+      <td style={{ border: B, padding: '1px 2px', position: 'relative', verticalAlign: 'middle', background: colorEquipo + '30' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
+          <span style={{ fontSize: '8px', color: '#111', minWidth: '9px', fontWeight: '700' }}>{num}</span>
+          {gol ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flex: 1 }}
+              onDoubleClick={() => { if (esUl) eliminarGol(equipo, slotIdx) }}
+              title={esUl ? 'Doble click para eliminar' : ''}>
+              <span style={{ fontWeight: '900', fontSize: '10px', color: '#111' }}>#{gol.numero}</span>
+              <span style={{ fontSize: '8px', color: '#333' }}>{gol.minuto}</span>
+              {esUl && <span style={{ marginLeft: 'auto', color: '#aaa', fontSize: '6px' }}>2x✕</span>}
+            </div>
+          ) : puedeClic ? (
+            <div style={{ flex: 1, position: 'relative' }}
+              onClick={e => { e.stopPropagation(); setDropdownOpen(dropdownOpen === dropKey ? null : dropKey) }}>
+              <span style={{ fontSize: '9px', color: '#555', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
+              <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarGol(equipo, slotIdx, n)}/>
+            </div>
+          ) : <span style={{ fontSize: '7px', color: '#bbb' }}>—</span>}
+        </div>
+      </td>
+    )
+  }
+
+  const SlotFalta = ({ equipo, per, i, faltasAcum, jugs }) => {
+    const key = `p${per}`, val = faltasAcum[key][i], dropKey = `falta-${equipo}-p${per}-${i}`
+    const puedeClic = puedeAbrirFalta(faltasAcum, key, i)
+    const bgLleno = per === 1 ? '#ddeeff' : '#ffdddd'
+    return (
+      <td style={{ border: B, padding: '2px 1px', position: 'relative', textAlign: 'center', verticalAlign: 'middle', background: val !== null ? bgLleno : puedeClic ? '#f8f9fa' : '#f1f3f4', cursor: 'pointer' }}
+        onClick={e => { e.stopPropagation(); if (puedeClic && val === null) setDropdownOpen(dropdownOpen === dropKey ? null : dropKey) }}
+        onDoubleClick={e => { e.stopPropagation(); if (val !== null) eliminarFaltaAcum(equipo, per, i) }}
+        title={val !== null ? 'Doble click para eliminar' : ''}>
+        {val !== null
+          ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>{val}<span style={{ fontSize: '6px', color: '#aaa' }}>2x</span></span>
+          : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
+          : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
+        <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}/>
+      </td>
+    )
+  }
+
+  const TablaJugadores = ({ jugs, equipo, goles, colorEquipo = '#1a3a8a' }) => (
+    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: '55px' }}/><col style={{ width: '90px' }}/><col style={{ width: '24px' }}/>
+        <col style={{ width: '12px' }}/><col style={{ width: '12px' }}/><col style={{ width: '12px' }}/><col style={{ width: '12px' }}/><col style={{ width: '12px' }}/>
+        <col style={{ width: '26px' }}/><col style={{ width: '20px' }}/><col style={{ width: '20px' }}/>
+        <col style={{ width: '20px' }}/><col style={{ width: '20px' }}/><col style={{ width: '26px' }}/>
+      </colgroup>
       <thead>
         <tr style={{ background: '#ddd' }}>
-          <th style={{ ...cell, width: '60px' }}>CÉDULA</th>
-          <th style={{ ...cellL, width: '150px' }}>NOMBRE Y APELLIDO</th>
-          <th style={{ ...cell, width: '24px' }}>N°</th>
-          <th style={{ ...cell, width: '16px', color: AZUL }}>1P</th>
-          <th style={{ ...cell, width: '16px', color: AZUL }}>2P</th>
-          <th style={{ ...cell, width: '16px', color: AZUL }}>3P</th>
-          <th style={{ ...cell, width: '16px', color: AZUL }}>4P</th>
-          <th style={{ ...cell, width: '16px', color: AZUL }}>5P</th>
-          <th style={{ ...cell, width: '16px', color: ROJO }}>1P</th>
-          <th style={{ ...cell, width: '16px', color: ROJO }}>2P</th>
-          <th style={{ ...cell, width: '16px', color: ROJO }}>3P</th>
-          <th style={{ ...cell, width: '16px', color: ROJO }}>4P</th>
-          <th style={{ ...cell, width: '16px', color: ROJO }}>5P</th>
-          <th style={{ ...cell, width: '28px', background: '#ffcc00' }}>AMAR</th>
-          <th style={{ ...cell, width: '24px', background: '#aaddff' }}>AZUL</th>
-          <th style={{ ...cell, width: '24px', background: '#ffaaaa' }}>ROJA</th>
-          <th style={{ ...cell, width: '28px', color: AZUL }}>G 1P</th>
-          <th style={{ ...cell, width: '28px', color: ROJO }}>G 2P</th>
-          <th style={{ ...cell, width: '28px', fontWeight: '700' }}>TOT</th>
-        </tr>
-        <tr style={{ background: '#eee', fontSize: '8px' }}>
-          <th style={cell}></th>
-          <th style={cellL}></th>
-          <th style={cell}></th>
-          <th colSpan={5} style={{ ...cell, color: AZUL }}>1ER PERIODO</th>
-          <th colSpan={5} style={{ ...cell, color: ROJO }}>2DO PERIODO</th>
-          <th colSpan={3} style={cell}>TARJETAS</th>
-          <th colSpan={3} style={cell}>GOLES</th>
+          <th style={{ ...cell, fontSize: '8px', color: '#111' }}>DOCUMENTO N°</th>
+          <th style={{ ...cellL, fontSize: '8px', color: '#111' }}>NOMBRE Y APELLIDO</th>
+          <th style={{ ...cell, fontSize: '8px', color: '#111' }}>N°</th>
+          <th style={{ ...cell, fontSize: '7px', color: '#111' }}>1</th><th style={{ ...cell, fontSize: '7px', color: '#111' }}>2</th>
+          <th style={{ ...cell, fontSize: '7px', color: '#111' }}>3</th><th style={{ ...cell, fontSize: '7px', color: '#111' }}>4</th>
+          <th style={{ ...cell, fontSize: '7px', color: '#111' }}>5</th>
+          <th style={{ ...cell, fontSize: '7px', background: '#ffcc00', color: '#111' }}>AMARILLA</th>
+          <th style={{ ...cell, fontSize: '7px', background: '#aaddff', color: '#111' }}>AZUL</th>
+          <th style={{ ...cell, fontSize: '7px', background: '#ffaaaa', color: '#111' }}>ROJA</th>
+          <th style={{ ...cell, fontSize: '7px', color: '#111' }}>1°P.</th>
+          <th style={{ ...cell, fontSize: '7px', color: '#111' }}>2°P.</th>
+          <th style={{ ...cell, fontSize: '7px', fontWeight: '700', color: '#111' }}>TOTAL</th>
         </tr>
       </thead>
       <tbody>
         {jugs.map((j, idx) => {
-          const goles1 = golesLocal.filter(g => g.numero === j.numero && g.periodo === 1 && equipo === 'local').length +
-            golesVisitante.filter(g => g.numero === j.numero && g.periodo === 1 && equipo === 'visitante').length
-          const goles2 = golesLocal.filter(g => g.numero === j.numero && g.periodo === 2 && equipo === 'local').length +
-            golesVisitante.filter(g => g.numero === j.numero && g.periodo === 2 && equipo === 'visitante').length
+          const g1 = goles.filter(g => g && String(g.numero) === String(j.numero) && g.periodo === 1).length
+          const g2 = goles.filter(g => g && String(g.numero) === String(j.numero) && g.periodo === 2).length
+          const faltas = j.faltasPeriodo || []
+          const repetido = numeroRepetido(equipo, j.numero, idx)
+          const esPortero = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
           return (
-            <tr key={idx} style={{ height: '20px' }}>
-              <td style={cell}><input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)} style={inp}/></td>
-              <td style={cellL}><input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)} style={inpL}/></td>
-              <td style={cell}><input value={j.numero} onChange={e => updateJugador(equipo, idx, 'numero', parseInt(e.target.value) || '')} style={inp}/></td>
-              {/* Faltas 1er periodo */}
-              {[1,2,3,4,5].map(n => (
-                <td key={n} style={{ ...cell, background: (j.faltas1 || 0) >= n ? '#4488ff33' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (periodo === 1) toggleFalta(equipo, idx) }}>
-                  <span style={{ color: AZUL, fontWeight: '700' }}>{(j.faltas1 || 0) >= n ? n : ''}</span>
+            <tr key={idx} style={{ height: '17px' }}>
+              <td style={cell}>
+                <input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)}
+                  onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} title="Doble click para borrar" style={inp}/>
+              </td>
+              <td style={{ ...cellL, background: colorEquipo + '35' }}>
+                <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
+                  onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} title="Doble click para borrar"
+                  style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
+                {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
+              </td>
+              <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)}
+                onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+              {[0,1,2,3,4].map(n => {
+                const tF = faltas.length > n
+                return <td key={n} style={{ ...cell, background: tF ? '#e0e0e0' : 'transparent' }}>
+                  {tF && <span style={{ color: '#111', fontWeight: '700' }}>{n+1}</span>}
                 </td>
-              ))}
-              {/* Faltas 2do periodo */}
-              {[1,2,3,4,5].map(n => (
-                <td key={n} style={{ ...cell, background: (j.faltas2 || 0) >= n ? '#ff444433' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (periodo === 2) toggleFalta(equipo, idx) }}>
-                  <span style={{ color: ROJO, fontWeight: '700' }}>{(j.faltas2 || 0) >= n ? n : ''}</span>
-                </td>
-              ))}
-              <td style={{ ...cell, background: j.amarilla ? '#ffcc0066' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'amarilla', !j.amarilla)}>{j.amarilla ? '✓' : ''}</td>
-              <td style={{ ...cell, background: j.azul ? '#4488ff44' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'azul', !j.azul)}>{j.azul ? '✓' : ''}</td>
-              <td style={{ ...cell, background: j.roja ? '#ff444444' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'roja', !j.roja)}>{j.roja ? '✓' : ''}</td>
-              <td style={{ ...cell, color: AZUL, fontWeight: '700' }}>{goles1 || ''}</td>
-              <td style={{ ...cell, color: ROJO, fontWeight: '700' }}>{goles2 || ''}</td>
-              <td style={{ ...cell, fontWeight: '900' }}>{(goles1 + goles2) || ''}</td>
+              })}
+              <td style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'amarilla', !j.amarilla)}>
+                <span style={{ color: j.amarilla ? '#111' : 'transparent' }}>✓</span>
+              </td>
+              <td style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'azul', !j.azul)}>
+                <span style={{ color: j.azul ? '#fff' : 'transparent' }}>✓</span>
+              </td>
+              <td style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'roja', !j.roja)}>
+                <span style={{ color: j.roja ? '#fff' : 'transparent' }}>✓</span>
+              </td>
+              <td style={{ ...cell, background: g1 ? colorEquipo : 'transparent', color: g1 ? '#fff' : '#111', fontWeight: '700' }}>{g1||''}</td>
+              <td style={{ ...cell, background: g2 ? colorEquipo : 'transparent', color: g2 ? '#fff' : '#111', fontWeight: '700' }}>{g2||''}</td>
+              <td style={{ ...cell, background: (g1+g2) ? colorEquipo : 'transparent', color: (g1+g2) ? '#fff' : '#111', fontWeight: '900' }}>{(g1+g2)||''}</td>
             </tr>
           )
         })}
         {Array.from({ length: Math.max(0, 12 - jugs.length) }).map((_, i) => (
-          <tr key={`e${i}`} style={{ height: '20px' }}>
-            {Array.from({ length: 19 }).map((_, j) => <td key={j} style={cell}>&nbsp;</td>)}
+          <tr key={`e${i}`} style={{ height: '17px' }}>
+            {Array.from({ length: 14 }).map((_, j) => <td key={j} style={cell}>&nbsp;</td>)}
           </tr>
         ))}
       </tbody>
     </table>
   )
 
-  const TablaGoles = ({ goles, label }) => (
-    <div style={{ marginTop: '8px' }}>
-      <div style={{ fontSize: '10px', fontWeight: '700', marginBottom: '2px' }}>GOLES — AUTOR Y MINUTO ({label})</div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+  const ParteInferior = ({ equipo, jugs, faltasAcum, cuerpo, setCuerpo, goles, finalistas, setFinalistas, ingresos, setIngresos, colorEquipo = '#1a3a8a' }) => (
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', width: '100%', borderTop: B }}>
+        <div style={{ flex: '0 0 50%', borderRight: B }}>
+          <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>FALTAS ACUMULATIVAS</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <tbody>
+              <tr>
+                <td style={{ ...cell, border: 'none', borderRight: B, fontWeight: '700', color: '#111', fontSize: '8px', background: '#eef', width: '24px' }}>1°P.</td>
+                {[0,1,2,3,4].map(i => <SlotFalta key={i} equipo={equipo} per={1} i={i} faltasAcum={faltasAcum} jugs={jugs}/>)}
+                <td style={{ ...cell, border: 'none', borderLeft: B, borderRight: B, fontWeight: '700', color: '#111', fontSize: '8px', background: '#fee', width: '24px' }}>2°P.</td>
+                {[0,1,2,3,4].map(i => <SlotFalta key={i} equipo={equipo} per={2} i={i} faltasAcum={faltasAcum} jugs={jugs}/>)}
+              </tr>
+            </tbody>
+          </table>
+          <div style={{ borderTop: B, padding: '3px 6px', background: '#f9f9f9' }}>
+            <span style={{ fontSize: '8px', fontWeight: '700', marginRight: '6px', color: '#111' }}>TIRO INICIAL:</span>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', marginRight: '8px' }}>
+              <input type="radio" name={`tiro-${equipo}`} checked={tiroInicial === 'local'} onChange={() => setTiroInicial('local')} style={{ accentColor: AZUL, width: '10px', height: '10px' }}/>
+              <span style={{ color: '#111', fontWeight: '600', fontSize: '8px' }}>Local</span>
+            </label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
+              <input type="radio" name={`tiro-${equipo}`} checked={tiroInicial === 'visitante'} onChange={() => setTiroInicial('visitante')} style={{ accentColor: ROJO, width: '10px', height: '10px' }}/>
+              <span style={{ color: '#111', fontWeight: '600', fontSize: '8px' }}>Visitante</span>
+            </label>
+          </div>
+        </div>
+        <div style={{ flex: '0 0 50%' }}>
+          <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>FINALISTAS</div>
+          <div style={{ display: 'flex', borderBottom: B }}>
+            {[0,1,2,3,4].map(i => (
+              <div key={i} style={{ flex: 1, borderRight: i < 4 ? B : 'none', padding: '2px', textAlign: 'center' }}>
+                <input value={finalistas[i]}
+                  onChange={e => setFinalistas(prev => { const n=[...prev]; n[i]=e.target.value; return n })}
+                  onDoubleClick={() => setFinalistas(prev => { const n=[...prev]; n[i]=''; return n })}
+                  title="Doble click para borrar"
+                  style={{ ...inp, fontWeight: finalistas[i]?'700':'400', color: '#111', fontSize: '9px' }} placeholder="N°"/>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>INGRESOS</div>
+          <div style={{ display: 'flex' }}>
+            {[0,1,2,3,4,5,6].map(i => (
+              <div key={i} style={{ flex: 1, borderRight: i < 6 ? B : 'none', padding: '2px', textAlign: 'center' }}>
+                <input value={ingresos[i]}
+                  onChange={e => setIngresos(prev => { const n=[...prev]; n[i]=e.target.value; return n })}
+                  onDoubleClick={() => setIngresos(prev => { const n=[...prev]; n[i]=''; return n })}
+                  title="Doble click para borrar"
+                  style={{ ...inp, fontWeight: ingresos[i]?'700':'400', color: '#111', fontSize: '9px' }} placeholder="N°"/>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', borderTop: B }}>
+        <colgroup>
+          <col style={{ width: '16%' }}/><col style={{ width: '7%' }}/><col style={{ width: '11%' }}/>
+          <col style={{ width: '5%' }}/><col style={{ width: '5%' }}/><col style={{ width: '5%' }}/>
+          <col style={{ width: '13%' }}/><col style={{ width: '13%' }}/><col style={{ width: '13%' }}/><col style={{ width: '13%' }}/>
+        </colgroup>
         <thead>
           <tr style={{ background: '#ddd' }}>
-            <th style={{ ...cell, width: '40px' }}>N° CAM</th>
-            <th style={{ ...cellL }}>NOMBRE</th>
-            <th style={{ ...cell, width: '50px' }}>MINUTO</th>
-            <th style={{ ...cell, width: '40px' }}>PERIODO</th>
+            <th style={{ ...cell, textAlign: 'left', fontSize: '8px', color: '#111' }}>CUERPO TÉCNICO</th>
+            <th style={{ ...cell, fontSize: '7px', color: '#111' }}>C.I. N°</th>
+            <th style={{ ...cell, fontSize: '7px', color: '#111' }}>FIRMA</th>
+            <th style={{ ...cell, fontSize: '7px', background: '#ffcc00', color: '#111' }}>AM</th>
+            <th style={{ ...cell, fontSize: '7px', background: '#aaddff', color: '#111' }}>AZ</th>
+            <th style={{ ...cell, fontSize: '7px', background: '#ffaaaa', color: '#111' }}>RJ</th>
+            <th colSpan={4} style={{ ...cell, fontWeight: '700', fontSize: '8px', background: colorEquipo, color: '#fff' }}>GOLES AUTOR, MINUTO</th>
           </tr>
         </thead>
         <tbody>
-          {goles.map((g, i) => {
-            const jugs = label === 'LOCAL' ? jugadoresLocal : jugadoresVisitante
-            const jug = jugs.find(j => j.numero === g.numero)
+          {[0,1,2,3,4].map(rowIdx => {
+            const m = cuerpo[rowIdx], cfk = `cuerpo-${equipo}-${rowIdx}`
             return (
-              <tr key={i} style={{ background: g.periodo === 1 ? '#e8f0fe' : '#fce8e6' }}>
-                <td style={{ ...cell, fontWeight: '700', color: g.periodo === 1 ? AZUL : ROJO }}>{g.numero}</td>
-                <td style={{ ...cellL, color: g.periodo === 1 ? AZUL : ROJO }}>{jug?.nombre || '—'}</td>
-                <td style={{ ...cell, fontWeight: '700' }}>{g.minuto}</td>
-                <td style={{ ...cell, color: g.periodo === 1 ? AZUL : ROJO }}>{g.periodo}°P</td>
+              <tr key={rowIdx} style={{ height: '22px' }}>
+                <td style={cellL}>
+                  <span style={{ color: '#111', fontWeight: '700', fontSize: '7px' }}>{m.rol} </span>
+                  <input value={m.nombre}
+                    onChange={e => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,nombre:e.target.value}:mm))}
+                    onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,nombre:''}:mm))}
+                    title="Doble click para borrar"
+                    style={{ ...inpL, fontSize: '8px', color: '#111' }} placeholder="Nombre..."/>
+                </td>
+                <td style={cell}>
+                  <input value={m.ci}
+                    onChange={e => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,ci:e.target.value}:mm))}
+                    onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,ci:''}:mm))}
+                    title="Doble click para borrar"
+                    style={{ ...inp, color: '#111' }} placeholder="C.I."/>
+                </td>
+                <td style={{ ...cell, padding: '1px' }}>
+                  <FirmaSlot label={m.rol} firma={m.firma} onFirmar={() => setFirmaModal(cfk)}/>
+                  {firmaModal === cfk && <FirmaCanvas titulo={m.rol} onSave={img => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,firma:img}:mm))} onClose={() => setFirmaModal(null)}/>}
+                </td>
+                <td style={{ ...cell, background: m.amarilla?'#ffcc00':'transparent', cursor:'pointer' }} onClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,amarilla:!mm.amarilla}:mm))}>
+                  <span style={{ color: m.amarilla?'#111':'transparent' }}>✓</span>
+                </td>
+                <td style={{ ...cell, background: m.azul?'#4488ff':'transparent', cursor:'pointer' }} onClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,azul:!mm.azul}:mm))}>
+                  <span style={{ color: m.azul?'#fff':'transparent' }}>✓</span>
+                </td>
+                <td style={{ ...cell, background: m.roja?'#dd2211':'transparent', cursor:'pointer' }} onClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,roja:!mm.roja}:mm))}>
+                  <span style={{ color: m.roja?'#fff':'transparent' }}>✓</span>
+                </td>
+                {[0,1,2,3].map(ci => <SlotGol key={ci} equipo={equipo} slotIdx={rowIdx*4+ci} goles={goles} jugs={jugs} colorEquipo={colorEquipo}/>)}
               </tr>
             )
           })}
-          {Array.from({ length: Math.max(0, 6 - goles.length) }).map((_, i) => (
-            <tr key={`eg${i}`} style={{ height: '16px' }}>
-              {[0,1,2,3].map(j => <td key={j} style={cell}>&nbsp;</td>)}
-            </tr>
-          ))}
+          <tr style={{ height: '20px' }}>
+            <td colSpan={6} style={cell}></td>
+            {[20,21,22,23].map(si => <SlotGol key={si} equipo={equipo} slotIdx={si} goles={goles} jugs={jugs} colorEquipo={colorEquipo}/>)}
+          </tr>
         </tbody>
       </table>
+    </div>
+  )
+
+  if (loading) return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', padding: '32px 48px', textAlign: 'center' }}>
+        <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Cargando planilla...</div>
+        <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginTop: '6px' }}>Recuperando datos del partido</div>
+      </div>
     </div>
   )
 
@@ -292,237 +765,254 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         @media print {
           body * { visibility: hidden; }
           #planilla-print, #planilla-print * { visibility: visible; }
-          #planilla-print { position: fixed; left: 0; top: 0; width: 100%; zoom: 0.75; }
+          #planilla-print { position: fixed; left: 0; top: 0; width: 100%; zoom: 0.68; }
           .no-print { display: none !important; }
         }
+        @keyframes parpadeo { 0%,100%{opacity:1} 50%{opacity:.3} }
       `}</style>
 
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
-        <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '960px', marginBottom: '20px' }}>
+      {firmaModal && firmaModal.startsWith('principal-') && (
+        <FirmaCanvas titulo={firmaModal.replace('principal-', '')}
+          onSave={img => setFirmas(prev => ({ ...prev, [firmaModal.replace('principal-', '')]: img }))}
+          onClose={() => setFirmaModal(null)}/>
+      )}
 
-          {/* Barra controles */}
-          <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '10px' }}>
-            <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>📋 Planilla — {partido.home?.name} vs {partido.away?.name}</span>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input value={nuevoArbitro} onChange={e => setNuevoArbitro(e.target.value)} placeholder="+ Árbitro..."
-                style={{ padding: '5px 10px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.8rem', outline: 'none', width: '130px' }}
-                onKeyDown={e => e.key === 'Enter' && handleAgregarArbitro()}/>
-              <button onClick={handleAgregarArbitro} style={{ padding: '5px 10px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '6px', cursor: 'pointer', fontSize: '.8rem' }}>
-                <Plus size={13}/>
-              </button>
-              <button onClick={handleGuardar} style={{ padding: '6px 14px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>
-                Guardar resultado
-              </button>
-              <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>
-                <Printer size={13}/> Imprimir
-              </button>
-              <button onClick={onClose} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px', cursor: 'pointer', color: '#5f6368', display: 'flex' }}>
-                <X size={15}/>
-              </button>
-            </div>
-          </div>
-
-          {/* CRONÓMETRO */}
-          <div className="no-print" style={{ background: periodo === 1 ? '#e8f0fe' : '#fce8e6', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={18} color={periodo === 1 ? AZUL : ROJO}/>
-              <span style={{ fontSize: '2rem', fontWeight: '900', color: periodo === 1 ? AZUL : ROJO, fontFamily: 'monospace', minWidth: '80px' }}>{formatTiempo(segundos)}</span>
-              <span style={{ fontSize: '.8rem', fontWeight: '700', color: periodo === 1 ? AZUL : ROJO, background: '#fff', borderRadius: '8px', padding: '2px 10px' }}>
-                {periodo === 1 ? '1ER PERIODO' : '2DO PERIODO'}
+      {/* CRONÓMETRO FLOTANTE */}
+      <div style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono?'50px':'20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono?'150px':'310px', userSelect: 'none' }}>
+        <div onMouseDown={onDragStart} style={{ cursor: 'grab', padding: miniCrono?'8px 12px':'10px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Move size={miniCrono?12:14} color="rgba(255,255,255,.6)"/>
+            {!miniCrono && (
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,.9)', fontWeight: '600' }}>
+                {tiempoAgotado ? '⏰ TIEMPO AGOTADO' : periodo===1 ? '1ER PERIODO' : '2DO PERIODO'}
+                {torneo?.modalidad && ` · ${torneo.modalidad}`}
               </span>
+            )}
+          </div>
+          <button onClick={() => setMiniCrono(!miniCrono)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.8)', display: 'flex' }}>
+            {miniCrono?<Maximize2 size={12}/>:<Minimize2 size={12}/>}
+          </button>
+        </div>
+        {!miniCrono && (
+          <div style={{ margin: '0 16px 4px', height: '4px', background: 'rgba(255,255,255,.2)', borderRadius: '2px' }}>
+            <div style={{ height: '100%', width: `${progreso * 100}%`, background: tiempoAgotado ? '#ff5555' : '#fff', borderRadius: '2px', transition: 'width .5s' }}/>
+          </div>
+        )}
+        {miniCrono ? (
+          <div style={{ padding: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', animation: tiempoAgotado ? 'parpadeo 1s infinite' : 'none' }}>{formatTiempo(segundos)}</span>
+            <button onClick={() => { if (!tiempoAgotado) setCorriendo(!corriendo) }} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {corriendo?<Pause size={14}/>:<Play size={14}/>}
+            </button>
+          </div>
+        ) : (
+          <div style={{ padding: '0 16px 14px' }}>
+            <div style={{ fontSize: '4rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', textAlign: 'center', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.3)', animation: tiempoAgotado ? 'parpadeo 1s infinite' : 'none' }}>
+              {formatTiempo(segundos)}
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setCorriendo(!corriendo)}
-                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 14px', background: corriendo ? '#e8710a' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>
-                {corriendo ? <><Pause size={14}/> Pausar</> : <><Play size={14}/> {segundos > 0 ? 'Continuar' : 'Iniciar'}</>}
-              </button>
-              <button onClick={() => { setCorriendo(false); setSegundos(0) }}
-                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
-                <RotateCcw size={13}/> Reset
-              </button>
-              {periodo === 1 && (
-                <button onClick={handleCambiarPeriodo}
-                  style={{ padding: '7px 14px', background: ROJO, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>
-                  → 2do Periodo
-                </button>
+            <div style={{ textAlign: 'center', marginTop: '6px' }}>
+              {editandoDuracion ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <input type="number" min="1" max="90" value={duracionInput} onChange={e => setDuracionInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') confirmarDuracion(); if (e.key === 'Escape') setEditandoDuracion(false) }}
+                    autoFocus style={{ width: '50px', textAlign: 'center', fontWeight: '700', fontSize: '.9rem', borderRadius: '6px', border: 'none', padding: '3px 6px', color: '#111' }}/>
+                  <span style={{ color: 'rgba(255,255,255,.8)', fontSize: '11px' }}>min/periodo</span>
+                  <button onClick={confirmarDuracion} style={{ background: 'rgba(255,255,255,.9)', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: cronoBg, fontWeight: '700', fontSize: '11px' }}>✓</button>
+                  <button onClick={() => setEditandoDuracion(false)} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '11px' }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,.7)' }}>{duracionMinutos} min/periodo</span>
+                  <button onClick={() => { setDuracionInput(String(duracionMinutos)); setEditandoDuracion(true) }}
+                    style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', borderRadius: '6px', padding: '2px 7px', cursor: 'pointer', color: 'rgba(255,255,255,.85)', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <Edit2 size={9}/> Cambiar
+                  </button>
+                </div>
               )}
             </div>
+            {tiempoAgotado ? (
+              <div style={{ marginTop: '10px' }}>
+                <div style={{ textAlign: 'center', color: '#fff', fontWeight: '700', fontSize: '.85rem', marginBottom: '8px' }}>
+                  ⏰ Fin del {periodo===1 ? '1er' : '2do'} periodo
+                </div>
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {[1,2,3,5].map(m => (
+                    <button key={m} onClick={() => agregarTiempoExtra(m)} style={{ padding: '6px 10px', background: 'rgba(255,255,255,.25)', border: '1px solid rgba(255,255,255,.4)', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600' }}>+{m} min</button>
+                  ))}
+                </div>
+                {periodo === 1 && (
+                  <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,.4)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                    → Iniciar 2do Periodo
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'center' }}>
+                  <button onClick={() => setCorriendo(!corriendo)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 18px', background: corriendo?'rgba(255,255,255,.25)':'rgba(255,255,255,.9)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: corriendo?'#fff':cronoBg, fontSize: '.85rem', fontWeight: '700' }}>
+                    {corriendo?<><Pause size={16}/> Pausar</>:<><Play size={16}/> {segundos>0?'Continuar':'Iniciar'}</>}
+                  </button>
+                  <button onClick={() => { setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem' }}>
+                    <RotateCcw size={14}/> Reset
+                  </button>
+                </div>
+                <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>
+                  Restante: {formatTiempo(Math.max(0, limiteSegundos - segundos))}
+                  {tiempoExtra > 0 && <span style={{ color: '#ffdd44' }}> (+{tiempoExtra}' extra)</span>}
+                </div>
+                {periodo===1 && (
+                  <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '7px', background: 'rgba(0,0,0,.3)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                    → Saltar a 2do Periodo
+                  </button>
+                )}
+              </div>
+            )}
+            <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '1.4rem', fontWeight: '900', color: '#fff' }}>{golesLocalTotal} — {golesVisTotal}</div>
+            <div style={{ textAlign: 'center', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>{partido.home?.name} vs {partido.away?.name}</div>
+          </div>
+        )}
+      </div>
 
-            {/* Registrar goles rápido */}
-            <div style={{ display: 'flex', gap: '12px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', align: 'center', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '.75rem', fontWeight: '600', color: AZUL }}>⚽ {partido.home?.name}:</span>
-                <input type="number" value={inputGolLocal} onChange={e => setInputGolLocal(e.target.value)}
-                  placeholder="N° camiseta" style={{ width: '90px', padding: '5px 8px', border: `2px solid ${AZUL}`, borderRadius: '6px', fontSize: '.8rem', outline: 'none' }}
-                  onKeyDown={e => e.key === 'Enter' && registrarGol('local')}/>
-                <button onClick={() => registrarGol('local')}
-                  style={{ padding: '5px 10px', background: AZUL, border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.75rem', fontWeight: '600' }}>
-                  + Gol {formatTiempo(segundos)}
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '.75rem', fontWeight: '600', color: ROJO }}>⚽ {partido.away?.name}:</span>
-                <input type="number" value={inputGolVisitante} onChange={e => setInputGolVisitante(e.target.value)}
-                  placeholder="N° camiseta" style={{ width: '90px', padding: '5px 8px', border: `2px solid ${ROJO}`, borderRadius: '6px', fontSize: '.8rem', outline: 'none' }}
-                  onKeyDown={e => e.key === 'Enter' && registrarGol('visitante')}/>
-                <button onClick={() => registrarGol('visitante')}
-                  style={{ padding: '5px 10px', background: ROJO, border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.75rem', fontWeight: '600' }}>
-                  + Gol {formatTiempo(segundos)}
-                </button>
-              </div>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
+        <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '980px', marginBottom: '20px' }}>
+          <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>📋 {partido.home?.name} vs {partido.away?.name}</span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet — guardando localmente</span>}
+              {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales listos para sincronizar</span>}
+              <input value={nuevoArbitro} onChange={e => setNuevoArbitro(e.target.value)} placeholder="+ Árbitro..."
+                style={{ padding: '5px 10px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.8rem', outline: 'none', width: '120px' }}
+                onKeyDown={e => e.key === 'Enter' && handleAgregarArbitro()}/>
+              <button onClick={handleAgregarArbitro} style={{ padding: '5px 8px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '6px', cursor: 'pointer' }}><Plus size={13}/></button>
+              <button onClick={guardarEnDB} disabled={guardandoDB || !isOnline}
+                style={{ padding: '6px 14px', background: guardandoDB || !isOnline ? '#9aa0a6' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoDB || !isOnline ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>
+                {guardandoDB ? 'Guardando...' : !isOnline ? '📵 Sin internet' : hayDatosLocales ? '☁ Sincronizar' : 'Guardar resultado'}
+              </button>
+              <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}><Printer size={13}/> Imprimir</button>
+              <button onClick={onClose} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px', cursor: 'pointer', color: '#5f6368', display: 'flex' }}><X size={15}/></button>
             </div>
           </div>
-
-          {/* Faltas acumuladas rápidas */}
-          <div className="no-print" style={{ background: '#f8f9fa', padding: '8px 20px', display: 'flex', gap: '20px', alignItems: 'center', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '.75rem', fontWeight: '600', color: '#5f6368' }}>FALTA ACUMULADA:</span>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <span style={{ fontSize: '.75rem', color: AZUL, fontWeight: '600' }}>{partido.home?.name}:</span>
-              <input type="number" value={inputFaltaLocal} onChange={e => setInputFaltaLocal(e.target.value)}
-                placeholder="N° cam" style={{ width: '70px', padding: '4px 8px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.8rem', outline: 'none' }}
-                onKeyDown={e => e.key === 'Enter' && registrarFaltaAcum('local')}/>
-              <button onClick={() => registrarFaltaAcum('local')}
-                style={{ padding: '4px 10px', background: AZUL, border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.75rem' }}>
-                + Falta
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <span style={{ fontSize: '.75rem', color: ROJO, fontWeight: '600' }}>{partido.away?.name}:</span>
-              <input type="number" value={inputFaltaVis} onChange={e => setInputFaltaVis(e.target.value)}
-                placeholder="N° cam" style={{ width: '70px', padding: '4px 8px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.8rem', outline: 'none' }}
-                onKeyDown={e => e.key === 'Enter' && registrarFaltaAcum('visitante')}/>
-              <button onClick={() => registrarFaltaAcum('visitante')}
-                style={{ padding: '4px 10px', background: ROJO, border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.75rem' }}>
-                + Falta
-              </button>
-            </div>
-            {/* Marcador live */}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '.75rem', color: '#5f6368' }}>MARCADOR:</span>
-              <span style={{ fontSize: '1.3rem', fontWeight: '900', color: '#202124' }}>
-                <span style={{ color: AZUL }}>{golesLocalTotal}</span>
-                <span style={{ color: '#9aa0a6', margin: '0 6px' }}>—</span>
-                <span style={{ color: ROJO }}>{golesVisTotal}</span>
-              </span>
-            </div>
+          <div className="no-print" style={{ padding: '4px 16px', background: '#fff8e1', borderBottom: '1px solid #ffe082', fontSize: '10px', color: '#795548' }}>
+            💡 <b>Doble click</b> sobre cualquier dato para borrarlo · Goles y faltas: doble click en el último registrado para eliminar
           </div>
 
-          {/* PLANILLA IMPRIMIBLE */}
-          <div id="planilla-print" ref={printRef} style={{ padding: '14px', fontFamily: 'Arial, sans-serif' }}>
-
-            {/* Encabezado */}
-            <div style={{ textAlign: 'center', marginBottom: '6px', borderBottom: '2px solid #000', paddingBottom: '6px' }}>
-              <div style={{ fontWeight: '900', fontSize: '14px', letterSpacing: '2px' }}>GOLMEBOL</div>
-              <div style={{ fontWeight: '700', fontSize: '11px' }}>PLANILLA OFICIAL DE REGISTRO DE JUEGO</div>
+          <div id="planilla-print" style={{ padding: '10px', fontFamily: 'Arial, sans-serif' }}>
+            <div style={{ textAlign: 'center', marginBottom: '4px', borderBottom: '2px solid #000', paddingBottom: '3px' }}>
+              <div style={{ fontWeight: '900', fontSize: '12px', letterSpacing: '2px', color: '#111' }}>GOLMEBOL</div>
+              <div style={{ fontWeight: '700', fontSize: '9px', color: '#111' }}>PLANILLA OFICIAL DE REGISTRO DE JUEGO</div>
             </div>
-
-            {/* Info general */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '6px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '3px' }}>
               <tbody>
                 <tr>
-                  <td style={cellL}><b>CAMPEONATO:</b> {partido.tournaments?.name}</td>
-                  <td style={cellL}><b>CATEGORÍA:</b> <input style={{ ...inp, width: '80px', display:'inline', borderBottom:'1px solid #000' }}/></td>
-                  <td style={cellL}><b>ETAPA:</b> <input value={etapa} onChange={e => setEtapa(e.target.value)} style={{ ...inp, width: '70px', display:'inline', borderBottom:'1px solid #000' }}/></td>
+                  <td style={cellL}><b>CAMPEONATO:</b> {torneo?.name||''}</td>
+                  <td style={cellL}><b>CATEGORÍA:</b> {torneo?.categoria||''}</td>
+                  <td style={cellL}><b>ETAPA:</b> {etapaNombre}</td>
                 </tr>
                 <tr>
-                  <td style={cellL}><b>CIUDAD:</b> {partido.tournaments?.city || ''}</td>
+                  <td style={cellL}><b>CIUDAD:</b> {torneo?.city||''}</td>
                   <td style={cellL}><b>FECHA:</b> {fecha}</td>
-                  <td style={cellL}><b>CANCHA:</b> {partido.location || ''}</td>
+                  <td style={cellL}><b>CANCHA:</b> {partido.location||''}</td>
                 </tr>
                 <tr>
                   <td colSpan={3} style={cell}>
-                    <b>1°P</b> H.I.: <input value={horaInicio1} onChange={e => setHoraInicio1(e.target.value)} style={{...inp,width:'45px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.: <input value={horaFin1} onChange={e => setHoraFin1(e.target.value)} style={{...inp,width:'45px',display:'inline',borderBottom:'1px solid #000'}}/>
-                    &nbsp;&nbsp;<b>2°P</b> H.I.: <input value={horaInicio2} onChange={e => setHoraInicio2(e.target.value)} style={{...inp,width:'45px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.: <input value={horaFin2} onChange={e => setHoraFin2(e.target.value)} style={{...inp,width:'45px',display:'inline',borderBottom:'1px solid #000'}}/>
-                    &nbsp;&nbsp;<b>HORA INICIO:</b> {hora}
+                    <b>1°P</b> H.I.:<input value={horaInicio1} onChange={e=>setHoraInicio1(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.:<input value={horaFin1} onChange={e=>setHoraFin1(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/>
+                    &nbsp;<b>2°P</b> H.I.:<input value={horaInicio2} onChange={e=>setHoraInicio2(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.:<input value={horaFin2} onChange={e=>setHoraFin2(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/>
+                    &nbsp;<b>HORA:</b> {hora}
+                    &nbsp;<b>TIRO INICIAL:</b> <span style={{ fontWeight:'700', color:'#111' }}>{tiroInicial==='local'?partido.home?.name:tiroInicial==='visitante'?partido.away?.name:'—'}</span>
                   </td>
                 </tr>
               </tbody>
             </table>
 
-            {/* EQUIPO LOCAL */}
-            <div style={{ border: '2px solid #000', padding: '6px', marginBottom: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
-                <div style={{ fontWeight: '900', fontSize: '12px', color: AZUL }}>EQUIPO LOCAL: {partido.home?.name?.toUpperCase()}</div>
-                <div style={{ fontSize: '10px' }}>
-                  <b>CAPITÁN N°:</b> <input style={{...inp,width:'25px',display:'inline',borderBottom:'1px solid #000'}}/>
-                  &nbsp;&nbsp;<b>FIRMA:</b> ___________
+            <div style={{ border: '2px solid #000', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 5px', alignItems: 'center', borderBottom: B, background: colorLocal + '30' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ fontWeight: '900', fontSize: '10px', color: '#111' }}>EQUIPO LOCAL: {partido.home?.name?.toUpperCase()}</div>
+                  <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '7px', color: '#555' }}>
+                    <span>Uniforme:</span>
+                    <input type="color" value={colorLocal} onChange={e => setColorLocal(e.target.value)} style={{ width: '22px', height: '14px', border: '1px solid #ccc', borderRadius: '3px', cursor: 'pointer', padding: '0' }}/>
+                  </label>
+                </div>
+                <div style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: '#111' }}><b>CAPITÁN N°:</b> <input style={{...inp,width:'20px',display:'inline',borderBottom:'1px solid #000'}}/></span>
+                  <span style={{ color: '#111' }}><b>FIRMA:</b></span>
+                  <FirmaSlot label="Capitán Local" firma={firmas.capitanLocal} onFirmar={() => setFirmaModal('principal-capitanLocal')}/>
                 </div>
               </div>
-              <TablaJugadores jugs={jugadoresLocal} equipo="local"/>
-              {/* Faltas acumuladas */}
-              <div style={{ display: 'flex', gap: '4px', fontSize: '10px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
-                <b>FALTAS ACUMULATIVAS 1°P:</b>
-                {faltasAcumLocal1.map((n, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: AZUL, fontWeight: '700', fontSize: '9px' }}>{n}</span>)}
-                {Array.from({ length: Math.max(0, 5 - faltasAcumLocal1.length) }).map((_, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex' }}/>)}
-                <b style={{ marginLeft: '10px' }}>2°P:</b>
-                {faltasAcumLocal2.map((n, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: ROJO, fontWeight: '700', fontSize: '9px' }}>{n}</span>)}
-                {Array.from({ length: Math.max(0, 5 - faltasAcumLocal2.length) }).map((_, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex' }}/>)}
-              </div>
-              <TablaGoles goles={golesLocal} label="LOCAL"/>
+              <TablaJugadores jugs={jugadoresLocal} equipo="local" goles={golesLocal} colorEquipo={colorLocal}/>
+              <ParteInferior equipo="local" jugs={jugadoresLocal} faltasAcum={faltasAcumLocal} cuerpo={cuerpoLocal} setCuerpo={setCuerpoLocal} goles={golesLocal} finalistas={finalistasLocal} setFinalistas={setFinalistasLocal} ingresos={ingresosLocal} setIngresos={setIngresosLocal} colorEquipo={colorLocal}/>
             </div>
 
-            {/* EQUIPO VISITANTE */}
-            <div style={{ border: '2px solid #000', padding: '6px', marginBottom: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
-                <div style={{ fontWeight: '900', fontSize: '12px', color: ROJO }}>EQUIPO VISITANTE: {partido.away?.name?.toUpperCase()}</div>
-                <div style={{ fontSize: '10px' }}>
-                  <b>CAPITÁN N°:</b> <input style={{...inp,width:'25px',display:'inline',borderBottom:'1px solid #000'}}/>
-                  &nbsp;&nbsp;<b>FIRMA:</b> ___________
+            <div style={{ border: '2px solid #000', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 5px', alignItems: 'center', borderBottom: B, background: colorVisitante + '30' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ fontWeight: '900', fontSize: '10px', color: '#111' }}>EQUIPO VISITANTE: {partido.away?.name?.toUpperCase()}</div>
+                  <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '7px', color: '#555' }}>
+                    <span>Uniforme:</span>
+                    <input type="color" value={colorVisitante} onChange={e => setColorVisitante(e.target.value)} style={{ width: '22px', height: '14px', border: '1px solid #ccc', borderRadius: '3px', cursor: 'pointer', padding: '0' }}/>
+                  </label>
+                </div>
+                <div style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ color: '#111' }}><b>CAPITÁN N°:</b> <input style={{...inp,width:'20px',display:'inline',borderBottom:'1px solid #000'}}/></span>
+                  <span style={{ color: '#111' }}><b>FIRMA:</b></span>
+                  <FirmaSlot label="Capitán Visitante" firma={firmas.capitanVisitante} onFirmar={() => setFirmaModal('principal-capitanVisitante')}/>
                 </div>
               </div>
-              <TablaJugadores jugs={jugadoresVisitante} equipo="visitante"/>
-              <div style={{ display: 'flex', gap: '4px', fontSize: '10px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
-                <b>FALTAS ACUMULATIVAS 1°P:</b>
-                {faltasAcumVis1.map((n, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: AZUL, fontWeight: '700', fontSize: '9px' }}>{n}</span>)}
-                {Array.from({ length: Math.max(0, 5 - faltasAcumVis1.length) }).map((_, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex' }}/>)}
-                <b style={{ marginLeft: '10px' }}>2°P:</b>
-                {faltasAcumVis2.map((n, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: ROJO, fontWeight: '700', fontSize: '9px' }}>{n}</span>)}
-                {Array.from({ length: Math.max(0, 5 - faltasAcumVis2.length) }).map((_, i) => <span key={i} style={{ border: '1px solid #000', width: '20px', height: '16px', display: 'inline-flex' }}/>)}
-              </div>
-              <TablaGoles goles={golesVisitante} label="VISITANTE"/>
+              <TablaJugadores jugs={jugadoresVisitante} equipo="visitante" goles={golesVisitante} colorEquipo={colorVisitante}/>
+              <ParteInferior equipo="visitante" jugs={jugadoresVisitante} faltasAcum={faltasAcumVis} cuerpo={cuerpoVis} setCuerpo={setCuerpoVis} goles={golesVisitante} finalistas={finalistasVis} setFinalistas={setFinalistasVis} ingresos={ingresosVis} setIngresos={setIngresosVis} colorEquipo={colorVisitante}/>
             </div>
 
-            {/* Árbitros y resultado */}
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 <tr>
-                  <td style={{ ...cellL, width: '35%' }}>
+                  <td style={{ ...cellL, width: '30%' }}>
                     <b>ÁRBITRO 1:</b>
-                    <select value={arbitro1} onChange={e => setArbitro1(e.target.value)} style={{ border: 'none', outline: 'none', fontSize: '10px', marginLeft: '4px' }}>
+                    <select value={arbitro1} onChange={e=>setArbitro1(e.target.value)} style={{ border:'none', outline:'none', fontSize:'9px', marginLeft:'3px', color:'#111' }}>
                       <option value="">Seleccionar...</option>
-                      {arbitros.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                      {arbitros.map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}
                     </select>
-                  </td>
-                  <td style={{ ...cellL, width: '35%' }}>
-                    <b>ÁRBITRO 2:</b>
-                    <select value={arbitro2} onChange={e => setArbitro2(e.target.value)} style={{ border: 'none', outline: 'none', fontSize: '10px', marginLeft: '4px' }}>
-                      <option value="">Seleccionar...</option>
-                      {arbitros.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
-                    </select>
-                  </td>
-                  <td rowSpan={3} style={{ ...cell, fontWeight: '900', textAlign: 'center', background: '#f1f3f4' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '700' }}>RESULTADO FINAL</div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#202124' }}>
-                      <span style={{ color: AZUL }}>{golesLocalTotal}</span>
-                      <span style={{ color: '#9aa0a6', margin: '0 6px' }}>—</span>
-                      <span style={{ color: ROJO }}>{golesVisTotal}</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}>
+                      <span style={{ fontSize:'8px', color:'#111' }}>FIRMA:</span>
+                      <FirmaSlot label="Árbitro 1" firma={firmas.arbitro1} onFirmar={() => setFirmaModal('principal-arbitro1')}/>
                     </div>
-                    <div style={{ fontSize: '9px', color: '#5f6368' }}>{partido.home?.name} vs {partido.away?.name}</div>
+                  </td>
+                  <td style={{ ...cellL, width: '30%' }}>
+                    <b>ÁRBITRO 2:</b>
+                    <select value={arbitro2} onChange={e=>setArbitro2(e.target.value)} style={{ border:'none', outline:'none', fontSize:'9px', marginLeft:'3px', color:'#111' }}>
+                      <option value="">Seleccionar...</option>
+                      {arbitros.map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                    </select>
+                    <div style={{ display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}>
+                      <span style={{ fontSize:'8px', color:'#111' }}>FIRMA:</span>
+                      <FirmaSlot label="Árbitro 2" firma={firmas.arbitro2} onFirmar={() => setFirmaModal('principal-arbitro2')}/>
+                    </div>
+                  </td>
+                  <td rowSpan={2} style={{ ...cell, textAlign:'center', background:'#f1f3f4', width:'20%' }}>
+                    <div style={{ fontSize:'10px', fontWeight:'700', color:'#111' }}>RESULTADO FINAL</div>
+                    <div style={{ fontSize:'26px', fontWeight:'900' }}>
+                      <span style={{ color:colorLocal }}>{golesLocalTotal}</span>
+                      <span style={{ color:'#9aa0a6', margin:'0 4px' }}>—</span>
+                      <span style={{ color:colorVisitante }}>{golesVisTotal}</span>
+                    </div>
+                    <div style={{ fontSize:'8px', color:'#5f6368' }}>{partido.home?.name} vs {partido.away?.name}</div>
                   </td>
                 </tr>
                 <tr>
-                  <td style={cellL}><b>ANOTADOR:</b> <input value={anotador} onChange={e => setAnotador(e.target.value)} style={{...inpL,width:'120px',display:'inline',borderBottom:'1px solid #000'}}/></td>
-                  <td style={cellL}><b>CRONÓMETRO:</b> <input value={cronometro} onChange={e => setCronometro(e.target.value)} style={{...inpL,width:'110px',display:'inline',borderBottom:'1px solid #000'}}/></td>
-                </tr>
-                <tr>
-                  <td colSpan={2} style={cellL}><b>OBSERVACIONES:</b> <input value={observaciones} onChange={e => setObservaciones(e.target.value)} style={{...inpL,borderBottom:'1px solid #000'}}/></td>
+                  <td style={cellL}>
+                    <b>ANOTADOR:</b> <input value={anotador} onChange={e=>setAnotador(e.target.value)} style={{...inpL,width:'80px',display:'inline',borderBottom:'1px solid #000'}}/>
+                    <div style={{ display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}>
+                      <span style={{ fontSize:'8px', color:'#111' }}>FIRMA:</span>
+                      <FirmaSlot label="Anotador" firma={firmas.anotador} onFirmar={() => setFirmaModal('principal-anotador')}/>
+                    </div>
+                  </td>
+                  <td style={cellL}>
+                    <b>CRONÓMETRO:</b> <input value={cronometroNombre} onChange={e=>setCronometroNombre(e.target.value)} style={{...inpL,width:'80px',display:'inline',borderBottom:'1px solid #000'}}/><br/>
+                    <b>OBS:</b> <input value={observaciones} onChange={e=>setObservaciones(e.target.value)} style={{...inpL,borderBottom:'1px solid #000'}}/>
+                  </td>
                 </tr>
               </tbody>
             </table>
-
-            <div style={{ textAlign: 'right', fontSize: '9px', color: '#9aa0a6', marginTop: '4px' }}>
-              GOLMEBOL — {new Date().toLocaleDateString('es-CO')}
-            </div>
+            <div style={{ textAlign:'right', fontSize:'7px', color:'#9aa0a6', marginTop:'3px' }}>GOLMEBOL — {new Date().toLocaleDateString('es-CO')}</div>
           </div>
         </div>
       </div>

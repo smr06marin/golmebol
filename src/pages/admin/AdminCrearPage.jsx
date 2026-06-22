@@ -98,20 +98,36 @@ export default function AdminCrearPage() {
   }
 
   async function handleAgregarJugador(jugador) {
-    // Verificar si ya está inscrito
-    const yaInscrito = jugadoresInscritos.find(j => j.player_id === jugador.id)
-    if (yaInscrito) return showMsg('Jugador ya inscrito', 'error')
-    const { error } = await supabase.from('tournament_player_registrations').insert({
-      tournament_id: torneoSel,
+  const yaInscrito = jugadoresInscritos.find(j => j.player_id === jugador.id)
+  if (yaInscrito) return showMsg('Jugador ya inscrito', 'error')
+
+  // 1. Inscribir al torneo
+  const { error } = await supabase.from('tournament_player_registrations').insert({
+    tournament_id: torneoSel,
+    team_id: equipoSel.id,
+    player_id: jugador.id,
+  })
+  if (error) return showMsg('Error al agregar jugador', 'error')
+
+  // 2. Agregar al equipo global si no existe
+  const { data: yaEnEquipo } = await supabase
+    .from('team_players')
+    .select('id')
+    .eq('team_id', equipoSel.id)
+    .eq('player_id', jugador.id)
+    .single()
+
+  if (!yaEnEquipo) {
+    await supabase.from('team_players').insert({
       team_id: equipoSel.id,
       player_id: jugador.id,
+      activo: true,
     })
-    if (error) showMsg('Error al agregar jugador', 'error')
-    else {
-      showMsg('Jugador agregado ✓')
-      handleSeleccionarEquipo(equipoSel) // refrescar
-    }
   }
+
+  showMsg('Jugador agregado ✓')
+  handleSeleccionarEquipo(equipoSel)
+}
 
   async function handleEliminarJugador(inscripcionId) {
     await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', inscripcionId)

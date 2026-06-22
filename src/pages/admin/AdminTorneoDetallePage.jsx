@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical } from 'lucide-react'
 import PlanillaPartido from '../../components/PlanillaPartido'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera } from 'lucide-react'
 
 const TABS = [
   { id: 'actividad',    label: 'Actividad',    icon: <Trophy size={16}/> },
@@ -37,6 +37,10 @@ export default function AdminTorneoDetallePage() {
   const [msg, setMsg] = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
 
+  // Estadísticas reales
+  const [goleadores, setGoleadores] = useState([])
+  const [loadingStats, setLoadingStats] = useState(false)
+
   // Resultado
   const [editandoPartido, setEditandoPartido] = useState(null)
   const [scoreHome, setScoreHome] = useState('')
@@ -57,6 +61,11 @@ export default function AdminTorneoDetallePage() {
   const [loadingPartido, setLoadingPartido] = useState(false)
 
   useEffect(() => { fetchTodo() }, [id])
+
+  // Cargar goleadores cuando se abre la pestaña
+  useEffect(() => {
+    if (tab === 'estadisticas') fetchGoleadores()
+  }, [tab])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -103,6 +112,17 @@ export default function AdminTorneoDetallePage() {
     setFechas(data || [])
   }
 
+  async function fetchGoleadores() {
+    setLoadingStats(true)
+    const { data, error } = await supabase
+      .from('goleadores_por_torneo')
+      .select('*')
+      .eq('tournament_id', id)
+      .order('total_goals', { ascending: false })
+    if (!error) setGoleadores(data || [])
+    setLoadingStats(false)
+  }
+
   async function handleAgregarCancha() {
     if (!nuevaCancha.trim()) return
     const { data, error } = await supabase.from('canchas').insert({ tournament_id: id, nombre: nuevaCancha.trim() }).select().single()
@@ -147,7 +167,6 @@ export default function AdminTorneoDetallePage() {
     setGuardando(false)
   }
 
-  // Jornada automática
   function generarJornada() {
     if (!configJornada.fecha) return showMsg('Selecciona la fecha', 'error')
     if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
@@ -195,13 +214,13 @@ export default function AdminTorneoDetallePage() {
     setJornadaGenerada(nueva); setDrag(null); setDragOver(null)
   }
   function handleDragEnd() { setDrag(null); setDragOver(null) }
- <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
+
+  if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
   if (!torneo) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Torneo no encontrado</div>
 
-  const partidosJugados = partidos.filter(p => p.status === 'played')
-  const partidosPendientes = partidos.filter(p => p.status !== 'played')
+  const partidosJugados = partidos.filter(p => p.status === 'finished')
+const partidosPendientes = partidos.filter(p => p.status !== 'finished')
 
-  // Tabla posiciones
   const tabla = {}
   equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
   partidosJugados.forEach(p => {
@@ -222,14 +241,16 @@ export default function AdminTorneoDetallePage() {
 
   return (
     <div>
-        {planillaPartido && (
+      {planillaPartido && (
         <PlanillaPartido
           partido={planillaPartido}
           onClose={() => setPlanillaPartido(null)}
           onGuardarResultado={async (local, visitante) => {
-            await supabase.from('matches').update({
-              home_score: local, away_score: visitante, status: 'played'
+            console.log('Guardando resultado:', planillaPartido.id, local, visitante)
+            const { error } = await supabase.from('matches').update({
+              home_score: local, away_score: visitante, status: 'finished'
             }).eq('id', planillaPartido.id)
+            console.log('Error update:', error)
             showMsg('Resultado guardado ✓')
             setPlanillaPartido(null)
             fetchPartidos()
@@ -276,9 +297,25 @@ export default function AdminTorneoDetallePage() {
       {/* Header */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px 24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Trophy size={28} color="#1a73e8"/>
-          </div>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+  <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    {torneo.logo_url
+      ? <img src={torneo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+      : <Trophy size={28} color="#1a73e8"/>}
+  </div>
+  <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '22px', height: '22px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+    <Camera size={11} color="#fff"/>
+    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
+      const file = e.target.files[0]; if (!file) return
+      const ext = file.name.split('.').pop()
+      const path = `logos/${id}.${ext}`
+      await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
+      const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
+      await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
+      setTorneo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
+    }}/>
+  </label>
+</div>
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#202124', margin: '0 0 6px' }}>{torneo.name}</h1>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -353,7 +390,6 @@ export default function AdminTorneoDetallePage() {
       {/* CALENDARIO */}
       {tab === 'calendario' && (
         <div>
-          {/* Canchas */}
           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <MapPin size={15} color="#1a73e8"/> Canchas
@@ -368,7 +404,6 @@ export default function AdminTorneoDetallePage() {
             </div>
           </div>
 
-          {/* SubTabs */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
             <button onClick={() => setSubTab('partidos')} style={{ padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '.875rem', fontWeight: '500', background: subTab === 'partidos' ? '#1a73e8' : '#fff', color: subTab === 'partidos' ? '#fff' : '#5f6368', border: subTab === 'partidos' ? 'none' : '1px solid #dadce0' }}>
               Crear Partido
@@ -378,7 +413,6 @@ export default function AdminTorneoDetallePage() {
             </button>
           </div>
 
-          {/* Crear partido manual */}
           {subTab === 'partidos' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
@@ -410,7 +444,8 @@ export default function AdminTorneoDetallePage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
                       <div><label style={labelStyle}>Fecha *</label><input type="date" value={formPartido.played_at} onChange={e => setFormPartido(f => ({ ...f, played_at: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.hora} onChange={e => setFormPartido(f => ({ ...f, hora: e.target.value }))} style={inputStyle}/></div>
-                      <div><label style={labelStyle}>Cancha</label>
+                      <div>
+                        <label style={labelStyle}>Cancha</label>
                         <select value={formPartido.location} onChange={e => setFormPartido(f => ({ ...f, location: e.target.value }))} style={inputStyle}>
                           <option value="">Seleccionar...</option>
                           {canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
@@ -428,7 +463,6 @@ export default function AdminTorneoDetallePage() {
                 </div>
               )}
 
-              {/* Lista partidos */}
               <div>
                 {partidosPendientes.length > 0 && (
                   <div style={{ marginBottom: '16px' }}>
@@ -480,9 +514,9 @@ export default function AdminTorneoDetallePage() {
                             <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', flex: 1 }}>{p.away?.name}</span>
                           </div>
                           <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                            <button onClick={() => { setEditandoPartido(p); setScoreHome(p.home_score); setScoreAway(p.away_score) }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>
-                              Editar
-                            </button>
+                          <button onClick={() => setPlanillaPartido(p)} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>
+  Editar
+</button>
                           </div>
                         </div>
                       ))}
@@ -500,7 +534,6 @@ export default function AdminTorneoDetallePage() {
             </div>
           )}
 
-          {/* Jornada automática */}
           {subTab === 'jornada' && (
             <div>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
@@ -618,32 +651,165 @@ export default function AdminTorneoDetallePage() {
 
       {/* ESTADÍSTICAS */}
       {tab === 'estadisticas' && (
-        <div>
-          <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de posiciones</div>
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
-              <div>EQUIPO</div>
-              {['PJ','PG','PE','PP','GF','GC','PTS'].map(h => <div key={h} style={{ textAlign: 'center' }}>{h}</div>)}
-            </div>
-            {tablaOrdenada.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>No hay resultados aún</div>
-            ) : tablaOrdenada.map((row, i) => (
-              <div key={row.equipo.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '12px 16px', borderBottom: i < tablaOrdenada.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '.75rem', fontWeight: '700', color: i < 3 ? '#1a73e8' : '#9aa0a6', width: '20px' }}>{i + 1}</span>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {row.equipo.logo_url ? <img src={row.equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={14} color="#9aa0a6"/>}
-                  </div>
-                  <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{row.equipo.name}</span>
-                </div>
-                {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((val, j) => (
-                  <div key={j} style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{val}</div>
-                ))}
-                <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '.9rem', color: '#1a73e8' }}>{row.pts}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+          {/* Tabla de posiciones */}
+          <div>
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de posiciones</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
+                <div>EQUIPO</div>
+                {['PJ','PG','PE','PP','GF','GC','PTS'].map(h => <div key={h} style={{ textAlign: 'center' }}>{h}</div>)}
               </div>
-            ))}
+              {tablaOrdenada.length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>No hay resultados aún</div>
+              ) : tablaOrdenada.map((row, i) => (
+                <div key={row.equipo.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '12px 16px', borderBottom: i < tablaOrdenada.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '.75rem', fontWeight: '700', color: i < 3 ? '#1a73e8' : '#9aa0a6', width: '20px' }}>{i + 1}</span>
+                    <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {row.equipo.logo_url ? <img src={row.equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={14} color="#9aa0a6"/>}
+                    </div>
+                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{row.equipo.name}</span>
+                  </div>
+                  {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((val, j) => (
+                    <div key={j} style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{val}</div>
+                  ))}
+                  <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '.9rem', color: '#1a73e8' }}>{row.pts}</div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+
+          {/* Tabla de goleadores */}
+          <div>
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de goleadores</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              {/* Header */}
+              <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 60px 60px 60px 60px 60px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
+                <div>#</div>
+                <div>JUGADOR</div>
+                <div>EQUIPO</div>
+                <div style={{ textAlign: 'center' }}>PJ</div>
+                <div style={{ textAlign: 'center', color: '#1a73e8' }}>⚽ GOL</div>
+                <div style={{ textAlign: 'center', color: '#f9a825' }}>🟨</div>
+                <div style={{ textAlign: 'center', color: '#4488ff' }}>🟦</div>
+                <div style={{ textAlign: 'center', color: '#d93025' }}>🟥</div>
+              </div>
+
+              {loadingStats ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Cargando estadísticas...</div>
+              ) : goleadores.length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>
+                  No hay estadísticas aún. Registra partidos con la planilla para ver los goleadores.
+                </div>
+              ) : goleadores.map((g, i) => (
+                <div key={`${g.player_id}-${g.team_id}`} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 60px 60px 60px 60px 60px', padding: '11px 16px', borderBottom: i < goleadores.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center' }}>
+                  {/* Posición */}
+                  <div style={{ fontSize: '.8rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#9aa0a6' }}>
+                    {i + 1}
+                  </div>
+                  {/* Jugador */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {g.photo_url
+                        ? <img src={g.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                        : <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>⚽</span>}
+                    </div>
+                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{g.player_name}</span>
+                  </div>
+                  {/* Equipo */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {g.team_logo
+                        ? <img src={g.team_logo} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                        : <Shield size={11} color="#9aa0a6"/>}
+                    </div>
+                    <span style={{ fontSize: '.8rem', color: '#5f6368' }}>{g.team_name}</span>
+                  </div>
+                  {/* Stats */}
+                  <div style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{g.partidos_jugados}</div>
+                  <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '1rem', color: '#1a73e8' }}>{g.total_goals}</div>
+                  <div style={{ textAlign: 'center', fontSize: '.875rem', color: g.total_yellow > 0 ? '#f9a825' : '#dadce0', fontWeight: g.total_yellow > 0 ? '700' : '400' }}>{g.total_yellow || '—'}</div>
+                  <div style={{ textAlign: 'center', fontSize: '.875rem', color: g.total_blue > 0 ? '#4488ff' : '#dadce0', fontWeight: g.total_blue > 0 ? '700' : '400' }}>{g.total_blue || '—'}</div>
+                  <div style={{ textAlign: 'center', fontSize: '.875rem', color: g.total_red > 0 ? '#d93025' : '#dadce0', fontWeight: g.total_red > 0 ? '700' : '400' }}>{g.total_red || '—'}</div>
+                </div>
+              ))}
+            </div>
+     </div>
+         {/* Valla menos vencida */}
+         <div>
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Valla menos vencida</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 80px 80px 100px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
+                <div>#</div>
+                <div>EQUIPO</div>
+                <div style={{ textAlign: 'center' }}>PJ</div>
+                <div style={{ textAlign: 'center' }}>GC</div>
+                <div style={{ textAlign: 'center', color: '#1e8e3e' }}>PROMEDIO</div>
+              </div>
+              {tablaOrdenada.filter(r => r.pj > 0).length === 0 ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>No hay resultados aún</div>
+              ) : (() => {
+                  // Columna de posición según modalidad del torneo
+                  const colPos = torneo?.modalidad === 'Fútbol 5' ? 'posicion_futbol5'
+                               : torneo?.modalidad === 'Fútbol 7' ? 'posicion_futbol7'
+                               : 'posicion_futbol11'
+
+                  return [...tablaOrdenada]
+                    .filter(r => r.pj > 0)
+                    .sort((a, b) => (a.gc / a.pj) - (b.gc / b.pj))
+                    .map((row, i) => {
+                      const promedio = (row.gc / row.pj).toFixed(2)
+                      const esMejor = i === 0
+                      const totalFiltrados = tablaOrdenada.filter(r => r.pj > 0).length
+
+                      // Arqueros de este equipo en este torneo según la modalidad
+                      const arqueros = jugadores
+                        .filter(j => j.team_id === row.equipo.id && j.players?.[colPos] === 'Portero')
+                        .map(j => j.players)
+
+                      return (
+                        <div key={row.equipo.id} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 80px 80px 100px', padding: '12px 16px', borderBottom: i < totalFiltrados - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center', background: esMejor ? '#f0faf4' : '#fff' }}>
+                          <div style={{ fontSize: '.8rem', fontWeight: '700', color: i === 0 ? '#1e8e3e' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#9aa0a6' }}>{i + 1}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {/* Equipo */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                                {row.equipo.logo_url ? <img src={row.equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={14} color="#9aa0a6"/>}
+                              </div>
+                              <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{row.equipo.name}</span>
+                              {esMejor && <span style={{ fontSize: '.7rem', background: '#e6f4ea', color: '#1e8e3e', borderRadius: '10px', padding: '1px 8px', fontWeight: '600' }}>🧤 Mejor valla</span>}
+                            </div>
+                            {/* Arqueros */}
+                            {arqueros.length > 0 && (
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingLeft: '38px' }}>
+                                {arqueros.map(a => (
+                                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#f1f3f4', borderRadius: '20px', padding: '2px 8px 2px 2px' }}>
+                                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#e8eaed', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {a.photo_url
+                                        ? <img src={a.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                                        : <span style={{ fontSize: '8px', color: '#9aa0a6' }}>🧤</span>}
+                                    </div>
+                                    <span style={{ fontSize: '.72rem', color: '#5f6368', fontWeight: '500' }}>{a.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{row.pj}</div>
+                          <div style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{row.gc}</div>
+                          <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '.95rem', color: esMejor ? '#1e8e3e' : '#202124' }}>
+                            {promedio}
+                            <span style={{ fontSize: '.7rem', fontWeight: '400', color: '#9aa0a6', marginLeft: '3px' }}>gc/pj</span>
+                          </div>
+                        </div>
+                      )
+                    })
+                })()}
+            </div>
+          </div>
+          </div>
       )}
     </div>
   )

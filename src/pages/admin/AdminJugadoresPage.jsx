@@ -1,33 +1,111 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Plus, Pencil, Trash2, Users, Upload, X, Camera } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
 
 const POSICIONES = {
   'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
   'Fútbol 7':  ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista', 'Extremo derecho', 'Extremo izquierdo', 'Delantero'],
   'Fútbol 11': ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista defensivo', 'Mediocampista central', 'Mediocampista ofensivo', 'Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Segunda punta'],
 }
-
 const GENEROS = ['Masculino', 'Femenino']
-
 const EMPTY = {
   name: '', telefono: '', numero_cedula: '', city: '', genero: '',
-  fecha_nacimiento: '',
-  posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
+  fecha_nacimiento: '', posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
+}
+const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
+const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
+
+function diasRestantes(fechaVenc) {
+  if (!fechaVenc) return null
+  const diff = new Date(fechaVenc) - new Date()
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
-const input = {
-  width: '100%', background: '#fff', border: '1px solid #dadce0',
-  borderRadius: '8px', padding: '8px 12px', color: '#202124',
-  fontSize: '.875rem', outline: 'none', boxSizing: 'border-box',
-  fontFamily: 'system-ui, sans-serif',
-}
-const label = {
-  fontSize: '.75rem', fontWeight: '500', color: '#5f6368',
-  display: 'block', marginBottom: '4px',
+function ModalMembresia({ jugador, onClose, onActivar }) {
+  const [meses, setMeses] = useState(1)
+  const [contrasena, setContrasena] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const yaTieneAuth = !!jugador.user_id
+
+  async function handleActivar() {
+    if (!yaTieneAuth && (!contrasena || contrasena.length < 6)) {
+      setError('La contraseña debe tener mínimo 6 caracteres'); return
+    }
+    setLoading(true); setError('')
+    const err = await onActivar(jugador, meses, contrasena, yaTieneAuth)
+    if (err) setError(err)
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>
+              {!jugador.user_id ? 'Activar membresía' : jugador.activo_membresia ? 'Renovar membresía' : 'Reactivar membresía'}
+            </div>
+            <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '2px' }}>{jugador.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <label style={lbl}>Meses a activar</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {[1, 2, 3, 6, 12].map(m => (
+                <button key={m} onClick={() => setMeses(m)}
+                  style={{ flex: 1, padding: '8px 4px', border: meses === m ? '2px solid #1a73e8' : '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', background: meses === m ? '#e8f0fe' : '#fff', color: meses === m ? '#1a73e8' : '#5f6368', fontWeight: meses === m ? '700' : '400', fontSize: '.8rem' }}>
+                  {m === 12 ? '1 año' : `${m} mes${m > 1 ? 'es' : ''}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!yaTieneAuth && (
+            <div>
+              <label style={lbl}>Contraseña para el jugador *</label>
+              <input type="password" value={contrasena} onChange={e => setContrasena(e.target.value)}
+                placeholder="Mínimo 6 caracteres" style={inp}/>
+              <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '4px' }}>
+                El jugador ingresa con cédula <b>{jugador.numero_cedula}</b> + esta contraseña
+              </div>
+            </div>
+          )}
+
+          {yaTieneAuth && (
+            <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
+              🔐 Ya tiene cuenta creada. Solo se renovará el tiempo de acceso.
+            </div>
+          )}
+
+          {error && (
+            <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{error}</div>
+          )}
+
+          <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>Resumen</div>
+            <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '4px' }}>
+              Acceso por <b>{meses} mes{meses > 1 ? 'es' : ''}</b> · Vence el{' '}
+              <b>{new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</b>
+            </div>
+          </div>
+
+          <button onClick={handleActivar} disabled={loading}
+            style={{ padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: loading ? .7 : 1 }}>
+            {loading ? 'Procesando...' : !jugador.user_id ? '✅ Activar membresía' : jugador.activo_membresia ? '🔄 Renovar' : '🔄 Reactivar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function AdminJugadoresPage() {
+  const navigate = useNavigate()
   const [jugadores, setJugadores] = useState([])
   const [form, setForm] = useState(EMPTY)
   const [editId, setEditId] = useState(null)
@@ -36,8 +114,21 @@ export default function AdminJugadoresPage() {
   const [uploading, setUploading] = useState({})
   const [msg, setMsg] = useState(null)
   const [search, setSearch] = useState('')
+  const [filtroMembresia, setFiltroMembresia] = useState('todos')
+  const [modalMembresia, setModalMembresia] = useState(null)
 
   useEffect(() => { fetchJugadores() }, [])
+
+  // Apagar membresías vencidas automáticamente
+  useEffect(() => {
+    if (!jugadores.length) return
+    const hoy = new Date()
+    jugadores.forEach(j => {
+      if (j.activo_membresia && j.fecha_vencimiento && new Date(j.fecha_vencimiento) < hoy) {
+        supabase.from('players').update({ activo_membresia: false }).eq('id', j.id)
+      }
+    })
+  }, [jugadores])
 
   async function fetchJugadores() {
     const { data } = await supabase.from('players').select('*').order('name')
@@ -46,17 +137,18 @@ export default function AdminJugadoresPage() {
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
-    setTimeout(() => setMsg(null), 3000)
+    setTimeout(() => setMsg(null), 4000)
   }
 
   async function handleSave() {
-    if (!form.name) return showMsg('El nombre es obligatorio', 'error')
-    if (!form.telefono) return showMsg('El teléfono es obligatorio', 'error')
-    if (!form.numero_cedula) return showMsg('El número de cédula es obligatorio', 'error')
-    if (!form.city) return showMsg('La ciudad es obligatoria', 'error')
-    if (!form.genero) return showMsg('El género es obligatorio', 'error')
-    if (!form.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
-    if (!form.posicion_futbol5 && !form.posicion_futbol7 && !form.posicion_futbol11) return showMsg('Debe seleccionar al menos una posición', 'error')
+    if (!form.name)              return showMsg('El nombre es obligatorio', 'error')
+    if (!form.telefono)          return showMsg('El teléfono es obligatorio', 'error')
+    if (!form.numero_cedula)     return showMsg('El número de cédula es obligatorio', 'error')
+    if (!form.city)              return showMsg('La ciudad es obligatoria', 'error')
+    if (!form.genero)            return showMsg('El género es obligatorio', 'error')
+    if (!form.fecha_nacimiento)  return showMsg('La fecha de nacimiento es obligatoria', 'error')
+    if (!form.posicion_futbol5 && !form.posicion_futbol7 && !form.posicion_futbol11)
+      return showMsg('Debe seleccionar al menos una posición', 'error')
     setLoading(true)
     if (editId) {
       const { error } = await supabase.from('players').update(form).eq('id', editId)
@@ -67,53 +159,108 @@ export default function AdminJugadoresPage() {
       if (error) showMsg('Error al crear', 'error')
       else showMsg('Jugador creado ✓')
     }
-    setForm(EMPTY)
-    setShowForm(false)
-    setLoading(false)
-    fetchJugadores()
+    setForm(EMPTY); setShowForm(false); setLoading(false); fetchJugadores()
   }
 
   function handleEdit(j) {
     setForm({
-      name: j.name || '', telefono: j.telefono || '',
-      city: j.city || '', genero: j.genero || '',
-      fecha_nacimiento: j.fecha_nacimiento || '',
-      posicion_futbol5: j.posicion_futbol5 || '',
-      posicion_futbol7: j.posicion_futbol7 || '',
-      posicion_futbol11: j.posicion_futbol11 || '',
+      name: j.name||'', telefono: j.telefono||'', numero_cedula: j.numero_cedula||'',
+      city: j.city||'', genero: j.genero||'', fecha_nacimiento: j.fecha_nacimiento||'',
+      posicion_futbol5: j.posicion_futbol5||'', posicion_futbol7: j.posicion_futbol7||'',
+      posicion_futbol11: j.posicion_futbol11||'',
     })
-    setEditId(j.id)
-    setShowForm(true)
+    setEditId(j.id); setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     if (!confirm('¿Eliminar jugador?')) return
     await supabase.from('players').delete().eq('id', id)
-    fetchJugadores()
-    showMsg('Eliminado')
+    fetchJugadores(); showMsg('Eliminado')
   }
 
-  async function handleFoto(jugador, file) {
+  // Activar o renovar membresía usando signUp (no admin API)
+  async function handleActivarMembresia(jugador, meses, contrasena, yaTieneAuth) {
+    const fechaVenc = new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toISOString()
+    const email     = `${jugador.numero_cedula}@golmebol.com`
+
+    try {
+      let userId = jugador.user_id
+
+      if (!yaTieneAuth) {
+        // Crear cuenta nueva con signUp
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email,
+          password: contrasena,
+          options: {
+            data: { player_id: jugador.id, cedula: jugador.numero_cedula }
+          }
+        })
+        if (authError) return 'Error al crear cuenta: ' + authError.message
+        if (!authData.user) return 'No se pudo crear la cuenta. Verifica que el email no exista ya.'
+        userId = authData.user.id
+      }
+
+      // Actualizar membresía en players
+      const { error: updError } = await supabase.from('players').update({
+        user_id:           userId,
+        activo_membresia:  true,
+        fecha_pago:        new Date().toISOString(),
+        fecha_vencimiento: fechaVenc,
+        meses_pagados:     (jugador.meses_pagados || 0) + meses,
+      }).eq('id', jugador.id)
+
+      if (updError) return 'Error al activar membresía: ' + updError.message
+
+      showMsg(`✅ Membresía activada por ${meses} mes${meses > 1 ? 'es' : ''} ✓`)
+      setModalMembresia(null)
+      fetchJugadores()
+      return null // sin error
+    } catch (e) {
+      return 'Error inesperado: ' + e.message
+    }
+  }
+
+  async function handleDesactivar(jugador) {
+    if (!confirm(`¿Desactivar membresía de ${jugador.name}?`)) return
+    await supabase.from('players').update({ activo_membresia: false }).eq('id', jugador.id)
+    showMsg('Membresía desactivada')
+    fetchJugadores()
+  }
+
+  function abrirWhatsApp(jugador) {
+    const dias     = diasRestantes(jugador.fecha_vencimiento)
+    const vencida  = dias !== null && dias <= 0
+    const nombre   = jugador.name?.split(' ')[0] || 'jugador'
+    const telefono = jugador.telefono?.replace(/\D/g, '')
+    const texto    = vencida
+      ? `Hola ${nombre} 👋, te informamos que tu membresía de *GOLMEBOL* ya venció. Para seguir disfrutando de tu tarjeta de jugador, ver estadísticas y apostar en partidos, renueva tu suscripción. ¡Te esperamos! ⚽🏆`
+      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. Recuerda renovarla a tiempo para no perder el acceso a tu tarjeta, estadísticas y apuestas. ⚽🏆`
+    window.open(`https://wa.me/57${telefono}?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
+  async function handleFoto(jugador, file, tipo) {
     if (!file) return
-    setUploading(u => ({ ...u, [jugador.id + '_foto']: true }))
-    const ext = file.name.split('.').pop()
-    const path = `fotos/${jugador.id}.${ext}`
+    const key   = jugador.id + '_' + tipo
+    setUploading(u => ({ ...u, [key]: true }))
+    const ext   = file.name.split('.').pop()
+    const path  = `fotos/${jugador.id}_${tipo}.${ext}`
+    const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
     const { error } = await supabase.storage.from('players').upload(path, file, { upsert: true })
-    if (error) { setUploading(u => ({ ...u, [jugador.id + '_foto']: false })); showMsg('Error al subir foto', 'error'); return }
+    if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir foto', 'error'); return }
     const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
-    await supabase.from('players').update({ photo_url: urlData.publicUrl }).eq('id', jugador.id)
-    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, photo_url: urlData.publicUrl } : j))
-    setUploading(u => ({ ...u, [jugador.id + '_foto']: false }))
+    await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', jugador.id)
+    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campo]: urlData.publicUrl } : j))
+    setUploading(u => ({ ...u, [key]: false }))
     showMsg('Foto subida ✓')
   }
 
   async function handleCedula(jugador, file, cara) {
     if (!file) return
-    const key = jugador.id + '_' + cara
+    const key   = jugador.id + '_' + cara
     setUploading(u => ({ ...u, [key]: true }))
-    const ext = file.name.split('.').pop()
-    const path = `${jugador.id}_${cara}.${ext}`
+    const ext   = file.name.split('.').pop()
+    const path  = `${jugador.id}_${cara}.${ext}`
     const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir cédula', 'error'); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
@@ -124,21 +271,37 @@ export default function AdminJugadoresPage() {
     showMsg('Cédula subida ✓')
   }
 
-  const filtered = jugadores.filter(j => j.name?.toLowerCase().includes(search.toLowerCase()))
+  const filtered = jugadores.filter(j => {
+    const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || j.numero_cedula?.includes(search)
+    if (!matchSearch) return false
+    if (filtroMembresia === 'activos')    return j.activo_membresia
+    if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id
+    if (filtroMembresia === 'sin_cuenta') return !j.user_id
+    return true
+  })
+
+  const cActivos   = jugadores.filter(j => j.activo_membresia).length
+  const cVencidos  = jugadores.filter(j => !j.activo_membresia && j.user_id).length
+  const cSinCuenta = jugadores.filter(j => !j.user_id).length
+  const cPorVencer = jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length
 
   return (
     <div>
       {msg && (
-        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? '#d93025' : '#1e8e3e', color: '#fff', borderRadius: '8px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', boxShadow: '0 4px 12px rgba(0,0,0,.2)' }}>
+        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? '#d93025' : '#1e8e3e', color: '#fff', borderRadius: '8px', padding: '10px 24px', zIndex: 9999, fontSize: '.875rem', boxShadow: '0 4px 12px rgba(0,0,0,.2)', whiteSpace: 'nowrap' }}>
           {msg.text}
         </div>
       )}
 
+      {modalMembresia && (
+        <ModalMembresia jugador={modalMembresia} onClose={() => setModalMembresia(null)} onActivar={handleActivarMembresia}/>
+      )}
+
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Jugadores</h1>
-          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{jugadores.length} jugadores registrados</p>
+          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{jugadores.length} registrados</p>
         </div>
         <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
@@ -146,67 +309,63 @@ export default function AdminJugadoresPage() {
         </button>
       </div>
 
+      {/* Cards resumen membresías */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        {[
+          { label: 'Activos',    value: cActivos,   color: '#1e8e3e', bg: '#e6f4ea', icon: <CheckCircle size={18} color="#1e8e3e"/> },
+          { label: 'Vencidos',   value: cVencidos,  color: '#d93025', bg: '#fce8e6', icon: <AlertTriangle size={18} color="#d93025"/> },
+          { label: 'Sin cuenta', value: cSinCuenta, color: '#9aa0a6', bg: '#f1f3f4', icon: <Users size={18} color="#9aa0a6"/> },
+          { label: 'Por vencer', value: cPorVencer, color: '#e8710a', bg: '#fce8d9', icon: <Clock size={18} color="#e8710a"/> },
+        ].map(({ label, value, color, bg, icon }) => (
+          <div key={label} style={{ background: bg, borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {icon}
+            <div>
+              <div style={{ fontSize: '1.3rem', fontWeight: '800', color, lineHeight: 1 }}>{value}</div>
+              <div style={{ fontSize: '.7rem', color, opacity: .8, fontWeight: '500' }}>{label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Formulario */}
       {showForm && (
         <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '20px' }}>
-            {editId ? 'Editar jugador' : 'Nuevo jugador'}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>{editId ? 'Editar jugador' : 'Nuevo jugador'}</div>
+            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
           </div>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Datos personales */}
             <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
+              <div><label style={lbl}>Teléfono *</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
+              <div><label style={lbl}>Número de cédula *</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="000000000"/></div>
+              <div><label style={lbl}>Ciudad *</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
               <div>
-                <label style={label}>Nombre completo *</label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={input} placeholder="Nombre completo"/>
-              </div>
-              <div>
-                <label style={label}>Teléfono</label>
-                <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} style={input} placeholder="300 000 0000"/>
-              </div>
-              <div>
-  <label style={label}>Número de cédula</label>
-  <input value={form.numero_cedula} onChange={e => setForm(f => ({ ...f, numero_cedula: e.target.value }))} style={input} placeholder="000000000"/>
-</div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={label}>Ciudad</label>
-                <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} style={input} placeholder="Ciudad"/>
-              </div>
-              <div>
-                <label style={label}>Género</label>
-                <select value={form.genero} onChange={e => setForm(f => ({ ...f, genero: e.target.value }))} style={input}>
+                <label style={lbl}>Género *</label>
+                <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
                   <option value="">Seleccionar</option>
                   {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={label}>Fecha de nacimiento</label>
-                <input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))} style={input}/>
-              </div>
+              <div><label style={lbl}>Fecha de nacimiento *</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
             </div>
-
-            {/* Posiciones */}
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones</div>
+            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones por modalidad *</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-              {Object.entries(POSICIONES).map(([modalidad, posiciones]) => (
-                <div key={modalidad}>
-                  <label style={label}>{modalidad}</label>
-                  <select
-                    value={form[`posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`]}
-                    onChange={e => setForm(f => ({ ...f, [`posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
-                    style={input}
-                  >
-                    <option value="">No juega</option>
-                    {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              ))}
+              {Object.entries(POSICIONES).map(([modalidad, posiciones]) => {
+                const key = `posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`
+                return (
+                  <div key={modalidad}>
+                    <label style={lbl}>{modalidad}</label>
+                    <select value={form[key]} onChange={e => setForm(f=>({...f,[key]:e.target.value}))} style={inp}>
+                      <option value="">No juega</option>
+                      {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                )
+              })}
             </div>
           </div>
-
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
             <button onClick={handleSave} disabled={loading}
               style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
@@ -220,75 +379,136 @@ export default function AdminJugadoresPage() {
         </div>
       )}
 
-      {/* Buscador */}
-      <div style={{ marginBottom: '16px' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jugador..." style={{ ...input, maxWidth: '320px' }}/>
+      {/* Buscador + filtros */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre o cédula..."
+          style={{ ...inp, maxWidth: '300px' }}/>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {[
+            { id: 'todos',      label: `Todos (${jugadores.length})` },
+            { id: 'activos',    label: `Activos (${cActivos})` },
+            { id: 'vencidos',   label: `Vencidos (${cVencidos})` },
+            { id: 'sin_cuenta', label: `Sin cuenta (${cSinCuenta})` },
+          ].map(f => (
+            <button key={f.id} onClick={() => setFiltroMembresia(f.id)}
+              style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: '500', background: filtroMembresia === f.id ? '#1a73e8' : '#f1f3f4', color: filtroMembresia === f.id ? '#fff' : '#5f6368', transition: 'all .15s' }}>
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Lista */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.08)', overflow: 'hidden' }}>
         {filtered.length === 0 ? (
           <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
-            <Users size={40} style={{ opacity: .3, marginBottom: '12px' }}/>
-            <div style={{ fontSize: '.875rem' }}>No hay jugadores aún</div>
+            <Users size={40} style={{ opacity: .3, display: 'block', margin: '0 auto 12px' }}/>
+            <div style={{ fontSize: '.875rem' }}>{search ? 'No se encontraron jugadores' : 'No hay jugadores aún'}</div>
           </div>
-        ) : (
-          filtered.map((j, i) => (
-            <div key={j.id} style={{ padding: '16px 20px', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  {/* Foto */}
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {j.photo_url
-                      ? <img src={j.photo_url} alt={j.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                      : <Users size={22} color="#9aa0a6"/>
-                    }
+        ) : filtered.map((j, i) => {
+          const dias      = diasRestantes(j.fecha_vencimiento)
+          const vencida   = dias !== null && dias <= 0
+          const porVencer = dias !== null && dias > 0 && dias <= 7
+          const activo    = j.activo_membresia && !vencida
+
+          return (
+            <div key={j.id} style={{ padding: '16px 20px', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none', background: vencida ? '#fff8f8' : porVencer ? '#fffbf0' : '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+
+                {/* Info jugador */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: `2px solid ${activo ? '#1e8e3e' : vencida && j.user_id ? '#d93025' : '#e8eaed'}`, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {j.photo_face_url
+                      ? <img src={j.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                      : j.photo_url
+                      ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
+                      : <User size={22} color="#9aa0a6"/>}
                   </div>
-                  <div>
-                    <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{j.name}</div>
-                    <div style={{ color: '#9aa0a6', fontSize: '.75rem', marginTop: '2px', display: 'flex', gap: '8px' }}>
-                      {j.telefono && <span>📞 {j.telefono}</span>}
-                      {j.city && <span>📍 {j.city}</span>}
-                      {j.genero && <span>· {j.genero}</span>}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {j.name}
+                      {activo          && <span style={{ fontSize: '.65rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✓ Activo</span>}
+                      {vencida && j.user_id && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✗ Vencido</span>}
+                      {porVencer       && <span style={{ fontSize: '.65rem', color: '#e8710a', background: '#fce8d9', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⚠ {dias}d</span>}
+                      {!j.user_id      && <span style={{ fontSize: '.65rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>Sin cuenta</span>}
                     </div>
-                    {/* Posiciones */}
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                      {j.posicion_futbol5 && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>F5: {j.posicion_futbol5}</span>}
-                      {j.posicion_futbol7 && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px' }}>F7: {j.posicion_futbol7}</span>}
-                      {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px' }}>F11: {j.posicion_futbol11}</span>}
+                    <div style={{ color: '#9aa0a6', fontSize: '.72rem', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {j.numero_cedula && <span>🪪 {j.numero_cedula}</span>}
+                      {j.telefono      && <span>📞 {j.telefono}</span>}
+                      {j.city          && <span>📍 {j.city}</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '5px', flexWrap: 'wrap' }}>
+                      {j.posicion_futbol5  && <span style={{ fontSize: '.68rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '1px 7px' }}>F5: {j.posicion_futbol5}</span>}
+                      {j.posicion_futbol7  && <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '1px 7px' }}>F7: {j.posicion_futbol7}</span>}
+                      {j.posicion_futbol11 && <span style={{ fontSize: '.68rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '1px 7px' }}>F11: {j.posicion_futbol11}</span>}
+                      {j.fecha_vencimiento && !vencida && (
+                        <span style={{ fontSize: '.68rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '10px', padding: '1px 7px' }}>
+                          Vence: {new Date(j.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button onClick={() => handleEdit(j)}
-                    style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
-                    <Pencil size={15}/>
-                  </button>
-                  <button onClick={() => handleDelete(j.id)}
-                    style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
-                    <Trash2 size={15}/>
-                  </button>
+
+                {/* Botones */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={() => navigate(`/admin/jugadores/${j.id}`)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: '1px solid #1a73e8', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.72rem', fontWeight: '500' }}>
+                      <Eye size={12}/> Perfil
+                    </button>
+                    <button onClick={() => handleEdit(j)}
+                      style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
+                      <Pencil size={14}/>
+                    </button>
+                    <button onClick={() => handleDelete(j.id)}
+                      style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
+                      <Trash2 size={14}/>
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={() => setModalMembresia(j)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', background: activo ? '#f1f3f4' : '#1e8e3e', border: activo ? '1px solid #dadce0' : 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: activo ? '#5f6368' : '#fff', fontSize: '.72rem', fontWeight: '600' }}>
+                      <CreditCard size={12}/> {!j.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
+                    </button>
+                    {activo && (
+                      <button onClick={() => handleDesactivar(j)}
+                        style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem' }}>
+                        Desactivar
+                      </button>
+                    )}
+                    {j.telefono && (vencida || porVencer) && (
+                      <button onClick={() => abrirWhatsApp(j)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#25D366', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
+                        <MessageCircle size={12}/> WhatsApp
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Subir archivos */}
               <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.72rem', color: '#1a73e8', cursor: 'pointer', padding: '4px 10px', border: '1px solid #1a73e8', borderRadius: '6px' }}>
-                  <Camera size={13}/> {uploading[j.id + '_foto'] ? 'Subiendo...' : j.photo_url ? 'Cambiar foto' : 'Subir foto'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={ev => handleFoto(j, ev.target.files[0])} disabled={uploading[j.id + '_foto']}/>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: '#1a73e8', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.photo_url ? '#1a73e8' : '#dadce0'}`, borderRadius: '6px', background: j.photo_url ? '#e8f0fe' : 'transparent' }}>
+                  <Camera size={12}/> {uploading[j.id+'_tarjeta'] ? 'Subiendo...' : j.photo_url ? '✓ Foto tarjeta' : 'Foto tarjeta'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(j, e.target.files[0], 'tarjeta')} disabled={uploading[j.id+'_tarjeta']}/>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.72rem', color: '#5f6368', cursor: 'pointer', padding: '4px 10px', border: '1px solid #dadce0', borderRadius: '6px' }}>
-                  <Upload size={13}/> {uploading[j.id + '_frontal'] ? 'Subiendo...' : j.cedula_frontal_url ? '✓ Cédula frontal' : 'Cédula frontal'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={ev => handleCedula(j, ev.target.files[0], 'frontal')} disabled={uploading[j.id + '_frontal']}/>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: '#1e8e3e', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.photo_face_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '6px', background: j.photo_face_url ? '#e6f4ea' : 'transparent' }}>
+                  <User size={12}/> {uploading[j.id+'_cara'] ? 'Subiendo...' : j.photo_face_url ? '✓ Foto perfil' : 'Foto perfil'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(j, e.target.files[0], 'cara')} disabled={uploading[j.id+'_cara']}/>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.72rem', color: '#5f6368', cursor: 'pointer', padding: '4px 10px', border: '1px solid #dadce0', borderRadius: '6px' }}>
-                  <Upload size={13}/> {uploading[j.id + '_trasera'] ? 'Subiendo...' : j.cedula_trasera_url ? '✓ Cédula trasera' : 'Cédula trasera'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={ev => handleCedula(j, ev.target.files[0], 'trasera')} disabled={uploading[j.id + '_trasera']}/>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: j.cedula_frontal_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.cedula_frontal_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '6px' }}>
+                  <Upload size={12}/> {uploading[j.id+'_frontal'] ? 'Subiendo...' : j.cedula_frontal_url ? '✓ Cédula frontal' : 'Cédula frontal'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(j, e.target.files[0], 'frontal')} disabled={uploading[j.id+'_frontal']}/>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: j.cedula_trasera_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.cedula_trasera_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '6px' }}>
+                  <Upload size={12}/> {uploading[j.id+'_trasera'] ? 'Subiendo...' : j.cedula_trasera_url ? '✓ Cédula trasera' : 'Cédula trasera'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(j, e.target.files[0], 'trasera')} disabled={uploading[j.id+'_trasera']}/>
                 </label>
               </div>
             </div>
-          ))
-        )}
+          )
+        })}
       </div>
     </div>
   )
