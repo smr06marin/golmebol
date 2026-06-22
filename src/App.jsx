@@ -19,6 +19,7 @@ import AdminSponsorsPage from './pages/admin/AdminSponsorsPage'
 import AdminEquipoDetallePage from './pages/admin/AdminEquipoDetallePage'
 import AdminTorneoDetallePage from './pages/admin/AdminTorneoDetallePage'
 import PlayerTorneoPage from './pages/PlayerTorneoPage'
+import AdminTarjetasPage from './pages/admin/AdminTarjetasPage'
 
 // Ruta protegida para admin
 function ProtectedRoute({ children }) {
@@ -83,6 +84,7 @@ export default function App() {
           <Route path="jugadores/:id"   element={<AdminJugadorDetallePage/>}/>
           <Route path="calendario"      element={<AdminCalendarioPage/>}/>
           <Route path="sponsors"        element={<AdminSponsorsPage/>}/>
+          <Route path="tarjetas" element={<AdminTarjetasPage/>}/>
         </Route>
 
         {/* ── Portal jugador ── */}

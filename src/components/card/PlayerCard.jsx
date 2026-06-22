@@ -233,10 +233,10 @@ export default function PlayerCard({
           {/* PJ arriba */}
           <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '24% 6% 0 13%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div onClick={() => onStatClick?.('pj')} style={{ cursor: 'pointer', lineHeight: 1 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(3rem,1vw,4.2rem)', lineHeight: '.80', color: isPremium ? '#F4E6A1' : '#fff', animation: 'pjp 3.5s ease-in-out infinite', marginTop: '30px' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '4rem', lineHeight: '.80', color: isPremium ? '#F4E6A1' : '#fff', animation: 'pjp 3.5s ease-in-out infinite', marginTop: '30px' }}>
                 {stats.pj}
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '.62rem', letterSpacing: '.28em', color: isPremium ? '#D6B65Dcc' : `${color}cc`, marginTop: '2px' }}>PJ</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.28em', color: isPremium ? '#D6B65Dcc' : `${color}cc`, marginTop: '2px' }}>PJ</div>
             </div>
             {photoUrl && !hideShields && (
               <label style={{ fontFamily: 'var(--font-display)', fontSize: '.3rem', color: isPremium ? '#D6B65D99' : `${color}99`, border: `1px dashed ${isPremium ? '#D6B65D55' : `${color}55`}`, padding: '3px 6px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.5)', marginTop: '4px' }}>
@@ -255,7 +255,7 @@ export default function PlayerCard({
 
                 {/* Torneo */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
                   <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)}>
                     <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={70}/>
                   </div>
@@ -274,7 +274,7 @@ export default function PlayerCard({
 
                 {/* Equipo */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.34rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>EQUIPO</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>EQUIPO</span>
                   <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)}>
                     <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={70}/>
                   </div>

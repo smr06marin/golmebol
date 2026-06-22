@@ -1,21 +1,21 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star } from 'lucide-react'
+import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 const MENU = [
-    { icon: <PlusCircle size={22}/>, label: 'CREAR',      ruta: '/admin/crear' },
-    { icon: <Trophy size={22}/>,     label: 'TORNEOS',    ruta: '/admin/torneos' },
-    { icon: <Shield size={22}/>,     label: 'EQUIPOS',    ruta: '/admin/equipos' },
-    { icon: <Users size={22}/>,      label: 'JUGADORES',  ruta: '/admin/jugadores' },
-    { icon: <CalendarDays size={22}/>, label: 'CALENDARIO', ruta: '/admin/calendario' },
-    { icon: <Star size={22}/>,       label: 'SPONSORS',   ruta: '/admin/sponsors' },
-  ]
+  { icon: <PlusCircle size={22}/>,   label: 'CREAR',      ruta: '/admin/crear' },
+  { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos' },
+  { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos' },
+  { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores' },
+  { icon: <CalendarDays size={22}/>, label: 'CALENDARIO', ruta: '/admin/calendario' },
+  { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas' },
+  { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors' },
+]
 
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [menuOpen, setMenuOpen] = useState(false)
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -47,7 +47,7 @@ export default function AdminLayout() {
         {/* Menú */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', alignItems: 'center' }}>
           {MENU.map(item => {
-            const active = location.pathname === item.ruta
+            const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
             return (
               <div key={item.ruta}
                 onClick={() => navigate(item.ruta)}
@@ -55,7 +55,8 @@ export default function AdminLayout() {
                 style={{
                   width: '44px', height: '44px', borderRadius: '10px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', fontSize: '1.2rem',
+                  cursor: 'pointer',
+                  color: active ? '#1a73e8' : '#5f6368',
                   background: active ? '#e8f0fe' : 'transparent',
                   transition: 'all .15s',
                 }}
@@ -92,7 +93,7 @@ export default function AdminLayout() {
           position: 'sticky', top: 0, zIndex: 50,
         }}>
           <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>
-            {MENU.find(m => m.ruta === location.pathname)?.label || 'PANEL ADMIN'}
+            {MENU.find(m => location.pathname === m.ruta || location.pathname.startsWith(m.ruta + '/'))?.label || 'PANEL ADMIN'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button onClick={() => navigate('/')}
