@@ -1,555 +1,497 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, Trophy, Target, AlertTriangle, TrendingUp, Camera, Pencil, Check, X, User } from 'lucide-react'
+import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle, Shield } from 'lucide-react'
 import PlayerCard from '../../components/card/PlayerCard'
 
-function calcEdad(fecha) {
-  if (!fecha) return null
-  const hoy = new Date(), nac = new Date(fecha)
-  let edad = hoy.getFullYear() - nac.getFullYear()
-  const m = hoy.getMonth() - nac.getMonth()
-  if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--
-  return edad
+const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
+const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
+
+function StatBox({ label, value, color = '#1a73e8', sub }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div style={{ fontSize: '1.5rem', fontWeight: '700', color, lineHeight: 1 }}>{value ?? '—'}</div>
+      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px', fontWeight: '500' }}>{label}</div>
+      {sub && <div style={{ fontSize: '.65rem', color: '#bdbdbd', marginTop: '2px' }}>{sub}</div>}
+    </div>
+  )
 }
 
-function getCardType(pj) {
-  if (pj < 10) return 'nivel1_verde'
-  if (pj < 25) return 'nivel2_inicio'
-  return 'nivel3_inicio'
+function diasRestantes(fechaVenc) {
+  if (!fechaVenc) return null
+  return Math.ceil((new Date(fechaVenc) - new Date()) / (1000 * 60 * 60 * 24))
 }
-
-const POSICIONES = {
-  'Fútbol 5':  ['Portero','Cierre','Ala derecha','Ala izquierda','Pivot'],
-  'Fútbol 7':  ['Portero','Defensa central','Lateral derecho','Lateral izquierdo','Mediocampista','Extremo derecho','Extremo izquierdo','Delantero'],
-  'Fútbol 11': ['Portero','Defensa central','Lateral derecho','Lateral izquierdo','Mediocampista defensivo','Mediocampista central','Mediocampista ofensivo','Extremo derecho','Extremo izquierdo','Delantero centro','Segunda punta'],
-}
-const GENEROS = ['Masculino','Femenino']
 
 export default function AdminJugadorDetallePage() {
-  const { id } = useParams()
+  const { id }   = useParams()
   const navigate = useNavigate()
 
-  const [jugador, setJugador]     = useState(null)
-  const [stats, setStats]         = useState(null)
-  const [historial, setHistorial] = useState([])
-  const [torneos, setTorneos]     = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [tab, setTab]             = useState('resumen')
-  const [msg, setMsg]             = useState(null)
-  const [editando, setEditando]   = useState(false)
-  const [form, setForm]           = useState({})
-  const [guardando, setGuardando] = useState(false)
-  const [subiendo, setSubiendo]   = useState({})
+  const [jugador,    setJugador]    = useState(null)
+  const [stats,      setStats]      = useState(null)
+  const [torneos,    setTorneos]    = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [tab,        setTab]        = useState('resumen')
+  const [msg,        setMsg]        = useState(null)
+  const [uploading,  setUploading]  = useState({})
+  const [modalMem,   setModalMem]   = useState(false)
+  const [meses,      setMeses]      = useState(1)
+  const [contrasena, setContrasena] = useState('')
+  const [guardando,  setGuardando]  = useState(false)
+  const [errMem,     setErrMem]     = useState('')
 
   useEffect(() => { fetchTodo() }, [id])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
-    setTimeout(() => setMsg(null), 3000)
+    setTimeout(() => setMsg(null), 3500)
   }
 
   async function fetchTodo() {
     setLoading(true)
-    const [jugRes, statsRes, torneosRes] = await Promise.all([
-      supabase.from('players').select('*').eq('id', id).single(),
-      supabase.from('player_match_stats')
-        .select('*, matches(id,played_at,home_score,away_score,home:home_team_id(name,logo_url),away:away_team_id(name,logo_url)), teams(id,name,logo_url), tournaments(id,name,modalidad)')
-        .eq('player_id', id),
-      supabase.from('tournament_player_registrations')
-        .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season)')
-        .eq('player_id', id).eq('activo', true),
-    ])
-    setJugador(jugRes.data)
-    const raw       = statsRes.data || []
-    const pj        = raw.length
-    const goles     = raw.reduce((s,r) => s + (r.goals_scored || 0), 0)
-    const amarillas = raw.reduce((s,r) => s + (r.yellow_cards || 0), 0)
-    const azules    = raw.reduce((s,r) => s + (r.blue_cards   || 0), 0)
-    const rojas     = raw.reduce((s,r) => s + (r.red_cards    || 0), 0)
-    const faltas    = raw.reduce((s,r) => s + (r.fouls        || 0), 0)
-    const pg        = raw.filter(r => r.team_result === 'win').length
-    const pe        = raw.filter(r => r.team_result === 'draw').length
-    const pp        = raw.filter(r => r.team_result === 'loss').length
-    const eficacia  = pj > 0 ? Math.round((pg/pj)*100) : 0
-    const promedio  = pj > 0 ? parseFloat((goles/pj).toFixed(2)) : 0
-    setStats({ pj, goles, amarillas, azules, rojas, faltas, pg, pe, pp, eficacia, promedio })
-    setHistorial(raw.filter(r => r.matches).sort((a,b) => new Date(b.matches?.played_at||0) - new Date(a.matches?.played_at||0)))
-    setTorneos(torneosRes.data || [])
+    await Promise.all([fetchJugador(), fetchStats(), fetchTorneos()])
     setLoading(false)
   }
 
-  function handleEditar() {
-    setForm({
-      name: jugador.name||'', telefono: jugador.telefono||'',
-      numero_cedula: jugador.numero_cedula||'', city: jugador.city||'',
-      genero: jugador.genero||'', fecha_nacimiento: jugador.fecha_nacimiento||'',
-      posicion_futbol5: jugador.posicion_futbol5||'',
-      posicion_futbol7: jugador.posicion_futbol7||'',
-      posicion_futbol11: jugador.posicion_futbol11||'',
-    })
-    setEditando(true)
+  async function fetchJugador() {
+    const { data } = await supabase.from('players').select('*').eq('id', id).single()
+    setJugador(data)
   }
 
-  async function handleGuardar() {
-    if (!form.name) return showMsg('El nombre es obligatorio', 'error')
-    setGuardando(true)
-    const { error } = await supabase.from('players').update(form).eq('id', id)
-    if (error) showMsg('Error al guardar', 'error')
-    else { showMsg('Guardado ✓'); setEditando(false); fetchTodo() }
-    setGuardando(false)
+  async function fetchStats() {
+    const { data: raw } = await supabase.from('player_match_stats').select('*').eq('player_id', id)
+    const r         = raw || []
+    const pj        = r.length
+    const goles     = r.reduce((s, x) => s + (x.goals_scored   || 0), 0)
+    const recibidos = r.reduce((s, x) => s + (x.goals_conceded || 0), 0)
+    const pg        = r.filter(x => x.team_result === 'win').length
+    const pe        = r.filter(x => x.team_result === 'draw').length
+    const pp        = r.filter(x => x.team_result === 'loss').length
+    const eficacia  = pj > 0 ? Math.round((pg / pj) * 100) : 0
+    let racha = 0, maxRacha = 0
+    for (const x of [...r].reverse()) {
+      if (x.team_result === 'win') { racha++; maxRacha = Math.max(maxRacha, racha) }
+      else racha = 0
+    }
+    setStats({ pj, goles, recibidos, pg, pe, pp, eficacia, maxRacha })
   }
 
-  async function handleSubirFoto(file, tipo) {
+  async function fetchTorneos() {
+    const { data } = await supabase
+      .from('tournament_player_registrations')
+      .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
+      .eq('player_id', id)
+      .eq('activo', true)
+    setTorneos(data || [])
+  }
+
+  async function handleFoto(file, tipo) {
     if (!file) return
-    setSubiendo(s => ({ ...s, [tipo]: true }))
+    setUploading(u => ({ ...u, [tipo]: true }))
     const ext   = file.name.split('.').pop()
     const path  = `fotos/${id}_${tipo}.${ext}`
     const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
     const { error } = await supabase.storage.from('players').upload(path, file, { upsert: true })
-    if (error) { showMsg('Error al subir foto', 'error'); setSubiendo(s => ({ ...s, [tipo]: false })); return }
+    if (error) { showMsg('Error al subir foto', 'error'); setUploading(u => ({ ...u, [tipo]: false })); return }
     const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
     await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', id)
-    setJugador(prev => ({ ...prev, [campo]: urlData.publicUrl }))
-    showMsg(`Foto ${tipo === 'tarjeta' ? 'de tarjeta' : 'de perfil'} actualizada ✓`)
-    setSubiendo(s => ({ ...s, [tipo]: false }))
+    setJugador(j => ({ ...j, [campo]: urlData.publicUrl }))
+    setUploading(u => ({ ...u, [tipo]: false }))
+    showMsg('Foto actualizada ✓')
   }
 
-  if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando perfil...</div>
+  async function handleCedula(file, cara) {
+    if (!file) return
+    setUploading(u => ({ ...u, [cara]: true }))
+    const ext   = file.name.split('.').pop()
+    const path  = `${id}_${cara}.${ext}`
+    const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
+    if (error) { showMsg('Error al subir cédula', 'error'); setUploading(u => ({ ...u, [cara]: false })); return }
+    const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
+    const campo = cara === 'frontal' ? 'cedula_frontal_url' : 'cedula_trasera_url'
+    await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', id)
+    setJugador(j => ({ ...j, [campo]: urlData.publicUrl }))
+    setUploading(u => ({ ...u, [cara]: false }))
+    showMsg('Cédula subida ✓')
+  }
+
+  async function handleActivarMembresia() {
+    const yaTieneAuth = !!jugador.user_id
+    if (!yaTieneAuth && (!contrasena || contrasena.length < 6)) {
+      setErrMem('La contraseña debe tener mínimo 6 caracteres'); return
+    }
+    setGuardando(true); setErrMem('')
+    const fechaVenc = new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toISOString()
+    const email     = `${jugador.numero_cedula}@golmebol.com`
+    try {
+      let userId = jugador.user_id
+      if (!yaTieneAuth) {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email, password: contrasena,
+          options: { data: { player_id: jugador.id, cedula: jugador.numero_cedula } }
+        })
+        if (authError) { setErrMem('Error al crear cuenta: ' + authError.message); setGuardando(false); return }
+        userId = authData.user?.id
+      }
+      await supabase.from('players').update({
+        user_id: userId, activo_membresia: true,
+        fecha_pago: new Date().toISOString(), fecha_vencimiento: fechaVenc,
+        meses_pagados: (jugador.meses_pagados || 0) + meses,
+      }).eq('id', id)
+      showMsg(`✅ Membresía activada por ${meses} mes${meses > 1 ? 'es' : ''} ✓`)
+      setModalMem(false); setContrasena(''); fetchJugador()
+    } catch (e) { setErrMem('Error: ' + e.message) }
+    setGuardando(false)
+  }
+
+  async function handleDesactivar() {
+    if (!confirm(`¿Desactivar membresía de ${jugador.name}?`)) return
+    await supabase.from('players').update({ activo_membresia: false }).eq('id', id)
+    showMsg('Membresía desactivada')
+    fetchJugador()
+  }
+
+  function abrirWhatsApp() {
+    const dias     = diasRestantes(jugador.fecha_vencimiento)
+    const vencida  = dias !== null && dias <= 0
+    const nombre   = jugador.name?.split(' ')[0] || 'jugador'
+    const telefono = jugador.telefono?.replace(/\D/g, '')
+    const texto    = vencida
+      ? `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* ya venció. Renueva para seguir disfrutando tu tarjeta. ⚽🏆`
+      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. ¡Renueva a tiempo! ⚽🏆`
+    window.open(`https://wa.me/57${telefono}?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
+  if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
   if (!jugador) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Jugador no encontrado</div>
 
-  const edad       = calcEdad(jugador.fecha_nacimiento)
-  const cardType   = getCardType(stats?.pj || 0)
-  const nivelLabel = cardType.startsWith('nivel3') ? 'NIVEL 3' : cardType.startsWith('nivel2') ? 'NIVEL 2' : 'NIVEL 1'
-
-  // Es portero si en cualquier modalidad tiene la posición Portero
-  const esPortero =
-    jugador.posicion_futbol5  === 'Portero' ||
-    jugador.posicion_futbol7  === 'Portero' ||
-    jugador.posicion_futbol11 === 'Portero'
+  const dias        = diasRestantes(jugador.fecha_vencimiento)
+  const vencida     = dias !== null && dias <= 0
+  const porVencer   = dias !== null && dias > 0 && dias <= 7
+  const activo      = jugador.activo_membresia && !vencida
+  const esPortero   = jugador.posicion_futbol5 === 'Portero' || jugador.posicion_futbol7 === 'Portero' || jugador.posicion_futbol11 === 'Portero'
 
   const cardStats = {
-    pj:          stats?.pj       || 0,
-    golesContra: stats?.goles    || 0,  // portero: goles recibidos / campo: goles anotados
-    promedio:    stats?.promedio || 0,
-    eficacia:    stats?.eficacia || 0,
-    pg:          stats?.pg       || 0,
-    pe:          stats?.pe       || 0,
-    pp:          stats?.pp       || 0,
+    pj:          stats?.pj        || 0,
+    golesContra: esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0),
+    promedio:    stats?.pj > 0 ? parseFloat((esPortero ? stats.recibidos / stats.pj : stats.goles / stats.pj).toFixed(2)) : 0,
+    eficacia:    stats?.eficacia  || 0,
+    pg:          stats?.pg        || 0,
+    pe:          stats?.pe        || 0,
+    pp:          stats?.pp        || 0,
   }
 
-  // Escala: la tarjeta renderiza en 420px (tamaño real idéntico a HomePage)
-  const CARD_REAL_W = 420
-  const SCALE       = 0.62
-  const CARD_REAL_H = CARD_REAL_W * 1.55
-  const visibleW    = CARD_REAL_W * SCALE
-  const visibleH    = CARD_REAL_H * SCALE
-
-  const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box' }
-  const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
-
   const TABS = [
-    { id: 'resumen',   label: 'Resumen'  },
-    { id: 'historial', label: 'Partidos' },
-    { id: 'torneos',   label: 'Torneos'  },
+    { id: 'resumen',  label: 'Resumen'   },
+    { id: 'stats',    label: 'Stats'     },
+    { id: 'torneos',  label: 'Torneos'   },
+    { id: 'tarjeta',  label: 'Tarjeta'   },
   ]
+
+  const estadoColor = activo ? '#1e8e3e' : vencida && jugador.user_id ? '#d93025' : porVencer ? '#e8710a' : '#9aa0a6'
+  const estadoBg    = activo ? '#e6f4ea'  : vencida && jugador.user_id ? '#fce8e6'  : porVencer ? '#fce8d9'  : '#f1f3f4'
+  const estadoLabel = activo ? '✓ Activo' : vencida && jugador.user_id ? '✗ Vencido' : porVencer ? `⚠ ${dias}d` : 'Sin cuenta'
 
   return (
     <div>
       {msg && (
-        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? '#d93025' : '#1e8e3e', color: '#fff', borderRadius: '8px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', boxShadow: '0 4px 12px rgba(0,0,0,.2)' }}>
+        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? '#d93025' : '#1e8e3e', color: '#fff', borderRadius: '8px', padding: '10px 24px', zIndex: 9999, fontSize: '.875rem', boxShadow: '0 4px 12px rgba(0,0,0,.2)' }}>
           {msg.text}
         </div>
       )}
 
-      <button onClick={() => navigate('/admin/jugadores')}
-        style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '24px' }}>
-        <ArrowLeft size={16}/> Volver a jugadores
-      </button>
-
-      {/* ── HERO ── */}
-      <div style={{ display: 'flex', gap: '32px', marginBottom: '28px', alignItems: 'flex-start' }}>
-
-        {/* Columna izquierda: tarjeta escalada + slots de foto */}
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-
-          {/* Wrapper que reserva espacio visual exacto */}
-          <div style={{ width: visibleW, height: visibleH, position: 'relative', borderRadius: '18px', overflow: 'hidden' }}>
-            {/* Fondo oscuro igual a HomePage */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'radial-gradient(ellipse 85% 50% at 50% -5%,rgba(0,35,110,.38) 0%,transparent 62%), #07070e',
-            }}/>
-            {/* Tarjeta en tamaño real, reducida con transform — proporciones y fuentes idénticas */}
-            <div style={{
-              width: CARD_REAL_W,
-              transformOrigin: 'top left',
-              transform: `scale(${SCALE})`,
-              padding: '20px 12px',
-              position: 'absolute',
-              top: 0, left: 0,
-            }}>
-              <PlayerCard
-                playerName={jugador.name?.toUpperCase().split(' ')[0] || 'JUGADOR'}
-                stats={cardStats}
-                cardType={cardType}
-                hideShields={true}
-                photoUrlExterno={jugador.photo_url || null}
-                esPortero={esPortero}
-              />
+      {/* Modal membresía */}
+      {modalMem && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>
+              {!jugador.user_id ? 'Activar membresía' : activo ? 'Renovar membresía' : 'Reactivar membresía'}
             </div>
-          </div>
+            <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{jugador.name}</div>
 
-          {/* Badge portero / jugador de campo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{
-              fontSize: '.72rem', fontWeight: '600', padding: '3px 10px', borderRadius: '10px',
-              background: esPortero ? '#e8f0fe' : '#e6f4ea',
-              color: esPortero ? '#1a73e8' : '#1e8e3e',
-              border: esPortero ? '1px solid #1a73e8aa' : '1px solid #1e8e3eaa',
-            }}>
-              {esPortero ? '🧤 Portero' : '⚽ Jugador de campo'}
-            </span>
-          </div>
-
-          {/* Slots de foto */}
-          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-            {/* Foto tarjeta */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
-              <div style={{ width: '80px', height: '80px', borderRadius: '10px', background: '#f1f3f4', border: '2px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {jugador.photo_url
-                  ? <img src={jugador.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
-                  : <Camera size={22} color="#9aa0a6"/>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={lbl}>Meses a activar</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {[1, 2, 3, 6, 12].map(m => (
+                    <button key={m} onClick={() => setMeses(m)}
+                      style={{ flex: 1, padding: '8px 4px', border: meses === m ? '2px solid #1a73e8' : '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', background: meses === m ? '#e8f0fe' : '#fff', color: meses === m ? '#1a73e8' : '#5f6368', fontWeight: meses === m ? '700' : '400', fontSize: '.78rem' }}>
+                      {m === 12 ? '1 año' : `${m}m`}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <span style={{ fontSize: '.65rem', color: '#5f6368', textAlign: 'center' }}>Foto tarjeta</span>
-              <label style={{ fontSize: '.68rem', color: '#1a73e8', cursor: 'pointer', border: '1px solid #1a73e8', borderRadius: '6px', padding: '3px 10px', whiteSpace: 'nowrap' }}>
-                {subiendo.tarjeta ? 'Subiendo...' : jugador.photo_url ? 'Cambiar' : '+ Subir'}
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleSubirFoto(e.target.files[0], 'tarjeta')} disabled={subiendo.tarjeta}/>
-              </label>
-            </div>
 
-            {/* Foto cara */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
-              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#f1f3f4', border: '2px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {jugador.photo_face_url
-                  ? <img src={jugador.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                  : <User size={22} color="#9aa0a6"/>}
+              {!jugador.user_id && (
+                <div>
+                  <label style={lbl}>Contraseña para el jugador *</label>
+                  <input type="password" value={contrasena} onChange={e => setContrasena(e.target.value)} placeholder="Mínimo 6 caracteres" style={inp}/>
+                  <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '4px' }}>Ingresa con cédula <b>{jugador.numero_cedula}</b> + esta contraseña</div>
+                </div>
+              )}
+
+              {jugador.user_id && (
+                <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
+                  🔐 Ya tiene cuenta. Solo se renueva el tiempo de acceso.
+                </div>
+              )}
+
+              {errMem && <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{errMem}</div>}
+
+              <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>Resumen</div>
+                <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '4px' }}>
+                  Acceso por <b>{meses} mes{meses > 1 ? 'es' : ''}</b> · Vence el{' '}
+                  <b>{new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</b>
+                </div>
               </div>
-              <span style={{ fontSize: '.65rem', color: '#5f6368', textAlign: 'center' }}>Foto perfil</span>
-              <label style={{ fontSize: '.68rem', color: '#1e8e3e', cursor: 'pointer', border: '1px solid #1e8e3e', borderRadius: '6px', padding: '3px 10px', whiteSpace: 'nowrap' }}>
-                {subiendo.cara ? 'Subiendo...' : jugador.photo_face_url ? 'Cambiar' : '+ Subir'}
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleSubirFoto(e.target.files[0], 'cara')} disabled={subiendo.cara}/>
-              </label>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={handleActivarMembresia} disabled={guardando}
+                  style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: guardando ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: guardando ? .7 : 1 }}>
+                  {guardando ? 'Procesando...' : !jugador.user_id ? '✅ Activar' : activo ? '🔄 Renovar' : '🔄 Reactivar'}
+                </button>
+                <button onClick={() => { setModalMem(false); setErrMem(''); setContrasena('') }}
+                  style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Columna derecha: datos */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Volver */}
+      <button onClick={() => navigate('/admin/jugadores')}
+        style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '20px' }}>
+        <ArrowLeft size={16}/> Volver
+      </button>
 
-          {/* Header nombre + editar */}
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: '2px solid #e8eaed', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {jugador.photo_face_url
-                    ? <img src={jugador.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                    : jugador.photo_url
-                    ? <img src={jugador.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
-                    : <User size={20} color="#9aa0a6"/>}
-                </div>
-                <div>
-                  <h1 style={{ fontSize: '1.4rem', fontWeight: '700', color: '#202124', margin: '0 0 5px' }}>{jugador.name}</h1>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {jugador.posicion_futbol5  && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px', fontWeight: '500' }}>F5: {jugador.posicion_futbol5}</span>}
-                    {jugador.posicion_futbol7  && <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '500' }}>F7: {jugador.posicion_futbol7}</span>}
-                    {jugador.posicion_futbol11 && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px', fontWeight: '500' }}>F11: {jugador.posicion_futbol11}</span>}
-                    <span style={{ fontSize: '.72rem', color: '#fff', background: '#1a73e8', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>{nivelLabel}</span>
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                {!editando ? (
-                  <button onClick={handleEditar}
-                    style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem', fontWeight: '500' }}>
-                    <Pencil size={14}/> Editar datos
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={handleGuardar} disabled={guardando}
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#1e8e3e', border: 'none', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500', opacity: guardando ? .7 : 1 }}>
-                      <Check size={14}/> {guardando ? 'Guardando...' : 'Guardar'}
-                    </button>
-                    <button onClick={() => setEditando(false)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
-                      <X size={14}/> Cancelar
-                    </button>
-                  </>
-                )}
-              </div>
+      {/* Header */}
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
+          {/* Foto perfil con botón upload */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#f1f3f4', border: `3px solid ${estadoColor}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {jugador.photo_face_url
+                ? <img src={jugador.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                : jugador.photo_url
+                ? <img src={jugador.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
+                : <User size={36} color="#9aa0a6"/>}
             </div>
+            <label style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '26px', height: '26px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,.2)' }}>
+              <Camera size={12} color="#fff"/>
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'cara')} disabled={uploading.cara}/>
+            </label>
+          </div>
 
-            {!editando ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                {[
-                  { l: 'Ciudad',           v: jugador.city || '—' },
-                  { l: 'Género',           v: jugador.genero || '—' },
-                  { l: 'Edad',             v: edad ? `${edad} años` : '—' },
-                  { l: 'Cédula',           v: jugador.numero_cedula || '—' },
-                  { l: 'Teléfono',         v: jugador.telefono || '—' },
-                  { l: 'Fecha nacimiento', v: jugador.fecha_nacimiento ? new Date(jugador.fecha_nacimiento+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}) : '—' },
-                ].map(({ l, v }) => (
-                  <div key={l}>
-                    <div style={{ fontSize: '.7rem', color: '#9aa0a6', fontWeight: '500' }}>{l}</div>
-                    <div style={{ fontSize: '.875rem', color: '#202124', fontWeight: '500', marginTop: '1px' }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div><label style={lbl}>Nombre *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp}/></div>
-                  <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp}/></div>
-                  <div><label style={lbl}>Cédula</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp}/></div>
-                  <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp}/></div>
-                  <div>
-                    <label style={lbl}>Género</label>
-                    <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
-                      <option value="">Seleccionar</option>
-                      {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                  </div>
-                  <div><label style={lbl}>Fecha nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                  {Object.entries(POSICIONES).map(([modalidad, posiciones]) => {
-                    const key = `posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`
-                    return (
-                      <div key={modalidad}>
-                        <label style={lbl}>{modalidad}</label>
-                        <select value={form[key]||''} onChange={e => setForm(f=>({...f,[key]:e.target.value}))} style={inp}>
-                          <option value="">No juega</option>
-                          {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+          {/* Info */}
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+              <h1 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#202124', margin: 0 }}>{jugador.name}</h1>
+              <span style={{ fontSize: '.72rem', fontWeight: '700', color: estadoColor, background: estadoBg, borderRadius: '20px', padding: '3px 10px' }}>{estadoLabel}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368', marginBottom: '8px' }}>
+              {jugador.numero_cedula && <span>🪪 {jugador.numero_cedula}</span>}
+              {jugador.telefono      && <span>📞 {jugador.telefono}</span>}
+              {jugador.city          && <span>📍 {jugador.city}</span>}
+              {jugador.genero        && <span>👤 {jugador.genero}</span>}
+              {jugador.fecha_nacimiento && <span>🎂 {new Date(jugador.fecha_nacimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
+            </div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {jugador.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 9px' }}>F5: {jugador.posicion_futbol5}</span>}
+              {jugador.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 9px' }}>F7: {jugador.posicion_futbol7}</span>}
+              {jugador.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 9px' }}>F11: {jugador.posicion_futbol11}</span>}
+            </div>
+          </div>
+
+          {/* Botones acción */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+            <button onClick={() => setModalMem(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: activo ? '#f1f3f4' : '#1e8e3e', border: activo ? '1px solid #dadce0' : 'none', borderRadius: '8px', cursor: 'pointer', color: activo ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '600' }}>
+              <CreditCard size={14}/> {!jugador.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
+            </button>
+            {activo && (
+              <button onClick={handleDesactivar}
+                style={{ padding: '8px 16px', background: 'none', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}>
+                Desactivar
+              </button>
+            )}
+            {jugador.telefono && (
+              <button onClick={abrirWhatsApp}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#25D366', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>
+                <MessageCircle size={14}/> WhatsApp
+              </button>
             )}
           </div>
+        </div>
 
-          {/* Stats rápidas */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-            {[
-              { icon: <Trophy size={18} color="#f9a825"/>,        label: esPortero ? 'Goles rec.' : 'Goles',  value: stats?.goles    ?? 0,                        color: '#f9a825', bg: '#fffde7' },
-              { icon: <Target size={18} color="#1a73e8"/>,        label: 'Partidos', value: stats?.pj       ?? 0,                        color: '#1a73e8', bg: '#e8f0fe' },
-              { icon: <TrendingUp size={18} color="#1e8e3e"/>,    label: 'Victorias',value: stats?.pg       ?? 0,                        color: '#1e8e3e', bg: '#e6f4ea' },
-              { icon: <AlertTriangle size={18} color="#d93025"/>, label: 'Tarjetas', value: (stats?.amarillas??0)+(stats?.rojas??0),     color: '#d93025', bg: '#fce8e6' },
-            ].map(({ icon, label, value, color, bg }) => (
-              <div key={label} style={{ background: bg, border: `1px solid ${color}22`, borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>{icon}</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: '800', color, lineHeight: 1 }}>{value}</div>
-                <div style={{ fontSize: '.65rem', color, opacity: .7, fontWeight: '600', marginTop: '2px' }}>{label.toUpperCase()}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Progreso de nivel */}
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>Progreso de nivel</span>
-              <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>{stats?.pj || 0} PJ jugados</span>
+        {/* Info membresía */}
+        {jugador.fecha_vencimiento && (
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f3f4', display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '.78rem' }}>
+            <div><span style={{ color: '#9aa0a6' }}>Meses pagados: </span><span style={{ fontWeight: '600', color: '#202124' }}>{jugador.meses_pagados || 0}</span></div>
+            {jugador.fecha_pago && <div><span style={{ color: '#9aa0a6' }}>Último pago: </span><span style={{ fontWeight: '600', color: '#202124' }}>{new Date(jugador.fecha_pago).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>}
+            <div>
+              <span style={{ color: '#9aa0a6' }}>Vencimiento: </span>
+              <span style={{ fontWeight: '600', color: vencida ? '#d93025' : porVencer ? '#e8710a' : '#1e8e3e' }}>
+                {new Date(jugador.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
+                {dias !== null && dias > 0 && ` (${dias} días)`}
+                {vencida && ' (vencida)'}
+              </span>
             </div>
-            {(() => {
-              const pj       = stats?.pj || 0
-              const meta     = pj < 10 ? 10 : pj < 25 ? 25 : 100
-              const base     = pj < 10 ?  0 : pj < 25 ? 10 : 25
-              const progreso = Math.min(((pj-base)/(meta-base))*100, 100)
-              const siguiente = pj < 10 ? 'Nivel 2' : pj < 25 ? 'Nivel 3' : '¡Máximo!'
-              return (
-                <>
-                  <div style={{ background: '#f1f3f4', borderRadius: '6px', height: '8px', marginBottom: '6px' }}>
-                    <div style={{ height: '100%', borderRadius: '6px', width: `${progreso}%`, background: 'linear-gradient(90deg,#1a73e8,#9955ff)', transition: 'width .5s' }}/>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '.7rem', color: '#9aa0a6' }}>{nivelLabel}</span>
-                    <span style={{ fontSize: '.7rem', color: '#1a73e8', fontWeight: '500' }}>{siguiente} — {Math.max(0,meta-pj)} PJ restantes</span>
-                  </div>
-                </>
-              )
-            })()}
           </div>
+        )}
+
+        {/* Fotos y documentos */}
+        <div style={{ marginTop: '14px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: '#1a73e8', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.photo_url ? '#1a73e8' : '#dadce0'}`, borderRadius: '8px', background: jugador.photo_url ? '#e8f0fe' : '#fff' }}>
+            <Camera size={13}/> {uploading.tarjeta ? 'Subiendo...' : jugador.photo_url ? '✓ Foto tarjeta' : 'Foto tarjeta'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'tarjeta')} disabled={uploading.tarjeta}/>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: '#1e8e3e', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.photo_face_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px', background: jugador.photo_face_url ? '#e6f4ea' : '#fff' }}>
+            <User size={13}/> {uploading.cara ? 'Subiendo...' : jugador.photo_face_url ? '✓ Foto perfil' : 'Foto perfil'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'cara')} disabled={uploading.cara}/>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: jugador.cedula_frontal_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.cedula_frontal_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px' }}>
+            <Upload size={13}/> {uploading.frontal ? 'Subiendo...' : jugador.cedula_frontal_url ? '✓ Cédula frontal' : 'Cédula frontal'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(e.target.files[0], 'frontal')} disabled={uploading.frontal}/>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: jugador.cedula_trasera_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.cedula_trasera_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px' }}>
+            <Upload size={13}/> {uploading.trasera ? 'Subiendo...' : jugador.cedula_trasera_url ? '✓ Cédula trasera' : 'Cédula trasera'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(e.target.files[0], 'trasera')} disabled={uploading.trasera}/>
+          </label>
         </div>
       </div>
 
-      {/* TABS */}
+      {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding: '7px 20px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
+            style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* TAB RESUMEN */}
+      {/* RESUMEN */}
       {tab === 'resumen' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>Rendimiento general</div>
-            {(stats?.pj||0) === 0 ? (
-              <div style={{ textAlign: 'center', padding: '24px', color: '#9aa0a6', fontSize: '.875rem' }}>Sin partidos registrados</div>
-            ) : (
-              <>
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '.75rem', color: '#5f6368' }}>Resultados ({stats.pj} PJ)</span>
-                    <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>{stats.eficacia}% efectividad</span>
-                  </div>
-                  <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', height: '12px' }}>
-                    <div style={{ width: `${(stats.pg/stats.pj)*100}%`, background: '#1e8e3e' }}/>
-                    <div style={{ width: `${(stats.pe/stats.pj)*100}%`, background: '#f9a825' }}/>
-                    <div style={{ width: `${(stats.pp/stats.pj)*100}%`, background: '#d93025' }}/>
-                  </div>
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
-                    {[{l:`${stats.pg} V`,c:'#1e8e3e'},{l:`${stats.pe} E`,c:'#f9a825'},{l:`${stats.pp} D`,c:'#d93025'}].map(({l,c}) => (
-                      <div key={l} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: c }}/>
-                        <span style={{ fontSize: '.7rem', color: '#5f6368' }}>{l}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {[
-                  { l: esPortero ? 'Goles recibidos' : 'Goles anotados', v: stats.goles    },
-                  { l: esPortero ? 'Promedio recibidos/PJ' : 'Goles por partido', v: stats.promedio },
-                  { l: 'Faltas totales',    v: stats.faltas   },
-                ].map(({l,v},i,arr) => (
-                  <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i<arr.length-1?'1px solid #f1f3f4':'none' }}>
-                    <span style={{ fontSize: '.8rem', color: '#5f6368' }}>{l}</span>
-                    <span style={{ fontSize: '.875rem', fontWeight: '600', color: '#202124' }}>{v}</span>
-                  </div>
-                ))}
-              </>
-            )}
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+            <StatBox label="Partidos"   value={stats?.pj || 0}       color="#1a73e8"/>
+            <StatBox label="Ganados"    value={stats?.pg || 0}       color="#1e8e3e"/>
+            <StatBox label="Empatados"  value={stats?.pe || 0}       color="#e8710a"/>
+            <StatBox label="Perdidos"   value={stats?.pp || 0}       color="#d93025"/>
+            <StatBox label="Eficacia"   value={`${stats?.eficacia || 0}%`} color="#6c35de"/>
+            <StatBox label={esPortero ? 'Goles recibidos' : 'Goles'} value={esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0)} color="#e8710a"/>
+            <StatBox label="Mejor racha" value={stats?.maxRacha || 0} color="#1e8e3e"/>
+            <StatBox label="Torneos"    value={torneos.length}       color="#1a73e8"/>
           </div>
 
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>Disciplina</div>
+          {/* Cédulas */}
+          {(jugador.cedula_frontal_url || jugador.cedula_trasera_url) && (
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '12px' }}>Documentos</div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {jugador.cedula_frontal_url && (
+                  <div>
+                    <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Cédula frontal</div>
+                    <img src={jugador.cedula_frontal_url} style={{ height: '100px', borderRadius: '8px', border: '1px solid #e8eaed', objectFit: 'cover', cursor: 'pointer' }} onClick={() => window.open(jugador.cedula_frontal_url, '_blank')}/>
+                  </div>
+                )}
+                {jugador.cedula_trasera_url && (
+                  <div>
+                    <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Cédula trasera</div>
+                    <img src={jugador.cedula_trasera_url} style={{ height: '100px', borderRadius: '8px', border: '1px solid #e8eaed', objectFit: 'cover', cursor: 'pointer' }} onClick={() => window.open(jugador.cedula_trasera_url, '_blank')}/>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STATS */}
+      {tab === 'stats' && (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+          {stats?.pj === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#9aa0a6' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
+              <div>Sin partidos jugados aún</div>
+            </div>
+          ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
-                {l:'Tarjetas amarillas',v:stats?.amarillas??0,color:'#f9a825',bg:'#fffde7'},
-                {l:'Tarjetas azules',   v:stats?.azules??0,   color:'#4488ff',bg:'#e8f0fe'},
-                {l:'Tarjetas rojas',    v:stats?.rojas??0,    color:'#d93025',bg:'#fce8e6'},
-              ].map(({l,v,color,bg}) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: bg, borderRadius: '8px' }}>
-                  <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '500' }}>{l}</span>
-                  <span style={{ fontSize: '1.1rem', fontWeight: '800', color }}>{v}</span>
+                { label: 'Partidos jugados',          value: stats?.pj,                                        color: '#1a73e8', pct: 100 },
+                { label: 'Victorias',                 value: stats?.pg,                                        color: '#1e8e3e', pct: stats?.pj > 0 ? (stats.pg / stats.pj) * 100 : 0 },
+                { label: 'Empates',                   value: stats?.pe,                                        color: '#e8710a', pct: stats?.pj > 0 ? (stats.pe / stats.pj) * 100 : 0 },
+                { label: 'Derrotas',                  value: stats?.pp,                                        color: '#d93025', pct: stats?.pj > 0 ? (stats.pp / stats.pj) * 100 : 0 },
+                { label: esPortero ? 'Goles recibidos' : 'Goles anotados', value: esPortero ? stats?.recibidos : stats?.goles, color: '#e8710a', pct: null },
+                { label: 'Eficacia',                  value: `${stats?.eficacia || 0}%`,                       color: '#6c35de', pct: stats?.eficacia },
+                { label: 'Mejor racha de victorias',  value: stats?.maxRacha,                                  color: '#1e8e3e', pct: null },
+              ].map(row => (
+                <div key={row.label}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '.8rem', color: '#5f6368' }}>{row.label}</span>
+                    <span style={{ fontSize: '.8rem', fontWeight: '700', color: row.color }}>{row.value}</span>
+                  </div>
+                  {row.pct !== null && (
+                    <div style={{ background: '#f1f3f4', borderRadius: '6px', height: '6px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, row.pct)}%`, background: row.color, borderRadius: '6px', transition: 'width .4s' }}/>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
-
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', gridColumn: '1 / -1' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>Posiciones por modalidad</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-              {[
-                {mod:'Fútbol 5', pos:jugador.posicion_futbol5, color:'#1a73e8',bg:'#e8f0fe'},
-                {mod:'Fútbol 7', pos:jugador.posicion_futbol7, color:'#1e8e3e',bg:'#e6f4ea'},
-                {mod:'Fútbol 11',pos:jugador.posicion_futbol11,color:'#e8710a',bg:'#fce8d9'},
-              ].map(({mod,pos,color,bg}) => (
-                <div key={mod} style={{ background: pos?bg:'#f8f9fa', borderRadius: '10px', padding: '14px', textAlign: 'center', border: pos?`1px solid ${color}22`:'1px solid #e8eaed' }}>
-                  <div style={{ fontSize: '.7rem', color: pos?color:'#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>{mod}</div>
-                  <div style={{ fontSize: '.9rem', fontWeight: '700', color: pos?color:'#dadce0' }}>{pos||'No juega'}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* TAB HISTORIAL */}
-      {tab === 'historial' && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 60px 44px 44px 44px 44px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
-            <div>PARTIDO</div>
-            <div style={{textAlign:'center'}}>EQUIPO</div>
-            <div style={{textAlign:'center'}}>RES</div>
-            <div style={{textAlign:'center',color:'#f9a825'}}>⚽</div>
-            <div style={{textAlign:'center',color:'#f9a825'}}>🟨</div>
-            <div style={{textAlign:'center',color:'#4488ff'}}>🟦</div>
-            <div style={{textAlign:'center',color:'#d93025'}}>🟥</div>
-          </div>
-          {historial.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Sin partidos registrados</div>
-          ) : historial.map((h,i) => {
-            const m  = h.matches
-            const rc = h.team_result==='win'?'#1e8e3e':h.team_result==='draw'?'#f9a825':'#d93025'
-            const rl = h.team_result==='win'?'V':h.team_result==='draw'?'E':'D'
-            const fecha = m?.played_at ? new Date(m.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}) : '—'
-            return (
-              <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr 130px 60px 44px 44px 44px 44px', padding: '12px 16px', borderBottom: i<historial.length-1?'1px solid #f1f3f4':'none', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>{m?.home?.name} vs {m?.away?.name}</div>
-                  <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '2px' }}>{fecha} · {h.tournaments?.name||'—'}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-                  {h.teams?.logo_url && <img src={h.teams.logo_url} style={{ width: '16px', height: '16px', objectFit: 'contain' }}/>}
-                  <span style={{ fontSize: '.72rem', color: '#5f6368' }}>{h.teams?.name||'—'}</span>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ fontSize: '.8rem', fontWeight: '700', color: rc, background: `${rc}18`, borderRadius: '6px', padding: '2px 10px' }}>{rl}</span>
-                </div>
-                <div style={{ textAlign: 'center', fontWeight: '700', color: '#f9a825', fontSize: '.875rem' }}>{h.goals_scored||'—'}</div>
-                <div style={{ textAlign: 'center', fontWeight: '700', color: '#f9a825', fontSize: '.875rem' }}>{h.yellow_cards||'—'}</div>
-                <div style={{ textAlign: 'center', fontWeight: '700', color: '#4488ff', fontSize: '.875rem' }}>{h.blue_cards  ||'—'}</div>
-                <div style={{ textAlign: 'center', fontWeight: '700', color: '#d93025', fontSize: '.875rem' }}>{h.red_cards   ||'—'}</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* TAB TORNEOS */}
+      {/* TORNEOS */}
       {tab === 'torneos' && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+        <div>
           {torneos.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>
-              <Trophy size={36} style={{ opacity: .3, display: 'block', margin: '0 auto 8px' }}/>
-              Sin torneos registrados
+            <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🏆</div>
+              <div>No está inscrito en torneos activos</div>
             </div>
-          ) : torneos.map((t,i) => {
-            const sT  = historial.filter(h => h.tournament_id === t.tournament_id)
-            const gT  = sT.reduce((s,h) => s+(h.goals_scored||0), 0)
-            const pjT = sT.length
-            const pgT = sT.filter(h => h.team_result==='win').length
-            return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: i<torneos.length-1?'1px solid #f1f3f4':'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Trophy size={18} color="#1a73e8"/>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{t.tournaments?.name}</div>
-                    <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {t.tournaments?.modalidad && <span style={{ color: '#1a73e8', background: '#e8f0fe', borderRadius: '8px', padding: '1px 6px' }}>{t.tournaments.modalidad}</span>}
-                      {t.tournaments?.season && <span>{t.tournaments.season}</span>}
-                      {t.teams?.name && <span>· {t.teams.name}</span>}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '20px', textAlign: 'center', flexShrink: 0 }}>
-                  {[{l:'PJ',v:pjT,c:'#1a73e8'},{l:esPortero?'REC':'GOL',v:gT,c:'#f9a825'},{l:'V',v:pgT,c:'#1e8e3e'}].map(({l,v,c}) => (
-                    <div key={l}>
-                      <div style={{ fontSize: '1.1rem', fontWeight: '700', color: c }}>{v}</div>
-                      <div style={{ fontSize: '.65rem', color: '#9aa0a6', fontWeight: '500' }}>{l}</div>
-                    </div>
-                  ))}
-                </div>
+          ) : torneos.map(t => (
+            <div key={t.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}
+              onClick={() => navigate(`/admin/torneos/${t.tournament_id}`)}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#f1f3f4', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {t.tournaments?.logo_url ? <img src={t.tournaments.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span style={{ fontSize: '1.2rem' }}>🏆</span>}
               </div>
-            )
-          })}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{t.tournaments?.name}</div>
+                <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px' }}>{[t.tournaments?.modalidad, t.tournaments?.season].filter(Boolean).join(' · ')}</div>
+              </div>
+              {t.teams && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {t.teams.logo_url && <img src={t.teams.logo_url} style={{ width: '24px', height: '24px', objectFit: 'contain' }}/>}
+                  <span style={{ fontSize: '.78rem', color: '#5f6368' }}>{t.teams.name}</span>
+                </div>
+              )}
+              <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 8px' }}>Activo</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* TARJETA */}
+      {tab === 'tarjeta' && (
+        <div style={{ maxWidth: '380px', margin: '0 auto' }}>
+          <div style={{ background: '#07070e', borderRadius: '16px', padding: '20px' }}>
+            <PlayerCard
+              playerName={jugador.name?.toUpperCase().split(' ')[0] || 'JUGADOR'}
+              stats={cardStats}
+              cardType={jugador.card_type || 'nivel1_verde'}
+              esPortero={esPortero}
+              photoUrlExterno={jugador.photo_url || null}
+              hideShields={true}
+            />
+          </div>
+          <div style={{ marginTop: '12px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '12px 16px', fontSize: '.78rem', color: '#5f6368', display: 'flex', justifyContent: 'space-between' }}>
+            <span>Tarjeta activa: <b style={{ color: '#202124' }}>{jugador.card_type || 'nivel1_verde'}</b></span>
+            <span>Tarjetas vistas: <b style={{ color: '#1a73e8' }}>{(jugador.tarjetas_vistas || []).length}</b></span>
+          </div>
         </div>
       )}
     </div>

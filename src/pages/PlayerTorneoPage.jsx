@@ -10,14 +10,13 @@ const TABS = [
 ]
 
 export default function PlayerTorneoPage() {
-  const { id }    = useParams()
-  const navigate  = useNavigate()
+  const { id }   = useParams()
+  const navigate = useNavigate()
 
   const [torneo,     setTorneo]     = useState(null)
   const [equipos,    setEquipos]    = useState([])
   const [partidos,   setPartidos]   = useState([])
   const [goleadores, setGoleadores] = useState([])
-  const [jugadores,  setJugadores]  = useState([])
   const [loading,    setLoading]    = useState(true)
   const [tab,        setTab]        = useState('posiciones')
   const [miEquipoId, setMiEquipoId] = useState(null)
@@ -31,11 +30,16 @@ export default function PlayerTorneoPage() {
 
     const { data: player } = await supabase.from('players').select('id').eq('user_id', user.id).single()
     if (player) {
-      const { data: reg } = await supabase.from('tournament_player_registrations').select('team_id').eq('tournament_id', id).eq('player_id', player.id).single()
+      const { data: reg } = await supabase
+        .from('tournament_player_registrations')
+        .select('team_id')
+        .eq('tournament_id', id)
+        .eq('player_id', player.id)
+        .single()
       if (reg) setMiEquipoId(reg.team_id)
     }
 
-    await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos(), fetchGoleadores(), fetchJugadores()])
+    await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos(), fetchGoleadores()])
     setLoading(false)
   }
 
@@ -59,13 +63,13 @@ export default function PlayerTorneoPage() {
   }
 
   async function fetchGoleadores() {
-    const { data } = await supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).order('total_goals', { ascending: false })
+    const { data } = await supabase
+      .from('goleadores_por_torneo')
+      .select('*')
+      .eq('tournament_id', id)
+      .gt('total_goals', 0)
+      .order('total_goals', { ascending: false })
     setGoleadores(data || [])
-  }
-
-  async function fetchJugadores() {
-    const { data } = await supabase.from('tournament_player_registrations').select('*, players(*)').eq('tournament_id', id).eq('activo', true)
-    setJugadores(data || [])
   }
 
   if (loading) return (
@@ -85,19 +89,23 @@ export default function PlayerTorneoPage() {
   equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
   partidos.filter(p => p.status === 'finished').forEach(p => {
     if (tabla[p.home_team_id]) {
-      tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
+      tabla[p.home_team_id].pj++
+      tabla[p.home_team_id].gf += p.home_score || 0
+      tabla[p.home_team_id].gc += p.away_score || 0
       if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3 }
       else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += 1 }
       else                                     tabla[p.home_team_id].pp++
     }
     if (tabla[p.away_team_id]) {
-      tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score || 0; tabla[p.away_team_id].gc += p.home_score || 0
+      tabla[p.away_team_id].pj++
+      tabla[p.away_team_id].gf += p.away_score || 0
+      tabla[p.away_team_id].gc += p.home_score || 0
       if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += 3 }
       else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += 1 }
       else                                     tabla[p.away_team_id].pp++
     }
   })
-  const tablaOrdenada = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+  const tablaOrdenada      = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
 
@@ -110,13 +118,11 @@ export default function PlayerTorneoPage() {
           style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
           <ArrowLeft size={18}/>
         </button>
-
         <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {torneo.logo_url
             ? <img src={torneo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/>
             : <span style={{ fontSize: '1.2rem' }}>🏆</span>}
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{torneo.name}</div>
           <div style={{ display: 'flex', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
@@ -124,7 +130,6 @@ export default function PlayerTorneoPage() {
             {torneo.season    && <span style={{ fontSize: '.68rem', color: '#5f6368' }}>{torneo.season}</span>}
           </div>
         </div>
-
         <div style={{ fontSize: '.72rem', color: '#5f6368', flexShrink: 0 }}>{equipos.length} equipos</div>
       </div>
 
@@ -132,22 +137,15 @@ export default function PlayerTorneoPage() {
       <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{
-              padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400',
-              color: tab === t.id ? '#1a73e8' : '#5f6368',
-              borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent',
-              transition: 'all .15s', whiteSpace: 'nowrap',
-            }}>
+            style={{ padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', transition: 'all .15s', whiteSpace: 'nowrap' }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* Contenido */}
       <div style={{ padding: '16px', maxWidth: '700px', margin: '0 auto' }}>
 
-        {/* POSICIONES */}
+        {/* ── POSICIONES ── */}
         {tab === 'posiciones' && (
           <div>
             {tablaOrdenada.length === 0 ? (
@@ -158,62 +156,77 @@ export default function PlayerTorneoPage() {
             ) : (
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 {/* Header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 36px 36px 36px 36px 36px 36px 44px', gap: '2px', padding: '10px 14px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '600', color: '#5f6368' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px 32px 32px 32px 32px 32px 40px', gap: '2px', padding: '10px 12px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.65rem', fontWeight: '600', color: '#5f6368' }}>
                   <div>#</div>
                   <div>Equipo</div>
-                  <div style={{ textAlign: 'center' }}>JG</div>
-                  <div style={{ textAlign: 'center' }}>JE</div>
-                  <div style={{ textAlign: 'center' }}>JP</div>
+                  <div style={{ textAlign: 'center' }}>PJ</div>
+                  <div style={{ textAlign: 'center' }}>PG</div>
+                  <div style={{ textAlign: 'center' }}>PE</div>
+                  <div style={{ textAlign: 'center' }}>PP</div>
                   <div style={{ textAlign: 'center' }}>GF</div>
                   <div style={{ textAlign: 'center' }}>GC</div>
-                  <div style={{ textAlign: 'center' }}>GD</div>
-                  <div style={{ textAlign: 'center', color: '#1a73e8' }}>P</div>
+                  <div style={{ textAlign: 'center', color: '#1a73e8' }}>PTS</div>
                 </div>
 
                 {tablaOrdenada.map((row, i) => {
                   const esMiEquipo = row.equipo.id === miEquipoId
                   const gd = row.gf - row.gc
                   return (
-                    <div key={row.equipo.id}
-                      style={{
-                        display: 'grid', gridTemplateColumns: '28px 1fr 36px 36px 36px 36px 36px 36px 44px', gap: '2px',
-                        padding: '11px 14px', borderBottom: i < tablaOrdenada.length - 1 ? '1px solid #f1f3f4' : 'none',
-                        alignItems: 'center',
-                        background: esMiEquipo ? '#e8f0fe' : '#fff',
-                        borderLeft: esMiEquipo ? '3px solid #1a73e8' : '3px solid transparent',
-                      }}>
-                      <div style={{ fontSize: '.78rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#9aa0a6' }}>
+                    <div key={row.equipo.id} style={{
+                      display: 'grid', gridTemplateColumns: '24px 1fr 32px 32px 32px 32px 32px 32px 40px', gap: '2px',
+                      padding: '10px 12px',
+                      borderBottom: i < tablaOrdenada.length - 1 ? '1px solid #f1f3f4' : 'none',
+                      alignItems: 'center',
+                      background: esMiEquipo ? '#e8f0fe' : '#fff',
+                      borderLeft: esMiEquipo ? '3px solid #1a73e8' : '3px solid transparent',
+                    }}>
+                      <div style={{ fontSize: '.75rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#bdbdbd' }}>
                         {i + 1}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {row.equipo.logo_url
                             ? <img src={row.equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/>
-                            : <Shield size={13} color="#9aa0a6"/>}
+                            : <Shield size={12} color="#9aa0a6"/>}
                         </div>
-                        <span style={{ fontSize: '.82rem', fontWeight: esMiEquipo ? '600' : '500', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: '.78rem', fontWeight: esMiEquipo ? '700' : '500', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {row.equipo.name}
                         </span>
                       </div>
-                      {[row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
-                        <div key={j} style={{ textAlign: 'center', fontSize: '.82rem', color: '#5f6368' }}>{v}</div>
+                      {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
+                        <div key={j} style={{ textAlign: 'center', fontSize: '.78rem', color: '#5f6368' }}>{v}</div>
                       ))}
-                      <div style={{ textAlign: 'center', fontSize: '.78rem', color: gd > 0 ? '#1e8e3e' : gd < 0 ? '#d93025' : '#5f6368', fontWeight: '500' }}>{gd > 0 ? '+' : ''}{gd}</div>
                       <div style={{ textAlign: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '.9rem', color: '#202124', background: esMiEquipo ? '#1a73e8' : '#f1f3f4', color: esMiEquipo ? '#fff' : '#202124', borderRadius: '6px', padding: '2px 8px' }}>{row.pts}</span>
+                        <span style={{
+                          fontWeight: '700', fontSize: '.88rem',
+                          color: esMiEquipo ? '#fff' : '#202124',
+                          background: esMiEquipo ? '#1a73e8' : '#f1f3f4',
+                          borderRadius: '6px', padding: '2px 7px',
+                        }}>{row.pts}</span>
                       </div>
                     </div>
                   )
                 })}
               </div>
             )}
+
+            {/* Leyenda */}
+            <div style={{ marginTop: '12px', display: 'flex', gap: '16px', padding: '10px 14px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', fontSize: '.68rem', color: '#5f6368' }}>
+              <span>PJ = Partidos Jugados</span>
+              <span>PG = Ganados</span>
+              <span>PE = Empates</span>
+              <span>PP = Perdidos</span>
+              <span>GF = Goles a Favor</span>
+              <span>GC = Goles en Contra</span>
+            </div>
           </div>
         )}
 
-        {/* PARTIDOS */}
+        {/* ── PARTIDOS ── */}
         {tab === 'partidos' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
+            {/* Próximos */}
             {partidosPendientes.length > 0 && (
               <div>
                 <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#5f6368', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -254,6 +267,7 @@ export default function PlayerTorneoPage() {
               </div>
             )}
 
+            {/* Resultados */}
             {partidosJugados.length > 0 && (
               <div>
                 <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#5f6368', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -267,9 +281,8 @@ export default function PlayerTorneoPage() {
                     const empate = esMiPartido && p.home_score === p.away_score
                     const perdi  = esMiPartido && !gane && !empate
                     const resultColor = gane ? '#1e8e3e' : empate ? '#e8710a' : perdi ? '#d93025' : '#1a73e8'
-                    const resultBg    = gane ? '#e6f4ea' : empate ? '#fce8d9' : perdi ? '#fce8e6' : '#e8f0fe'
-                    const resultLabel = gane ? 'G' : empate ? 'E' : perdi ? 'P' : ''
-
+                    const resultBg    = gane ? '#e6f4ea'  : empate ? '#fce8d9'  : perdi ? '#fce8e6'  : '#e8f0fe'
+                    const resultLabel = gane ? 'G'        : empate ? 'E'        : perdi ? 'P'        : ''
                     return (
                       <div key={p.id} style={{ padding: '12px 14px', borderBottom: i < partidosJugados.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
@@ -312,42 +325,61 @@ export default function PlayerTorneoPage() {
           </div>
         )}
 
-        {/* GOLEADORES */}
+        {/* ── GOLEADORES ── */}
         {tab === 'goleadores' && (
           <div>
             {goleadores.length === 0 ? (
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚽</div>
-                <div style={{ fontSize: '.875rem' }}>Sin estadísticas aún</div>
+                <div style={{ fontSize: '.875rem' }}>Sin goles aún</div>
               </div>
             ) : (
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 {/* Header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 1fr 50px', gap: '4px', padding: '10px 14px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '600', color: '#5f6368' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 36px 30px 30px 30px', gap: '2px', padding: '10px 12px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.65rem', fontWeight: '600', color: '#5f6368' }}>
                   <div>#</div>
                   <div>Jugador</div>
                   <div>Equipo</div>
-                  <div style={{ textAlign: 'center', color: '#1a73e8' }}>⚽ Goles</div>
+                  <div style={{ textAlign: 'center', color: '#1a73e8' }}>⚽</div>
+                  <div style={{ textAlign: 'center' }}>🟨</div>
+                  <div style={{ textAlign: 'center' }}>🟦</div>
+                  <div style={{ textAlign: 'center' }}>🟥</div>
                 </div>
+
                 {goleadores.map((g, i) => (
-                  <div key={`${g.player_id}-${g.team_id}`}
-                    style={{ display: 'grid', gridTemplateColumns: '32px 1fr 1fr 50px', gap: '4px', padding: '11px 14px', borderBottom: i < goleadores.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center' }}>
-                    <div style={{ fontSize: '.82rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#9aa0a6' }}>{i + 1}°</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div key={`${g.player_id}-${g.team_id}`} style={{
+                    display: 'grid', gridTemplateColumns: '28px 1fr 1fr 36px 30px 30px 30px', gap: '2px',
+                    padding: '11px 12px',
+                    borderBottom: i < goleadores.length - 1 ? '1px solid #f1f3f4' : 'none',
+                    alignItems: 'center',
+                  }}>
+                    <div style={{ fontSize: '.78rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#bdbdbd' }}>
+                      {i + 1}°
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
                       <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {g.photo_url ? <img src={g.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '.9rem' }}>👤</span>}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.player_name}</div>
-                        <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>{g.partidos_jugados} PJ</div>
+                        <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.player_name}</div>
+                        <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{g.partidos_jugados} PJ</div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
                       {g.team_logo && <img src={g.team_logo} style={{ width: '16px', height: '16px', objectFit: 'contain', flexShrink: 0 }}/>}
-                      <span style={{ fontSize: '.75rem', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.team_name}</span>
+                      <span style={{ fontSize: '.72rem', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.team_name}</span>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <span style={{ fontWeight: '700', fontSize: '1rem', color: i === 0 ? '#f9a825' : '#1a73e8' }}>{g.total_goals}</span>
+                      <span style={{ fontWeight: '700', fontSize: '.95rem', color: i === 0 ? '#f9a825' : '#1a73e8' }}>{g.total_goals}</span>
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_yellow || 0) > 0 ? '#f9a825' : '#bdbdbd', fontWeight: (g.total_yellow || 0) > 0 ? '600' : '400' }}>
+                      {g.total_yellow || 0}
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_blue || 0) > 0 ? '#1a73e8' : '#bdbdbd', fontWeight: (g.total_blue || 0) > 0 ? '600' : '400' }}>
+                      {g.total_blue || 0}
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_red || 0) > 0 ? '#d93025' : '#bdbdbd', fontWeight: (g.total_red || 0) > 0 ? '600' : '400' }}>
+                      {g.total_red || 0}
                     </div>
                   </div>
                 ))}

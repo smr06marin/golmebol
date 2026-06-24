@@ -777,6 +777,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           onClose={() => setFirmaModal(null)}/>
       )}
 
+      {/* Botón cerrar flotante */}
+      <button onClick={onClose} className="no-print"
+        style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998, width: '52px', height: '52px', borderRadius: '50%', background: '#d93025', border: '3px solid #fff', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.5)' }}>
+        <X size={22}/>
+      </button>
+
       {/* CRONÓMETRO FLOTANTE */}
       <div style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono?'50px':'20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono?'150px':'310px', userSelect: 'none' }}>
         <div onMouseDown={onDragStart} style={{ cursor: 'grab', padding: miniCrono?'8px 12px':'10px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -125,16 +125,16 @@ export default function PlayerCard({
   }
 
   const statsIzquierda = esPortero
-    ? [
-        { label: 'GOL-CON', value: stats.golesContra,       key: 'gc',   dot: true  },
-        { label: 'PROMEDI', value: stats.promedio,           key: 'prom', dot: true  },
-        { label: 'EFICACIA',value: `${stats.eficacia}%`,    key: 'efic', dot: false },
-      ]
-    : [
-        { label: 'GOLES',   value: stats.golesContra,        key: 'gc',   dot: true  },
-        { label: 'G/PJ',    value: stats.promedio,           key: 'prom', dot: true  },
-        { label: 'EFICACIA',value: `${stats.eficacia}%`,    key: 'efic', dot: false },
-      ]
+  ? [
+      { label: 'GC',      value: stats.golesContra,    key: 'gc',   dot: true  },
+      { label: 'GC/PJ',   value: stats.promedio,       key: 'prom', dot: true  },
+      { label: 'EFIC%',   value: `${stats.eficacia}%`, key: 'efic', dot: false },
+    ]
+  : [
+      { label: 'GOLES',   value: stats.golesContra,    key: 'gc',   dot: true  },
+      { label: 'G/PJ',    value: stats.promedio,       key: 'prom', dot: true  },
+      { label: 'EFIC%',   value: `${stats.eficacia}%`, key: 'efic', dot: false },
+    ]
 
   return (
     <div style={{

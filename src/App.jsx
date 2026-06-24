@@ -20,6 +20,7 @@ import AdminEquipoDetallePage from './pages/admin/AdminEquipoDetallePage'
 import AdminTorneoDetallePage from './pages/admin/AdminTorneoDetallePage'
 import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import AdminTarjetasPage from './pages/admin/AdminTarjetasPage'
+import PlayerApuestasPage from './pages/PlayerApuestasPage'
 
 // Ruta protegida para admin
 function ProtectedRoute({ children }) {
@@ -85,12 +86,29 @@ export default function App() {
           <Route path="calendario"      element={<AdminCalendarioPage/>}/>
           <Route path="sponsors"        element={<AdminSponsorsPage/>}/>
           <Route path="tarjetas" element={<AdminTarjetasPage/>}/>
+         
+        </Route>
+
+       {/* ── Panel Admin ── */}
+       <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>
+          <Route index                element={<AdminDashboard/>}/>
+          <Route path="crear"         element={<AdminCrearPage/>}/>
+          <Route path="torneos"       element={<AdminTorneosPage/>}/>
+          <Route path="torneos/:id"   element={<AdminTorneoDetallePage/>}/>
+          <Route path="equipos"       element={<AdminEquiposPage/>}/>
+          <Route path="equipos/:id"   element={<AdminEquipoDetallePage/>}/>
+          <Route path="jugadores"     element={<AdminJugadoresPage/>}/>
+          <Route path="jugadores/:id" element={<AdminJugadorDetallePage/>}/>
+          <Route path="calendario"    element={<AdminCalendarioPage/>}/>
+          <Route path="sponsors"      element={<AdminSponsorsPage/>}/>
+          <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
         </Route>
 
         {/* ── Portal jugador ── */}
-        <Route path="/jugador/login" element={<PlayerLoginPage/>}/>
-        <Route path="/jugador"       element={<PlayerRoute><PlayerHomePage/></PlayerRoute>}/>
+        <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
+        <Route path="/jugador"            element={<PlayerRoute><PlayerHomePage/></PlayerRoute>}/>
         <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
+        <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
 
       </Routes>
     </BrowserRouter>
