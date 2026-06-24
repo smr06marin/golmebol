@@ -22,7 +22,6 @@ const labelStyle = {
   display: 'block', marginBottom: '4px',
 }
 
-// Componente logo equipo con iniciales como fallback
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
   if (logo_url) return <img src={logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
@@ -56,8 +55,11 @@ export default function AdminTorneoDetallePage() {
   const [scoreAway,       setScoreAway]       = useState('')
   const [guardando,       setGuardando]       = useState(false)
 
-  const [editandoTorneo, setEditandoTorneo] = useState(false)
-  const [formTorneo,     setFormTorneo]     = useState({})
+  const [editandoTorneo,  setEditandoTorneo]  = useState(false)
+  const [formTorneo,      setFormTorneo]      = useState({})
+
+  const [editandoPartidoForm, setEditandoPartidoForm] = useState(null)
+  const [formEditPartido,     setFormEditPartido]     = useState({})
 
   const [subTab,          setSubTab]          = useState('partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
@@ -200,6 +202,17 @@ export default function AdminTorneoDetallePage() {
     showMsg('Torneo actualizado ✓')
   }
 
+  async function handleGuardarEditPartido() {
+    if (!formEditPartido.played_at || !formEditPartido.hora) return showMsg('Fecha y hora son obligatorias', 'error')
+    const { error } = await supabase.from('matches').update({
+      played_at: formEditPartido.played_at + 'T' + formEditPartido.hora + ':00-05:00',
+      location:  formEditPartido.location || null,
+      matchday:  formEditPartido.matchday ? parseInt(formEditPartido.matchday) : null,
+    }).eq('id', editandoPartidoForm.id)
+    if (error) showMsg('Error al guardar', 'error')
+    else { showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos() }
+  }
+
   function generarJornada() {
     if (!configJornada.fecha) return showMsg('Selecciona la fecha', 'error')
     if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
@@ -225,7 +238,7 @@ export default function AdminTorneoDetallePage() {
     if (fechaErr) { showMsg('Error al crear jornada', 'error'); setLoadingPartido(false); return }
     const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
       tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
-      played_at: `${configJornada.fecha}T${p.hora}:00`, location: p.cancha?.nombre || null,
+      played_at: `${configJornada.fecha}T${p.hora}:00-05:00`, location: p.cancha?.nombre || null,
       matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id, status: 'scheduled',
     }))
     const { error } = await supabase.from('matches').insert(inserts)
@@ -385,6 +398,47 @@ export default function AdminTorneoDetallePage() {
         </div>
       )}
 
+      {/* Modal editar partido */}
+      {editandoPartidoForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem', marginBottom: '6px' }}>Editar partido</div>
+            <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{editandoPartidoForm.home?.name} vs {editandoPartidoForm.away?.name}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>Fecha *</label>
+                  <input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Hora *</label>
+                  <input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/>
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Cancha</label>
+                <select value={formEditPartido.location || ''} onChange={e => setFormEditPartido(p => ({ ...p, location: e.target.value }))} style={inputStyle}>
+                  <option value="">Seleccionar...</option>
+                  {canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Jornada #</label>
+                <input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+              <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
+                Guardar cambios
+              </button>
+              <button onClick={() => setEditandoPartidoForm(null)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
+                <X size={16}/>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button onClick={() => navigate('/admin/torneos')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '20px' }}>
         <ArrowLeft size={16}/> Volver a torneos
       </button>
@@ -500,7 +554,7 @@ export default function AdminTorneoDetallePage() {
               {canchas.map(c => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#e8f0fe', borderRadius: '20px', padding: '3px 6px 3px 12px' }}>
                   <span style={{ fontSize: '.8rem', color: '#1a73e8' }}>{c.nombre}</span>
-                  <button onClick={() => handleEliminarCancha(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.75rem', padding: '0 3px', lineHeight: 1, display: 'flex', alignItems: 'center' }}>✕</button>
+                  <button onClick={() => handleEliminarCancha(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.75rem', padding: '0 3px', lineHeight: 1 }}>✕</button>
                 </div>
               ))}
               {canchas.length === 0 && <span style={{ fontSize: '.8rem', color: '#9aa0a6' }}>Sin canchas</span>}
@@ -584,7 +638,7 @@ export default function AdminTorneoDetallePage() {
                             <div style={{ width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
                               <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={32}/>
                             </div>
-                            <div>
+                            <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
                                 {p.matchday && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>J{p.matchday}</span>}
                                 <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.home?.name} vs {p.away?.name}</span>
@@ -598,7 +652,15 @@ export default function AdminTorneoDetallePage() {
                               <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={32}/>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }}>
+                            <button onClick={() => {
+                              const fecha = p.played_at ? p.played_at.substring(0, 10) : ''
+                              const hora  = p.played_at ? p.played_at.substring(11, 16) : ''
+                              setFormEditPartido({ played_at: fecha, hora, location: p.location || '', matchday: p.matchday || '' })
+                              setEditandoPartidoForm(p)
+                            }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
+                              ✏️
+                            </button>
                             <button onClick={() => setPlanillaPartido(p)} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>
                               <Check size={13}/> Resultado
                             </button>
