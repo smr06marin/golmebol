@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Newspaper, Zap, RefreshCw, Copy, Check, Trophy, Calendar } from 'lucide-react'
+import { Newspaper, Zap, RefreshCw, Copy, Check } from 'lucide-react'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
 
@@ -24,11 +24,12 @@ async function generarNoticia(prompt) {
 }
 
 function parseNoticia(texto) {
-  const lines    = texto.split('\n').filter(l => l.trim())
-  const titulo   = lines[0]?.replace(/^#+ /, '').trim() || 'Sin título'
-  const cuerpo   = lines.slice(1).join('\n').trim()
-  const hashMatch = texto.match(/#[\w]+/g)
-  const hashtags = hashMatch ? hashMatch.join(' ') : ''
+  const lines   = texto.split('\n').filter(l => l.trim())
+  const titulo  = lines[0]?.replace(/^#+ /, '').trim() || 'Sin título'
+  const resto   = lines.slice(1)
+  const hashIdx = resto.findLastIndex(l => l.includes('#'))
+  const hashtags = hashIdx >= 0 ? resto.slice(hashIdx).join(' ') : ''
+  const cuerpo  = (hashIdx >= 0 ? resto.slice(0, hashIdx) : resto).join('\n').trim()
   return { titulo, cuerpo, hashtags }
 }
 
@@ -43,8 +44,16 @@ export default function AdminNoticiasPage() {
   const [copiado,   setCopiado]   = useState(null)
   const [expanded,  setExpanded]  = useState(null)
 
-  useEffect(() => { fetchTorneos() }, [])
-  useEffect(() => { if (torneoId) { fetchPartidos(); fetchNoticias() } }, [torneoId])
+  // Esperar sesión antes de cargar
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) fetchTorneos()
+    })
+  }, [])
+
+  useEffect(() => {
+    if (torneoId) { fetchPartidos(); fetchNoticias() }
+  }, [torneoId])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -52,7 +61,11 @@ export default function AdminNoticiasPage() {
   }
 
   async function fetchTorneos() {
-    const { data } = await supabase.from('tournaments').select('id, name').order('created_at', { ascending: false })
+    const { data, error } = await supabase
+      .from('tournaments')
+      .select('id, name')
+      .order('created_at', { ascending: false })
+    if (error) { showMsg('Error cargando torneos: ' + error.message, 'error'); return }
     setTorneos(data || [])
     if (data?.length) setTorneoId(data[0].id)
   }
@@ -80,57 +93,59 @@ export default function AdminNoticiasPage() {
   async function handleGenerarPrePartido(partido) {
     setGenerando(partido.id + '_pre')
 
-    // Cargar datos históricos del enfrentamiento
+    // Historial de partidos jugados en el torneo
     const { data: histPartidos } = await supabase
       .from('matches')
-      .select('home_score, away_score, status, home:home_team_id(name), away:away_team_id(name), played_at')
+      .select('home_score, away_score, status, home:home_team_id(name), away:away_team_id(name)')
       .eq('tournament_id', torneoId)
       .eq('status', 'finished')
 
-    // Stats de jugadores de ambos equipos
+    // Stats goleadores local
     const { data: statsHome } = await supabase
       .from('player_match_stats')
       .select('goals_scored, players(name)')
       .eq('team_id', partido.home_team_id)
       .gt('goals_scored', 0)
 
+    // Stats goleadores visitante
     const { data: statsAway } = await supabase
       .from('player_match_stats')
       .select('goals_scored, players(name)')
       .eq('team_id', partido.away_team_id)
       .gt('goals_scored', 0)
 
-    // Tabla de posiciones actual
+    // Tabla de posiciones
     const tabla = {}
     partidos.filter(p => p.status === 'finished').forEach(p => {
       if (!tabla[p.home_team_id]) tabla[p.home_team_id] = { name: p.home?.name, pj: 0, pg: 0, pe: 0, pp: 0, pts: 0 }
       if (!tabla[p.away_team_id]) tabla[p.away_team_id] = { name: p.away?.name, pj: 0, pg: 0, pe: 0, pp: 0, pts: 0 }
-      tabla[p.home_team_id].pj++
-      tabla[p.away_team_id].pj++
-      if (p.home_score > p.away_score) { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3; tabla[p.away_team_id].pp++ }
+      tabla[p.home_team_id].pj++; tabla[p.away_team_id].pj++
+      if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3; tabla[p.away_team_id].pp++ }
       else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts++; tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts++ }
-      else { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += 3; tabla[p.home_team_id].pp++ }
+      else                                    { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += 3; tabla[p.home_team_id].pp++ }
     })
     const tablaOrdenada = Object.values(tabla).sort((a, b) => b.pts - a.pts)
 
-    // Historial directo entre los dos equipos
+    // Enfrentamientos directos
     const enfrentamientos = (histPartidos || []).filter(p =>
       (p.home?.name === partido.home?.name || p.away?.name === partido.home?.name) &&
       (p.home?.name === partido.away?.name || p.away?.name === partido.away?.name)
     )
 
-    // Goleadores top de cada equipo
-    const goleadoresHome = (statsHome || [])
-      .reduce((acc, s) => { const n = s.players?.name; if (n) acc[n] = (acc[n] || 0) + s.goals_scored; return acc }, {})
-    const goleadoresAway = (statsAway || [])
-      .reduce((acc, s) => { const n = s.players?.name; if (n) acc[n] = (acc[n] || 0) + s.goals_scored; return acc }, {})
+    // Top goleadores
+    const topHome = Object.entries(
+      (statsHome || []).reduce((acc, s) => { const n = s.players?.name; if (n) acc[n] = (acc[n]||0) + s.goals_scored; return acc }, {})
+    ).sort((a,b) => b[1]-a[1]).slice(0,3).map(([n,g]) => `${n} (${g} goles)`).join(', ') || 'Sin goles registrados'
 
-    const topHome = Object.entries(goleadoresHome).sort((a,b) => b[1]-a[1]).slice(0,3).map(([n,g]) => `${n} (${g} goles)`).join(', ')
-    const topAway = Object.entries(goleadoresAway).sort((a,b) => b[1]-a[1]).slice(0,3).map(([n,g]) => `${n} (${g} goles)`).join(', ')
+    const topAway = Object.entries(
+      (statsAway || []).reduce((acc, s) => { const n = s.players?.name; if (n) acc[n] = (acc[n]||0) + s.goals_scored; return acc }, {})
+    ).sort((a,b) => b[1]-a[1]).slice(0,3).map(([n,g]) => `${n} (${g} goles)`).join(', ') || 'Sin goles registrados'
 
-    const fecha = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'fecha por confirmar'
+    const fecha = partido.played_at
+      ? new Date(partido.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+      : 'fecha por confirmar'
 
-    const prompt = `Eres el periodista deportivo del torneo amateur de fútbol GOLMEBOL en Armenia, Quindío, Colombia. 
+    const prompt = `Eres el periodista deportivo del torneo amateur de fútbol GOLMEBOL en Armenia, Quindío, Colombia.
 Escribe una noticia de PRE-PARTIDO emocionante, apasionada y en español colombiano para redes sociales (Instagram/WhatsApp).
 
 PARTIDO: ${partido.home?.name} vs ${partido.away?.name}
@@ -138,53 +153,52 @@ FECHA: ${fecha}
 ${partido.location ? `CANCHA: ${partido.location}` : ''}
 
 TABLA DE POSICIONES ACTUAL:
-${tablaOrdenada.map((t, i) => `${i+1}. ${t.name} - ${t.pts} pts (${t.pg}G ${t.pe}E ${t.pp}P)`).join('\n')}
+${tablaOrdenada.length > 0 ? tablaOrdenada.map((t, i) => `${i+1}. ${t.name} - ${t.pts} pts (${t.pg}G ${t.pe}E ${t.pp}P)`).join('\n') : 'Torneo recién iniciado, sin resultados aún'}
 
 HISTORIAL DIRECTO ENTRE ESTOS EQUIPOS:
-${enfrentamientos.length === 0 ? 'Primer enfrentamiento entre estos equipos' : enfrentamientos.map(e => `${e.home?.name} ${e.home_score} - ${e.away_score} ${e.away?.name}`).join('\n')}
+${enfrentamientos.length === 0 ? 'Primer enfrentamiento entre estos equipos en este torneo' : enfrentamientos.map(e => `${e.home?.name} ${e.home_score} - ${e.away_score} ${e.away?.name}`).join('\n')}
 
 GOLEADORES DESTACADOS:
-- ${partido.home?.name}: ${topHome || 'Sin goles registrados'}
-- ${partido.away?.name}: ${topAway || 'Sin goles registrados'}
+- ${partido.home?.name}: ${topHome}
+- ${partido.away?.name}: ${topAway}
 
 Escribe:
 1. Un título llamativo en mayúsculas (máximo 10 palabras)
-2. Una noticia de 3-4 párrafos con: contexto del partido, situación en la tabla, rivalidad/historial, jugadores a seguir, predicción dramática
-3. Termina con 5 hashtags relevantes (#Golmebol #Armenia obligatorio)
+2. Una noticia de 3-4 párrafos con: contexto del partido, situación en la tabla, rivalidad o historial, jugadores a seguir, predicción dramática
+3. Termina con 5 hashtags (#Golmebol #Armenia obligatorio)
 
 Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses asteriscos ni markdown, solo texto plano con saltos de línea.`
 
     try {
       const texto = await generarNoticia(prompt)
-      console.log('RESPUESTA IA:', texto)
+      if (!texto) { showMsg('La IA no devolvió respuesta', 'error'); setGenerando(null); return }
+
       const { titulo, cuerpo, hashtags } = parseNoticia(texto)
 
-      // Verificar si ya existe una noticia pre-partido para este partido
       const { data: existente } = await supabase
         .from('noticias')
         .select('id')
         .eq('match_id', partido.id)
         .eq('tipo', 'pre_partido')
-        .single()
+        .maybeSingle()
 
       if (existente) {
         await supabase.from('noticias').update({ titulo, cuerpo, hashtags }).eq('id', existente.id)
       } else {
         await supabase.from('noticias').insert({
           tournament_id: torneoId,
-          match_id: partido.id,
-          tipo: 'pre_partido',
+          match_id:      partido.id,
+          tipo:          'pre_partido',
           titulo,
           cuerpo,
           hashtags,
         })
       }
 
-      showMsg('✅ Noticia de pre-partido generada')
+      showMsg('✅ Noticia generada')
       fetchNoticias()
     } catch (e) {
-      showMsg('Error al generar noticia', 'error')
-      console.error(e)
+      showMsg('Error al generar: ' + e.message, 'error')
     }
     setGenerando(null)
   }
@@ -204,11 +218,9 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
   }
 
   const pendientes = partidos.filter(p => p.status !== 'finished')
-  const jugados    = partidos.filter(p => p.status === 'finished')
-
-  const tipoLabel = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Semanal' }
-  const tipoColor = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de' }
-  const tipoBg    = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd' }
+  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Semanal' }
+  const tipoColor  = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de' }
+  const tipoBg     = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd' }
 
   return (
     <div>
@@ -224,26 +236,28 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Newspaper size={20} color="#1a73e8"/> Noticias del Torneo
           </h1>
-          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>Generadas automáticamente con IA · Listas para Instagram y WhatsApp</p>
+          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>Generadas con IA · Listas para Instagram y WhatsApp</p>
         </div>
         <select value={torneoId} onChange={e => setTorneoId(e.target.value)}
           style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', cursor: 'pointer' }}>
+          {torneos.length === 0 && <option value="">Cargando...</option>}
           {torneos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '20px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px', alignItems: 'start' }}>
 
-        {/* Panel izquierdo — Generar noticias */}
+        {/* Panel izquierdo */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-          {/* Pre-partido */}
           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Zap size={16} color="#1a73e8"/> Noticias Pre-partido
             </div>
-            <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '12px' }}>Genera una noticia antes de cada partido</div>
-            {pendientes.length === 0 ? (
+            <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '12px' }}>Genera antes de cada partido</div>
+
+            {torneos.length === 0 ? (
+              <div style={{ fontSize: '.78rem', color: '#9aa0a6', textAlign: 'center', padding: '16px' }}>Cargando torneos...</div>
+            ) : pendientes.length === 0 ? (
               <div style={{ fontSize: '.78rem', color: '#9aa0a6', textAlign: 'center', padding: '16px' }}>Sin partidos pendientes</div>
             ) : pendientes.map(p => {
               const yaGenerada = noticias.some(n => n.match_id === p.id && n.tipo === 'pre_partido')
@@ -259,14 +273,15 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
                   </div>
                   <button onClick={() => handleGenerarPrePartido(p)} disabled={cargando}
                     style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', background: cargando ? '#f1f3f4' : yaGenerada ? '#e6f4ea' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: cargando ? 'not-allowed' : 'pointer', color: cargando ? '#9aa0a6' : yaGenerada ? '#1e8e3e' : '#fff', fontSize: '.72rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                    {cargando ? <><RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }}/> Generando...</> : yaGenerada ? '↻ Regenerar' : <><Zap size={12}/> Generar</>}
+                    {cargando
+                      ? <><RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }}/> Generando...</>
+                      : yaGenerada ? '↻ Regenerar' : <><Zap size={12}/> Generar</>}
                   </button>
                 </div>
               )
             })}
           </div>
 
-          {/* Info */}
           <div style={{ background: '#e8f0fe', borderRadius: '10px', padding: '12px 14px' }}>
             <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#1a73e8', marginBottom: '4px' }}>💡 Próximamente</div>
             <div style={{ fontSize: '.72rem', color: '#5f6368', lineHeight: 1.5 }}>
@@ -277,7 +292,7 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
           </div>
         </div>
 
-        {/* Panel derecho — Lista de noticias */}
+        {/* Panel derecho — noticias */}
         <div>
           {loading ? (
             <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando noticias...</div>
@@ -285,7 +300,7 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>
               <Newspaper size={40} style={{ opacity: .2, marginBottom: '12px', display: 'block', margin: '0 auto 12px' }}/>
               <div style={{ fontWeight: '500', marginBottom: '4px' }}>Sin noticias generadas aún</div>
-              <div style={{ fontSize: '.78rem' }}>Genera la primera noticia pre-partido desde el panel izquierdo</div>
+              <div style={{ fontSize: '.78rem' }}>Genera la primera desde el panel izquierdo</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -294,7 +309,6 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
                 const isExpand = expanded === n.id
                 return (
                   <div key={n.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                    {/* Header noticia */}
                     <div style={{ padding: '14px 16px', borderBottom: isExpand ? '1px solid #f1f3f4' : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -325,17 +339,15 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
                         </div>
                       </div>
                     </div>
-
-                    {/* Cuerpo expandido */}
                     {isExpand && (
                       <div style={{ padding: '16px', background: '#fafafa' }}>
                         <div style={{ fontSize: '.85rem', color: '#202124', lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: '12px' }}>
                           {n.cuerpo}
                         </div>
                         {n.hashtags && (
-                          <div style={{ fontSize: '.8rem', color: '#1a73e8', fontWeight: '500' }}>{n.hashtags}</div>
+                          <div style={{ fontSize: '.8rem', color: '#1a73e8', fontWeight: '500', marginBottom: '10px' }}>{n.hashtags}</div>
                         )}
-                        <div style={{ marginTop: '12px', padding: '10px', background: '#e8f0fe', borderRadius: '8px', fontSize: '.72rem', color: '#1a73e8' }}>
+                        <div style={{ padding: '10px', background: '#e8f0fe', borderRadius: '8px', fontSize: '.72rem', color: '#1a73e8' }}>
                           💡 Copia esta noticia y pégala directo en Instagram o WhatsApp
                         </div>
                       </div>
