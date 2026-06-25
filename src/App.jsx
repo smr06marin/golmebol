@@ -18,11 +18,12 @@ import AdminCalendarioPage from './pages/admin/AdminCalendarioPage'
 import AdminSponsorsPage from './pages/admin/AdminSponsorsPage'
 import AdminEquipoDetallePage from './pages/admin/AdminEquipoDetallePage'
 import AdminTorneoDetallePage from './pages/admin/AdminTorneoDetallePage'
-import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import AdminTarjetasPage from './pages/admin/AdminTarjetasPage'
+import AdminNoticiasPage from './pages/admin/AdminNoticiasPage'
+import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import PlayerApuestasPage from './pages/PlayerApuestasPage'
+import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
 
-// Ruta protegida para admin
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
   if (loading) return (
@@ -34,7 +35,6 @@ function ProtectedRoute({ children }) {
   return children
 }
 
-// Ruta protegida para jugador — verifica sesión y membresía activa
 function PlayerRoute({ children }) {
   const { user, loading } = useAuthStore()
   if (loading) return (
@@ -66,14 +66,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* ── Login admin ── */}
+        {/* Login admin */}
         <Route path="/login" element={user ? <Navigate to="/" replace/> : <LoginPage/>}/>
 
-        {/* ── App admin ── */}
+        {/* App admin */}
         <Route path="/" element={<ProtectedRoute><HomePage cardType={cardType}/></ProtectedRoute>}/>
         <Route path="/elegir-tarjeta" element={<ProtectedRoute><ElegirTarjetaPage onSelect={setCardType} currentDesign={cardType}/></ProtectedRoute>}/>
 
-        {/* ── Panel Admin ── */}
+        {/* Panel Admin */}
         <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>
           <Route index                  element={<AdminDashboard/>}/>
           <Route path="crear"           element={<AdminCrearPage/>}/>
@@ -85,30 +85,16 @@ export default function App() {
           <Route path="jugadores/:id"   element={<AdminJugadorDetallePage/>}/>
           <Route path="calendario"      element={<AdminCalendarioPage/>}/>
           <Route path="sponsors"        element={<AdminSponsorsPage/>}/>
-          <Route path="tarjetas" element={<AdminTarjetasPage/>}/>
-         
+          <Route path="tarjetas"        element={<AdminTarjetasPage/>}/>
+          <Route path="noticias"        element={<AdminNoticiasPage/>}/>
         </Route>
 
-       {/* ── Panel Admin ── */}
-       <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>
-          <Route index                element={<AdminDashboard/>}/>
-          <Route path="crear"         element={<AdminCrearPage/>}/>
-          <Route path="torneos"       element={<AdminTorneosPage/>}/>
-          <Route path="torneos/:id"   element={<AdminTorneoDetallePage/>}/>
-          <Route path="equipos"       element={<AdminEquiposPage/>}/>
-          <Route path="equipos/:id"   element={<AdminEquipoDetallePage/>}/>
-          <Route path="jugadores"     element={<AdminJugadoresPage/>}/>
-          <Route path="jugadores/:id" element={<AdminJugadorDetallePage/>}/>
-          <Route path="calendario"    element={<AdminCalendarioPage/>}/>
-          <Route path="sponsors"      element={<AdminSponsorsPage/>}/>
-          <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
-        </Route>
-
-        {/* ── Portal jugador ── */}
+        {/* Portal jugador */}
         <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
         <Route path="/jugador"            element={<PlayerRoute><PlayerHomePage/></PlayerRoute>}/>
         <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
         <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
+        <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 
       </Routes>
     </BrowserRouter>

@@ -720,20 +720,32 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      {/* ── PREDIX ── */}
-      {tab === 'predix' && (
-        <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <div style={{ fontSize: '2.5rem' }}>🎯</div>
-          <div style={{ fontWeight: '800', fontSize: '1.3rem', color: '#07070e', letterSpacing: '2px' }}>PREDIX</div>
-          <div style={{ fontSize: '.85rem', color: '#5f6368', textAlign: 'center', maxWidth: '280px' }}>
-            Predice los resultados de los partidos y compite con otros jugadores por puntos
-          </div>
-          <button onClick={() => navigate('/jugador/apuestas')}
-            style={{ padding: '14px 32px', background: '#07070e', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#00ddd0', fontWeight: '800', fontSize: '1rem', letterSpacing: '1px' }}>
-            ENTRAR A PREDIX →
-          </button>
-        </div>
-      )}
+   {/* ── PREDIX ── */}
+{tab === 'predix' && (
+  <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+    
+    {/* BOTÓN NOTICIAS — va aquí arriba */}
+    <button onClick={() => navigate('/jugador/noticias')}
+      style={{ width: '100%', maxWidth: '300px', padding: '12px 16px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <span style={{ fontSize: '1.2rem' }}>📰</span>
+      <div style={{ textAlign: 'left' }}>
+        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>Noticias del torneo</div>
+        <div style={{ fontSize: '.72rem', color: '#5f6368' }}>Pre-partido, resultados y más</div>
+      </div>
+      <span style={{ marginLeft: 'auto', color: '#9aa0a6' }}>→</span>
+    </button>
+
+    <div style={{ fontSize: '2.5rem' }}>🎯</div>
+    <div style={{ fontWeight: '800', fontSize: '1.3rem', color: '#07070e', letterSpacing: '2px' }}>PREDIX</div>
+    <div style={{ fontSize: '.85rem', color: '#5f6368', textAlign: 'center', maxWidth: '280px' }}>
+      Predice los resultados de los partidos y compite con otros jugadores por puntos
+    </div>
+    <button onClick={() => navigate('/jugador/apuestas')}
+      style={{ padding: '14px 32px', background: '#07070e', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#00ddd0', fontWeight: '800', fontSize: '1rem', letterSpacing: '1px' }}>
+      ENTRAR A PREDIX →
+    </button>
+  </div>
+)}
 
       {rankingModal && (
         <StatRankingModal
