@@ -22,6 +22,15 @@ const labelStyle = {
   display: 'block', marginBottom: '4px',
 }
 
+const FASES = [
+  { value: 'grupo',     label: '🏟️ Grupo' },
+  { value: 'octavos',   label: '⚔️ Octavos' },
+  { value: 'cuartos',   label: '🔥 Cuartos de final' },
+  { value: 'semifinal', label: '⚡ Semifinal' },
+  { value: 'final',     label: '🏆 Final' },
+]
+const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final' }
+
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
   if (logo_url) return <img src={logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
@@ -63,7 +72,7 @@ export default function AdminTorneoDetallePage() {
 
   const [subTab,          setSubTab]          = useState('partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
-  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '' })
+  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo' })
   const [nuevaCancha,     setNuevaCancha]     = useState('')
 
   const [configJornada,   setConfigJornada]   = useState({ fecha: '', hora_inicio: '', numero: '' })
@@ -167,13 +176,14 @@ export default function AdminTorneoDetallePage() {
       played_at:     formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00:00'),
       location:      formPartido.location || null,
       matchday:      formPartido.matchday ? parseInt(formPartido.matchday) : null,
+      fase:          formPartido.fase || 'grupo',
       status:        'scheduled',
     })
     if (error) showMsg('Error al crear partido', 'error')
     else {
       showMsg('Partido creado ✓')
       setShowFormPartido(false)
-      setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '' })
+      setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo' })
       fetchPartidos()
     }
     setLoadingPartido(false)
@@ -208,6 +218,7 @@ export default function AdminTorneoDetallePage() {
       played_at: formEditPartido.played_at + 'T' + formEditPartido.hora + ':00-05:00',
       location:  formEditPartido.location || null,
       matchday:  formEditPartido.matchday ? parseInt(formEditPartido.matchday) : null,
+      fase:      formEditPartido.fase || 'grupo',
     }).eq('id', editandoPartidoForm.id)
     if (error) showMsg('Error al guardar', 'error')
     else { showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos() }
@@ -239,7 +250,8 @@ export default function AdminTorneoDetallePage() {
     const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
       tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
       played_at: `${configJornada.fecha}T${p.hora}:00-05:00`, location: p.cancha?.nombre || null,
-      matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id, status: 'scheduled',
+      matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id,
+      status: 'scheduled', fase: 'grupo',
     }))
     const { error } = await supabase.from('matches').insert(inserts)
     if (error) showMsg('Error al guardar partidos', 'error')
@@ -269,7 +281,7 @@ export default function AdminTorneoDetallePage() {
 
   const tabla = {}
   equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
-  partidosJugados.forEach(p => {
+  partidosJugados.filter(p => !p.fase || p.fase === 'grupo').forEach(p => {
     if (tabla[p.home_team_id]) {
       tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
       if (p.home_score > p.away_score) { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3 }
@@ -387,12 +399,8 @@ export default function AdminTorneoDetallePage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={handleGuardarTorneo} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
-                Guardar
-              </button>
-              <button onClick={() => setEditandoTorneo(false)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
-                <X size={16}/>
-              </button>
+              <button onClick={handleGuardarTorneo} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar</button>
+              <button onClick={() => setEditandoTorneo(false)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}><X size={16}/></button>
             </div>
           </div>
         </div>
@@ -426,14 +434,16 @@ export default function AdminTorneoDetallePage() {
                 <label style={labelStyle}>Jornada #</label>
                 <input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/>
               </div>
+              <div>
+                <label style={labelStyle}>Fase</label>
+                <select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>
+                  {FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
-              <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
-                Guardar cambios
-              </button>
-              <button onClick={() => setEditandoPartidoForm(null)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
-                <X size={16}/>
-              </button>
+              <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar cambios</button>
+              <button onClick={() => setEditandoPartidoForm(null)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}><X size={16}/></button>
             </div>
           </div>
         </div>
@@ -603,7 +613,7 @@ export default function AdminTorneoDetallePage() {
                         </select>
                       </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '12px' }}>
                       <div><label style={labelStyle}>Fecha *</label><input type="date" value={formPartido.played_at} onChange={e => setFormPartido(f => ({ ...f, played_at: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.hora} onChange={e => setFormPartido(f => ({ ...f, hora: e.target.value }))} style={inputStyle}/></div>
                       <div>
@@ -614,6 +624,12 @@ export default function AdminTorneoDetallePage() {
                         </select>
                       </div>
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
+                      <div>
+                        <label style={labelStyle}>Fase</label>
+                        <select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>
+                          {FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                        </select>
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
@@ -633,14 +649,15 @@ export default function AdminTorneoDetallePage() {
                     </div>
                     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                       {partidosPendientes.map((p, i) => (
-                        <div key={p.id} style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < partidosPendientes.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                        <div key={p.id} style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < partidosPendientes.length - 1 ? '1px solid #f1f3f4' : 'none', background: p.fase && p.fase !== 'grupo' ? '#fff8f0' : '#fff' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                             <div style={{ width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
                               <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={32}/>
                             </div>
                             <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
                                 {p.matchday && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>J{p.matchday}</span>}
+                                {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
                                 <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.home?.name} vs {p.away?.name}</span>
                               </div>
                               <div style={{ fontSize: '.75rem', color: '#9aa0a6', display: 'flex', gap: '10px' }}>
@@ -656,7 +673,7 @@ export default function AdminTorneoDetallePage() {
                             <button onClick={() => {
                               const fecha = p.played_at ? p.played_at.substring(0, 10) : ''
                               const hora  = p.played_at ? p.played_at.substring(11, 16) : ''
-                              setFormEditPartido({ played_at: fecha, hora, location: p.location || '', matchday: p.matchday || '' })
+                              setFormEditPartido({ played_at: fecha, hora, location: p.location || '', matchday: p.matchday || '', fase: p.fase || 'grupo' })
                               setEditandoPartidoForm(p)
                             }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
                               ✏️
@@ -681,9 +698,10 @@ export default function AdminTorneoDetallePage() {
                     </div>
                     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                       {partidosJugados.map((p, i) => (
-                        <div key={p.id} style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < partidosJugados.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                        <div key={p.id} style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < partidosJugados.length - 1 ? '1px solid #f1f3f4' : 'none', background: p.fase && p.fase !== 'grupo' ? '#fff8f0' : '#fff' }}>
                           <div style={{ flex: 1 }}>
-                            {p.matchday && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px', marginRight: '8px' }}>J{p.matchday}</span>}
+                            {p.matchday && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px', marginRight: '6px' }}>J{p.matchday}</span>}
+                            {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px', marginRight: '6px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
                             {p.played_at && <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>📅 {new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 2, justifyContent: 'center' }}>
@@ -841,7 +859,7 @@ export default function AdminTorneoDetallePage() {
       {tab === 'estadisticas' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de posiciones</div>
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de posiciones — Fase de grupos</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
                 <div>EQUIPO</div>

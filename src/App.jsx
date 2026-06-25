@@ -23,6 +23,7 @@ import AdminNoticiasPage from './pages/admin/AdminNoticiasPage'
 import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import PlayerApuestasPage from './pages/PlayerApuestasPage'
 import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
+import TorneoPublicoPage from './pages/TorneoPublicoPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -88,6 +89,9 @@ export default function App() {
           <Route path="tarjetas"        element={<AdminTarjetasPage/>}/>
           <Route path="noticias"        element={<AdminNoticiasPage/>}/>
         </Route>
+
+        {/* Página pública de torneo — sin login */}
+        <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
 
         {/* Portal jugador */}
         <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
