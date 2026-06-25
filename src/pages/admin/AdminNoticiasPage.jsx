@@ -156,6 +156,7 @@ Sé dramático, usa términos futboleros colombianos, crea expectativa. NO uses 
 
     try {
       const texto = await generarNoticia(prompt)
+      console.log('RESPUESTA IA:', texto)
       const { titulo, cuerpo, hashtags } = parseNoticia(texto)
 
       // Verificar si ya existe una noticia pre-partido para este partido
