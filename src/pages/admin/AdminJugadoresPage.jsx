@@ -279,7 +279,7 @@ export default function AdminJugadoresPage() {
   const cPendientes = jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length
 
   const filtered = jugadores.filter(j => {
-    const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || j.numero_cedula?.includes(search)
+   const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
     if (!matchSearch) return false
     if (filtroMembresia === 'activos')    return j.activo_membresia
     if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id && !j.whatsapp
