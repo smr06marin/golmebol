@@ -23,10 +23,10 @@ function diasRestantes(fechaVenc) {
 }
 
 function ModalMembresia({ jugador, onClose, onActivar }) {
-  const [meses, setMeses] = useState(1)
+  const [meses,     setMeses]     = useState(1)
   const [contrasena, setContrasena] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState('')
   const yaTieneAuth = !!jugador.user_id
 
   async function handleActivar() {
@@ -106,20 +106,19 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
 
 export default function AdminJugadoresPage() {
   const navigate = useNavigate()
-  const [jugadores, setJugadores] = useState([])
-  const [form, setForm] = useState(EMPTY)
-  const [editId, setEditId] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [uploading, setUploading] = useState({})
-  const [msg, setMsg] = useState(null)
-  const [search, setSearch] = useState('')
+  const [jugadores,       setJugadores]       = useState([])
+  const [form,            setForm]            = useState(EMPTY)
+  const [editId,          setEditId]          = useState(null)
+  const [showForm,        setShowForm]        = useState(false)
+  const [loading,         setLoading]         = useState(false)
+  const [uploading,       setUploading]       = useState({})
+  const [msg,             setMsg]             = useState(null)
+  const [search,          setSearch]          = useState('')
   const [filtroMembresia, setFiltroMembresia] = useState('todos')
-  const [modalMembresia, setModalMembresia] = useState(null)
+  const [modalMembresia,  setModalMembresia]  = useState(null)
 
   useEffect(() => { fetchJugadores() }, [])
 
-  // Apagar membresías vencidas automáticamente
   useEffect(() => {
     if (!jugadores.length) return
     const hoy = new Date()
@@ -141,12 +140,8 @@ export default function AdminJugadoresPage() {
   }
 
   async function handleSave() {
-    if (!form.name)              return showMsg('El nombre es obligatorio', 'error')
-    if (!form.telefono)          return showMsg('El teléfono es obligatorio', 'error')
-    if (!form.numero_cedula)     return showMsg('El número de cédula es obligatorio', 'error')
-    if (!form.city)              return showMsg('La ciudad es obligatoria', 'error')
-    if (!form.genero)            return showMsg('El género es obligatorio', 'error')
-    if (!form.fecha_nacimiento)  return showMsg('La fecha de nacimiento es obligatoria', 'error')
+    if (!form.name)             return showMsg('El nombre es obligatorio', 'error')
+    if (!form.numero_cedula)    return showMsg('El número de cédula es obligatorio', 'error')
     if (!form.posicion_futbol5 && !form.posicion_futbol7 && !form.posicion_futbol11)
       return showMsg('Debe seleccionar al menos una posición', 'error')
     setLoading(true)
@@ -179,29 +174,20 @@ export default function AdminJugadoresPage() {
     fetchJugadores(); showMsg('Eliminado')
   }
 
-  // Activar o renovar membresía usando signUp (no admin API)
   async function handleActivarMembresia(jugador, meses, contrasena, yaTieneAuth) {
     const fechaVenc = new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toISOString()
     const email     = `${jugador.numero_cedula}@golmebol.com`
-
     try {
       let userId = jugador.user_id
-
       if (!yaTieneAuth) {
-        // Crear cuenta nueva con signUp
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
-          password: contrasena,
-          options: {
-            data: { player_id: jugador.id, cedula: jugador.numero_cedula }
-          }
+          email, password: contrasena,
+          options: { data: { player_id: jugador.id, cedula: jugador.numero_cedula } }
         })
         if (authError) return 'Error al crear cuenta: ' + authError.message
-        if (!authData.user) return 'No se pudo crear la cuenta. Verifica que el email no exista ya.'
+        if (!authData.user) return 'No se pudo crear la cuenta.'
         userId = authData.user.id
       }
-
-      // Actualizar membresía en players
       const { error: updError } = await supabase.from('players').update({
         user_id:           userId,
         activo_membresia:  true,
@@ -209,15 +195,13 @@ export default function AdminJugadoresPage() {
         fecha_vencimiento: fechaVenc,
         meses_pagados:     (jugador.meses_pagados || 0) + meses,
       }).eq('id', jugador.id)
-
-      if (updError) return 'Error al activar membresía: ' + updError.message
-
+      if (updError) return 'Error al activar: ' + updError.message
       showMsg(`✅ Membresía activada por ${meses} mes${meses > 1 ? 'es' : ''} ✓`)
       setModalMembresia(null)
       fetchJugadores()
-      return null // sin error
+      return null
     } catch (e) {
-      return 'Error inesperado: ' + e.message
+      return 'Error: ' + e.message
     }
   }
 
@@ -229,22 +213,30 @@ export default function AdminJugadoresPage() {
   }
 
   function abrirWhatsApp(jugador) {
-    const dias     = diasRestantes(jugador.fecha_vencimiento)
-    const vencida  = dias !== null && dias <= 0
-    const nombre   = jugador.name?.split(' ')[0] || 'jugador'
-    const telefono = jugador.telefono?.replace(/\D/g, '')
-    const texto    = vencida
-      ? `Hola ${nombre} 👋, te informamos que tu membresía de *GOLMEBOL* ya venció. Para seguir disfrutando de tu tarjeta de jugador, ver estadísticas y apostar en partidos, renueva tu suscripción. ¡Te esperamos! ⚽🏆`
-      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. Recuerda renovarla a tiempo para no perder el acceso a tu tarjeta, estadísticas y apuestas. ⚽🏆`
-    window.open(`https://wa.me/57${telefono}?text=${encodeURIComponent(texto)}`, '_blank')
+    // Usa whatsapp si existe (auto-registro), si no usa telefono
+    const numero  = (jugador.whatsapp || jugador.telefono || '').replace(/\D/g, '')
+    const dias    = diasRestantes(jugador.fecha_vencimiento)
+    const vencida = dias !== null && dias <= 0
+    const nombre  = jugador.name?.split(' ')[0] || 'jugador'
+    const texto   = vencida
+      ? `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* ya venció. Para seguir compitiendo en PREDIX y optar por los premios, renueva por solo $10.000. ¡Te esperamos! 🎯⚽`
+      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. Recuerda renovarla para seguir compitiendo en PREDIX. ⚽🏆`
+    window.open(`https://wa.me/57${numero}?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
+  function abrirWhatsAppNuevo(jugador) {
+    const numero = (jugador.whatsapp || '').replace(/\D/g, '')
+    const nombre = jugador.name?.split(' ')[0] || 'jugador'
+    const texto  = `Hola ${nombre} 👋, vimos que te registraste en *PREDIX Golmebol*. Tu primer mes es *GRATIS* 🎁 — activa tu cuenta y compite por *$50.000* este mes. ¿Te activamos ahora?`
+    window.open(`https://wa.me/57${numero}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   async function handleFoto(jugador, file, tipo) {
     if (!file) return
-    const key   = jugador.id + '_' + tipo
+    const key  = jugador.id + '_' + tipo
     setUploading(u => ({ ...u, [key]: true }))
-    const ext   = file.name.split('.').pop()
-    const path  = `fotos/${jugador.id}_${tipo}.${ext}`
+    const ext  = file.name.split('.').pop()
+    const path = `fotos/${jugador.id}_${tipo}.${ext}`
     const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
     const { error } = await supabase.storage.from('players').upload(path, file, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir foto', 'error'); return }
@@ -257,10 +249,10 @@ export default function AdminJugadoresPage() {
 
   async function handleCedula(jugador, file, cara) {
     if (!file) return
-    const key   = jugador.id + '_' + cara
+    const key  = jugador.id + '_' + cara
     setUploading(u => ({ ...u, [key]: true }))
-    const ext   = file.name.split('.').pop()
-    const path  = `${jugador.id}_${cara}.${ext}`
+    const ext  = file.name.split('.').pop()
+    const path = `${jugador.id}_${cara}.${ext}`
     const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir cédula', 'error'); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
@@ -271,19 +263,22 @@ export default function AdminJugadoresPage() {
     showMsg('Cédula subida ✓')
   }
 
+  const cActivos    = jugadores.filter(j => j.activo_membresia).length
+  const cVencidos   = jugadores.filter(j => !j.activo_membresia && j.user_id && !j.whatsapp).length
+  const cSinCuenta  = jugadores.filter(j => !j.user_id).length
+  const cPorVencer  = jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length
+  // Pendientes = se registraron solos (tienen user_id y whatsapp) pero no tienen membresía activa
+  const cPendientes = jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length
+
   const filtered = jugadores.filter(j => {
     const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || j.numero_cedula?.includes(search)
     if (!matchSearch) return false
     if (filtroMembresia === 'activos')    return j.activo_membresia
-    if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id
+    if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id && !j.whatsapp
     if (filtroMembresia === 'sin_cuenta') return !j.user_id
+    if (filtroMembresia === 'pendientes') return j.user_id && j.whatsapp && !j.activo_membresia
     return true
   })
-
-  const cActivos   = jugadores.filter(j => j.activo_membresia).length
-  const cVencidos  = jugadores.filter(j => !j.activo_membresia && j.user_id).length
-  const cSinCuenta = jugadores.filter(j => !j.user_id).length
-  const cPorVencer = jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length
 
   return (
     <div>
@@ -309,23 +304,44 @@ export default function AdminJugadoresPage() {
         </button>
       </div>
 
-      {/* Cards resumen membresías */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+      {/* Cards resumen */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
         {[
-          { label: 'Activos',    value: cActivos,   color: '#1e8e3e', bg: '#e6f4ea', icon: <CheckCircle size={18} color="#1e8e3e"/> },
-          { label: 'Vencidos',   value: cVencidos,  color: '#d93025', bg: '#fce8e6', icon: <AlertTriangle size={18} color="#d93025"/> },
-          { label: 'Sin cuenta', value: cSinCuenta, color: '#9aa0a6', bg: '#f1f3f4', icon: <Users size={18} color="#9aa0a6"/> },
-          { label: 'Por vencer', value: cPorVencer, color: '#e8710a', bg: '#fce8d9', icon: <Clock size={18} color="#e8710a"/> },
+          { label: 'Activos',    value: cActivos,    color: '#1e8e3e', bg: '#e6f4ea', icon: <CheckCircle size={16} color="#1e8e3e"/> },
+          { label: 'Pendientes', value: cPendientes, color: '#1a73e8', bg: '#e8f0fe', icon: <Clock size={16} color="#1a73e8"/> },
+          { label: 'Vencidos',   value: cVencidos,   color: '#d93025', bg: '#fce8e6', icon: <AlertTriangle size={16} color="#d93025"/> },
+          { label: 'Sin cuenta', value: cSinCuenta,  color: '#9aa0a6', bg: '#f1f3f4', icon: <Users size={16} color="#9aa0a6"/> },
+          { label: 'Por vencer', value: cPorVencer,  color: '#e8710a', bg: '#fce8d9', icon: <Clock size={16} color="#e8710a"/> },
         ].map(({ label, value, color, bg, icon }) => (
-          <div key={label} style={{ background: bg, borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div key={label} style={{ background: bg, borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+            onClick={() => setFiltroMembresia(label.toLowerCase().replace(' ', '_').replace('é','e'))}>
             {icon}
             <div>
               <div style={{ fontSize: '1.3rem', fontWeight: '800', color, lineHeight: 1 }}>{value}</div>
-              <div style={{ fontSize: '.7rem', color, opacity: .8, fontWeight: '500' }}>{label}</div>
+              <div style={{ fontSize: '.68rem', color, opacity: .8, fontWeight: '500' }}>{label}</div>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Alerta pendientes */}
+      {cPendientes > 0 && (
+        <div style={{ background: '#e8f0fe', border: '1px solid #1a73e8', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <MessageCircle size={18} color="#1a73e8"/>
+            <div>
+              <div style={{ fontWeight: '600', color: '#1a73e8', fontSize: '.875rem' }}>
+                {cPendientes} jugador{cPendientes > 1 ? 'es' : ''} pendiente{cPendientes > 1 ? 's' : ''} de activación
+              </div>
+              <div style={{ fontSize: '.75rem', color: '#5f6368' }}>Se registraron solos — contáctalos para activar su membresía</div>
+            </div>
+          </div>
+          <button onClick={() => setFiltroMembresia('pendientes')}
+            style={{ padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
+            Ver pendientes
+          </button>
+        </div>
+      )}
 
       {/* Formulario */}
       {showForm && (
@@ -338,19 +354,19 @@ export default function AdminJugadoresPage() {
             <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
-              <div><label style={lbl}>Teléfono *</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
+              <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
               <div><label style={lbl}>Número de cédula *</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="000000000"/></div>
-              <div><label style={lbl}>Ciudad *</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
+              <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
               <div>
-                <label style={lbl}>Género *</label>
+                <label style={lbl}>Género</label>
                 <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
                   <option value="">Seleccionar</option>
                   {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
-              <div><label style={lbl}>Fecha de nacimiento *</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
+              <div><label style={lbl}>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
             </div>
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones por modalidad *</div>
+            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones por modalidad</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
               {Object.entries(POSICIONES).map(([modalidad, posiciones]) => {
                 const key = `posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`
@@ -386,12 +402,13 @@ export default function AdminJugadoresPage() {
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {[
             { id: 'todos',      label: `Todos (${jugadores.length})` },
+            { id: 'pendientes', label: `Pendientes (${cPendientes})`, alert: cPendientes > 0 },
             { id: 'activos',    label: `Activos (${cActivos})` },
             { id: 'vencidos',   label: `Vencidos (${cVencidos})` },
             { id: 'sin_cuenta', label: `Sin cuenta (${cSinCuenta})` },
           ].map(f => (
             <button key={f.id} onClick={() => setFiltroMembresia(f.id)}
-              style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: '500', background: filtroMembresia === f.id ? '#1a73e8' : '#f1f3f4', color: filtroMembresia === f.id ? '#fff' : '#5f6368', transition: 'all .15s' }}>
+              style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: '500', background: filtroMembresia === f.id ? (f.alert ? '#1a73e8' : '#1a73e8') : f.alert ? '#e8f0fe' : '#f1f3f4', color: filtroMembresia === f.id ? '#fff' : f.alert ? '#1a73e8' : '#5f6368', transition: 'all .15s' }}>
               {f.label}
             </button>
           ))}
@@ -403,21 +420,22 @@ export default function AdminJugadoresPage() {
         {filtered.length === 0 ? (
           <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
             <Users size={40} style={{ opacity: .3, display: 'block', margin: '0 auto 12px' }}/>
-            <div style={{ fontSize: '.875rem' }}>{search ? 'No se encontraron jugadores' : 'No hay jugadores aún'}</div>
+            <div style={{ fontSize: '.875rem' }}>{search ? 'No se encontraron jugadores' : 'No hay jugadores en esta categoría'}</div>
           </div>
         ) : filtered.map((j, i) => {
           const dias      = diasRestantes(j.fecha_vencimiento)
           const vencida   = dias !== null && dias <= 0
           const porVencer = dias !== null && dias > 0 && dias <= 7
           const activo    = j.activo_membresia && !vencida
+          const esPendiente = j.user_id && j.whatsapp && !j.activo_membresia
 
           return (
-            <div key={j.id} style={{ padding: '16px 20px', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none', background: vencida ? '#fff8f8' : porVencer ? '#fffbf0' : '#fff' }}>
+            <div key={j.id} style={{ padding: '16px 20px', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none', background: esPendiente ? '#f0f7ff' : vencida && !esPendiente ? '#fff8f8' : porVencer ? '#fffbf0' : '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
 
                 {/* Info jugador */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: `2px solid ${activo ? '#1e8e3e' : vencida && j.user_id ? '#d93025' : '#e8eaed'}`, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: `2px solid ${activo ? '#1e8e3e' : esPendiente ? '#1a73e8' : vencida && j.user_id ? '#d93025' : '#e8eaed'}`, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {j.photo_face_url
                       ? <img src={j.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
                       : j.photo_url
@@ -427,14 +445,16 @@ export default function AdminJugadoresPage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       {j.name}
-                      {activo          && <span style={{ fontSize: '.65rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✓ Activo</span>}
-                      {vencida && j.user_id && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✗ Vencido</span>}
-                      {porVencer       && <span style={{ fontSize: '.65rem', color: '#e8710a', background: '#fce8d9', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⚠ {dias}d</span>}
-                      {!j.user_id      && <span style={{ fontSize: '.65rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>Sin cuenta</span>}
+                      {activo      && <span style={{ fontSize: '.65rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✓ Activo</span>}
+                      {esPendiente && <span style={{ fontSize: '.65rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⏳ Pendiente</span>}
+                      {vencida && j.user_id && !esPendiente && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✗ Vencido</span>}
+                      {porVencer   && <span style={{ fontSize: '.65rem', color: '#e8710a', background: '#fce8d9', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⚠ {dias}d</span>}
+                      {!j.user_id  && <span style={{ fontSize: '.65rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>Sin cuenta</span>}
                     </div>
                     <div style={{ color: '#9aa0a6', fontSize: '.72rem', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {j.numero_cedula && <span>🪪 {j.numero_cedula}</span>}
-                      {j.telefono      && <span>📞 {j.telefono}</span>}
+                      {j.whatsapp      && <span>📲 {j.whatsapp}</span>}
+                      {!j.whatsapp && j.telefono && <span>📞 {j.telefono}</span>}
                       {j.city          && <span>📍 {j.city}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '5px', flexWrap: 'wrap' }}>
@@ -467,9 +487,16 @@ export default function AdminJugadoresPage() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
+                    {/* Botón WhatsApp para pendientes (se registraron solos) */}
+                    {esPendiente && (
+                      <button onClick={() => abrirWhatsAppNuevo(j)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#25D366', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '700' }}>
+                        <MessageCircle size={12}/> Contactar
+                      </button>
+                    )}
                     <button onClick={() => setModalMembresia(j)}
                       style={{ display: 'flex', alignItems: 'center', gap: '4px', background: activo ? '#f1f3f4' : '#1e8e3e', border: activo ? '1px solid #dadce0' : 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: activo ? '#5f6368' : '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                      <CreditCard size={12}/> {!j.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
+                      <CreditCard size={12}/> {!j.user_id ? 'Activar' : activo ? 'Renovar' : 'Activar'}
                     </button>
                     {activo && (
                       <button onClick={() => handleDesactivar(j)}
@@ -477,7 +504,7 @@ export default function AdminJugadoresPage() {
                         Desactivar
                       </button>
                     )}
-                    {j.telefono && (vencida || porVencer) && (
+                    {(j.telefono || j.whatsapp) && (vencida || porVencer) && !esPendiente && (
                       <button onClick={() => abrirWhatsApp(j)}
                         style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#25D366', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
                         <MessageCircle size={12}/> WhatsApp

@@ -7,17 +7,51 @@ import html2canvas from 'html2canvas'
 import StatRankingModal from '../components/card/StatRankingModal'
 
 const TABS = [
-  { id: 'tarjeta', label: 'Mi Tarjeta', icon: '🃏' },
-  { id: 'logros',  label: 'Logros',     icon: '⭐' },
-  { id: 'predix',  label: 'Predix',     icon: '🎯' },
+  { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
+  { id: 'historial', label: 'Historial',  icon: '📋' },
+  { id: 'logros',    label: 'Logros',     icon: '⭐' },
+  { id: 'predix',    label: 'Predix',     icon: '🎯' },
 ]
 
+// Banners de notificación in-app
+function NotifBanner({ notifs, onDismiss }) {
+  const [idx, setIdx] = useState(0)
+  if (!notifs || notifs.length === 0) return null
+  const n = notifs[idx]
+  return (
+    <div style={{ background: n.bg, borderBottom: `2px solid ${n.color}`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{n.icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '.8rem', fontWeight: '700', color: n.color }}>{n.titulo}</div>
+        <div style={{ fontSize: '.73rem', color: '#5f6368', marginTop: '1px' }}>{n.texto}</div>
+      </div>
+      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+        {n.accion && (
+          <button onClick={n.accion.fn}
+            style={{ padding: '5px 10px', background: n.color, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+            {n.accion.label}
+          </button>
+        )}
+        {notifs.length > 1 && idx < notifs.length - 1 && (
+          <button onClick={() => setIdx(i => i + 1)}
+            style={{ padding: '5px 8px', background: 'rgba(0,0,0,.08)', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem' }}>
+            {idx + 1}/{notifs.length} →
+          </button>
+        )}
+        <button onClick={() => onDismiss(n.id)}
+          style={{ padding: '5px 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '1rem', lineHeight: 1 }}>✕</button>
+      </div>
+    </div>
+  )
+}
+
 export default function PlayerHomePage() {
-  const navigate     = useNavigate()
-  const cardRef      = useRef(null)
+  const navigate    = useNavigate()
+  const cardRef     = useRef(null)
   const [player,     setPlayer]     = useState(null)
   const [stats,      setStats]      = useState(null)
   const [torneos,    setTorneos]    = useState([])
+  const [historial,  setHistorial]  = useState([])
   const [requisitos, setRequisitos] = useState([])
   const [sponsors,   setSponsors]   = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -29,7 +63,8 @@ export default function PlayerHomePage() {
   const [nuevasTarjetas, setNuevasTarjetas] = useState([])
   const [notifIndex,     setNotifIndex]     = useState(0)
   const [compartiendo,   setCompartiendo]   = useState(false)
-  const [rankingModal, setRankingModal] = useState(null) // key del stat
+  const [rankingModal,   setRankingModal]   = useState(null)
+  const [notifs,         setNotifs]         = useState([])
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -72,6 +107,14 @@ export default function PlayerHomePage() {
     const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort }
     setStats(statsCalc)
 
+    // Historial de partidos
+    const { data: histData } = await supabase
+      .from('player_match_stats')
+      .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
+      .eq('player_id', p.id)
+      .order('created_at', { ascending: false })
+    setHistorial(histData || [])
+
     const { data: reqs } = await supabase.from('card_requisitos').select('*')
     setRequisitos(reqs || [])
 
@@ -83,6 +126,96 @@ export default function PlayerHomePage() {
       .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
       .eq('player_id', p.id).eq('activo', true)
     setTorneos(regs || [])
+
+    // ── NOTIFICACIONES IN-APP ──
+    const notifsList = []
+    const dismissed  = JSON.parse(localStorage.getItem('golmebol_notifs_dismissed') || '[]')
+
+    // 1. Partido próximo (próximas 24h)
+    if (regs && regs.length > 0) {
+      const teamIds = regs.map(r => r.team_id).filter(Boolean)
+      const ahora   = new Date()
+      const en24h   = new Date(ahora.getTime() + 24 * 60 * 60 * 1000)
+      const { data: proximosPartidos } = await supabase
+        .from('matches')
+        .select('*, home:home_team_id(name), away:away_team_id(name)')
+        .in('home_team_id', teamIds)
+        .gte('played_at', ahora.toISOString())
+        .lte('played_at', en24h.toISOString())
+        .eq('status', 'scheduled')
+        .order('played_at', { ascending: true })
+        .limit(1)
+
+      if (proximosPartidos && proximosPartidos.length > 0) {
+        const partido  = proximosPartidos[0]
+        const fecha    = new Date(partido.played_at)
+        const horaStr  = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        const diffMs   = fecha - ahora
+        const diffH    = Math.floor(diffMs / 3600000)
+        const diffM    = Math.floor((diffMs % 3600000) / 60000)
+        const tiempoStr = diffH > 0 ? `en ${diffH}h ${diffM}min` : `en ${diffM} min`
+        const nid = `partido_${partido.id}`
+        if (!dismissed.includes(nid)) {
+          notifsList.push({
+            id:     nid,
+            icon:   '⚽',
+            titulo: `¡Partido ${tiempoStr}!`,
+            texto:  `${partido.home?.name} vs ${partido.away?.name} · ${horaStr}`,
+            color:  '#e8710a',
+            bg:     '#fffbf0',
+            accion: { label: 'Ver PREDIX', fn: () => navigate('/jugador/apuestas') },
+          })
+        }
+      }
+    }
+
+    // 2. Puntos PREDIX ganados no vistos
+    const { data: predsResueltas } = await supabase
+      .from('predicciones')
+      .select('puntos_ganados, match_id')
+      .eq('player_id', p.id)
+      .eq('resuelta', true)
+      .gt('puntos_ganados', 0)
+
+    if (predsResueltas && predsResueltas.length > 0) {
+      const nid = `predix_puntos_${predsResueltas.length}`
+      if (!dismissed.includes(nid)) {
+        const totalPts = predsResueltas.reduce((s, r) => s + (r.puntos_ganados || 0), 0)
+        notifsList.push({
+          id:     nid,
+          icon:   '🎯',
+          titulo: `¡Tienes ${totalPts} puntos en PREDIX!`,
+          texto:  `${predsResueltas.length} predicción${predsResueltas.length > 1 ? 'es' : ''} resuelta${predsResueltas.length > 1 ? 's' : ''} · Ve tu ranking`,
+          color:  '#00a896',
+          bg:     '#f0faf9',
+          accion: { label: 'Ver ranking', fn: () => navigate('/jugador/apuestas') },
+        })
+      }
+    }
+
+    // 3. Membresía por vencer (≤7 días)
+    if (p.fecha_vencimiento) {
+      const diasRestantes = Math.ceil((new Date(p.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
+      if (diasRestantes <= 7 && diasRestantes > 0) {
+        const nid = `membresia_vence_${diasRestantes}`
+        if (!dismissed.includes(nid)) {
+          notifsList.push({
+            id:     nid,
+            icon:   '⏰',
+            titulo: `Tu membresía vence en ${diasRestantes} día${diasRestantes > 1 ? 's' : ''}`,
+            texto:  'Renueva para seguir compitiendo en PREDIX',
+            color:  '#d93025',
+            bg:     '#fff8f8',
+            accion: {
+              label: '📲 Renovar',
+              fn: () => window.open(`https://wa.me/573226490055?text=${encodeURIComponent('Hola! Quiero renovar mi membresía de PREDIX Golmebol 🎯')}`, '_blank')
+            },
+          })
+        }
+      }
+    }
+
+    setNotifs(notifsList)
 
     if (reqs) {
       const vistas = p.tarjetas_vistas || []
@@ -101,13 +234,16 @@ export default function PlayerHomePage() {
         }
       })
       const nuevas = desbloqueadas.filter(d => !vistas.includes(d.id))
-      if (nuevas.length > 0) {
-        setNuevasTarjetas(nuevas)
-        setNotifIndex(0)
-      }
+      if (nuevas.length > 0) { setNuevasTarjetas(nuevas); setNotifIndex(0) }
     }
 
     setLoading(false)
+  }
+
+  function dismissNotif(id) {
+    const dismissed = JSON.parse(localStorage.getItem('golmebol_notifs_dismissed') || '[]')
+    localStorage.setItem('golmebol_notifs_dismissed', JSON.stringify([...dismissed, id]))
+    setNotifs(prev => prev.filter(n => n.id !== id))
   }
 
   async function handleCerrarNotif() {
@@ -131,39 +267,19 @@ export default function PlayerHomePage() {
     setCompartiendo(true)
     try {
       const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: '#07070e',
-        scale: 3,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        foreignObjectRendering: false,
-        imageTimeout: 15000,
+        backgroundColor: '#07070e', scale: 3, useCORS: true, allowTaint: true,
+        logging: false, foreignObjectRendering: false, imageTimeout: 15000,
         onclone: (doc) => {
           const style = doc.createElement('style')
-          style.innerHTML = `
-            :root {
-              --font-display: Impact, sans-serif;
-              --font-body: Arial, sans-serif;
-              --color-primary: #00ddd0;
-            }
-          `
+          style.innerHTML = `:root { --font-display: Impact, sans-serif; --font-body: Arial, sans-serif; --color-primary: #00ddd0; }`
           doc.head.appendChild(style)
         }
       })
-
-      // Siempre descargar directamente para evitar error de gesto de usuario
-      // En móvil el jugador puede compartir desde la galería
       const url = canvas.toDataURL('image/png')
       const a   = document.createElement('a')
-      a.href     = url
-      a.download = `${nombre}_golmebol.png`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-
-    } catch (e) {
-      console.error('Error al generar imagen:', e)
-    }
+      a.href = url; a.download = `${nombre}_golmebol.png`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    } catch (e) { console.error('Error al generar imagen:', e) }
     setCompartiendo(false)
   }
 
@@ -200,26 +316,18 @@ export default function PlayerHomePage() {
     return { actual, meta: req.requisito_meta, sufijo, pct, descripcion: req.descripcion }
   }
 
-  function getSponsor(cardId) {
-    return sponsors.find(s => s.card_id === cardId) || null
-  }
+  function getSponsor(cardId) { return sponsors.find(s => s.card_id === cardId) || null }
 
   async function handleSeleccionarTarjeta(id) {
     if (!estaDesbloqueada(id)) return
-    setGuardandoCard(true)
-    setCardType(id)
+    setGuardandoCard(true); setCardType(id)
     await supabase.from('players').update({ card_type: id }).eq('id', player.id)
-    setGuardandoCard(false)
-    setShowSelector(false)
+    setGuardandoCard(false); setShowSelector(false)
   }
 
   function handleClickTarjeta(d) {
-    if (estaDesbloqueada(d.id)) {
-      handleSeleccionarTarjeta(d.id)
-    } else {
-      setPreviewCard(d)
-      setShowSelector(false)
-    }
+    if (estaDesbloqueada(d.id)) handleSeleccionarTarjeta(d.id)
+    else { setPreviewCard(d); setShowSelector(false) }
   }
 
   if (loading) return (
@@ -251,13 +359,8 @@ export default function PlayerHomePage() {
   const equiposData = torneos.map(t => ({ id: t.teams?.id, nombre: t.teams?.name, logo_url: t.teams?.logo_url || null })).filter((e, i, arr) => e.id && arr.findIndex(x => x.id === e.id) === i)
 
   function handleCardClick(itemId) {
-    // Si es una stat key, abrir ranking
     const statKeys = ['pj', 'gc', 'prom', 'efic', 'pg', 'pe', 'pp']
-    if (statKeys.includes(itemId)) {
-      setRankingModal(itemId)
-      return
-    }
-    // Si es torneo o equipo, navegar
+    if (statKeys.includes(itemId)) { setRankingModal(itemId); return }
     const torneo = torneosData.find(t => t.id === itemId)
     if (torneo) { navigate(`/jugador/torneo/${torneo.id}`); return }
     const reg = torneos.find(t => t.teams?.id === itemId)
@@ -275,7 +378,6 @@ export default function PlayerHomePage() {
     { nombre: 'Campeón',         desc: 'Gana un torneo con tu equipo',            icono: '🏆', desbloqueado: (stats?.titulos||0)>0,                                   progreso: `${stats?.titulos||0} títulos` },
   ]
 
-
   const logrosDesbloqueados = logrosDinamicos.filter(l => l.desbloqueado).length
 
   const GRUPOS = [
@@ -290,7 +392,7 @@ export default function PlayerHomePage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
 
-      {/* ── NOTIFICACIÓN TARJETA NUEVA ── */}
+      {/* NOTIFICACIÓN TARJETA NUEVA */}
       {tarjetaNotif && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.92)', zIndex: 400, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ width: '100%', maxWidth: '340px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
@@ -298,9 +400,7 @@ export default function PlayerHomePage() {
               <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🎉</div>
               <div style={{ fontWeight: '800', color: '#fff', fontSize: '1.3rem', letterSpacing: '.04em' }}>¡NUEVA TARJETA!</div>
               <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.55)', marginTop: '4px' }}>Has desbloqueado una nueva tarjeta</div>
-              {nuevasTarjetas.length > 1 && (
-                <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.4)', marginTop: '4px' }}>{notifIndex + 1} de {nuevasTarjetas.length}</div>
-              )}
+              {nuevasTarjetas.length > 1 && <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.4)', marginTop: '4px' }}>{notifIndex + 1} de {nuevasTarjetas.length}</div>}
             </div>
             <div style={{ width: '100%', filter: `drop-shadow(0 0 20px ${tarjetaNotif.color}88)` }}>
               <PlayerCard playerName={nombre} stats={cardStats} cardType={tarjetaNotif.id} esPortero={esPortero} photoUrlExterno={player.photo_url || null} hideShields={true}/>
@@ -323,7 +423,7 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      {/* ── PREVIEW TARJETA BLOQUEADA ── */}
+      {/* PREVIEW TARJETA BLOQUEADA */}
       {previewCard && (() => {
         const prog      = getProgreso(previewCard.id)
         const sponsor   = getSponsor(previewCard.id)
@@ -342,7 +442,7 @@ export default function PlayerHomePage() {
                   {[...Array(10)].map((_, row) => (
                     <div key={row} style={{ position: 'absolute', top: `${row * 13 - 10}%`, left: '-30%', width: '160%', display: 'flex', gap: '32px', transform: 'rotate(-35deg)', whiteSpace: 'nowrap' }}>
                       {[...Array(6)].map((_, col) => (
-                        <span key={col} style={{ fontSize: '1.4rem', fontWeight: '900', color: 'rgba(255,255,255,.45)', letterSpacing: '.18em', textTransform: 'uppercase', flexShrink: 0, fontFamily: 'system-ui, sans-serif' }}>{marcaAgua}</span>
+                        <span key={col} style={{ fontSize: '1.4rem', fontWeight: '900', color: 'rgba(255,255,255,.45)', letterSpacing: '.18em', textTransform: 'uppercase', flexShrink: 0, fontFamily: 'system-ui' }}>{marcaAgua}</span>
                       ))}
                     </div>
                   ))}
@@ -386,7 +486,7 @@ export default function PlayerHomePage() {
         )
       })()}
 
-      {/* ── SELECTOR ── */}
+      {/* SELECTOR */}
       {showSelector && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowSelector(false)}>
           <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '20px', width: '100%', maxWidth: '500px', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
@@ -402,7 +502,7 @@ export default function PlayerHomePage() {
                 <div style={{ fontSize: '.72rem', fontWeight: '600', color: grupo.color, marginBottom: '8px', letterSpacing: '.06em' }}>{grupo.label}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {grupo.ids.map(cid => {
-                    const d = CARD_DESIGNS.find(x => x.id === cid)
+                    const d       = CARD_DESIGNS.find(x => x.id === cid)
                     const desbloq = estaDesbloqueada(cid)
                     const activa  = cid === cardType
                     const prog    = getProgreso(cid)
@@ -428,9 +528,9 @@ export default function PlayerHomePage() {
                             </>
                           )}
                         </div>
-                        {activa     && <span style={{ fontSize: '.7rem', color: '#1a73e8', fontWeight: '700', flexShrink: 0 }}>✓ Activa</span>}
+                        {activa      && <span style={{ fontSize: '.7rem', color: '#1a73e8', fontWeight: '700', flexShrink: 0 }}>✓ Activa</span>}
                         {desbloq && !activa && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '1px 8px', flexShrink: 0 }}>Usar</span>}
-                        {!desbloq   && <span style={{ fontSize: '.72rem', color: '#1a73e8', flexShrink: 0 }}>👁 Ver</span>}
+                        {!desbloq    && <span style={{ fontSize: '.72rem', color: '#1a73e8', flexShrink: 0 }}>👁 Ver</span>}
                       </div>
                     )
                   })}
@@ -458,20 +558,26 @@ export default function PlayerHomePage() {
         </div>
       </div>
 
+      {/* BANNERS NOTIFICACIONES */}
+      <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>
+
       {/* Tabs */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px' }}>
+      <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s' }}>
+            style={{ padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
             <span>{t.icon}</span> {t.label}
             {t.id === 'logros' && logrosDesbloqueados > 0 && (
               <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#1e8e3e', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{logrosDesbloqueados}</span>
+            )}
+            {t.id === 'historial' && historial.length > 0 && (
+              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#5f6368', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{historial.length}</span>
             )}
           </button>
         ))}
       </div>
 
-      {/* MI TARJETA */}
+      {/* ── MI TARJETA ── */}
       {tab === 'tarjeta' && (
         <div>
           <div style={{ background: `radial-gradient(ellipse 85% 50% at 50% -5%, ${cardColor}22 0%, transparent 62%), #07070e`, padding: '12px 16px 20px' }}>
@@ -486,18 +592,12 @@ export default function PlayerHomePage() {
             </div>
             <div ref={cardRef} style={{ width: '100%' }}>
               <PlayerCard
-                playerName={nombre}
-                stats={cardStats}
-                cardType={cardType}
-                esPortero={esPortero}
-                photoUrlExterno={player.photo_url || null}
-                torneosData={torneosData}
-                equiposData={equiposData}
+                playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero}
+                photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
                 onStatClick={handleCardClick}
               />
             </div>
           </div>
-
           {player.fecha_vencimiento && (
             <div style={{ padding: '10px 16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
@@ -510,14 +610,12 @@ export default function PlayerHomePage() {
               </div>
             </div>
           )}
-
           <div style={{ padding: '0 16px 8px' }}>
             <button onClick={handleCompartir} disabled={compartiendo}
-              style={{ width: '100%', padding: '11px', background: compartiendo ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: compartiendo ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background .15s' }}>
+              style={{ width: '100%', padding: '11px', background: compartiendo ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: compartiendo ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               {compartiendo ? '⏳ Generando imagen...' : '📤 Descargar / Compartir tarjeta'}
             </button>
           </div>
-
           <div style={{ padding: '0 16px 16px' }}>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}
               onClick={() => setShowSelector(true)}>
@@ -530,7 +628,74 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      {/* LOGROS */}
+      {/* ── HISTORIAL ── */}
+      {tab === 'historial' && (
+        <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124', marginBottom: '12px' }}>
+            Mis partidos · {historial.length} jugados
+          </div>
+          {historial.length === 0 ? (
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📋</div>
+              <div style={{ fontSize: '.875rem' }}>Aún no has jugado partidos</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {historial.map((h, i) => {
+                const match     = h.matches
+                if (!match) return null
+                const resultado = h.team_result
+                const resColor  = resultado === 'win' ? '#1e8e3e' : resultado === 'draw' ? '#e8710a' : '#d93025'
+                const resBg     = resultado === 'win' ? '#e6f4ea'  : resultado === 'draw' ? '#fce8d9'  : '#fce8e6'
+                const resLabel  = resultado === 'win' ? 'G'        : resultado === 'draw' ? 'E'        : 'P'
+                return (
+                  <div key={i} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '.65rem', fontWeight: '700', color: resColor, background: resBg, borderRadius: '4px', padding: '2px 7px' }}>{resLabel}</span>
+                        {match.matchday && <span style={{ fontSize: '.68rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '1px 7px' }}>J{match.matchday}</span>}
+                      </div>
+                      {match.played_at && (
+                        <span style={{ fontSize: '.68rem', color: '#9aa0a6' }}>
+                          📅 {new Date(match.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                        <span style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124', textAlign: 'right' }}>{match.home?.name}</span>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {match.home?.logo_url ? <img src={match.home.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <span style={{ fontSize: '.7rem' }}>⚽</span>}
+                        </div>
+                      </div>
+                      <div style={{ fontWeight: '700', fontSize: '1rem', color: '#202124', padding: '4px 12px', background: '#f1f3f4', borderRadius: '8px', flexShrink: 0 }}>
+                        {match.home_score} - {match.away_score}
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {match.away?.logo_url ? <img src={match.away.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <span style={{ fontSize: '.7rem' }}>⚽</span>}
+                        </div>
+                        <span style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{match.away?.name}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {(h.goals_scored || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>⚽ {h.goals_scored} gol{h.goals_scored > 1 ? 'es' : ''}</span>}
+                      {(h.yellow_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟨 Amarilla</span>}
+                      {(h.blue_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟦 Azul</span>}
+                      {(h.red_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟥 Roja</span>}
+                      {(h.goals_conceded || 0) > 0 && esPortero && <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>🧤 {h.goals_conceded} recibido{h.goals_conceded > 1 ? 's' : ''}</span>}
+                      {(h.fouls || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>✋ {h.fouls} falta{h.fouls > 1 ? 's' : ''}</span>}
+                      {(h.goals_scored || 0) === 0 && (h.yellow_cards || 0) === 0 && (h.blue_cards || 0) === 0 && (h.red_cards || 0) === 0 && (h.fouls || 0) === 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Sin incidencias</span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── LOGROS ── */}
       {tab === 'logros' && (
         <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -552,28 +717,11 @@ export default function PlayerHomePage() {
               </div>
             ))}
           </div>
-          <button onClick={() => navigate('/jugador/apuestas')}
-  style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 14px', background: '#07070e', border: '1px solid #1e2d3d', borderRadius: '20px', cursor: 'pointer', color: '#00ddd0', fontSize: '.78rem', fontWeight: '700' }}>
-  🎯 PREDIX
-</button>
         </div>
       )}
-      {/* PREDIX */}
-{tab === 'predix' && (
-  <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-    <div style={{ fontSize: '2.5rem' }}>🎯</div>
-    <div style={{ fontWeight: '800', fontSize: '1.3rem', color: '#07070e', letterSpacing: '2px' }}>PREDIX</div>
-    <div style={{ fontSize: '.85rem', color: '#5f6368', textAlign: 'center', maxWidth: '280px' }}>
-      Predice los resultados de los partidos y compite con otros jugadores por puntos
-    </div>
-    <button onClick={() => navigate('/jugador/apuestas')}
-      style={{ padding: '14px 32px', background: '#07070e', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#00ddd0', fontWeight: '800', fontSize: '1rem', letterSpacing: '1px' }}>
-      ENTRAR A PREDIX →
-    </button>
-  </div>
-)}
-{/* PREDIX */}
-{tab === 'predix' && (
+
+      {/* ── PREDIX ── */}
+      {tab === 'predix' && (
         <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
           <div style={{ fontSize: '2.5rem' }}>🎯</div>
           <div style={{ fontWeight: '800', fontSize: '1.3rem', color: '#07070e', letterSpacing: '2px' }}>PREDIX</div>
