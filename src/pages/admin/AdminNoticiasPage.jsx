@@ -23,7 +23,8 @@ function parseNoticia(texto) {
   const lines    = texto.split('\n').filter(l => l.trim())
   const titulo   = lines[0]?.replace(/^#+ /, '').trim() || 'Sin título'
   const resto    = lines.slice(1)
-  const hashIdx  = resto.findLastIndex(l => l.includes('#'))
+  let hashIdx = -1
+  for (let i = resto.length - 1; i >= 0; i--) { if (resto[i].includes('#')) { hashIdx = i; break } }
   const hashtags = hashIdx >= 0 ? resto.slice(hashIdx).join(' ') : ''
   const cuerpo   = (hashIdx >= 0 ? resto.slice(0, hashIdx) : resto).join('\n').trim()
   return { titulo, cuerpo, hashtags }
@@ -42,7 +43,7 @@ function buildContextoPre(partido, datos) {
   const golH = Object.entries(datos.golesHomeTorneo).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([n,g])=>`${n}(${g})`).join(', ') || 'sin goles'
   const golA = Object.entries(datos.golesAwayTorneo).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([n,g])=>`${n}(${g})`).join(', ') || 'sin goles'
   const fecha = partido.played_at
-    ? new Date(partido.played_at).toLocaleDateString('es-CO', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' })
+    ? new Date(partido.played_at).toLocaleString('es-CO', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' })
     : 'fecha por confirmar'
   return `PARTIDO: ${partido.home?.name} vs ${partido.away?.name}${esFaseElim ? ` | ${FASES_LABEL[partido.fase]} ⚡ELIMINATORIA` : ''}
 FECHA: ${fecha}${partido.location ? ` · ${partido.location}` : ''}

@@ -122,10 +122,18 @@ export default function AdminJugadoresPage() {
   useEffect(() => {
     if (!jugadores.length) return
     const hoy = new Date()
-    jugadores.forEach(j => {
-      if (j.activo_membresia && j.fecha_vencimiento && new Date(j.fecha_vencimiento) < hoy) {
+    const vencidos = jugadores.filter(j =>
+      j.activo_membresia && j.fecha_vencimiento && new Date(j.fecha_vencimiento) < hoy
+    )
+    if (!vencidos.length) return
+    Promise.all(
+      vencidos.map(j =>
         supabase.from('players').update({ activo_membresia: false }).eq('id', j.id)
-      }
+      )
+    ).then(() => {
+      setJugadores(prev => prev.map(j =>
+        vencidos.some(v => v.id === j.id) ? { ...j, activo_membresia: false } : j
+      ))
     })
   }, [jugadores])
 
@@ -175,7 +183,7 @@ export default function AdminJugadoresPage() {
   }
 
   async function handleActivarMembresia(jugador, meses, contrasena, yaTieneAuth) {
-    const fechaVenc = new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toISOString()
+    const fechaVenc = (() => { const d = new Date(); d.setMonth(d.getMonth() + meses); return d.toISOString() })()
     const email     = `${jugador.numero_cedula}@golmebol.com`
     try {
       let userId = jugador.user_id

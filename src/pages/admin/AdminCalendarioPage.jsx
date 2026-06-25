@@ -29,7 +29,7 @@ export default function AdminCalendarioPage() {
   }
 
   const filtrados = partidos
-    .filter(p => filtro === 'todos' ? true : filtro === 'pendientes' ? p.status !== 'played' : p.status === 'played')
+    .filter(p => filtro === 'todos' ? true : filtro === 'pendientes' ? p.status !== 'finished' : p.status === 'finished')
     .filter(p => torneoFiltro ? p.tournament_id === torneoFiltro : true)
 
   const grupos = {}
@@ -102,7 +102,7 @@ export default function AdminCalendarioPage() {
                     style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.06)', display: 'flex', flexDirection: 'column' }}>
 
                     {/* Header */}
-                    <div style={{ background: '#1a73e8', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ background: p.status === 'finished' ? '#1e8e3e' : '#1a73e8', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         {p.matchday && <span style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.8)', fontWeight: '500' }}>JORNADA {p.matchday}</span>}
                         <span style={{ fontSize: '.75rem', color: '#fff', fontWeight: '600', textTransform: 'capitalize' }}>
@@ -124,7 +124,7 @@ export default function AdminCalendarioPage() {
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                        {p.status === 'played' ? (
+                        {p.status === 'finished' ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '1.6rem', fontWeight: '800', color: '#202124', lineHeight: 1 }}>{p.home_score}</span>
                             <span style={{ fontSize: '1rem', fontWeight: '600', color: '#9aa0a6' }}>-</span>
@@ -133,8 +133,8 @@ export default function AdminCalendarioPage() {
                         ) : (
                           <span style={{ fontSize: '1rem', fontWeight: '800', color: '#1a73e8' }}>VS</span>
                         )}
-                        <span style={{ fontSize: '.65rem', color: p.status === 'played' ? '#1e8e3e' : '#e8710a', fontWeight: '600', background: p.status === 'played' ? '#e6f4ea' : '#fce8d9', borderRadius: '8px', padding: '2px 8px' }}>
-                          {p.status === 'played' ? 'Jugado' : 'Pendiente'}
+                        <span style={{ fontSize: '.65rem', color: p.status === 'finished' ? '#1e8e3e' : '#e8710a', fontWeight: '600', background: p.status === 'finished' ? '#e6f4ea' : '#fce8d9', borderRadius: '8px', padding: '2px 8px' }}>
+                          {p.status === 'finished' ? 'Jugado' : 'Pendiente'}
                         </span>
                       </div>
 

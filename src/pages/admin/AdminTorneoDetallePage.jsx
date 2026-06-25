@@ -199,14 +199,34 @@ export default function AdminTorneoDetallePage() {
   async function handleGuardarResultado() {
     if (scoreHome === '' || scoreAway === '') return showMsg('Ingresa el marcador', 'error')
     setGuardando(true)
-    const { error } = await supabase.from('matches').update({ home_score: parseInt(scoreHome), away_score: parseInt(scoreAway), status: 'finished' }).eq('id', editandoPartido.id)
-    if (error) showMsg('Error al guardar', 'error')
-    else { showMsg('Resultado guardado ✓'); setEditandoPartido(null); setScoreHome(''); setScoreAway(''); fetchPartidos() }
+    const local     = parseInt(scoreHome)
+    const visitante = parseInt(scoreAway)
+    const ganador   = local > visitante ? 'home' : local < visitante ? 'away' : 'draw'
+    const { error } = await supabase.from('matches')
+      .update({ home_score: local, away_score: visitante, status: 'finished' })
+      .eq('id', editandoPartido.id)
+    if (error) { showMsg('Error al guardar', 'error'); setGuardando(false); return }
+    // Resolver predicciones pendientes — BUG-002
+    const { data: preds } = await supabase.from('predicciones')
+      .select('*').eq('match_id', editandoPartido.id).eq('resuelta', false)
+    if (preds && preds.length > 0) {
+      for (const pred of preds) {
+        let pts = 0
+        if (pred.ganador === ganador)           pts += ganador === 'draw' ? 5 : 3
+        if (pred.goles_home === local)           pts += 3
+        if (pred.goles_away === visitante)       pts += 3
+        if (pred.goles_home === local && pred.goles_away === visitante) pts += 10
+        await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
+      }
+    }
+    showMsg('Resultado guardado y predicciones resueltas ✓')
+    setEditandoPartido(null); setScoreHome(''); setScoreAway(''); fetchPartidos()
     setGuardando(false)
   }
 
   async function handleGuardarTorneo() {
-    await supabase.from('tournaments').update(formTorneo).eq('id', id)
+    const { error } = await supabase.from('tournaments').update(formTorneo).eq('id', id)
+    if (error) { showMsg('Error al actualizar torneo', 'error'); return }
     setTorneo(p => ({ ...p, ...formTorneo }))
     setEditandoTorneo(false)
     showMsg('Torneo actualizado ✓')
@@ -215,7 +235,7 @@ export default function AdminTorneoDetallePage() {
   async function handleGuardarEditPartido() {
     if (!formEditPartido.played_at || !formEditPartido.hora) return showMsg('Fecha y hora son obligatorias', 'error')
     const { error } = await supabase.from('matches').update({
-      played_at: formEditPartido.played_at + 'T' + formEditPartido.hora + ':00-05:00',
+      played_at: new Date(formEditPartido.played_at + 'T' + formEditPartido.hora + ':00').toISOString(),
       location:  formEditPartido.location || null,
       matchday:  formEditPartido.matchday ? parseInt(formEditPartido.matchday) : null,
       fase:      formEditPartido.fase || 'grupo',
