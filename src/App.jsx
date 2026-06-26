@@ -24,6 +24,7 @@ import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import PlayerApuestasPage from './pages/PlayerApuestasPage'
 import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
 import TorneoPublicoPage from './pages/TorneoPublicoPage'
+import PlayerEquipoPage from './pages/PlayerEquipoPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -99,6 +100,7 @@ export default function App() {
         <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
         <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
         <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
+        <Route path="/jugador/equipo/:id" element={<PlayerRoute><PlayerEquipoPage/></PlayerRoute>}/>
 
       </Routes>
     </BrowserRouter>
