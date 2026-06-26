@@ -59,12 +59,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [msg,                   setMsg]                   = useState(null)
   const [subiendoLogo,          setSubiendoLogo]          = useState(false)
 
-  const [cedulaBuscar,       setCedulaBuscar]       = useState('')
-  const [buscando,           setBuscando]           = useState(false)
-  const [jugadorEncontrado,  setJugadorEncontrado]  = useState(null)
-  const [mostrarFormNuevo,   setMostrarFormNuevo]   = useState(false)
-  const [formNuevo,          setFormNuevo]          = useState(EMPTY_NUEVO)
-  const [guardando,          setGuardando]          = useState(false)
+  const [cedulaBuscar,      setCedulaBuscar]      = useState('')
+  const [buscando,          setBuscando]          = useState(false)
+  const [jugadorEncontrado, setJugadorEncontrado] = useState(null)
+  const [mostrarFormNuevo,  setMostrarFormNuevo]  = useState(false)
+  const [formNuevo,         setFormNuevo]         = useState(EMPTY_NUEVO)
+  const [guardando,         setGuardando]         = useState(false)
 
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tabActiva === 'jugadores') fetchJugadoresGlobal() }, [tabActiva])
@@ -113,11 +113,11 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
     todos.forEach(p => {
       pj++
-      const esLocal   = p.home_team_id === id
-      const golesF    = esLocal ? p.home_score : p.away_score
-      const golesC    = esLocal ? p.away_score : p.home_score
-      const rival     = esLocal ? p.away_team_id : p.home_team_id
-      const rivalNom  = esLocal ? p.away?.name  : p.home?.name
+      const esLocal  = p.home_team_id === id
+      const golesF   = esLocal ? p.home_score : p.away_score
+      const golesC   = esLocal ? p.away_score : p.home_score
+      const rival    = esLocal ? p.away_team_id : p.home_team_id
+      const rivalNom = esLocal ? p.away?.name  : p.home?.name
       gf += golesF || 0; gc += golesC || 0
       if (golesF > golesC) {
         pg++; tempSinPerder++; rachaSinPerder = Math.max(rachaSinPerder, tempSinPerder); tempSinGanar = 0
@@ -221,10 +221,19 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
         </div>
       )}
 
-      <button onClick={() => navigate(-1)}
-        style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '20px' }}>
-        <ArrowLeft size={16}/> Volver
-      </button>
+      {!modoLectura && (
+        <button onClick={() => navigate('/admin/equipos')}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '20px' }}>
+          <ArrowLeft size={16}/> Volver
+        </button>
+      )}
+
+      {modoLectura && (
+        <button onClick={() => navigate(-1)}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '20px' }}>
+          <ArrowLeft size={16}/> Volver
+        </button>
+      )}
 
       {/* Header */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
@@ -235,22 +244,19 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
                 : <Shield size={36} color="#9aa0a6"/>}
             </div>
-            {/* Solo admin puede cambiar el logo */}
             {!modoLectura && (
-              <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '26px', height: '26px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,.2)' }}
-                title="Cambiar logo">
+              <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '26px', height: '26px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,.2)' }}>
                 <Camera size={13} color="#fff"/>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
               </label>
             )}
           </div>
-
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#202124', margin: '0 0 6px' }}>{equipo.name}</h1>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {equipo.city     && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📍 {equipo.city}</span>}
+              {equipo.city      && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📍 {equipo.city}</span>}
               {equipo.modalidad && <span style={{ fontSize: '.8rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 10px' }}>{equipo.modalidad}</span>}
-              {equipo.genero   && <span style={{ fontSize: '.8rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '10px', padding: '2px 10px' }}>{equipo.genero}</span>}
+              {equipo.genero    && <span style={{ fontSize: '.8rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '10px', padding: '2px 10px' }}>{equipo.genero}</span>}
               <span style={{ fontSize: '.8rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 10px' }}>{torneos.length} torneos</span>
             </div>
             {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '6px' }}>Subiendo logo...</div>}
@@ -324,8 +330,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
         <div>
           {torneos.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
-              <Trophy size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
-              <div>No ha participado en torneos aún</div>
+              <Trophy size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No ha participado en torneos aún</div>
             </div>
           ) : torneos.map(t => {
             const logroTorneo = logros.find(l => l.tournament_id === t.tournament_id)
@@ -402,7 +407,6 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {/* JUGADORES */}
       {tabActiva === 'jugadores' && (
         <div>
-          {/* Solo admin puede agregar jugadores */}
           {!modoLectura && (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
               <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo</div>
@@ -530,7 +534,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', textTransform: 'capitalize' }}>{l.tipo?.replace(/_/g, ' ')}</div>
                     <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px' }}>{l.tournaments?.name}</div>
-                    {l.descripcion  && <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{l.descripcion}</div>}
+                    {l.descripcion   && <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{l.descripcion}</div>}
                     {l.players?.name && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '2px' }}>👤 {l.players.name}</div>}
                   </div>
                 </div>
