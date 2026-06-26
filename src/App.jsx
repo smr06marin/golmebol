@@ -24,7 +24,6 @@ import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import PlayerApuestasPage from './pages/PlayerApuestasPage'
 import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
 import TorneoPublicoPage from './pages/TorneoPublicoPage'
-import PlayerEquipoPage from './pages/PlayerEquipoPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -77,22 +76,25 @@ export default function App() {
 
         {/* Panel Admin */}
         <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>
-          <Route index                  element={<AdminDashboard/>}/>
-          <Route path="crear"           element={<AdminCrearPage/>}/>
-          <Route path="torneos"         element={<AdminTorneosPage/>}/>
-          <Route path="torneos/:id"     element={<AdminTorneoDetallePage/>}/>
-          <Route path="equipos"         element={<AdminEquiposPage/>}/>
-          <Route path="equipos/:id"     element={<AdminEquipoDetallePage/>}/>
-          <Route path="jugadores"       element={<AdminJugadoresPage/>}/>
-          <Route path="jugadores/:id"   element={<AdminJugadorDetallePage/>}/>
-          <Route path="calendario"      element={<AdminCalendarioPage/>}/>
-          <Route path="sponsors"        element={<AdminSponsorsPage/>}/>
-          <Route path="tarjetas"        element={<AdminTarjetasPage/>}/>
-          <Route path="noticias"        element={<AdminNoticiasPage/>}/>
+          <Route index                element={<AdminDashboard/>}/>
+          <Route path="crear"         element={<AdminCrearPage/>}/>
+          <Route path="torneos"       element={<AdminTorneosPage/>}/>
+          <Route path="torneos/:id"   element={<AdminTorneoDetallePage/>}/>
+          <Route path="equipos"       element={<AdminEquiposPage/>}/>
+          <Route path="equipos/:id"   element={<AdminEquipoDetallePage/>}/>
+          <Route path="jugadores"     element={<AdminJugadoresPage/>}/>
+          <Route path="jugadores/:id" element={<AdminJugadorDetallePage/>}/>
+          <Route path="calendario"    element={<AdminCalendarioPage/>}/>
+          <Route path="sponsors"      element={<AdminSponsorsPage/>}/>
+          <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
+          <Route path="noticias"      element={<AdminNoticiasPage/>}/>
         </Route>
 
         {/* Página pública de torneo — sin login */}
         <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
+
+        {/* Equipo detalle — accesible por admin Y jugador */}
+        <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage/></PlayerRoute>}/>
 
         {/* Portal jugador */}
         <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
@@ -100,7 +102,6 @@ export default function App() {
         <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
         <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
         <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
-        <Route path="/jugador/equipo/:id" element={<PlayerRoute><PlayerEquipoPage/></PlayerRoute>}/>
 
       </Routes>
     </BrowserRouter>
