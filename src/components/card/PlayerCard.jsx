@@ -10,7 +10,6 @@ import DesignNivel3 from './designs/DesignNivel3'
 
 const CARD_PATH = "M 20 0 L 120 0 L 134 10 L 154 2 L 170 0 L 186 2 L 206 10 L 220 0 L 320 0 Q 338 0 340 17 L 340 380 Q 340 422 305 448 Q 278 466 244 476 Q 218 485 170 486 Q 122 485 96 476 Q 62 466 35 448 Q 0 422 0 380 L 0 17 Q 2 0 20 0 Z"
 
-// Escudos SVG de fallback (hardcodeados)
 const TORNEOS_DEFAULT = [
   { id: 't1', nombre: 'GOLM BCN', svg: `<svg viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="g1" cx="48%" cy="36%" r="56%"><stop offset="0%" stop-color="#ff99cc" stop-opacity=".74"/><stop offset="100%" stop-color="#260010" stop-opacity=".96"/></radialGradient></defs><circle cx="35" cy="35" r="33" fill="url(#g1)"/><circle cx="35" cy="35" r="33" fill="none" stroke="#ff66aa" stroke-width="2"/><text x="35" y="27.5" text-anchor="middle" fill="#fff" font-size="8" font-family="Impact">GOLM</text><text x="35" y="37.5" text-anchor="middle" fill="rgba(255,222,238,.92)" font-size="7" font-family="Impact">BCN</text><text x="35" y="46.5" text-anchor="middle" fill="rgba(255,200,225,.6)" font-size="4.5" font-family="Impact">T1 · 2025</text></svg>` },
   { id: 't2', nombre: 'NB BCN Q', svg: `<svg viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="g2" cx="48%" cy="36%" r="56%"><stop offset="0%" stop-color="#44cc66" stop-opacity=".72"/><stop offset="100%" stop-color="#001408" stop-opacity=".96"/></radialGradient></defs><circle cx="35" cy="35" r="33" fill="url(#g2)"/><circle cx="35" cy="35" r="33" fill="none" stroke="#33bb55" stroke-width="2"/><text x="35" y="37" text-anchor="middle" fill="#fff" font-size="10.5" font-family="Impact">NB</text><text x="35" y="47" text-anchor="middle" fill="rgba(180,255,200,.7)" font-size="4.5" font-family="Impact">BCN · Q</text></svg>` }
@@ -35,48 +34,42 @@ function getBorderStyle(design) {
   return design.borde || '#00ddd0'
 }
 
-// Componente escudo — muestra logo real si existe, si no SVG generado
 function Escudo({ item, color, isPremium, size = 62 }) {
   if (!item) return null
-
-  // Si tiene logo_url real, mostrarlo como imagen en círculo
   if (item.logo_url) {
     return (
-      <div style={{
-        width: size, height: size, borderRadius: '50%',
-        overflow: 'hidden', border: `1.5px solid ${color}66`,
-        background: 'rgba(0,0,0,.4)',
-        filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))',
-        animation: 'sflt 4.2s ease-in-out infinite',
-        flexShrink: 0,
-      }}>
-        <img src={item.logo_url} alt={item.nombre || item.name}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', border: `1.5px solid ${color}66`, background: 'rgba(0,0,0,.4)', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', animation: 'sflt 4.2s ease-in-out infinite', flexShrink: 0 }}>
+        <img src={item.logo_url} alt={item.nombre || item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
       </div>
     )
   }
-
-  // Si tiene SVG hardcodeado (fallback)
   if (item.svg) {
     return (
       <div style={{ width: size, height: size, cursor: 'pointer', animation: 'sflt 4.2s ease-in-out infinite', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))' }}
         dangerouslySetInnerHTML={{ __html: item.svg }}/>
     )
   }
-
-  // Fallback genérico con iniciales
   const iniciales = (item.nombre || item.name || '?').substring(0, 2).toUpperCase()
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: `radial-gradient(circle at 40% 35%, ${color}88, rgba(0,0,0,.8))`,
-      border: `1.5px solid ${color}66`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      animation: 'sflt 4.2s ease-in-out infinite',
-      filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))',
-      flexShrink: 0,
-    }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: `radial-gradient(circle at 40% 35%, ${color}88, rgba(0,0,0,.8))`, border: `1.5px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'sflt 4.2s ease-in-out infinite', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', flexShrink: 0 }}>
       <span style={{ fontFamily: 'Impact, sans-serif', fontSize: '18px', color: '#fff', fontWeight: '900' }}>{iniciales}</span>
+    </div>
+  )
+}
+
+// Flechas verticales al lado del escudo
+function FlechasVerticales({ onPrev, onNext, color, isPremium }) {
+  const btnStyle = {
+    width: '14px', height: '14px', borderRadius: '3px',
+    background: 'rgba(0,0,0,.7)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`,
+    color: '#fff', cursor: 'pointer', fontSize: '.55rem',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    lineHeight: 1, padding: 0,
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', justifyContent: 'center' }}>
+      <button onClick={onPrev} style={btnStyle}>▲</button>
+      <button onClick={onNext} style={btnStyle}>▼</button>
     </div>
   )
 }
@@ -89,9 +82,6 @@ export default function PlayerCard({
   hideShields     = false,
   photoUrlExterno = null,
   esPortero       = false,
-  // Props con datos reales de torneos y equipos del jugador
-  // Formato: [{ id, nombre, logo_url }]
-  // Si no se pasan, usa los SVGs hardcodeados de fallback
   torneosData     = null,
   equiposData     = null,
 }) {
@@ -100,7 +90,6 @@ export default function PlayerCard({
   const [photoLocal, setPhotoLocal] = useState(null)
   const photoUrl = photoUrlExterno || photoLocal
 
-  // Usar datos reales si vienen, si no usar fallback hardcodeado
   const TORNEOS = (torneosData && torneosData.length > 0) ? torneosData : TORNEOS_DEFAULT
   const EQUIPOS = (equiposData && equiposData.length > 0) ? equiposData : EQUIPOS_DEFAULT
 
@@ -125,25 +114,21 @@ export default function PlayerCard({
   }
 
   const statsIzquierda = esPortero
-  ? [
-      { label: 'GC',      value: stats.golesContra,    key: 'gc',   dot: true  },
-      { label: 'GC/PJ',   value: stats.promedio,       key: 'prom', dot: true  },
-      { label: 'EFIC%',   value: `${stats.eficacia}%`, key: 'efic', dot: false },
-    ]
-  : [
-      { label: 'GOLES',   value: stats.golesContra,    key: 'gc',   dot: true  },
-      { label: 'G/PJ',    value: stats.promedio,       key: 'prom', dot: true  },
-      { label: 'EFIC%',   value: `${stats.eficacia}%`, key: 'efic', dot: false },
-    ]
+    ? [
+        { label: 'GC',    value: stats.golesContra,    key: 'gc',   dot: true  },
+        { label: 'GC/PJ', value: stats.promedio,       key: 'prom', dot: true  },
+        { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
+      ]
+    : [
+        { label: 'GOLES', value: stats.golesContra,    key: 'gc',   dot: true  },
+        { label: 'G/PJ',  value: stats.promedio,       key: 'prom', dot: true  },
+        { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
+      ]
 
   return (
-    <div style={{
-      position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto',
-      filter: `drop-shadow(0 10px 40px rgba(0,0,0,.78)) drop-shadow(0 0 14px ${color}40) drop-shadow(0 0 2px ${color}cc)`
-    }}>
+    <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: `drop-shadow(0 10px 40px rgba(0,0,0,.78)) drop-shadow(0 0 14px ${color}40) drop-shadow(0 0 2px ${color}cc)` }}>
       <div style={{ position: 'relative', width: '100%', paddingBottom: '155%' }}>
 
-        {/* ── CAPA 1: Diseño por nivel ── */}
         {isPremium ? (
           <DesignPremium variant={design.premiumVariant || 'inicio'} />
         ) : isNivel1 ? (
@@ -184,7 +169,6 @@ export default function PlayerCard({
           </svg>
         )}
 
-        {/* ClipPath para nivel 3 */}
         {isNivel3 && (
           <svg style={{ position: 'absolute', width: 0, height: 0 }} viewBox="0 0 340 510">
             <defs>
@@ -195,15 +179,12 @@ export default function PlayerCard({
           </svg>
         )}
 
-        {/* Decoraciones exteriores */}
         {!isPremium && !isNivel2 && !isNivel3 && (
           <CardDecorations decoracion={design.decoracion} color={color} colorSecundario={color2} colorTerciario={color3}/>
         )}
 
-        {/* ── CAPA 2: Contenido recortado ── */}
         <div style={{ position: 'absolute', inset: 0, clipPath: 'url(#activeCardClip)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* Fondo */}
           {isPremium ? (
             <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(168deg, ${design.fondo[0]} 0%, ${design.fondo[1]} 35%, ${design.fondo[2]} 70%, ${design.fondo[3]} 100%)`, zIndex: 0 }} />
           ) : (
@@ -225,7 +206,6 @@ export default function PlayerCard({
 
           {!isPremium && <CardEffects efectos={design.efectos} color={color} />}
 
-          {/* Foto */}
           {photoUrl && (
             <img src={photoUrl} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', zIndex: 2, pointerEvents: 'none' }} alt="jugador"/>
           )}
@@ -253,45 +233,45 @@ export default function PlayerCard({
             {!hideShields && (
               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '25%', zIndex: 12, display: 'flex', flexDirection: 'column', padding: '4% 0 2% 8%', gap: '5px', background: 'rgba(0,0,0,.25)', backdropFilter: 'blur(4px)', borderRight: '1px solid rgba(255,255,255,.08)' }}>
 
-                {/* Torneo */}
+                {/* TORNEO */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
-                  <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)}>
-                    <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={70}/>
-                  </div>
-                  {TORNEOS.length > 1 && (
-                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
-                      <button onClick={() => setTI(i => (i - 1 + TORNEOS.length) % TORNEOS.length)} style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-                      <div style={{ display: 'flex', gap: '2px' }}>
-                        {TORNEOS.map((_, i) => <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: i === tI ? (isPremium ? '#D6B65D' : color) : 'rgba(255,255,255,.3)' }}/>)}
-                      </div>
-                      <button onClick={() => setTI(i => (i + 1) % TORNEOS.length)} style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)} style={{ cursor: 'pointer' }}>
+                      <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={60}/>
                     </div>
-                  )}
+                    {TORNEOS.length > 1 && (
+                      <FlechasVerticales
+                        onPrev={() => setTI(i => (i - 1 + TORNEOS.length) % TORNEOS.length)}
+                        onNext={() => setTI(i => (i + 1) % TORNEOS.length)}
+                        color={color} isPremium={isPremium}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ height: '1px', background: `linear-gradient(90deg,rgba(255,255,255,.06),${isPremium ? '#D6B65D44' : `${color}44`},rgba(255,255,255,.06))`, marginRight: '6px' }}/>
 
-                {/* Equipo */}
+                {/* EQUIPO */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontFamily: 'var(--font-display)', fontSize: '.rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>EQUIPO</span>
-                  <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)}>
-                    <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={70}/>
-                  </div>
-                  {EQUIPOS.length > 1 && (
-                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
-                      <button onClick={() => setEI(i => (i - 1 + EQUIPOS.length) % EQUIPOS.length)} style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-                      <div style={{ display: 'flex', gap: '2px' }}>
-                        {EQUIPOS.map((_, i) => <div key={i} style={{ width: '3px', height: '3px', borderRadius: '50%', background: i === eI ? (isPremium ? '#D6B65D' : color) : 'rgba(255,255,255,.3)' }}/>)}
-                      </div>
-                      <button onClick={() => setEI(i => (i + 1) % EQUIPOS.length)} style={{ width: '15px', height: '15px', borderRadius: '3px', background: 'rgba(0,0,0,.6)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`, color: '#fff', cursor: 'pointer', fontSize: '.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)} style={{ cursor: 'pointer' }}>
+                      <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={60}/>
                     </div>
-                  )}
+                    {EQUIPOS.length > 1 && (
+                      <FlechasVerticales
+                        onPrev={() => setEI(i => (i - 1 + EQUIPOS.length) % EQUIPOS.length)}
+                        onNext={() => setEI(i => (i + 1) % EQUIPOS.length)}
+                        color={color} isPremium={isPremium}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Muñeco por defecto */}
+            {/* Muñeco */}
             {!photoUrl && (
               <div style={{ position: 'absolute', inset: 0, zIndex: 3 }}>
                 <svg viewBox="0 0 228 314" fill="none" style={{ width: '100%', height: '100%' }}>
