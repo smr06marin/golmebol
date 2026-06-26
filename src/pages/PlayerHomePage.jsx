@@ -364,7 +364,7 @@ export default function PlayerHomePage() {
     const torneo = torneosData.find(t => t.id === itemId)
     if (torneo) { navigate(`/jugador/torneo/${torneo.id}`); return }
     const reg = torneos.find(t => t.teams?.id === itemId)
-if (reg) navigate(`/jugador/equipo/${reg.teams?.id}`)
+    if (reg) navigate(`/jugador/equipo/${reg.teams?.id}`)
   }
 
   const tarjetasDesbloqueadas = CARD_DESIGNS.filter(d => estaDesbloqueada(d.id))
