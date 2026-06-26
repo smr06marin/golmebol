@@ -81,6 +81,12 @@ export default function AdminTorneoDetallePage() {
   const [dragOver,        setDragOver]        = useState(null)
   const [loadingPartido,  setLoadingPartido]  = useState(false)
 
+  // Agregar equipo al torneo
+  const [showAgregarEquipo,  setShowAgregarEquipo]  = useState(false)
+  const [busquedaEquipo,     setBusquedaEquipo]     = useState('')
+  const [equiposDisponibles, setEquiposDisponibles] = useState([])
+  const [loadingEquipos,     setLoadingEquipos]     = useState(false)
+
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas') fetchGoleadores() }, [tab])
 
@@ -156,7 +162,6 @@ export default function AdminTorneoDetallePage() {
     if (!formPartido.home_team_id || !formPartido.away_team_id) return showMsg('Selecciona los dos equipos', 'error')
     if (formPartido.home_team_id === formPartido.away_team_id) return showMsg('Los equipos no pueden ser iguales', 'error')
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
-
     const yaJugaron = partidos.some(p =>
       (p.home_team_id === formPartido.home_team_id && p.away_team_id === formPartido.away_team_id) ||
       (p.home_team_id === formPartido.away_team_id && p.away_team_id === formPartido.home_team_id)
@@ -167,7 +172,6 @@ export default function AdminTorneoDetallePage() {
       const confirmar = window.confirm(`⚠️ ${equipoLocal} y ${equipoVisitante} ya se enfrentaron en este torneo.\n\n¿Deseas programar otro partido entre ellos?`)
       if (!confirmar) return
     }
-
     setLoadingPartido(true)
     const { error } = await supabase.from('matches').insert({
       tournament_id: id,
@@ -202,19 +206,15 @@ export default function AdminTorneoDetallePage() {
     const local     = parseInt(scoreHome)
     const visitante = parseInt(scoreAway)
     const ganador   = local > visitante ? 'home' : local < visitante ? 'away' : 'draw'
-    const { error } = await supabase.from('matches')
-      .update({ home_score: local, away_score: visitante, status: 'finished' })
-      .eq('id', editandoPartido.id)
+    const { error } = await supabase.from('matches').update({ home_score: local, away_score: visitante, status: 'finished' }).eq('id', editandoPartido.id)
     if (error) { showMsg('Error al guardar', 'error'); setGuardando(false); return }
-    // Resolver predicciones pendientes — BUG-002
-    const { data: preds } = await supabase.from('predicciones')
-      .select('*').eq('match_id', editandoPartido.id).eq('resuelta', false)
+    const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', editandoPartido.id).eq('resuelta', false)
     if (preds && preds.length > 0) {
       for (const pred of preds) {
         let pts = 0
-        if (pred.ganador === ganador)           pts += ganador === 'draw' ? 5 : 3
-        if (pred.goles_home === local)           pts += 3
-        if (pred.goles_away === visitante)       pts += 3
+        if (pred.ganador === ganador)                               pts += ganador === 'draw' ? 5 : 3
+        if (pred.goles_home === local)                              pts += 3
+        if (pred.goles_away === visitante)                          pts += 3
         if (pred.goles_home === local && pred.goles_away === visitante) pts += 10
         await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
       }
@@ -293,6 +293,33 @@ export default function AdminTorneoDetallePage() {
   }
   function handleDragEnd() { setDrag(null); setDragOver(null) }
 
+  async function buscarEquipos(q) {
+    setBusquedaEquipo(q)
+    if (!q.trim()) { setEquiposDisponibles([]); return }
+    setLoadingEquipos(true)
+    const { data } = await supabase.from('teams').select('*').ilike('name', `%${q}%`).limit(10)
+    const idsInscritos = equipos.map(e => e.id)
+    setEquiposDisponibles((data || []).filter(e => !idsInscritos.includes(e.id)))
+    setLoadingEquipos(false)
+  }
+
+  async function handleAgregarEquipo(equipo) {
+    const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: equipo.id })
+    if (error) return showMsg('Error al agregar equipo', 'error')
+    showMsg(`${equipo.name} agregado al torneo ✓`)
+    setShowAgregarEquipo(false)
+    setBusquedaEquipo('')
+    setEquiposDisponibles([])
+    fetchEquipos()
+  }
+
+  async function handleQuitarEquipo(equipo) {
+    if (!confirm(`¿Quitar a ${equipo.name} del torneo?`)) return
+    await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
+    showMsg(`${equipo.name} quitado del torneo`)
+    fetchEquipos()
+  }
+
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
   if (!torneo)  return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Torneo no encontrado</div>
 
@@ -324,9 +351,7 @@ export default function AdminTorneoDetallePage() {
           partido={planillaPartido}
           onClose={() => setPlanillaPartido(null)}
           onGuardarResultado={async (local, visitante) => {
-            const { error } = await supabase.from('matches').update({
-              home_score: local, away_score: visitante, status: 'finished'
-            }).eq('id', planillaPartido.id)
+            const { error } = await supabase.from('matches').update({ home_score: local, away_score: visitante, status: 'finished' }).eq('id', planillaPartido.id)
             if (!error) {
               const ganador = local > visitante ? 'home' : local < visitante ? 'away' : 'draw'
               const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', planillaPartido.id).eq('resuelta', false)
@@ -388,12 +413,7 @@ export default function AdminTorneoDetallePage() {
           <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem', marginBottom: '20px' }}>Editar torneo</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[
-                { label: 'Nombre',    key: 'name' },
-                { label: 'Ciudad',    key: 'city' },
-                { label: 'Temporada', key: 'season' },
-                { label: 'Categoría', key: 'categoria' },
-              ].map(f => (
+              {[{ label: 'Nombre', key: 'name' }, { label: 'Ciudad', key: 'city' }, { label: 'Temporada', key: 'season' }, { label: 'Categoría', key: 'categoria' }].map(f => (
                 <div key={f.key}>
                   <label style={labelStyle}>{f.label}</label>
                   <input value={formTorneo[f.key] || ''} onChange={e => setFormTorneo(p => ({ ...p, [f.key]: e.target.value }))} style={inputStyle}/>
@@ -403,18 +423,14 @@ export default function AdminTorneoDetallePage() {
                 <label style={labelStyle}>Modalidad</label>
                 <select value={formTorneo.modalidad || ''} onChange={e => setFormTorneo(p => ({ ...p, modalidad: e.target.value }))} style={inputStyle}>
                   <option value="">Seleccionar...</option>
-                  <option>Fútbol 5</option>
-                  <option>Fútbol 7</option>
-                  <option>Fútbol 11</option>
+                  <option>Fútbol 5</option><option>Fútbol 7</option><option>Fútbol 11</option>
                 </select>
               </div>
               <div>
                 <label style={labelStyle}>Género</label>
                 <select value={formTorneo.genero || ''} onChange={e => setFormTorneo(p => ({ ...p, genero: e.target.value }))} style={inputStyle}>
                   <option value="">Seleccionar...</option>
-                  <option>Masculino</option>
-                  <option>Femenino</option>
-                  <option>Mixto</option>
+                  <option>Masculino</option><option>Femenino</option><option>Mixto</option>
                 </select>
               </div>
             </div>
@@ -434,14 +450,8 @@ export default function AdminTorneoDetallePage() {
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{editandoPartidoForm.home?.name} vs {editandoPartidoForm.away?.name}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={labelStyle}>Fecha *</label>
-                  <input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/>
-                </div>
-                <div>
-                  <label style={labelStyle}>Hora *</label>
-                  <input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/>
-                </div>
+                <div><label style={labelStyle}>Fecha *</label><input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/></div>
+                <div><label style={labelStyle}>Hora *</label><input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/></div>
               </div>
               <div>
                 <label style={labelStyle}>Cancha</label>
@@ -450,10 +460,7 @@ export default function AdminTorneoDetallePage() {
                   {canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={labelStyle}>Jornada #</label>
-                <input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/>
-              </div>
+              <div><label style={labelStyle}>Jornada #</label><input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
               <div>
                 <label style={labelStyle}>Fase</label>
                 <select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>
@@ -465,6 +472,41 @@ export default function AdminTorneoDetallePage() {
               <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar cambios</button>
               <button onClick={() => setEditandoPartidoForm(null)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}><X size={16}/></button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal agregar equipo */}
+      {showAgregarEquipo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '440px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem' }}>Agregar equipo al torneo</div>
+              <button onClick={() => { setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([]) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+            </div>
+            <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Buscar equipo por nombre..." style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
+            {loadingEquipos && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
+            {!loadingEquipos && busquedaEquipo && equiposDisponibles.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>No se encontraron equipos disponibles</div>
+            )}
+            {equiposDisponibles.length > 0 && (
+              <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
+                {equiposDisponibles.map((e, i) => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderBottom: i < equiposDisponibles.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
+                      <TeamLogo logo_url={e.logo_url} name={e.name} size={36}/>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{e.name}</div>
+                      {e.city && <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>📍 {e.city}</div>}
+                    </div>
+                    <button onClick={() => handleAgregarEquipo(e)} style={{ padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>
+                      + Agregar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -695,9 +737,7 @@ export default function AdminTorneoDetallePage() {
                               const hora  = p.played_at ? p.played_at.substring(11, 16) : ''
                               setFormEditPartido({ played_at: fecha, hora, location: p.location || '', matchday: p.matchday || '', fase: p.fase || 'grupo' })
                               setEditandoPartidoForm(p)
-                            }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
-                              ✏️
-                            </button>
+                            }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>✏️</button>
                             <button onClick={() => setPlanillaPartido(p)} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>
                               <Check size={13}/> Resultado
                             </button>
@@ -740,9 +780,7 @@ export default function AdminTorneoDetallePage() {
                             </div>
                           </div>
                           <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                            <button onClick={() => setPlanillaPartido(p)} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>
-                              Editar
-                            </button>
+                            <button onClick={() => setPlanillaPartido(p)} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>Editar</button>
                           </div>
                         </div>
                       ))}
@@ -837,6 +875,12 @@ export default function AdminTorneoDetallePage() {
       {/* EQUIPOS */}
       {tab === 'equipos' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+            <button onClick={() => setShowAgregarEquipo(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
+              <Plus size={16}/> Agregar equipo
+            </button>
+          </div>
           {equipos.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
               <Shield size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay equipos inscritos</div>
@@ -863,9 +907,14 @@ export default function AdminTorneoDetallePage() {
                           ))}
                         </div>
                       </div>
-                      <button onClick={() => navigate(`/admin/equipos/${e.id}`)} style={{ background: 'none', border: '1px solid #1a73e8', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '500' }}>
-                        Ver ficha
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => navigate(`/admin/equipos/${e.id}`)} style={{ background: 'none', border: '1px solid #1a73e8', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '500' }}>
+                          Ver ficha
+                        </button>
+                        <button onClick={() => handleQuitarEquipo(e)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}>
+                          Quitar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
