@@ -125,7 +125,8 @@ export default function PlayerHomePage() {
       .from('tournament_player_registrations')
       .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
       .eq('player_id', p.id).eq('activo', true)
-    setTorneos(regs || [])
+    console.log('regs:', regs)
+setTorneos(regs || [])
 
     // ── NOTIFICACIONES IN-APP ──
     const notifsList = []
