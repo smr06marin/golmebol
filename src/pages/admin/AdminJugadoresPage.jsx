@@ -47,7 +47,6 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
         </div>
-
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div>
             <label style={lbl}>Meses a activar</label>
@@ -60,23 +59,19 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
               ))}
             </div>
           </div>
-
           {!yaTieneAuth && (
             <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
               🔐 La contraseña inicial será la cédula: <b>{jugador.numero_cedula}</b>. El jugador deberá cambiarla al primer ingreso.
             </div>
           )}
-
           {yaTieneAuth && (
             <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
               🔐 Ya tiene cuenta creada. Solo se renovará el tiempo de acceso.
             </div>
           )}
-
           {error && (
             <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{error}</div>
           )}
-
           <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px 14px' }}>
             <div style={{ fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>Resumen</div>
             <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '4px' }}>
@@ -84,7 +79,6 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
               <b>{new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</b>
             </div>
           </div>
-
           <button onClick={handleActivar} disabled={loading}
             style={{ padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: loading ? .7 : 1 }}>
             {loading ? 'Procesando...' : !jugador.user_id ? '✅ Activar membresía' : jugador.activo_membresia ? '🔄 Renovar' : '🔄 Reactivar'}
@@ -107,6 +101,8 @@ export default function AdminJugadoresPage() {
   const [search,          setSearch]          = useState('')
   const [filtroMembresia, setFiltroMembresia] = useState('todos')
   const [modalMembresia,  setModalMembresia]  = useState(null)
+  const [modalReset,      setModalReset]      = useState(null)
+  const [loadingReset,    setLoadingReset]    = useState(false)
 
   useEffect(() => { fetchJugadores() }, [])
 
@@ -206,6 +202,36 @@ export default function AdminJugadoresPage() {
     fetchJugadores()
   }
 
+  async function handleResetPassword(jugador) {
+    if (!jugador.user_id) return showMsg('Este jugador no tiene cuenta', 'error')
+    setLoadingReset(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('https://obvlyexpbbdhxwijjqyd.supabase.co/functions/v1/reset-player-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          user_id:        jugador.user_id,
+          nueva_password: String(jugador.numero_cedula),
+        }),
+      })
+      const data = await res.json()
+      if (data.error) showMsg('Error: ' + data.error, 'error')
+      else {
+        await supabase.from('players').update({ primer_ingreso: true }).eq('id', jugador.id)
+        showMsg(`✅ Contraseña de ${jugador.name} reseteada a su cédula`)
+        fetchJugadores()
+      }
+    } catch (e) {
+      showMsg('Error: ' + e.message, 'error')
+    }
+    setLoadingReset(false)
+    setModalReset(null)
+  }
+
   function abrirWhatsApp(jugador) {
     const numero  = (jugador.whatsapp || jugador.telefono || '').replace(/\D/g, '')
     const dias    = diasRestantes(jugador.fecha_vencimiento)
@@ -226,10 +252,10 @@ export default function AdminJugadoresPage() {
 
   async function handleFoto(jugador, file, tipo) {
     if (!file) return
-    const key  = jugador.id + '_' + tipo
+    const key   = jugador.id + '_' + tipo
     setUploading(u => ({ ...u, [key]: true }))
-    const ext  = file.name.split('.').pop()
-    const path = `fotos/${jugador.id}_${tipo}.${ext}`
+    const ext   = file.name.split('.').pop()
+    const path  = `fotos/${jugador.id}_${tipo}.${ext}`
     const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
     const { error } = await supabase.storage.from('players').upload(path, file, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir foto', 'error'); return }
@@ -242,10 +268,10 @@ export default function AdminJugadoresPage() {
 
   async function handleCedula(jugador, file, cara) {
     if (!file) return
-    const key  = jugador.id + '_' + cara
+    const key   = jugador.id + '_' + cara
     setUploading(u => ({ ...u, [key]: true }))
-    const ext  = file.name.split('.').pop()
-    const path = `${jugador.id}_${cara}.${ext}`
+    const ext   = file.name.split('.').pop()
+    const path  = `${jugador.id}_${cara}.${ext}`
     const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir cédula', 'error'); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
@@ -282,6 +308,36 @@ export default function AdminJugadoresPage() {
 
       {modalMembresia && (
         <ModalMembresia jugador={modalMembresia} onClose={() => setModalMembresia(null)} onActivar={handleActivarMembresia}/>
+      )}
+
+      {modalReset && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '400px', boxShadow: '0 8px 32px rgba(0,0,0,.3)' }}>
+            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fce8e6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                <AlertTriangle size={28} color="#d93025"/>
+              </div>
+              <div style={{ fontWeight: '700', color: '#d93025', fontSize: '1.1rem', marginBottom: '6px' }}>⚠️ Resetear contraseña</div>
+              <div style={{ fontSize: '.85rem', color: '#5f6368', lineHeight: 1.5 }}>
+                ¿Seguro que quieres resetear la contraseña de <b>{modalReset.name}</b>?<br/>
+                La nueva contraseña será su cédula <b>{modalReset.numero_cedula}</b> y deberá cambiarla al próximo ingreso.
+              </div>
+            </div>
+            <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', marginBottom: '20px', fontSize: '.78rem', color: '#d93025', fontWeight: '600', textAlign: 'center' }}>
+              🚨 Esta acción no se puede deshacer
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setModalReset(null)}
+                style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontWeight: '600', fontSize: '.875rem' }}>
+                Cancelar
+              </button>
+              <button onClick={() => handleResetPassword(modalReset)} disabled={loadingReset}
+                style={{ flex: 1, padding: '10px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: loadingReset ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: loadingReset ? .7 : 1 }}>
+                {loadingReset ? 'Reseteando...' : '🔄 Sí, resetear'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
@@ -409,10 +465,10 @@ export default function AdminJugadoresPage() {
             <div style={{ fontSize: '.875rem' }}>{search ? 'No se encontraron jugadores' : 'No hay jugadores en esta categoría'}</div>
           </div>
         ) : filtered.map((j, i) => {
-          const dias      = diasRestantes(j.fecha_vencimiento)
-          const vencida   = dias !== null && dias <= 0
-          const porVencer = dias !== null && dias > 0 && dias <= 7
-          const activo    = j.activo_membresia && !vencida
+          const dias        = diasRestantes(j.fecha_vencimiento)
+          const vencida     = dias !== null && dias <= 0
+          const porVencer   = dias !== null && dias > 0 && dias <= 7
+          const activo      = j.activo_membresia && !vencida
           const esPendiente = j.user_id && j.whatsapp && !j.activo_membresia
 
           return (
@@ -482,6 +538,12 @@ export default function AdminJugadoresPage() {
                       <button onClick={() => handleDesactivar(j)}
                         style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem' }}>
                         Desactivar
+                      </button>
+                    )}
+                    {j.user_id && (
+                      <button onClick={() => setModalReset(j)}
+                        style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        🔄 Reset
                       </button>
                     )}
                     {(j.telefono || j.whatsapp) && (vencida || porVencer) && !esPendiente && (
