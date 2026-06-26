@@ -6,7 +6,58 @@ import PlayerCard from '../../components/card/PlayerCard'
 
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
+function CedulasViewer({ jugadorId, frontalPath, traseraPath }) {
+  const [urls,    setUrls]    = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [visible, setVisible] = useState(false)
 
+  async function handleVer() {
+    if (visible) { setVisible(false); setUrls(null); return }
+    setLoading(true)
+    const getUrl = async (fullUrl) => {
+      if (!fullUrl) return null
+      const path = fullUrl.split('/cedulas/')[1]
+      if (!path) return null
+      const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 60)
+      return data?.signedUrl || null
+    }
+    const [frontal, trasera] = await Promise.all([
+      getUrl(frontalPath),
+      getUrl(traseraPath),
+    ])
+    setUrls({ frontal, trasera })
+    setVisible(true)
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: visible ? '12px' : '0' }}>
+        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>🪪 Documentos de identidad</div>
+        <button onClick={handleVer} disabled={loading}
+          style={{ padding: '6px 14px', background: visible ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: visible ? '#5f6368' : '#fff', fontSize: '.78rem', fontWeight: '600' }}>
+          {loading ? 'Cargando...' : visible ? '🔒 Ocultar' : '🔓 Ver cédulas'}
+        </button>
+      </div>
+      {visible && urls && (
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          {urls.frontal && (
+            <div>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Frontal</div>
+              <img src={urls.frontal} style={{ height: '120px', borderRadius: '8px', border: '1px solid #e8eaed', objectFit: 'cover', cursor: 'pointer' }} onClick={() => window.open(urls.frontal, '_blank')}/>
+            </div>
+          )}
+          {urls.trasera && (
+            <div>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Trasera</div>
+              <img src={urls.trasera} style={{ height: '120px', borderRadius: '8px', border: '1px solid #e8eaed', objectFit: 'cover', cursor: 'pointer' }} onClick={() => window.open(urls.trasera, '_blank')}/>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 function StatBox({ label, value, color = '#1a73e8', sub }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
@@ -388,26 +439,12 @@ export default function AdminJugadorDetallePage() {
 
           {/* Cédulas */}
           {(jugador.cedula_frontal_url || jugador.cedula_trasera_url) && (
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '12px' }}>Documentos</div>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                {jugador.cedula_frontal_url && (
-                  <div>
-                    <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Cédula frontal</div>
-                    <img src={jugador.cedula_frontal_url} style={{ height: '100px', borderRadius: '8px', border: '1px solid #e8eaed', objectFit: 'cover', cursor: 'pointer' }} onClick={() => window.open(jugador.cedula_frontal_url, '_blank')}/>
-                  </div>
-                )}
-                {jugador.cedula_trasera_url && (
-                  <div>
-                    <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Cédula trasera</div>
-                    <img src={jugador.cedula_trasera_url} style={{ height: '100px', borderRadius: '8px', border: '1px solid #e8eaed', objectFit: 'cover', cursor: 'pointer' }} onClick={() => window.open(jugador.cedula_trasera_url, '_blank')}/>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+  <CedulasViewer
+    jugadorId={jugador.id}
+    frontalPath={jugador.cedula_frontal_url}
+    traseraPath={jugador.cedula_trasera_url}
+  />
+)}
 
       {/* STATS */}
       {tab === 'stats' && (
