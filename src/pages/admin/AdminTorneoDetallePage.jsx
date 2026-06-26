@@ -108,6 +108,7 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchEquipos() {
     const { data } = await supabase.from('tournament_teams').select('*, teams(id, name, city, logo_url, modalidad, genero, registro_token)').eq('tournament_id', id)
+   console.log('equipos raw:', data)
     setEquipos((data || []).map(d => ({ ...d.teams, tournament_team_id: d.id })))
   }
 
