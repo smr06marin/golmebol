@@ -911,6 +911,13 @@ export default function AdminTorneoDetallePage() {
                         <button onClick={() => navigate(`/admin/equipos/${e.id}`)} style={{ background: 'none', border: '1px solid #1a73e8', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '500' }}>
                           Ver ficha
                         </button>
+                        <button onClick={() => {
+  const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
+  navigator.clipboard.writeText(link)
+  showMsg(`Link de registro de ${e.name} copiado ✓`)
+}} style={{ background: 'none', border: '1px solid #1e8e3e', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#1e8e3e', fontSize: '.8rem' }}>
+  🔗
+</button>
                         <button onClick={() => handleQuitarEquipo(e)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}>
                           Quitar
                         </button>

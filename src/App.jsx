@@ -94,7 +94,7 @@ export default function App() {
         {/* Página pública de torneo — sin login */}
         <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
         {/* Registro público de jugadores por equipo */}
-<Route path="/registro/equipo/:token" element={<RegistroEquipoPage/>}/>
+<Route path="/registro/equipo/:token/:tournamentId" element={<RegistroEquipoPage/>}/>
 
         {/* Equipo detalle — accesible por admin Y jugador */}
         <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage modoLectura={true}/></PlayerRoute>}/>

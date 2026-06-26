@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Shield, Check, Users } from 'lucide-react'
+import { Shield, Check, Users, Upload } from 'lucide-react'
 
 const POSICIONES = {
   'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
@@ -25,32 +25,100 @@ const EMPTY_FORM = {
   posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
 }
 
+function FotoUpload({ label, preview, onChange }) {
+  return (
+    <div>
+      <label style={labelStyle}>{label} *</label>
+      <label style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        border: `2px dashed ${preview ? '#1a73e8' : '#dadce0'}`,
+        borderRadius: '10px', padding: '16px', cursor: 'pointer',
+        background: preview ? '#e8f0fe' : '#f8f9fa', minHeight: '100px',
+        transition: 'all .2s',
+      }}>
+        {preview
+          ? <img src={preview} style={{ maxHeight: '120px', borderRadius: '6px', objectFit: 'cover' }}/>
+          : <>
+              <Upload size={24} color="#9aa0a6" style={{ marginBottom: '6px' }}/>
+              <span style={{ fontSize: '.8rem', color: '#9aa0a6' }}>Toca para subir foto</span>
+            </>
+        }
+        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onChange}/>
+      </label>
+    </div>
+  )
+}
+
 export default function RegistroEquipoPage() {
-  const { token } = useParams()
+  const { token, tournamentId } = useParams()
 
-  const [equipo,         setEquipo]         = useState(null)
-  const [loading,        setLoading]        = useState(true)
-  const [cedula,         setCedula]         = useState('')
-  const [buscando,       setBuscando]       = useState(false)
-  const [jugadorExiste,  setJugadorExiste]  = useState(null)
-  const [mostrarNuevo,   setMostrarNuevo]   = useState(false)
-  const [formNuevo,      setFormNuevo]      = useState(EMPTY_FORM)
-  const [guardando,      setGuardando]      = useState(false)
-  const [msg,            setMsg]            = useState(null)
-  const [yaRegistrado,   setYaRegistrado]   = useState(false)
-  const [exito,          setExito]          = useState(false)
+  const [equipo,        setEquipo]        = useState(null)
+  const [torneo,        setTorneo]        = useState(null)
+  const [loading,       setLoading]       = useState(true)
+  const [cedula,        setCedula]        = useState('')
+  const [buscando,      setBuscando]      = useState(false)
+  const [jugadorExiste, setJugadorExiste] = useState(null)
+  const [mostrarNuevo,  setMostrarNuevo]  = useState(false)
+  const [formNuevo,     setFormNuevo]     = useState(EMPTY_FORM)
+  const [guardando,     setGuardando]     = useState(false)
+  const [msg,           setMsg]           = useState(null)
+  const [exito,         setExito]         = useState(false)
 
-  useEffect(() => { fetchEquipo() }, [token])
+  // Fotos cédula
+  const [fotoFrontal,        setFotoFrontal]        = useState(null)
+  const [fotoTrasera,        setFotoTrasera]        = useState(null)
+  const [previewFrontal,     setPreviewFrontal]     = useState(null)
+  const [previewTrasera,     setPreviewTrasera]     = useState(null)
+  const [subiendoFotos,      setSubiendoFotos]      = useState(false)
 
-  async function fetchEquipo() {
-    const { data } = await supabase.from('teams').select('*').eq('registro_token', token).single()
-    setEquipo(data)
+  useEffect(() => { fetchDatos() }, [token, tournamentId])
+
+  async function fetchDatos() {
+    const [{ data: eq }, { data: tor }] = await Promise.all([
+      supabase.from('teams').select('*').eq('registro_token', token).single(),
+      supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
+    ])
+    setEquipo(eq)
+    setTorneo(tor)
     setLoading(false)
   }
 
   function showMsg(text, type = 'error') {
     setMsg({ text, type })
-    setTimeout(() => setMsg(null), 4000)
+    setTimeout(() => setMsg(null), 5000)
+  }
+
+  function handleFotoFrontal(e) {
+    const file = e.target.files[0]; if (!file) return
+    setFotoFrontal(file)
+    setPreviewFrontal(URL.createObjectURL(file))
+  }
+
+  function handleFotoTrasera(e) {
+    const file = e.target.files[0]; if (!file) return
+    setFotoTrasera(file)
+    setPreviewTrasera(URL.createObjectURL(file))
+  }
+
+  async function subirFotosCedula(playerId) {
+    const urls = {}
+    if (fotoFrontal) {
+      const ext  = fotoFrontal.name.split('.').pop()
+      const path = `${playerId}_frontal.${ext}`
+      await supabase.storage.from('cedulas').upload(path, fotoFrontal, { upsert: true })
+      const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
+      urls.cedula_frontal_url = data.publicUrl
+    }
+    if (fotoTrasera) {
+      const ext  = fotoTrasera.name.split('.').pop()
+      const path = `${playerId}_trasera.${ext}`
+      await supabase.storage.from('cedulas').upload(path, fotoTrasera, { upsert: true })
+      const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
+      urls.cedula_trasera_url = data.publicUrl
+    }
+    if (Object.keys(urls).length > 0) {
+      await supabase.from('players').update(urls).eq('id', playerId)
+    }
   }
 
   async function handleBuscarCedula() {
@@ -58,31 +126,54 @@ export default function RegistroEquipoPage() {
     setBuscando(true)
     setJugadorExiste(null)
     setMostrarNuevo(false)
-    setYaRegistrado(false)
 
-    // Buscar si ya está en el equipo
+    // Buscar jugador
     const { data: jugador } = await supabase.from('players').select('*').eq('numero_cedula', cedula.trim()).single()
 
     if (jugador) {
-      // Verificar si ya está en team_players
-      const { data: yaEsta } = await supabase.from('team_players').select('id').eq('team_id', equipo.id).eq('player_id', jugador.id).single()
-      if (yaEsta) {
-        setYaRegistrado(true)
+      // Verificar si ya está registrado en ESTE torneo (en cualquier equipo)
+      const { data: yaEnTorneo } = await supabase
+        .from('tournament_player_registrations')
+        .select('*, teams(name)')
+        .eq('tournament_id', tournamentId)
+        .eq('player_id', jugador.id)
+        .eq('activo', true)
+        .single()
+
+      if (yaEnTorneo) {
+        showMsg(`⚠️ Ya estás registrado en este torneo con el equipo "${yaEnTorneo.teams?.name}"`, 'warning')
         setBuscando(false)
         return
       }
       setJugadorExiste(jugador)
     } else {
       setMostrarNuevo(true)
-      setFormNuevo({ ...EMPTY_FORM, numero_cedula: cedula.trim() })
+      setFormNuevo({ ...EMPTY_FORM })
     }
     setBuscando(false)
   }
 
   async function handleConfirmarExistente() {
     setGuardando(true)
-    const { error } = await supabase.from('team_players').insert({ team_id: equipo.id, player_id: jugadorExiste.id, activo: false })
+
+    // Insertar en tournament_player_registrations
+    const { error } = await supabase.from('tournament_player_registrations').insert({
+      tournament_id: tournamentId,
+      team_id:       equipo.id,
+      player_id:     jugadorExiste.id,
+      activo:        true,
+    })
     if (error) { showMsg('Error al registrarte. Intenta de nuevo.'); setGuardando(false); return }
+
+    // Si no está en team_players, agregarlo
+    const { data: yaEnEquipo } = await supabase.from('team_players').select('id').eq('team_id', equipo.id).eq('player_id', jugadorExiste.id).single()
+    if (!yaEnEquipo) {
+      await supabase.from('team_players').insert({ team_id: equipo.id, player_id: jugadorExiste.id, activo: true })
+    }
+
+    // Subir fotos si las puso
+    await subirFotosCedula(jugadorExiste.id)
+
     setExito(true)
     setGuardando(false)
   }
@@ -95,13 +186,34 @@ export default function RegistroEquipoPage() {
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria')
     if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
       return showMsg('Selecciona al menos una posición')
+    if (!fotoFrontal) return showMsg('La foto frontal de la cédula es obligatoria')
+    if (!fotoTrasera) return showMsg('La foto trasera de la cédula es obligatoria')
 
     setGuardando(true)
-    const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedula.trim() }).select().single()
-    if (error) { showMsg('Error al crear el jugador. Intenta de nuevo.'); setGuardando(false); return }
+    setSubiendoFotos(true)
 
-    const { error: e2 } = await supabase.from('team_players').insert({ team_id: equipo.id, player_id: nuevo.id, activo: false })
-    if (e2) { showMsg('Jugador creado pero error al unirte al equipo.'); setGuardando(false); return }
+    // Crear jugador
+    const { data: nuevo, error } = await supabase.from('players').insert({
+      ...formNuevo,
+      numero_cedula: cedula.trim(),
+    }).select().single()
+    if (error) { showMsg('Error al crear el jugador. Intenta de nuevo.'); setGuardando(false); setSubiendoFotos(false); return }
+
+    // Subir fotos cédula
+    await subirFotosCedula(nuevo.id)
+    setSubiendoFotos(false)
+
+    // Registrar en torneo
+    const { error: e2 } = await supabase.from('tournament_player_registrations').insert({
+      tournament_id: tournamentId,
+      team_id:       equipo.id,
+      player_id:     nuevo.id,
+      activo:        true,
+    })
+    if (e2) { showMsg('Jugador creado pero error al registrarlo en el torneo.'); setGuardando(false); return }
+
+    // Registrar en equipo base
+    await supabase.from('team_players').insert({ team_id: equipo.id, player_id: nuevo.id, activo: true })
 
     setExito(true)
     setGuardando(false)
@@ -113,10 +225,10 @@ export default function RegistroEquipoPage() {
     </div>
   )
 
-  if (!equipo) return (
+  if (!equipo || !torneo) return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
       <Shield size={48} color="#dadce0"/>
-      <div style={{ color: '#9aa0a6', fontSize: '.9rem' }}>Link de registro inválido o expirado</div>
+      <div style={{ color: '#9aa0a6', fontSize: '.9rem' }}>Link de registro inválido</div>
     </div>
   )
 
@@ -127,17 +239,18 @@ export default function RegistroEquipoPage() {
           <Check size={32} color="#1e8e3e"/>
         </div>
         <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>¡Registrado!</div>
-        <div style={{ fontSize: '.875rem', color: '#5f6368', lineHeight: 1.5 }}>
-          Ya eres parte del equipo <strong>{equipo.name}</strong>.<br/>
-          El admin del equipo te asignará a los torneos correspondientes.
+        <div style={{ fontSize: '.875rem', color: '#5f6368', lineHeight: 1.6, marginBottom: '20px' }}>
+          Quedaste inscrito en el torneo<br/>
+          <strong>{torneo.name}</strong><br/>
+          con el equipo <strong>{equipo.name}</strong>
         </div>
-        <div style={{ marginTop: '20px', padding: '12px', background: '#f8f9fa', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#e8f0fe', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {equipo.logo_url ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={20} color="#1a73e8"/>}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center', padding: '12px', background: '#f8f9fa', borderRadius: '10px' }}>
+          <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e8f0fe', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {equipo.logo_url ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={18} color="#1a73e8"/>}
           </div>
           <div style={{ textAlign: 'left' }}>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{equipo.name}</div>
-            {equipo.city && <div style={{ fontSize: '.75rem', color: '#9aa0a6' }}>📍 {equipo.city}</div>}
+            <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{torneo.name}</div>
           </div>
         </div>
       </div>
@@ -148,27 +261,35 @@ export default function RegistroEquipoPage() {
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #1a237e 0%, #1a73e8 100%)', padding: '32px 20px', textAlign: 'center' }}>
-        <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: 'rgba(255,255,255,.15)', border: '2px solid rgba(255,255,255,.3)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-          {equipo.logo_url ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }}/> : <Shield size={36} color="#fff"/>}
+      <div style={{ background: 'linear-gradient(135deg, #1a237e 0%, #1a73e8 100%)', padding: '28px 20px', textAlign: 'center' }}>
+        <div style={{ width: '64px', height: '64px', borderRadius: '14px', background: 'rgba(255,255,255,.15)', border: '2px solid rgba(255,255,255,.3)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+          {equipo.logo_url ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }}/> : <Shield size={32} color="#fff"/>}
         </div>
-        <h1 style={{ color: '#fff', fontSize: '1.4rem', fontWeight: '800', margin: '0 0 4px' }}>{equipo.name}</h1>
-        <div style={{ color: 'rgba(255,255,255,.7)', fontSize: '.85rem' }}>Registro de jugadores</div>
+        <h1 style={{ color: '#fff', fontSize: '1.3rem', fontWeight: '800', margin: '0 0 2px' }}>{equipo.name}</h1>
+        <div style={{ color: 'rgba(255,255,255,.8)', fontSize: '.8rem', marginBottom: '6px' }}>Registro para el torneo</div>
+        <div style={{ display: 'inline-block', background: 'rgba(255,255,255,.2)', borderRadius: '20px', padding: '3px 14px' }}>
+          <span style={{ color: '#fff', fontSize: '.82rem', fontWeight: '600' }}>🏆 {torneo.name}</span>
+        </div>
       </div>
 
       <div style={{ maxWidth: '480px', margin: '0 auto', padding: '24px 16px' }}>
 
         {msg && (
-          <div style={{ background: msg.type === 'ok' ? '#e6f4ea' : '#fce8e6', border: `1px solid ${msg.type === 'ok' ? '#ceead6' : '#fad2cf'}`, color: msg.type === 'ok' ? '#1e8e3e' : '#d93025', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '.875rem' }}>
+          <div style={{
+            background: msg.type === 'warning' ? '#fff8e1' : msg.type === 'ok' ? '#e6f4ea' : '#fce8e6',
+            border: `1px solid ${msg.type === 'warning' ? '#ffe082' : msg.type === 'ok' ? '#ceead6' : '#fad2cf'}`,
+            color: msg.type === 'warning' ? '#f57f17' : msg.type === 'ok' ? '#1e8e3e' : '#d93025',
+            borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '.875rem', lineHeight: 1.5,
+          }}>
             {msg.text}
           </div>
         )}
 
-        {/* Paso 1 — Cédula */}
-        {!jugadorExiste && !mostrarNuevo && !yaRegistrado && (
+        {/* PASO 1 — Cédula */}
+        {!jugadorExiste && !mostrarNuevo && (
           <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e8eaed' }}>
-            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>Ingresa tu cédula</div>
-            <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginBottom: '20px' }}>Con tu número de cédula verificamos si ya estás registrado en Golmebol</div>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>Ingresa tu número de cédula</div>
+            <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginBottom: '20px' }}>Verificamos si ya estás registrado en Golmebol</div>
             <label style={labelStyle}>Número de cédula</label>
             <input
               value={cedula}
@@ -177,22 +298,11 @@ export default function RegistroEquipoPage() {
               placeholder="Ej: 1094948981"
               style={inputStyle}
               type="number"
+              inputMode="numeric"
             />
             <button onClick={handleBuscarCedula} disabled={buscando}
-              style={{ width: '100%', marginTop: '14px', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: buscando ? .7 : 1 }}>
+              style={{ width: '100%', marginTop: '14px', padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: buscando ? .7 : 1 }}>
               {buscando ? 'Buscando...' : 'Continuar →'}
-            </button>
-          </div>
-        )}
-
-        {/* Ya registrado */}
-        {yaRegistrado && (
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e8eaed' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>✅</div>
-            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '8px' }}>Ya eres parte del equipo</div>
-            <div style={{ fontSize: '.875rem', color: '#5f6368' }}>La cédula <strong>{cedula}</strong> ya está registrada en <strong>{equipo.name}</strong>.</div>
-            <button onClick={() => { setCedula(''); setYaRegistrado(false) }} style={{ marginTop: '16px', padding: '8px 20px', background: '#f1f3f4', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
-              Registrar otra cédula
             </button>
           </div>
         )}
@@ -213,16 +323,30 @@ export default function RegistroEquipoPage() {
                 </div>
               </div>
             </div>
+
+            {/* Fotos cédula opcionales para jugadores existentes */}
+            {(!jugadorExiste.cedula_frontal_url || !jugadorExiste.cedula_trasera_url) && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '12px', background: '#fff8e1', padding: '10px 12px', borderRadius: '8px', border: '1px solid #ffe082' }}>
+                  📸 Aprovecha para subir tu foto de cédula si aún no la tienes registrada
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <FotoUpload label="Cédula Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
+                  <FotoUpload label="Cédula Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                </div>
+              </div>
+            )}
+
             <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '16px' }}>
-              ¿Eres tú? Confirma para unirte al equipo <strong>{equipo.name}</strong>.
+              ¿Eres tú? Confirma para inscribirte en <strong>{torneo.name}</strong> con <strong>{equipo.name}</strong>.
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={handleConfirmarExistente} disabled={guardando}
-                style={{ flex: 1, padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
-                {guardando ? 'Registrando...' : '✓ Confirmar y unirme'}
+                style={{ flex: 1, padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
+                {guardando ? 'Registrando...' : '✓ Confirmar inscripción'}
               </button>
               <button onClick={() => { setJugadorExiste(null); setCedula('') }}
-                style={{ padding: '12px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
+                style={{ padding: '13px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
                 No soy yo
               </button>
             </div>
@@ -233,17 +357,17 @@ export default function RegistroEquipoPage() {
         {mostrarNuevo && (
           <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e8eaed' }}>
             <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '.8rem', color: '#d93025', fontWeight: '600' }}>
-                ⚠️ Cédula <strong>{cedula}</strong> no está registrada en Golmebol
-              </div>
-              <div style={{ fontSize: '.75rem', color: '#d93025', marginTop: '4px' }}>Completa tus datos para registrarte</div>
+              <div style={{ fontSize: '.8rem', color: '#d93025', fontWeight: '600' }}>⚠️ Cédula {cedula} no está registrada en Golmebol</div>
+              <div style={{ fontSize: '.75rem', color: '#d93025', marginTop: '3px' }}>Completa tus datos para registrarte por primera vez</div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
               <div>
                 <label style={labelStyle}>Nombre completo *</label>
                 <input value={formNuevo.name} onChange={e => setFormNuevo(f => ({ ...f, name: e.target.value }))} style={inputStyle} placeholder="Tu nombre completo"/>
               </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Teléfono *</label>
@@ -254,6 +378,7 @@ export default function RegistroEquipoPage() {
                   <input value={formNuevo.city} onChange={e => setFormNuevo(f => ({ ...f, city: e.target.value }))} style={inputStyle} placeholder="Tu ciudad"/>
                 </div>
               </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Género *</label>
@@ -269,13 +394,15 @@ export default function RegistroEquipoPage() {
                 </div>
               </div>
 
+              {/* Posiciones */}
               <div>
                 <label style={{ ...labelStyle, marginBottom: '10px' }}>Posición *</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {Object.entries(POSICIONES).map(([mod, posiciones]) => (
                     <div key={mod}>
                       <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px', fontWeight: '500' }}>{mod}</div>
-                      <select value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
+                      <select
+                        value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
                         onChange={e => setFormNuevo(f => ({ ...f, [`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
                         style={inputStyle}>
                         <option value="">No juego {mod}</option>
@@ -285,17 +412,26 @@ export default function RegistroEquipoPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Fotos cédula — obligatorias para nuevos */}
+              <div>
+                <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '10px' }}>📸 Fotos de la cédula</div>
+                <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '12px' }}>Necesitamos ambas caras de tu cédula para verificar tu identidad</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
+                  <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                </div>
+              </div>
+
             </div>
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleCrearYRegistrar} disabled={guardando}
-                style={{ flex: 1, padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
-                {guardando ? 'Registrando...' : '⚽ Registrarme en Golmebol'}
+                style={{ flex: 1, padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
+                {guardando ? (subiendoFotos ? 'Subiendo fotos...' : 'Registrando...') : '⚽ Registrarme en Golmebol'}
               </button>
               <button onClick={() => { setMostrarNuevo(false); setCedula('') }}
-                style={{ padding: '12px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>
-                ←
-              </button>
+                style={{ padding: '13px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>←</button>
             </div>
           </div>
         )}
