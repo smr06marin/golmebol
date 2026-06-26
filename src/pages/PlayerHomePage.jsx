@@ -358,6 +358,8 @@ setTorneos(regs || [])
   const nombre      = player.name?.toUpperCase().split(' ')[0] || 'JUGADOR'
   const torneosData = torneos.map(t => ({ id: t.tournament_id, nombre: t.tournaments?.name, logo_url: t.tournaments?.logo_url || null }))
   const equiposData = torneos.map(t => ({ id: t.teams?.id, nombre: t.teams?.name, logo_url: t.teams?.logo_url || null })).filter((e, i, arr) => e.id && arr.findIndex(x => x.id === e.id) === i)
+  console.log('equiposData:', equiposData)
+console.log('torneosData:', torneosData)
 
   function handleCardClick(itemId) {
     const statKeys = ['pj', 'gc', 'prom', 'efic', 'pg', 'pe', 'pp']
