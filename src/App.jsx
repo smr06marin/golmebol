@@ -94,7 +94,7 @@ export default function App() {
         <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
 
         {/* Equipo detalle — accesible por admin Y jugador */}
-        <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage/></PlayerRoute>}/>
+        <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage modoLectura={true}/></PlayerRoute>}/>
 
         {/* Portal jugador */}
         <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
