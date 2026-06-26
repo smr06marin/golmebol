@@ -913,7 +913,12 @@ export default function AdminTorneoDetallePage() {
                           Ver ficha
                         </button>
                         <button onClick={() => {
+  console.log('equipo objeto:', e)
   const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
+  console.log('link generado:', link)
+  navigator.clipboard.writeText(link)
+  showMsg(`Link copiado ✓`)
+}}
   navigator.clipboard.writeText(link)
   showMsg(`Link de registro de ${e.name} copiado ✓`)
 }} style={{ background: 'none', border: '1px solid #1e8e3e', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#1e8e3e', fontSize: '.8rem' }}>
