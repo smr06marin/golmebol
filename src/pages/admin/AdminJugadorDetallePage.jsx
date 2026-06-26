@@ -437,14 +437,16 @@ export default function AdminJugadorDetallePage() {
             <StatBox label="Torneos"    value={torneos.length}       color="#1a73e8"/>
           </div>
 
-          {/* Cédulas */}
-          {(jugador.cedula_frontal_url || jugador.cedula_trasera_url) && (
-  <CedulasViewer
-    jugadorId={jugador.id}
-    frontalPath={jugador.cedula_frontal_url}
-    traseraPath={jugador.cedula_trasera_url}
-  />
-)}
+         {/* Cédulas */}
+         {(jugador.cedula_frontal_url || jugador.cedula_trasera_url) && (
+            <CedulasViewer
+              jugadorId={jugador.id}
+              frontalPath={jugador.cedula_frontal_url}
+              traseraPath={jugador.cedula_trasera_url}
+            />
+          )}
+        </div>
+      )}
 
       {/* STATS */}
       {tab === 'stats' && (
