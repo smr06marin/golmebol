@@ -43,28 +43,28 @@ function SectionTitle({ icon, title }) {
   )
 }
 
-export default function AdminEquipoDetallePage() {
-  const { id } = useParams()
-  const navigate = useNavigate()
+export default function AdminEquipoDetallePage({ modoLectura = false }) {
+  const { id }     = useParams()
+  const navigate   = useNavigate()
 
-  const [equipo, setEquipo] = useState(null)
-  const [torneos, setTorneos] = useState([])
-  const [jugadoresPorTorneo, setJugadoresPorTorneo] = useState({})
+  const [equipo,                setEquipo]                = useState(null)
+  const [torneos,               setTorneos]               = useState([])
+  const [jugadoresPorTorneo,    setJugadoresPorTorneo]    = useState({})
   const [jugadoresEquipoGlobal, setJugadoresEquipoGlobal] = useState([])
-  const [partidos, setPartidos] = useState([])
-  const [logros, setLogros] = useState([])
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [tabActiva, setTabActiva] = useState('resumen')
-  const [msg, setMsg] = useState(null)
-  const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const [partidos,              setPartidos]              = useState([])
+  const [logros,                setLogros]                = useState([])
+  const [stats,                 setStats]                 = useState(null)
+  const [loading,               setLoading]               = useState(true)
+  const [tabActiva,             setTabActiva]             = useState('resumen')
+  const [msg,                   setMsg]                   = useState(null)
+  const [subiendoLogo,          setSubiendoLogo]          = useState(false)
 
-  const [cedulaBuscar, setCedulaBuscar] = useState('')
-  const [buscando, setBuscando] = useState(false)
-  const [jugadorEncontrado, setJugadorEncontrado] = useState(null)
-  const [mostrarFormNuevo, setMostrarFormNuevo] = useState(false)
-  const [formNuevo, setFormNuevo] = useState(EMPTY_NUEVO)
-  const [guardando, setGuardando] = useState(false)
+  const [cedulaBuscar,       setCedulaBuscar]       = useState('')
+  const [buscando,           setBuscando]           = useState(false)
+  const [jugadorEncontrado,  setJugadorEncontrado]  = useState(null)
+  const [mostrarFormNuevo,   setMostrarFormNuevo]   = useState(false)
+  const [formNuevo,          setFormNuevo]          = useState(EMPTY_NUEVO)
+  const [guardando,          setGuardando]          = useState(false)
 
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tabActiva === 'jugadores') fetchJugadoresGlobal() }, [tabActiva])
@@ -102,33 +102,40 @@ export default function AdminEquipoDetallePage() {
   }
 
   async function fetchPartidos() {
-    const { data: local } = await supabase.from('matches').select('*, tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('home_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })
+    const { data: local }     = await supabase.from('matches').select('*, tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('home_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })
     const { data: visitante } = await supabase.from('matches').select('*, tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('away_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })
     const todos = [...(local || []), ...(visitante || [])].sort((a, b) => new Date(b.played_at) - new Date(a.played_at))
     setPartidos(todos)
+
     let pj = 0, pg = 0, pe = 0, pp = 0, gf = 0, gc = 0
     let tempSinPerder = 0, rachaSinPerder = 0, tempSinGanar = 0, rachaSinGanar = 0
     const rivales = {}, derrotas = {}, victorias = {}
+
     todos.forEach(p => {
       pj++
-      const esLocal = p.home_team_id === id
-      const golesF = esLocal ? p.home_score : p.away_score
-      const golesC = esLocal ? p.away_score : p.home_score
-      const rival = esLocal ? p.away_team_id : p.home_team_id
-      const rivalNombre = esLocal ? p.away?.name : p.home?.name
+      const esLocal   = p.home_team_id === id
+      const golesF    = esLocal ? p.home_score : p.away_score
+      const golesC    = esLocal ? p.away_score : p.home_score
+      const rival     = esLocal ? p.away_team_id : p.home_team_id
+      const rivalNom  = esLocal ? p.away?.name  : p.home?.name
       gf += golesF || 0; gc += golesC || 0
-      if (golesF > golesC) { pg++; tempSinPerder++; rachaSinPerder = Math.max(rachaSinPerder, tempSinPerder); tempSinGanar = 0 }
-      else if (golesF === golesC) { pe++; tempSinPerder++; rachaSinPerder = Math.max(rachaSinPerder, tempSinPerder); tempSinGanar++; rachaSinGanar = Math.max(rachaSinGanar, tempSinGanar) }
-      else { pp++; tempSinGanar++; rachaSinGanar = Math.max(rachaSinGanar, tempSinGanar); tempSinPerder = 0 }
+      if (golesF > golesC) {
+        pg++; tempSinPerder++; rachaSinPerder = Math.max(rachaSinPerder, tempSinPerder); tempSinGanar = 0
+      } else if (golesF === golesC) {
+        pe++; tempSinPerder++; rachaSinPerder = Math.max(rachaSinPerder, tempSinPerder); tempSinGanar++; rachaSinGanar = Math.max(rachaSinGanar, tempSinGanar)
+      } else {
+        pp++; tempSinGanar++; rachaSinGanar = Math.max(rachaSinGanar, tempSinGanar); tempSinPerder = 0
+      }
       if (rival) {
-        rivales[rival] = { count: (rivales[rival]?.count || 0) + 1, nombre: rivalNombre }
-        if (golesF < golesC) derrotas[rival] = { count: (derrotas[rival]?.count || 0) + 1, nombre: rivalNombre }
-        if (golesF > golesC) victorias[rival] = { count: (victorias[rival]?.count || 0) + 1, nombre: rivalNombre }
+        rivales[rival]  = { count: (rivales[rival]?.count  || 0) + 1, nombre: rivalNom }
+        if (golesF < golesC) derrotas[rival]  = { count: (derrotas[rival]?.count  || 0) + 1, nombre: rivalNom }
+        if (golesF > golesC) victorias[rival] = { count: (victorias[rival]?.count || 0) + 1, nombre: rivalNom }
       }
     })
-    const rivalFrecuente = Object.values(rivales).sort((a, b) => b.count - a.count)[0]?.nombre || '—'
-    const mayorRival = Object.values(derrotas).sort((a, b) => b.count - a.count)[0]?.nombre || '—'
-    const rivalVictorias = Object.values(victorias).sort((a, b) => b.count - a.count)[0]?.nombre || '—'
+
+    const rivalFrecuente = Object.values(rivales).sort((a,b)   => b.count - a.count)[0]?.nombre || '—'
+    const mayorRival     = Object.values(derrotas).sort((a,b)  => b.count - a.count)[0]?.nombre || '—'
+    const rivalVictorias = Object.values(victorias).sort((a,b) => b.count - a.count)[0]?.nombre || '—'
     setStats({ pj, pg, pe, pp, gf, gc, pts: pg * 3 + pe, rachaSinPerder, rachaSinGanar, rivalFrecuente, mayorRival, rivalVictorias })
   }
 
@@ -137,7 +144,6 @@ export default function AdminEquipoDetallePage() {
     setLogros(data || [])
   }
 
-  // ── Upload logo ──
   async function handleLogoUpload(file) {
     if (!file) return
     setSubiendoLogo(true)
@@ -169,12 +175,13 @@ export default function AdminEquipoDetallePage() {
   }
 
   async function handleCrearYAgregar() {
-    if (!formNuevo.name) return showMsg('El nombre es obligatorio', 'error')
-    if (!formNuevo.telefono) return showMsg('El teléfono es obligatorio', 'error')
-    if (!formNuevo.city) return showMsg('La ciudad es obligatoria', 'error')
-    if (!formNuevo.genero) return showMsg('El género es obligatorio', 'error')
+    if (!formNuevo.name)             return showMsg('El nombre es obligatorio', 'error')
+    if (!formNuevo.telefono)         return showMsg('El teléfono es obligatorio', 'error')
+    if (!formNuevo.city)             return showMsg('La ciudad es obligatoria', 'error')
+    if (!formNuevo.genero)           return showMsg('El género es obligatorio', 'error')
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
-    if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11) return showMsg('Selecciona al menos una posición', 'error')
+    if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
+      return showMsg('Selecciona al menos una posición', 'error')
     setGuardando(true)
     const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar }).select().single()
     if (error) { showMsg('Error al crear jugador', 'error'); setGuardando(false); return }
@@ -199,11 +206,11 @@ export default function AdminEquipoDetallePage() {
   if (!equipo) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Equipo no encontrado</div>
 
   const TABS = [
-    { id: 'resumen',  label: 'Resumen'   },
-    { id: 'torneos',  label: 'Torneos'   },
-    { id: 'partidos', label: 'Partidos'  },
-    { id: 'jugadores',label: 'Jugadores' },
-    { id: 'palmares', label: 'Palmarés'  },
+    { id: 'resumen',   label: 'Resumen'   },
+    { id: 'torneos',   label: 'Torneos'   },
+    { id: 'partidos',  label: 'Partidos'  },
+    { id: 'jugadores', label: 'Jugadores' },
+    { id: 'palmares',  label: 'Palmarés'  },
   ]
 
   return (
@@ -214,37 +221,39 @@ export default function AdminEquipoDetallePage() {
         </div>
       )}
 
-      <button onClick={() => navigate('/admin/equipos')}
+      <button onClick={() => navigate(-1)}
         style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', marginBottom: '20px' }}>
         <ArrowLeft size={16}/> Volver
       </button>
 
-      {/* Header con logo editable */}
+      {/* Header */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          {/* Logo con botón de upload */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{ width: '80px', height: '80px', borderRadius: '16px', background: '#f1f3f4', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {equipo.logo_url
                 ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
                 : <Shield size={36} color="#9aa0a6"/>}
             </div>
-            <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '26px', height: '26px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,.2)' }}
-              title="Cambiar logo">
-              <Camera size={13} color="#fff"/>
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
-            </label>
+            {/* Solo admin puede cambiar el logo */}
+            {!modoLectura && (
+              <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '26px', height: '26px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,.2)' }}
+                title="Cambiar logo">
+                <Camera size={13} color="#fff"/>
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
+              </label>
+            )}
           </div>
 
           <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#202124', margin: '0 0 6px' }}>{equipo.name}</h1>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {equipo.city && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📍 {equipo.city}</span>}
+              {equipo.city     && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📍 {equipo.city}</span>}
               {equipo.modalidad && <span style={{ fontSize: '.8rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 10px' }}>{equipo.modalidad}</span>}
-              {equipo.genero && <span style={{ fontSize: '.8rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '10px', padding: '2px 10px' }}>{equipo.genero}</span>}
+              {equipo.genero   && <span style={{ fontSize: '.8rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '10px', padding: '2px 10px' }}>{equipo.genero}</span>}
               <span style={{ fontSize: '.8rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 10px' }}>{torneos.length} torneos</span>
             </div>
-            {subiendoLogo && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '6px' }}>Subiendo logo...</div>}
+            {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '6px' }}>Subiendo logo...</div>}
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '2rem', fontWeight: '700', color: '#e8710a' }}>{logros.filter(l => l.tipo === 'campeon').length}</div>
@@ -267,13 +276,13 @@ export default function AdminEquipoDetallePage() {
       {tabActiva === 'resumen' && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-            <StatBox label="Partidos Jugados"  value={stats?.pj || 0}            color="#1a73e8"/>
-            <StatBox label="Ganados"           value={stats?.pg || 0}            color="#1e8e3e"/>
-            <StatBox label="Empatados"         value={stats?.pe || 0}            color="#e8710a"/>
-            <StatBox label="Perdidos"          value={stats?.pp || 0}            color="#d93025"/>
-            <StatBox label="Goles a Favor"     value={stats?.gf || 0}            color="#1a73e8"/>
-            <StatBox label="Goles en Contra"   value={stats?.gc || 0}            color="#d93025"/>
-            <StatBox label="Puntos Totales"    value={stats?.pts || 0}           color="#6c35de"/>
+            <StatBox label="Partidos Jugados"  value={stats?.pj || 0}             color="#1a73e8"/>
+            <StatBox label="Ganados"           value={stats?.pg || 0}             color="#1e8e3e"/>
+            <StatBox label="Empatados"         value={stats?.pe || 0}             color="#e8710a"/>
+            <StatBox label="Perdidos"          value={stats?.pp || 0}             color="#d93025"/>
+            <StatBox label="Goles a Favor"     value={stats?.gf || 0}             color="#1a73e8"/>
+            <StatBox label="Goles en Contra"   value={stats?.gc || 0}             color="#d93025"/>
+            <StatBox label="Puntos Totales"    value={stats?.pts || 0}            color="#6c35de"/>
             <StatBox label="Títulos"           value={logros.filter(l => l.tipo === 'campeon').length} color="#e8710a"/>
             <StatBox label="Racha sin perder"  value={stats?.rachaSinPerder || 0} color="#1e8e3e"/>
             <StatBox label="Racha sin ganar"   value={stats?.rachaSinGanar || 0}  color="#d93025"/>
@@ -286,17 +295,18 @@ export default function AdminEquipoDetallePage() {
               <SectionTitle icon={<Calendar size={18} color="#1a73e8"/>} title="Últimos partidos"/>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 {partidos.slice(0, 5).map((p, i) => {
-                  const res = getResultado(p); const rival = getRival(p)
+                  const res     = getResultado(p)
+                  const rival   = getRival(p)
                   const esLocal = p.home_team_id === id
-                  const gf = esLocal ? p.home_score : p.away_score
-                  const gc = esLocal ? p.away_score : p.home_score
+                  const gf      = esLocal ? p.home_score : p.away_score
+                  const gc      = esLocal ? p.away_score : p.home_score
                   return (
                     <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: i < 4 ? '1px solid #f1f3f4' : 'none' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{ fontSize: '.72rem', fontWeight: '700', color: res.color, background: res.bg, borderRadius: '4px', padding: '2px 7px' }}>{res.texto}</span>
                         <div>
                           <div style={{ fontSize: '.875rem', color: '#202124', fontWeight: '500' }}>vs {rival?.name}</div>
-                          <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{p.tournaments?.name} {p.played_at && `· ${new Date(p.played_at).toLocaleDateString('es-CO')}`}</div>
+                          <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{p.tournaments?.name}{p.played_at && ` · ${new Date(p.played_at).toLocaleDateString('es-CO')}`}</div>
                         </div>
                       </div>
                       <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>{gf} - {gc}</div>
@@ -319,7 +329,7 @@ export default function AdminEquipoDetallePage() {
             </div>
           ) : torneos.map(t => {
             const logroTorneo = logros.find(l => l.tournament_id === t.tournament_id)
-            const jugs = jugadoresPorTorneo[t.tournament_id] || []
+            const jugs        = jugadoresPorTorneo[t.tournament_id] || []
             return (
               <div key={t.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -358,10 +368,11 @@ export default function AdminEquipoDetallePage() {
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
               {partidos.map((p, i) => {
-                const res = getResultado(p); const rival = getRival(p)
+                const res     = getResultado(p)
+                const rival   = getRival(p)
                 const esLocal = p.home_team_id === id
-                const gf = esLocal ? p.home_score : p.away_score
-                const gc = esLocal ? p.away_score : p.home_score
+                const gf      = esLocal ? p.home_score : p.away_score
+                const gc      = esLocal ? p.away_score : p.home_score
                 return (
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: i < partidos.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -391,85 +402,85 @@ export default function AdminEquipoDetallePage() {
       {/* JUGADORES */}
       {tabActiva === 'jugadores' && (
         <div>
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo</div>
-            {!jugadorEncontrado && !mostrarFormNuevo && (
-              <div>
-                <label style={labelStyle}>Número de cédula</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} placeholder="Ingresa el número de cédula..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleBuscarCedula()}/>
-                  <button onClick={handleBuscarCedula} disabled={buscando} style={{ padding: '8px 16px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', whiteSpace: 'nowrap', opacity: buscando ? .7 : 1 }}>
-                    {buscando ? 'Buscando...' : 'Buscar'}
-                  </button>
+          {/* Solo admin puede agregar jugadores */}
+          {!modoLectura && (
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo</div>
+              {!jugadorEncontrado && !mostrarFormNuevo && (
+                <div>
+                  <label style={labelStyle}>Número de cédula</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} placeholder="Ingresa el número de cédula..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleBuscarCedula()}/>
+                    <button onClick={handleBuscarCedula} disabled={buscando} style={{ padding: '8px 16px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', whiteSpace: 'nowrap', opacity: buscando ? .7 : 1 }}>
+                      {buscando ? 'Buscando...' : 'Buscar'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-            {jugadorEncontrado && (
-              <div>
-                <div style={{ background: '#e6f4ea', border: '1px solid #ceead6', borderRadius: '10px', padding: '16px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '.75rem', fontWeight: '600', color: '#1e8e3e', marginBottom: '10px' }}>✓ JUGADOR ENCONTRADO EN GOLMEBOL</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#ceead6', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {jugadorEncontrado.photo_url ? <img src={jugadorEncontrado.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={20} color="#1e8e3e"/>}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{jugadorEncontrado.name}</div>
-                      <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <span>🪪 {jugadorEncontrado.numero_cedula}</span>
-                        {jugadorEncontrado.city && <span>📍 {jugadorEncontrado.city}</span>}
+              )}
+              {jugadorEncontrado && (
+                <div>
+                  <div style={{ background: '#e6f4ea', border: '1px solid #ceead6', borderRadius: '10px', padding: '16px', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '.75rem', fontWeight: '600', color: '#1e8e3e', marginBottom: '10px' }}>✓ JUGADOR ENCONTRADO</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#ceead6', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {jugadorEncontrado.photo_url ? <img src={jugadorEncontrado.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={20} color="#1e8e3e"/>}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{jugadorEncontrado.name}</div>
+                        <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>🪪 {jugadorEncontrado.numero_cedula}{jugadorEncontrado.city && ` · 📍 ${jugadorEncontrado.city}`}</div>
                       </div>
                     </div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={handleAgregarJugadorGlobal} style={{ padding: '8px 16px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>+ Agregar al equipo</button>
-                  <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>Buscar otro</button>
-                </div>
-              </div>
-            )}
-            {mostrarFormNuevo && (
-              <div>
-                <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px' }}>
-                  <div style={{ fontSize: '.8rem', color: '#d93025', fontWeight: '500' }}>⚠️ No existe jugador con cédula <strong>{cedulaBuscar}</strong>. Completa los datos para crearlo.</div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div><label style={labelStyle}>Nombre completo *</label><input value={formNuevo.name} onChange={e => setFormNuevo(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="Nombre completo"/></div>
-                    <div><label style={labelStyle}>Teléfono *</label><input value={formNuevo.telefono} onChange={e => setFormNuevo(f=>({...f,telefono:e.target.value}))} style={inputStyle} placeholder="300 000 0000"/></div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={handleAgregarJugadorGlobal} style={{ padding: '8px 16px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>+ Agregar al equipo</button>
+                    <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>Buscar otro</button>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                    <div><label style={labelStyle}>Ciudad *</label><input value={formNuevo.city} onChange={e => setFormNuevo(f=>({...f,city:e.target.value}))} style={inputStyle} placeholder="Ciudad"/></div>
-                    <div>
-                      <label style={labelStyle}>Género *</label>
-                      <select value={formNuevo.genero} onChange={e => setFormNuevo(f=>({...f,genero:e.target.value}))} style={inputStyle}>
-                        <option value="">Seleccionar</option>
-                        <option value="Masculino">Masculino</option>
-                        <option value="Femenino">Femenino</option>
-                      </select>
+                </div>
+              )}
+              {mostrarFormNuevo && (
+                <div>
+                  <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '.8rem', color: '#d93025', fontWeight: '500' }}>⚠️ No existe jugador con cédula <strong>{cedulaBuscar}</strong>. Completa los datos para crearlo.</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div><label style={labelStyle}>Nombre completo *</label><input value={formNuevo.name} onChange={e => setFormNuevo(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="Nombre completo"/></div>
+                      <div><label style={labelStyle}>Teléfono *</label><input value={formNuevo.telefono} onChange={e => setFormNuevo(f=>({...f,telefono:e.target.value}))} style={inputStyle} placeholder="300 000 0000"/></div>
                     </div>
-                    <div><label style={labelStyle}>Fecha nacimiento *</label><input type="date" value={formNuevo.fecha_nacimiento} onChange={e => setFormNuevo(f=>({...f,fecha_nacimiento:e.target.value}))} style={inputStyle}/></div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                    {Object.entries(POSICIONES).map(([mod, posiciones]) => (
-                      <div key={mod}>
-                        <label style={labelStyle}>{mod}</label>
-                        <select value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]} onChange={e => setFormNuevo(f=>({...f,[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]:e.target.value}))} style={inputStyle}>
-                          <option value="">No juega</option>
-                          {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                      <div><label style={labelStyle}>Ciudad *</label><input value={formNuevo.city} onChange={e => setFormNuevo(f=>({...f,city:e.target.value}))} style={inputStyle} placeholder="Ciudad"/></div>
+                      <div>
+                        <label style={labelStyle}>Género *</label>
+                        <select value={formNuevo.genero} onChange={e => setFormNuevo(f=>({...f,genero:e.target.value}))} style={inputStyle}>
+                          <option value="">Seleccionar</option>
+                          <option value="Masculino">Masculino</option>
+                          <option value="Femenino">Femenino</option>
                         </select>
                       </div>
-                    ))}
+                      <div><label style={labelStyle}>Fecha nacimiento *</label><input type="date" value={formNuevo.fecha_nacimiento} onChange={e => setFormNuevo(f=>({...f,fecha_nacimiento:e.target.value}))} style={inputStyle}/></div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                      {Object.entries(POSICIONES).map(([mod, posiciones]) => (
+                        <div key={mod}>
+                          <label style={labelStyle}>{mod}</label>
+                          <select value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]} onChange={e => setFormNuevo(f=>({...f,[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]:e.target.value}))} style={inputStyle}>
+                            <option value="">No juega</option>
+                            {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                    <button onClick={handleCrearYAgregar} disabled={guardando} style={{ padding: '8px 16px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: guardando ? .7 : 1 }}>
+                      {guardando ? 'Creando...' : 'Crear y agregar al equipo'}
+                    </button>
+                    <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar('') }} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>Cancelar</button>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                  <button onClick={handleCrearYAgregar} disabled={guardando} style={{ padding: '8px 16px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: guardando ? .7 : 1 }}>
-                    {guardando ? 'Creando...' : 'Crear y agregar al equipo'}
-                  </button>
-                  <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar('') }} style={{ padding: '8px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>Cancelar</button>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           <SectionTitle icon={<Users size={18} color="#1a73e8"/>} title="Jugadores del equipo"/>
           {jugadoresEquipoGlobal.length === 0 ? (
@@ -490,8 +501,8 @@ export default function AdminEquipoDetallePage() {
                       {j.city && <span>📍 {j.city}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                      {j.posicion_futbol5 && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>F5: {j.posicion_futbol5}</span>}
-                      {j.posicion_futbol7 && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px' }}>F7: {j.posicion_futbol7}</span>}
+                      {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>F5: {j.posicion_futbol5}</span>}
+                      {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px' }}>F7: {j.posicion_futbol7}</span>}
                       {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px' }}>F11: {j.posicion_futbol11}</span>}
                     </div>
                   </div>
@@ -519,7 +530,7 @@ export default function AdminEquipoDetallePage() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', textTransform: 'capitalize' }}>{l.tipo?.replace(/_/g, ' ')}</div>
                     <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px' }}>{l.tournaments?.name}</div>
-                    {l.descripcion && <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{l.descripcion}</div>}
+                    {l.descripcion  && <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{l.descripcion}</div>}
                     {l.players?.name && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '2px' }}>👤 {l.players.name}</div>}
                   </div>
                 </div>
