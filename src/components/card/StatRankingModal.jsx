@@ -143,8 +143,8 @@ export default function StatRankingModal({ statKey, playerId, esPortero, onClose
   const enTop5     = miPuesto && miPuesto.puesto <= 5
   const fuera5     = miPuesto && miPuesto.puesto > 5
   const miIdx      = miPuesto?.idx ?? -1
-  const inicio     = Math.max(5, miIdx - 3)
-  const fin        = Math.min(ranking.length, miIdx + 4)
+  const inicio     = Math.max(5, miIdx - 2)
+  const fin        = Math.min(ranking.length, miIdx + 3)
   const contexto   = fuera5 ? ranking.slice(inicio, fin) : []
 
   return (
