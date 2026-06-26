@@ -14,7 +14,6 @@ const S = {
 
 const PUNTOS = { ganador: 3, empate: 5, golesExactosCada: 3, bonusExacto: 10, goleador: 2 }
 
-// ── TeamSheet: Ficha del equipo en el torneo ────────────────────
 function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, onClose }) {
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
@@ -32,7 +31,6 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
           .order('total_goals', { ascending: false }).limit(5),
       ])
 
-      // Standings
       const tabla = {}
       ;(ttData || []).forEach(t => {
         tabla[t.teams.id] = { team: t.teams, pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, pts:0 }
@@ -52,11 +50,10 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
           else a.pp++
         }
       })
-      const sorted = Object.values(tabla).sort((a,b) => b.pts - a.pts || (b.gf-b.gc)-(a.gf-a.gc))
-      const pos     = sorted.findIndex(r => r.team.id === teamId) + 1
-      const myStats = tabla[teamId] || { pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, pts:0 }
+      const sorted  = Object.values(tabla).sort((a,b) => b.pts - a.pts || (b.gf-b.gc)-(a.gf-a.gc))
+      const pos      = sorted.findIndex(r => r.team.id === teamId) + 1
+      const myStats  = tabla[teamId] || { pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, pts:0 }
 
-      // Forma: últimos 5 partidos del equipo
       const teamMatches = (mData || [])
         .filter(m => m.home_team_id === teamId || m.away_team_id === teamId)
         .slice(0, 5).reverse()
@@ -67,9 +64,7 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
         return my > th ? 'W' : my === th ? 'D' : 'L'
       })
 
-      // Tabla completa (para ver contexto)
       const tablaRows = sorted.map((r, i) => ({ ...r, pos: i + 1, isMe: r.team.id === teamId }))
-
       setData({ pos, total: sorted.length, myStats, form, scorers: sData || [], tablaRows })
       setLoading(false)
     }
@@ -86,7 +81,6 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
       <div style={{ background:S.surface, borderRadius:'20px 20px 0 0', width:'100%',
         maxWidth:'480px', maxHeight:'92vh', overflowY:'auto', border:`0.5px solid ${S.border}` }}>
 
-        {/* Header fijo */}
         <div style={{ padding:'16px 20px 12px', borderBottom:`0.5px solid ${S.border}`,
           display:'flex', alignItems:'center', gap:'12px',
           position:'sticky', top:0, background:S.surface, zIndex:1 }}>
@@ -108,14 +102,12 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
         ) : (
           <div style={{ padding:'16px 20px 32px', display:'flex', flexDirection:'column', gap:'12px' }}>
 
-            {/* Posición */}
             <div style={{ background:S.card, borderRadius:'14px', padding:'18px', textAlign:'center' }}>
               <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:'6px' }}>Posición en la tabla</div>
               <div style={{ fontSize:'3.5rem', fontWeight:'900', color: data.pos <= 3 ? S.cyan : S.text, lineHeight:1 }}>#{data.pos}</div>
               <div style={{ fontSize:'.78rem', color:S.muted, marginTop:'4px' }}>de {data.total} equipos</div>
             </div>
 
-            {/* Stats */}
             <div style={{ background:S.card, borderRadius:'14px', padding:'14px 16px' }}>
               <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:'10px' }}>Estadísticas del torneo</div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px' }}>
@@ -125,7 +117,7 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
                   ['PP', data.myStats.pp, S.loss],
                   ['GF', data.myStats.gf, S.cyan],
                   ['GC', data.myStats.gc, S.muted],
-                  ['DIF', (data.myStats.gf-data.myStats.gc)>0 ? '+'+( data.myStats.gf-data.myStats.gc) : (data.myStats.gf-data.myStats.gc), S.text2],
+                  ['DIF', (data.myStats.gf-data.myStats.gc)>0 ? '+'+(data.myStats.gf-data.myStats.gc) : (data.myStats.gf-data.myStats.gc), S.text2],
                   ['PTS', data.myStats.pts, S.gold]
                 ].map(([lbl, val, color]) => (
                   <div key={lbl} style={{ background:S.card2, borderRadius:'8px', padding:'10px 4px', textAlign:'center' }}>
@@ -136,7 +128,6 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
               </div>
             </div>
 
-            {/* Forma */}
             {data.form.length > 0 && (
               <div style={{ background:S.card, borderRadius:'14px', padding:'14px 16px' }}>
                 <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:'10px' }}>Forma reciente</div>
@@ -155,7 +146,6 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
               </div>
             )}
 
-            {/* Tabla completa */}
             <div style={{ background:S.card, borderRadius:'14px', padding:'14px 16px' }}>
               <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:'10px' }}>Tabla de posiciones</div>
               <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 30px 30px 30px 36px', gap:'0', fontSize:'.65rem', color:S.muted, fontWeight:'600', padding:'0 4px 6px', borderBottom:`1px solid ${S.border}`, marginBottom:'4px' }}>
@@ -175,7 +165,6 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
               ))}
             </div>
 
-            {/* Goleadores del equipo */}
             {data.scorers.length > 0 && (
               <div style={{ background:S.card, borderRadius:'14px', padding:'14px 16px' }}>
                 <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:'10px' }}>Goleadores del equipo</div>
@@ -200,25 +189,24 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
   )
 }
 
-// ── Componente principal ────────────────────────────────────────
 export default function PlayerApuestasPage() {
   const navigate = useNavigate()
-  const [player,     setPlayer]     = useState(null)
-  const [partidos,   setPartidos]   = useState([])
-  const [miscPreds,  setMiscPreds]  = useState({})
-  const [loading,    setLoading]    = useState(true)
-  const [tab,        setTab]        = useState('pendientes')
-  const [modal,      setModal]      = useState(null)
-  const [step,       setStep]       = useState(1)
-  const [form,       setForm]       = useState({ ganador:null, golesHome:0, golesAway:0, goleadorId:null })
-  const [guardando,  setGuardando]  = useState(false)
-  const [successAnim,setSuccessAnim]= useState(false)
-  const [ranking,    setRanking]    = useState([])
-  const [misPuntos,  setMisPuntos]  = useState(0)
-  const [jugadores,  setJugadores]  = useState([])
-  const [teamSheet,  setTeamSheet]  = useState(null)           // { teamId, teamName, teamLogo, tournamentId, tournamentName }
-  const [torneoFiltro, setTorneoFiltro] = useState(null)       // null = todos
-  const [collapsed,  setCollapsed]  = useState({})             // { [tournament_id]: bool }
+  const [player,       setPlayer]       = useState(null)
+  const [partidos,     setPartidos]     = useState([])
+  const [miscPreds,    setMiscPreds]    = useState({})
+  const [loading,      setLoading]      = useState(true)
+  const [tab,          setTab]          = useState('pendientes')
+  const [modal,        setModal]        = useState(null)
+  const [step,         setStep]         = useState(1)
+  const [form,         setForm]         = useState({ ganador:null, golesHome:0, golesAway:0, goleadorId:null })
+  const [guardando,    setGuardando]    = useState(false)
+  const [successAnim,  setSuccessAnim]  = useState(false)
+  const [ranking,      setRanking]      = useState([])
+  const [misPuntos,    setMisPuntos]    = useState(0)
+  const [jugadores,    setJugadores]    = useState([])
+  const [teamSheet,    setTeamSheet]    = useState(null)
+  const [torneoFiltro, setTorneoFiltro] = useState(null)
+  const [collapsed,    setCollapsed]    = useState({})
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -232,22 +220,18 @@ export default function PlayerApuestasPage() {
     setPlayer(p)
 
     const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }] = await Promise.all([
-      // Todos los partidos (sin filtro de fecha) — se filtra client-side
       supabase.from('matches')
         .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url), tournaments(id,name,modalidad)')
         .order('played_at', { ascending: true })
         .limit(300),
-      // Predicciones del jugador
       supabase.from('predicciones')
         .select('*, goleador:goleador_id(name)')
         .eq('player_id', p.id),
-      // Jugadores para el paso 3 (con tournament_id incluido)
       supabase.from('tournament_player_registrations')
         .select('tournament_id, team_id, players(id,name,photo_url)')
         .eq('activo', true),
-      // Ranking global
-      supabase.from('predicciones')
-        .select('player_id, puntos_ganados, players(name, photo_face_url, photo_url)'),
+      // Solo traer player_id y puntos — sin join a players
+      supabase.from('predicciones').select('player_id, puntos_ganados'),
     ])
 
     setPartidos(pts || [])
@@ -256,20 +240,30 @@ export default function PlayerApuestasPage() {
     ;(preds || []).forEach(pr => { predMap[pr.match_id] = pr })
     setMiscPreds(predMap)
     setMisPuntos((preds || []).reduce((s, pr) => s + (pr.puntos_ganados || 0), 0))
-
     setJugadores(jugs || [])
 
-    // Ranking
+    // Ranking — agrupar puntos por player_id
     const rankMap = {}
     ;(allPreds || []).forEach(pr => {
-      if (!rankMap[pr.player_id]) rankMap[pr.player_id] = {
-        id: pr.player_id,
-        nombre: pr.players?.name,
-        foto: pr.players?.photo_face_url || pr.players?.photo_url,
-        puntos: 0,
-      }
+      if (!rankMap[pr.player_id]) rankMap[pr.player_id] = { id: pr.player_id, puntos: 0, nombre: null, foto: null }
       rankMap[pr.player_id].puntos += pr.puntos_ganados || 0
     })
+
+    // Traer datos de jugadores por separado
+    const playerIds = Object.keys(rankMap)
+    if (playerIds.length > 0) {
+      const { data: playersData } = await supabase
+        .from('players')
+        .select('id, name, photo_face_url, photo_url')
+        .in('id', playerIds)
+      ;(playersData || []).forEach(pl => {
+        if (rankMap[pl.id]) {
+          rankMap[pl.id].nombre = pl.name
+          rankMap[pl.id].foto   = pl.photo_face_url || pl.photo_url
+        }
+      })
+    }
+
     setRanking(Object.values(rankMap).sort((a,b) => b.puntos - a.puntos))
     setLoading(false)
   }
@@ -291,7 +285,7 @@ export default function PlayerApuestasPage() {
   }
 
   async function guardarPrediccion() {
-    if (!form.ganador) return             // solo ganador es obligatorio
+    if (!form.ganador) return
     setGuardando(true)
     const pred = miscPreds[modal.id]
     const data = {
@@ -319,18 +313,15 @@ export default function PlayerApuestasPage() {
     </div>
   )
 
-  // Separar pendientes de terminados
-  const pendientes    = partidos.filter(p => p.status !== 'finished')
-  const terminados    = partidos.filter(p => p.status === 'finished')
-  const miRanking     = ranking.findIndex(r => r.id === player.id) + 1
+  const pendientes  = partidos.filter(p => p.status !== 'finished')
+  const terminados  = partidos.filter(p => p.status === 'finished')
+  const miRanking   = ranking.findIndex(r => r.id === player.id) + 1
 
-  // Jugadores para modal (filtrados por tournament y equipos del partido)
   const jugsModal = modal ? jugadores
     .filter(j => j.tournament_id === modal.tournament_id &&
       (j.team_id === modal.home_team_id || j.team_id === modal.away_team_id))
     .map(j => j.players).filter(Boolean) : []
 
-  // Agrupar por torneo
   function groupByTournament(lista) {
     const groups = {}
     lista.forEach(p => {
@@ -345,23 +336,17 @@ export default function PlayerApuestasPage() {
     torneoFiltro ? pendientes.filter(p => p.tournament_id === torneoFiltro) : pendientes
   )
 
-  // Torneos únicos de partidos pendientes para el filtro
   const torneosUnicos = [...new Map(pendientes.map(p => [p.tournament_id, p.tournaments])).values()]
 
   function toggleCollapse(tid) {
     setCollapsed(prev => ({ ...prev, [tid]: !prev[tid] }))
   }
 
-  // ── Render ──────────────────────────────────────────────────
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
 
-      {/* ── Team Sheet ── */}
-      {teamSheet && (
-        <TeamSheet {...teamSheet} onClose={() => setTeamSheet(null)}/>
-      )}
+      {teamSheet && <TeamSheet {...teamSheet} onClose={() => setTeamSheet(null)}/>}
 
-      {/* ── Modal predicción ── */}
       {modal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:300,
           display:'flex', alignItems:'flex-end', justifyContent:'center' }}
@@ -369,7 +354,6 @@ export default function PlayerApuestasPage() {
           <div style={{ background:S.surface, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:'480px',
             maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', border:`0.5px solid ${S.border}` }}>
 
-            {/* Header modal */}
             <div style={{ padding:'16px 20px', borderBottom:`0.5px solid ${S.border}`,
               display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
@@ -379,7 +363,6 @@ export default function PlayerApuestasPage() {
               <button onClick={() => setModal(null)} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'1.2rem' }}>✕</button>
             </div>
 
-            {/* Stepper */}
             {step < 5 && (
               <div style={{ padding:'12px 20px', borderBottom:`0.5px solid ${S.border}`,
                 display:'flex', gap:'6px', flexShrink:0 }}>
@@ -399,7 +382,6 @@ export default function PlayerApuestasPage() {
 
             <div style={{ flex:1, overflowY:'auto', padding:'20px' }}>
 
-              {/* PASO 1 — Ganador */}
               {step === 1 && (
                 <div>
                   <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text, marginBottom:'14px' }}>¿Quién gana?</div>
@@ -426,7 +408,6 @@ export default function PlayerApuestasPage() {
                 </div>
               )}
 
-              {/* PASO 2 — Marcador */}
               {step === 2 && (
                 <div>
                   <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text, marginBottom:'16px' }}>¿Cuál será el marcador?</div>
@@ -458,7 +439,6 @@ export default function PlayerApuestasPage() {
                 </div>
               )}
 
-              {/* PASO 3 — Goleador */}
               {step === 3 && (
                 <div>
                   <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text, marginBottom:'4px' }}>
@@ -466,7 +446,6 @@ export default function PlayerApuestasPage() {
                   </div>
                   <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'12px' }}>Opcional — puedes saltar este paso</div>
 
-                  {/* Opción "Ninguno" — FIX BUG-001 */}
                   <div onClick={() => setForm(f => ({ ...f, goleadorId: null }))}
                     style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', borderRadius:'10px', cursor:'pointer', marginBottom:'8px',
                       border:`1px solid ${form.goleadorId===null ? S.muted : S.border}`,
@@ -497,7 +476,6 @@ export default function PlayerApuestasPage() {
 
                   <div style={{ display:'flex', gap:'8px', marginTop:'14px' }}>
                     <button onClick={() => setStep(2)} style={{ flex:1, padding:'11px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontWeight:'600', fontSize:'.875rem' }}>← Volver</button>
-                    {/* Siempre habilitado — BUG-001 fix */}
                     <button onClick={() => setStep(4)} style={{ flex:2, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'700', fontSize:'.875rem' }}>
                       {form.goleadorId ? 'CONTINUAR →' : 'SALTAR →'}
                     </button>
@@ -505,7 +483,6 @@ export default function PlayerApuestasPage() {
                 </div>
               )}
 
-              {/* PASO 4 — Confirmar */}
               {step === 4 && (
                 <div>
                   <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text, marginBottom:'16px' }}>Confirma tu predicción</div>
@@ -529,12 +506,9 @@ export default function PlayerApuestasPage() {
                 </div>
               )}
 
-              {/* PASO 5 — Éxito */}
               {step === 5 && (
                 <div style={{ textAlign:'center', padding:'20px 0' }}>
-                  {successAnim && (
-                    <div style={{ fontSize:'3rem', marginBottom:'12px' }}>🎯</div>
-                  )}
+                  {successAnim && <div style={{ fontSize:'3rem', marginBottom:'12px' }}>🎯</div>}
                   <div style={{ fontWeight:'700', fontSize:'1rem', color:S.cyan, marginBottom:'6px' }}>
                     {successAnim ? '¡Predicción guardada!' : 'Tu predicción'}
                   </div>
@@ -554,7 +528,7 @@ export default function PlayerApuestasPage() {
         </div>
       )}
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
@@ -570,7 +544,7 @@ export default function PlayerApuestasPage() {
 
       <div style={{ maxWidth:'600px', margin:'0 auto', padding:'0 16px' }}>
 
-        {/* ── Tabs ── */}
+        {/* Tabs */}
         <div style={{ display:'flex', gap:'4px', padding:'12px 0', position:'sticky', top:0, background:S.navy, zIndex:10 }}>
           {[
             { id:'pendientes', label:'Próximos' },
@@ -586,10 +560,9 @@ export default function PlayerApuestasPage() {
           ))}
         </div>
 
-        {/* ── TAB: Próximos ── */}
+        {/* TAB: Próximos */}
         {tab === 'pendientes' && (
           <div>
-            {/* Filtro por torneo */}
             {torneosUnicos.length > 1 && (
               <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'8px', marginBottom:'12px',
                 scrollbarWidth:'none', WebkitOverflowScrolling:'touch' }}>
@@ -611,13 +584,11 @@ export default function PlayerApuestasPage() {
                 <div>No hay partidos pendientes</div>
               </div>
             ) : gruposPendientes.map(grupo => {
-              const tid  = grupo.torneo?.id
+              const tid         = grupo.torneo?.id
               const isCollapsed = collapsed[tid]
               const hayPrediccion = grupo.partidos.some(p => miscPreds[p.id])
               return (
                 <div key={tid} style={{ marginBottom:'16px', background:S.card, borderRadius:'16px', overflow:'hidden', border:`0.5px solid ${S.border}` }}>
-
-                  {/* Header del torneo — ventana colapsable */}
                   <div onClick={() => toggleCollapse(tid)}
                     style={{ padding:'14px 16px', display:'flex', alignItems:'center', gap:'10px', cursor:'pointer',
                       background: S.card2, borderBottom: isCollapsed ? 'none' : `0.5px solid ${S.border}` }}>
@@ -634,27 +605,21 @@ export default function PlayerApuestasPage() {
                         {hayPrediccion && <span style={{ color:S.gold, marginLeft:'6px' }}>· {grupo.partidos.filter(p=>miscPreds[p.id]).length} predicción{grupo.partidos.filter(p=>miscPreds[p.id]).length!==1?'es':''}</span>}
                       </div>
                     </div>
-                    {isCollapsed
-                      ? <ChevronDown size={18} color={S.muted}/>
-                      : <ChevronUp   size={18} color={S.muted}/>}
+                    {isCollapsed ? <ChevronDown size={18} color={S.muted}/> : <ChevronUp size={18} color={S.muted}/>}
                   </div>
 
-                  {/* Partidos del torneo */}
                   {!isCollapsed && grupo.partidos.map((p, i) => {
-                    const pred     = miscPreds[p.id]
-                    const pasado   = p.played_at && new Date(p.played_at) <= new Date()
+                    const pred      = miscPreds[p.id]
+                    const pasado    = p.played_at && new Date(p.played_at) <= new Date()
                     const clickable = !pasado || !!pred
-
                     return (
                       <div key={p.id} style={{ borderTop: i>0 ? `0.5px solid ${S.border}` : 'none' }}>
-                        {/* Info fecha/lugar */}
                         <div style={{ padding:'10px 16px 0', display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
                           {p.matchday && <span style={{ fontSize:'.65rem', background:'rgba(0,221,208,.1)', color:S.cyan, borderRadius:'10px', padding:'1px 7px', fontWeight:'600' }}>J{p.matchday}</span>}
                           {p.played_at && (
                             <span style={{ fontSize:'.68rem', color:S.muted }}>
                               📅 {new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}
-                              {' '}
-                              {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
+                              {' '}{new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
                             </span>
                           )}
                           {p.location && <span style={{ fontSize:'.68rem', color:S.muted }}>📍 {p.location}</span>}
@@ -662,53 +627,36 @@ export default function PlayerApuestasPage() {
                           {pasado && !pred && <span style={{ fontSize:'.65rem', color:S.loss, background:S.lossDim, borderRadius:'10px', padding:'1px 7px' }}>Sin predicción</span>}
                         </div>
 
-                        {/* Equipos */}
                         <div onClick={() => clickable && abrirModal(p)}
                           style={{ padding:'10px 16px 12px', display:'flex', alignItems:'center', gap:'8px',
                             cursor: clickable?'pointer':'default', opacity: pasado&&!pred ? 0.5 : 1 }}>
-
-                          {/* Equipo local */}
                           <div style={{ flex:1, display:'flex', alignItems:'center', gap:'8px', justifyContent:'flex-end' }}>
-                            <button
-                              onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.home_team_id, teamName:p.home?.name, teamLogo:p.home?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
-                              style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', padding:'4px 6px', borderRadius:'8px' }}
-                              title="Ver ficha del equipo">
-                              <span style={{ fontWeight:'700', fontSize:'.88rem', color:S.text, textAlign:'right', textDecoration:'underline', textDecorationColor:'rgba(255,255,255,.15)', textUnderlineOffset:'3px' }}>
-                                {p.home?.name}
-                              </span>
+                            <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.home_team_id, teamName:p.home?.name, teamLogo:p.home?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
+                              style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', padding:'4px 6px', borderRadius:'8px' }}>
+                              <span style={{ fontWeight:'700', fontSize:'.88rem', color:S.text, textAlign:'right', textDecoration:'underline', textDecorationColor:'rgba(255,255,255,.15)', textUnderlineOffset:'3px' }}>{p.home?.name}</span>
                               <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
                                 {p.home?.logo_url ? <img src={p.home.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> :
                                   <span style={{ fontSize:'.6rem', fontWeight:'800', color:'#fff' }}>{(p.home?.name||'?').substring(0,2).toUpperCase()}</span>}
                               </div>
                             </button>
                           </div>
-
-                          {/* Centro */}
                           <div style={{ flexShrink:0, background:S.card2, borderRadius:'8px', padding:'6px 10px', textAlign:'center', minWidth:'44px' }}>
-                            {pred ? (
-                              <div style={{ fontSize:'.8rem', fontWeight:'800', color:S.cyan }}>{pred.goles_home}–{pred.goles_away}</div>
-                            ) : (
-                              <div style={{ fontSize:'.7rem', fontWeight:'700', color:S.muted }}>VS</div>
-                            )}
+                            {pred
+                              ? <div style={{ fontSize:'.8rem', fontWeight:'800', color:S.cyan }}>{pred.goles_home}–{pred.goles_away}</div>
+                              : <div style={{ fontSize:'.7rem', fontWeight:'700', color:S.muted }}>VS</div>}
                           </div>
-
-                          {/* Equipo visitante */}
                           <div style={{ flex:1, display:'flex', alignItems:'center', gap:'8px' }}>
-                            <button
-                              onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.away_team_id, teamName:p.away?.name, teamLogo:p.away?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
+                            <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.away_team_id, teamName:p.away?.name, teamLogo:p.away?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
                               style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', padding:'4px 6px', borderRadius:'8px' }}>
                               <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
                                 {p.away?.logo_url ? <img src={p.away.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> :
                                   <span style={{ fontSize:'.6rem', fontWeight:'800', color:'#fff' }}>{(p.away?.name||'?').substring(0,2).toUpperCase()}</span>}
                               </div>
-                              <span style={{ fontWeight:'700', fontSize:'.88rem', color:S.text, textDecoration:'underline', textDecorationColor:'rgba(255,255,255,.15)', textUnderlineOffset:'3px' }}>
-                                {p.away?.name}
-                              </span>
+                              <span style={{ fontWeight:'700', fontSize:'.88rem', color:S.text, textDecoration:'underline', textDecorationColor:'rgba(255,255,255,.15)', textUnderlineOffset:'3px' }}>{p.away?.name}</span>
                             </button>
                           </div>
                         </div>
 
-                        {/* Hint info equipo */}
                         <div style={{ padding:'0 16px 10px', display:'flex', gap:'6px' }}>
                           <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.home_team_id, teamName:p.home?.name, teamLogo:p.home?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
                             style={{ fontSize:'.62rem', color:S.cyan, background:'rgba(0,221,208,.06)', border:`0.5px solid rgba(0,221,208,.2)`, borderRadius:'6px', padding:'2px 8px', cursor:'pointer' }}>
@@ -728,7 +676,7 @@ export default function PlayerApuestasPage() {
           </div>
         )}
 
-        {/* ── TAB: Mis predicciones ── */}
+        {/* TAB: Mis predicciones */}
         {tab === 'mias' && (
           <div>
             {Object.keys(miscPreds).length === 0 ? (
@@ -738,9 +686,9 @@ export default function PlayerApuestasPage() {
               </div>
             ) : terminados.filter(p => miscPreds[p.id]).concat(pendientes.filter(p => miscPreds[p.id]))
                 .map(p => {
-                  const pred = miscPreds[p.id]
+                  const pred       = miscPreds[p.id]
                   const esTerminado = p.status === 'finished'
-                  const acerto = pred.resuelta && pred.puntos_ganados > 0
+                  const acerto     = pred.resuelta && pred.puntos_ganados > 0
                   return (
                     <div key={p.id} style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'10px', border:`0.5px solid ${pred.resuelta ? (acerto?S.win:S.border) : S.border}` }}>
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
@@ -771,11 +719,14 @@ export default function PlayerApuestasPage() {
           </div>
         )}
 
-        {/* ── TAB: Ranking ── */}
+        {/* TAB: Ranking */}
         {tab === 'ranking' && (
           <div>
             {ranking.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'60px 20px', color:S.muted }}>Sin datos de ranking aún</div>
+              <div style={{ textAlign:'center', padding:'60px 20px', color:S.muted }}>
+                <div style={{ fontSize:'2rem', marginBottom:'12px' }}>🏆</div>
+                <div>Sin datos de ranking aún</div>
+              </div>
             ) : ranking.map((r, i) => {
               const esYo = r.id === player.id
               return (
