@@ -24,6 +24,7 @@ import PlayerTorneoPage from './pages/PlayerTorneoPage'
 import PlayerApuestasPage from './pages/PlayerApuestasPage'
 import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
 import TorneoPublicoPage from './pages/TorneoPublicoPage'
+import RegistroEquipoPage from './pages/RegistroEquipoPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -92,6 +93,8 @@ export default function App() {
 
         {/* Página pública de torneo — sin login */}
         <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
+        {/* Registro público de jugadores por equipo */}
+<Route path="/registro/equipo/:token" element={<RegistroEquipoPage/>}/>
 
         {/* Equipo detalle — accesible por admin Y jugador */}
         <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage modoLectura={true}/></PlayerRoute>}/>

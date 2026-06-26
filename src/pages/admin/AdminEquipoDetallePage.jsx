@@ -51,6 +51,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [torneos,               setTorneos]               = useState([])
   const [jugadoresPorTorneo,    setJugadoresPorTorneo]    = useState({})
   const [jugadoresEquipoGlobal, setJugadoresEquipoGlobal] = useState([])
+  const [jugadoresActivos, setJugadoresActivos] = useState([])
   const [partidos,              setPartidos]              = useState([])
   const [logros,                setLogros]                = useState([])
   const [stats,                 setStats]                 = useState(null)
@@ -86,8 +87,14 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   }
 
   async function fetchJugadoresGlobal() {
-    const { data } = await supabase.from('team_players').select('*, players(*)').eq('team_id', id).eq('activo', true)
+    const { data } = await supabase.from('team_players').select('*, players(*)').eq('team_id', id)
     setJugadoresEquipoGlobal((data || []).map(r => r.players).filter(Boolean))
+    const { data: activos } = await supabase
+      .from('tournament_player_registrations')
+      .select('player_id')
+      .eq('team_id', id)
+      .eq('activo', true)
+    setJugadoresActivos((activos || []).map(a => a.player_id))
   }
 
   async function fetchTorneos() {
@@ -485,7 +492,17 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               )}
             </div>
           )}
-
+{!modoLectura && (
+  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+    <button onClick={() => {
+      const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}`
+      navigator.clipboard.writeText(link)
+      showMsg('Link copiado al portapapeles ✓')
+    }} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #1a73e8', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#1a73e8', fontSize: '.875rem', fontWeight: '500' }}>
+      🔗 Copiar link de registro
+    </button>
+  </div>
+)}
           <SectionTitle icon={<Users size={18} color="#1a73e8"/>} title="Jugadores del equipo"/>
           {jugadoresEquipoGlobal.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
@@ -508,6 +525,9 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>F5: {j.posicion_futbol5}</span>}
                       {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px' }}>F7: {j.posicion_futbol7}</span>}
                       {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px' }}>F11: {j.posicion_futbol11}</span>}
+                      <span style={{ fontSize: '.68rem', fontWeight: '600', color: jugadoresActivos.includes(j.id) ? '#1e8e3e' : '#9aa0a6', background: jugadoresActivos.includes(j.id) ? '#e6f4ea' : '#f1f3f4', borderRadius: '20px', padding: '2px 8px' }}>
+  {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
+</span>
                     </div>
                   </div>
                 </div>
