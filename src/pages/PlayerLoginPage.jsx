@@ -38,72 +38,160 @@ function ErrorBox({ error }) {
   )
 }
 
+function ModalCambiarPass({ cedula, onCambiada }) {
+  const [pass,    setPass]    = useState('')
+  const [pass2,   setPass2]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+
+  async function handleCambiar(e) {
+    e.preventDefault()
+    if (!pass || pass.length < 6) { setError('Mínimo 6 caracteres'); return }
+    if (pass !== pass2)           { setError('Las contraseñas no coinciden'); return }
+    if (pass === cedula)          { setError('La nueva contraseña no puede ser tu cédula'); return }
+    setLoading(true); setError('')
+    const { error: err } = await supabase.auth.updateUser({ password: pass })
+    if (err) { setError('Error: ' + err.message); setLoading(false); return }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('players').update({ primer_ingreso: false }).eq('user_id', user.id)
+    }
+    setLoading(false)
+    onCambiada()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '380px', boxShadow: '0 20px 60px rgba(0,0,0,.4)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔐</div>
+          <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem' }}>Crea tu contraseña</div>
+          <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.5 }}>
+            Por seguridad debes crear una contraseña personal antes de continuar
+          </div>
+        </div>
+        <form onSubmit={handleCambiar} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Nueva contraseña</label>
+            <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Mínimo 6 caracteres" type="password" style={inp} autoFocus
+              onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Confirmar contraseña</label>
+            <input value={pass2} onChange={e => setPass2(e.target.value)} placeholder="Repite la contraseña" type="password" style={inp}
+              onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
+          </div>
+          {error && <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.82rem', color: '#d93025' }}>{error}</div>}
+          <button type="submit" disabled={loading}
+            style={{ padding: '12px', background: loading ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.95rem' }}>
+            {loading ? 'Guardando...' : 'Guardar y entrar →'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function ModalRecuperarPass({ onClose }) {
+  const [cedula,  setCedula]  = useState('')
+  const [loading, setLoading] = useState(false)
+  const [enviado, setEnviado] = useState(false)
+  const [error,   setError]   = useState('')
+
+  async function handleRecuperar(e) {
+    e.preventDefault()
+    if (!cedula.trim()) { setError('Ingresa tu cédula'); return }
+    setLoading(true); setError('')
+    await supabase.auth.resetPasswordForEmail(`${cedula.trim()}@golmebol.com`, {
+      redirectTo: `${window.location.origin}/jugador/login?reset=true`,
+    })
+    setLoading(false)
+    setEnviado(true)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '380px', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        {!enviado ? (
+          <>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>Recuperar contraseña</div>
+            <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '20px' }}>Escribe tu cédula y te ayudamos a recuperar el acceso</div>
+            <form onSubmit={handleRecuperar} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Número de cédula</label>
+                <input value={cedula} onChange={e => setCedula(e.target.value)} placeholder="Tu cédula" type="number" style={inp} autoFocus
+                  onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
+              </div>
+              {error && <div style={{ background: '#fce8e6', borderRadius: '8px', padding: '10px 12px', fontSize: '.82rem', color: '#d93025' }}>{error}</div>}
+              <button type="submit" disabled={loading}
+                style={{ padding: '12px', background: loading ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.9rem' }}>
+                {loading ? 'Buscando...' : 'Recuperar acceso'}
+              </button>
+              <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.8rem' }}>Cancelar</button>
+            </form>
+          </>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>📲</div>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '8px' }}>Escríbenos por WhatsApp</div>
+            <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '20px', lineHeight: 1.5 }}>
+              Dinos tu cédula <b>{cedula}</b> y te ayudamos a recuperar el acceso
+            </div>
+            <a href={WA_LINK(`Hola! Olvidé mi contraseña de PREDIX Golmebol. Mi cédula es ${cedula}. Ayúdenme a recuperar el acceso 🙏`)}
+              target="_blank" rel="noopener noreferrer"
+              style={{ display: 'block', padding: '12px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none', marginBottom: '10px' }}>
+              📲 Escribir a Golmebol
+            </a>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.78rem' }}>Cerrar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function PlayerLoginPage() {
   const navigate = useNavigate()
 
-  const [step,      setStep]      = useState('cedula')
-  const [cedula,    setCedula]    = useState('')
-  const [pass,      setPass]      = useState('')
-  const [pass2,     setPass2]     = useState('')
-  const [nombre,    setNombre]    = useState('')
-  const [whatsapp,  setWhatsapp]  = useState('')
-  const [player,    setPlayer]    = useState(null)
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState('')
-  const [showPromo, setShowPromo] = useState(false)
+  const [step,            setStep]            = useState('cedula')
+  const [cedula,          setCedula]          = useState('')
+  const [pass,            setPass]            = useState('')
+  const [pass2,           setPass2]           = useState('')
+  const [nombre,          setNombre]          = useState('')
+  const [whatsapp,        setWhatsapp]        = useState('')
+  const [player,          setPlayer]          = useState(null)
+  const [loading,         setLoading]         = useState(false)
+  const [error,           setError]           = useState('')
+  const [showPromo,       setShowPromo]       = useState(false)
+  const [showRecuperar,   setShowRecuperar]   = useState(false)
+  const [showCambiarPass, setShowCambiarPass] = useState(false)
 
   async function handleBuscarCedula(e) {
     e.preventDefault()
     if (!cedula.trim()) { setError('Ingresa tu número de cédula'); return }
     setLoading(true); setError('')
-
     const { data: p } = await supabase
       .from('players')
-      .select('id, name, activo_membresia, fecha_vencimiento, user_id')
+      .select('id, name, activo_membresia, fecha_vencimiento, user_id, primer_ingreso')
       .eq('numero_cedula', cedula.trim())
       .single()
-
     setLoading(false)
-
-    if (p) {
-      setPlayer(p)
-      if (p.user_id) setStep('login')
-      else setStep('crear_pass')
-    } else {
-      setShowPromo(true)
-    }
+    if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('crear_pass') }
+    else setShowPromo(true)
   }
 
   async function handleLogin(e) {
     e.preventDefault()
     if (!pass.trim()) { setError('Ingresa tu contraseña'); return }
     setLoading(true); setError('')
-
-    const email = `${cedula.trim()}@golmebol.com`
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password: pass })
-
+    const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Contraseña incorrecta'); setLoading(false); return }
-
-    // Refrescar datos del jugador para tener info actualizada
-    const { data: pActual } = await supabase
-      .from('players')
-      .select('activo_membresia, fecha_vencimiento')
-      .eq('id', player.id)
-      .single()
-
-    if (!pActual?.activo_membresia) {
-      await supabase.auth.signOut()
-      setError('membresia_inactiva')
-      setLoading(false); return
-    }
-
-    if (pActual.fecha_vencimiento && new Date(pActual.fecha_vencimiento) < new Date()) {
-      await supabase.auth.signOut()
-      setError('membresia_vencida')
-      setLoading(false); return
-    }
-
-    navigate('/jugador')
+    const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso').eq('id', player.id).single()
+    if (!pActual?.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
+    if (pActual.fecha_vencimiento && new Date(pActual.fecha_vencimiento) < new Date()) { await supabase.auth.signOut(); setError('membresia_vencida'); setLoading(false); return }
+    setLoading(false)
+    if (pActual.primer_ingreso !== false) setShowCambiarPass(true)
+    else navigate('/jugador')
   }
 
   async function handleCrearCuenta(e) {
@@ -111,44 +199,28 @@ export default function PlayerLoginPage() {
     if (!pass.trim() || pass.length < 6) { setError('Mínimo 6 caracteres'); return }
     if (pass !== pass2) { setError('Las contraseñas no coinciden'); return }
     setLoading(true); setError('')
-
-    const email = `${cedula.trim()}@golmebol.com`
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass })
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
-
     await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
-
-    if (!player.activo_membresia) {
-      await supabase.auth.signOut()
-      setError('membresia_inactiva')
-      setLoading(false); return
-    }
-
+    if (!player.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
+    setLoading(false)
     navigate('/jugador')
   }
 
   async function handleRegistro(e) {
     e.preventDefault()
-    if (!nombre.trim())                   { setError('Ingresa tu nombre'); return }
-    if (!whatsapp.trim())                 { setError('Ingresa tu WhatsApp'); return }
-    if (!pass.trim() || pass.length < 6) { setError('Mínimo 6 caracteres'); return }
-    if (pass !== pass2)                   { setError('Las contraseñas no coinciden'); return }
+    if (!nombre.trim())                    { setError('Ingresa tu nombre'); return }
+    if (!whatsapp.trim())                  { setError('Ingresa tu WhatsApp'); return }
+    if (!pass.trim() || pass.length < 6)  { setError('Mínimo 6 caracteres'); return }
+    if (pass !== pass2)                    { setError('Las contraseñas no coinciden'); return }
     setLoading(true); setError('')
-
-    const email = `${cedula.trim()}@golmebol.com`
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass })
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
-
     const { error: playerError } = await supabase.from('players').insert({
-      user_id:          authData.user?.id,
-      name:             nombre.trim(),
-      numero_cedula:    cedula.trim(),
-      whatsapp:         whatsapp.trim(),
-      activo_membresia: false,
+      user_id: authData.user?.id, name: nombre.trim(), numero_cedula: cedula.trim(),
+      whatsapp: whatsapp.trim(), activo_membresia: false, primer_ingreso: false,
     })
-
     if (playerError) { setError('Error al crear perfil: ' + playerError.message); setLoading(false); return }
-
     setLoading(false)
     setStep('pendiente')
   }
@@ -162,7 +234,12 @@ export default function PlayerLoginPage() {
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
 
-        {/* Logo */}
+        {showCambiarPass && (
+          <ModalCambiarPass cedula={cedula} onCambiada={() => { setShowCambiarPass(false); navigate('/jugador') }}/>
+        )}
+
+        {showRecuperar && <ModalRecuperarPass onClose={() => setShowRecuperar(false)}/>}
+
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '60px', height: '60px', borderRadius: '16px', background: '#1a73e8', marginBottom: '14px' }}>
             <span style={{ fontSize: '1.8rem' }}>⚽</span>
@@ -171,7 +248,6 @@ export default function PlayerLoginPage() {
           <div style={{ fontSize: '.85rem', color: '#5f6368', marginTop: '4px' }}>Portal del Jugador</div>
         </div>
 
-        {/* MODAL PROMO */}
         {showPromo && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div style={{ width: '100%', maxWidth: '400px', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
@@ -213,7 +289,6 @@ export default function PlayerLoginPage() {
 
         <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', boxShadow: '0 1px 3px rgba(0,0,0,.1), 0 4px 16px rgba(0,0,0,.06)' }}>
 
-          {/* PASO 1: cédula */}
           {step === 'cedula' && (
             <>
               <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '4px' }}>Bienvenido</div>
@@ -233,7 +308,6 @@ export default function PlayerLoginPage() {
             </>
           )}
 
-          {/* LOGIN NORMAL */}
           {step === 'login' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
@@ -254,12 +328,15 @@ export default function PlayerLoginPage() {
                   style={{ marginTop: '4px', padding: '12px', background: loading ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.95rem' }}>
                   {loading ? 'Ingresando...' : 'Ingresar'}
                 </button>
+                <button type="button" onClick={() => setShowRecuperar(true)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', textDecoration: 'underline' }}>
+                  ¿Olvidaste tu contraseña?
+                </button>
                 <button type="button" onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Usar otra cédula</button>
               </form>
             </>
           )}
 
-          {/* CREAR CONTRASEÑA */}
           {step === 'crear_pass' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
@@ -293,7 +370,6 @@ export default function PlayerLoginPage() {
             </>
           )}
 
-          {/* REGISTRO LIBRE */}
           {step === 'registro' && (
             <>
               <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '4px' }}>Crear cuenta gratis</div>
@@ -335,7 +411,6 @@ export default function PlayerLoginPage() {
             </>
           )}
 
-          {/* REGISTRO PENDIENTE */}
           {step === 'pendiente' && (
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🎉</div>
