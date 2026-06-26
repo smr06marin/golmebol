@@ -530,11 +530,15 @@ export default function PlayerApuestasPage() {
 
       {/* Header */}
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div>
-            <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>Predix</div>
-            <div style={{ fontWeight:'800', fontSize:'1.1rem', color:S.text }}>{player.name}</div>
-          </div>
+  <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+      <button onClick={() => navigate('/jugador')}
+        style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', display:'flex', alignItems:'center', gap:'5px', width:'fit-content' }}>
+        ← Inicio
+      </button>
+      <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>Predix</div>
+      <div style={{ fontWeight:'800', fontSize:'1.1rem', color:S.text }}>{player.name}</div>
+    </div>
           <div style={{ textAlign:'right' }}>
             <div style={{ fontSize:'1.8rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{misPuntos}</div>
             <div style={{ fontSize:'.65rem', color:S.muted }}>pts totales · #{miRanking || '—'}</div>
