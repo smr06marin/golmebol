@@ -1,6 +1,6 @@
+import { supabase } from '../lib/supabase'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { Shield, Check, Users, Upload } from 'lucide-react'
 
 const POSICIONES = {
