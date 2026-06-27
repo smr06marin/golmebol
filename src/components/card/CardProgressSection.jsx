@@ -46,14 +46,10 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   async function fetchProgreso() {
     setLoading(true)
     const pos = getPosicion()
-    console.log('fetchProgreso iniciado, pos:', pos, 'playerId:', playerId)
-    console.log('fetchProgreso iniciado, pos:', pos, 'playerId:', playerId)
 
     // Traer todas las tarjetas y subniveles
     const { data: cards }  = await supabase.from('cards').select('*').order('orden')
-console.log('cards:', cards)
     const { data: levels } = await supabase.from('card_levels').select('*').order('subnivel')
-console.log('levels:', levels)
 
     // Traer progreso del jugador
     const { data: progreso } = await supabase
@@ -66,7 +62,6 @@ console.log('levels:', levels)
       .from('achievements')
       .select('*')
       .in('tipo', ['universal', pos])
-console.log('achievements:', achievements)
 
     const { data: achProgress } = await supabase
       .from('player_achievement_progress')
@@ -134,13 +129,7 @@ console.log('achievements:', achievements)
       .select('*')
       .eq('player_id', playerId)
       .single()
-      console.log('logrosActivo:', logrosActivo)
-      console.log('achMap:', achMap)
-      console.log('cache:', cache)
-      console.log('logrosActivo:', logrosActivo)
-console.log('achMap:', achMap)
-console.log('primer logro id:', logrosActivo[0]?.id)
-console.log('existe en achMap:', achMap[logrosActivo[0]?.id])
+    
     setData({
       cards: cards || [],
       levels: levels || [],
