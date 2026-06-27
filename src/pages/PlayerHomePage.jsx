@@ -5,11 +5,11 @@ import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import html2canvas from 'html2canvas'
 import StatRankingModal from '../components/card/StatRankingModal'
+import CardProgressSection from '../components/card/CardProgressSection'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
   { id: 'historial', label: 'Historial',  icon: '📋' },
-  { id: 'logros',    label: 'Logros',     icon: '⭐' },
   { id: 'predix',    label: 'Predix',     icon: '🎯' },
 ]
 
@@ -602,6 +602,12 @@ console.log('torneosData:', torneosData)
             </div>
           </div>
           {player.fecha_vencimiento && (
+            <CardProgressSection
+            playerId={player.id}
+            esPortero={esPortero}
+            posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
+          />
+          <div style={{ padding: '0 16px 16px' }}>
             <div style={{ padding: '10px 16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1e8e3e', flexShrink: 0 }}/>
@@ -695,31 +701,6 @@ console.log('torneosData:', torneosData)
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── LOGROS ── */}
-      {tab === 'logros' && (
-        <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124' }}>Logros</div>
-            <span style={{ fontSize: '.75rem', color: '#5f6368' }}>{logrosDesbloqueados} / {logrosDinamicos.length} obtenidos</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {logrosDinamicos.map(t => (
-              <div key={t.nombre} style={{ background: '#fff', border: `1px solid ${t.desbloqueado ? '#1a73e8' : '#e8eaed'}`, borderRadius: '12px', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '14px', opacity: t.desbloqueado ? 1 : .6, boxShadow: t.desbloqueado ? '0 2px 8px rgba(26,115,232,.15)' : '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: t.desbloqueado ? '#e8f0fe' : '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0 }}>
-                  {t.desbloqueado ? t.icono : '🔒'}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: '600', color: t.desbloqueado ? '#1a73e8' : '#202124', fontSize: '.875rem' }}>{t.nombre}</div>
-                  <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{t.desc}</div>
-                  <div style={{ fontSize: '.68rem', color: t.desbloqueado ? '#1e8e3e' : '#9aa0a6', marginTop: '3px', fontWeight: '500' }}>{t.progreso}</div>
-                </div>
-                {t.desbloqueado && <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 10px', fontWeight: '600', flexShrink: 0 }}>✓</span>}
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
