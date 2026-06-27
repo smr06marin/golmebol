@@ -566,7 +566,6 @@ export default function PlayerHomePage() {
   photoUrlExterno={player.photo_url || null}
   hideShields={true}
 />
-                  <PlayerCard playerName={nombre} stats={cardStats} cardType={previewCard.id} esPortero={esPortero} photoUrlExterno={player.photo_url || null} hideShields={true}/>
                 )}
                 <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px' }}>
                   {[...Array(10)].map((_, row) => (
