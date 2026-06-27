@@ -47,88 +47,230 @@ function FirmaSlot({ label, firma, onFirmar }) {
   )
 }
 
+// Input de camiseta que permite escribir dos dígitos seguidos sin perder el foco
 function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
   const [local, setLocal] = useState(String(value ?? ''))
   const ref = useRef(null)
+
   useEffect(() => {
     if (document.activeElement !== ref.current) setLocal(String(value ?? ''))
   }, [value])
+
   function handleChange(e) {
     const val = e.target.value.replace(/\D/g, '').slice(0, 2)
-    setLocal(val); onChange(val)
+    setLocal(val)
+    onChange(val)
   }
+
   function handleBlur() { setLocal(String(value ?? '')) }
-  const bg = !local ? '#fff3cd' : repetido ? '#ff4444' : '#111'
+
+  const bg    = !local ? '#fff3cd' : repetido ? '#ff4444' : '#111'
   const color = !local ? '#e8710a' : '#fff'
+
   return (
     <td style={{ border: '1px solid #000', padding: '1px', background: bg, textAlign: 'center', verticalAlign: 'middle' }}
       title={repetido ? '⚠ Número repetido' : !local ? 'Número obligatorio' : ''}>
-      <input ref={ref} value={local} onChange={handleChange} onBlur={handleBlur}
+      <input
+        ref={ref}
+        value={local}
+        onChange={handleChange}
+        onBlur={handleBlur}
         onDoubleClick={() => { setLocal(''); onDoubleClick() }}
-        placeholder="N°" maxLength={2}
-        style={{ border: 'none', outline: 'none', width: '100%', fontSize: '11px', fontWeight: '900', textAlign: 'center', background: 'transparent', color }}/>
+        placeholder="N°"
+        maxLength={2}
+        inputMode="numeric"
+        style={{ border: 'none', outline: 'none', width: '100%', fontSize: '11px', fontWeight: '900', textAlign: 'center', background: 'transparent', color }}
+      />
     </td>
   )
 }
 
-export default function PlanillaPartido({ partido, onClose, onGuardarResultado }) {
-  const [loading, setLoading] = useState(true)
-  const [arbitros, setArbitros] = useState([])
-  const [nuevoArbitro, setNuevoArbitro] = useState('')
-  const [jugadoresLocal, setJugadoresLocal] = useState([])
-  const [jugadoresVisitante, setJugadoresVisitante] = useState([])
-  const [torneo, setTorneo] = useState(null)
-  const [guardandoDB, setGuardandoDB] = useState(false)
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [hayDatosLocales, setHayDatosLocales] = useState(false)
+// Modal MVP al cerrar planilla
+function ModalMVP({ jugadoresLocal, jugadoresVisitante, partido, mvpGuardado, onGuardar, onSaltear }) {
+  const [equipo,   setEquipo]   = useState('')
+  const [numero,   setNumero]   = useState('')
+  const [jugador,  setJugador]  = useState(null)
+  const [error,    setError]    = useState('')
 
-  const [colorLocal, setColorLocal] = useState('#1a3a8a')
+  useEffect(() => {
+    if (mvpGuardado) {
+      const todosJugs = [...jugadoresLocal, ...jugadoresVisitante]
+      const jug = todosJugs.find(j => j.id === mvpGuardado)
+      if (jug) setJugador(jug)
+    }
+  }, [mvpGuardado])
+
+  function handleNumero(e) {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 2)
+    setNumero(val)
+    setError('')
+    if (val && equipo) {
+      const jugs = equipo === 'local' ? jugadoresLocal : jugadoresVisitante
+      const found = jugs.find(j => String(j.numero) === val)
+      setJugador(found || null)
+    } else {
+      setJugador(null)
+    }
+  }
+
+  function handleEquipo(e) {
+    setEquipo(e.target.value)
+    setNumero('')
+    setJugador(null)
+    setError('')
+  }
+
+  function handleGuardar() {
+    if (!equipo)   { setError('Selecciona el equipo'); return }
+    if (!numero)   { setError('Ingresa el número de camiseta'); return }
+    if (!jugador)  { setError('No se encontró ese número en el equipo'); return }
+    onGuardar(jugador.id)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '420px', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⭐</div>
+          <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem' }}>MVP del partido</div>
+          <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '4px' }}>
+            {partido.home?.name} vs {partido.away?.name}
+          </div>
+        </div>
+
+        {mvpGuardado && jugador && (
+          <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.2rem' }}>⭐</span>
+            <div>
+              <div style={{ fontSize: '.78rem', color: '#795548', fontWeight: '700' }}>MVP ya guardado</div>
+              <div style={{ fontSize: '.85rem', color: '#202124', fontWeight: '600' }}>{jugador.nombre} · #{jugador.numero}</div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <label style={{ fontSize: '.78rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '5px' }}>Equipo</label>
+            <select value={equipo} onChange={handleEquipo}
+              style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #dadce0', borderRadius: '8px', fontSize: '.9rem', color: '#202124', outline: 'none', background: '#fff' }}>
+              <option value="">Seleccionar equipo...</option>
+              <option value="local">{partido.home?.name}</option>
+              <option value="visitante">{partido.away?.name}</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '.78rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '5px' }}>Número de camiseta</label>
+            <input
+              value={numero}
+              onChange={handleNumero}
+              placeholder="Ej: 10"
+              inputMode="numeric"
+              maxLength={2}
+              disabled={!equipo}
+              style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #dadce0', borderRadius: '8px', fontSize: '1.2rem', fontWeight: '700', color: '#202124', outline: 'none', boxSizing: 'border-box', background: !equipo ? '#f8f9fa' : '#fff' }}
+            />
+          </div>
+
+          {/* Nombre del jugador encontrado */}
+          <div style={{ minHeight: '44px', background: jugador ? '#e6f4ea' : numero && equipo ? '#fce8e6' : '#f8f9fa', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', border: `1px solid ${jugador ? '#ceead6' : numero && equipo ? '#fad2cf' : '#e8eaed'}` }}>
+            {jugador ? (
+              <>
+                <span style={{ fontSize: '1.4rem' }}>✅</span>
+                <div>
+                  <div style={{ fontWeight: '700', color: '#1e8e3e', fontSize: '.95rem' }}>{jugador.nombre}</div>
+                  <div style={{ fontSize: '.72rem', color: '#5f6368' }}>Camiseta #{jugador.numero}</div>
+                </div>
+              </>
+            ) : numero && equipo ? (
+              <>
+                <span style={{ fontSize: '1.4rem' }}>❌</span>
+                <div style={{ fontSize: '.82rem', color: '#d93025' }}>No se encontró camiseta #{numero} en este equipo</div>
+              </>
+            ) : (
+              <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>El nombre del jugador aparecerá aquí</div>
+            )}
+          </div>
+
+          {error && (
+            <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '8px 12px', fontSize: '.78rem', color: '#d93025' }}>{error}</div>
+          )}
+
+          <button onClick={handleGuardar} disabled={!jugador}
+            style={{ padding: '12px', background: !jugador ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: !jugador ? 'not-allowed' : 'pointer', color: !jugador ? '#9aa0a6' : '#fff', fontWeight: '700', fontSize: '.95rem' }}>
+            ⭐ Guardar MVP y cerrar planilla
+          </button>
+
+          <button onClick={onSaltear}
+            style={{ padding: '10px', background: 'none', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.82rem' }}>
+            Cerrar sin MVP
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function PlanillaPartido({ partido, onClose, onGuardarResultado }) {
+  const [loading,          setLoading]          = useState(true)
+  const [arbitros,         setArbitros]         = useState([])
+  const [nuevoArbitro,     setNuevoArbitro]     = useState('')
+  const [jugadoresLocal,   setJugadoresLocal]   = useState([])
+  const [jugadoresVisitante, setJugadoresVisitante] = useState([])
+  const [torneo,           setTorneo]           = useState(null)
+  const [guardandoDB,      setGuardandoDB]      = useState(false)
+  const [isOnline,         setIsOnline]         = useState(navigator.onLine)
+  const [hayDatosLocales,  setHayDatosLocales]  = useState(false)
+  const [showMVP,          setShowMVP]          = useState(false)
+  const [mvpId,            setMvpId]            = useState('')
+
+  const [colorLocal,     setColorLocal]     = useState('#1a3a8a')
   const [colorVisitante, setColorVisitante] = useState('#d93025')
 
-  const [periodo, setPeriodo] = useState(1)
-  const [segundos, setSegundos] = useState(0)
-  const [corriendo, setCorriendo] = useState(false)
-  const [miniCrono, setMiniCrono] = useState(false)
-  const [tiempoAgotado, setTiempoAgotado] = useState(false)
-  const [tiempoExtra, setTiempoExtra] = useState(0)
-  const [duracionMinutos, setDuracionMinutos] = useState(20)
+  const [periodo,          setPeriodo]          = useState(1)
+  const [segundos,         setSegundos]         = useState(0)
+  const [corriendo,        setCorriendo]        = useState(false)
+  const [miniCrono,        setMiniCrono]        = useState(false)
+  const [tiempoAgotado,    setTiempoAgotado]    = useState(false)
+  const [tiempoExtra,      setTiempoExtra]      = useState(0)
+  const [duracionMinutos,  setDuracionMinutos]  = useState(20)
   const [editandoDuracion, setEditandoDuracion] = useState(false)
-  const [duracionInput, setDuracionInput] = useState('20')
+  const [duracionInput,    setDuracionInput]    = useState('20')
 
-  const timerRef = useRef(null)
+  const timerRef  = useRef(null)
   const [cronoPos, setCronoPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 200, y: 20 })
   const dragStart = useRef(null)
 
-  const [golesLocal, setGolesLocal] = useState(Array(24).fill(null))
-  const [golesVisitante, setGolesVisitante] = useState(Array(24).fill(null))
+  const [golesLocal,      setGolesLocal]      = useState(Array(24).fill(null))
+  const [golesVisitante,  setGolesVisitante]  = useState(Array(24).fill(null))
   const [faltasAcumLocal, setFaltasAcumLocal] = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
-  const [faltasAcumVis, setFaltasAcumVis] = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
-  const [dropdownOpen, setDropdownOpen] = useState(null)
-  const [tiroInicial, setTiroInicial] = useState(null)
+  const [faltasAcumVis,   setFaltasAcumVis]   = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
+  const [dropdownOpen,    setDropdownOpen]    = useState(null)
+  const [tiroInicial,     setTiroInicial]     = useState(null)
 
   const [finalistasLocal, setFinalistasLocal] = useState(Array(5).fill(''))
-  const [finalistasVis, setFinalistasVis] = useState(Array(5).fill(''))
-  const [ingresosLocal, setIngresosLocal] = useState(Array(7).fill(''))
-  const [ingresosVis, setIngresosVis] = useState(Array(7).fill(''))
+  const [finalistasVis,   setFinalistasVis]   = useState(Array(5).fill(''))
+  const [ingresosLocal,   setIngresosLocal]   = useState(Array(7).fill(''))
+  const [ingresosVis,     setIngresosVis]     = useState(Array(7).fill(''))
 
   const [firmaModal, setFirmaModal] = useState(null)
-  const [firmas, setFirmas] = useState({ capitanLocal: null, capitanVisitante: null, arbitro1: null, arbitro2: null, anotador: null })
+  const [firmas,     setFirmas]     = useState({ capitanLocal: null, capitanVisitante: null, arbitro1: null, arbitro2: null, anotador: null })
 
   const CUERPO_ROLES = ['TECNICO', 'A. TECNICO', 'MASAJISTA', 'MEDICO', 'P. FISICO']
   const [cuerpoLocal, setCuerpoLocal] = useState(CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
-  const [cuerpoVis, setCuerpoVis] = useState(CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+  const [cuerpoVis,   setCuerpoVis]   = useState(CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
 
-  const [arbitro1, setArbitro1] = useState('')
-  const [arbitro2, setArbitro2] = useState('')
-  const [anotador, setAnotador] = useState('')
+  const [arbitro1,         setArbitro1]         = useState('')
+  const [arbitro2,         setArbitro2]         = useState('')
+  const [anotador,         setAnotador]         = useState('')
   const [cronometroNombre, setCronometroNombre] = useState('')
-  const [observaciones, setObservaciones] = useState('')
-  const [horaInicio1, setHoraInicio1] = useState('')
-  const [horaFin1, setHoraFin1] = useState('')
-  const [horaInicio2, setHoraInicio2] = useState('')
-  const [horaFin2, setHoraFin2] = useState('')
+  const [observaciones,    setObservaciones]    = useState('')
+  const [horaInicio1,      setHoraInicio1]      = useState('')
+  const [horaFin1,         setHoraFin1]         = useState('')
+  const [horaInicio2,      setHoraInicio2]      = useState('')
+  const [horaFin2,         setHoraFin2]         = useState('')
 
-  const localKey = `planilla_${partido.id}`
+  const localKey       = `planilla_${partido.id}`
   const limiteSegundos = duracionMinutos * 60 + tiempoExtra * 60
 
   useEffect(() => {
@@ -173,7 +315,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis,
       arbitro1, arbitro2, anotador, cronometroNombre, observaciones,
       horaInicio1, horaFin1, horaInicio2, horaFin2,
-      tiroInicial, colorLocal, colorVisitante, duracionMinutos,
+      tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId,
       savedAt: new Date().toISOString(), pendienteSync: true,
     }
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
@@ -183,7 +325,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis,
     arbitro1, arbitro2, anotador, cronometroNombre, observaciones,
     horaInicio1, horaFin1, horaInicio2, horaFin2,
-    tiroInicial, colorLocal, colorVisitante, duracionMinutos
+    tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId
   ])
 
   useEffect(() => { fetchTodo() }, [])
@@ -202,8 +344,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   async function fetchTodo() {
     setLoading(true)
-    const [jugsL, jugsV, arbs, torn, eventos, statsDB] = await Promise.all([
-      // ── Traer posiciones para detectar porteros ──
+    const [jugsL, jugsV, arbs, torn, eventos, statsDB, logrosDB] = await Promise.all([
       supabase.from('tournament_player_registrations')
         .select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
         .eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
@@ -213,17 +354,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       supabase.from('arbitros').select('*').eq('activo', true).order('nombre'),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
       supabase.from('match_events').select('*').eq('match_id', partido.id).order('created_at', { ascending: true }),
-      supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('match_id', partido.id),
+      supabase.from('player_match_stats')
+        .select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
+        .eq('match_id', partido.id),
+      supabase.from('tournament_logros')
+        .select('*').eq('match_id', partido.id).eq('tipo', 'mvp').single(),
     ])
 
-    const evs = eventos.data || []
-    const stats = statsDB.data || []
-    const yaJugado = stats.length > 0
+    const evs       = eventos.data || []
+    const stats     = statsDB.data || []
+    const yaJugado  = stats.length > 0
     const torneoData = torn.data
 
-    // ── mapJug incluye posiciones para detectar porteros en guardarEnDB ──
+    // MVP ya guardado
+    if (logrosDB.data?.player_id) setMvpId(logrosDB.data.player_id)
+
     const mapJug = (data) => (data || []).map(r => ({
-      id: r.players?.id,
+      id:     r.players?.id,
       nombre: r.players?.name || '',
       cedula: r.players?.numero_cedula || '',
       numero: '',
@@ -235,20 +382,28 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }))
 
     let jugsLocalBase, jugsVisBase
+
     if (yaJugado) {
+      // Cargar con números de camiseta guardados en player_match_stats.numero_camiseta
       const sL = stats.filter(s => s.team_id === partido.home_team_id)
       const sV = stats.filter(s => s.team_id === partido.away_team_id)
       jugsLocalBase = sL.map(s => ({
-        id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '',
-        numero: '', faltasPeriodo: [],
+        id:     s.player_id,
+        nombre: s.players?.name || '',
+        cedula: s.players?.numero_cedula || '',
+        numero: s.numero_camiseta || '',   // ← número guardado
+        faltasPeriodo: [],
         amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0,
         posicion_futbol5:  s.players?.posicion_futbol5  || '',
         posicion_futbol7:  s.players?.posicion_futbol7  || '',
         posicion_futbol11: s.players?.posicion_futbol11 || '',
       }))
       jugsVisBase = sV.map(s => ({
-        id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '',
-        numero: '', faltasPeriodo: [],
+        id:     s.player_id,
+        nombre: s.players?.name || '',
+        cedula: s.players?.numero_cedula || '',
+        numero: s.numero_camiseta || '',   // ← número guardado
+        faltasPeriodo: [],
         amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0,
         posicion_futbol5:  s.players?.posicion_futbol5  || '',
         posicion_futbol7:  s.players?.posicion_futbol7  || '',
@@ -259,17 +414,48 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       jugsVisBase   = mapJug(jugsV.data)
     }
 
+    // Reconstruir goles desde match_events
     const golesLocRec = Array(24).fill(null)
     const golesVisRec = Array(24).fill(null)
     let slotL = 0, slotV = 0
     evs.filter(e => e.event_type === 'goal').forEach(e => {
-      const esLocal = e.team_id === partido.home_team_id
-      const jugs = esLocal ? jugsLocalBase : jugsVisBase
-      const jugador = jugs.find(j => j.id === e.player_id)
-      const gol = { numero: jugador?.numero || 0, minuto: e.minute || '', periodo: e.periodo || 1 }
-      if (esLocal && slotL < 24) { golesLocRec[slotL] = gol; slotL++ }
+      const esLocal  = e.team_id === partido.home_team_id
+      const jugs     = esLocal ? jugsLocalBase : jugsVisBase
+      const jugador  = jugs.find(j => j.id === e.player_id)
+      const gol      = { numero: jugador?.numero || 0, minuto: e.minute || '', periodo: e.periodo || 1 }
+      if (esLocal && slotL < 24)  { golesLocRec[slotL] = gol; slotL++ }
       else if (!esLocal && slotV < 24) { golesVisRec[slotV] = gol; slotV++ }
     })
+
+    // Reconstruir faltas acumulativas desde match_events
+    const fAL = { p1: Array(5).fill(null), p2: Array(5).fill(null) }
+    const fAV = { p1: Array(5).fill(null), p2: Array(5).fill(null) }
+    evs.filter(e => e.event_type === 'falta_acum').forEach(e => {
+      const esLocal = e.team_id === partido.home_team_id
+      const jugs    = esLocal ? jugsLocalBase : jugsVisBase
+      const jugador = jugs.find(j => j.id === e.player_id)
+      if (!jugador) return
+      const fa  = esLocal ? fAL : fAV
+      const key = `p${e.periodo || 1}`
+      const slot = fa[key].indexOf(null)
+      if (slot >= 0) fa[key][slot] = jugador.numero
+    })
+
+    // Restaurar tarjetas desde stats
+    if (yaJugado) {
+      const applyTarjetas = (jugs, statsArr) => jugs.map(j => {
+        const s = statsArr.find(st => st.player_id === j.id)
+        if (!s) return j
+        return { ...j,
+          amarilla: s.yellow_cards > 0,
+          azul:     s.blue_cards   > 0,
+          roja:     s.red_cards    > 0,
+          faltasPeriodo: Array(s.fouls || 0).fill(1),
+        }
+      })
+      jugsLocalBase = applyTarjetas(jugsLocalBase, stats.filter(s => s.team_id === partido.home_team_id))
+      jugsVisBase   = applyTarjetas(jugsVisBase,   stats.filter(s => s.team_id === partido.away_team_id))
+    }
 
     let restaurado = false
     try {
@@ -301,6 +487,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           setTiroInicial(snap.tiroInicial || null)
           setColorLocal(snap.colorLocal || '#1a3a8a')
           setColorVisitante(snap.colorVisitante || '#d93025')
+          if (snap.mvpId) setMvpId(snap.mvpId)
           const dur = snap.duracionMinutos || getDefaultDuracion(torneoData?.modalidad)
           setDuracionMinutos(dur); setDuracionInput(String(dur))
           setHayDatosLocales(true)
@@ -312,8 +499,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (!restaurado) {
       setJugadoresLocal(jugsLocalBase)
       setJugadoresVisitante(jugsVisBase)
-      setGolesLocal(golesLocRec)
-      setGolesVisitante(golesVisRec)
+      setGolesLocal(yaJugado ? golesLocRec : Array(24).fill(null))
+      setGolesVisitante(yaJugado ? golesVisRec : Array(24).fill(null))
+      if (yaJugado) { setFaltasAcumLocal(fAL); setFaltasAcumVis(fAV) }
       const dur = getDefaultDuracion(torneoData?.modalidad)
       setDuracionMinutos(dur); setDuracionInput(String(dur))
     }
@@ -331,8 +519,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   async function guardarEnDB() {
     setGuardandoDB(true)
-    const golesLocalTotal   = golesLocal.filter(Boolean).length
-    const golesVisTotal     = golesVisitante.filter(Boolean).length
+    const golesLocalTotal = golesLocal.filter(Boolean).length
+    const golesVisTotal   = golesVisitante.filter(Boolean).length
 
     const eventosGolLocal = golesLocal.filter(Boolean).map(g => {
       const jugador = jugadoresLocal.find(j => String(j.numero) === String(g.numero))
@@ -342,6 +530,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const jugador = jugadoresVisitante.find(j => String(j.numero) === String(g.numero))
       return { match_id: partido.id, tournament_id: partido.tournament_id, team_id: partido.away_team_id, player_id: jugador?.id || null, event_type: 'goal', minute: g.minuto, periodo: g.periodo }
     })
+
     const eventosTarjetas = []
     const procesarTarjetas = (jugadores, team_id) => {
       jugadores.forEach(j => {
@@ -354,8 +543,22 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     procesarTarjetas(jugadoresLocal, partido.home_team_id)
     procesarTarjetas(jugadoresVisitante, partido.away_team_id)
 
+    // Eventos de faltas acumulativas
+    const eventosFaltas = []
+    const procesarFaltasAcum = (fa, jugs, team_id) => {
+      ['p1','p2'].forEach(key => {
+        const per = key === 'p1' ? 1 : 2
+        fa[key].filter(Boolean).forEach(numero => {
+          const jugador = jugs.find(j => String(j.numero) === String(numero))
+          if (jugador?.id) eventosFaltas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: jugador.id, event_type: 'falta_acum', periodo: per })
+        })
+      })
+    }
+    procesarFaltasAcum(faltasAcumLocal, jugadoresLocal, partido.home_team_id)
+    procesarFaltasAcum(faltasAcumVis, jugadoresVisitante, partido.away_team_id)
+
     await supabase.from('match_events').delete().eq('match_id', partido.id)
-    const todosEventos = [...eventosGolLocal, ...eventosGolVis, ...eventosTarjetas]
+    const todosEventos = [...eventosGolLocal, ...eventosGolVis, ...eventosTarjetas, ...eventosFaltas]
     if (todosEventos.length > 0) {
       const { error: errEv } = await supabase.from('match_events').insert(todosEventos)
       if (errEv) { setGuardandoDB(false); return }
@@ -365,35 +568,25 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const statsRows = []
 
     const procesarStats = (jugadores, goles, team_id, esLocal) => {
-      const gF = esLocal ? golesLocalTotal : golesVisTotal   // goles a favor del equipo
-      const gC = esLocal ? golesVisTotal : golesLocalTotal   // goles en contra del equipo
-
+      const gF = esLocal ? golesLocalTotal : golesVisTotal
+      const gC = esLocal ? golesVisTotal   : golesLocalTotal
       jugadores.forEach(j => {
         if (!j.id) return
-
-        // Detectar si el jugador es portero en cualquier modalidad
-        const esPorteroJugador =
-          j.posicion_futbol5  === 'Portero' ||
-          j.posicion_futbol7  === 'Portero' ||
-          j.posicion_futbol11 === 'Portero'
-
-        // Portero: goals_conceded = goles que le metieron (gC del equipo)
-        // Jugador de campo: goals_conceded = 0
-        const golesRecibidos = esPorteroJugador ? gC : 0
-
+        const esPorteroJugador = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
         statsRows.push({
-          match_id:       partido.id,
-          tournament_id:  partido.tournament_id,
-          player_id:      j.id,
+          match_id:        partido.id,
+          tournament_id:   partido.tournament_id,
+          player_id:       j.id,
           team_id,
-          goals_scored:   goles.filter(g => g && String(g.numero) === String(j.numero)).length,
-          goals_conceded: golesRecibidos,
-          own_goals:      0,
-          yellow_cards:   j.amarilla ? 1 : 0,
-          blue_cards:     j.azul     ? 1 : 0,
-          red_cards:      j.roja     ? 1 : 0,
-          fouls:          (j.faltasPeriodo || []).length,
-          team_result:    calcResultado(gF, gC),
+          numero_camiseta: j.numero || '',    // ← guardar número de camiseta
+          goals_scored:    goles.filter(g => g && String(g.numero) === String(j.numero)).length,
+          goals_conceded:  esPorteroJugador ? gC : 0,
+          own_goals:       0,
+          yellow_cards:    j.amarilla ? 1 : 0,
+          blue_cards:      j.azul     ? 1 : 0,
+          red_cards:       j.roja     ? 1 : 0,
+          fouls:           (j.faltasPeriodo || []).length,
+          team_result:     calcResultado(gF, gC),
         })
       })
     }
@@ -410,6 +603,24 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setHayDatosLocales(false)
     setGuardandoDB(false)
     onGuardarResultado(golesLocalTotal, golesVisTotal)
+  }
+
+  async function handleGuardarMVP(playerId) {
+    setMvpId(playerId)
+    // Guardar MVP en tournament_logros
+    await supabase.from('tournament_logros').upsert({
+      player_id:     playerId,
+      tournament_id: partido.tournament_id,
+      match_id:      partido.id,
+      tipo:          'mvp',
+    }, { onConflict: 'player_id,match_id,tipo' })
+    setShowMVP(false)
+    onClose()
+  }
+
+  function handleClickCerrar() {
+    // Mostrar modal MVP antes de cerrar
+    setShowMVP(true)
   }
 
   function formatTiempo(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}` }
@@ -446,8 +657,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setDropdownOpen(null)
   }
   function eliminarGol(equipo, slotIdx) {
-    const goles = equipo === 'local' ? golesLocal : golesVisitante
-    const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1); if (slotIdx !== ul) return
+    const ul = (equipo === 'local' ? golesLocal : golesVisitante).reduce((l, g, i) => g !== null ? i : l, -1)
+    if (slotIdx !== ul) return
     if (equipo === 'local') setGolesLocal(prev => { const n = [...prev]; n[slotIdx] = null; return n })
     else setGolesVisitante(prev => { const n = [...prev]; n[slotIdx] = null; return n })
   }
@@ -482,8 +693,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   const golesLocalTotal = golesLocal.filter(Boolean).length
   const golesVisTotal   = golesVisitante.filter(Boolean).length
-  const fecha   = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
-  const hora    = partido.played_at ? new Date(partido.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''
+  const fecha    = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+  const hora     = partido.played_at ? new Date(partido.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''
   const etapaNombre = partido.matchday ? `Jornada ${partido.matchday}` : ''
   const B    = '1px solid #000'
   const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle' }
@@ -584,22 +795,24 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       </thead>
       <tbody>
         {jugs.map((j, idx) => {
-          const g1 = goles.filter(g => g && String(g.numero) === String(j.numero) && g.periodo === 1).length
-          const g2 = goles.filter(g => g && String(g.numero) === String(j.numero) && g.periodo === 2).length
-          const faltas = j.faltasPeriodo || []
+          const g1       = goles.filter(g => g && String(g.numero) === String(j.numero) && g.periodo === 1).length
+          const g2       = goles.filter(g => g && String(g.numero) === String(j.numero) && g.periodo === 2).length
+          const faltas   = j.faltasPeriodo || []
           const repetido = numeroRepetido(equipo, j.numero, idx)
           const esPortero = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
+          const esMVP     = j.id && j.id === mvpId
           return (
-            <tr key={idx} style={{ height: '17px' }}>
+            <tr key={idx} style={{ height: '17px', background: esMVP ? '#fff8e1' : 'transparent' }}>
               <td style={cell}>
                 <input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)}
-                  onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} title="Doble click para borrar" style={inp}/>
+                  onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} style={inp}/>
               </td>
-              <td style={{ ...cellL, background: colorEquipo + '35' }}>
+              <td style={{ ...cellL, background: esMVP ? '#fff59d' : colorEquipo + '35' }}>
                 <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
-                  onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} title="Doble click para borrar"
+                  onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')}
                   style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
                 {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
+                {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
               </td>
               <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)}
                 onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
@@ -668,7 +881,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 <input value={finalistas[i]}
                   onChange={e => setFinalistas(prev => { const n=[...prev]; n[i]=e.target.value; return n })}
                   onDoubleClick={() => setFinalistas(prev => { const n=[...prev]; n[i]=''; return n })}
-                  title="Doble click para borrar"
                   style={{ ...inp, fontWeight: finalistas[i]?'700':'400', color: '#111', fontSize: '9px' }} placeholder="N°"/>
               </div>
             ))}
@@ -680,7 +892,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 <input value={ingresos[i]}
                   onChange={e => setIngresos(prev => { const n=[...prev]; n[i]=e.target.value; return n })}
                   onDoubleClick={() => setIngresos(prev => { const n=[...prev]; n[i]=''; return n })}
-                  title="Doble click para borrar"
                   style={{ ...inp, fontWeight: ingresos[i]?'700':'400', color: '#111', fontSize: '9px' }} placeholder="N°"/>
               </div>
             ))}
@@ -714,14 +925,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <input value={m.nombre}
                     onChange={e => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,nombre:e.target.value}:mm))}
                     onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,nombre:''}:mm))}
-                    title="Doble click para borrar"
                     style={{ ...inpL, fontSize: '8px', color: '#111' }} placeholder="Nombre..."/>
                 </td>
                 <td style={cell}>
                   <input value={m.ci}
                     onChange={e => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,ci:e.target.value}:mm))}
                     onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,ci:''}:mm))}
-                    title="Doble click para borrar"
                     style={{ ...inp, color: '#111' }} placeholder="C.I."/>
                 </td>
                 <td style={{ ...cell, padding: '1px' }}>
@@ -777,8 +986,20 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           onClose={() => setFirmaModal(null)}/>
       )}
 
+      {/* Modal MVP */}
+      {showMVP && (
+        <ModalMVP
+          jugadoresLocal={jugadoresLocal}
+          jugadoresVisitante={jugadoresVisitante}
+          partido={partido}
+          mvpGuardado={mvpId}
+          onGuardar={handleGuardarMVP}
+          onSaltear={() => { setShowMVP(false); onClose() }}
+        />
+      )}
+
       {/* Botón cerrar flotante */}
-      <button onClick={onClose} className="no-print"
+      <button onClick={handleClickCerrar} className="no-print"
         style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998, width: '52px', height: '52px', borderRadius: '50%', background: '#d93025', border: '3px solid #fff', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.5)' }}>
         <X size={22}/>
       </button>
@@ -886,6 +1107,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet — guardando localmente</span>}
               {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales listos para sincronizar</span>}
+              {mvpId && (
+                <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff8e1', borderRadius: '6px', padding: '4px 10px', fontWeight: '600', border: '1px solid #ffe082' }}>
+                  ⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || '...'}
+                </span>
+              )}
               <input value={nuevoArbitro} onChange={e => setNuevoArbitro(e.target.value)} placeholder="+ Árbitro..."
                 style={{ padding: '5px 10px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.8rem', outline: 'none', width: '120px' }}
                 onKeyDown={e => e.key === 'Enter' && handleAgregarArbitro()}/>
@@ -895,7 +1121,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 {guardandoDB ? 'Guardando...' : !isOnline ? '📵 Sin internet' : hayDatosLocales ? '☁ Sincronizar' : 'Guardar resultado'}
               </button>
               <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}><Printer size={13}/> Imprimir</button>
-              <button onClick={onClose} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px', cursor: 'pointer', color: '#5f6368', display: 'flex' }}><X size={15}/></button>
+              <button onClick={handleClickCerrar} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px', cursor: 'pointer', color: '#5f6368', display: 'flex' }}><X size={15}/></button>
             </div>
           </div>
           <div className="no-print" style={{ padding: '4px 16px', background: '#fff8e1', borderBottom: '1px solid #ffe082', fontSize: '10px', color: '#795548' }}>
@@ -1001,6 +1227,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                       <span style={{ color:colorVisitante }}>{golesVisTotal}</span>
                     </div>
                     <div style={{ fontSize:'8px', color:'#5f6368' }}>{partido.home?.name} vs {partido.away?.name}</div>
+                    {mvpId && (
+                      <div style={{ marginTop:'4px', fontSize:'8px', color:'#e8710a', fontWeight:'700' }}>
+                        ⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || ''}
+                      </div>
+                    )}
                   </td>
                 </tr>
                 <tr>
