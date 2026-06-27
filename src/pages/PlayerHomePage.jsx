@@ -13,7 +13,6 @@ const TABS = [
   { id: 'predix',    label: 'Predix',     icon: '🎯' },
 ]
 
-// Banners de notificación in-app
 function NotifBanner({ notifs, onDismiss }) {
   const [idx, setIdx] = useState(0)
   if (!notifs || notifs.length === 0) return null
@@ -46,25 +45,25 @@ function NotifBanner({ notifs, onDismiss }) {
 }
 
 export default function PlayerHomePage() {
-  const navigate    = useNavigate()
-  const cardRef     = useRef(null)
-  const [player,     setPlayer]     = useState(null)
-  const [stats,      setStats]      = useState(null)
-  const [torneos,    setTorneos]    = useState([])
-  const [historial,  setHistorial]  = useState([])
-  const [requisitos, setRequisitos] = useState([])
-  const [sponsors,   setSponsors]   = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [tab,        setTab]        = useState('tarjeta')
-  const [cardType,   setCardType]   = useState('nivel1_verde')
-  const [showSelector,   setShowSelector]   = useState(false)
-  const [guardandoCard,  setGuardandoCard]  = useState(false)
-  const [previewCard,    setPreviewCard]    = useState(null)
-  const [nuevasTarjetas, setNuevasTarjetas] = useState([])
-  const [notifIndex,     setNotifIndex]     = useState(0)
-  const [compartiendo,   setCompartiendo]   = useState(false)
-  const [rankingModal,   setRankingModal]   = useState(null)
-  const [notifs,         setNotifs]         = useState([])
+  const navigate   = useNavigate()
+  const cardRef    = useRef(null)
+  const [player,          setPlayer]          = useState(null)
+  const [stats,           setStats]           = useState(null)
+  const [torneos,         setTorneos]         = useState([])
+  const [historial,       setHistorial]       = useState([])
+  const [sponsors,        setSponsors]        = useState([])
+  const [cardLevelProgress, setCardLevelProgress] = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [tab,             setTab]             = useState('tarjeta')
+  const [cardType,        setCardType]        = useState('nivel1_verde')
+  const [showSelector,    setShowSelector]    = useState(false)
+  const [guardandoCard,   setGuardandoCard]   = useState(false)
+  const [previewCard,     setPreviewCard]     = useState(null)
+  const [nuevasTarjetas,  setNuevasTarjetas]  = useState([])
+  const [notifIndex,      setNotifIndex]      = useState(0)
+  const [compartiendo,    setCompartiendo]    = useState(false)
+  const [rankingModal,    setRankingModal]    = useState(null)
+  const [notifs,          setNotifs]          = useState([])
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -107,7 +106,6 @@ export default function PlayerHomePage() {
     const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort }
     setStats(statsCalc)
 
-    // Historial de partidos
     const { data: histData } = await supabase
       .from('player_match_stats')
       .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
@@ -115,24 +113,26 @@ export default function PlayerHomePage() {
       .order('created_at', { ascending: false })
     setHistorial(histData || [])
 
-    const { data: reqs } = await supabase.from('card_requisitos').select('*')
-    setRequisitos(reqs || [])
-
     const { data: spons } = await supabase.from('sponsors').select('*').eq('activo', true)
     setSponsors(spons || [])
+
+    // Nuevo sistema de progreso de tarjetas
+    const { data: clp } = await supabase
+      .from('player_card_level_progress')
+      .select('*, card_levels(card_design_id)')
+      .eq('player_id', p.id)
+    setCardLevelProgress(clp || [])
 
     const { data: regs } = await supabase
       .from('tournament_player_registrations')
       .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
       .eq('player_id', p.id).eq('activo', true)
-    console.log('regs:', regs)
-setTorneos(regs || [])
+    setTorneos(regs || [])
 
     // ── NOTIFICACIONES IN-APP ──
     const notifsList = []
     const dismissed  = JSON.parse(localStorage.getItem('golmebol_notifs_dismissed') || '[]')
 
-    // 1. Partido próximo (próximas 24h)
     if (regs && regs.length > 0) {
       const teamIds = regs.map(r => r.team_id).filter(Boolean)
       const ahora   = new Date()
@@ -158,55 +158,44 @@ setTorneos(regs || [])
         const nid = `partido_${partido.id}`
         if (!dismissed.includes(nid)) {
           notifsList.push({
-            id:     nid,
-            icon:   '⚽',
+            id: nid, icon: '⚽',
             titulo: `¡Partido ${tiempoStr}!`,
-            texto:  `${partido.home?.name} vs ${partido.away?.name} · ${horaStr}`,
-            color:  '#e8710a',
-            bg:     '#fffbf0',
+            texto: `${partido.home?.name} vs ${partido.away?.name} · ${horaStr}`,
+            color: '#e8710a', bg: '#fffbf0',
             accion: { label: 'Ver PREDIX', fn: () => navigate('/jugador/apuestas') },
           })
         }
       }
     }
 
-    // 2. Puntos PREDIX ganados no vistos
     const { data: predsResueltas } = await supabase
-      .from('predicciones')
-      .select('puntos_ganados, match_id')
-      .eq('player_id', p.id)
-      .eq('resuelta', true)
-      .gt('puntos_ganados', 0)
+      .from('predicciones').select('puntos_ganados, match_id')
+      .eq('player_id', p.id).eq('resuelta', true).gt('puntos_ganados', 0)
 
     if (predsResueltas && predsResueltas.length > 0) {
       const nid = `predix_puntos_${predsResueltas.length}`
       if (!dismissed.includes(nid)) {
         const totalPts = predsResueltas.reduce((s, r) => s + (r.puntos_ganados || 0), 0)
         notifsList.push({
-          id:     nid,
-          icon:   '🎯',
+          id: nid, icon: '🎯',
           titulo: `¡Tienes ${totalPts} puntos en PREDIX!`,
-          texto:  `${predsResueltas.length} predicción${predsResueltas.length > 1 ? 'es' : ''} resuelta${predsResueltas.length > 1 ? 's' : ''} · Ve tu ranking`,
-          color:  '#00a896',
-          bg:     '#f0faf9',
+          texto: `${predsResueltas.length} predicción${predsResueltas.length > 1 ? 'es' : ''} resuelta${predsResueltas.length > 1 ? 's' : ''} · Ve tu ranking`,
+          color: '#00a896', bg: '#f0faf9',
           accion: { label: 'Ver ranking', fn: () => navigate('/jugador/apuestas') },
         })
       }
     }
 
-    // 3. Membresía por vencer (≤7 días)
     if (p.fecha_vencimiento) {
       const diasRestantes = Math.ceil((new Date(p.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
       if (diasRestantes <= 7 && diasRestantes > 0) {
         const nid = `membresia_vence_${diasRestantes}`
         if (!dismissed.includes(nid)) {
           notifsList.push({
-            id:     nid,
-            icon:   '⏰',
+            id: nid, icon: '⏰',
             titulo: `Tu membresía vence en ${diasRestantes} día${diasRestantes > 1 ? 's' : ''}`,
-            texto:  'Renueva para seguir compitiendo en PREDIX',
-            color:  '#d93025',
-            bg:     '#fff8f8',
+            texto: 'Renueva para seguir compitiendo en PREDIX',
+            color: '#d93025', bg: '#fff8f8',
             accion: {
               label: '📲 Renovar',
               fn: () => window.open(`https://wa.me/573226490055?text=${encodeURIComponent('Hola! Quiero renovar mi membresía de PREDIX Golmebol 🎯')}`, '_blank')
@@ -218,23 +207,13 @@ setTorneos(regs || [])
 
     setNotifs(notifsList)
 
-    if (reqs) {
+    // Notificación tarjetas nuevas desbloqueadas
+    if (clp && clp.length > 0) {
       const vistas = p.tarjetas_vistas || []
-      const desbloqueadas = CARD_DESIGNS.filter(d => {
-        const req = reqs.find(r => r.id === d.id)
-        if (!req) return false
-        if (req.requisito_meta === 0) return true
-        switch (req.requisito_tipo) {
-          case 'pj':        return (statsCalc.pj        || 0) >= req.requisito_meta
-          case 'goles':     return (statsCalc.goles      || 0) >= req.requisito_meta
-          case 'victorias': return (statsCalc.pg         || 0) >= req.requisito_meta
-          case 'eficacia':  return (statsCalc.pj || 0) >= 5 && (statsCalc.eficacia || 0) >= req.requisito_meta
-          case 'racha':     return (statsCalc.rachaVictorias || 0) >= req.requisito_meta
-          case 'titulos':   return (statsCalc.titulos    || 0) >= req.requisito_meta
-          default:          return false
-        }
-      })
-      const nuevas = desbloqueadas.filter(d => !vistas.includes(d.id))
+      const nuevas = clp
+        .filter(c => c.desbloqueada && c.card_levels?.card_design_id && !vistas.includes(c.card_levels.card_design_id))
+        .map(c => CARD_DESIGNS.find(d => d.id === c.card_levels.card_design_id))
+        .filter(Boolean)
       if (nuevas.length > 0) { setNuevasTarjetas(nuevas); setNotifIndex(0) }
     }
 
@@ -251,8 +230,8 @@ setTorneos(regs || [])
     if (notifIndex < nuevasTarjetas.length - 1) {
       setNotifIndex(i => i + 1)
     } else {
-      const vistas      = player.tarjetas_vistas || []
-      const nuevasIds   = nuevasTarjetas.map(t => t.id)
+      const vistas    = player.tarjetas_vistas || []
+      const nuevasIds = nuevasTarjetas.map(t => t.id)
       const todasVistas = [...new Set([...vistas, ...nuevasIds])]
       await supabase.from('players').update({ tarjetas_vistas: todasVistas }).eq('id', player.id)
       setNuevasTarjetas([])
@@ -284,37 +263,28 @@ setTorneos(regs || [])
     setCompartiendo(false)
   }
 
+  // ── Nuevo sistema: desbloqueo por logros ──
   function estaDesbloqueada(cardId) {
-    const req = requisitos.find(r => r.id === cardId)
-    if (!req) return false
-    if (req.requisito_meta === 0) return true
-    if (!stats) return false
-    switch (req.requisito_tipo) {
-      case 'pj':        return (stats.pj        || 0) >= req.requisito_meta
-      case 'goles':     return (stats.goles      || 0) >= req.requisito_meta
-      case 'victorias': return (stats.pg         || 0) >= req.requisito_meta
-      case 'eficacia':  return (stats.pj || 0) >= 5 && (stats.eficacia || 0) >= req.requisito_meta
-      case 'racha':     return (stats.rachaVictorias || 0) >= req.requisito_meta
-      case 'titulos':   return (stats.titulos    || 0) >= req.requisito_meta
-      default:          return false
-    }
+    const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
+    if (clp) return clp.desbloqueada
+    return false
   }
 
   function getProgreso(cardId) {
-    const req = requisitos.find(r => r.id === cardId)
-    if (!req || req.requisito_meta === 0 || !stats) return null
-    let actual = 0
-    switch (req.requisito_tipo) {
-      case 'pj':        actual = stats.pj || 0; break
-      case 'goles':     actual = stats.goles || 0; break
-      case 'victorias': actual = stats.pg || 0; break
-      case 'eficacia':  actual = stats.eficacia || 0; break
-      case 'racha':     actual = stats.rachaVictorias || 0; break
-      case 'titulos':   actual = stats.titulos || 0; break
+    const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
+    if (clp) {
+      const requeridos  = 3
+      const completados = clp.logros_completados || 0
+      const pct         = Math.min(100, Math.round((completados / requeridos) * 100))
+      return {
+        actual: completados,
+        meta: requeridos,
+        sufijo: ' logros',
+        pct,
+        descripcion: `Completa ${requeridos} de 5 logros para desbloquear`,
+      }
     }
-    const sufijo = req.requisito_tipo === 'eficacia' ? '%' : ''
-    const pct    = Math.min(100, Math.round((actual / req.requisito_meta) * 100))
-    return { actual, meta: req.requisito_meta, sufijo, pct, descripcion: req.descripcion }
+    return null
   }
 
   function getSponsor(cardId) { return sponsors.find(s => s.card_id === cardId) || null }
@@ -358,8 +328,6 @@ setTorneos(regs || [])
   const nombre      = player.name?.toUpperCase().split(' ')[0] || 'JUGADOR'
   const torneosData = torneos.map(t => ({ id: t.tournament_id, nombre: t.tournaments?.name, logo_url: t.tournaments?.logo_url || null }))
   const equiposData = torneos.map(t => ({ id: t.teams?.id, nombre: t.teams?.name, logo_url: t.teams?.logo_url || null })).filter((e, i, arr) => e.id && arr.findIndex(x => x.id === e.id) === i)
-  console.log('equiposData:', equiposData)
-console.log('torneosData:', torneosData)
 
   function handleCardClick(itemId) {
     const statKeys = ['pj', 'gc', 'prom', 'efic', 'pg', 'pe', 'pp']
@@ -372,22 +340,11 @@ console.log('torneosData:', torneosData)
 
   const tarjetasDesbloqueadas = CARD_DESIGNS.filter(d => estaDesbloqueada(d.id))
 
-  const logrosDinamicos = [
-    { nombre: 'Veterano',        desc: 'Juega 50 partidos',                       icono: '🌟', desbloqueado: (stats?.pj||0)>=50,                                    progreso: `${stats?.pj||0}/50 PJ` },
-    { nombre: 'Goleador',        desc: 'Anota 20 goles',                          icono: '⚽', desbloqueado: !esPortero&&(stats?.goles||0)>=20,                      progreso: esPortero?'Solo campo':`${stats?.goles||0}/20 goles` },
-    { nombre: 'Valla Invicta',   desc: '5 partidos sin recibir goles (portero)',  icono: '🧤', desbloqueado: esPortero&&(stats?.pj||0)>=5&&(stats?.recibidos||0)===0, progreso: esPortero?`${stats?.recibidos||0} recibidos`:'Solo porteros' },
-    { nombre: 'Máxima Eficacia', desc: '80%+ eficacia con mínimo 10 PJ',         icono: '⚡', desbloqueado: (stats?.pj||0)>=10&&(stats?.eficacia||0)>=80,            progreso: `${stats?.eficacia||0}% · ${stats?.pj||0} PJ` },
-    { nombre: 'Racha Ganadora',  desc: '10 victorias consecutivas',               icono: '🔥', desbloqueado: (stats?.rachaVictorias||0)>=10,                          progreso: `Racha: ${stats?.rachaVictorias||0}` },
-    { nombre: 'Campeón',         desc: 'Gana un torneo con tu equipo',            icono: '🏆', desbloqueado: (stats?.titulos||0)>0,                                   progreso: `${stats?.titulos||0} títulos` },
-  ]
-
-  const logrosDesbloqueados = logrosDinamicos.filter(l => l.desbloqueado).length
-
   const GRUPOS = [
-    { label: 'Nivel 1 — Inicio', ids: CARD_DESIGNS.filter(d => d.nivel === 1).map(d => d.id), color: '#1e8e3e' },
-    { label: 'Nivel 2 — 10 PJ',  ids: CARD_DESIGNS.filter(d => d.nivel === 2).map(d => d.id), color: '#1a73e8' },
-    { label: 'Nivel 3 — 25 PJ',  ids: CARD_DESIGNS.filter(d => d.nivel === 3).map(d => d.id), color: '#6c35de' },
-    { label: 'Premium',           ids: CARD_DESIGNS.filter(d => d.nivel === 6).map(d => d.id), color: '#e8710a' },
+    { label: 'Iniciación',  ids: CARD_DESIGNS.filter(d => d.nivel === 1).map(d => d.id), color: '#00ee55' },
+    { label: 'Competidor',  ids: CARD_DESIGNS.filter(d => d.nivel === 2).map(d => d.id), color: '#4488FF' },
+    { label: 'Élite',       ids: CARD_DESIGNS.filter(d => d.nivel === 3).map(d => d.id), color: '#9955ff' },
+    { label: 'Leyenda',     ids: CARD_DESIGNS.filter(d => d.nivel === 6).map(d => d.id), color: '#f9a825' },
   ]
 
   const tarjetaNotif = nuevasTarjetas[notifIndex]
@@ -461,12 +418,12 @@ console.log('torneosData:', torneosData)
               </div>
               <div style={{ background: '#fff', borderRadius: '14px', padding: '16px 18px', width: '100%' }}>
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', fontWeight: '600', letterSpacing: '.08em', marginBottom: '8px' }}>CÓMO DESBLOQUEAR</div>
-                <div style={{ fontSize: '.85rem', color: '#d93025', fontWeight: '600', marginBottom: '12px' }}>🔒 {prog?.descripcion || 'Completa el requisito'}</div>
+                <div style={{ fontSize: '.85rem', color: '#d93025', fontWeight: '600', marginBottom: '12px' }}>🔒 {prog?.descripcion || 'Completa los logros requeridos'}</div>
                 {prog && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ fontSize: '.75rem', color: '#5f6368' }}>Tu progreso</span>
-                      <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#202124' }}>{prog.actual}{prog.sufijo} / {prog.meta}{prog.sufijo}</span>
+                      <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#202124' }}>{prog.actual} / {prog.meta} logros</span>
                     </div>
                     <div style={{ background: '#f1f3f4', borderRadius: '10px', height: '8px', overflow: 'hidden', marginBottom: '8px' }}>
                       <div style={{ height: '100%', width: `${prog.pct}%`, background: 'linear-gradient(90deg,#1a73e8,#6c35de)', borderRadius: '10px' }}/>
@@ -527,7 +484,7 @@ console.log('torneosData:', torneosData)
                               <div style={{ background: '#f1f3f4', borderRadius: '6px', height: '3px', marginTop: '4px', overflow: 'hidden' }}>
                                 <div style={{ height: '100%', width: `${prog.pct}%`, background: '#1a73e8', borderRadius: '6px' }}/>
                               </div>
-                              <div style={{ fontSize: '.6rem', color: '#9aa0a6', marginTop: '2px' }}>{prog.actual}{prog.sufijo} / {prog.meta}{prog.sufijo}</div>
+                              <div style={{ fontSize: '.6rem', color: '#9aa0a6', marginTop: '2px' }}>{prog.actual} / {prog.meta} logros</div>
                             </>
                           )}
                         </div>
@@ -570,9 +527,6 @@ console.log('torneosData:', torneosData)
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
             <span>{t.icon}</span> {t.label}
-            {t.id === 'logros' && logrosDesbloqueados > 0 && (
-              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#1e8e3e', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{logrosDesbloqueados}</span>
-            )}
             {t.id === 'historial' && historial.length > 0 && (
               <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#5f6368', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{historial.length}</span>
             )}
@@ -601,14 +555,15 @@ console.log('torneosData:', torneosData)
               />
             </div>
           </div>
+
           <CardProgressSection
             playerId={player.id}
             esPortero={esPortero}
             posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
           />
+
           {player.fecha_vencimiento && (
-          <div style={{ padding: '0 16px 16px' }}>
-            <div style={{ padding: '10px 16px' }}>
+            <div style={{ padding: '0 16px 8px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1e8e3e', flexShrink: 0 }}/>
                 <div style={{ fontSize: '.78rem', color: '#5f6368' }}>
@@ -618,15 +573,16 @@ console.log('torneosData:', torneosData)
                 </div>
               </div>
             </div>
-          </div>
           )}
+
           <div style={{ padding: '0 16px 8px' }}>
             <button onClick={handleCompartir} disabled={compartiendo}
               style={{ width: '100%', padding: '11px', background: compartiendo ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: compartiendo ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               {compartiendo ? '⏳ Generando imagen...' : '📤 Descargar / Compartir tarjeta'}
             </button>
           </div>
-          <div style={{ padding: '0 16px 16px' }}>
+
+          <div style={{ padding: '0 16px 24px' }}>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}
               onClick={() => setShowSelector(true)}>
               <div style={{ fontSize: '.78rem', color: '#5f6368' }}>
@@ -705,32 +661,29 @@ console.log('torneosData:', torneosData)
         </div>
       )}
 
-   {/* ── PREDIX ── */}
-{tab === 'predix' && (
-  <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-    
-    {/* BOTÓN NOTICIAS — va aquí arriba */}
-    <button onClick={() => navigate('/jugador/noticias')}
-      style={{ width: '100%', maxWidth: '300px', padding: '12px 16px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-      <span style={{ fontSize: '1.2rem' }}>📰</span>
-      <div style={{ textAlign: 'left' }}>
-        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>Noticias del torneo</div>
-        <div style={{ fontSize: '.72rem', color: '#5f6368' }}>Pre-partido, resultados y más</div>
-      </div>
-      <span style={{ marginLeft: 'auto', color: '#9aa0a6' }}>→</span>
-    </button>
-
-    <div style={{ fontSize: '2.5rem' }}>🎯</div>
-    <div style={{ fontWeight: '800', fontSize: '1.3rem', color: '#07070e', letterSpacing: '2px' }}>PREDIX</div>
-    <div style={{ fontSize: '.85rem', color: '#5f6368', textAlign: 'center', maxWidth: '280px' }}>
-      Predice los resultados de los partidos y compite con otros jugadores por puntos
-    </div>
-    <button onClick={() => navigate('/jugador/apuestas')}
-      style={{ padding: '14px 32px', background: '#07070e', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#00ddd0', fontWeight: '800', fontSize: '1rem', letterSpacing: '1px' }}>
-      ENTRAR A PREDIX →
-    </button>
-  </div>
-)}
+      {/* ── PREDIX ── */}
+      {tab === 'predix' && (
+        <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <button onClick={() => navigate('/jugador/noticias')}
+            style={{ width: '100%', maxWidth: '300px', padding: '12px 16px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <span style={{ fontSize: '1.2rem' }}>📰</span>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>Noticias del torneo</div>
+              <div style={{ fontSize: '.72rem', color: '#5f6368' }}>Pre-partido, resultados y más</div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: '#9aa0a6' }}>→</span>
+          </button>
+          <div style={{ fontSize: '2.5rem' }}>🎯</div>
+          <div style={{ fontWeight: '800', fontSize: '1.3rem', color: '#07070e', letterSpacing: '2px' }}>PREDIX</div>
+          <div style={{ fontSize: '.85rem', color: '#5f6368', textAlign: 'center', maxWidth: '280px' }}>
+            Predice los resultados de los partidos y compite con otros jugadores por puntos
+          </div>
+          <button onClick={() => navigate('/jugador/apuestas')}
+            style={{ padding: '14px 32px', background: '#07070e', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#00ddd0', fontWeight: '800', fontSize: '1rem', letterSpacing: '1px' }}>
+            ENTRAR A PREDIX →
+          </button>
+        </div>
+      )}
 
       {rankingModal && (
         <StatRankingModal
@@ -740,7 +693,6 @@ console.log('torneosData:', torneosData)
           onClose={() => setRankingModal(null)}
         />
       )}
-
     </div>
   )
 }
