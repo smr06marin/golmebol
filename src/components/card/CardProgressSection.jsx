@@ -46,10 +46,14 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   async function fetchProgreso() {
     setLoading(true)
     const pos = getPosicion()
+    console.log('fetchProgreso iniciado, pos:', pos, 'playerId:', playerId)
+    console.log('fetchProgreso iniciado, pos:', pos, 'playerId:', playerId)
 
     // Traer todas las tarjetas y subniveles
     const { data: cards }  = await supabase.from('cards').select('*').order('orden')
+console.log('cards:', cards)
     const { data: levels } = await supabase.from('card_levels').select('*').order('subnivel')
+console.log('levels:', levels)
 
     // Traer progreso del jugador
     const { data: progreso } = await supabase
@@ -62,6 +66,7 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
       .from('achievements')
       .select('*')
       .in('tipo', ['universal', pos])
+console.log('achievements:', achievements)
 
     const { data: achProgress } = await supabase
       .from('player_achievement_progress')
