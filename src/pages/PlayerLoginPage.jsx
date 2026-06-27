@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import SponsorSplash from '../components/card/SponsorSplash'
+import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
 const inp = {
   width: '100%', background: '#fff', border: '1.5px solid #dadce0',
@@ -165,6 +167,20 @@ export default function PlayerLoginPage() {
   const [showPromo,       setShowPromo]       = useState(false)
   const [showRecuperar,   setShowRecuperar]   = useState(false)
   const [showCambiarPass, setShowCambiarPass] = useState(false)
+  const [splash,          setSplash]          = useState(null)
+
+  async function fetchSplashData(playerId) {
+    const { data: p } = await supabase.from('players').select('card_type').eq('id', playerId).single()
+    const cardType   = p?.card_type || 'nivel1_verde'
+    const cardDesign = CARD_DESIGNS.find(d => d.id === cardType)
+    const { data: sponsor } = await supabase.from('sponsors').select('*').eq('card_id', cardType).eq('activo', true).single()
+    return {
+      sponsor:    sponsor || null,
+      cardColor:  cardDesign?.color  || '#00ee55',
+      cardNombre: cardDesign?.nombre || 'EL DEBUT',
+      cardType,
+    }
+  }
 
   async function handleBuscarCedula(e) {
     e.preventDefault()
@@ -189,9 +205,14 @@ export default function PlayerLoginPage() {
     const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso').eq('id', player.id).single()
     if (!pActual?.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
     if (pActual.fecha_vencimiento && new Date(pActual.fecha_vencimiento) < new Date()) { await supabase.auth.signOut(); setError('membresia_vencida'); setLoading(false); return }
+    if (pActual.primer_ingreso !== false) {
+      setLoading(false)
+      setShowCambiarPass(true)
+      return
+    }
+    const splashData = await fetchSplashData(player.id)
     setLoading(false)
-    if (pActual.primer_ingreso !== false) setShowCambiarPass(true)
-    else navigate('/jugador')
+    setSplash(splashData)
   }
 
   async function handleCrearCuenta(e) {
@@ -203,8 +224,9 @@ export default function PlayerLoginPage() {
     if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
     await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
     if (!player.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
+    const splashData = await fetchSplashData(player.id)
     setLoading(false)
-    navigate('/jugador')
+    setSplash(splashData)
   }
 
   async function handleRegistro(e) {
@@ -230,12 +252,27 @@ export default function PlayerLoginPage() {
     setNombre(''); setWhatsapp(''); setPlayer(null); setShowPromo(false)
   }
 
+  // Mostrar splash
+  if (splash) return (
+    <SponsorSplash
+      cardType={splash.cardType}
+      sponsor={splash.sponsor}
+      cardColor={splash.cardColor}
+      cardNombre={splash.cardNombre}
+      onDone={() => navigate('/jugador')}
+    />
+  )
+
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
 
         {showCambiarPass && (
-          <ModalCambiarPass cedula={cedula} onCambiada={() => { setShowCambiarPass(false); navigate('/jugador') }}/>
+          <ModalCambiarPass cedula={cedula} onCambiada={async () => {
+            setShowCambiarPass(false)
+            const splashData = await fetchSplashData(player.id)
+            setSplash(splashData)
+          }}/>
         )}
 
         {showRecuperar && <ModalRecuperarPass onClose={() => setShowRecuperar(false)}/>}
