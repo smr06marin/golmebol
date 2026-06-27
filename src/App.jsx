@@ -27,6 +27,7 @@ import PlayerApuestasPage from './pages/PlayerApuestasPage'
 import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
 import TorneoPublicoPage from './pages/TorneoPublicoPage'
 import RegistroEquipoPage from './pages/RegistroEquipoPage'
+import AdminRecordsPage from './pages/admin/AdminRecordsPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="sponsors"      element={<AdminSponsorsPage/>}/>
           <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
           <Route path="noticias"      element={<AdminNoticiasPage/>}/>
+          <Route path="records"       element={<AdminRecordsPage/>}/>
         </Route>
 
         {/* Página pública de torneo — sin login */}
