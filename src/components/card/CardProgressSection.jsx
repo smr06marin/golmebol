@@ -9,6 +9,7 @@ const S = {
   cyanDim: 'rgba(0,221,208,.12)',
   gold:    '#f9a825',
   text:    '#e8f4fd',
+  text2:   '#b8d4e8',
   muted:   '#7a9ab5',
   win:     '#1e8e3e',
   winDim:  'rgba(30,142,62,.12)',
