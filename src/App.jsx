@@ -71,7 +71,7 @@ export default function App() {
       <Routes>
 
        {/* Redirigir inicio público al login de jugador */}
-<Route path="/" element={<Navigate to="/jugador/login" replace/>}/>
+       <Route path="/" element={<RecordsPage />} />
 
 {/* Login admin */}
 <Route path="/login" element={user ? <Navigate to="/admin" replace/> : <LoginPage/>}/>
