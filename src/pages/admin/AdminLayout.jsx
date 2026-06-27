@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper } from 'lucide-react'
+import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 const MENU = [
@@ -12,6 +12,7 @@ const MENU = [
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas' },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors' },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias' },
+  { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records' },
 ]
 
 export default function AdminLayout() {
