@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle, Shield } from 'lucide-react'
+import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle } from 'lucide-react'
 import PlayerCard from '../../components/card/PlayerCard'
 
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
+
 function CedulasViewer({ jugadorId, frontalPath, traseraPath }) {
   const [urls,    setUrls]    = useState(null)
   const [loading, setLoading] = useState(false)
@@ -21,10 +22,7 @@ function CedulasViewer({ jugadorId, frontalPath, traseraPath }) {
       const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 60)
       return data?.signedUrl || null
     }
-    const [frontal, trasera] = await Promise.all([
-      getUrl(frontalPath),
-      getUrl(traseraPath),
-    ])
+    const [frontal, trasera] = await Promise.all([getUrl(frontalPath), getUrl(traseraPath)])
     setUrls({ frontal, trasera })
     setVisible(true)
     setLoading(false)
@@ -58,12 +56,12 @@ function CedulasViewer({ jugadorId, frontalPath, traseraPath }) {
     </div>
   )
 }
-function StatBox({ label, value, color = '#1a73e8', sub }) {
+
+function StatBox({ label, value, color = '#1a73e8' }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
       <div style={{ fontSize: '1.5rem', fontWeight: '700', color, lineHeight: 1 }}>{value ?? '—'}</div>
       <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px', fontWeight: '500' }}>{label}</div>
-      {sub && <div style={{ fontSize: '.65rem', color: '#bdbdbd', marginTop: '2px' }}>{sub}</div>}
     </div>
   )
 }
@@ -77,18 +75,20 @@ export default function AdminJugadorDetallePage() {
   const { id }   = useParams()
   const navigate = useNavigate()
 
-  const [jugador,    setJugador]    = useState(null)
-  const [stats,      setStats]      = useState(null)
-  const [torneos,    setTorneos]    = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [tab,        setTab]        = useState('resumen')
-  const [msg,        setMsg]        = useState(null)
-  const [uploading,  setUploading]  = useState({})
-  const [modalMem,   setModalMem]   = useState(false)
-  const [meses,      setMeses]      = useState(1)
-  const [contrasena, setContrasena] = useState('')
-  const [guardando,  setGuardando]  = useState(false)
-  const [errMem,     setErrMem]     = useState('')
+  const [jugador,       setJugador]       = useState(null)
+  const [stats,         setStats]         = useState(null)
+  const [torneos,       setTorneos]       = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [tab,           setTab]           = useState('resumen')
+  const [msg,           setMsg]           = useState(null)
+  const [uploading,     setUploading]     = useState({})
+  const [modalMem,      setModalMem]      = useState(false)
+  const [meses,         setMeses]         = useState(1)
+  const [contrasena,    setContrasena]    = useState('')
+  const [guardando,     setGuardando]     = useState(false)
+  const [errMem,        setErrMem]        = useState('')
+  const [formJugador,   setFormJugador]   = useState({})
+  const [guardandoForm, setGuardandoForm] = useState(false)
 
   useEffect(() => { fetchTodo() }, [id])
 
@@ -106,18 +106,33 @@ export default function AdminJugadorDetallePage() {
   async function fetchJugador() {
     const { data } = await supabase.from('players').select('*').eq('id', id).single()
     setJugador(data)
+    setFormJugador({
+      name:              data?.name              || '',
+      numero_cedula:     data?.numero_cedula     || '',
+      telefono:          data?.telefono          || '',
+      whatsapp:          data?.whatsapp          || '',
+      fecha_nacimiento:  data?.fecha_nacimiento  || '',
+      genero:            data?.genero            || '',
+      city:              data?.city              || '',
+      posicion_futbol5:  data?.posicion_futbol5  || '',
+      posicion_futbol7:  data?.posicion_futbol7  || '',
+      posicion_futbol11: data?.posicion_futbol11 || '',
+      estatura:          data?.estatura          || '',
+      peso:              data?.peso              || '',
+      pie_dominante:     data?.pie_dominante     || '',
+    })
   }
 
   async function fetchStats() {
     const { data: raw } = await supabase.from('player_match_stats').select('*').eq('player_id', id)
-    const r         = raw || []
-    const pj        = r.length
-    const goles     = r.reduce((s, x) => s + (x.goals_scored   || 0), 0)
-    const recibidos = r.reduce((s, x) => s + (x.goals_conceded || 0), 0)
-    const pg        = r.filter(x => x.team_result === 'win').length
-    const pe        = r.filter(x => x.team_result === 'draw').length
-    const pp        = r.filter(x => x.team_result === 'loss').length
-    const eficacia  = pj > 0 ? Math.round((pg / pj) * 100) : 0
+    const r        = raw || []
+    const pj       = r.length
+    const goles    = r.reduce((s, x) => s + (x.goals_scored   || 0), 0)
+    const recibidos= r.reduce((s, x) => s + (x.goals_conceded || 0), 0)
+    const pg       = r.filter(x => x.team_result === 'win').length
+    const pe       = r.filter(x => x.team_result === 'draw').length
+    const pp       = r.filter(x => x.team_result === 'loss').length
+    const eficacia = pj > 0 ? Math.round((pg / pj) * 100) : 0
     let racha = 0, maxRacha = 0
     for (const x of [...r].reverse()) {
       if (x.team_result === 'win') { racha++; maxRacha = Math.max(maxRacha, racha) }
@@ -130,8 +145,7 @@ export default function AdminJugadorDetallePage() {
     const { data } = await supabase
       .from('tournament_player_registrations')
       .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
-      .eq('player_id', id)
-      .eq('activo', true)
+      .eq('player_id', id).eq('activo', true)
     setTorneos(data || [])
   }
 
@@ -153,8 +167,8 @@ export default function AdminJugadorDetallePage() {
   async function handleCedula(file, cara) {
     if (!file) return
     setUploading(u => ({ ...u, [cara]: true }))
-    const ext   = file.name.split('.').pop()
-    const path  = `${id}_${cara}.${ext}`
+    const ext  = file.name.split('.').pop()
+    const path = `${id}_${cara}.${ext}`
     const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
     if (error) { showMsg('Error al subir cédula', 'error'); setUploading(u => ({ ...u, [cara]: false })); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
@@ -163,6 +177,15 @@ export default function AdminJugadorDetallePage() {
     setJugador(j => ({ ...j, [campo]: urlData.publicUrl }))
     setUploading(u => ({ ...u, [cara]: false }))
     showMsg('Cédula subida ✓')
+  }
+
+  async function handleGuardarDatos() {
+    if (!formJugador.name?.trim()) { showMsg('El nombre es obligatorio', 'error'); return }
+    setGuardandoForm(true)
+    const { error } = await supabase.from('players').update(formJugador).eq('id', id)
+    if (error) showMsg('Error al guardar', 'error')
+    else { showMsg('Datos actualizados ✓'); fetchJugador() }
+    setGuardandoForm(false)
   }
 
   async function handleActivarMembresia() {
@@ -197,50 +220,58 @@ export default function AdminJugadorDetallePage() {
   async function handleDesactivar() {
     if (!confirm(`¿Desactivar membresía de ${jugador.name}?`)) return
     await supabase.from('players').update({ activo_membresia: false }).eq('id', id)
-    showMsg('Membresía desactivada')
-    fetchJugador()
+    showMsg('Membresía desactivada'); fetchJugador()
   }
 
   function abrirWhatsApp() {
-    const dias     = diasRestantes(jugador.fecha_vencimiento)
-    const vencida  = dias !== null && dias <= 0
-    const nombre   = jugador.name?.split(' ')[0] || 'jugador'
-    const telefono = jugador.telefono?.replace(/\D/g, '')
-    const texto    = vencida
+    const dias    = diasRestantes(jugador.fecha_vencimiento)
+    const vencida = dias !== null && dias <= 0
+    const nombre  = jugador.name?.split(' ')[0] || 'jugador'
+    const tel     = (jugador.whatsapp || jugador.telefono || '').replace(/\D/g, '')
+    const texto   = vencida
       ? `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* ya venció. Renueva para seguir disfrutando tu tarjeta. ⚽🏆`
       : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. ¡Renueva a tiempo! ⚽🏆`
-    window.open(`https://wa.me/57${telefono}?text=${encodeURIComponent(texto)}`, '_blank')
+    window.open(`https://wa.me/57${tel}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
   if (!jugador) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Jugador no encontrado</div>
 
-  const dias        = diasRestantes(jugador.fecha_vencimiento)
-  const vencida     = dias !== null && dias <= 0
-  const porVencer   = dias !== null && dias > 0 && dias <= 7
-  const activo      = jugador.activo_membresia && !vencida
-  const esPortero   = jugador.posicion_futbol5 === 'Portero' || jugador.posicion_futbol7 === 'Portero' || jugador.posicion_futbol11 === 'Portero'
+  const dias      = diasRestantes(jugador.fecha_vencimiento)
+  const vencida   = dias !== null && dias <= 0
+  const porVencer = dias !== null && dias > 0 && dias <= 7
+  const activo    = jugador.activo_membresia && !vencida
+  const esPortero = jugador.posicion_futbol5 === 'Portero' || jugador.posicion_futbol7 === 'Portero' || jugador.posicion_futbol11 === 'Portero'
 
   const cardStats = {
-    pj:          stats?.pj        || 0,
+    pj:          stats?.pj       || 0,
     golesContra: esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0),
     promedio:    stats?.pj > 0 ? parseFloat((esPortero ? stats.recibidos / stats.pj : stats.goles / stats.pj).toFixed(2)) : 0,
-    eficacia:    stats?.eficacia  || 0,
-    pg:          stats?.pg        || 0,
-    pe:          stats?.pe        || 0,
-    pp:          stats?.pp        || 0,
+    eficacia:    stats?.eficacia || 0,
+    pg:          stats?.pg       || 0,
+    pe:          stats?.pe       || 0,
+    pp:          stats?.pp       || 0,
   }
 
   const TABS = [
-    { id: 'resumen',  label: 'Resumen'   },
-    { id: 'stats',    label: 'Stats'     },
-    { id: 'torneos',  label: 'Torneos'   },
-    { id: 'tarjeta',  label: 'Tarjeta'   },
+    { id: 'resumen', label: 'Resumen'    },
+    { id: 'editar',  label: '✏️ Editar'  },
+    { id: 'stats',   label: 'Stats'      },
+    { id: 'torneos', label: 'Torneos'    },
+    { id: 'tarjeta', label: 'Tarjeta'    },
   ]
 
   const estadoColor = activo ? '#1e8e3e' : vencida && jugador.user_id ? '#d93025' : porVencer ? '#e8710a' : '#9aa0a6'
   const estadoBg    = activo ? '#e6f4ea'  : vencida && jugador.user_id ? '#fce8e6'  : porVencer ? '#fce8d9'  : '#f1f3f4'
   const estadoLabel = activo ? '✓ Activo' : vencida && jugador.user_id ? '✗ Vencido' : porVencer ? `⚠ ${dias}d` : 'Sin cuenta'
+
+  // Campos faltantes
+  const camposFaltantes = [
+    !jugador.fecha_nacimiento && 'Fecha de nacimiento',
+    !jugador.posicion_futbol5 && !jugador.posicion_futbol7 && !jugador.posicion_futbol11 && 'Posición',
+    !jugador.telefono && !jugador.whatsapp && 'Teléfono/WhatsApp',
+    !jugador.genero && 'Género',
+  ].filter(Boolean)
 
   return (
     <div>
@@ -258,7 +289,6 @@ export default function AdminJugadorDetallePage() {
               {!jugador.user_id ? 'Activar membresía' : activo ? 'Renovar membresía' : 'Reactivar membresía'}
             </div>
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{jugador.name}</div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={lbl}>Meses a activar</label>
@@ -271,7 +301,6 @@ export default function AdminJugadorDetallePage() {
                   ))}
                 </div>
               </div>
-
               {!jugador.user_id && (
                 <div>
                   <label style={lbl}>Contraseña para el jugador *</label>
@@ -279,15 +308,12 @@ export default function AdminJugadorDetallePage() {
                   <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '4px' }}>Ingresa con cédula <b>{jugador.numero_cedula}</b> + esta contraseña</div>
                 </div>
               )}
-
               {jugador.user_id && (
                 <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
                   🔐 Ya tiene cuenta. Solo se renueva el tiempo de acceso.
                 </div>
               )}
-
               {errMem && <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{errMem}</div>}
-
               <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px 14px' }}>
                 <div style={{ fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>Resumen</div>
                 <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '4px' }}>
@@ -295,7 +321,6 @@ export default function AdminJugadorDetallePage() {
                   <b>{new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</b>
                 </div>
               </div>
-
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={handleActivarMembresia} disabled={guardando}
                   style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: guardando ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: guardando ? .7 : 1 }}>
@@ -317,10 +342,24 @@ export default function AdminJugadorDetallePage() {
         <ArrowLeft size={16}/> Volver
       </button>
 
+      {/* Alerta datos faltantes */}
+      {camposFaltantes.length > 0 && (
+        <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div>
+            <div style={{ fontWeight: '600', color: '#795548', fontSize: '.85rem' }}>⚠️ Datos incompletos</div>
+            <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px' }}>Falta: {camposFaltantes.join(' · ')}</div>
+          </div>
+          <button onClick={() => setTab('editar')}
+            style={{ padding: '7px 14px', background: '#e8710a', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700', flexShrink: 0 }}>
+            ✏️ Completar datos
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
-          {/* Foto perfil con botón upload */}
+          {/* Foto perfil */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#f1f3f4', border: `3px solid ${estadoColor}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {jugador.photo_face_url
@@ -342,11 +381,14 @@ export default function AdminJugadorDetallePage() {
               <span style={{ fontSize: '.72rem', fontWeight: '700', color: estadoColor, background: estadoBg, borderRadius: '20px', padding: '3px 10px' }}>{estadoLabel}</span>
             </div>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368', marginBottom: '8px' }}>
-              {jugador.numero_cedula && <span>🪪 {jugador.numero_cedula}</span>}
-              {jugador.telefono      && <span>📞 {jugador.telefono}</span>}
-              {jugador.city          && <span>📍 {jugador.city}</span>}
-              {jugador.genero        && <span>👤 {jugador.genero}</span>}
+              {jugador.numero_cedula   && <span>🪪 {jugador.numero_cedula}</span>}
+              {(jugador.whatsapp || jugador.telefono) && <span>📞 {jugador.whatsapp || jugador.telefono}</span>}
+              {jugador.city            && <span>📍 {jugador.city}</span>}
+              {jugador.genero          && <span>👤 {jugador.genero}</span>}
               {jugador.fecha_nacimiento && <span>🎂 {new Date(jugador.fecha_nacimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
+              {jugador.estatura        && <span>📏 {jugador.estatura}cm</span>}
+              {jugador.peso            && <span>⚖️ {jugador.peso}kg</span>}
+              {jugador.pie_dominante   && <span>🦶 {jugador.pie_dominante}</span>}
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {jugador.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 9px' }}>F5: {jugador.posicion_futbol5}</span>}
@@ -367,7 +409,7 @@ export default function AdminJugadorDetallePage() {
                 Desactivar
               </button>
             )}
-            {jugador.telefono && (
+            {(jugador.whatsapp || jugador.telefono) && (
               <button onClick={abrirWhatsApp}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#25D366', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>
                 <MessageCircle size={14}/> WhatsApp
@@ -423,32 +465,109 @@ export default function AdminJugadorDetallePage() {
         ))}
       </div>
 
-      {/* RESUMEN */}
+      {/* ── RESUMEN ── */}
       {tab === 'resumen' && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-            <StatBox label="Partidos"   value={stats?.pj || 0}       color="#1a73e8"/>
-            <StatBox label="Ganados"    value={stats?.pg || 0}       color="#1e8e3e"/>
-            <StatBox label="Empatados"  value={stats?.pe || 0}       color="#e8710a"/>
-            <StatBox label="Perdidos"   value={stats?.pp || 0}       color="#d93025"/>
-            <StatBox label="Eficacia"   value={`${stats?.eficacia || 0}%`} color="#6c35de"/>
+            <StatBox label="Partidos"    value={stats?.pj || 0}              color="#1a73e8"/>
+            <StatBox label="Ganados"     value={stats?.pg || 0}              color="#1e8e3e"/>
+            <StatBox label="Empatados"   value={stats?.pe || 0}              color="#e8710a"/>
+            <StatBox label="Perdidos"    value={stats?.pp || 0}              color="#d93025"/>
+            <StatBox label="Eficacia"    value={`${stats?.eficacia || 0}%`}  color="#6c35de"/>
             <StatBox label={esPortero ? 'Goles recibidos' : 'Goles'} value={esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0)} color="#e8710a"/>
-            <StatBox label="Mejor racha" value={stats?.maxRacha || 0} color="#1e8e3e"/>
-            <StatBox label="Torneos"    value={torneos.length}       color="#1a73e8"/>
+            <StatBox label="Mejor racha" value={stats?.maxRacha || 0}        color="#1e8e3e"/>
+            <StatBox label="Torneos"     value={torneos.length}              color="#1a73e8"/>
           </div>
-
-         {/* Cédulas */}
-         {(jugador.cedula_frontal_url || jugador.cedula_trasera_url) && (
-            <CedulasViewer
-              jugadorId={jugador.id}
-              frontalPath={jugador.cedula_frontal_url}
-              traseraPath={jugador.cedula_trasera_url}
-            />
+          {(jugador.cedula_frontal_url || jugador.cedula_trasera_url) && (
+            <CedulasViewer jugadorId={jugador.id} frontalPath={jugador.cedula_frontal_url} traseraPath={jugador.cedula_trasera_url}/>
           )}
         </div>
       )}
 
-      {/* STATS */}
+      {/* ── EDITAR ── */}
+      {tab === 'editar' && (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+          <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '20px' }}>Datos del jugador</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div>
+              <label style={lbl}>Nombre completo *</label>
+              <input value={formJugador.name} onChange={e => setFormJugador(f => ({ ...f, name: e.target.value }))} style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Número de cédula *</label>
+              <input value={formJugador.numero_cedula} onChange={e => setFormJugador(f => ({ ...f, numero_cedula: e.target.value }))} style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Teléfono</label>
+              <input value={formJugador.telefono} onChange={e => setFormJugador(f => ({ ...f, telefono: e.target.value }))} style={inp} placeholder="3001234567"/>
+            </div>
+            <div>
+              <label style={lbl}>WhatsApp</label>
+              <input value={formJugador.whatsapp} onChange={e => setFormJugador(f => ({ ...f, whatsapp: e.target.value }))} style={inp} placeholder="3001234567"/>
+            </div>
+            <div>
+              <label style={lbl}>Fecha de nacimiento</label>
+              <input type="date" value={formJugador.fecha_nacimiento} onChange={e => setFormJugador(f => ({ ...f, fecha_nacimiento: e.target.value }))} style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Género</label>
+              <select value={formJugador.genero} onChange={e => setFormJugador(f => ({ ...f, genero: e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                <option>Masculino</option>
+                <option>Femenino</option>
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Ciudad</label>
+              <input value={formJugador.city} onChange={e => setFormJugador(f => ({ ...f, city: e.target.value }))} style={inp}/>
+            </div>
+            <div>
+              <label style={lbl}>Pie dominante</label>
+              <select value={formJugador.pie_dominante} onChange={e => setFormJugador(f => ({ ...f, pie_dominante: e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                <option>Derecho</option>
+                <option>Izquierdo</option>
+                <option>Ambidiestro</option>
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Estatura (cm)</label>
+              <input type="number" value={formJugador.estatura} onChange={e => setFormJugador(f => ({ ...f, estatura: e.target.value }))} style={inp} placeholder="175"/>
+            </div>
+            <div>
+              <label style={lbl}>Peso (kg)</label>
+              <input type="number" value={formJugador.peso} onChange={e => setFormJugador(f => ({ ...f, peso: e.target.value }))} style={inp} placeholder="70"/>
+            </div>
+            <div>
+              <label style={lbl}>Posición Fútbol 5</label>
+              <select value={formJugador.posicion_futbol5} onChange={e => setFormJugador(f => ({ ...f, posicion_futbol5: e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                <option>Portero</option><option>Cierre</option><option>Ala derecha</option><option>Ala izquierda</option><option>Pivot</option>
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Posición Fútbol 7</label>
+              <select value={formJugador.posicion_futbol7} onChange={e => setFormJugador(f => ({ ...f, posicion_futbol7: e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                <option>Portero</option><option>Defensa central</option><option>Lateral derecho</option><option>Lateral izquierdo</option><option>Mediocampista</option><option>Extremo derecho</option><option>Extremo izquierdo</option><option>Delantero</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={lbl}>Posición Fútbol 11</label>
+              <select value={formJugador.posicion_futbol11} onChange={e => setFormJugador(f => ({ ...f, posicion_futbol11: e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                <option>Portero</option><option>Defensa central</option><option>Lateral derecho</option><option>Lateral izquierdo</option><option>Mediocampista defensivo</option><option>Mediocampista</option><option>Mediocampista ofensivo</option><option>Extremo derecho</option><option>Extremo izquierdo</option><option>Segundo delantero</option><option>Delantero centro</option>
+              </select>
+            </div>
+          </div>
+          <button onClick={handleGuardarDatos} disabled={guardandoForm}
+            style={{ marginTop: '20px', padding: '10px 24px', background: guardandoForm ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: guardandoForm ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem' }}>
+            {guardandoForm ? 'Guardando...' : '💾 Guardar datos'}
+          </button>
+        </div>
+      )}
+
+      {/* ── STATS ── */}
       {tab === 'stats' && (
         <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
           {stats?.pj === 0 ? (
@@ -459,13 +578,13 @@ export default function AdminJugadorDetallePage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
-                { label: 'Partidos jugados',          value: stats?.pj,                                        color: '#1a73e8', pct: 100 },
-                { label: 'Victorias',                 value: stats?.pg,                                        color: '#1e8e3e', pct: stats?.pj > 0 ? (stats.pg / stats.pj) * 100 : 0 },
-                { label: 'Empates',                   value: stats?.pe,                                        color: '#e8710a', pct: stats?.pj > 0 ? (stats.pe / stats.pj) * 100 : 0 },
-                { label: 'Derrotas',                  value: stats?.pp,                                        color: '#d93025', pct: stats?.pj > 0 ? (stats.pp / stats.pj) * 100 : 0 },
+                { label: 'Partidos jugados',         value: stats?.pj,                                       color: '#1a73e8', pct: 100 },
+                { label: 'Victorias',                value: stats?.pg,                                       color: '#1e8e3e', pct: stats?.pj > 0 ? (stats.pg / stats.pj) * 100 : 0 },
+                { label: 'Empates',                  value: stats?.pe,                                       color: '#e8710a', pct: stats?.pj > 0 ? (stats.pe / stats.pj) * 100 : 0 },
+                { label: 'Derrotas',                 value: stats?.pp,                                       color: '#d93025', pct: stats?.pj > 0 ? (stats.pp / stats.pj) * 100 : 0 },
                 { label: esPortero ? 'Goles recibidos' : 'Goles anotados', value: esPortero ? stats?.recibidos : stats?.goles, color: '#e8710a', pct: null },
-                { label: 'Eficacia',                  value: `${stats?.eficacia || 0}%`,                       color: '#6c35de', pct: stats?.eficacia },
-                { label: 'Mejor racha de victorias',  value: stats?.maxRacha,                                  color: '#1e8e3e', pct: null },
+                { label: 'Eficacia',                 value: `${stats?.eficacia || 0}%`,                      color: '#6c35de', pct: stats?.eficacia },
+                { label: 'Mejor racha de victorias', value: stats?.maxRacha,                                 color: '#1e8e3e', pct: null },
               ].map(row => (
                 <div key={row.label}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -484,7 +603,7 @@ export default function AdminJugadorDetallePage() {
         </div>
       )}
 
-      {/* TORNEOS */}
+      {/* ── TORNEOS ── */}
       {tab === 'torneos' && (
         <div>
           {torneos.length === 0 ? (
@@ -514,7 +633,7 @@ export default function AdminJugadorDetallePage() {
         </div>
       )}
 
-      {/* TARJETA */}
+      {/* ── TARJETA ── */}
       {tab === 'tarjeta' && (
         <div style={{ maxWidth: '380px', margin: '0 auto' }}>
           <div style={{ background: '#07070e', borderRadius: '16px', padding: '20px' }}>
