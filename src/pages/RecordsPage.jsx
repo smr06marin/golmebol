@@ -12,72 +12,33 @@ const S = {
   muted:  '#7a9ab5',
 }
 
-// Tarjeta estilo imagen referencia
 function RecordCard({ titulo, nombre, subtitulo, descripcion, color }) {
   return (
     <div style={{
-      minWidth: '280px',
-      maxWidth: '280px',
+      width: '100%',
       background: '#0a0f1e',
       border: `2px solid ${color}`,
-      borderRadius: '4px',
+      borderRadius: '6px',
       overflow: 'hidden',
-      flexShrink: 0,
-      userSelect: 'none',
     }}>
-      {/* Banda superior con título */}
-      <div style={{
-        background: color,
-        padding: '5px 10px',
-        textAlign: 'center',
-      }}>
-        <div style={{
-          fontWeight: '900',
-          fontSize: '.7rem',
-          color: '#fff',
-          letterSpacing: '1px',
-          textTransform: 'uppercase',
-          lineHeight: 1.2,
-        }}>
+      {/* Banda superior */}
+      <div style={{ background: color, padding: '8px 14px', textAlign: 'center' }}>
+        <div style={{ fontWeight: '900', fontSize: '.78rem', color: '#fff', letterSpacing: '1.5px', textTransform: 'uppercase', lineHeight: 1.3 }}>
           {titulo}
         </div>
       </div>
-
       {/* Cuerpo */}
-      <div style={{ padding: '12px 14px 10px', textAlign: 'center' }}>
-        <div style={{
-          fontWeight: '900',
-          fontSize: '1.15rem',
-          color: '#fff',
-          letterSpacing: '.04em',
-          lineHeight: 1.2,
-          marginBottom: subtitulo || descripcion ? '8px' : '0',
-          textTransform: 'uppercase',
-        }}>
+      <div style={{ padding: '20px 16px 18px', textAlign: 'center' }}>
+        <div style={{ fontWeight: '900', fontSize: '1.4rem', color: '#fff', letterSpacing: '.04em', lineHeight: 1.2, marginBottom: '10px', textTransform: 'uppercase' }}>
           {nombre}
         </div>
-
         {subtitulo && (
-          <div style={{
-            fontWeight: '700',
-            fontSize: '.72rem',
-            color: color,
-            letterSpacing: '1px',
-            textTransform: 'uppercase',
-            marginBottom: descripcion ? '4px' : '0',
-          }}>
+          <div style={{ fontWeight: '700', fontSize: '.78rem', color: color, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: descripcion ? '6px' : '0' }}>
             {subtitulo}
           </div>
         )}
-
         {descripcion && (
-          <div style={{
-            fontWeight: '600',
-            fontSize: '.65rem',
-            color: 'rgba(255,255,255,.55)',
-            letterSpacing: '.5px',
-            textTransform: 'uppercase',
-          }}>
+          <div style={{ fontWeight: '600', fontSize: '.68rem', color: 'rgba(255,255,255,.5)', letterSpacing: '.5px', textTransform: 'uppercase' }}>
             {descripcion}
           </div>
         )}
@@ -86,8 +47,8 @@ function RecordCard({ titulo, nombre, subtitulo, descripcion, color }) {
   )
 }
 
-function Carrusel({ titulo, records, colorTitulo }) {
-  const ref = useRef(null)
+function Carrusel({ records }) {
+  const ref   = useRef(null)
   const [idx, setIdx] = useState(0)
   const total = records.length
 
@@ -95,69 +56,51 @@ function Carrusel({ titulo, records, colorTitulo }) {
     const newIdx = Math.max(0, Math.min(i, total - 1))
     setIdx(newIdx)
     if (ref.current) {
-      ref.current.scrollTo({ left: newIdx * 296, behavior: 'smooth' })
+      ref.current.scrollTo({ left: newIdx * ref.current.offsetWidth, behavior: 'smooth' })
     }
   }
 
   function handleScroll() {
     if (ref.current) {
-      const newIdx = Math.round(ref.current.scrollLeft / 296)
-      setIdx(newIdx)
+      setIdx(Math.round(ref.current.scrollLeft / ref.current.offsetWidth))
     }
   }
 
   if (total === 0) return null
 
   return (
-    <div style={{ marginBottom: '28px' }}>
-      {/* Título sección */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', padding: '0 16px' }}>
-        <div style={{ height: '2px', width: '20px', background: colorTitulo || S.gold, borderRadius: '2px', flexShrink: 0 }}/>
-        <div style={{ fontSize: '.65rem', fontWeight: '800', color: colorTitulo || S.gold, letterSpacing: '3px', textTransform: 'uppercase' }}>{titulo}</div>
+    <div>
+      <div ref={ref} onScroll={handleScroll}
+        style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <style>{`div::-webkit-scrollbar{display:none}`}</style>
+        {records.map((r, i) => (
+          <div key={r.id || i} style={{ minWidth: '100%', scrollSnapAlign: 'start', padding: '0 20px', boxSizing: 'border-box' }}>
+            <RecordCard {...r}/>
+          </div>
+        ))}
       </div>
 
-      {/* Carrusel */}
-      <div style={{ position: 'relative' }}>
-        <div
-          ref={ref}
-          onScroll={handleScroll}
-          style={{
-            display: 'flex',
-            gap: '16px',
-            overflowX: 'auto',
-            scrollSnapType: 'x mandatory',
-            scrollbarWidth: 'none',
-            padding: '4px 16px 8px',
-            WebkitOverflowScrolling: 'touch',
-          }}
-        >
-          <style>{`.carrusel::-webkit-scrollbar{display:none}`}</style>
-          {records.map((r, i) => (
-            <div key={r.id || i} style={{ scrollSnapAlign: 'start' }}>
-              <RecordCard {...r}/>
-            </div>
-          ))}
+      {/* Controles */}
+      {total > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '18px' }}>
+          <button onClick={() => scrollTo(idx - 1)} disabled={idx === 0}
+            style={{ width: '36px', height: '36px', borderRadius: '50%', background: idx === 0 ? S.border : S.gold, border: 'none', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? S.muted : '#000', fontSize: '1.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ‹
+          </button>
+          <div style={{ fontSize: '.75rem', color: S.muted, fontWeight: '700', minWidth: '50px', textAlign: 'center' }}>{idx + 1} / {total}</div>
+          <button onClick={() => scrollTo(idx + 1)} disabled={idx === total - 1}
+            style={{ width: '36px', height: '36px', borderRadius: '50%', background: idx === total - 1 ? S.border : S.gold, border: 'none', cursor: idx === total - 1 ? 'default' : 'pointer', color: idx === total - 1 ? S.muted : '#000', fontSize: '1.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ›
+          </button>
         </div>
+      )}
 
-        {/* Navegación */}
-        {total > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '10px' }}>
-            <button onClick={() => scrollTo(idx - 1)} disabled={idx === 0}
-              style={{ width: '28px', height: '28px', borderRadius: '50%', background: idx === 0 ? S.border : S.gold, border: 'none', cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? S.muted : '#000', fontSize: '.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900' }}>
-              ‹
-            </button>
-            <div style={{ display: 'flex', gap: '5px' }}>
-              {records.map((_, i) => (
-                <div key={i} onClick={() => scrollTo(i)}
-                  style={{ width: i === idx ? '20px' : '6px', height: '6px', borderRadius: '3px', background: i === idx ? S.gold : S.border, cursor: 'pointer', transition: 'all .2s' }}/>
-              ))}
-            </div>
-            <button onClick={() => scrollTo(idx + 1)} disabled={idx === total - 1}
-              style={{ width: '28px', height: '28px', borderRadius: '50%', background: idx === total - 1 ? S.border : S.gold, border: 'none', cursor: idx === total - 1 ? 'default' : 'pointer', color: idx === total - 1 ? S.muted : '#000', fontSize: '.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900' }}>
-              ›
-            </button>
-          </div>
-        )}
+      {/* Dots */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '12px', flexWrap: 'wrap', padding: '0 20px' }}>
+        {records.map((_, i) => (
+          <div key={i} onClick={() => scrollTo(i)}
+            style={{ width: i === idx ? '20px' : '6px', height: '6px', borderRadius: '3px', background: i === idx ? S.gold : S.border, cursor: 'pointer', transition: 'all .2s', flexShrink: 0 }}/>
+        ))}
       </div>
     </div>
   )
@@ -174,18 +117,16 @@ function StatBox({ valor, label, color }) {
 
 export default function RecordsPage() {
   const navigate = useNavigate()
-  const [loading,     setLoading]     = useState(true)
-  const [jugadores,   setJugadores]   = useState([])
-  const [equipos,     setEquipos]     = useState([])
-  const [partidos,    setPartidos]    = useState([])
-  const [historicos,  setHistoricos]  = useState([])
-  const [totales,     setTotales]     = useState({ partidos: 0, goles: 0, jugadores: 0, torneos: 0 })
+  const [loading,  setLoading]  = useState(true)
+  const [records,  setRecords]  = useState([])
+  const [totales,  setTotales]  = useState({ partidos: 0, goles: 0, jugadores: 0, torneos: 0 })
 
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
     setLoading(true)
-    await Promise.all([fetchAutomaticos(), fetchHistoricos()])
+    const [recsAuto, recsHist] = await Promise.all([fetchAutomaticos(), fetchHistoricos()])
+    setRecords([...(recsAuto || []), ...(recsHist || [])])
     setLoading(false)
   }
 
@@ -195,7 +136,7 @@ export default function RecordsPage() {
       .select('*')
       .eq('activo', true)
       .order('orden')
-    setHistoricos(data || [])
+    return data || []
   }
 
   async function fetchAutomaticos() {
@@ -216,15 +157,14 @@ export default function RecordsPage() {
 
     const { count: totalJugadores } = await supabase.from('players').select('id', { count: 'exact' }).eq('activo_membresia', true)
     const { count: totalTorneos }   = await supabase.from('tournaments').select('id', { count: 'exact' })
-    const totalGoles    = (cache || []).reduce((s, r) => s + (r.goles || 0), 0)
+    const totalGoles = (cache || []).reduce((s, r) => s + (r.goles || 0), 0)
     setTotales({ partidos: (matches || []).length, goles: totalGoles, jugadores: totalJugadores || 0, torneos: totalTorneos || 0 })
 
-    // ── RÉCORDS DE JUGADORES ─────────────────────────────
-    const recsJug = []
+    const recs = []
 
-    // Máximo goleador
+    // 1. Máximo goleador
     const topGol = [...(cache || [])].sort((a, b) => b.goles - a.goles)[0]
-    if (topGol?.goles > 0) recsJug.push({
+    if (topGol?.goles > 0) recs.push({
       id: 'max_goleador',
       titulo: `${topGol.goles} goles históricos`,
       nombre: topGol.players?.name || '?',
@@ -233,20 +173,20 @@ export default function RecordsPage() {
       color: S.gold,
     })
 
-    // Más goles en un partido
-    const topGolPartido = [...(statsPorPartido || [])][0]
-    if (topGolPartido?.goals_scored >= 2) recsJug.push({
+    // 2. Más goles en un partido
+    const topGolPar = (statsPorPartido || [])[0]
+    if (topGolPar?.goals_scored >= 2) recs.push({
       id: 'goles_partido',
-      titulo: `${topGolPartido.goals_scored} goles en un partido`,
-      nombre: topGolPartido.players?.name || '?',
-      subtitulo: `${topGolPartido.matches?.home?.name} vs ${topGolPartido.matches?.away?.name}`,
-      descripcion: topGolPartido.matches?.played_at ? new Date(topGolPartido.matches.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+      titulo: `${topGolPar.goals_scored} goles en un partido`,
+      nombre: topGolPar.players?.name || '?',
+      subtitulo: `${topGolPar.matches?.home?.name} vs ${topGolPar.matches?.away?.name}`,
+      descripcion: topGolPar.matches?.played_at ? new Date(topGolPar.matches.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
       color: '#e8710a',
     })
 
-    // Hat-tricks
+    // 3. Hat-tricks
     const topHat = [...(cache || [])].sort((a, b) => b.hat_tricks - a.hat_tricks)[0]
-    if (topHat?.hat_tricks > 0) recsJug.push({
+    if (topHat?.hat_tricks > 0) recs.push({
       id: 'hat_tricks',
       titulo: `${topHat.hat_tricks} hat-trick${topHat.hat_tricks > 1 ? 's' : ''}`,
       nombre: topHat.players?.name || '?',
@@ -255,9 +195,9 @@ export default function RecordsPage() {
       color: S.gold,
     })
 
-    // Más victorias
+    // 4. Más victorias
     const topVic = [...(cache || [])].sort((a, b) => b.victorias - a.victorias)[0]
-    if (topVic?.victorias > 0) recsJug.push({
+    if (topVic?.victorias > 0) recs.push({
       id: 'victorias',
       titulo: `${topVic.victorias} victorias`,
       nombre: topVic.players?.name || '?',
@@ -266,9 +206,9 @@ export default function RecordsPage() {
       color: '#9955ff',
     })
 
-    // Más partidos
+    // 5. Más partidos
     const topPJ = [...(cache || [])].sort((a, b) => b.pj - a.pj)[0]
-    if (topPJ?.pj > 0) recsJug.push({
+    if (topPJ?.pj > 0) recs.push({
       id: 'mas_partidos',
       titulo: `${topPJ.pj} partidos jugados`,
       nombre: topPJ.players?.name || '?',
@@ -277,21 +217,21 @@ export default function RecordsPage() {
       color: S.cyan,
     })
 
-    // Racha victorias
+    // 6. Racha victorias
     const topRachaV = [...(cache || [])].sort((a, b) => (b.racha_victorias_max || b.racha_victorias_actual || 0) - (a.racha_victorias_max || a.racha_victorias_actual || 0))[0]
     const rachaV = topRachaV?.racha_victorias_max || topRachaV?.racha_victorias_actual || 0
-    if (rachaV >= 2) recsJug.push({
+    if (rachaV >= 2) recs.push({
       id: 'racha_vic',
       titulo: `${rachaV} victorias seguidas`,
       nombre: topRachaV.players?.name || '?',
-      subtitulo: 'mayor racha de victorias',
+      subtitulo: 'mayor racha de victorias consecutivas',
       descripcion: topRachaV?.racha_victorias_actual === rachaV ? '🔥 Racha activa' : 'Récord histórico',
       color: '#00ee55',
     })
 
-    // Racha goles
+    // 7. Racha goles
     const topRachaG = [...(cache || [])].sort((a, b) => (b.racha_goles_actual || 0) - (a.racha_goles_actual || 0))[0]
-    if (topRachaG?.racha_goles_actual >= 2) recsJug.push({
+    if (topRachaG?.racha_goles_actual >= 2) recs.push({
       id: 'racha_gol',
       titulo: `goles en ${topRachaG.racha_goles_actual} partidos seguidos`,
       nombre: topRachaG.players?.name || '?',
@@ -300,13 +240,13 @@ export default function RecordsPage() {
       color: '#e8710a',
     })
 
-    // Arcos en cero
+    // 8. Arcos en cero
     const porteros = (cache || []).filter(s => {
       const pos = s.players?.posicion_futbol5 || s.players?.posicion_futbol7 || s.players?.posicion_futbol11 || ''
       return pos === 'Portero'
     })
     const topArcos = [...porteros].sort((a, b) => b.arcos_cero - a.arcos_cero)[0]
-    if (topArcos?.arcos_cero > 0) recsJug.push({
+    if (topArcos?.arcos_cero > 0) recs.push({
       id: 'arcos_cero',
       titulo: `${topArcos.arcos_cero} arcos en cero`,
       nombre: topArcos.players?.name || '?',
@@ -315,9 +255,9 @@ export default function RecordsPage() {
       color: S.cyan,
     })
 
-    // Fair play
+    // 9. Fair play
     const topFair = [...(cache || [])].filter(s => s.partidos_sin_tarjetas > 0).sort((a, b) => b.partidos_sin_tarjetas - a.partidos_sin_tarjetas)[0]
-    if (topFair) recsJug.push({
+    if (topFair) recs.push({
       id: 'fair_play',
       titulo: `${topFair.partidos_sin_tarjetas} partidos sin tarjetas`,
       nombre: topFair.players?.name || '?',
@@ -326,17 +266,36 @@ export default function RecordsPage() {
       color: '#00ee55',
     })
 
-    setJugadores(recsJug)
+    // 10. Partido más goleador
+    const masGolesPar = [...(matches || [])].map(m => ({ ...m, total: (m.home_score || 0) + (m.away_score || 0) })).sort((a, b) => b.total - a.total)[0]
+    if (masGolesPar?.total > 0) recs.push({
+      id: 'partido_goles',
+      titulo: `${masGolesPar.total} goles en un partido`,
+      nombre: `${masGolesPar.home?.name} ${masGolesPar.home_score} — ${masGolesPar.away_score} ${masGolesPar.away?.name}`,
+      subtitulo: 'partido más goleador de la historia',
+      descripcion: masGolesPar.played_at ? new Date(masGolesPar.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : '',
+      color: '#d93025',
+    })
 
-    // ── RÉCORDS DE EQUIPOS ───────────────────────────────
+    // 11. Mayor goleada
+    const goleada = [...(matches || [])].map(m => ({ ...m, diff: Math.abs((m.home_score || 0) - (m.away_score || 0)) })).sort((a, b) => b.diff - a.diff)[0]
+    if (goleada?.diff >= 2) recs.push({
+      id: 'goleada',
+      titulo: `goleada de ${goleada.diff} goles`,
+      nombre: `${goleada.home?.name} ${goleada.home_score} — ${goleada.away_score} ${goleada.away?.name}`,
+      subtitulo: 'mayor goleada de la historia',
+      descripcion: goleada.played_at ? new Date(goleada.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : '',
+      color: '#e8710a',
+    })
+
+    // 12. Equipo más goleador
     const equiposMap = {}
     ;(matches || []).forEach(m => {
       const add = (id, name, gF, gC) => {
         if (!id || !name) return
-        if (!equiposMap[id]) equiposMap[id] = { name, goles: 0, recibidos: 0, pj: 0, victorias: 0, empates: 0, derrotas: 0 }
-        equiposMap[id].goles     += gF
-        equiposMap[id].recibidos += gC
-        equiposMap[id].pj        += 1
+        if (!equiposMap[id]) equiposMap[id] = { name, goles: 0, pj: 0, victorias: 0, empates: 0, derrotas: 0 }
+        equiposMap[id].goles += gF
+        equiposMap[id].pj   += 1
         if (gF > gC) equiposMap[id].victorias++
         else if (gF === gC) equiposMap[id].empates++
         else equiposMap[id].derrotas++
@@ -345,10 +304,9 @@ export default function RecordsPage() {
       add(m.away_team_id, m.away?.name, m.away_score || 0, m.home_score || 0)
     })
     const equiposArr = Object.values(equiposMap)
-    const recsEq = []
 
     const topGolEq = [...equiposArr].sort((a, b) => b.goles - a.goles)[0]
-    if (topGolEq?.goles > 0) recsEq.push({
+    if (topGolEq?.goles > 0) recs.push({
       id: 'eq_goles',
       titulo: `${topGolEq.goles} goles anotados`,
       nombre: topGolEq.name || '?',
@@ -358,7 +316,7 @@ export default function RecordsPage() {
     })
 
     const topVicEq = [...equiposArr].sort((a, b) => b.victorias - a.victorias)[0]
-    if (topVicEq?.victorias > 0) recsEq.push({
+    if (topVicEq?.victorias > 0) recs.push({
       id: 'eq_victorias',
       titulo: `${topVicEq.victorias} victorias`,
       nombre: topVicEq.name || '?',
@@ -367,42 +325,7 @@ export default function RecordsPage() {
       color: '#9955ff',
     })
 
-    const topPJEq = [...equiposArr].sort((a, b) => b.pj - a.pj)[0]
-    if (topPJEq?.pj > 0) recsEq.push({
-      id: 'eq_pj',
-      titulo: `${topPJEq.pj} partidos jugados`,
-      nombre: topPJEq.name || '?',
-      subtitulo: 'más partidos en la historia',
-      descripcion: `${topPJEq.victorias}V · ${topPJEq.empates}E · ${topPJEq.derrotas}D`,
-      color: S.cyan,
-    })
-
-    setEquipos(recsEq)
-
-    // ── RÉCORDS DE PARTIDOS ──────────────────────────────
-    const recsPar = []
-
-    const masGolesPar = [...(matches || [])].map(m => ({ ...m, total: (m.home_score || 0) + (m.away_score || 0) })).sort((a, b) => b.total - a.total)[0]
-    if (masGolesPar?.total > 0) recsPar.push({
-      id: 'mas_goles_partido',
-      titulo: `${masGolesPar.total} goles en un partido`,
-      nombre: `${masGolesPar.home?.name} ${masGolesPar.home_score} — ${masGolesPar.away_score} ${masGolesPar.away?.name}`,
-      subtitulo: 'partido más goleador',
-      descripcion: masGolesPar.played_at ? new Date(masGolesPar.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : '',
-      color: '#d93025',
-    })
-
-    const goleada = [...(matches || [])].map(m => ({ ...m, diff: Math.abs((m.home_score || 0) - (m.away_score || 0)) })).sort((a, b) => b.diff - a.diff)[0]
-    if (goleada?.diff >= 2) recsPar.push({
-      id: 'goleada',
-      titulo: `goleada de ${goleada.diff} goles`,
-      nombre: `${goleada.home?.name} ${goleada.home_score} — ${goleada.away_score} ${goleada.away?.name}`,
-      subtitulo: 'mayor goleada de la historia',
-      descripcion: goleada.played_at ? new Date(goleada.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : '',
-      color: '#e8710a',
-    })
-
-    setPartidos(recsPar)
+    return recs
   }
 
   if (loading) return (
@@ -416,14 +339,18 @@ export default function RecordsPage() {
     <div style={{ minHeight: '100vh', background: S.bg, color: S.text }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(180deg, #0a0a14 0%, #07070e 100%)', padding: '36px 16px 28px', textAlign: 'center', borderBottom: `1px solid ${S.border}` }}>
-        <div style={{ fontSize: '.7rem', fontWeight: '800', color: S.cyan, letterSpacing: '5px', marginBottom: '10px' }}>GOLMEBOL</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '8px' }}>
+      <div style={{ background: 'linear-gradient(180deg, #0a0a14 0%, #07070e 100%)', padding: '36px 16px 24px', textAlign: 'center', borderBottom: `1px solid ${S.border}` }}>
+        <div style={{ fontSize: '.7rem', fontWeight: '800', color: S.cyan, letterSpacing: '5px', marginBottom: '12px' }}>GOLMEBOL</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '6px' }}>
           <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.gold})` }}/>
-          <div style={{ fontWeight: '900', color: S.gold, fontSize: '1.8rem', letterSpacing: '.08em' }}>RÉCORDS</div>
+          <div style={{ fontWeight: '900', color: S.gold, fontSize: '1.3rem', letterSpacing: '.06em', textAlign: 'center', lineHeight: 1.3 }}>
+            RECORDS GUINNESS<br/>GOLMEBOL
+          </div>
           <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.gold}, transparent)` }}/>
         </div>
-        <div style={{ fontSize: '.68rem', color: S.muted, letterSpacing: '2px', fontWeight: '700' }}>GUINNESS · GOLMEBOL</div>
+        <div style={{ fontSize: '.65rem', color: S.muted, letterSpacing: '2px', fontWeight: '700', marginTop: '8px' }}>
+          {records.length} RÉCORDS REGISTRADOS
+        </div>
       </div>
 
       {/* Totales */}
@@ -434,28 +361,9 @@ export default function RecordsPage() {
         <StatBox valor={totales.torneos}   label="TORNEOS"   color='#e8710a'/>
       </div>
 
-      <div style={{ paddingTop: '8px', paddingBottom: '32px' }}>
-
-        {/* Jugadores */}
-        {jugadores.length > 0 && (
-          <Carrusel titulo="Récords de jugadores" records={jugadores} colorTitulo={S.cyan}/>
-        )}
-
-        {/* Equipos */}
-        {equipos.length > 0 && (
-          <Carrusel titulo="Récords de equipos" records={equipos} colorTitulo={S.gold}/>
-        )}
-
-        {/* Partidos */}
-        {partidos.length > 0 && (
-          <Carrusel titulo="Récords de partidos" records={partidos} colorTitulo='#e8710a'/>
-        )}
-
-        {/* Históricos */}
-        {historicos.length > 0 && (
-          <Carrusel titulo="Récords históricos" records={historicos} colorTitulo={S.gold}/>
-        )}
-
+      {/* Carrusel único */}
+      <div style={{ padding: '8px 0 32px' }}>
+        <Carrusel records={records}/>
       </div>
 
       {/* Footer login */}
