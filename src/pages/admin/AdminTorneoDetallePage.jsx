@@ -446,6 +446,16 @@ export default function AdminTorneoDetallePage() {
     if (!formPartido.home_team_id || !formPartido.away_team_id) return showMsg('Selecciona los dos equipos', 'error')
     if (formPartido.home_team_id === formPartido.away_team_id) return showMsg('Los equipos no pueden ser iguales', 'error')
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
+    const yaJugaron = partidos.some(p =>
+      (p.home_team_id === formPartido.home_team_id && p.away_team_id === formPartido.away_team_id) ||
+      (p.home_team_id === formPartido.away_team_id && p.away_team_id === formPartido.home_team_id)
+    )
+    if (yaJugaron) {
+      const equipoLocal     = equipos.find(e => e.id === formPartido.home_team_id)?.name || ''
+      const equipoVisitante = equipos.find(e => e.id === formPartido.away_team_id)?.name || ''
+      const confirmar = window.confirm(`⚠️ ${equipoLocal} y ${equipoVisitante} ya se enfrentaron en este torneo.\n\n¿Deseas programar otro partido entre ellos?`)
+      if (!confirmar) return
+    }
     setLoadingPartido(true)
     const { error } = await supabase.from('matches').insert({
       tournament_id: id, home_team_id: formPartido.home_team_id, away_team_id: formPartido.away_team_id,
