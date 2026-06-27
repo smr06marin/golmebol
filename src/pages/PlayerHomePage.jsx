@@ -618,6 +618,7 @@ console.log('torneosData:', torneosData)
                 </div>
               </div>
             </div>
+          </div>
           )}
           <div style={{ padding: '0 16px 8px' }}>
             <button onClick={handleCompartir} disabled={compartiendo}
