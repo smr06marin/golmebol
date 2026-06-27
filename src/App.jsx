@@ -69,13 +69,11 @@ export default function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* Login admin */}
-        <Route path="/login" element={user ? <Navigate to="/" replace/> : <LoginPage/>}/>
+       {/* Redirigir inicio público al login de jugador */}
+<Route path="/" element={<Navigate to="/jugador/login" replace/>}/>
 
-        {/* App admin */}
-        <Route path="/" element={<ProtectedRoute><HomePage cardType={cardType}/></ProtectedRoute>}/>
-        <Route path="/elegir-tarjeta" element={<ProtectedRoute><ElegirTarjetaPage onSelect={setCardType} currentDesign={cardType}/></ProtectedRoute>}/>
-
+{/* Login admin */}
+<Route path="/login" element={user ? <Navigate to="/admin" replace/> : <LoginPage/>}/>
         {/* Panel Admin */}
         <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>
           <Route index                element={<AdminDashboard/>}/>
