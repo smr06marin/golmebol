@@ -49,36 +49,45 @@ function FirmaSlot({ label, firma, onFirmar }) {
 
 // Input de camiseta que permite escribir dos dígitos seguidos sin perder el foco
 function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
-  const [local, setLocal] = useState(String(value ?? ''))
-  const [focused, setFocused] = useState(false)
   const ref = useRef(null)
 
+  // Sincronizar solo cuando cambia desde afuera y no tiene foco
   useEffect(() => {
-    if (!focused) setLocal(String(value ?? ''))
-  }, [value, focused])
+    if (ref.current && document.activeElement !== ref.current) {
+      ref.current.value = String(value ?? '')
+    }
+  }, [value])
 
   function handleChange(e) {
     const val = e.target.value.replace(/\D/g, '').slice(0, 2)
-    setLocal(val)
+    e.target.value = val
+    // Notificar al padre solo cuando llega a 2 dígitos o se borra todo
+    if (val.length === 2 || val.length === 0) onChange(val)
+  }
+
+  function handleBlur(e) {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 2)
     onChange(val)
   }
 
-  function handleFocus() { setFocused(true) }
-  function handleBlur()  { setFocused(false); setLocal(String(value ?? '')) }
+  function handleDoubleClick() {
+    if (ref.current) ref.current.value = ''
+    onChange('')
+    onDoubleClick()
+  }
 
-  const bg    = !local ? '#fff3cd' : repetido ? '#ff4444' : '#111'
-  const color = !local ? '#e8710a' : '#fff'
+  const bg    = !value ? '#fff3cd' : repetido ? '#ff4444' : '#111'
+  const color = !value ? '#e8710a' : '#fff'
 
   return (
     <td style={{ border: '1px solid #000', padding: '1px', background: bg, textAlign: 'center', verticalAlign: 'middle' }}
-      title={repetido ? '⚠ Número repetido' : !local ? 'Número obligatorio' : ''}>
+      title={repetido ? '⚠ Número repetido' : !value ? 'Número obligatorio' : ''}>
       <input
         ref={ref}
-        value={local}
+        defaultValue={String(value ?? '')}
         onChange={handleChange}
-        onFocus={handleFocus}
         onBlur={handleBlur}
-        onDoubleClick={() => { setLocal(''); onDoubleClick() }}
+        onDoubleClick={handleDoubleClick}
         placeholder="N°"
         maxLength={2}
         inputMode="numeric"
