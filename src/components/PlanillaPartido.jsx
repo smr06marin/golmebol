@@ -50,11 +50,12 @@ function FirmaSlot({ label, firma, onFirmar }) {
 // Input de camiseta que permite escribir dos dígitos seguidos sin perder el foco
 function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
   const [local, setLocal] = useState(String(value ?? ''))
+  const [focused, setFocused] = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
-    if (document.activeElement !== ref.current) setLocal(String(value ?? ''))
-  }, [value])
+    if (!focused) setLocal(String(value ?? ''))
+  }, [value, focused])
 
   function handleChange(e) {
     const val = e.target.value.replace(/\D/g, '').slice(0, 2)
@@ -62,7 +63,8 @@ function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
     onChange(val)
   }
 
-  function handleBlur() { setLocal(String(value ?? '')) }
+  function handleFocus() { setFocused(true) }
+  function handleBlur()  { setFocused(false); setLocal(String(value ?? '')) }
 
   const bg    = !local ? '#fff3cd' : repetido ? '#ff4444' : '#111'
   const color = !local ? '#e8710a' : '#fff'
@@ -74,6 +76,7 @@ function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
         ref={ref}
         value={local}
         onChange={handleChange}
+        onFocus={handleFocus}
         onBlur={handleBlur}
         onDoubleClick={() => { setLocal(''); onDoubleClick() }}
         placeholder="N°"
