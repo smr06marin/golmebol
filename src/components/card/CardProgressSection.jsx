@@ -137,6 +137,10 @@ console.log('achievements:', achievements)
       console.log('logrosActivo:', logrosActivo)
       console.log('achMap:', achMap)
       console.log('cache:', cache)
+      console.log('logrosActivo:', logrosActivo)
+console.log('achMap:', achMap)
+console.log('primer logro id:', logrosActivo[0]?.id)
+console.log('existe en achMap:', achMap[logrosActivo[0]?.id])
     setData({
       cards: cards || [],
       levels: levels || [],
