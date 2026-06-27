@@ -78,6 +78,7 @@ export default function PlayerCard({
   playerName      = 'JHONATAN',
   stats           = STATS_DEFAULT,
   cardType        = 'normal_teal',
+  customDesign    = null,
   onStatClick,
   hideShields     = false,
   photoUrlExterno = null,
@@ -93,7 +94,7 @@ export default function PlayerCard({
   const TORNEOS = (torneosData && torneosData.length > 0) ? torneosData : TORNEOS_DEFAULT
   const EQUIPOS = (equiposData && equiposData.length > 0) ? equiposData : EQUIPOS_DEFAULT
 
-  const design    = CARD_DESIGNS.find(d => d.id === cardType) || CARD_DESIGNS[0]
+  const design    = CARD_DESIGNS.find(d => d.id === cardType) || customDesign || CARD_DESIGNS[0]
   const isPremium = design.premium === true
   const fondo     = design.fondo || ['#00e8d8', '#1558e2', '#110450']
   const color     = design.color || '#00ddd0'

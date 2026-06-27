@@ -310,8 +310,7 @@ export default function PlayerHomePage() {
   // Para tarjetas estáticas (CARD_DESIGNS): busca en cardLevelProgress por card_design_id
   // Para tarjetas custom (BD): busca en cardLevelProgress por card_level_id del primer nivel
   function estaDesbloqueada(cardId) {
-    const iniciacion = ['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro']
-    if (iniciacion.includes(cardId)) return true
+    if (cardId === 'nivel1_verde') return true // EL DEBUT siempre libre
     // Tarjeta estática
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
     if (clp) return clp.desbloqueada
@@ -550,15 +549,23 @@ export default function PlayerHomePage() {
               </div>
               <div style={{ width: '100%', position: 'relative', userSelect: 'none' }}>
                 {/* Para tarjetas custom mostramos un placeholder visual */}
-                {previewCard.isCustom ? (
-                  <div style={{ width: '100%', aspectRatio: '2/3', borderRadius: '16px', background: `linear-gradient(135deg, ${previewColor}33, ${previewColor}11)`, border: `2px solid ${previewColor}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                    <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: `${previewColor}33`, border: `2px solid ${previewColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '2.5rem' }}>⭐</span>
-                    </div>
-                    <div style={{ fontWeight: '900', fontSize: '1.4rem', color: previewColor, letterSpacing: '.1em', textAlign: 'center' }}>{previewCard.nombre}</div>
-                    {previewCard.descripcion && <div style={{ fontSize: '.78rem', color: 'rgba(255,255,255,.6)', textAlign: 'center', padding: '0 20px' }}>{previewCard.descripcion}</div>}
-                  </div>
-                ) : (
+                <PlayerCard
+  playerName={nombre}
+  stats={cardStats}
+  cardType={previewCard.id}
+  customDesign={{
+    color: previewCard.color || '#e8710a',
+    colorSecundario: previewCard.color || '#e8710a',
+    fondo: ['#0a0a0a', '#111111', '#080808'],
+    borde: previewCard.color || '#e8710a',
+    nivel: 1,
+    efectos: [],
+    decoracion: null,
+  }}
+  esPortero={esPortero}
+  photoUrlExterno={player.photo_url || null}
+  hideShields={true}
+/>
                   <PlayerCard playerName={nombre} stats={cardStats} cardType={previewCard.id} esPortero={esPortero} photoUrlExterno={player.photo_url || null} hideShields={true}/>
                 )}
                 <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px' }}>
