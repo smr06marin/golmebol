@@ -209,7 +209,22 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
             </span>
           )}
         </div>
-
+{/* Premio desbloqueado */}
+{desbloqueada && (
+          <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
+            <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>
+              🎉 ¡Tarjeta desbloqueada!
+            </div>
+            <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>
+              Envíanos un pantallazo de esta pantalla por WhatsApp y reclama tu premio 👇
+            </div>
+            <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}`}
+              target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none' }}>
+              📲 Reclamar premio en WhatsApp
+            </a>
+          </div>
+        )}
         {/* Barra de progreso */}
         <div style={{ padding: '12px 16px 4px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
