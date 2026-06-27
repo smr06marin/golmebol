@@ -47,23 +47,24 @@ function NotifBanner({ notifs, onDismiss }) {
 export default function PlayerHomePage() {
   const navigate   = useNavigate()
   const cardRef    = useRef(null)
-  const [player,          setPlayer]          = useState(null)
-  const [stats,           setStats]           = useState(null)
-  const [torneos,         setTorneos]         = useState([])
-  const [historial,       setHistorial]       = useState([])
-  const [sponsors,        setSponsors]        = useState([])
+  const [player,            setPlayer]            = useState(null)
+  const [stats,             setStats]             = useState(null)
+  const [torneos,           setTorneos]           = useState([])
+  const [historial,         setHistorial]         = useState([])
+  const [sponsors,          setSponsors]          = useState([])
   const [cardLevelProgress, setCardLevelProgress] = useState([])
-  const [loading,         setLoading]         = useState(true)
-  const [tab,             setTab]             = useState('tarjeta')
-  const [cardType,        setCardType]        = useState('nivel1_verde')
-  const [showSelector,    setShowSelector]    = useState(false)
-  const [guardandoCard,   setGuardandoCard]   = useState(false)
-  const [previewCard,     setPreviewCard]     = useState(null)
-  const [nuevasTarjetas,  setNuevasTarjetas]  = useState([])
-  const [notifIndex,      setNotifIndex]      = useState(0)
-  const [compartiendo,    setCompartiendo]    = useState(false)
-  const [rankingModal,    setRankingModal]    = useState(null)
-  const [notifs,          setNotifs]          = useState([])
+  const [loading,           setLoading]           = useState(true)
+  const [tab,               setTab]               = useState('tarjeta')
+  const [cardType,          setCardType]          = useState('nivel1_verde')
+  const [showSelector,      setShowSelector]      = useState(false)
+  const [guardandoCard,     setGuardandoCard]     = useState(false)
+  const [previewCard,       setPreviewCard]       = useState(null)
+  const [previewLogros,     setPreviewLogros]     = useState([])
+  const [nuevasTarjetas,    setNuevasTarjetas]    = useState([])
+  const [notifIndex,        setNotifIndex]        = useState(0)
+  const [compartiendo,      setCompartiendo]      = useState(false)
+  const [rankingModal,      setRankingModal]      = useState(null)
+  const [notifs,            setNotifs]            = useState([])
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -116,7 +117,6 @@ export default function PlayerHomePage() {
     const { data: spons } = await supabase.from('sponsors').select('*').eq('activo', true)
     setSponsors(spons || [])
 
-    // Nuevo sistema de progreso de tarjetas
     const { data: clp } = await supabase
       .from('player_card_level_progress')
       .select('*, card_levels(card_design_id)')
@@ -129,7 +129,7 @@ export default function PlayerHomePage() {
       .eq('player_id', p.id).eq('activo', true)
     setTorneos(regs || [])
 
-    // ── NOTIFICACIONES IN-APP ──
+    // NOTIFICACIONES
     const notifsList = []
     const dismissed  = JSON.parse(localStorage.getItem('golmebol_notifs_dismissed') || '[]')
 
@@ -148,12 +148,12 @@ export default function PlayerHomePage() {
         .limit(1)
 
       if (proximosPartidos && proximosPartidos.length > 0) {
-        const partido  = proximosPartidos[0]
-        const fecha    = new Date(partido.played_at)
-        const horaStr  = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-        const diffMs   = fecha - ahora
-        const diffH    = Math.floor(diffMs / 3600000)
-        const diffM    = Math.floor((diffMs % 3600000) / 60000)
+        const partido   = proximosPartidos[0]
+        const fecha     = new Date(partido.played_at)
+        const horaStr   = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        const diffMs    = fecha - ahora
+        const diffH     = Math.floor(diffMs / 3600000)
+        const diffM     = Math.floor((diffMs % 3600000) / 60000)
         const tiempoStr = diffH > 0 ? `en ${diffH}h ${diffM}min` : `en ${diffM} min`
         const nid = `partido_${partido.id}`
         if (!dismissed.includes(nid)) {
@@ -207,7 +207,6 @@ export default function PlayerHomePage() {
 
     setNotifs(notifsList)
 
-    // Notificación tarjetas nuevas desbloqueadas
     if (clp && clp.length > 0) {
       const vistas = p.tarjetas_vistas || []
       const nuevas = clp
@@ -230,8 +229,8 @@ export default function PlayerHomePage() {
     if (notifIndex < nuevasTarjetas.length - 1) {
       setNotifIndex(i => i + 1)
     } else {
-      const vistas    = player.tarjetas_vistas || []
-      const nuevasIds = nuevasTarjetas.map(t => t.id)
+      const vistas      = player.tarjetas_vistas || []
+      const nuevasIds   = nuevasTarjetas.map(t => t.id)
       const todasVistas = [...new Set([...vistas, ...nuevasIds])]
       await supabase.from('players').update({ tarjetas_vistas: todasVistas }).eq('id', player.id)
       setNuevasTarjetas([])
@@ -263,7 +262,15 @@ export default function PlayerHomePage() {
     setCompartiendo(false)
   }
 
-  // ── Nuevo sistema: desbloqueo por logros ──
+  function getPosicionTipo(p) {
+    if (!p) return 'campo'
+    const pos = p.posicion_futbol5 || p.posicion_futbol7 || p.posicion_futbol11 || ''
+    if (pos === 'Portero') return 'arquero'
+    const defensas = ['Cierre','Defensa central','Lateral derecho','Lateral izquierdo','Mediocampista defensivo']
+    if (defensas.some(d => pos.includes(d))) return 'defensa'
+    return 'campo'
+  }
+
   function estaDesbloqueada(cardId) {
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
     if (clp) return clp.desbloqueada
@@ -276,18 +283,67 @@ export default function PlayerHomePage() {
       const requeridos  = 3
       const completados = clp.logros_completados || 0
       const pct         = Math.min(100, Math.round((completados / requeridos) * 100))
-      return {
-        actual: completados,
-        meta: requeridos,
-        sufijo: ' logros',
-        pct,
-        descripcion: `Completa ${requeridos} de 5 logros para desbloquear`,
-      }
+      return { actual: completados, meta: requeridos, sufijo: ' logros', pct, descripcion: 'Completa 3 de 5 logros para desbloquear' }
     }
     return null
   }
 
   function getSponsor(cardId) { return sponsors.find(s => s.card_id === cardId) || null }
+
+  async function fetchLogrosPreview(cardId) {
+    const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
+    if (!clp || !player) return
+
+    const pos = getPosicionTipo(player)
+
+    const { data: logros } = await supabase
+      .from('achievements')
+      .select('*')
+      .eq('card_level_id', clp.card_level_id)
+      .in('tipo', ['universal', pos])
+      .order('orden')
+
+    if (!logros || logros.length === 0) return
+
+    const { data: progreso } = await supabase
+      .from('player_achievement_progress')
+      .select('*')
+      .eq('player_id', player.id)
+      .in('achievement_id', logros.map(l => l.id))
+
+    const progresoMap = {}
+    ;(progreso || []).forEach(p => { progresoMap[p.achievement_id] = p })
+
+    const { data: cache } = await supabase
+      .from('player_stats_cache')
+      .select('*')
+      .eq('player_id', player.id)
+      .single()
+
+    const statValor = (key) => ({
+      pj:                       cache?.pj,
+      victorias:                cache?.victorias,
+      goles:                    cache?.goles,
+      dobletes:                 cache?.dobletes,
+      hat_tricks:               cache?.hat_tricks,
+      racha_goles_actual:       cache?.racha_goles_actual,
+      racha_victorias_actual:   cache?.racha_victorias_actual,
+      arcos_cero:               cache?.arcos_cero,
+      partidos_sin_tarjetas:    cache?.partidos_sin_tarjetas,
+      campeonatos:              cache?.campeonatos,
+      mejor_arquero_count:      cache?.mejor_arquero_count,
+      valla_menos_vencida_count: cache?.valla_menos_vencida_count,
+      goleador_torneo_count:    cache?.goleador_torneo_count,
+    }[key] || 0)
+
+    setPreviewLogros(logros.map(l => ({
+      nombre:      l.nombre,
+      tipo:        l.tipo,
+      completado:  progresoMap[l.id]?.completado || false,
+      valorActual: statValor(l.stat_key),
+      meta:        Number(l.meta),
+    })))
+  }
 
   async function handleSeleccionarTarjeta(id) {
     if (!estaDesbloqueada(id)) return
@@ -298,7 +354,12 @@ export default function PlayerHomePage() {
 
   function handleClickTarjeta(d) {
     if (estaDesbloqueada(d.id)) handleSeleccionarTarjeta(d.id)
-    else { setPreviewCard(d); setShowSelector(false) }
+    else {
+      setPreviewCard(d)
+      setPreviewLogros([])
+      fetchLogrosPreview(d.id)
+      setShowSelector(false)
+    }
   }
 
   if (loading) return (
@@ -341,10 +402,10 @@ export default function PlayerHomePage() {
   const tarjetasDesbloqueadas = CARD_DESIGNS.filter(d => estaDesbloqueada(d.id))
 
   const GRUPOS = [
-    { label: 'Iniciación',  ids: CARD_DESIGNS.filter(d => d.nivel === 1).map(d => d.id), color: '#00ee55' },
-    { label: 'Competidor',  ids: CARD_DESIGNS.filter(d => d.nivel === 2).map(d => d.id), color: '#4488FF' },
-    { label: 'Élite',       ids: CARD_DESIGNS.filter(d => d.nivel === 3).map(d => d.id), color: '#9955ff' },
-    { label: 'Leyenda',     ids: CARD_DESIGNS.filter(d => d.nivel === 6).map(d => d.id), color: '#f9a825' },
+    { label: 'Iniciación', ids: CARD_DESIGNS.filter(d => d.nivel === 1).map(d => d.id), color: '#00ee55' },
+    { label: 'Competidor', ids: CARD_DESIGNS.filter(d => d.nivel === 2).map(d => d.id), color: '#4488FF' },
+    { label: 'Élite',      ids: CARD_DESIGNS.filter(d => d.nivel === 3).map(d => d.id), color: '#9955ff' },
+    { label: 'Leyenda',    ids: CARD_DESIGNS.filter(d => d.nivel === 6).map(d => d.id), color: '#f9a825' },
   ]
 
   const tarjetaNotif = nuevasTarjetas[notifIndex]
@@ -428,11 +489,39 @@ export default function PlayerHomePage() {
                     <div style={{ background: '#f1f3f4', borderRadius: '10px', height: '8px', overflow: 'hidden', marginBottom: '8px' }}>
                       <div style={{ height: '100%', width: `${prog.pct}%`, background: 'linear-gradient(90deg,#1a73e8,#6c35de)', borderRadius: '10px' }}/>
                     </div>
-                    <div style={{ fontSize: '.72rem', color: prog.pct >= 80 ? '#1e8e3e' : '#9aa0a6', textAlign: 'center', fontWeight: '500' }}>
+                    <div style={{ fontSize: '.72rem', color: prog.pct >= 80 ? '#1e8e3e' : '#9aa0a6', textAlign: 'center', fontWeight: '500', marginBottom: previewLogros.length > 0 ? '12px' : '0' }}>
                       {prog.pct}% completado {prog.pct >= 80 ? '🔥 ¡Ya casi!' : ''}
                     </div>
                   </>
                 )}
+
+                {/* Lista de logros */}
+                {previewLogros.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>LOGROS REQUERIDOS</div>
+                    {previewLogros.map((l, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '8px', background: l.completado ? '#e6f4ea' : '#f8f9fa', border: `1px solid ${l.completado ? '#1e8e3e33' : '#e8eaed'}` }}>
+                        <span style={{ fontSize: '.85rem', flexShrink: 0 }}>{l.completado ? '✅' : l.tipo === 'universal' ? '⭐' : l.tipo === 'arquero' ? '🧤' : l.tipo === 'defensa' ? '🛡️' : '⚽'}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '.76rem', fontWeight: '500', color: l.completado ? '#1e8e3e' : '#202124' }}>{l.nombre}</div>
+                          {!l.completado && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                              <div style={{ flex: 1, background: '#e8eaed', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.min(100, Math.round((l.valorActual / l.meta) * 100))}%`, background: '#1a73e8', borderRadius: '4px' }}/>
+                              </div>
+                              <span style={{ fontSize: '.62rem', color: '#9aa0a6', flexShrink: 0 }}>{l.valorActual}/{l.meta}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {previewLogros.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '8px', color: '#9aa0a6', fontSize: '.72rem' }}>Cargando logros...</div>
+                )}
+
                 {sponsor && (
                   <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f3f4', fontSize: '.7rem', color: '#9aa0a6', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     {sponsor.logo_url && <img src={sponsor.logo_url} style={{ height: '14px', objectFit: 'contain' }}/>}
@@ -518,7 +607,6 @@ export default function PlayerHomePage() {
         </div>
       </div>
 
-      {/* BANNERS NOTIFICACIONES */}
       <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>
 
       {/* Tabs */}
@@ -534,7 +622,7 @@ export default function PlayerHomePage() {
         ))}
       </div>
 
-      {/* ── MI TARJETA ── */}
+      {/* MI TARJETA */}
       {tab === 'tarjeta' && (
         <div>
           <div style={{ background: `radial-gradient(ellipse 85% 50% at 50% -5%, ${cardColor}22 0%, transparent 62%), #07070e`, padding: '12px 16px 20px' }}>
@@ -594,7 +682,7 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      {/* ── HISTORIAL ── */}
+      {/* HISTORIAL */}
       {tab === 'historial' && (
         <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto' }}>
           <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124', marginBottom: '12px' }}>
@@ -661,7 +749,7 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      {/* ── PREDIX ── */}
+      {/* PREDIX */}
       {tab === 'predix' && (
         <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
           <button onClick={() => navigate('/jugador/noticias')}
