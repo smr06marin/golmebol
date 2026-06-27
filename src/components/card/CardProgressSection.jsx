@@ -180,7 +180,8 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   const logrosCompletos = logrosActivo.filter(a => achMap[a.id]?.completado).length
   const totalLogros   = logrosActivo.length
   const requeridos    = subnivel_activo.logros_requeridos || 3
-  const desbloqueada  = subnivel_activo.prog?.desbloqueada || logrosCompletos >= requeridos
+  const desbloqueada      = subnivel_activo.prog?.desbloqueada || logrosCompletos >= requeridos
+const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro'].includes(subnivel_activo.card_design_id)
   const pct           = totalLogros > 0 ? Math.round((logrosCompletos / requeridos) * 100) : 0
 
   // Subnivel siguiente logros
@@ -210,7 +211,7 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
           )}
         </div>
 {/* Premio desbloqueado */}
-{desbloqueada && (
+{desbloquedaLogros && (
           <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
             <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>
               🎉 ¡Tarjeta desbloqueada!
