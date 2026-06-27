@@ -6,6 +6,7 @@ import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import html2canvas from 'html2canvas'
 import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
+import SponsorSplash from '../components/card/SponsorSplash'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
@@ -65,6 +66,8 @@ export default function PlayerHomePage() {
   const [compartiendo,      setCompartiendo]      = useState(false)
   const [rankingModal,      setRankingModal]      = useState(null)
   const [notifs,            setNotifs]            = useState([])
+  const [splashPreview,  setSplashPreview]  = useState(null)
+const [pendingPreview, setPendingPreview] = useState(null)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -352,13 +355,20 @@ export default function PlayerHomePage() {
     setGuardandoCard(false); setShowSelector(false)
   }
 
-  function handleClickTarjeta(d) {
+  async function handleClickTarjeta(d) {
     if (estaDesbloqueada(d.id)) handleSeleccionarTarjeta(d.id)
     else {
-      setPreviewCard(d)
-      setPreviewLogros([])
-      fetchLogrosPreview(d.id)
       setShowSelector(false)
+      const sponsor    = getSponsor(d.id)
+      const cardDesign = CARD_DESIGNS.find(x => x.id === d.id)
+      if (sponsor) {
+        setSplashPreview({ sponsor, cardColor: cardDesign?.color || '#00ee55', cardNombre: cardDesign?.nombre || '' })
+        setPendingPreview(d)
+      } else {
+        setPreviewCard(d)
+        setPreviewLogros([])
+        fetchLogrosPreview(d.id)
+      }
     }
   }
 
@@ -443,7 +453,20 @@ export default function PlayerHomePage() {
           </div>
         </div>
       )}
-
+{splashPreview && (
+        <SponsorSplash
+          sponsor={splashPreview.sponsor}
+          cardColor={splashPreview.cardColor}
+          cardNombre={splashPreview.cardNombre}
+          onDone={() => {
+            setSplashPreview(null)
+            setPreviewCard(pendingPreview)
+            setPreviewLogros([])
+            fetchLogrosPreview(pendingPreview.id)
+            setPendingPreview(null)
+          }}
+        />
+      )}
       {/* PREVIEW TARJETA BLOQUEADA */}
       {previewCard && (() => {
         const prog      = getProgreso(previewCard.id)
