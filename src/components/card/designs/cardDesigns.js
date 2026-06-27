@@ -1,10 +1,10 @@
 export const CARD_DESIGNS = [
   // ══════════════════════════════
-  // NIVEL 1 — INICIO
+  // INICIACIÓN — 5 subniveles
   // ══════════════════════════════
   {
     id: 'nivel1_verde',
-    nombre: 'INICIO VERDE',
+    nombre: 'EL DEBUT',
     nivel: 1,
     background: 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=80',
     color: '#00ee55',
@@ -18,7 +18,7 @@ export const CARD_DESIGNS = [
   },
   {
     id: 'nivel1_azul',
-    nombre: 'INICIO AZUL',
+    nombre: 'EL HAMBRE',
     nivel: 1,
     background: 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=80',
     color: '#0099ff',
@@ -32,7 +32,7 @@ export const CARD_DESIGNS = [
   },
   {
     id: 'nivel1_bronce',
-    nombre: 'INICIO BRONCE',
+    nombre: 'EL RITMO',
     nivel: 1,
     background: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=80',
     color: '#dd8833',
@@ -46,7 +46,7 @@ export const CARD_DESIGNS = [
   },
   {
     id: 'nivel1_plata',
-    nombre: 'INICIO PLATA',
+    nombre: 'EL DEPREDADOR',
     nivel: 1,
     background: 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=80',
     color: '#cccccc',
@@ -60,7 +60,7 @@ export const CARD_DESIGNS = [
   },
   {
     id: 'nivel1_oro',
-    nombre: 'INICIO ORO',
+    nombre: 'EL VETERANO',
     nivel: 1,
     background: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=80',
     color: '#ffcc00',
@@ -74,11 +74,11 @@ export const CARD_DESIGNS = [
   },
 
   // ══════════════════════════════
-  // NIVEL 2 — (10 PJ) — 5 subniveles
+  // COMPETIDOR — 5 subniveles
   // ══════════════════════════════
   {
     id: 'nivel2_inicio',
-    nombre: 'NIVEL 2',
+    nombre: 'EL CONTENDIENTE',
     nivel: 2,
     subnivel: 'inicio',
     color: '#4488FF',
@@ -89,13 +89,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel2Variant: 'inicio',
     bloqueado: true,
-    requisito: '10 PJ jugados',
+    requisito: 'Completa 3 logros de Competidor I',
     progreso_key: 'pj',
     progreso_meta: 10,
   },
   {
     id: 'nivel2_bronce',
-    nombre: 'NIVEL 2 BRONCE',
+    nombre: 'EL CENTENARIO',
     nivel: 2,
     subnivel: 'bronce',
     color: '#CC6622',
@@ -106,13 +106,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel2Variant: 'bronce',
     bloqueado: true,
-    requisito: '10 PJ jugados',
+    requisito: 'Completa 3 logros de Competidor II',
     progreso_key: 'pj',
     progreso_meta: 10,
   },
   {
     id: 'nivel2_plata',
-    nombre: 'NIVEL 2 PLATA',
+    nombre: 'EL IMPARABLE',
     nivel: 2,
     subnivel: 'plata',
     color: '#AAAACC',
@@ -123,13 +123,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel2Variant: 'plata',
     bloqueado: true,
-    requisito: '10 PJ jugados',
+    requisito: 'Completa 3 logros de Competidor III',
     progreso_key: 'pj',
     progreso_meta: 10,
   },
   {
     id: 'nivel2_oro',
-    nombre: 'NIVEL 2 ORO',
+    nombre: 'EL DOMINADOR',
     nivel: 2,
     subnivel: 'oro',
     color: '#FFCC00',
@@ -140,13 +140,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel2Variant: 'oro',
     bloqueado: true,
-    requisito: '10 PJ jugados',
+    requisito: 'Completa 3 logros de Competidor IV',
     progreso_key: 'pj',
     progreso_meta: 10,
   },
   {
     id: 'nivel2_legendario',
-    nombre: 'NIVEL 2 LEGENDARIO',
+    nombre: 'EL CAMPEADOR',
     nivel: 2,
     subnivel: 'legendario',
     color: '#00CC66',
@@ -157,17 +157,17 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel2Variant: 'legendario',
     bloqueado: true,
-    requisito: '10 PJ jugados',
+    requisito: 'Completa 3 logros de Competidor V',
     progreso_key: 'pj',
     progreso_meta: 10,
   },
 
   // ══════════════════════════════
-  // NIVEL 3 — (25 PJ) — 5 subniveles
+  // ÉLITE — 5 subniveles
   // ══════════════════════════════
   {
     id: 'nivel3_inicio',
-    nombre: 'NIVEL 3',
+    nombre: 'EL ELEGIDO',
     nivel: 3,
     subnivel: 'inicio',
     color: '#4488FF',
@@ -178,13 +178,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel3Variant: 'inicio',
     bloqueado: true,
-    requisito: '25 PJ jugados',
+    requisito: 'Completa 3 logros de Élite I',
     progreso_key: 'pj',
     progreso_meta: 25,
   },
   {
     id: 'nivel3_bronce',
-    nombre: 'NIVEL 3 BRONCE',
+    nombre: 'EL MAESTRO',
     nivel: 3,
     subnivel: 'bronce',
     color: '#CC6622',
@@ -195,13 +195,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel3Variant: 'bronce',
     bloqueado: true,
-    requisito: '25 PJ jugados',
+    requisito: 'Completa 3 logros de Élite II',
     progreso_key: 'pj',
     progreso_meta: 25,
   },
   {
     id: 'nivel3_plata',
-    nombre: 'NIVEL 3 PLATA',
+    nombre: 'EL INTOCABLE',
     nivel: 3,
     subnivel: 'plata',
     color: '#AAAACC',
@@ -212,13 +212,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel3Variant: 'plata',
     bloqueado: true,
-    requisito: '25 PJ jugados',
+    requisito: 'Completa 3 logros de Élite III',
     progreso_key: 'pj',
     progreso_meta: 25,
   },
   {
     id: 'nivel3_oro',
-    nombre: 'NIVEL 3 ORO',
+    nombre: 'EL FENÓMENO',
     nivel: 3,
     subnivel: 'oro',
     color: '#FFCC00',
@@ -229,13 +229,13 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel3Variant: 'oro',
     bloqueado: true,
-    requisito: '25 PJ jugados',
+    requisito: 'Completa 3 logros de Élite IV',
     progreso_key: 'pj',
     progreso_meta: 25,
   },
   {
     id: 'nivel3_legendario',
-    nombre: 'NIVEL 3 LEGENDARIO',
+    nombre: 'LA MÁQUINA',
     nivel: 3,
     subnivel: 'legendario',
     color: '#00CC66',
@@ -246,18 +246,17 @@ export const CARD_DESIGNS = [
     efectos: [],
     nivel3Variant: 'legendario',
     bloqueado: true,
-    requisito: '25 PJ jugados',
+    requisito: 'Completa 3 logros de Élite V',
     progreso_key: 'pj',
     progreso_meta: 25,
   },
 
-
   // ══════════════════════════════
-  // NIVEL 6 — PREMIUM (5 subniveles)
+  // LEYENDA — 5 subniveles
   // ══════════════════════════════
   {
     id: 'premium_inicio',
-    nombre: 'PREMIUM',
+    nombre: 'EL INMORTAL',
     nivel: 6,
     subnivel: 'inicio',
     color: '#D6B65D',
@@ -269,13 +268,13 @@ export const CARD_DESIGNS = [
     premium: true,
     premiumVariant: 'inicio',
     bloqueado: true,
-    requisito: '5 títulos + 100 PJ',
+    requisito: 'Completa 3 logros de Leyenda I',
     progreso_key: 'leyenda',
     progreso_meta: 1,
   },
   {
     id: 'premium_bronce',
-    nombre: 'PREMIUM BRONCE',
+    nombre: 'EL HISTÓRICO',
     nivel: 6,
     subnivel: 'bronce',
     color: '#C88830',
@@ -287,13 +286,13 @@ export const CARD_DESIGNS = [
     premium: true,
     premiumVariant: 'bronce',
     bloqueado: true,
-    requisito: '5 títulos + 100 PJ',
+    requisito: 'Completa 3 logros de Leyenda II',
     progreso_key: 'leyenda',
     progreso_meta: 1,
   },
   {
     id: 'premium_plata',
-    nombre: 'PREMIUM PLATA',
+    nombre: 'EL MITO',
     nivel: 6,
     subnivel: 'plata',
     color: '#B0C8FF',
@@ -305,13 +304,13 @@ export const CARD_DESIGNS = [
     premium: true,
     premiumVariant: 'plata',
     bloqueado: true,
-    requisito: '5 títulos + 100 PJ',
+    requisito: 'Completa 3 logros de Leyenda III',
     progreso_key: 'leyenda',
     progreso_meta: 1,
   },
   {
     id: 'premium_oro',
-    nombre: 'PREMIUM ORO',
+    nombre: 'EL ETERNO',
     nivel: 6,
     subnivel: 'oro',
     color: '#F8E460',
@@ -323,13 +322,13 @@ export const CARD_DESIGNS = [
     premium: true,
     premiumVariant: 'oro',
     bloqueado: true,
-    requisito: '5 títulos + 100 PJ',
+    requisito: 'Completa 3 logros de Leyenda IV',
     progreso_key: 'leyenda',
     progreso_meta: 1,
   },
   {
     id: 'premium_legendario',
-    nombre: 'LEGENDARIO',
+    nombre: 'LA LEYENDA',
     nivel: 6,
     subnivel: 'legendario',
     color: '#FFF5A0',
@@ -341,16 +340,16 @@ export const CARD_DESIGNS = [
     premium: true,
     premiumVariant: 'legendario',
     bloqueado: true,
-    requisito: '5 títulos + 100 PJ',
+    requisito: 'Completa 3 logros de Leyenda V',
     progreso_key: 'leyenda',
     progreso_meta: 1,
   },
 ]
 
 export const NIVEL_NOMBRES = {
-  1: 'NORMAL',
-  2: 'BRONCE',
-  3: 'PLATA',
+  1: 'INICIACIÓN',
+  2: 'COMPETIDOR',
+  3: 'ÉLITE',
   4: 'ORO',
   5: 'ÉLITE',
   6: 'LEYENDA',
