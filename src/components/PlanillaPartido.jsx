@@ -283,6 +283,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [horaFin2,         setHoraFin2]         = useState('')
 
   const localKey       = `planilla_${partido.id}`
+  const cacheJugsKey   = `planilla_jugs_${partido.tournament_id}_${partido.id}`
   const limiteSegundos = duracionMinutos * 60 + tiempoExtra * 60
 
   useEffect(() => {
@@ -356,6 +357,57 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   async function fetchTodo() {
     setLoading(true)
+
+    // Sin internet → cargar desde caché local
+    if (!navigator.onLine) {
+      try {
+        const snap = localStorage.getItem(localKey)
+        const cache = localStorage.getItem(cacheJugsKey)
+        if (snap) {
+          const s = JSON.parse(snap)
+          setJugadoresLocal(s.jugadoresLocal || [])
+          setJugadoresVisitante(s.jugadoresVisitante || [])
+          setGolesLocal(s.golesLocal || Array(24).fill(null))
+          setGolesVisitante(s.golesVisitante || Array(24).fill(null))
+          setFaltasAcumLocal(s.faltasAcumLocal || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
+          setFaltasAcumVis(s.faltasAcumVis || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
+          setFinalistasLocal(s.finalistasLocal || Array(5).fill(''))
+          setFinalistasVis(s.finalistasVis || Array(5).fill(''))
+          setIngresosLocal(s.ingresosLocal || Array(7).fill(''))
+          setIngresosVis(s.ingresosVis || Array(7).fill(''))
+          setCuerpoLocal(s.cuerpoLocal || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+          setCuerpoVis(s.cuerpoVis || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+          setArbitro1(s.arbitro1 || '')
+          setArbitro2(s.arbitro2 || '')
+          setAnotador(s.anotador || '')
+          setCronometroNombre(s.cronometroNombre || '')
+          setObservaciones(s.observaciones || '')
+          setHoraInicio1(s.horaInicio1 || '')
+          setHoraFin1(s.horaFin1 || '')
+          setHoraInicio2(s.horaInicio2 || '')
+          setHoraFin2(s.horaFin2 || '')
+          setTiroInicial(s.tiroInicial || null)
+          setColorLocal(s.colorLocal || '#1a3a8a')
+          setColorVisitante(s.colorVisitante || '#d93025')
+          if (s.mvpId) setMvpId(s.mvpId)
+          const dur = s.duracionMinutos || 20
+          setDuracionMinutos(dur); setDuracionInput(String(dur))
+          setHayDatosLocales(true)
+        } else if (cache) {
+          // Hay caché de jugadores pero no planilla en progreso
+          const c = JSON.parse(cache)
+          setJugadoresLocal(c.jugadoresLocal || [])
+          setJugadoresVisitante(c.jugadoresVisitante || [])
+          setArbitros(c.arbitros || [])
+          setTorneo(c.torneo || null)
+          const dur = c.duracion || 20
+          setDuracionMinutos(dur); setDuracionInput(String(dur))
+        }
+      } catch(e) {}
+      setLoading(false)
+      return
+    }
+
     const [jugsL, jugsV, arbs, torn, eventos, statsDB, logrosDB] = await Promise.all([
       supabase.from('tournament_player_registrations')
         .select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
@@ -520,6 +572,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
     setArbitros(arbs.data || [])
     setTorneo(torneoData)
+
+    // Guardar caché de jugadores para uso offline
+    try {
+      localStorage.setItem(cacheJugsKey, JSON.stringify({
+        jugadoresLocal:     jugsLocalBase,
+        jugadoresVisitante: jugsVisBase,
+        arbitros:           arbs.data || [],
+        torneo:             torneoData,
+        duracion:           getDefaultDuracion(torneoData?.modalidad),
+        savedAt:            new Date().toISOString(),
+      }))
+    } catch(e) {}
+
     setLoading(false)
   }
 
@@ -1117,7 +1182,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '8px' }}>
             <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>📋 {partido.home?.name} vs {partido.away?.name}</span>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet — guardando localmente</span>}
+              {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet — todo se guarda localmente</span>}
               {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales listos para sincronizar</span>}
               {mvpId && (
                 <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff8e1', borderRadius: '6px', padding: '4px 10px', fontWeight: '600', border: '1px solid #ffe082' }}>
