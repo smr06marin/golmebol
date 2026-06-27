@@ -411,7 +411,7 @@ export default function PlayerHomePage() {
     if (estaDesbloqueada(d.id)) handleSeleccionarTarjeta(d.id)
     else {
       setShowSelector(false)
-      const sponsor    = getSponsor(d.id)
+      const sponsor = d.isCustom ? getSponsor(`custom_${d.id}`) : getSponsor(d.id)
       const color      = d.color || '#00ee55'
       const nombre_    = d.nombre || ''
       if (sponsor) {
@@ -536,7 +536,7 @@ export default function PlayerHomePage() {
       {/* PREVIEW TARJETA BLOQUEADA */}
       {previewCard && (() => {
         const prog      = getProgreso(previewCard.id)
-        const sponsor   = getSponsor(previewCard.id)
+        const sponsor = previewCard.isCustom ? getSponsor(`custom_${previewCard.id}`) : getSponsor(previewCard.id)
         const marcaAgua = sponsor?.nombre || 'GOLMEBOL'
         const previewColor = previewCard.color || '#00ee55'
         return (
