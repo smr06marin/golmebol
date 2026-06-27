@@ -566,7 +566,6 @@ export default function PlayerHomePage() {
   photoUrlExterno={player.photo_url || null}
   hideShields={true}
 />
-                )}
                 <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px' }}>
                   {[...Array(10)].map((_, row) => (
                     <div key={row} style={{ position: 'absolute', top: `${row * 13 - 10}%`, left: '-30%', width: '160%', display: 'flex', gap: '32px', transform: 'rotate(-35deg)', whiteSpace: 'nowrap' }}>
