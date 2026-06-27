@@ -6,6 +6,7 @@ import { useAuthStore } from './store/authStore'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import PlayerLoginPage from './pages/PlayerLoginPage'
+import RecordsPage from './pages/RecordsPage'
 import PlayerHomePage from './pages/PlayerHomePage'
 import ElegirTarjetaPage from './pages/ElegirTarjetaPage'
 import AdminLayout from './pages/admin/AdminLayout'
@@ -99,6 +100,8 @@ export default function App() {
         <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage modoLectura={true}/></PlayerRoute>}/>
 
         {/* Portal jugador */}
+        <Route path="/" element={<RecordsPage />} />
+<Route path="/records" element={<RecordsPage />} />
         <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
         <Route path="/jugador"            element={<PlayerRoute><PlayerHomePage/></PlayerRoute>}/>
         <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
