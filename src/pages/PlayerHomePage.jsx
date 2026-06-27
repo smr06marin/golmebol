@@ -601,12 +601,12 @@ console.log('torneosData:', torneosData)
               />
             </div>
           </div>
-          {player.fecha_vencimiento && (
-            <CardProgressSection
+          <CardProgressSection
             playerId={player.id}
             esPortero={esPortero}
             posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
           />
+          {player.fecha_vencimiento && (
           <div style={{ padding: '0 16px 16px' }}>
             <div style={{ padding: '10px 16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
