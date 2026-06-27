@@ -54,6 +54,7 @@ export default function PlayerHomePage() {
   const [historial,         setHistorial]         = useState([])
   const [sponsors,          setSponsors]          = useState([])
   const [cardLevelProgress, setCardLevelProgress] = useState([])
+  const [tarjetasCustom,    setTarjetasCustom]    = useState([]) // tarjetas custom de BD
   const [loading,           setLoading]           = useState(true)
   const [tab,               setTab]               = useState('tarjeta')
   const [cardType,          setCardType]          = useState('nivel1_verde')
@@ -66,8 +67,9 @@ export default function PlayerHomePage() {
   const [compartiendo,      setCompartiendo]      = useState(false)
   const [rankingModal,      setRankingModal]      = useState(null)
   const [notifs,            setNotifs]            = useState([])
-  const [splashPreview,  setSplashPreview]  = useState(null)
-const [pendingPreview, setPendingPreview] = useState(null)
+  const [splashPreview,     setSplashPreview]     = useState(null)
+  const [pendingPreview,    setPendingPreview]    = useState(null)
+  const [splash,            setSplash]            = useState(null)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -122,9 +124,17 @@ const [pendingPreview, setPendingPreview] = useState(null)
 
     const { data: clp } = await supabase
       .from('player_card_level_progress')
-      .select('*, card_levels(card_design_id)')
+      .select('*, card_levels(card_design_id, card_id, logros_requeridos)')
       .eq('player_id', p.id)
     setCardLevelProgress(clp || [])
+
+    // Tarjetas custom de BD (orden > 4)
+    const { data: customCards } = await supabase
+      .from('cards')
+      .select('*, card_levels(*)')
+      .gt('orden', 4)
+      .order('orden')
+    setTarjetasCustom(customCards || [])
 
     const { data: regs } = await supabase
       .from('tournament_player_registrations')
@@ -208,6 +218,28 @@ const [pendingPreview, setPendingPreview] = useState(null)
       }
     }
 
+    // Notificaciones de nuevas tarjetas custom
+    if (customCards && customCards.length > 0) {
+      const { data: playerNotifs } = await supabase
+        .from('player_notifications')
+        .select('*')
+        .eq('player_id', p.id)
+        .eq('tipo', 'nueva_tarjeta')
+        .eq('leida', false)
+      ;(playerNotifs || []).forEach(n => {
+        const nid = `nueva_tarjeta_${n.id}`
+        if (!dismissed.includes(nid)) {
+          notifsList.push({
+            id: nid, icon: '⭐',
+            titulo: n.titulo,
+            texto: n.mensaje,
+            color: '#e8710a', bg: '#fff8f0',
+            accion: { label: 'Ver tarjetas', fn: () => setShowSelector(true) },
+          })
+        }
+      })
+    }
+
     setNotifs(notifsList)
 
     if (clp && clp.length > 0) {
@@ -274,19 +306,43 @@ const [pendingPreview, setPendingPreview] = useState(null)
     return 'campo'
   }
 
+  // Verifica si una tarjeta está desbloqueada
+  // Para tarjetas estáticas (CARD_DESIGNS): busca en cardLevelProgress por card_design_id
+  // Para tarjetas custom (BD): busca en cardLevelProgress por card_level_id del primer nivel
   function estaDesbloqueada(cardId) {
+    const iniciacion = ['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro']
+    if (iniciacion.includes(cardId)) return true
+    // Tarjeta estática
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
     if (clp) return clp.desbloqueada
+    // Tarjeta custom — cardId es el card_id de la tabla cards
+    const custom = tarjetasCustom.find(c => c.id === cardId)
+    if (custom && custom.card_levels?.length > 0) {
+      const levelId = custom.card_levels[0].id
+      const clpCustom = cardLevelProgress.find(p => p.card_level_id === levelId)
+      return clpCustom?.desbloqueada || false
+    }
     return false
   }
 
   function getProgreso(cardId) {
+    // Tarjeta estática
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
     if (clp) {
-      const requeridos  = 3
+      const requeridos  = clp.card_levels?.logros_requeridos || 3
       const completados = clp.logros_completados || 0
       const pct         = Math.min(100, Math.round((completados / requeridos) * 100))
-      return { actual: completados, meta: requeridos, sufijo: ' logros', pct, descripcion: 'Completa 3 de 5 logros para desbloquear' }
+      return { actual: completados, meta: requeridos, sufijo: ' logros', pct, descripcion: `Completa ${requeridos} de 5 logros para desbloquear` }
+    }
+    // Tarjeta custom
+    const custom = tarjetasCustom.find(c => c.id === cardId)
+    if (custom && custom.card_levels?.length > 0) {
+      const level     = custom.card_levels[0]
+      const clpCustom = cardLevelProgress.find(p => p.card_level_id === level.id)
+      const requeridos  = level.logros_requeridos || 3
+      const completados = clpCustom?.logros_completados || 0
+      const pct         = Math.min(100, Math.round((completados / requeridos) * 100))
+      return { actual: completados, meta: requeridos, sufijo: ' logros', pct, descripcion: `Completa ${requeridos} logros para desbloquear` }
     }
     return null
   }
@@ -294,23 +350,28 @@ const [pendingPreview, setPendingPreview] = useState(null)
   function getSponsor(cardId) { return sponsors.find(s => s.card_id === cardId) || null }
 
   async function fetchLogrosPreview(cardId) {
+    // Buscar card_level_id — puede ser estático o custom
+    let levelId = null
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
-    if (!clp || !player) return
+    if (clp) {
+      levelId = clp.card_level_id
+    } else {
+      const custom = tarjetasCustom.find(c => c.id === cardId)
+      if (custom && custom.card_levels?.length > 0) levelId = custom.card_levels[0].id
+    }
+    if (!levelId || !player) return
 
     const pos = getPosicionTipo(player)
-
     const { data: logros } = await supabase
-      .from('achievements')
-      .select('*')
-      .eq('card_level_id', clp.card_level_id)
+      .from('achievements').select('*')
+      .eq('card_level_id', levelId)
       .in('tipo', ['universal', pos])
       .order('orden')
 
     if (!logros || logros.length === 0) return
 
     const { data: progreso } = await supabase
-      .from('player_achievement_progress')
-      .select('*')
+      .from('player_achievement_progress').select('*')
       .eq('player_id', player.id)
       .in('achievement_id', logros.map(l => l.id))
 
@@ -318,33 +379,25 @@ const [pendingPreview, setPendingPreview] = useState(null)
     ;(progreso || []).forEach(p => { progresoMap[p.achievement_id] = p })
 
     const { data: cache } = await supabase
-      .from('player_stats_cache')
-      .select('*')
-      .eq('player_id', player.id)
-      .single()
+      .from('player_stats_cache').select('*')
+      .eq('player_id', player.id).single()
 
     const statValor = (key) => ({
-      pj:                       cache?.pj,
-      victorias:                cache?.victorias,
-      goles:                    cache?.goles,
-      dobletes:                 cache?.dobletes,
-      hat_tricks:               cache?.hat_tricks,
-      racha_goles_actual:       cache?.racha_goles_actual,
-      racha_victorias_actual:   cache?.racha_victorias_actual,
-      arcos_cero:               cache?.arcos_cero,
-      partidos_sin_tarjetas:    cache?.partidos_sin_tarjetas,
-      campeonatos:              cache?.campeonatos,
-      mejor_arquero_count:      cache?.mejor_arquero_count,
+      pj: cache?.pj, victorias: cache?.victorias, goles: cache?.goles,
+      dobletes: cache?.dobletes, hat_tricks: cache?.hat_tricks,
+      racha_goles_actual: cache?.racha_goles_actual,
+      racha_victorias_actual: cache?.racha_victorias_actual,
+      arcos_cero: cache?.arcos_cero, partidos_sin_tarjetas: cache?.partidos_sin_tarjetas,
+      campeonatos: cache?.campeonatos, mejor_arquero_count: cache?.mejor_arquero_count,
       valla_menos_vencida_count: cache?.valla_menos_vencida_count,
-      goleador_torneo_count:    cache?.goleador_torneo_count,
+      goleador_torneo_count: cache?.goleador_torneo_count,
     }[key] || 0)
 
     setPreviewLogros(logros.map(l => ({
-      nombre:      l.nombre,
-      tipo:        l.tipo,
-      completado:  progresoMap[l.id]?.completado || false,
+      nombre: l.nombre, tipo: l.tipo,
+      completado: progresoMap[l.id]?.completado || false,
       valorActual: statValor(l.stat_key),
-      meta:        Number(l.meta),
+      meta: Number(l.meta),
     })))
   }
 
@@ -360,9 +413,10 @@ const [pendingPreview, setPendingPreview] = useState(null)
     else {
       setShowSelector(false)
       const sponsor    = getSponsor(d.id)
-      const cardDesign = CARD_DESIGNS.find(x => x.id === d.id)
+      const color      = d.color || '#00ee55'
+      const nombre_    = d.nombre || ''
       if (sponsor) {
-        setSplashPreview({ sponsor, cardColor: cardDesign?.color || '#00ee55', cardNombre: cardDesign?.nombre || '' })
+        setSplashPreview({ sponsor, cardColor: color, cardNombre: nombre_ })
         setPendingPreview(d)
       } else {
         setPreviewCard(d)
@@ -453,7 +507,19 @@ const [pendingPreview, setPendingPreview] = useState(null)
           </div>
         </div>
       )}
-{splashPreview && (
+
+      {/* SPLASH LOGIN */}
+      {splash && (
+        <SponsorSplash
+          sponsor={splash.sponsor}
+          cardColor={splash.cardColor}
+          cardNombre={splash.cardNombre}
+          onDone={() => setSplash(null)}
+        />
+      )}
+
+      {/* SPLASH PREVIEW */}
+      {splashPreview && (
         <SponsorSplash
           sponsor={splashPreview.sponsor}
           cardColor={splashPreview.cardColor}
@@ -467,11 +533,13 @@ const [pendingPreview, setPendingPreview] = useState(null)
           }}
         />
       )}
+
       {/* PREVIEW TARJETA BLOQUEADA */}
       {previewCard && (() => {
         const prog      = getProgreso(previewCard.id)
         const sponsor   = getSponsor(previewCard.id)
         const marcaAgua = sponsor?.nombre || 'GOLMEBOL'
+        const previewColor = previewCard.color || '#00ee55'
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.9)', zIndex: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', overflowY: 'auto' }}
             onClick={() => setPreviewCard(null)}>
@@ -481,7 +549,18 @@ const [pendingPreview, setPendingPreview] = useState(null)
                 <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.45)' }}>Vista previa · Desbloquea para usarla</div>
               </div>
               <div style={{ width: '100%', position: 'relative', userSelect: 'none' }}>
-                <PlayerCard playerName={nombre} stats={cardStats} cardType={previewCard.id} esPortero={esPortero} photoUrlExterno={player.photo_url || null} hideShields={true}/>
+                {/* Para tarjetas custom mostramos un placeholder visual */}
+                {previewCard.isCustom ? (
+                  <div style={{ width: '100%', aspectRatio: '2/3', borderRadius: '16px', background: `linear-gradient(135deg, ${previewColor}33, ${previewColor}11)`, border: `2px solid ${previewColor}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                    <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: `${previewColor}33`, border: `2px solid ${previewColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '2.5rem' }}>⭐</span>
+                    </div>
+                    <div style={{ fontWeight: '900', fontSize: '1.4rem', color: previewColor, letterSpacing: '.1em', textAlign: 'center' }}>{previewCard.nombre}</div>
+                    {previewCard.descripcion && <div style={{ fontSize: '.78rem', color: 'rgba(255,255,255,.6)', textAlign: 'center', padding: '0 20px' }}>{previewCard.descripcion}</div>}
+                  </div>
+                ) : (
+                  <PlayerCard playerName={nombre} stats={cardStats} cardType={previewCard.id} esPortero={esPortero} photoUrlExterno={player.photo_url || null} hideShields={true}/>
+                )}
                 <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px' }}>
                   {[...Array(10)].map((_, row) => (
                     <div key={row} style={{ position: 'absolute', top: `${row * 13 - 10}%`, left: '-30%', width: '160%', display: 'flex', gap: '32px', transform: 'rotate(-35deg)', whiteSpace: 'nowrap' }}>
@@ -517,8 +596,6 @@ const [pendingPreview, setPendingPreview] = useState(null)
                     </div>
                   </>
                 )}
-
-                {/* Lista de logros */}
                 {previewLogros.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>LOGROS REQUERIDOS</div>
@@ -540,11 +617,9 @@ const [pendingPreview, setPendingPreview] = useState(null)
                     ))}
                   </div>
                 )}
-
                 {previewLogros.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '8px', color: '#9aa0a6', fontSize: '.72rem' }}>Cargando logros...</div>
                 )}
-
                 {sponsor && (
                   <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f3f4', fontSize: '.7rem', color: '#9aa0a6', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     {sponsor.logo_url && <img src={sponsor.logo_url} style={{ height: '14px', objectFit: 'contain' }}/>}
@@ -565,10 +640,12 @@ const [pendingPreview, setPendingPreview] = useState(null)
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem' }}>Elige tu tarjeta</div>
-                <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{tarjetasDesbloqueadas.length} / {CARD_DESIGNS.length} desbloqueadas</div>
+                <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{tarjetasDesbloqueadas.length} / {CARD_DESIGNS.length + tarjetasCustom.length} desbloqueadas</div>
               </div>
               <button onClick={() => setShowSelector(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#5f6368' }}>✕</button>
             </div>
+
+            {/* Grupos estáticos */}
             {GRUPOS.map(grupo => (
               <div key={grupo.label} style={{ marginBottom: '16px' }}>
                 <div style={{ fontSize: '.72rem', fontWeight: '600', color: grupo.color, marginBottom: '8px', letterSpacing: '.06em' }}>{grupo.label}</div>
@@ -609,6 +686,47 @@ const [pendingPreview, setPendingPreview] = useState(null)
                 </div>
               </div>
             ))}
+
+            {/* Tarjetas custom */}
+            {tarjetasCustom.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '.72rem', fontWeight: '600', color: '#e8710a', marginBottom: '8px', letterSpacing: '.06em' }}>⭐ ESPECIALES</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {tarjetasCustom.map(card => {
+                    const cardObj  = { id: card.id, nombre: card.nombre, color: card.color || '#e8710a', isCustom: true, descripcion: card.descripcion }
+                    const desbloq  = estaDesbloqueada(card.id)
+                    const activa   = card.id === cardType
+                    const prog     = getProgreso(card.id)
+                    const sponsor  = getSponsor(`custom_${card.id}`)
+                    return (
+                      <div key={card.id} onClick={() => handleClickTarjeta(cardObj)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: activa ? `2px solid ${card.color}` : '1px solid #e8eaed', background: activa ? `${card.color}11` : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
+                        <div style={{ position: 'relative', flexShrink: 0 }}>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: card.color || '#e8710a', filter: desbloq ? 'none' : 'grayscale(80%) brightness(0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.9rem' }}>⭐</div>
+                          {!desbloq && <span style={{ position: 'absolute', top: '-4px', right: '-4px', fontSize: '.65rem' }}>🔒</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '.82rem', fontWeight: activa ? '700' : '500', color: activa ? card.color : desbloq ? '#202124' : '#9aa0a6' }}>{card.nombre}</div>
+                          {card.descripcion && <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '1px' }}>{card.descripcion}</div>}
+                          {sponsor && <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>✦ {sponsor.nombre}</div>}
+                          {prog && !desbloq && (
+                            <>
+                              <div style={{ background: '#f1f3f4', borderRadius: '6px', height: '3px', marginTop: '4px', overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${prog.pct}%`, background: card.color || '#e8710a', borderRadius: '6px' }}/>
+                              </div>
+                              <div style={{ fontSize: '.6rem', color: '#9aa0a6', marginTop: '2px' }}>{prog.actual} / {prog.meta} logros</div>
+                            </>
+                          )}
+                        </div>
+                        {activa      && <span style={{ fontSize: '.7rem', fontWeight: '700', color: card.color, flexShrink: 0 }}>✓ Activa</span>}
+                        {desbloq && !activa && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '1px 8px', flexShrink: 0 }}>Usar</span>}
+                        {!desbloq    && <span style={{ fontSize: '.72rem', color: '#1a73e8', flexShrink: 0 }}>👁 Ver</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -697,7 +815,7 @@ const [pendingPreview, setPendingPreview] = useState(null)
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}
               onClick={() => setShowSelector(true)}>
               <div style={{ fontSize: '.78rem', color: '#5f6368' }}>
-                Tarjetas desbloqueadas: <span style={{ fontWeight: '600', color: '#1a73e8' }}>{tarjetasDesbloqueadas.length}</span> / {CARD_DESIGNS.length}
+                Tarjetas desbloqueadas: <span style={{ fontWeight: '600', color: '#1a73e8' }}>{tarjetasDesbloqueadas.length}</span> / {CARD_DESIGNS.length + tarjetasCustom.length}
               </div>
               <span style={{ fontSize: '.75rem', color: '#1a73e8', fontWeight: '500' }}>Ver todas →</span>
             </div>
