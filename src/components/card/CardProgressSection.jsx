@@ -129,7 +129,9 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
       .select('*')
       .eq('player_id', playerId)
       .single()
-
+      console.log('logrosActivo:', logrosActivo)
+      console.log('achMap:', achMap)
+      console.log('cache:', cache)
     setData({
       cards: cards || [],
       levels: levels || [],
