@@ -503,6 +503,23 @@ export default function AdminTorneoDetallePage() {
     return Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
   }
 
+  function getGoleadoresGrupo(grupoId) {
+    const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
+    const matchIds = partidos.filter(p => p.fase === 'grupo' && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id) && p.status === 'finished').map(p => p.id)
+    const map = {}
+    goleadores.forEach(g => {
+      if (!eqIds.includes(g.team_id)) return
+      if (!map[g.player_id]) map[g.player_id] = { ...g }
+      else { map[g.player_id].total_goals += g.total_goals || 0 }
+    })
+    return Object.values(map).filter(g => g.total_goals > 0).sort((a,b) => b.total_goals - a.total_goals).slice(0, 5)
+  }
+
+  function getVallaGrupo(grupoId) {
+    const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
+    return (vallas.opcion1 || []).filter(p => eqIds.includes(p.team_id)).slice(0, 3)
+  }
+
   // ── FINALIZAR GRUPOS ────────────────────────────────
 
   async function handleFinalizarGrupos() {
@@ -1129,6 +1146,51 @@ export default function AdminTorneoDetallePage() {
                                   ▶
                                 </button>
                               )}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )
+              })()}
+
+                    {/* Goleadores del grupo */}
+                    {(() => {
+                      const gols = getGoleadoresGrupo(grupo.id)
+                      if (gols.length === 0) return null
+                      return (
+                        <div style={{ borderTop: '1px solid #f1f3f4', padding: '10px 12px' }}>
+                          <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px', letterSpacing: '.06em' }}>⚽ GOLEADORES</div>
+                          {gols.map((g, i) => (
+                            <div key={g.player_id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', borderBottom: '1px solid #f8f9fa' }}>
+                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: i===0?'#f9a825':'#9aa0a6', minWidth: '14px' }}>{i+1}</span>
+                              <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {g.photo_url ? <img src={g.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize: '.6rem' }}>👤</span>}
+                              </div>
+                              <span style={{ flex: 1, fontSize: '.72rem', color: '#202124', fontWeight: '600' }}>{g.player_name}</span>
+                              <span style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '900' }}>{g.total_goals} ⚽</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+
+                    {/* Valla menos vencida del grupo */}
+                    {(() => {
+                      const valla = getVallaGrupo(grupo.id)
+                      if (valla.length === 0) return null
+                      return (
+                        <div style={{ borderTop: '1px solid #f1f3f4', padding: '10px 12px' }}>
+                          <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px', letterSpacing: '.06em' }}>🧤 VALLA MENOS VENCIDA</div>
+                          {valla.map((p, i) => (
+                            <div key={p.player_id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', borderBottom: '1px solid #f8f9fa' }}>
+                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: i===0?'#1e8e3e':'#9aa0a6', minWidth: '14px' }}>{i+1}</span>
+                              <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {p.foto ? <img src={p.foto} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize: '.6rem' }}>🧤</span>}
+                              </div>
+                              <span style={{ flex: 1, fontSize: '.72rem', color: '#202124', fontWeight: '600' }}>{p.nombre}</span>
+                              <span style={{ fontSize: '.68rem', color: '#1e8e3e', fontWeight: '700' }}>{p.promedio} GC/PJ</span>
                             </div>
                           ))}
                         </div>
