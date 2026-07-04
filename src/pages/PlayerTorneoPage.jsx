@@ -26,7 +26,7 @@ function ModalPartido({ partido, onClose }) {
           .select('*, players(name, photo_face_url, photo_url)')
           .eq('match_id', partido.id)
           .eq('tipo', 'mvp')
-          .single(),
+          .maybeSingle(),
       ])
       setStats(statsData || [])
       if (mvpData?.players) setMvp(mvpData)

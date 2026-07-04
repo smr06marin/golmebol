@@ -371,7 +371,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
       supabase.from('match_events').select('*').eq('match_id', partido.id).order('created_at', { ascending: true }),
       supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('match_id', partido.id),
-      supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').single(),
+      supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').maybeSingle(),
     ])
 
     const evs = eventos.data || [], stats = statsDB.data || [], yaJugado = stats.length > 0, torneoData = torn.data
