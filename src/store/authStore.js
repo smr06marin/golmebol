@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export const useAuthStore = create((set) => ({
   user: null,
   player: null,
-  loading: true,
+  loading: false,
   setUser: (user) => set({ user }),
   setPlayer: (player) => set({ player }),
   setLoading: (loading) => set({ loading }),
