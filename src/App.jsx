@@ -1,4 +1,4 @@
-// force redeploy 2
+// force redeploy
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
@@ -58,7 +58,7 @@ export default function App() {
 
   useEffect(() => {
     // Timeout de seguridad: si en 5s no resuelve, forzar loading=false
-    const timeout = setTimeout(() => setLoading(false), 5000)
+    const timeout = setTimeout(() => setLoading(false), 2000)
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout)
       setUser(session?.user ?? null)
