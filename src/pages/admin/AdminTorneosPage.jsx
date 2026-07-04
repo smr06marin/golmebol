@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch } from 'lucide-react'
@@ -279,7 +279,7 @@ export default function AdminTorneoDetallePage() {
   const [generandoElim,    setGenerandoElim]    = useState(false)
   const [bracket,          setBracket]          = useState([]) // partidos de eliminatorias
 
-  useEffect(() => { fetchTodo() }, [id])
+  useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
 
@@ -787,6 +787,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
+  if (!id || id === 'undefined') return <Navigate to="/admin/torneos" replace/>
   if (!torneo)  return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Torneo no encontrado</div>
 
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
