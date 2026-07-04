@@ -46,6 +46,7 @@ export default function AdminDashboard() {
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
+    try {
     const hoy   = new Date()
     const hoyStr = hoy.toISOString().split('T')[0]
     const en7   = new Date(hoy.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -109,6 +110,7 @@ export default function AdminDashboard() {
       membresiasVencidas: membresiasVencidas || [],
     })
     setLoading(false)
+    } catch(e) { console.error('Dashboard error:', e); setLoading(false) }
   }
 
   function diasRestantes(fecha) {
