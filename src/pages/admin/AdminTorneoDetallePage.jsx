@@ -1151,9 +1151,6 @@ export default function AdminTorneoDetallePage() {
                         </div>
                       )
                     })()}
-                  </div>
-                )
-              })()}
 
                     {/* Goleadores del grupo */}
                     {(() => {
