@@ -57,7 +57,10 @@ export default function App() {
   const [cardType, setCardType] = useState('normal')
 
   useEffect(() => {
+    // Timeout de seguridad: si en 5s no resuelve, forzar loading=false
+    const timeout = setTimeout(() => setLoading(false), 5000)
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeout)
       setUser(session?.user ?? null)
       setLoading(false)
     })
@@ -65,7 +68,7 @@ export default function App() {
       setUser(session?.user ?? null)
       setLoading(false)
     })
-    return () => subscription.unsubscribe()
+    return () => { subscription.unsubscribe(); clearTimeout(timeout) }
   }, [])
 
   return (
