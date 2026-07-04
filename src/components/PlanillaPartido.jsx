@@ -698,33 +698,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     try { localStorage.removeItem(localKey) } catch(e) {}
     setHayDatosLocales(false); setGuardandoDB(false)
     onGuardarResultado(golesLocalTotal, golesVisTotal)
-  }try { localStorage.removeItem(localKey) } catch(e) {}
-    setHayDatosLocales(false); setGuardandoDB(false)
-    if (esEspecial) {
-      onGuardarResultado(golesLocalTotal, golesVisTotal)
-    } else {
-      // Mostrar MVP antes de cerrar
-      setShowMVP(true)
-    }
   }
 
   async function handleGuardarMVP(playerId) {
     setMvpId(playerId)
     await supabase.from('tournament_logros').upsert({ player_id: playerId, tournament_id: partido.tournament_id, match_id: partido.id, tipo: 'mvp' }, { onConflict: 'player_id,match_id,tipo' })
     setShowMVP(false)
-    onGuardarResultado(golesLocal.filter(Boolean).length, golesVisitante.filter(Boolean).length)
+    // Guardar resultado y cerrar
+    await guardarEnDB()
     onClose()
   }
 
-  async function handleClickCerrar() {
-    // Si ya está guardado en DB (no hay datos locales pendientes), solo mostrar MVP
-    if (!hayDatosLocales && !isOnline) { setShowMVP(true); return }
-    if (isOnline) {
-      await guardarEnDB()
-    } else {
-      setShowMVP(true)
-    }
-  }
+  function handleClickCerrar() { setShowMVP(true) }
 
   async function handleConfirmarEspecial(info) {
     setShowEspecial(null)
@@ -876,7 +861,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     )
   }
 
-  const TablaJugadores = ({ jugs, equipo, goles, colorEquipo = '#1a3a8a' }) => (
+  const TablaJugadores = ({ jugs, equipo, goles, colorEquipo = '#1a3a8a' }) => {
+    return (
     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
       <colgroup>
         <col style={{ width: '55px' }}/><col style={{ width: '90px' }}/><col style={{ width: '24px' }}/>
@@ -935,9 +921,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         ))}
       </tbody>
     </table>
-  )
+    )
+  }
 
-  const ParteInferior = ({ equipo, jugs, faltasAcum, cuerpo, setCuerpo, goles, finalistas, setFinalistas, ingresos, setIngresos, colorEquipo = '#1a3a8a' }) => (
+  const ParteInferior = ({ equipo, jugs, faltasAcum, cuerpo, setCuerpo, goles, finalistas, setFinalistas, ingresos, setIngresos, colorEquipo = '#1a3a8a' }) => {
+    return (
     <div style={{ width: '100%' }}>
       <div style={{ display: 'flex', width: '100%', borderTop: B }}>
         <div style={{ flex: '0 0 50%', borderRight: B }}>
@@ -1028,7 +1016,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         </tbody>
       </table>
     </div>
-  )
+    )
+  }
 
   if (loading) return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
