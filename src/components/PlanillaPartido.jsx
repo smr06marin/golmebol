@@ -517,8 +517,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
     // MVP
     const mvpFinal = mvpIdFinal || mvpId
+    console.log('MVP a guardar:', mvpFinal, 'partido:', partido.id, 'torneo:', partido.tournament_id)
     if (mvpFinal) {
-      await supabase.from('tournament_logros').upsert({ player_id: mvpFinal, tournament_id: partido.tournament_id, match_id: partido.id, tipo: 'mvp' }, { onConflict: 'player_id,match_id,tipo' })
+      const { data: mvpData, error: mvpError } = await supabase
+        .from('tournament_logros')
+        .upsert({ player_id: mvpFinal, tournament_id: partido.tournament_id, match_id: partido.id, tipo: 'mvp' }, { onConflict: 'player_id,match_id,tipo' })
+        .select()
+      console.log('MVP guardado:', mvpData, 'error:', mvpError)
     }
 
     // Predicciones
