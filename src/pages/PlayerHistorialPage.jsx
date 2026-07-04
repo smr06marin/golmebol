@@ -104,7 +104,7 @@ export default function PlayerHistorialPage() {
   const [filtroTipo,   setFiltroTipo]   = useState('todos')
   const [filtroTorneo, setFiltroTorneo] = useState('todos')
   const [detalle,      setDetalle]      = useState(null)
-  const [showFiltros,  setShowFiltros]  = useState(false)
+  const [showFiltros,  setShowFiltros]  = useState(true)
 
   useEffect(() => { fetchTodo() }, [])
 
