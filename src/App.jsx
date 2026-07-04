@@ -29,6 +29,7 @@ import TorneoPublicoPage from './pages/TorneoPublicoPage'
 import RegistroEquipoPage from './pages/RegistroEquipoPage'
 import AdminRecordsPage from './pages/admin/AdminRecordsPage'
 import PlayerTorneoPage from './pages/PlayerTorneoPage'
+import PlayerTorneoPage from "./pages/PlayerTorneoPage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
