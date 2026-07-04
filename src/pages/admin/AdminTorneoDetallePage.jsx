@@ -280,7 +280,7 @@ export default function AdminTorneoDetallePage() {
   const [bracket,          setBracket]          = useState([]) // partidos de eliminatorias
 
   useEffect(() => { fetchTodo() }, [id])
-  useEffect(() => { if (tab === 'estadisticas') fetchGoleadores() }, [tab])
+  useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
 
   function showMsg(text, type = 'ok') {
