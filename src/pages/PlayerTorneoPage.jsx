@@ -42,15 +42,12 @@ export default function PlayerTorneoPage() {
         .single()
       if (reg) setMiEquipoId(reg.team_id)
 
-      // Historial del jugador en este torneo
       const { data: hist } = await supabase
         .from('player_match_stats')
         .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url))')
         .eq('player_id', player.id)
         .order('created_at', { ascending: false })
-      // Filtrar solo los partidos de este torneo
-      const histTorneo = (hist || []).filter(h => h.matches?.id && partidos.find(p => p.id === h.matches.id))
-      setMiHistorial(hist || []) // guardamos todo, filtramos después
+      setMiHistorial(hist || [])
     }
 
     await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos(), fetchGoleadores()])
@@ -73,7 +70,28 @@ export default function PlayerTorneoPage() {
       .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
       .eq('tournament_id', id)
       .order('played_at', { ascending: false })
-    setPartidos(data || [])
+
+    const lista = data || []
+
+    // Traer MVPs
+    if (lista.length > 0) {
+      const { data: mvps } = await supabase
+        .from('tournament_logros')
+        .select('match_id, player_id, players(name, photo_face_url, photo_url)')
+        .eq('tournament_id', id)
+        .eq('tipo', 'mvp')
+        .in('match_id', lista.map(p => p.id))
+      const mvpMap = {}
+      ;(mvps || []).forEach(m => {
+        mvpMap[m.match_id] = {
+          nombre: m.players?.name,
+          foto:   m.players?.photo_face_url || m.players?.photo_url,
+        }
+      })
+      setPartidos(lista.map(p => ({ ...p, mvp: mvpMap[p.id] || null })))
+    } else {
+      setPartidos([])
+    }
   }
 
   async function fetchGoleadores() {
@@ -98,7 +116,6 @@ export default function PlayerTorneoPage() {
     </div>
   )
 
-  // Tabla de posiciones
   const tabla = {}
   equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
   partidos.filter(p => p.status === 'finished').forEach(p => {
@@ -123,9 +140,8 @@ export default function PlayerTorneoPage() {
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
 
-  // Historial filtrado por este torneo
-  const idsPartidosTorneo = new Set(partidos.map(p => p.id))
-  const miHistorialTorneo = miHistorial.filter(h => h.matches?.id && idsPartidosTorneo.has(h.matches.id))
+  const idsPartidosTorneo  = new Set(partidos.map(p => p.id))
+  const miHistorialTorneo  = miHistorial.filter(h => h.matches?.id && idsPartidosTorneo.has(h.matches.id))
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
@@ -215,7 +231,6 @@ export default function PlayerTorneoPage() {
         {/* ── PARTIDOS ── */}
         {tab === 'partidos' && (
           <div>
-            {/* Subtabs */}
             <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
               <button onClick={() => setSubTabPart('todos')}
                 style={{ padding: '6px 16px', borderRadius: '20px', border: `1px solid ${subTabPart === 'todos' ? '#1a73e8' : '#dadce0'}`, background: subTabPart === 'todos' ? '#1a73e8' : '#fff', color: subTabPart === 'todos' ? '#fff' : '#5f6368', fontSize: '.78rem', fontWeight: subTabPart === 'todos' ? '600' : '400', cursor: 'pointer' }}>
@@ -295,6 +310,7 @@ export default function PlayerTorneoPage() {
                               )}
                               {p.matchday && <span style={{ fontSize: '.68rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '1px 7px', fontWeight: '500' }}>J{p.matchday}</span>}
                               {p.played_at && <span style={{ fontSize: '.68rem', color: '#9aa0a6' }}>📅 {new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>}
+                              {p.grupo && <span style={{ fontSize: '.65rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '20px', padding: '1px 7px' }}>{p.grupo}</span>}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
@@ -313,6 +329,17 @@ export default function PlayerTorneoPage() {
                                 <span style={{ fontSize: '.85rem', fontWeight: p.away?.id === miEquipoId ? '700' : '500', color: '#202124' }}>{p.away?.name}</span>
                               </div>
                             </div>
+                            {/* MVP del partido */}
+                            {p.mvp && (
+                              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px' }}>
+                                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {p.mvp.foto
+                                    ? <img src={p.mvp.foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                                    : <span style={{ fontSize: '.7rem' }}>👤</span>}
+                                </div>
+                                <span style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '700' }}>⭐ MVP del partido: {p.mvp.nombre}</span>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -344,6 +371,8 @@ export default function PlayerTorneoPage() {
                   const resColor  = resultado === 'win' ? '#1e8e3e' : resultado === 'draw' ? '#e8710a' : '#d93025'
                   const resBg     = resultado === 'win' ? '#e6f4ea'  : resultado === 'draw' ? '#fce8d9'  : '#fce8e6'
                   const resLabel  = resultado === 'win' ? 'G' : resultado === 'draw' ? 'E' : 'P'
+                  // Buscar mvp de este partido
+                  const partidoCompleto = partidos.find(pp => pp.id === match.id)
                   return (
                     <div key={i} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -375,28 +404,23 @@ export default function PlayerTorneoPage() {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {(h.goals_scored || 0) > 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>⚽ {h.goals_scored} gol{h.goals_scored > 1 ? 'es' : ''}</span>
-                        )}
-                        {(h.yellow_cards || 0) > 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟨 Amarilla</span>
-                        )}
-                        {(h.blue_cards || 0) > 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟦 Azul</span>
-                        )}
-                        {(h.red_cards || 0) > 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟥 Roja</span>
-                        )}
-                        {(h.goals_conceded || 0) > 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>🧤 {h.goals_conceded} recibido{h.goals_conceded > 1 ? 's' : ''}</span>
-                        )}
-                        {(h.fouls || 0) > 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>✋ {h.fouls} falta{h.fouls > 1 ? 's' : ''}</span>
-                        )}
-                        {(h.goals_scored || 0) === 0 && (h.yellow_cards || 0) === 0 && (h.blue_cards || 0) === 0 && (h.red_cards || 0) === 0 && (h.fouls || 0) === 0 && (h.goals_conceded || 0) === 0 && (
-                          <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Sin incidencias</span>
-                        )}
+                        {(h.goals_scored || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>⚽ {h.goals_scored} gol{h.goals_scored > 1 ? 'es' : ''}</span>}
+                        {(h.yellow_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟨 Amarilla</span>}
+                        {(h.blue_cards   || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟦 Azul</span>}
+                        {(h.red_cards    || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟥 Roja</span>}
+                        {(h.goals_conceded || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>🧤 {h.goals_conceded} recibido{h.goals_conceded > 1 ? 's' : ''}</span>}
+                        {(h.fouls || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>✋ {h.fouls} falta{h.fouls > 1 ? 's' : ''}</span>}
+                        {(h.goals_scored || 0) === 0 && (h.yellow_cards || 0) === 0 && (h.blue_cards || 0) === 0 && (h.red_cards || 0) === 0 && (h.fouls || 0) === 0 && (h.goals_conceded || 0) === 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Sin incidencias</span>}
                       </div>
+                      {/* MVP */}
+                      {partidoCompleto?.mvp && (
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px' }}>
+                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {partidoCompleto.mvp.foto ? <img src={partidoCompleto.mvp.foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '.7rem' }}>👤</span>}
+                          </div>
+                          <span style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '700' }}>⭐ MVP: {partidoCompleto.mvp.nombre}</span>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -442,8 +466,8 @@ export default function PlayerTorneoPage() {
                       <span style={{ fontWeight: '700', fontSize: '.95rem', color: i === 0 ? '#f9a825' : '#1a73e8' }}>{g.total_goals}</span>
                     </div>
                     <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_yellow || 0) > 0 ? '#f9a825' : '#bdbdbd', fontWeight: (g.total_yellow || 0) > 0 ? '600' : '400' }}>{g.total_yellow || 0}</div>
-                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_blue || 0) > 0 ? '#1a73e8' : '#bdbdbd', fontWeight: (g.total_blue || 0) > 0 ? '600' : '400' }}>{g.total_blue || 0}</div>
-                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_red || 0) > 0 ? '#d93025' : '#bdbdbd', fontWeight: (g.total_red || 0) > 0 ? '600' : '400' }}>{g.total_red || 0}</div>
+                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_blue  || 0) > 0 ? '#1a73e8' : '#bdbdbd', fontWeight: (g.total_blue  || 0) > 0 ? '600' : '400' }}>{g.total_blue  || 0}</div>
+                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_red   || 0) > 0 ? '#d93025' : '#bdbdbd', fontWeight: (g.total_red   || 0) > 0 ? '600' : '400' }}>{g.total_red   || 0}</div>
                   </div>
                 ))}
               </div>
