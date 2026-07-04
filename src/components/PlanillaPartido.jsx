@@ -698,18 +698,33 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     try { localStorage.removeItem(localKey) } catch(e) {}
     setHayDatosLocales(false); setGuardandoDB(false)
     onGuardarResultado(golesLocalTotal, golesVisTotal)
+  }try { localStorage.removeItem(localKey) } catch(e) {}
+    setHayDatosLocales(false); setGuardandoDB(false)
+    if (esEspecial) {
+      onGuardarResultado(golesLocalTotal, golesVisTotal)
+    } else {
+      // Mostrar MVP antes de cerrar
+      setShowMVP(true)
+    }
   }
 
   async function handleGuardarMVP(playerId) {
     setMvpId(playerId)
     await supabase.from('tournament_logros').upsert({ player_id: playerId, tournament_id: partido.tournament_id, match_id: partido.id, tipo: 'mvp' }, { onConflict: 'player_id,match_id,tipo' })
     setShowMVP(false)
-    // Guardar resultado y cerrar
-    await guardarEnDB()
+    onGuardarResultado(golesLocal.filter(Boolean).length, golesVisitante.filter(Boolean).length)
     onClose()
   }
 
-  function handleClickCerrar() { setShowMVP(true) }
+  async function handleClickCerrar() {
+    // Si ya está guardado en DB (no hay datos locales pendientes), solo mostrar MVP
+    if (!hayDatosLocales && !isOnline) { setShowMVP(true); return }
+    if (isOnline) {
+      await guardarEnDB()
+    } else {
+      setShowMVP(true)
+    }
+  }
 
   async function handleConfirmarEspecial(info) {
     setShowEspecial(null)
