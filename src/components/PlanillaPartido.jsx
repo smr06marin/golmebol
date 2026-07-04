@@ -548,6 +548,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   // Flujo: botón guardar → modal MVP → guardar todo
   function handleClickGuardar() {
+    // Si el partido ya está terminado y ya tiene MVP, solo cerrar
+    if (partido.status === 'finished' && mvpId) {
+      onClose()
+      return
+    }
     setShowMVP(true)
   }
 
