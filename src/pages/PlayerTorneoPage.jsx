@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import PlanillaPartido from '../../components/PlanillaPartido'
+import { supabase } from '../lib/supabase'
+import PlanillaPartido from '../components/PlanillaPartido'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch } from 'lucide-react'
 
 function ModalPartidoAdmin({ partido, onClose }) {
