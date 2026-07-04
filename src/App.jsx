@@ -28,8 +28,7 @@ import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
 import TorneoPublicoPage from './pages/TorneoPublicoPage'
 import RegistroEquipoPage from './pages/RegistroEquipoPage'
 import AdminRecordsPage from './pages/admin/AdminRecordsPage'
-import PlayerTorneoPage from './pages/PlayerTorneoPage'
-import PlayerTorneoPage from "./pages/PlayerTorneoPage";
+import PlayerHistorialPage from './pages/PlayerHistorialPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
