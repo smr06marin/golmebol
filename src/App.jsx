@@ -92,7 +92,6 @@ export default function App() {
           <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
           <Route path="noticias"      element={<AdminNoticiasPage/>}/>
           <Route path="records"       element={<AdminRecordsPage/>}/>
-          <Route path="/jugador/historial" element={<PlayerHistorialPage />} />
         </Route>
 
         {/* Página pública de torneo — sin login */}
@@ -110,6 +109,7 @@ export default function App() {
         <Route path="/jugador"            element={<PlayerRoute><PlayerHomePage/></PlayerRoute>}/>
         <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
         <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
+        <Route path="/jugador/historial"  element={<PlayerRoute><PlayerHistorialPage/></PlayerRoute>}/>
         <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 
       </Routes>
