@@ -58,6 +58,9 @@ export default function RegistroEquipoPage() {
   const [cedula,        setCedula]        = useState('')
   const [deudaJugador,  setDeudaJugador]  = useState(null) // deuda personal de tarjetas
   const [sancionJugador, setSancionJugador] = useState(null) // sanción activa
+  const [verificacion,  setVerificacion]  = useState(null) // { codigo, telefono, tipo, nombre }
+  const [codigoInput,   setCodigoInput]   = useState('')
+  const [errorCodigo,   setErrorCodigo]   = useState('')
   const [buscando,      setBuscando]      = useState(false)
   const [jugadorExiste, setJugadorExiste] = useState(null)
   const [mostrarNuevo,  setMostrarNuevo]  = useState(false)
@@ -174,9 +177,47 @@ export default function RegistroEquipoPage() {
     setBuscando(false)
   }
 
-  async function handleConfirmarExistente() {
+  // ── Verificación por WhatsApp ─────────────────────────────
+  function iniciarVerificacion(tipo) {
+    const telRaw  = tipo === 'existente' ? (jugadorExiste?.whatsapp || jugadorExiste?.telefono) : (formNuevo.whatsapp || formNuevo.telefono)
+    const nombre  = tipo === 'existente' ? jugadorExiste?.name : formNuevo.name
+    const telefono = (telRaw || '').replace(/\D/g, '')
+    if (!telefono) return null // sin número no se puede verificar
+    const codigo = String(Math.floor(1000 + Math.random() * 9000))
+    setCodigoInput('')
+    setErrorCodigo('')
+    setVerificacion({ codigo, telefono, tipo, nombre })
+    return true
+  }
+
+  function enviarCodigoWhatsApp() {
+    if (!verificacion) return
+    const texto = `🔒 GOLMEBOL — Tu código de confirmación es: *${verificacion.codigo}*\n\n${verificacion.nombre?.split(' ')[0] || 'Hola'}, te están inscribiendo al equipo *${equipo.name}* para el torneo *${torneo.name}*.\n\n✅ Si aceptas unirte, comparte este código con la persona que te está inscribiendo.\n❌ Si NO quieres estar en ese equipo, ignora este mensaje.`
+    window.open(`https://wa.me/57${verificacion.telefono}?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
+  function handleVerificarCodigo() {
+    if (codigoInput.trim() !== verificacion.codigo) {
+      setErrorCodigo('Código incorrecto — pídele al jugador el código que le llegó a su WhatsApp')
+      return
+    }
+    const tipo = verificacion.tipo
+    setVerificacion(null)
+    setErrorCodigo('')
+    if (tipo === 'existente') registrarExistente()
+    else crearYRegistrarReal()
+  }
+
+  function handleConfirmarExistente() {
     if (sancionJugador) return showMsg(`⛔ No puedes inscribirte: estás sancionado${sancionJugador.fecha_fin ? ` hasta el ${new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO')}` : ' de forma permanente'}.`, 'warning')
     if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
+    // Confirmación por WhatsApp: el jugador debe aceptar con el código que le llega
+    if (iniciarVerificacion('existente')) return
+    // Sin número registrado: continuar directo (no hay a dónde enviar el código)
+    registrarExistente()
+  }
+
+  async function registrarExistente() {
     setGuardando(true)
 
     // Insertar en tournament_player_registrations
@@ -212,6 +253,12 @@ export default function RegistroEquipoPage() {
     if (!fotoFrontal) return showMsg('La foto frontal de la cédula es obligatoria')
     if (!fotoTrasera) return showMsg('La foto trasera de la cédula es obligatoria')
 
+    // Confirmación por WhatsApp al número que registró
+    if (iniciarVerificacion('nuevo')) return
+    crearYRegistrarReal()
+  }
+
+  async function crearYRegistrarReal() {
     setGuardando(true)
     setSubiendoFotos(true)
 
@@ -295,6 +342,47 @@ export default function RegistroEquipoPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
+
+      {/* Modal verificación WhatsApp */}
+      {verificacion && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', padding: '24px', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '6px' }}>📲</div>
+              <div style={{ fontWeight: '800', color: '#202124', fontSize: '1rem' }}>Confirmación del jugador</div>
+              <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.5 }}>
+                Para inscribir a <strong>{verificacion.nombre}</strong> se necesita su autorización.
+                Envíale el código a su WhatsApp (📱 …{verificacion.telefono.slice(-4)}) y escribe aquí el código que él te comparta.
+              </div>
+            </div>
+
+            <button onClick={enviarCodigoWhatsApp}
+              style={{ width: '100%', padding: '12px', background: '#25D366', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '700', marginBottom: '14px' }}>
+              💬 Enviar código por WhatsApp
+            </button>
+
+            <label style={{ fontSize: '.75rem', fontWeight: '600', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Código que recibió el jugador</label>
+            <input value={codigoInput} onChange={e => { setCodigoInput(e.target.value.replace(/\D/g, '').slice(0, 4)); setErrorCodigo('') }}
+              inputMode="numeric" placeholder="• • • •"
+              style={{ width: '100%', boxSizing: 'border-box', border: `2px solid ${errorCodigo ? '#d93025' : '#dadce0'}`, borderRadius: '10px', padding: '12px', fontSize: '1.4rem', fontWeight: '800', textAlign: 'center', letterSpacing: '8px', outline: 'none', marginBottom: errorCodigo ? '6px' : '14px' }}/>
+            {errorCodigo && <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600', marginBottom: '10px' }}>{errorCodigo}</div>}
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => { setVerificacion(null); setCodigoInput(''); setErrorCodigo('') }}
+                style={{ flex: 1, padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>
+                Cancelar
+              </button>
+              <button onClick={handleVerificarCodigo} disabled={codigoInput.length !== 4}
+                style={{ flex: 1, padding: '11px', background: codigoInput.length === 4 ? '#1a73e8' : '#dadce0', border: 'none', borderRadius: '10px', cursor: codigoInput.length === 4 ? 'pointer' : 'not-allowed', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                ✓ Confirmar
+              </button>
+            </div>
+            <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '10px', textAlign: 'center' }}>
+              El jugador recibe el mensaje y solo comparte el código si acepta unirse al equipo
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1a237e 0%, #1a73e8 100%)', padding: '28px 20px', textAlign: 'center' }}>
