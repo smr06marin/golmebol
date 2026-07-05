@@ -41,7 +41,7 @@ function Section({ title, action, onAction, children }) {
 export default function AdminDashboard() {
   const navigate  = useNavigate()
   const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => { fetchTodo() }, [])
 
