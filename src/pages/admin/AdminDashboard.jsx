@@ -110,7 +110,11 @@ export default function AdminDashboard() {
       membresiasVencidas: membresiasVencidas || [],
     })
     setLoading(false)
-    } catch(e) { console.error('Dashboard error:', e); setLoading(false) }
+    } catch(e) {
+      console.error('Dashboard error:', e)
+      setData({ totalJugadores: 0, jugadoresActivos: 0, jugadoresSinCuenta: 0, totalTorneos: 0, totalEquipos: 0, partidosHoy: 0, partidosJugados: 0, porVencer: [], ultimosPartidos: [], torneosActivos: [], membresiasVencidas: [] })
+      setLoading(false)
+    }
   }
 
   function diasRestantes(fecha) {
@@ -128,7 +132,7 @@ export default function AdminDashboard() {
     window.open(`https://wa.me/57${telefono}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
+  if (loading || !data) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
 
   const { totalJugadores, jugadoresActivos, jugadoresSinCuenta, totalTorneos, totalEquipos, partidosHoy, partidosJugados, porVencer, ultimosPartidos, torneosActivos, membresiasVencidas } = data
 
