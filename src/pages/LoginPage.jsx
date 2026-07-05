@@ -141,11 +141,13 @@ export default function LoginPage() {
 
   // ── Registro ──────────────────────────────────────────────
   async function handleRegistro() {
+    if (!email.trim()) { setMensaje('Escribe tu correo arriba y luego dale a Crear Cuenta'); return }
+    if (!password || password.length < 6) { setMensaje('Escribe una contraseña de mínimo 6 caracteres'); return }
     setLoading(true)
     setMensaje('')
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password })
     if (error) setMensaje('Error: ' + error.message)
-    else setMensaje('✅ Revisa tu email para confirmar tu cuenta')
+    else setMensaje('✅ Cuenta creada. Si te llega un correo de confirmación, ábrelo antes de entrar')
     setLoading(false)
   }
 
