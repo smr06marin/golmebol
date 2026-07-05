@@ -295,6 +295,10 @@ export default function AdminTorneoDetallePage() {
   const [partidoPenales,   setPartidoPenales]   = useState(null) // partido empatado al que se le registran penales
   const [penalesForm,      setPenalesForm]      = useState({ local: '', visitante: '' })
   const [guardandoPenales, setGuardandoPenales] = useState(false)
+  const [reemplazoLlave,   setReemplazoLlave]   = useState(null) // llave donde se reemplaza un equipo
+  const [equipoSale,       setEquipoSale]       = useState('')
+  const [equipoEntra,      setEquipoEntra]      = useState('')
+  const [guardandoReemplazo, setGuardandoReemplazo] = useState(false)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
@@ -754,6 +758,32 @@ export default function AdminTorneoDetallePage() {
     fetchBracket(); fetchPartidos()
   }
 
+  // Equipos disponibles para entrar en una llave (eliminados o que no clasificaron)
+  function getEquiposParaReemplazo() {
+    const est = getEstadoEliminatorias()
+    const ocupados = new Set()
+    bracket.forEach(m => { if (m.status !== 'finished') { ocupados.add(m.home_team_id); ocupados.add(m.away_team_id) } })
+    ;(est?.vivos || []).forEach(v => ocupados.add(v.id))
+    return equipos.filter(e => !ocupados.has(e.id))
+  }
+
+  async function handleReemplazarEquipo() {
+    if (!equipoSale || !equipoEntra) return showMsg('Selecciona el equipo que sale y el que entra', 'error')
+    if (reemplazoLlave.matches.some(m => m.status === 'finished')) return showMsg('No se puede reemplazar: esta llave ya tiene partidos jugados', 'error')
+    setGuardandoReemplazo(true)
+    for (const m of reemplazoLlave.matches) {
+      const upd = {}
+      if (m.home_team_id === equipoSale) upd.home_team_id = equipoEntra
+      if (m.away_team_id === equipoSale) upd.away_team_id = equipoEntra
+      if (Object.keys(upd).length > 0) await supabase.from('matches').update(upd).eq('id', m.id)
+    }
+    setGuardandoReemplazo(false)
+    const entra = equipos.find(e => e.id === equipoEntra)
+    showMsg(`Equipo reemplazado ✓ — entra ${entra?.name || ''}`)
+    setReemplazoLlave(null); setEquipoSale(''); setEquipoEntra('')
+    fetchBracket(); fetchPartidos()
+  }
+
   async function handleGenerarSiguienteRonda() {
     const est = getEstadoEliminatorias()
     if (!est) return
@@ -926,7 +956,7 @@ export default function AdminTorneoDetallePage() {
       fase: formEditPartido.fase || 'grupo',
     }).eq('id', editandoPartidoForm.id)
     if (error) showMsg('Error al guardar', 'error')
-    else { showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos() }
+    else { showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos(); fetchBracket() }
   }
 
   function generarJornada() {
@@ -1133,6 +1163,59 @@ export default function AdminTorneoDetallePage() {
       {modalPartidoAdmin && (
         <ModalPartidoAdmin partido={modalPartidoAdmin} onClose={() => setModalPartidoAdmin(null)}/>
       )}
+
+      {/* Modal reemplazar equipo en una llave */}
+      {reemplazoLlave && (() => {
+        const disponibles = getEquiposParaReemplazo()
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+            onClick={e => e.target === e.currentTarget && setReemplazoLlave(null)}>
+            <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '440px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🔄 Reemplazar equipo en la llave</div>
+                <button onClick={() => setReemplazoLlave(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+              </div>
+              <div style={{ padding: '18px 20px' }}>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '14px' }}>
+                  Si un equipo clasificado no puede jugar, elige quién sale y qué equipo eliminado entra en su lugar.
+                </div>
+                <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>¿Quién no puede jugar?</div>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                  {[reemplazoLlave.teamA, reemplazoLlave.teamB].map(t => (
+                    <button key={t.id} onClick={() => setEquipoSale(t.id)}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '10px', cursor: 'pointer', border: equipoSale === t.id ? '2px solid #d93025' : '1px solid #dadce0', background: equipoSale === t.id ? '#fce8e6' : '#fff' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={t.logo_url} name={t.name} size={24}/></div>
+                      <span style={{ fontSize: '.8rem', fontWeight: '600', color: equipoSale === t.id ? '#d93025' : '#202124' }}>{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>¿Quién entra en su lugar?</div>
+                {disponibles.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem', border: '1px dashed #dadce0', borderRadius: '10px', marginBottom: '16px' }}>No hay equipos eliminados disponibles</div>
+                ) : (
+                  <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'auto', maxHeight: '220px', marginBottom: '16px' }}>
+                    {disponibles.map((eq, i) => (
+                      <div key={eq.id} onClick={() => setEquipoEntra(eq.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', cursor: 'pointer', borderBottom: i < disponibles.length - 1 ? '1px solid #f1f3f4' : 'none', background: equipoEntra === eq.id ? '#e6f4ea' : '#fff' }}>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={26}/></div>
+                        <span style={{ flex: 1, fontSize: '.8rem', fontWeight: equipoEntra === eq.id ? '700' : '500', color: '#202124' }}>{eq.name}</span>
+                        {equipoEntra === eq.id && <span style={{ color: '#1e8e3e', fontWeight: '700' }}>✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setReemplazoLlave(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                  <button onClick={handleReemplazarEquipo} disabled={guardandoReemplazo || !equipoSale || !equipoEntra}
+                    style={{ flex: 1, padding: '10px', background: guardandoReemplazo || !equipoSale || !equipoEntra ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: guardandoReemplazo || !equipoSale || !equipoEntra ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                    {guardandoReemplazo ? 'Guardando...' : 'Reemplazar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Modal registrar penales (llave empatada) */}
       {partidoPenales && (
@@ -2288,11 +2371,28 @@ export default function AdminTorneoDetallePage() {
                             })}
                             <div style={{ padding: '5px 12px', background: '#f8f9fa', fontSize: '.65rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
                               {!ll.terminada
-                                ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : 'Por jugar'} · toca para planilla`
+                                ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' ' + new Date(ll.matches[0].played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : 'Por jugar'}${ll.matches[0].location ? ' · 📍 ' + ll.matches[0].location : ''} · toca para planilla`
                                 : !ll.ganador
                                   ? '⚠️ Empate — toca aquí para registrar los penales'
                                   : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
                             </div>
+                            {ll.matches.some(m => m.status !== 'finished') && (
+                              <div style={{ padding: '5px 10px', background: '#f8f9fa', borderTop: '1px solid #f1f3f4', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {ll.matches.map((m, mi) => m.status !== 'finished' && (
+                                  <button key={m.id}
+                                    onClick={e => { e.stopPropagation(); const fecha = m.played_at ? m.played_at.substring(0, 10) : ''; const hora = m.played_at ? m.played_at.substring(11, 16) : ''; setFormEditPartido({ played_at: fecha, hora, location: m.location || '', matchday: m.matchday || '', fase: m.fase || 'grupo' }); setEditandoPartidoForm(m) }}
+                                    style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 9px', cursor: 'pointer', color: '#5f6368', fontSize: '.65rem' }}>
+                                    ✏️ {ll.matches.length > 1 ? (mi === 0 ? 'Ida' : 'Vuelta') : 'Fecha/cancha'}
+                                  </button>
+                                ))}
+                                {!ll.matches.some(m => m.status === 'finished') && (
+                                  <button onClick={e => { e.stopPropagation(); setEquipoSale(''); setEquipoEntra(''); setReemplazoLlave(ll) }}
+                                    style={{ background: '#fff', border: '1px solid #ffd8a8', borderRadius: '6px', padding: '3px 9px', cursor: 'pointer', color: '#e8710a', fontSize: '.65rem' }}>
+                                    🔄 Cambiar equipo
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div key={i} style={{ border: '1px dashed #dadce0', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#bdbdbd', fontSize: '.72rem', background: '#fafafa' }}>
