@@ -188,6 +188,7 @@ const FASES = [
   { value: 'final',     label: '🏆 Final' },
 ]
 const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final' }
+const FASE_ORDEN = ['octavos', 'cuartos', 'semifinal', 'final']
 
 const COLORES_GRUPO = ['#1a73e8','#e8710a','#1e8e3e','#9955ff','#d93025','#00a896','#f9a825','#4488ff']
 
@@ -276,12 +277,18 @@ export default function AdminTorneoDetallePage() {
   const [horaGrupos,       setHoraGrupos]       = useState('08:00')
 
   // ── ELIMINATORIAS ───────────────────────────────────
-  const [tipoSorteo,       setTipoSorteo]       = useState('tabla') // 'tabla' | 'sorteo'
   const [idaVuelta,        setIdaVuelta]        = useState(false)
   const [fechaElim,        setFechaElim]        = useState('')
   const [horaElim,         setHoraElim]         = useState('08:00')
   const [generandoElim,    setGenerandoElim]    = useState(false)
   const [bracket,          setBracket]          = useState([]) // partidos de eliminatorias
+  const [showWizardElim,   setShowWizardElim]   = useState(false)
+  const [numClasifElim,    setNumClasifElim]    = useState(8)   // 2 | 4 | 8 | 16
+  const [estiloLlaves,     setEstiloLlaves]     = useState('consecutivo') // 'consecutivo' | 'cruzado' | 'manual'
+  const [ordenManual,      setOrdenManual]      = useState([]) // orden del sorteo físico
+  const [fechaRonda,       setFechaRonda]       = useState('')
+  const [horaRonda,        setHoraRonda]        = useState('08:00')
+  const [generandoRonda,   setGenerandoRonda]   = useState(false)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
@@ -560,28 +567,63 @@ export default function AdminTorneoDetallePage() {
     return clasificados.sort((a, b) => a.posicion - b.posicion || b.pts - a.pts || b.dg - a.dg)
   }
 
+  // Participantes de eliminatorias: clasificados directos + mejores de la
+  // reclasificación (mejor perdedor) hasta completar n cupos
+  function getParticipantesElim(n) {
+    const directos = grupos.length > 0 ? getClasificados() : []
+    let lista = [...directos]
+    if (lista.length > n) lista = lista.slice(0, n)
+    if (lista.length < n) {
+      const idsYa = new Set(lista.map(e => e.id))
+      calcTablaGeneral().forEach(row => {
+        if (lista.length >= n || !row.equipo || idsYa.has(row.equipo.id)) return
+        lista.push({ ...row.equipo, posicion: 99, grupo: directos.length > 0 ? 'Mejor perdedor' : null, pts: row.pts, dg: row.gf - row.gc, mejorPerdedor: directos.length > 0 })
+        idsYa.add(row.equipo.id)
+      })
+    }
+    return lista
+  }
+
+  function abrirWizardElim() {
+    setOrdenManual(getParticipantesElim(numClasifElim))
+    setShowWizardElim(true)
+  }
+
+  function cambiarCuposElim(n) {
+    setNumClasifElim(n)
+    setOrdenManual(getParticipantesElim(n))
+  }
+
+  function moverOrdenManual(i, dir) {
+    setOrdenManual(prev => {
+      const j = i + dir
+      if (j < 0 || j >= prev.length) return prev
+      const nueva = [...prev]
+      ;[nueva[i], nueva[j]] = [nueva[j], nueva[i]]
+      return nueva
+    })
+  }
+
+  // Parejas según el estilo elegido (para vista previa y generación)
+  function getParejasElim() {
+    const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesElim(numClasifElim)
+    const total = participantes.length
+    const parejas = []
+    if (estiloLlaves === 'cruzado') {
+      for (let i = 0; i < Math.floor(total / 2); i++) parejas.push([participantes[i], participantes[total - 1 - i]])
+    } else {
+      for (let i = 0; i < total - 1; i += 2) parejas.push([participantes[i], participantes[i + 1]])
+    }
+    return parejas
+  }
+
   async function handleGenerarEliminatorias() {
-    if (!fechaElim) return showMsg('Selecciona una fecha', 'error')
+    if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
+    const parejas = getParejasElim()
+    if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
     setGenerandoElim(true)
 
-    let clasificados = getClasificados()
-    if (clasificados.length === 0) {
-      // Si no hay grupos, usar todos los equipos ordenados por tabla general
-      const tablaGen = calcTablaGeneral()
-      clasificados = tablaGen.map(row => row.equipo).filter(Boolean)
-    }
-
-    if (clasificados.length < 2) { showMsg('Necesitas al menos 2 clasificados', 'error'); setGenerandoElim(false); return }
-
-    // Sorteo o por tabla
-    let emparejados = [...clasificados]
-    if (tipoSorteo === 'sorteo') {
-      emparejados = emparejados.sort(() => Math.random() - 0.5)
-    }
-    // Por tabla: 1 vs último, 2 vs penúltimo...
-    // emparejados ya está ordenado por posición
-
-    const total = emparejados.length
+    const total = parejas.length * 2
     const fase  = getFaseValue(total)
     const ronda = getRondaNombre(total)
 
@@ -589,38 +631,107 @@ export default function AdminTorneoDetallePage() {
     await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
 
     const inserts = []
-    for (let i = 0; i < Math.floor(total / 2); i++) {
-      const local     = emparejados[i]
-      const visitante = emparejados[total - 1 - i]
+    parejas.forEach(([local, visitante]) => {
       inserts.push({
-        tournament_id: id,
-        home_team_id:  local.id,
-        away_team_id:  visitante.id,
-        played_at:     `${fechaElim}T${horaElim}:00`,
-        status:        'scheduled',
-        fase,
-        ronda,
-        matchday:      null,
+        tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
+        played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda, matchday: null,
       })
       if (idaVuelta) {
         inserts.push({
-          tournament_id: id,
-          home_team_id:  visitante.id,
-          away_team_id:  local.id,
-          played_at:     `${fechaElim}T${horaElim}:00`,
-          status:        'scheduled',
-          fase,
-          ronda:         `${ronda} (vuelta)`,
-          matchday:      null,
+          tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
+          played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
+        })
+      }
+    })
+
+    const { error } = await supabase.from('matches').insert(inserts)
+    if (error) { showMsg('Error al crear el bracket', 'error'); setGenerandoElim(false); return }
+    await supabase.from('tournaments').update({ fase_actual: 'eliminatorias' }).eq('id', id)
+    showMsg(`${ronda} creada con ${parejas.length} llaves ✓`)
+    setShowWizardElim(false)
+    setGenerandoElim(false)
+    fetchPartidos(); fetchBracket(); fetchTorneo()
+  }
+
+  // Agrupa los partidos del bracket en llaves por fase, con marcador global y ganador
+  function getLlavesPorFase() {
+    const porFase = {}
+    FASE_ORDEN.forEach(f => {
+      const ms = bracket.filter(p => p.fase === f)
+      if (ms.length === 0) return
+      const map = {}
+      ms.forEach(m => {
+        const key = [m.home_team_id, m.away_team_id].sort().join('|')
+        if (!map[key]) map[key] = []
+        map[key].push(m)
+      })
+      porFase[f] = Object.values(map).map(matches => {
+        const primero = matches[0]
+        const teamA = { id: primero.home_team_id, name: primero.home?.name, logo_url: primero.home?.logo_url }
+        const teamB = { id: primero.away_team_id, name: primero.away?.name, logo_url: primero.away?.logo_url }
+        const terminada = matches.every(m => m.status === 'finished')
+        let golesA = 0, golesB = 0
+        matches.forEach(m => {
+          if (m.status !== 'finished') return
+          if (m.home_team_id === teamA.id) { golesA += m.home_score || 0; golesB += m.away_score || 0 }
+          else                             { golesA += m.away_score || 0; golesB += m.home_score || 0 }
+        })
+        let ganador = null, porPenales = false
+        if (terminada) {
+          if (golesA > golesB) ganador = teamA
+          else if (golesB > golesA) ganador = teamB
+          else {
+            const conPenales = [...matches].reverse().find(m => m.penales_ganador || (m.penales_local != null && m.penales_visitante != null && m.penales_local !== m.penales_visitante))
+            if (conPenales) {
+              porPenales = true
+              const ganaHome = conPenales.penales_ganador ? conPenales.penales_ganador === 'home' : conPenales.penales_local > conPenales.penales_visitante
+              const idGanador = ganaHome ? conPenales.home_team_id : conPenales.away_team_id
+              ganador = idGanador === teamA.id ? teamA : teamB
+            }
+          }
+        }
+        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales }
+      })
+    })
+    return porFase
+  }
+
+  async function handleGenerarSiguienteRonda() {
+    const porFase = getLlavesPorFase()
+    const fasesExistentes = FASE_ORDEN.filter(f => porFase[f])
+    if (fasesExistentes.length === 0) return
+    const actual = fasesExistentes[fasesExistentes.length - 1]
+    const llaves = porFase[actual]
+    if (llaves.length < 2) return showMsg('El torneo ya está en la final', 'error')
+    if (!llaves.every(l => l.terminada)) return showMsg('Faltan partidos por jugar en esta ronda', 'error')
+    const ganadores = llaves.map(l => l.ganador)
+    if (ganadores.some(g => !g)) return showMsg('Hay llaves empatadas — registra los penales en la planilla', 'error')
+    if (!fechaRonda) return showMsg('Selecciona la fecha de la siguiente ronda', 'error')
+    setGenerandoRonda(true)
+
+    const conVuelta = llaves.some(l => l.matches.length > 1)
+    const total = ganadores.length
+    const fase  = getFaseValue(total)
+    const ronda = getRondaNombre(total)
+    const inserts = []
+    for (let i = 0; i + 1 < total; i += 2) {
+      const local = ganadores[i], visitante = ganadores[i + 1]
+      inserts.push({
+        tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
+        played_at: `${fechaRonda}T${horaRonda}:00`, status: 'scheduled', fase, ronda, matchday: null,
+      })
+      if (conVuelta) {
+        inserts.push({
+          tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
+          played_at: `${fechaRonda}T${horaRonda}:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
         })
       }
     }
-
-    await supabase.from('matches').insert(inserts)
-    showMsg(`${inserts.length} partidos de eliminatorias generados ✓`)
-    setGenerandoElim(false)
-    fetchPartidos()
-    fetchBracket()
+    const { error } = await supabase.from('matches').insert(inserts)
+    if (error) showMsg('Error al generar la siguiente ronda', 'error')
+    else showMsg(`${ronda} generada ✓ — los ganadores avanzan`)
+    setGenerandoRonda(false)
+    fetchPartidos(); fetchBracket()
   }
 
   // ── TABLA GENERAL ───────────────────────────────────
@@ -1738,122 +1849,288 @@ export default function AdminTorneoDetallePage() {
       {/* ── TAB ELIMINATORIAS ── */}
       {tab === 'eliminatorias' && (
         <div>
-          {/* Configuración */}
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>⚡ Configurar eliminatorias</div>
+          {/* Iniciar / reconfigurar */}
+          {bracket.length === 0 ? (
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '40px 24px', textAlign: 'center', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <GitBranch size={40} color="#e8710a" style={{ marginBottom: '10px' }}/>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>Eliminaciones directas</div>
+              <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginBottom: '18px', maxWidth: '420px', margin: '0 auto 18px' }}>
+                Cuando termine la fase de grupos, configura cuántos clasifican, el formato y cómo se arman las llaves. El árbol se va armando solo hasta la final.
+              </div>
+              <button onClick={abrirWizardElim}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 28px', background: '#e8710a', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: '700' }}>
+                ⚡ Iniciar eliminaciones directas
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+              <button onClick={abrirWizardElim}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
+                <Shuffle size={13}/> Reconfigurar eliminatorias
+              </button>
+            </div>
+          )}
 
-            {/* Clasificados */}
-            {grupos.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#5f6368', marginBottom: '8px' }}>Clasificados de grupos</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {getClasificados().map((eq, i) => (
-                    <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f3f4', borderRadius: '20px', padding: '4px 10px 4px 4px' }}>
-                      <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
-                      <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden' }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={18}/></div>
-                      <span style={{ fontSize: '.75rem', color: '#202124', fontWeight: '500' }}>{eq.name}</span>
-                      <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{eq.grupo}</span>
+          {/* Asistente de configuración */}
+          {showWizardElim && (() => {
+            const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesElim(numClasifElim)
+            const mejores = participantes.filter(p => p.mejorPerdedor)
+            const parejas = getParejasElim()
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+                onClick={e => e.target === e.currentTarget && setShowWizardElim(false)}>
+                <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '640px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+                  <div style={{ padding: '16px 22px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>⚡ ¿Cómo se juegan las eliminaciones directas?</div>
+                    <button onClick={() => setShowWizardElim(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={20}/></button>
+                  </div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
+
+                    {/* 1. Cupos */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>1. ¿Cuántos equipos clasifican?</div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {[2, 4, 8, 16].map(n => (
+                          <button key={n} onClick={() => cambiarCuposElim(n)} disabled={n > equipos.length}
+                            style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: n > equipos.length ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '.9rem', border: numClasifElim === n ? '2px solid #e8710a' : '1px solid #dadce0', background: numClasifElim === n ? '#fff4e5' : '#fff', color: n > equipos.length ? '#dadce0' : numClasifElim === n ? '#e8710a' : '#5f6368' }}>
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                      {mejores.length > 0 && (
+                        <div style={{ marginTop: '8px', fontSize: '.72rem', color: '#e8710a', background: '#fff4e5', border: '1px solid #ffd8a8', borderRadius: '8px', padding: '8px 12px' }}>
+                          🎟️ Los cupos se completan con los mejores de la reclasificación (mejor perdedor): {mejores.map(m => m.name).join(', ')}
+                        </div>
+                      )}
                     </div>
-                  ))}
+
+                    {/* 2. Formato */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>2. Formato de cada llave</div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => setIdaVuelta(false)}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: !idaVuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: !idaVuelta ? '#e8f0fe' : '#fff', color: !idaVuelta ? '#1a73e8' : '#5f6368' }}>
+                          Partido único
+                        </button>
+                        <button onClick={() => setIdaVuelta(true)}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: idaVuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: idaVuelta ? '#e8f0fe' : '#fff', color: idaVuelta ? '#1a73e8' : '#5f6368' }}>
+                          Ida y vuelta
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. Cómo se arman las llaves */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>3. ¿Cómo se arman las llaves?</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {[
+                          { v: 'consecutivo', t: 'Por reclasificación: 1° vs 2°, 3° vs 4°...', s: 'Según la tabla de reclasificación' },
+                          { v: 'cruzado',     t: 'Por reclasificación cruzada: 1° vs último, 2° vs penúltimo...', s: 'El mejor contra el peor' },
+                          { v: 'manual',      t: 'Sorteo físico: yo acomodo el orden', s: 'Ordena los equipos según como quedó tu sorteo' },
+                        ].map(op => (
+                          <button key={op.v} onClick={() => { setEstiloLlaves(op.v); if (op.v === 'manual' && ordenManual.length === 0) setOrdenManual(getParticipantesElim(numClasifElim)) }}
+                            style={{ textAlign: 'left', padding: '10px 14px', borderRadius: '10px', cursor: 'pointer', border: estiloLlaves === op.v ? '2px solid #e8710a' : '1px solid #dadce0', background: estiloLlaves === op.v ? '#fff4e5' : '#fff' }}>
+                            <div style={{ fontSize: '.8rem', fontWeight: '600', color: estiloLlaves === op.v ? '#e8710a' : '#202124' }}>{op.t}</div>
+                            <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '2px' }}>{op.s}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 4. Participantes (ordenables si es sorteo físico) */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>
+                        4. Participantes {estiloLlaves === 'manual' && <span style={{ fontWeight: '400', color: '#9aa0a6' }}>— usa las flechas para dejarlos como quedó el sorteo</span>}
+                      </div>
+                      <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
+                        {participantes.map((eq, i) => (
+                          <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderBottom: i < participantes.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                            <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={20}/></div>
+                            <span style={{ flex: 1, fontSize: '.8rem', fontWeight: '500', color: '#202124' }}>{eq.name}</span>
+                            {eq.mejorPerdedor
+                              ? <span style={{ fontSize: '.62rem', color: '#e8710a', background: '#fff4e5', borderRadius: '10px', padding: '1px 7px', fontWeight: '600' }}>Mejor perdedor</span>
+                              : eq.grupo && <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{eq.grupo}</span>}
+                            {estiloLlaves === 'manual' && (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button onClick={() => moverOrdenManual(i, -1)} disabled={i === 0} style={{ background: '#f1f3f4', border: 'none', borderRadius: '5px', padding: '3px 8px', cursor: i === 0 ? 'not-allowed' : 'pointer', color: i === 0 ? '#dadce0' : '#5f6368', fontSize: '.75rem' }}>↑</button>
+                                <button onClick={() => moverOrdenManual(i, 1)} disabled={i === participantes.length - 1} style={{ background: '#f1f3f4', border: 'none', borderRadius: '5px', padding: '3px 8px', cursor: i === participantes.length - 1 ? 'not-allowed' : 'pointer', color: i === participantes.length - 1 ? '#dadce0' : '#5f6368', fontSize: '.75rem' }}>↓</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {participantes.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Sin equipos con partidos aún</div>}
+                      </div>
+                    </div>
+
+                    {/* 5. Vista previa de llaves */}
+                    {parejas.length > 0 && (
+                      <div style={{ marginBottom: '18px' }}>
+                        <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>5. Así quedan las llaves — {getRondaNombre(parejas.length * 2)}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '8px' }}>
+                          {parejas.map(([a, b], i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '8px 12px' }}>
+                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', flexShrink: 0 }}>Llave {i + 1}</span>
+                              <span style={{ flex: 1, fontSize: '.75rem', fontWeight: '600', color: '#202124', textAlign: 'right' }}>{a?.name}</span>
+                              <span style={{ fontSize: '.68rem', fontWeight: '700', color: '#e8710a' }}>vs</span>
+                              <span style={{ flex: 1, fontSize: '.75rem', fontWeight: '600', color: '#202124' }}>{b?.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 6. Fecha */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                      <div><label style={labelStyle}>Fecha primeros partidos *</label><input type="date" value={fechaElim} onChange={e => setFechaElim(e.target.value)} style={inputStyle}/></div>
+                      <div><label style={labelStyle}>Hora inicio</label><input type="time" value={horaElim} onChange={e => setHoraElim(e.target.value)} style={inputStyle}/></div>
+                    </div>
+
+                    {bracket.length > 0 && (
+                      <div style={{ fontSize: '.72rem', color: '#d93025', background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '8px 12px' }}>
+                        ⚠️ Ya existe un bracket: al crear uno nuevo se borran los partidos de eliminatorias anteriores.
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '14px 22px', borderTop: '1px solid #e8eaed', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
+                    <button onClick={() => setShowWizardElim(false)} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                    <button onClick={handleGenerarEliminatorias} disabled={generandoElim || !fechaElim || parejas.length < 1}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 22px', background: !fechaElim || generandoElim || parejas.length < 1 ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaElim || generandoElim || parejas.length < 1 ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                      <GitBranch size={15}/> {generandoElim ? 'Creando...' : 'Crear árbol de eliminatorias'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            )}
+            )
+          })()}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-              <div>
-                <label style={labelStyle}>Tipo de emparejamiento</label>
-                <select value={tipoSorteo} onChange={e => setTipoSorteo(e.target.value)} style={inputStyle}>
-                  <option value="tabla">Por tabla (1° vs último...)</option>
-                  <option value="sorteo">Sorteo aleatorio</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Formato</label>
-                <select value={idaVuelta ? 'ida_vuelta' : 'directa'} onChange={e => setIdaVuelta(e.target.value === 'ida_vuelta')} style={inputStyle}>
-                  <option value="directa">Eliminación directa</option>
-                  <option value="ida_vuelta">Ida y vuelta</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Fecha partidos</label>
-                <input type="date" value={fechaElim} onChange={e => setFechaElim(e.target.value)} style={inputStyle}/>
-              </div>
-              <div>
-                <label style={labelStyle}>Hora inicio</label>
-                <input type="time" value={horaElim} onChange={e => setHoraElim(e.target.value)} style={inputStyle}/>
-              </div>
-            </div>
+          {/* Árbol de eliminatorias */}
+          {bracket.length > 0 && (() => {
+            const porFase = getLlavesPorFase()
+            const fasesExist = FASE_ORDEN.filter(f => porFase[f])
+            if (fasesExist.length === 0) return null
+            const faseActualElim = fasesExist[fasesExist.length - 1]
+            const llavesActual = porFase[faseActualElim]
+            const rondaCompleta = llavesActual.every(l => l.terminada)
+            const hayEmpates = rondaCompleta && llavesActual.some(l => !l.ganador)
+            const esFinal = llavesActual.length === 1
+            const campeon = porFase['final']?.[0]?.ganador || null
 
-            <button onClick={handleGenerarEliminatorias} disabled={generandoElim || !fechaElim}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 20px', background: !fechaElim || generandoElim ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaElim || generandoElim ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600' }}>
-              <GitBranch size={16}/> {generandoElim ? 'Generando...' : 'Generar bracket de eliminatorias'}
-            </button>
-          </div>
+            // Columnas del árbol: fases jugadas + placeholders hasta la final
+            const columnas = []
+            let idx = FASE_ORDEN.indexOf(fasesExist[0])
+            let n = porFase[fasesExist[0]].length
+            while (idx < FASE_ORDEN.length) {
+              const f = FASE_ORDEN[idx]
+              columnas.push({ fase: f, llaves: porFase[f] || Array.from({ length: Math.max(n, 1) }, () => null) })
+              if (n <= 1) break
+              n = Math.floor(n / 2)
+              idx++
+            }
 
-          {/* Bracket */}
-          {bracket.length > 0 && (
-            <div>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>🏆 Bracket de eliminatorias</div>
-              {(() => {
-                const rondas = [...new Set(bracket.map(p => p.ronda))].filter(Boolean)
-                return rondas.map(ronda => (
-                  <div key={ronda} style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                      <div style={{ height: '2px', width: '20px', background: '#e8710a', borderRadius: '2px' }}/>
-                      <span style={{ fontSize: '.72rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>{ronda.toUpperCase()}</span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '10px' }}>
-                      {bracket.filter(p => p.ronda === ronda).map(p => {
-                        const jugado = p.status === 'finished'
-                        const ganadorLocal = jugado && p.home_score > p.away_score
-                        const ganadorVis   = jugado && p.away_score > p.home_score
-                        return (
-                          <div key={p.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                            {/* Local */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: ganadorLocal ? '#e6f4ea' : '#fff', borderBottom: '1px solid #f1f3f4' }}>
-                              <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={28}/></div>
-                              <span style={{ flex: 1, fontWeight: ganadorLocal ? '700' : '500', color: '#202124', fontSize: '.875rem' }}>{p.home?.name}</span>
-                              {jugado && <span style={{ fontWeight: '900', fontSize: '1.2rem', color: ganadorLocal ? '#1e8e3e' : '#9aa0a6' }}>{p.home_score}</span>}
-                              {ganadorLocal && <span style={{ fontSize: '.8rem' }}>✓</span>}
-                            </div>
-                            {/* Visitante */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: ganadorVis ? '#e6f4ea' : '#fff' }}>
-                              <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={28}/></div>
-                              <span style={{ flex: 1, fontWeight: ganadorVis ? '700' : '500', color: '#202124', fontSize: '.875rem' }}>{p.away?.name}</span>
-                              {jugado && <span style={{ fontWeight: '900', fontSize: '1.2rem', color: ganadorVis ? '#1e8e3e' : '#9aa0a6' }}>{p.away_score}</span>}
-                              {ganadorVis && <span style={{ fontSize: '.8rem' }}>✓</span>}
-                            </div>
-                            {/* Footer */}
-                            <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8f9fa' }}>
-                              <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>
-                                {p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'}
-                                {p.location && ` · 📍 ${p.location}`}
-                              </span>
-                              {!jugado && (
-                                <button onClick={() => setPlanillaPartido(p)}
-                                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', background: '#1a73e8', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                                  <Check size={12}/> Resultado
-                                </button>
-                              )}
-                              {jugado && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>✓ Jugado</span>}
-                            </div>
-                          </div>
-                        )
-                      })}
+            return (
+              <div>
+                {/* Campeón */}
+                {campeon && (
+                  <div style={{ background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '14px', padding: '18px 24px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '2rem' }}>🏆</span>
+                    <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={campeon.logo_url} name={campeon.name} size={44}/></div>
+                    <div>
+                      <div style={{ fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>CAMPEÓN DEL TORNEO</div>
+                      <div style={{ fontWeight: '900', color: '#202124', fontSize: '1.2rem' }}>{campeon.name}</div>
                     </div>
                   </div>
-                ))
-              })()}
-            </div>
-          )}
+                )}
 
-          {bracket.length === 0 && (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
-              <GitBranch size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
-              <div>Genera el bracket de eliminatorias arriba</div>
-              <div style={{ fontSize: '.78rem', marginTop: '4px' }}>Primero finaliza la fase de grupos en el tab Grupos</div>
-            </div>
-          )}
+                {/* Generar siguiente ronda */}
+                {rondaCompleta && !esFinal && (
+                  <div style={{ background: hayEmpates ? '#fce8e6' : '#fff8e1', border: `1px solid ${hayEmpates ? '#fad2cf' : '#ffe082'}`, borderRadius: '12px', padding: '14px 18px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ fontWeight: '700', color: '#202124', fontSize: '.875rem' }}>
+                        {hayEmpates ? '⚠️ Hay llaves empatadas' : `✅ ${FASE_LABEL[faseActualElim]} completada`}
+                      </div>
+                      <div style={{ fontSize: '.75rem', color: hayEmpates ? '#d93025' : '#9aa0a6', marginTop: '2px' }}>
+                        {hayEmpates ? 'Registra los penales en la planilla del partido empatado para definir el ganador' : 'Los ganadores avanzan a la siguiente ronda del árbol'}
+                      </div>
+                    </div>
+                    {!hayEmpates && (
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input type="date" value={fechaRonda} onChange={e => setFechaRonda(e.target.value)} style={{ ...inputStyle, width: 'auto' }}/>
+                        <input type="time" value={horaRonda} onChange={e => setHoraRonda(e.target.value)} style={{ ...inputStyle, width: 'auto' }}/>
+                        <button onClick={handleGenerarSiguienteRonda} disabled={generandoRonda || !fechaRonda}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', background: !fechaRonda || generandoRonda ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaRonda || generandoRonda ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                          → {generandoRonda ? 'Generando...' : `Generar ${getRondaNombre(llavesActual.length)}`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Árbol */}
+                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>🏆 Árbol de eliminatorias</div>
+                <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
+                  {columnas.map(col => (
+                    <div key={col.fase} style={{ minWidth: '235px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.5px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                        {FASE_LABEL[col.fase].toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
+                        {col.llaves.map((ll, i) => ll ? (
+                          <div key={i} onClick={() => { const pend = ll.matches.find(m => m.status !== 'finished'); if (pend) setPlanillaPartido(pend); else setModalPartidoAdmin(ll.matches[ll.matches.length - 1]) }}
+                            style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}>
+                            {[{ team: ll.teamA, goles: ll.golesA }, { team: ll.teamB, goles: ll.golesB }].map(({ team, goles }, ti) => {
+                              const esGanador  = ll.ganador?.id === team.id
+                              const esPerdedor = ll.terminada && ll.ganador && !esGanador
+                              return (
+                                <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: esGanador ? '#e6f4ea' : '#fff', opacity: esPerdedor ? .45 : 1, borderBottom: ti === 0 ? '1px solid #f1f3f4' : 'none' }}>
+                                  <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={team.logo_url} name={team.name} size={24}/></div>
+                                  <span style={{ flex: 1, fontWeight: esGanador ? '800' : '500', color: '#202124', fontSize: '.8rem', textDecoration: esPerdedor ? 'line-through' : 'none' }}>{team.name}</span>
+                                  <span style={{ fontWeight: '900', fontSize: '1rem', color: esGanador ? '#1e8e3e' : '#9aa0a6' }}>
+                                    {ll.matches.some(m => m.status === 'finished') ? goles : '—'}
+                                  </span>
+                                  {esGanador && <span style={{ fontSize: '.75rem' }}>✓</span>}
+                                </div>
+                              )
+                            })}
+                            <div style={{ padding: '5px 12px', background: '#f8f9fa', fontSize: '.65rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
+                              {!ll.terminada
+                                ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : 'Por jugar'} · toca para planilla`
+                                : !ll.ganador
+                                  ? '⚠️ Empate — registra penales en la planilla'
+                                  : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={i} style={{ border: '1px dashed #dadce0', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#bdbdbd', fontSize: '.72rem', background: '#fafafa' }}>
+                            Por definir
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Columna campeón */}
+                  <div style={{ minWidth: '170px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.5px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
+                      🏆 CAMPEÓN
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                      {campeon ? (
+                        <div style={{ width: '100%', background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '8px', overflow: 'hidden', margin: '0 auto 8px' }}><TeamLogo logo_url={campeon.logo_url} name={campeon.name} size={40}/></div>
+                          <div style={{ fontWeight: '900', color: '#202124', fontSize: '.85rem' }}>{campeon.name}</div>
+                        </div>
+                      ) : (
+                        <div style={{ width: '100%', border: '1px dashed #f9a825', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#f9a825', fontSize: '.72rem', background: '#fffdf5' }}>
+                          Por definir
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
