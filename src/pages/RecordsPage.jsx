@@ -115,13 +115,83 @@ function StatBox({ valor, label, color }) {
   )
 }
 
+// Pantalla de bienvenida con los campeones de los últimos 15 días
+function SplashCampeones({ campeones, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 9000)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'radial-gradient(circle at 50% 28%, #1c1305, #07070e 72%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', overflowY: 'auto' }}>
+      <style>{`
+        @keyframes splashPop  { 0% { transform: scale(.55); opacity: 0 } 65% { transform: scale(1.07) } 100% { transform: scale(1); opacity: 1 } }
+        @keyframes splashGlow { 0%,100% { box-shadow: 0 0 26px rgba(249,168,37,.35) } 50% { box-shadow: 0 0 64px rgba(249,168,37,.75) } }
+        @keyframes splashFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
+      `}</style>
+      <div style={{ fontSize: '2.6rem', marginBottom: '4px', animation: 'splashFloat 2.4s ease-in-out infinite' }}>🏆</div>
+      <div style={{ fontWeight: '900', letterSpacing: '4px', color: S.gold, fontSize: '1.15rem', marginBottom: '4px', textAlign: 'center' }}>
+        {campeones.length > 1 ? '¡TENEMOS CAMPEONES!' : '¡TENEMOS CAMPEÓN!'}
+      </div>
+      <div style={{ color: S.muted, fontSize: '.72rem', letterSpacing: '2px', marginBottom: '24px' }}>🎉 FELICITACIONES 🎉</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', justifyContent: 'center', maxWidth: '760px' }}>
+        {campeones.map((c, i) => {
+          const iniciales = (c.team_name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+          return (
+            <div key={`${c.team_id}-${c.tournament_id}`} style={{ animation: `splashPop .7s ease ${i * 0.25}s both`, background: S.card, border: `2px solid ${S.gold}`, borderRadius: '18px', padding: '28px 32px', textAlign: 'center', minWidth: '230px', maxWidth: '300px' }}>
+              <div style={{ width: '116px', height: '116px', borderRadius: '50%', margin: '0 auto 16px', background: '#0a0f1e', border: `3px solid ${S.gold}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'splashGlow 2.2s ease-in-out infinite' }}>
+                {c.logo_url
+                  ? <img src={c.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '10px' }}/>
+                  : <span style={{ fontSize: '2.4rem', fontWeight: '900', color: S.gold }}>{iniciales}</span>}
+              </div>
+              <div style={{ fontWeight: '900', fontSize: '1.25rem', color: '#fff', textTransform: 'uppercase', letterSpacing: '.05em', lineHeight: 1.2 }}>{c.team_name}</div>
+              <div style={{ marginTop: '8px', color: '#000', background: S.gold, display: 'inline-block', borderRadius: '20px', padding: '3px 14px', fontWeight: '900', fontSize: '.68rem', letterSpacing: '2px' }}>CAMPEÓN</div>
+              <div style={{ marginTop: '8px', color: S.muted, fontSize: '.78rem' }}>del torneo</div>
+              <div style={{ color: S.cyan, fontWeight: '700', fontSize: '.85rem', marginTop: '2px' }}>{c.tournament_name}</div>
+            </div>
+          )
+        })}
+      </div>
+      <button onClick={onClose}
+        style={{ marginTop: '30px', background: S.gold, color: '#000', border: 'none', borderRadius: '10px', padding: '13px 42px', fontWeight: '900', letterSpacing: '2px', fontSize: '.85rem', cursor: 'pointer' }}>
+        ENTRAR →
+      </button>
+    </div>
+  )
+}
+
 export default function RecordsPage() {
   const navigate = useNavigate()
   const [loading,  setLoading]  = useState(true)
   const [records,  setRecords]  = useState([])
   const [totales,  setTotales]  = useState({ partidos: 0, goles: 0, jugadores: 0, torneos: 0 })
+  const [campeones,  setCampeones]  = useState([])
+  const [showSplash, setShowSplash] = useState(false)
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => { fetchTodo(); fetchCampeonesRecientes() }, [])
+
+  // Campeones coronados en los últimos 15 días (se muestran a todo el que entre)
+  async function fetchCampeonesRecientes() {
+    if (sessionStorage.getItem('golmebol_splash_campeones')) return
+    const desde = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+    const { data } = await supabase.from('tournament_logros')
+      .select('team_id, tournament_id, created_at, teams(name, logo_url), tournaments(name)')
+      .eq('tipo', 'campeon')
+      .not('team_id', 'is', null)
+      .gte('created_at', desde)
+      .order('created_at', { ascending: false })
+    const unicos = []
+    ;(data || []).forEach(l => {
+      if (!unicos.some(u => u.team_id === l.team_id && u.tournament_id === l.tournament_id)) {
+        unicos.push({ team_id: l.team_id, tournament_id: l.tournament_id, team_name: l.teams?.name, logo_url: l.teams?.logo_url, tournament_name: l.tournaments?.name })
+      }
+    })
+    if (unicos.length > 0) { setCampeones(unicos); setShowSplash(true) }
+  }
+
+  function cerrarSplash() {
+    sessionStorage.setItem('golmebol_splash_campeones', '1')
+    setShowSplash(false)
+  }
 
   async function fetchTodo() {
     setLoading(true)
@@ -330,6 +400,7 @@ export default function RecordsPage() {
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: S.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
+      {showSplash && campeones.length > 0 && <SplashCampeones campeones={campeones} onClose={cerrarSplash}/>}
       <div style={{ fontSize: '2rem' }}>🏆</div>
       <div style={{ color: S.cyan, fontSize: '.9rem', fontWeight: '600' }}>Cargando récords...</div>
     </div>
@@ -337,6 +408,7 @@ export default function RecordsPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, color: S.text }}>
+      {showSplash && campeones.length > 0 && <SplashCampeones campeones={campeones} onClose={cerrarSplash}/>}
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(180deg, #0a0a14 0%, #07070e 100%)', padding: '36px 16px 24px', textAlign: 'center', borderBottom: `1px solid ${S.border}` }}>
