@@ -292,6 +292,9 @@ export default function AdminTorneoDetallePage() {
   const [generandoRonda,   setGenerandoRonda]   = useState(false)
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
+  const [partidoPenales,   setPartidoPenales]   = useState(null) // partido empatado al que se le registran penales
+  const [penalesForm,      setPenalesForm]      = useState({ local: '', visitante: '' })
+  const [guardandoPenales, setGuardandoPenales] = useState(false)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
@@ -735,6 +738,22 @@ export default function AdminTorneoDetallePage() {
     return { porFase, fasesExist, actual, llaves, vivos, perdedores, perdedoresElegibles, byesActuales, completa, hayEmpates, repechajePendiente }
   }
 
+  async function handleGuardarPenales() {
+    const pl = parseInt(penalesForm.local), pv = parseInt(penalesForm.visitante)
+    if (isNaN(pl) || isNaN(pv)) return showMsg('Ingresa los penales de ambos equipos', 'error')
+    if (pl === pv) return showMsg('Los penales no pueden quedar empatados', 'error')
+    setGuardandoPenales(true)
+    const { error } = await supabase.from('matches')
+      .update({ penales_local: pl, penales_visitante: pv, penales_ganador: pl > pv ? 'home' : 'away' })
+      .eq('id', partidoPenales.id)
+    setGuardandoPenales(false)
+    if (error) return showMsg('Error al guardar los penales', 'error')
+    showMsg('Penales registrados ✓ — ganador definido')
+    setPartidoPenales(null)
+    setPenalesForm({ local: '', visitante: '' })
+    fetchBracket(); fetchPartidos()
+  }
+
   async function handleGenerarSiguienteRonda() {
     const est = getEstadoEliminatorias()
     if (!est) return
@@ -1113,6 +1132,47 @@ export default function AdminTorneoDetallePage() {
 
       {modalPartidoAdmin && (
         <ModalPartidoAdmin partido={modalPartidoAdmin} onClose={() => setModalPartidoAdmin(null)}/>
+      )}
+
+      {/* Modal registrar penales (llave empatada) */}
+      {partidoPenales && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setPartidoPenales(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '420px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🎯 Definir ganador por penales</div>
+              <button onClick={() => setPartidoPenales(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '14px', textAlign: 'center' }}>
+                {partidoPenales.home?.name} {partidoPenales.home_score} — {partidoPenales.away_score} {partidoPenales.away?.name}
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '2px' }}>El partido quedó empatado — ingresa el resultado de la tanda de penales</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={labelStyle}>Penales {partidoPenales.home?.name} *</label>
+                  <input type="number" min="0" value={penalesForm.local} onChange={e => setPenalesForm(f => ({ ...f, local: e.target.value }))} style={{ ...inputStyle, textAlign: 'center', fontWeight: '700', fontSize: '1.1rem' }} placeholder="0"/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Penales {partidoPenales.away?.name} *</label>
+                  <input type="number" min="0" value={penalesForm.visitante} onChange={e => setPenalesForm(f => ({ ...f, visitante: e.target.value }))} style={{ ...inputStyle, textAlign: 'center', fontWeight: '700', fontSize: '1.1rem' }} placeholder="0"/>
+                </div>
+              </div>
+              {penalesForm.local !== '' && penalesForm.visitante !== '' && penalesForm.local !== penalesForm.visitante && (
+                <div style={{ fontSize: '.78rem', color: '#1e8e3e', fontWeight: '700', textAlign: 'center', marginBottom: '12px' }}>
+                  🏆 Ganador: {parseInt(penalesForm.local) > parseInt(penalesForm.visitante) ? partidoPenales.home?.name : partidoPenales.away?.name}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setPartidoPenales(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                <button onClick={handleGuardarPenales} disabled={guardandoPenales}
+                  style={{ flex: 1, padding: '10px', background: guardandoPenales ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPenales ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                  {guardandoPenales ? 'Guardando...' : 'Guardar penales'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {msg && (
@@ -2199,7 +2259,12 @@ export default function AdminTorneoDetallePage() {
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
                         {col.llaves.map((ll, i) => ll ? (
-                          <div key={i} onClick={() => { const pend = ll.matches.find(m => m.status !== 'finished'); if (pend) setPlanillaPartido(pend); else setModalPartidoAdmin(ll.matches[ll.matches.length - 1]) }}
+                          <div key={i} onClick={() => {
+                            const pend = ll.matches.find(m => m.status !== 'finished')
+                            if (pend) setPlanillaPartido(pend)
+                            else if (ll.terminada && !ll.ganador) { setPenalesForm({ local: '', visitante: '' }); setPartidoPenales(ll.matches[ll.matches.length - 1]) }
+                            else setModalPartidoAdmin(ll.matches[ll.matches.length - 1])
+                          }}
                             style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}>
                             {(ll.matches[0].ronda || '').toLowerCase().includes('repechaje') && (
                               <div style={{ padding: '3px 12px', background: '#f3e8fd', fontSize: '.62rem', fontWeight: '800', color: '#9955ff', letterSpacing: '1px' }}>🔁 REPECHAJE</div>
@@ -2225,7 +2290,7 @@ export default function AdminTorneoDetallePage() {
                               {!ll.terminada
                                 ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : 'Por jugar'} · toca para planilla`
                                 : !ll.ganador
-                                  ? '⚠️ Empate — registra penales en la planilla'
+                                  ? '⚠️ Empate — toca aquí para registrar los penales'
                                   : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
                             </div>
                           </div>
