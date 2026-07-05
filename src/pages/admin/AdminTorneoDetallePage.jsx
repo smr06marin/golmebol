@@ -806,6 +806,25 @@ export default function AdminTorneoDetallePage() {
     if (!drag) return
     if (drag.pi === tpi && drag.slot === tslot) { setDrag(null); setDragOver(null); return }
     const nueva = jornadaGenerada.map(p => ({ ...p }))
+
+    // Dos equipos que descansan → crear un partido nuevo entre ellos
+    if (drag.pi !== tpi && nueva[tpi].descanso && nueva[drag.pi].descanso) {
+      const numPartidos = nueva.filter(p => !p.descanso).length
+      const [hIni] = (configJornada.hora_inicio || '08:00').split(':').map(Number)
+      const partidoNuevo = {
+        local: nueva[tpi].local, visitante: nueva[drag.pi].local,
+        cancha: canchas.length > 0 ? canchas[numPartidos % canchas.length] : null,
+        hora: `${String(hIni + Math.floor(numPartidos / Math.max(canchas.length, 1))).padStart(2, '0')}:00`,
+      }
+      const sinFilas = nueva.filter((_, idx) => idx !== drag.pi && idx !== tpi)
+      const idxPrimerDescanso = sinFilas.findIndex(p => p.descanso)
+      if (idxPrimerDescanso === -1) sinFilas.push(partidoNuevo)
+      else sinFilas.splice(idxPrimerDescanso, 0, partidoNuevo)
+      setJornadaGenerada(sinFilas); setDrag(null); setDragOver(null)
+      return
+    }
+
+    // Intercambio normal (también entre un partido y un equipo que descansa)
     const dest = tslot === 'local' ? nueva[tpi].local : nueva[tpi].visitante
     if (tslot === 'local') nueva[tpi].local = drag.equipo; else nueva[tpi].visitante = drag.equipo
     if (drag.slot === 'local') nueva[drag.pi].local = dest; else nueva[drag.pi].visitante = dest
@@ -1482,7 +1501,13 @@ export default function AdminTorneoDetallePage() {
                       <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {p.descanso ? (
-                          <div style={{ flex: 1, color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</div>
+                          <div draggable onDragStart={() => handleDragStart(i, 'local')} onDragOver={e => handleDragOver(e, i, 'local')} onDrop={e => handleDrop(e, i, 'local')} onDragEnd={handleDragEnd}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent' }}>
+                            <GripVertical size={13} color="#9aa0a6"/>
+                            <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
+                            <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</span>
+                            <span style={{ fontSize: '.65rem', color: '#bdbdbd', marginLeft: 'auto' }}>arrástralo a un partido para ponerlo a jugar</span>
+                          </div>
                         ) : (
                           <>
                             <div draggable onDragStart={() => handleDragStart(i, 'local')} onDragOver={e => handleDragOver(e, i, 'local')} onDrop={e => handleDrop(e, i, 'local')} onDragEnd={handleDragEnd}
