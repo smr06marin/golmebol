@@ -299,6 +299,7 @@ export default function AdminTorneoDetallePage() {
   const [equipoSale,       setEquipoSale]       = useState('')
   const [equipoEntra,      setEquipoEntra]      = useState('')
   const [guardandoReemplazo, setGuardandoReemplazo] = useState(false)
+  const [guardandoLogros,  setGuardandoLogros]  = useState(false)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
@@ -782,6 +783,56 @@ export default function AdminTorneoDetallePage() {
     showMsg(`Equipo reemplazado ✓ — entra ${entra?.name || ''}`)
     setReemplazoLlave(null); setEquipoSale(''); setEquipoEntra('')
     fetchBracket(); fetchPartidos()
+  }
+
+  // Guarda en tournament_logros la fase alcanzada por cada equipo y sus jugadores,
+  // más campeón, subcampeón y tercer puesto (hoja de vida de equipos y jugadores)
+  async function handleGuardarLogrosTorneo() {
+    const porFase = getLlavesPorFase()
+    const llaveFinal = porFase['final']?.find(l => !(l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+    if (!llaveFinal?.ganador) return showMsg('La final aún no tiene ganador', 'error')
+    if (!confirm('¿Guardar los logros del torneo en la hoja de vida de los equipos y sus jugadores?')) return
+    setGuardandoLogros(true)
+
+    const campeonEq    = llaveFinal.ganador
+    const subcampeonEq = llaveFinal.ganador.id === llaveFinal.teamA.id ? llaveFinal.teamB : llaveFinal.teamA
+    const llaveTercer  = porFase['final']?.find(l => (l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+    const tercerEq     = llaveTercer?.ganador || null
+
+    // Fase máxima que jugó cada equipo (sin contar el partido de tercer puesto)
+    const peso = { octavos: 1, cuartos: 2, semifinal: 3, final: 4 }
+    const faseMax = {}
+    bracket.forEach(m => {
+      if ((m.ronda || '').toLowerCase().includes('tercer')) return
+      ;[m.home_team_id, m.away_team_id].forEach(tid => {
+        if (!faseMax[tid] || peso[m.fase] > peso[faseMax[tid]]) faseMax[tid] = m.fase
+      })
+    })
+
+    const tipoEquipo = {}
+    equipos.forEach(e => {
+      if (e.id === campeonEq.id)                tipoEquipo[e.id] = 'campeon'
+      else if (e.id === subcampeonEq.id)        tipoEquipo[e.id] = 'subcampeon'
+      else if (tercerEq && e.id === tercerEq.id) tipoEquipo[e.id] = 'tercer_puesto'
+      else                                      tipoEquipo[e.id] = faseMax[e.id] || 'fase_grupos'
+    })
+
+    // Reemplazar logros de fase anteriores de este torneo (los MVP no se tocan)
+    const TIPOS_FASE = ['campeon', 'subcampeon', 'tercer_puesto', 'final', 'semifinal', 'cuartos', 'octavos', 'fase_grupos']
+    await supabase.from('tournament_logros').delete().eq('tournament_id', id).in('tipo', TIPOS_FASE)
+
+    const inserts = []
+    equipos.forEach(e => {
+      inserts.push({ tournament_id: id, team_id: e.id, tipo: tipoEquipo[e.id] })
+    })
+    jugadores.forEach(j => {
+      if (!j.player_id || !j.team_id || !tipoEquipo[j.team_id]) return
+      inserts.push({ tournament_id: id, team_id: j.team_id, player_id: j.player_id, tipo: tipoEquipo[j.team_id] })
+    })
+    const { error } = await supabase.from('tournament_logros').insert(inserts)
+    setGuardandoLogros(false)
+    if (error) return showMsg('Error al guardar los logros', 'error')
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}`)
   }
 
   async function handleGenerarSiguienteRonda() {
@@ -2243,6 +2294,9 @@ export default function AdminTorneoDetallePage() {
             const { porFase, fasesExist, actual: faseActualElim, llaves: llavesActual, completa: rondaCompleta, hayEmpates, repechajePendiente, vivos } = est
             const llaveFinal = porFase['final']?.find(l => !(l.matches[0].ronda || '').toLowerCase().includes('tercer'))
             const campeon = llaveFinal?.ganador || null
+            const subcampeon = campeon ? (llaveFinal.ganador.id === llaveFinal.teamA.id ? llaveFinal.teamB : llaveFinal.teamA) : null
+            const llaveTercer = porFase['final']?.find(l => (l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+            const tercerPuestoEq = llaveTercer?.ganador || null
             const esImpar = !repechajePendiente && vivos.length % 2 !== 0 && vivos.length > 3
             const proximaEsFinal = !repechajePendiente && vivos.length === 2
             const nombreSiguiente = repechajePendiente
@@ -2269,12 +2323,27 @@ export default function AdminTorneoDetallePage() {
               <div>
                 {/* Campeón */}
                 {campeon && (
-                  <div style={{ background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '14px', padding: '18px 24px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '2rem' }}>🏆</span>
-                    <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={campeon.logo_url} name={campeon.name} size={44}/></div>
-                    <div>
-                      <div style={{ fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>CAMPEÓN DEL TORNEO</div>
-                      <div style={{ fontWeight: '900', color: '#202124', fontSize: '1.2rem' }}>{campeon.name}</div>
+                  <div style={{ background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '14px', padding: '18px 24px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '2rem' }}>🏆</span>
+                      <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={campeon.logo_url} name={campeon.name} size={44}/></div>
+                      <div>
+                        <div style={{ fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>CAMPEÓN DEL TORNEO</div>
+                        <div style={{ fontWeight: '900', color: '#202124', fontSize: '1.2rem' }}>{campeon.name}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                      {subcampeon && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥈 Subcampeón: {subcampeon.name}</span>}
+                      {tercerPuestoEq && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥉 Tercer puesto: {tercerPuestoEq.name}</span>}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px' }}>
+                      <button onClick={handleGuardarLogrosTorneo} disabled={guardandoLogros}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                        💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center', marginTop: '6px' }}>
+                      Guarda campeón, subcampeón, tercer puesto y hasta qué fase llegó cada equipo — en el historial del equipo y de cada uno de sus jugadores
                     </div>
                   </div>
                 )}
