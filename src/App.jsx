@@ -107,7 +107,11 @@ export default function App() {
       const { data, error } = await supabase.from('roles_plataforma')
         .select('rol, plan, activo').eq('email', email).maybeSingle()
       if (error) throw error
-      if (data && data.activo !== false) setRol({ rol: data.rol, plan: data.plan })
+      if (data && data.activo !== false) {
+        setRol({ rol: data.rol, plan: data.plan })
+        // Vincular la cuenta al rol (para que el admin vea de quién es cada torneo)
+        supabase.from('roles_plataforma').update({ user_id: u.id }).eq('email', email).then(() => {}, () => {})
+      }
       else if (ADMINS_PRINCIPALES.includes(email)) setRol({ rol: 'admin' })
       else setRol({ rol: null })
     } catch {

@@ -35,6 +35,7 @@ export default function AdminTorneosPage() {
   const esOrganizador = rol?.rol === 'organizador'
 
   const [torneos, setTorneos] = useState([])
+  const [organizadores, setOrganizadores] = useState({}) // user_id -> email
   const [form, setForm] = useState(EMPTY)
   const [fin, setFin] = useState(FIN_EMPTY)
   const [editId, setEditId] = useState(null)
@@ -50,6 +51,15 @@ export default function AdminTorneosPage() {
     if (esOrganizador) query = query.eq('organizador_id', user?.id)
     const { data } = await query
     setTorneos(data || [])
+    // Para el admin: mapa de organizadores (id de cuenta -> correo)
+    if (esAdmin) {
+      try {
+        const { data: roles } = await supabase.from('roles_plataforma').select('email, user_id').not('user_id', 'is', null)
+        const map = {}
+        ;(roles || []).forEach(r => { map[r.user_id] = r.email })
+        setOrganizadores(map)
+      } catch { /* columna user_id aún no creada */ }
+    }
   }
 
   async function handleTogglePremium(t) {
@@ -321,6 +331,12 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {esAdmin && t.organizador_id && (
+                  <span title={organizadores[t.organizador_id] ? `Torneo de ${organizadores[t.organizador_id]}` : 'Torneo de un organizador'}
+                    style={{ fontSize: '.72rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '12px', padding: '3px 10px', fontWeight: '600' }}>
+                    🏢 {organizadores[t.organizador_id] || 'Organizador'}
+                  </span>
+                )}
                 {t.premium && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff4e5', borderRadius: '12px', padding: '3px 10px', fontWeight: '700' }}>⭐ Premium</span>}
                 {t.genero && <span style={{ fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '12px', padding: '3px 10px' }}>{t.genero}</span>}
                 {t.categoria && <span style={{ fontSize: '.75rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '12px', padding: '3px 10px' }}>{t.categoria}</span>}

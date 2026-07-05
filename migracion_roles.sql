@@ -42,3 +42,6 @@ on conflict (email) do nothing;
 alter table tournaments add column if not exists premium boolean default false;
 alter table tournaments add column if not exists torneo_padre_id uuid;
 alter table tournaments add column if not exists edicion integer default 1;
+
+-- 4. Vincular el rol con la cuenta (se llena solo cuando la persona inicia sesión)
+alter table roles_plataforma add column if not exists user_id uuid;
