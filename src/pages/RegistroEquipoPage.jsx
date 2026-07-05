@@ -57,6 +57,7 @@ export default function RegistroEquipoPage() {
   const [loading,       setLoading]       = useState(true)
   const [cedula,        setCedula]        = useState('')
   const [deudaJugador,  setDeudaJugador]  = useState(null) // deuda personal de tarjetas
+  const [sancionJugador, setSancionJugador] = useState(null) // sanción activa
   const [buscando,      setBuscando]      = useState(false)
   const [jugadorExiste, setJugadorExiste] = useState(null)
   const [mostrarNuevo,  setMostrarNuevo]  = useState(false)
@@ -128,6 +129,7 @@ export default function RegistroEquipoPage() {
     setJugadorExiste(null)
     setMostrarNuevo(false)
     setDeudaJugador(null)
+    setSancionJugador(null)
 
     // Buscar jugador
     const { data: jugador } = await supabase.from('players').select('*').eq('numero_cedula', cedula.trim()).single()
@@ -155,6 +157,15 @@ export default function RegistroEquipoPage() {
         const total = (deudas || []).reduce((a, d) => a + (d.monto || 0), 0)
         if (total > 0) setDeudaJugador({ total, concepto: (deudas || []).map(d => d.concepto).filter(Boolean)[0] || 'tarjetas de torneos anteriores' })
       } catch { /* tabla de finanzas aún no creada */ }
+      // Verificar sanción activa (aplica a todos los torneos)
+      try {
+        const { data: sanc } = await supabase
+          .from('sanciones').select('motivo, fecha_fin')
+          .eq('player_id', jugador.id).eq('activa', true)
+        const ahora = new Date()
+        const activa = (sanc || []).find(s => !s.fecha_fin || new Date(s.fecha_fin) > ahora)
+        if (activa) setSancionJugador(activa)
+      } catch { /* tabla de sanciones aún no creada */ }
       setJugadorExiste(jugador)
     } else {
       setMostrarNuevo(true)
@@ -164,6 +175,7 @@ export default function RegistroEquipoPage() {
   }
 
   async function handleConfirmarExistente() {
+    if (sancionJugador) return showMsg(`⛔ No puedes inscribirte: estás sancionado${sancionJugador.fecha_fin ? ` hasta el ${new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO')}` : ' de forma permanente'}.`, 'warning')
     if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
     setGuardando(true)
 
@@ -267,7 +279,7 @@ export default function RegistroEquipoPage() {
         <button
           onClick={() => {
             setExito(false); setCedula(''); setJugadorExiste(null); setMostrarNuevo(false)
-            setDeudaJugador(null); setFormNuevo(EMPTY_FORM); setGuardando(false)
+            setDeudaJugador(null); setSancionJugador(null); setFormNuevo(EMPTY_FORM); setGuardando(false)
             setFotoFrontal(null); setFotoTrasera(null); setPreviewFrontal(null); setPreviewTrasera(null)
             window.scrollTo({ top: 0 })
           }}
@@ -361,6 +373,17 @@ export default function RegistroEquipoPage() {
               </div>
             )}
 
+            {sancionJugador && (
+              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '4px' }}>⛔ JUGADOR SANCIONADO — NO PUEDE INSCRIBIRSE</div>
+                <div style={{ fontSize: '.8rem', color: '#5f6368' }}>
+                  {sancionJugador.motivo || 'Sanción disciplinaria'}.{' '}
+                  {sancionJugador.fecha_fin
+                    ? <>Sancionado hasta el <strong style={{ color: '#d93025' }}>{new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>.</>
+                    : <strong style={{ color: '#d93025' }}>Sanción permanente.</strong>}
+                </div>
+              </div>
+            )}
             {deudaJugador && (
               <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
                 <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '4px' }}>🚫 NO PUEDES INSCRIBIRTE POR DEUDA DE TARJETAS</div>
@@ -375,11 +398,11 @@ export default function RegistroEquipoPage() {
               ¿Eres tú? Confirma para inscribirte en <strong>{torneo.name}</strong> con <strong>{equipo.name}</strong>.
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={handleConfirmarExistente} disabled={guardando || !!deudaJugador}
-                style={{ flex: 1, padding: '13px', background: deudaJugador ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: deudaJugador ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
-                {guardando ? 'Registrando...' : deudaJugador ? '🚫 Inscripción bloqueada' : '✓ Confirmar inscripción'}
+              <button onClick={handleConfirmarExistente} disabled={guardando || !!deudaJugador || !!sancionJugador}
+                style={{ flex: 1, padding: '13px', background: (deudaJugador || sancionJugador) ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: (deudaJugador || sancionJugador) ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
+                {guardando ? 'Registrando...' : sancionJugador ? '⛔ Jugador sancionado' : deudaJugador ? '🚫 Inscripción bloqueada' : '✓ Confirmar inscripción'}
               </button>
-              <button onClick={() => { setJugadorExiste(null); setCedula(''); setDeudaJugador(null) }}
+              <button onClick={() => { setJugadorExiste(null); setCedula(''); setDeudaJugador(null); setSancionJugador(null) }}
                 style={{ padding: '13px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
                 No soy yo
               </button>

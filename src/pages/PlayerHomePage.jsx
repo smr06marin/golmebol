@@ -181,6 +181,22 @@ export default function PlayerHomePage() {
       }
     }
 
+    // SANCIÓN ACTIVA DEL JUGADOR
+    try {
+      const { data: sancs } = await supabase
+        .from('sanciones').select('motivo, fecha_fin')
+        .eq('player_id', p.id).eq('activa', true)
+      const sancionActiva = (sancs || []).find(s => !s.fecha_fin || new Date(s.fecha_fin) > new Date())
+      if (sancionActiva && !dismissed.includes('sancion_activa')) {
+        notifsList.push({
+          id: 'sancion_activa', icon: '⛔',
+          titulo: 'Estás sancionado',
+          texto: `${sancionActiva.motivo || 'Sanción disciplinaria'} — ${sancionActiva.fecha_fin ? 'hasta el ' + new Date(sancionActiva.fecha_fin).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : 'sanción permanente'}. No puedes jugar en ningún torneo.`,
+          color: '#d93025', bg: '#fce8e6',
+        })
+      }
+    } catch (e) { console.error('sanciones:', e) }
+
     // DEUDAS DE TARJETAS (del equipo en torneos activos y personales del jugador)
     try {
       const fmtCop = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
