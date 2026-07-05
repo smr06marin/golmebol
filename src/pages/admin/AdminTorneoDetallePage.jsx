@@ -2251,16 +2251,18 @@ export default function AdminTorneoDetallePage() {
                 ? 'Semifinal (1° vs 2°)'
                 : getRondaNombre(esImpar && modoImpar === 'mejor_perdedor' ? vivos.length + 1 : vivos.length)
 
-            // Columnas del árbol: fases jugadas + placeholders hasta la final
+            // Columnas del árbol: fases jugadas + placeholders, siempre hasta la final
             const columnas = []
-            let idx = FASE_ORDEN.indexOf(fasesExist[0])
             let n = porFase[fasesExist[0]].length
-            while (idx < FASE_ORDEN.length) {
+            for (let idx = FASE_ORDEN.indexOf(fasesExist[0]); idx < FASE_ORDEN.length; idx++) {
               const f = FASE_ORDEN[idx]
-              columnas.push({ fase: f, llaves: porFase[f] || Array.from({ length: Math.max(n, 1) }, () => null) })
-              if (n <= 1) break
-              n = Math.floor(n / 2)
-              idx++
+              if (porFase[f]) {
+                columnas.push({ fase: f, llaves: porFase[f] })
+                n = porFase[f].length
+              } else {
+                n = Math.max(Math.floor(n / 2), 1)
+                columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null) })
+              }
             }
 
             return (
