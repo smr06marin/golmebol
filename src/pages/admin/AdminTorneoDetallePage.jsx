@@ -253,6 +253,7 @@ export default function AdminTorneoDetallePage() {
 
   const [configJornada,   setConfigJornada]   = useState({ fecha: '', hora_inicio: '', numero: '' })
   const [jornadaGenerada, setJornadaGenerada] = useState([])
+  const [permitirIntergrupo, setPermitirIntergrupo] = useState(false)
   const [drag,            setDrag]            = useState(null)
   const [dragOver,        setDragOver]        = useState(null)
   const [loadingPartido,  setLoadingPartido]  = useState(false)
@@ -722,12 +723,60 @@ export default function AdminTorneoDetallePage() {
     if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
+
+    // Cruces que ya existen en el torneo (jugados o programados)
+    const yaJugaron = new Set()
+    partidos.forEach(p => {
+      yaJugaron.add(`${p.home_team_id}|${p.away_team_id}`)
+      yaJugaron.add(`${p.away_team_id}|${p.home_team_id}`)
+    })
+
+    // Grupo de cada equipo (si el torneo tiene grupos)
+    const grupoDe = {}
+    grupoEquipos.forEach(ge => { grupoDe[ge.team_id] = ge.grupo_id })
+    const hayGrupos = grupos.length > 1
+
     const eq = [...equipos].sort(() => Math.random() - 0.5)
+    const usados = new Set()
     const pares = []
-    for (let i = 0; i < eq.length - 1; i += 2) pares.push({ local: eq[i], visitante: eq[i + 1] })
-    if (eq.length % 2 !== 0) pares.push({ local: eq[eq.length - 1], visitante: null, descanso: true })
+    const descansan = []
+
+    for (const a of eq) {
+      if (usados.has(a.id)) continue
+      usados.add(a.id)
+      // 1) Rival del mismo grupo con el que no haya jugado
+      let rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
+      // 2) Si no hay y está permitido, rival de otro grupo con el que no haya jugado
+      if (!rival && hayGrupos && permitirIntergrupo) {
+        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`))
+      }
+      if (rival) {
+        usados.add(rival.id)
+        pares.push({ local: a, visitante: rival, intergrupo: hayGrupos && grupoDe[a.id] !== grupoDe[rival.id] })
+      } else {
+        descansan.push(a)
+      }
+    }
+    // 3) Ya sin rivales nuevos: descansan
+    descansan.forEach(a => pares.push({ local: a, visitante: null, descanso: true }))
+
     const [hIni] = configJornada.hora_inicio.split(':').map(Number)
-    setJornadaGenerada(pares.map((p, i) => ({ ...p, cancha: canchas[i % canchas.length], hora: `${String(hIni + Math.floor(i / canchas.length)).padStart(2, '0')}:00` })))
+    let idx = 0
+    setJornadaGenerada(pares.map(p => {
+      if (p.descanso) return p
+      const asignado = { ...p, cancha: canchas[idx % canchas.length], hora: `${String(hIni + Math.floor(idx / canchas.length)).padStart(2, '0')}:00` }
+      idx++
+      return asignado
+    }))
+  }
+
+  function handleEliminarParejaJornada(i) {
+    const p = jornadaGenerada[i]
+    if (!p || p.descanso) return
+    const nueva = jornadaGenerada.filter((_, idx) => idx !== i)
+    nueva.push({ local: p.local, visitante: null, descanso: true })
+    if (p.visitante) nueva.push({ local: p.visitante, visitante: null, descanso: true })
+    setJornadaGenerada(nueva)
   }
 
   async function handleGuardarJornada() {
@@ -1404,7 +1453,16 @@ export default function AdminTorneoDetallePage() {
                   <div><label style={labelStyle}>Fecha *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
                   <div><label style={labelStyle}>Hora inicio *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
                 </div>
-                <button onClick={generarJornada} style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
+                {grupos.length > 1 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
+                    <input type="checkbox" checked={permitirIntergrupo} onChange={e => setPermitirIntergrupo(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }}/>
+                    Permitir partidos intergrupo cuando un equipo ya enfrentó a todos los de su grupo
+                  </label>
+                )}
+                <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
+                  ℹ️ El sorteo evita repetir cruces ya jugados o programados. Si un equipo no tiene rival nuevo, queda descansando.
+                </div>
+                <button onClick={generarJornada} style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
                   <Shuffle size={16}/> Generar jornada aleatoria
                 </button>
               </div>
@@ -1441,8 +1499,13 @@ export default function AdminTorneoDetallePage() {
                               <GripVertical size={13} color="#9aa0a6"/>
                             </div>
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                              {p.intergrupo && <span style={{ fontSize: '.65rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>Intergrupo</span>}
                               <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {p.hora}</span>
                               <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre}</span>
+                              <button onClick={() => handleEliminarParejaJornada(i)} title="Eliminar partido — ambos equipos pasan a descansar"
+                                style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
+                                <X size={13}/>
+                              </button>
                             </div>
                           </>
                         )}
