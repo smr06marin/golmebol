@@ -10,5 +10,6 @@ export const useAuthStore = create((set) => ({
   setPlayer: (player) => set({ player }),
   setLoading: (loading) => set({ loading }),
   setRol: (rol) => set({ rol, rolCargado: true }),
+  empezarCargaRol: () => set({ rolCargado: false }),
   logout: () => set({ user: null, player: null, rol: null, rolCargado: false }),
 }))

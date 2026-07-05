@@ -48,9 +48,30 @@ function ProtectedRoute({ children }) {
   if (loading) return <PantallaCargando/>
   if (!user) return <Navigate to="/login" replace/>
   if (!rolCargado) return <PantallaCargando/>
-  // Árbitros van a su portal; cuentas sin rol de administración van al portal jugador
+  // Árbitros van a su portal
   if (rol?.rol === 'arbitro') return <Navigate to="/arbitro" replace/>
-  if (rol?.rol !== 'admin' && rol?.rol !== 'organizador') return <Navigate to="/jugador" replace/>
+  // Cuenta sin rol de administración: mostrar con qué correo entró y a dónde puede ir
+  if (rol?.rol !== 'admin' && rol?.rol !== 'organizador') return (
+    <div style={{ minHeight: '100vh', background: '#f4f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '16px', padding: '36px', textAlign: 'center', maxWidth: '400px', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
+        <div style={{ fontSize: '2.2rem', marginBottom: '10px' }}>🔒</div>
+        <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.05rem', marginBottom: '6px' }}>Esta cuenta no tiene permisos de administración</div>
+        <div style={{ fontSize: '.82rem', color: '#5f6368', marginBottom: '4px' }}>Entraste con:</div>
+        <div style={{ fontSize: '.9rem', fontWeight: '700', color: '#1a73e8', marginBottom: '16px' }}>{user.email}</div>
+        <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '20px' }}>Si deberías tener acceso, pide al administrador que agregue este correo en la sección Usuarios.</div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => { window.location.href = '/jugador' }}
+            style={{ flex: 1, padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600' }}>
+            Ir al portal jugador
+          </button>
+          <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }}
+            style={{ flex: 1, padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  )
   return children
 }
 
@@ -75,17 +96,19 @@ function PlayerRoute({ children }) {
 }
 
 export default function App() {
-  const { setUser, setLoading, setRol, user } = useAuthStore()
+  const { setUser, setLoading, setRol, empezarCargaRol, user } = useAuthStore()
   const [cardType, setCardType] = useState('normal')
 
   async function cargarRol(u) {
     if (!u?.email) { setRol(null); return }
+    empezarCargaRol() // evita usar el rol viejo mientras se consulta el nuevo
+    const email = u.email.toLowerCase()
     try {
       const { data, error } = await supabase.from('roles_plataforma')
-        .select('rol, plan, activo').eq('email', u.email).maybeSingle()
+        .select('rol, plan, activo').eq('email', email).maybeSingle()
       if (error) throw error
       if (data && data.activo !== false) setRol({ rol: data.rol, plan: data.plan })
-      else if (ADMINS_PRINCIPALES.includes(u.email)) setRol({ rol: 'admin' })
+      else if (ADMINS_PRINCIPALES.includes(email)) setRol({ rol: 'admin' })
       else setRol({ rol: null })
     } catch {
       // Tabla de roles aún no creada: comportamiento actual (todo usuario logueado es admin)
