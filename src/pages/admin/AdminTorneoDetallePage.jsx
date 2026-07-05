@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch } from 'lucide-react'
@@ -279,7 +279,7 @@ export default function AdminTorneoDetallePage() {
   const [generandoElim,    setGenerandoElim]    = useState(false)
   const [bracket,          setBracket]          = useState([]) // partidos de eliminatorias
 
-  useEffect(() => { fetchTodo() }, [id])
+  useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
 
@@ -787,6 +787,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
+  if (!id || id === 'undefined') return <Navigate to="/admin/torneos" replace/>
   if (!torneo)  return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Torneo no encontrado</div>
 
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
@@ -1266,9 +1267,37 @@ export default function AdminTorneoDetallePage() {
                   <div style={{ fontWeight: '600', color: '#202124', marginBottom: '16px' }}>Nuevo partido</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '12px', alignItems: 'end' }}>
-                      <div><label style={labelStyle}>Equipo local *</label><select value={formPartido.home_team_id} onChange={e => setFormPartido(f => ({ ...f, home_team_id: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{equipos.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+                      <div>
+                        <label style={labelStyle}>Equipo local *</label>
+                        <select value={formPartido.home_team_id} onChange={e => setFormPartido(f => ({ ...f, home_team_id: e.target.value }))} style={inputStyle}>
+                          <option value="">Seleccionar...</option>{equipos.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                        </select>
+                      </div>
                       <div style={{ textAlign: 'center', fontWeight: '700', color: '#5f6368', paddingBottom: '8px' }}>VS</div>
-                      <div><label style={labelStyle}>Equipo visitante *</label><select value={formPartido.away_team_id} onChange={e => setFormPartido(f => ({ ...f, away_team_id: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{equipos.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+                      <div>
+                        <label style={labelStyle}>Equipo visitante *</label>
+                        <select value={formPartido.away_team_id} onChange={e => setFormPartido(f => ({ ...f, away_team_id: e.target.value }))} style={inputStyle}>
+                          <option value="">Seleccionar...</option>{equipos.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                        </select>
+                      </div>
+                      {formPartido.home_team_id && formPartido.away_team_id && formPartido.home_team_id !== formPartido.away_team_id && (() => {
+                        const yaJugaron = partidos.some(p =>
+                          (p.home_team_id === formPartido.home_team_id && p.away_team_id === formPartido.away_team_id) ||
+                          (p.home_team_id === formPartido.away_team_id && p.away_team_id === formPartido.home_team_id)
+                        )
+                        if (!yaJugaron) return null
+                        const veces = partidos.filter(p =>
+                          (p.home_team_id === formPartido.home_team_id && p.away_team_id === formPartido.away_team_id) ||
+                          (p.home_team_id === formPartido.away_team_id && p.away_team_id === formPartido.home_team_id)
+                        ).length
+                        return (
+                          <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '-4px' }}>
+                            <span style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600' }}>
+                              ⚠️ Estos equipos ya se enfrentaron {veces} vez{veces > 1 ? 'ces' : ''} en este torneo — puedes continuar igual
+                            </span>
+                          </div>
+                        )
+                      })()}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '12px' }}>
                       <div><label style={labelStyle}>Fecha *</label><input type="date" value={formPartido.played_at} onChange={e => setFormPartido(f => ({ ...f, played_at: e.target.value }))} style={inputStyle}/></div>
