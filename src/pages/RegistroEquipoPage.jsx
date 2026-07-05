@@ -56,6 +56,7 @@ export default function RegistroEquipoPage() {
   const [torneo,        setTorneo]        = useState(null)
   const [loading,       setLoading]       = useState(true)
   const [cedula,        setCedula]        = useState('')
+  const [deudaJugador,  setDeudaJugador]  = useState(null) // deuda personal de tarjetas
   const [buscando,      setBuscando]      = useState(false)
   const [jugadorExiste, setJugadorExiste] = useState(null)
   const [mostrarNuevo,  setMostrarNuevo]  = useState(false)
@@ -126,6 +127,7 @@ export default function RegistroEquipoPage() {
     setBuscando(true)
     setJugadorExiste(null)
     setMostrarNuevo(false)
+    setDeudaJugador(null)
 
     // Buscar jugador
     const { data: jugador } = await supabase.from('players').select('*').eq('numero_cedula', cedula.trim()).single()
@@ -145,6 +147,14 @@ export default function RegistroEquipoPage() {
         setBuscando(false)
         return
       }
+      // Verificar deuda personal de tarjetas de torneos anteriores
+      try {
+        const { data: deudas } = await supabase
+          .from('torneo_finanzas').select('monto, concepto')
+          .eq('player_id', jugador.id).eq('tipo', 'deuda_personal').eq('pagado', false)
+        const total = (deudas || []).reduce((a, d) => a + (d.monto || 0), 0)
+        if (total > 0) setDeudaJugador({ total, concepto: (deudas || []).map(d => d.concepto).filter(Boolean)[0] || 'tarjetas de torneos anteriores' })
+      } catch { /* tabla de finanzas aún no creada */ }
       setJugadorExiste(jugador)
     } else {
       setMostrarNuevo(true)
@@ -154,6 +164,7 @@ export default function RegistroEquipoPage() {
   }
 
   async function handleConfirmarExistente() {
+    if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
     setGuardando(true)
 
     // Insertar en tournament_player_registrations
@@ -337,15 +348,25 @@ export default function RegistroEquipoPage() {
               </div>
             )}
 
+            {deudaJugador && (
+              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '4px' }}>🚫 NO PUEDES INSCRIBIRTE POR DEUDA DE TARJETAS</div>
+                <div style={{ fontSize: '.8rem', color: '#5f6368' }}>
+                  Debes <strong style={{ color: '#d93025' }}>${Math.round(deudaJugador.total).toLocaleString('es-CO')}</strong> de {deudaJugador.concepto}.
+                  Comunícate con la organización para ponerte al día y poder inscribirte.
+                </div>
+              </div>
+            )}
+
             <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '16px' }}>
               ¿Eres tú? Confirma para inscribirte en <strong>{torneo.name}</strong> con <strong>{equipo.name}</strong>.
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={handleConfirmarExistente} disabled={guardando}
-                style={{ flex: 1, padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
-                {guardando ? 'Registrando...' : '✓ Confirmar inscripción'}
+              <button onClick={handleConfirmarExistente} disabled={guardando || !!deudaJugador}
+                style={{ flex: 1, padding: '13px', background: deudaJugador ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: deudaJugador ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: guardando ? .7 : 1 }}>
+                {guardando ? 'Registrando...' : deudaJugador ? '🚫 Inscripción bloqueada' : '✓ Confirmar inscripción'}
               </button>
-              <button onClick={() => { setJugadorExiste(null); setCedula('') }}
+              <button onClick={() => { setJugadorExiste(null); setCedula(''); setDeudaJugador(null) }}
                 style={{ padding: '13px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
                 No soy yo
               </button>

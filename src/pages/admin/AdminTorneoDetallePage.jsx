@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, DollarSign } from 'lucide-react'
 
 function ModalPartidoAdmin({ partido, onClose }) {
   const [stats,   setStats]   = useState([])
@@ -167,6 +167,7 @@ const TABS = [
   { id: 'equipos',        label: 'Equipos',         icon: <Shield size={16}/> },
   { id: 'estadisticas',   label: 'Estadísticas',    icon: <BarChart2 size={16}/> },
   { id: 'eliminatorias',  label: 'Eliminatorias',   icon: <GitBranch size={16}/> },
+  { id: 'finanzas',       label: 'Finanzas',        icon: <DollarSign size={16}/> },
 ]
 
 const inputStyle = {
@@ -301,9 +302,18 @@ export default function AdminTorneoDetallePage() {
   const [guardandoReemplazo, setGuardandoReemplazo] = useState(false)
   const [guardandoLogros,  setGuardandoLogros]  = useState(false)
 
+  // ── FINANZAS ────────────────────────────────────────
+  const [movimientos,      setMovimientos]      = useState([])
+  const [statsTarjetas,    setStatsTarjetas]    = useState([])
+  const [pagoModal,        setPagoModal]        = useState(null) // equipo al que se registra pago
+  const [pagoForm,         setPagoForm]         = useState({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
+  const [guardandoPago,    setGuardandoPago]    = useState(false)
+  const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
+
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
+  useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -635,6 +645,15 @@ export default function AdminTorneoDetallePage() {
     if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
     setGenerandoElim(true)
 
+    // Un equipo no avanza a eliminatorias con tarjetas sin pagar
+    const idsParticipantes = [...new Set(parejas.flatMap(([a, b]) => [a?.id, b?.id]).filter(Boolean))]
+    const deudores = await getDeudoresTarjetas(idsParticipantes)
+    if (deudores.length > 0) {
+      showMsg(`⛔ Tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
+      setGenerandoElim(false)
+      return
+    }
+
     const total = parejas.length * 2
     const fase  = getFaseValue(total)
     const ronda = getRondaNombre(total)
@@ -785,6 +804,118 @@ export default function AdminTorneoDetallePage() {
     fetchBracket(); fetchPartidos()
   }
 
+  // ── FINANZAS ────────────────────────────────────────
+
+  const fmt = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
+
+  async function fetchFinanzas() {
+    const [{ data: movs }, { data: st }] = await Promise.all([
+      supabase.from('torneo_finanzas').select('*, teams(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
+      supabase.from('player_match_stats').select('player_id, team_id, yellow_cards, blue_cards, red_cards, players(name)').eq('tournament_id', id),
+    ])
+    setMovimientos(movs || [])
+    setStatsTarjetas(st || [])
+  }
+
+  // Cuentas calculadas automáticamente desde los partidos y planillas
+  function calcFinanzas() {
+    const fc = torneo?.finanzas_config || {}
+    const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+    const jugados = partidos.filter(p => p.status === 'finished' && p.tipo_resultado !== 'w')
+    const partidosW = partidos.filter(p => p.status === 'finished' && p.tipo_resultado === 'w')
+
+    const porEquipo = {}
+    equipos.forEach(e => {
+      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0 }
+    })
+
+    jugados.forEach(m => {
+      if (porEquipo[m.home_team_id]) porEquipo[m.home_team_id].arbitrajes += fc.arbitraje_equipo || 0
+      if (porEquipo[m.away_team_id]) porEquipo[m.away_team_id].arbitrajes += fc.arbitraje_equipo || 0
+    })
+    partidosW.forEach(m => {
+      const presentaId = (m.home_score || 0) > (m.away_score || 0) ? m.home_team_id : m.away_team_id
+      const ausenteId  = presentaId === m.home_team_id ? m.away_team_id : m.home_team_id
+      if (porEquipo[presentaId]) porEquipo[presentaId].w     += fc.valor_w_presenta || 0
+      if (porEquipo[ausenteId])  porEquipo[ausenteId].multas += fc.multa_no_presenta || 0
+    })
+
+    // Tarjetas por jugador
+    const porJugador = {}
+    statsTarjetas.forEach(s => {
+      const valor = (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR
+      if (valor === 0) return
+      const key = `${s.team_id}|${s.player_id}`
+      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre: s.players?.name, am: 0, az: 0, rj: 0, valor: 0 }
+      porJugador[key].am += s.yellow_cards || 0
+      porJugador[key].az += s.blue_cards || 0
+      porJugador[key].rj += s.red_cards || 0
+      porJugador[key].valor += valor
+    })
+    Object.values(porJugador).forEach(j => {
+      if (porEquipo[j.team_id]) {
+        porEquipo[j.team_id].tarjetas += j.valor
+        porEquipo[j.team_id].tarjetasDetalle.push(j)
+      }
+    })
+
+    movimientos.forEach(mv => {
+      if (!porEquipo[mv.team_id]) return
+      if (mv.tipo === 'pago_tarjetas') porEquipo[mv.team_id].pagosTarjetas += mv.monto || 0
+      if (mv.tipo === 'pago_cargos')   porEquipo[mv.team_id].pagosOtros   += mv.monto || 0
+    })
+
+    const filas = Object.values(porEquipo).map(r => {
+      const cargos = r.inscripcion + r.arbitrajes + r.w + r.multas + r.tarjetas
+      const pagado = r.pagosTarjetas + r.pagosOtros
+      return { ...r, cargos, pagado, saldo: cargos - pagado, saldoTarjetas: r.tarjetas - r.pagosTarjetas }
+    }).sort((a, b) => b.saldo - a.saldo)
+
+    const gastoCanchas  = jugados.length * (fc.pago_cancha_partido || 0) + partidosW.length * (fc.pago_cancha_w || 0)
+    const gastoArbitros = jugados.length * (fc.pago_arbitro_partido || 0) + partidosW.length * (fc.pago_arbitro_w || 0)
+    const gastos = gastoCanchas + gastoArbitros
+    const ingresosEsperados = filas.reduce((a, r) => a + r.cargos, 0)
+    const recaudado = filas.reduce((a, r) => a + r.pagado, 0)
+
+    return { fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos, ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos }
+  }
+
+  async function handleRegistrarPago() {
+    const monto = parseFloat(pagoForm.monto)
+    if (!monto || monto <= 0) return showMsg('Ingresa el monto del pago', 'error')
+    setGuardandoPago(true)
+    const { error } = await supabase.from('torneo_finanzas').insert({
+      tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
+      concepto: pagoForm.concepto || (pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos'),
+    })
+    setGuardandoPago(false)
+    if (error) return showMsg('Error al registrar el pago (¿ejecutaste migracion_finanzas.sql?)', 'error')
+    showMsg('Pago registrado ✓')
+    setPagoModal(null); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
+    fetchFinanzas()
+  }
+
+  async function handleEliminarPago(mv) {
+    if (!confirm('¿Eliminar este pago?')) return
+    await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    fetchFinanzas()
+  }
+
+  // Equipos con tarjetas sin pagar (para bloquear eliminatorias)
+  async function getDeudoresTarjetas(teamIds) {
+    const fc = torneo?.finanzas_config || {}
+    const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+    if (pA + pZ + pR === 0) return []
+    const { data: st } = await supabase.from('player_match_stats').select('team_id, yellow_cards, blue_cards, red_cards').eq('tournament_id', id)
+    const { data: pagos } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_tarjetas')
+    const saldo = {}
+    ;(st || []).forEach(s => { saldo[s.team_id] = (saldo[s.team_id] || 0) + (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR })
+    ;(pagos || []).forEach(p => { saldo[p.team_id] = (saldo[p.team_id] || 0) - (p.monto || 0) })
+    return teamIds
+      .filter(tid => (saldo[tid] || 0) > 0)
+      .map(tid => ({ id: tid, deuda: saldo[tid], name: equipos.find(e => e.id === tid)?.name || 'Equipo' }))
+  }
+
   // Guarda en tournament_logros la fase alcanzada por cada equipo y sus jugadores,
   // más campeón, subcampeón y tercer puesto (hoja de vida de equipos y jugadores)
   async function handleGuardarLogrosTorneo() {
@@ -832,8 +963,45 @@ export default function AdminTorneoDetallePage() {
     const { error } = await supabase.from('tournament_logros').insert(inserts)
     setGuardandoLogros(false)
     if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
+
+    // Tarjetas sin pagar al cierre del torneo → deuda personal de cada jugador
+    let deudoresPersonales = 0
+    try {
+      const fc = torneo?.finanzas_config || {}
+      const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+      if (pA + pZ + pR > 0) {
+        const [{ data: st }, { data: pagos }] = await Promise.all([
+          supabase.from('player_match_stats').select('player_id, team_id, yellow_cards, blue_cards, red_cards').eq('tournament_id', id),
+          supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_tarjetas'),
+        ])
+        const cargoEq = {}, pagosEq = {}, valorJug = {}
+        ;(st || []).forEach(s => {
+          const v = (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR
+          if (v === 0) return
+          cargoEq[s.team_id] = (cargoEq[s.team_id] || 0) + v
+          const k = `${s.team_id}|${s.player_id}`
+          valorJug[k] = (valorJug[k] || 0) + v
+        })
+        ;(pagos || []).forEach(p => { pagosEq[p.team_id] = (pagosEq[p.team_id] || 0) + (p.monto || 0) })
+
+        const deudas = []
+        Object.entries(valorJug).forEach(([k, valor]) => {
+          const [team_id, player_id] = k.split('|')
+          const cargo = cargoEq[team_id] || 0
+          const saldo = Math.max(0, cargo - (pagosEq[team_id] || 0))
+          if (cargo === 0 || saldo === 0) return
+          const monto = Math.round(valor * (saldo / cargo))
+          if (monto > 0) deudas.push({ tournament_id: id, team_id, player_id, tipo: 'deuda_personal', monto, concepto: `Tarjetas del torneo ${torneo?.name || ''}`.trim(), pagado: false })
+        })
+
+        await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('tipo', 'deuda_personal')
+        if (deudas.length > 0) await supabase.from('torneo_finanzas').insert(deudas)
+        deudoresPersonales = deudas.length
+      }
+    } catch (e) { console.error('deuda personal:', e) }
+
     const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
-    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${deudoresPersonales > 0 ? ` · 💳 ${deudoresPersonales} jugadores quedaron con deuda personal de tarjetas` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
   }
 
   async function handleGenerarSiguienteRonda() {
@@ -844,6 +1012,14 @@ export default function AdminTorneoDetallePage() {
     if (est.hayEmpates) return showMsg('Hay llaves empatadas — registra los penales en la planilla', 'error')
     if (!fechaRonda) return showMsg('Selecciona la fecha de la siguiente ronda', 'error')
     setGenerandoRonda(true)
+
+    // Un equipo no avanza de ronda con tarjetas sin pagar
+    const deudoresRonda = await getDeudoresTarjetas(est.vivos.map(v => v.id))
+    if (deudoresRonda.length > 0) {
+      showMsg(`⛔ Tienen tarjetas sin pagar: ${deudoresRonda.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
+      setGenerandoRonda(false)
+      return
+    }
 
     const conVuelta = est.llaves.some(l => l.matches.length > 1)
     const base = { tournament_id: id, played_at: `${fechaRonda}T${horaRonda}:00`, status: 'scheduled', matchday: null }
@@ -1161,6 +1337,8 @@ export default function AdminTorneoDetallePage() {
 
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
+  const fcTorneo           = torneo.finanzas_config || {}
+  const finanzasActivas    = !!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0
   const tablaOrdenada      = calcTablaGeneral()
 
   const faseActual         = torneo.fase_actual || 'grupos'
@@ -1464,7 +1642,7 @@ export default function AdminTorneoDetallePage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', flexWrap: 'wrap' }}>
-        {TABS.map(t => (
+        {TABS.filter(t => t.id !== 'finanzas' || finanzasActivas).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
             {t.icon} {t.label}
@@ -2497,6 +2675,155 @@ export default function AdminTorneoDetallePage() {
               </div>
             )
           })()}
+        </div>
+      )}
+
+      {/* ── TAB FINANZAS ── */}
+      {tab === 'finanzas' && finanzasActivas && (() => {
+        const fin = calcFinanzas()
+        const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos')
+        return (
+          <div>
+            {/* Resumen */}
+            {fin.fc.llevar_cuentas && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  { label: '💵 Ingresos esperados', value: fmt(fin.ingresosEsperados), color: '#1a73e8' },
+                  { label: '✅ Recaudado',          value: fmt(fin.recaudado),          color: '#1e8e3e' },
+                  { label: '📤 Gastos',             value: fmt(fin.gastos),             color: '#d93025' },
+                  { label: '📈 Ganancia esperada',  value: fmt(fin.gananciaEsperada),   color: '#6c35de' },
+                  { label: '💰 Ganancia actual',    value: fmt(fin.gananciaActual),     color: fin.gananciaActual >= 0 ? '#1e8e3e' : '#d93025' },
+                ].map(c => (
+                  <div key={c.label} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>{c.label}</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: '800', color: c.color }}>{c.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Gastos detalle */}
+            {fin.fc.llevar_cuentas && (
+              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
+                <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
+                <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
+                <span>Los cobros a equipos y gastos se calculan automáticamente con cada partido jugado o W.</span>
+              </div>
+            )}
+
+            {/* Cuentas por equipo */}
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
+                <div>EQUIPO</div>
+                <div style={{ textAlign: 'right' }}>INSCRIP.</div>
+                <div style={{ textAlign: 'right' }}>ARBITRAJES</div>
+                <div style={{ textAlign: 'right' }}>W/MULTAS</div>
+                <div style={{ textAlign: 'right' }}>TARJETAS</div>
+                <div style={{ textAlign: 'right' }}>PAGADO</div>
+                <div style={{ textAlign: 'right' }}>SALDO</div>
+                <div/>
+              </div>
+              {fin.filas.map((r, i) => (
+                <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: r.tarjetasDetalle.length > 0 ? 'pointer' : 'default' }}
+                    onClick={() => r.tarjetasDetalle.length > 0 && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={24}/></div>
+                      <span style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</span>
+                      {r.tarjetasDetalle.length > 0 && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
+                    </div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.inscripcion) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.arbitrajes) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: r.multas > 0 ? '#d93025' : '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
+                    <div style={{ textAlign: 'right' }}>
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setPagoModal(r.equipo) }}
+                        style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '600' }}>
+                        💵 Pago
+                      </button>
+                    </div>
+                  </div>
+                  {equipoFinAbierto === r.equipo.id && r.tarjetasDetalle.length > 0 && (
+                    <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa' }}>
+                      <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>TARJETAS POR JUGADOR</div>
+                      {r.tarjetasDetalle.map(j => (
+                        <div key={j.player_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368', padding: '3px 0' }}>
+                          <span style={{ flex: 1, color: '#202124' }}>{j.nombre}</span>
+                          {j.am > 0 && <span>🟨 ×{j.am}</span>}
+                          {j.az > 0 && <span>🟦 ×{j.az}</span>}
+                          {j.rj > 0 && <span>🟥 ×{j.rj}</span>}
+                          <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(j.valor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {fin.filas.length === 0 && <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Sin equipos en el torneo</div>}
+            </div>
+
+            {/* Pagos registrados */}
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Pagos registrados</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              {pagosRegistrados.length === 0 ? (
+                <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay pagos registrados — usa el botón 💵 Pago de cada equipo</div>
+              ) : pagosRegistrados.map((mv, i) => (
+                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                  <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos')}</span>
+                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'pago_tarjetas' ? '#e8710a' : '#1a73e8', background: mv.tipo === 'pago_tarjetas' ? '#fff4e5' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : 'Cargos'}</span>
+                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: '#1e8e3e' }}>{fmt(mv.monto)}</span>
+                  <button onClick={() => handleEliminarPago(mv)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#d93025', display: 'flex' }}><X size={12}/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Modal registrar pago */}
+      {pagoModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setPagoModal(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>💵 Registrar pago — {pagoModal.name}</div>
+              <button onClick={() => setPagoModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={labelStyle}>¿Qué paga?</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_tarjetas' }))}
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_tarjetas' ? '2px solid #e8710a' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_tarjetas' ? '#fff4e5' : '#fff', color: pagoForm.tipo === 'pago_tarjetas' ? '#e8710a' : '#5f6368' }}>
+                    💳 Tarjetas
+                  </button>
+                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_cargos' }))}
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_cargos' ? '2px solid #1a73e8' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_cargos' ? '#e8f0fe' : '#fff', color: pagoForm.tipo === 'pago_cargos' ? '#1a73e8' : '#5f6368' }}>
+                    🧾 Otros cargos
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={labelStyle}>Monto ($) *</label>
+                <input type="number" min="0" value={pagoForm.monto} onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>Concepto (opcional)</label>
+                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder="Ej: pago tarjetas jornada 3"/>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                <button onClick={handleRegistrarPago} disabled={guardandoPago}
+                  style={{ flex: 1, padding: '10px', background: guardandoPago ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPago ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                  {guardandoPago ? 'Guardando...' : 'Registrar pago'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

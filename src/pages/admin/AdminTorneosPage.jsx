@@ -5,6 +5,13 @@ import { Plus, Pencil, Trash2, Trophy, Eye } from 'lucide-react'
 
 
 const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '' }
+const FIN_EMPTY = {
+  llevar_cuentas: false,
+  precio_amarilla: '', precio_azul: '', precio_roja: '',
+  arbitraje_equipo: '', valor_w_presenta: '', multa_no_presenta: '',
+  inscripcion: '', pago_cancha_partido: '', pago_cancha_w: '',
+  pago_arbitro_partido: '', pago_arbitro_w: '',
+}
 const MODALIDADES = ['Fútbol 5', 'Fútbol 7', 'Fútbol 11']
 const GENEROS = ['Masculino', 'Femenino', 'Mixto']
 const FORMATOS = ['Todos contra todos', 'Eliminación directa', 'Grupos + Eliminación']
@@ -25,6 +32,7 @@ export default function AdminTorneosPage() {
   
   const [torneos, setTorneos] = useState([])
   const [form, setForm] = useState(EMPTY)
+  const [fin, setFin] = useState(FIN_EMPTY)
   const [editId, setEditId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -53,9 +61,28 @@ export default function AdminTorneosPage() {
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
     if (!form.fecha_inicio) return showMsg('La fecha de inicio es obligatoria', 'error')
     setLoading(true)
+    const num = v => (v === '' || v === null || v === undefined) ? 0 : (parseFloat(v) || 0)
+    const finanzasConfig = {
+      llevar_cuentas:       !!fin.llevar_cuentas,
+      precio_amarilla:      num(fin.precio_amarilla),
+      precio_azul:          num(fin.precio_azul),
+      precio_roja:          num(fin.precio_roja),
+      arbitraje_equipo:     num(fin.arbitraje_equipo),
+      valor_w_presenta:     num(fin.valor_w_presenta),
+      multa_no_presenta:    num(fin.multa_no_presenta),
+      inscripcion:          num(fin.inscripcion),
+      pago_cancha_partido:  num(fin.pago_cancha_partido),
+      pago_cancha_w:        num(fin.pago_cancha_w),
+      pago_arbitro_partido: num(fin.pago_arbitro_partido),
+      pago_arbitro_w:       num(fin.pago_arbitro_w),
+    }
     if (editId) {
-      const { error } = await supabase.from('tournaments').update(form).eq('id', editId)
-      if (error) showMsg('Error al guardar', 'error')
+      let { error } = await supabase.from('tournaments').update({ ...form, finanzas_config: finanzasConfig }).eq('id', editId)
+      if (error && error.message?.includes('finanzas_config')) {
+        // La columna aún no existe: guardar sin finanzas y avisar
+        ;({ error } = await supabase.from('tournaments').update(form).eq('id', editId))
+        if (!error) showMsg('Torneo actualizado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase', 'error')
+      } else if (error) showMsg('Error al guardar', 'error')
       else { showMsg('Torneo actualizado ✓'); setEditId(null) }
     } else {
         const cleanForm = {
@@ -64,11 +91,15 @@ export default function AdminTorneosPage() {
   fecha_inicio: form.fecha_inicio || null,
   fecha_fin: form.fecha_fin || null,
 }
-const { error } = await supabase.from('tournaments').insert(cleanForm)
-        if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
+let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanzas_config: finanzasConfig })
+        if (error && error.message?.includes('finanzas_config')) {
+          ;({ error } = await supabase.from('tournaments').insert(cleanForm))
+          if (!error) showMsg('Torneo creado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase', 'error')
+        } else if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
       else showMsg('Torneo creado ✓')
     }
     setForm(EMPTY)
+    setFin(FIN_EMPTY)
     setShowForm(false)
     setLoading(false)
     fetchTorneos()
@@ -76,6 +107,21 @@ const { error } = await supabase.from('tournaments').insert(cleanForm)
 
   function handleEdit(t) {
     setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '' })
+    const fc = t.finanzas_config || {}
+    setFin({
+      llevar_cuentas:       !!fc.llevar_cuentas,
+      precio_amarilla:      fc.precio_amarilla || '',
+      precio_azul:          fc.precio_azul || '',
+      precio_roja:          fc.precio_roja || '',
+      arbitraje_equipo:     fc.arbitraje_equipo || '',
+      valor_w_presenta:     fc.valor_w_presenta || '',
+      multa_no_presenta:    fc.multa_no_presenta || '',
+      inscripcion:          fc.inscripcion || '',
+      pago_cancha_partido:  fc.pago_cancha_partido || '',
+      pago_cancha_w:        fc.pago_cancha_w || '',
+      pago_arbitro_partido: fc.pago_arbitro_partido || '',
+      pago_arbitro_w:       fc.pago_arbitro_w || '',
+    })
     setEditId(t.id)
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -105,7 +151,7 @@ const { error } = await supabase.from('tournaments').insert(cleanForm)
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Torneos</h1>
           <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{torneos.length} torneos registrados</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
+        <button onClick={() => { setForm(EMPTY); setFin(FIN_EMPTY); setEditId(null); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
           <Plus size={18}/> Nuevo torneo
         </button>
@@ -169,13 +215,52 @@ const { error } = await supabase.from('tournaments').insert(cleanForm)
               <input type="date" value={form.fecha_fin} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} style={input}/>
               </div>
             </div>
+
+            {/* Precios de tarjetas */}
+            <div style={{ borderTop: '1px solid #e8eaed', paddingTop: '16px' }}>
+              <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '10px' }}>💳 Precio de las tarjetas</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+                <div><label style={label}>🟨 Amarilla ($)</label><input type="number" min="0" value={fin.precio_amarilla} onChange={e => setFin(f => ({ ...f, precio_amarilla: e.target.value }))} style={input} placeholder="0"/></div>
+                <div><label style={label}>🟦 Azul ($)</label><input type="number" min="0" value={fin.precio_azul} onChange={e => setFin(f => ({ ...f, precio_azul: e.target.value }))} style={input} placeholder="0"/></div>
+                <div><label style={label}>🟥 Roja ($)</label><input type="number" min="0" value={fin.precio_roja} onChange={e => setFin(f => ({ ...f, precio_roja: e.target.value }))} style={input} placeholder="0"/></div>
+              </div>
+              <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Se cobran automáticamente al equipo según las planillas. Un equipo con tarjetas sin pagar no avanza a eliminatorias.</div>
+            </div>
+
+            {/* Cuentas del torneo */}
+            <div style={{ borderTop: '1px solid #e8eaed', paddingTop: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={fin.llevar_cuentas} onChange={e => setFin(f => ({ ...f, llevar_cuentas: e.target.checked }))} style={{ width: '17px', height: '17px', cursor: 'pointer' }}/>
+                <span style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124' }}>💰 Quiero llevar las cuentas de dinero del torneo (ingresos, gastos y ganancias)</span>
+              </label>
+              {fin.llevar_cuentas && (
+                <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div><label style={label}>Inscripción por equipo ($)</label><input type="number" min="0" value={fin.inscripcion} onChange={e => setFin(f => ({ ...f, inscripcion: e.target.value }))} style={input} placeholder="0"/></div>
+                    <div><label style={label}>Arbitraje que paga cada equipo por partido ($)</label><input type="number" min="0" value={fin.arbitraje_equipo} onChange={e => setFin(f => ({ ...f, arbitraje_equipo: e.target.value }))} style={input} placeholder="0"/></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div><label style={label}>Partido W: paga el equipo que se presenta ($)</label><input type="number" min="0" value={fin.valor_w_presenta} onChange={e => setFin(f => ({ ...f, valor_w_presenta: e.target.value }))} style={input} placeholder="0"/></div>
+                    <div><label style={label}>Multa al equipo que NO se presenta ($ — 0 si no hay)</label><input type="number" min="0" value={fin.multa_no_presenta} onChange={e => setFin(f => ({ ...f, multa_no_presenta: e.target.value }))} style={input} placeholder="0"/></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div><label style={label}>Pago a la cancha por partido jugado ($)</label><input type="number" min="0" value={fin.pago_cancha_partido} onChange={e => setFin(f => ({ ...f, pago_cancha_partido: e.target.value }))} style={input} placeholder="0"/></div>
+                    <div><label style={label}>Pago a la cancha por partido W ($)</label><input type="number" min="0" value={fin.pago_cancha_w} onChange={e => setFin(f => ({ ...f, pago_cancha_w: e.target.value }))} style={input} placeholder="0"/></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div><label style={label}>Pago a árbitros por partido jugado ($)</label><input type="number" min="0" value={fin.pago_arbitro_partido} onChange={e => setFin(f => ({ ...f, pago_arbitro_partido: e.target.value }))} style={input} placeholder="0"/></div>
+                    <div><label style={label}>Pago a árbitros por partido W ($)</label><input type="number" min="0" value={fin.pago_arbitro_w} onChange={e => setFin(f => ({ ...f, pago_arbitro_w: e.target.value }))} style={input} placeholder="0"/></div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
             <button onClick={handleSave} disabled={loading}
               style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
               {loading ? 'Guardando...' : editId ? 'Actualizar' : 'Crear torneo'}
             </button>
-            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }}
+            <button onClick={() => { setShowForm(false); setForm(EMPTY); setFin(FIN_EMPTY); setEditId(null) }}
               style={{ padding: '8px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
               Cancelar
             </button>

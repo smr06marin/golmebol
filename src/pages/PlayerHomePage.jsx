@@ -138,7 +138,7 @@ export default function PlayerHomePage() {
 
     const { data: regs } = await supabase
       .from('tournament_player_registrations')
-      .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
+      .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url,finanzas_config)')
       .eq('player_id', p.id).eq('activo', true)
     setTorneos(regs || [])
 
@@ -180,6 +180,48 @@ export default function PlayerHomePage() {
         }
       }
     }
+
+    // DEUDAS DE TARJETAS (del equipo en torneos activos y personales del jugador)
+    try {
+      const fmtCop = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
+
+      // Deuda personal (tarjetas de torneos ya terminados)
+      const { data: deudasPers } = await supabase
+        .from('torneo_finanzas').select('monto, concepto')
+        .eq('player_id', p.id).eq('tipo', 'deuda_personal').eq('pagado', false)
+      const totalPers = (deudasPers || []).reduce((a, d) => a + (d.monto || 0), 0)
+      if (totalPers > 0 && !dismissed.includes('deuda_personal')) {
+        notifsList.push({
+          id: 'deuda_personal', icon: '🚫',
+          titulo: `Debes ${fmtCop(totalPers)} de tarjetas`,
+          texto: `${(deudasPers || []).map(d => d.concepto).filter(Boolean)[0] || 'Tarjetas de torneos anteriores'} — debes pagarla para inscribirte en próximos torneos`,
+          color: '#d93025', bg: '#fce8e6',
+        })
+      }
+
+      // Deuda de tarjetas del equipo en cada torneo activo
+      for (const reg of (regs || [])) {
+        const fc = reg.tournaments?.finanzas_config
+        if (!fc || !reg.team_id) continue
+        const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+        if (pA + pZ + pR === 0) continue
+        const [{ data: st }, { data: pagos }] = await Promise.all([
+          supabase.from('player_match_stats').select('yellow_cards, blue_cards, red_cards').eq('tournament_id', reg.tournament_id).eq('team_id', reg.team_id),
+          supabase.from('torneo_finanzas').select('monto').eq('tournament_id', reg.tournament_id).eq('team_id', reg.team_id).eq('tipo', 'pago_tarjetas'),
+        ])
+        const cargo = (st || []).reduce((a, s) => a + (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR, 0)
+        const saldo = cargo - (pagos || []).reduce((a, x) => a + (x.monto || 0), 0)
+        const nid = `tarjetas_equipo_${reg.tournament_id}`
+        if (saldo > 0 && !dismissed.includes(nid)) {
+          notifsList.push({
+            id: nid, icon: '💳',
+            titulo: `${reg.teams?.name || 'Tu equipo'} debe ${fmtCop(saldo)} en tarjetas`,
+            texto: `${reg.tournaments?.name || 'Torneo'} — sin pagar las tarjetas el equipo no avanza a eliminatorias`,
+            color: '#e8710a', bg: '#fffbf0',
+          })
+        }
+      }
+    } catch (e) { console.error('deudas tarjetas:', e) }
 
     const { data: predsResueltas } = await supabase
       .from('predicciones').select('puntos_ganados, match_id')
