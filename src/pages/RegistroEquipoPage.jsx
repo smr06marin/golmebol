@@ -264,6 +264,19 @@ export default function RegistroEquipoPage() {
             <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{torneo.name}</div>
           </div>
         </div>
+        <button
+          onClick={() => {
+            setExito(false); setCedula(''); setJugadorExiste(null); setMostrarNuevo(false)
+            setDeudaJugador(null); setFormNuevo(EMPTY_FORM); setGuardando(false)
+            setFotoFrontal(null); setFotoTrasera(null); setPreviewFrontal(null); setPreviewTrasera(null)
+            window.scrollTo({ top: 0 })
+          }}
+          style={{ marginTop: '18px', width: '100%', padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600' }}>
+          ➕ Registrar nuevo jugador
+        </button>
+        <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '8px' }}>
+          ¿Falta alguien del equipo? Regístralo desde este mismo teléfono
+        </div>
       </div>
     </div>
   )
