@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, DollarSign } from 'lucide-react'
 
@@ -220,6 +221,8 @@ function TeamLogo({ logo_url, name, size = 28 }) {
 export default function AdminTorneoDetallePage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { rol } = useAuthStore()
+  const esAdminRol = rol?.rol === 'admin'
 
   const [torneo,    setTorneo]    = useState(null)
   const [equipos,   setEquipos]   = useState([])
@@ -1004,6 +1007,25 @@ export default function AdminTorneoDetallePage() {
     showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${deudoresPersonales > 0 ? ` · 💳 ${deudoresPersonales} jugadores quedaron con deuda personal de tarjetas` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
   }
 
+  // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
+  async function handleCrearSiguienteEdicion() {
+    const nombreBase = (torneo.name || '').replace(/\s*\(Edición \d+\)\s*$/i, '')
+    const n = (torneo.edicion || 1) + 1
+    const nombre = prompt('Nombre de la nueva edición:', `${nombreBase} (Edición ${n})`)
+    if (!nombre) return
+    const { data, error } = await supabase.from('tournaments').insert({
+      name: nombre, season: torneo.season, city: torneo.city, modalidad: torneo.modalidad,
+      categoria: torneo.categoria, genero: torneo.genero, formato: torneo.formato,
+      status: 'active', organizador_id: torneo.organizador_id || null,
+      premium: false, torneo_padre_id: torneo.torneo_padre_id || torneo.id,
+      edicion: n, finanzas_config: torneo.finanzas_config || null,
+    }).select().single()
+    if (error) return showMsg(`Error al crear la edición: ${error.message}`, 'error')
+    showMsg(`${nombre} creada ✓ — este torneo queda guardado con todo su historial; agrega los equipos de la nueva edición`)
+    navigate(`/admin/torneos/${data.id}`)
+    setTab('actividad')
+  }
+
   async function handleGenerarSiguienteRonda() {
     const est = getEstadoEliminatorias()
     if (!est) return
@@ -1338,7 +1360,8 @@ export default function AdminTorneoDetallePage() {
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
   const fcTorneo           = torneo.finanzas_config || {}
-  const finanzasActivas    = !!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0
+  // La pestaña de cuentas es del admin principal o de torneos Premium
+  const finanzasActivas    = (!!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0) && (esAdminRol || !!torneo.premium)
   const tablaOrdenada      = calcTablaGeneral()
 
   const faseActual         = torneo.fase_actual || 'grupos'
@@ -2515,11 +2538,17 @@ export default function AdminTorneoDetallePage() {
                       {subcampeon && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥈 Subcampeón: {subcampeon.name}</span>}
                       {tercerPuestoEq && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥉 Tercer puesto: {tercerPuestoEq.name}</span>}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px', gap: '10px', flexWrap: 'wrap' }}>
                       <button onClick={handleGuardarLogrosTorneo} disabled={guardandoLogros}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
                         💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
                       </button>
+                      {(esAdminRol || torneo.premium) && (
+                        <button onClick={handleCrearSiguienteEdicion}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#6c35de', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                          🔄 Crear siguiente edición
+                        </button>
+                      )}
                     </div>
                     <div style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center', marginTop: '6px' }}>
                       Guarda campeón, subcampeón, tercer puesto y hasta qué fase llegó cada equipo — en el historial del equipo y de cada uno de sus jugadores

@@ -1,23 +1,28 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal } from 'lucide-react'
+import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCog } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 
-const MENU = [
+const MENU_COMPLETO = [
   { icon: <PlusCircle size={22}/>,   label: 'CREAR',      ruta: '/admin/crear' },
   { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos' },
   { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos' },
   { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores' },
   { icon: <CalendarDays size={22}/>, label: 'CALENDARIO', ruta: '/admin/calendario' },
-  { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas' },
-  { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors' },
+  { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
+  { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias' },
-  { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records' },
+  { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records',   soloAdmin: true },
+  { icon: <UserCog size={22}/>,      label: 'USUARIOS',   ruta: '/admin/usuarios',  soloAdmin: true },
 ]
 
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { rol } = useAuthStore()
+  const esAdmin = rol?.rol === 'admin'
+  const MENU = MENU_COMPLETO.filter(m => esAdmin || !m.soloAdmin)
 
   async function handleLogout() {
     await supabase.auth.signOut()

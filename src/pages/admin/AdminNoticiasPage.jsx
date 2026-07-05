@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag } from 'lucide-react'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
@@ -101,6 +102,10 @@ FASES ELIM ${partido.away?.name}: ${datos.fasesAwayStr}`
 }
 
 export default function AdminNoticiasPage() {
+  const { user, rol } = useAuthStore()
+  const esOrganizador = rol?.rol === 'organizador'
+  const [tienePremium, setTienePremium] = useState(true)
+
   const [torneos,   setTorneos]   = useState([])
   const [torneoId,  setTorneoId]  = useState('')
   const [partidos,  setPartidos]  = useState([])
@@ -125,15 +130,34 @@ export default function AdminNoticiasPage() {
   }, [])
   useEffect(() => { if (torneoId) { fetchPartidos(); fetchNoticias() } }, [torneoId])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
+  useEffect(() => {
+    if (!esOrganizador) { setTienePremium(true); return }
+    supabase.from('tournaments').select('id').eq('organizador_id', user?.id).eq('premium', true).limit(1)
+      .then(({ data }) => setTienePremium((data || []).length > 0))
+  }, [esOrganizador, user?.id])
 
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3500) }
 
   async function fetchTorneos() {
-    const { data, error } = await supabase.from('tournaments').select('id, name').order('created_at', { ascending: false })
+    let query = supabase.from('tournaments').select('id, name, organizador_id').order('created_at', { ascending: false })
+    const { data, error } = await query
     if (error) { showMsg('Error cargando torneos', 'error'); return }
-    setTorneos(data || [])
-    if (data?.length) setTorneoId(data[0].id)
+    // Los organizadores solo ven sus propios torneos para hacer noticias
+    const lista = esOrganizador ? (data || []).filter(t => t.organizador_id === user?.id) : (data || [])
+    setTorneos(lista)
+    if (lista?.length) setTorneoId(lista[0].id)
   }
+
+  if (esOrganizador && !tienePremium) return (
+    <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px 24px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>💎</div>
+      <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.05rem', marginBottom: '6px' }}>Las noticias son una función Premium</div>
+      <div style={{ fontSize: '.85rem', color: '#5f6368', maxWidth: '420px', margin: '0 auto' }}>
+        Con el plan Premium de tu torneo puedes generar noticias con IA de tus partidos, llevar las cuentas de dinero y crear nuevas ediciones.
+        Contacta a Golmebol para activarlo.
+      </div>
+    </div>
+  )
 
   async function fetchPartidos() {
     const { data } = await supabase.from('matches')

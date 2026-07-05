@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Plus, Pencil, Trash2, Trophy, Eye } from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
+import { Plus, Pencil, Trash2, Trophy, Eye, Star } from 'lucide-react'
 
 
 const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '' }
@@ -29,7 +30,10 @@ const label = {
 
 export default function AdminTorneosPage() {
   const navigate = useNavigate()
-  
+  const { user, rol } = useAuthStore()
+  const esAdmin       = rol?.rol === 'admin'
+  const esOrganizador = rol?.rol === 'organizador'
+
   const [torneos, setTorneos] = useState([])
   const [form, setForm] = useState(EMPTY)
   const [fin, setFin] = useState(FIN_EMPTY)
@@ -42,8 +46,21 @@ export default function AdminTorneosPage() {
   useEffect(() => { fetchTorneos() }, [])
 
   async function fetchTorneos() {
-    const { data } = await supabase.from('tournaments').select('*').order('created_at', { ascending: false })
+    let query = supabase.from('tournaments').select('*').order('created_at', { ascending: false })
+    if (esOrganizador) query = query.eq('organizador_id', user?.id)
+    const { data } = await query
     setTorneos(data || [])
+  }
+
+  async function handleTogglePremium(t) {
+    if (!esAdmin) return
+    if (!confirm(t.premium
+      ? `¿Quitar Premium a "${t.name}"? El organizador perderá noticias, cuentas de dinero y ediciones.`
+      : `¿Marcar "${t.name}" como Premium (pago recibido)? Habilita noticias, cuentas de dinero, ediciones y le permite al organizador crear otro torneo.`)) return
+    const { error } = await supabase.from('tournaments').update({ premium: !t.premium }).eq('id', t.id)
+    if (error) return showMsg(error.message?.includes('premium') ? 'Falta ejecutar migracion_roles.sql en Supabase' : 'Error al actualizar', 'error')
+    showMsg(t.premium ? 'Premium desactivado' : 'Torneo marcado como Premium ⭐')
+    fetchTorneos()
   }
 
   function showMsg(text, type = 'ok') {
@@ -60,6 +77,11 @@ export default function AdminTorneosPage() {
     if (!form.categoria) return showMsg('La categoría es obligatoria (ej: Senior, Sub-20)', 'error')
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
     if (!form.fecha_inicio) return showMsg('La fecha de inicio es obligatoria', 'error')
+    // Plan gratuito de organizador: 1 torneo (cada torneo Premium pagado libera otro cupo)
+    if (!editId && esOrganizador) {
+      const sinPremium = torneos.filter(t => !t.premium).length
+      if (sinPremium >= 1) return showMsg('Tu plan gratuito permite 1 torneo. Para crear otro, contacta a Golmebol y activa el plan Premium 💎', 'error')
+    }
     setLoading(true)
     const num = v => (v === '' || v === null || v === undefined) ? 0 : (parseFloat(v) || 0)
     const finanzasConfig = {
@@ -90,6 +112,7 @@ export default function AdminTorneosPage() {
   status: 'active',
   fecha_inicio: form.fecha_inicio || null,
   fecha_fin: form.fecha_fin || null,
+  organizador_id: esOrganizador ? user?.id : null,
 }
 let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanzas_config: finanzasConfig })
         if (error && error.message?.includes('finanzas_config')) {
@@ -298,9 +321,16 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {t.premium && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff4e5', borderRadius: '12px', padding: '3px 10px', fontWeight: '700' }}>⭐ Premium</span>}
                 {t.genero && <span style={{ fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '12px', padding: '3px 10px' }}>{t.genero}</span>}
                 {t.categoria && <span style={{ fontSize: '.75rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '12px', padding: '3px 10px' }}>{t.categoria}</span>}
                 <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '12px', padding: '3px 10px' }}>Activo</span>
+                {esAdmin && (
+                  <button onClick={() => handleTogglePremium(t)} title={t.premium ? 'Quitar Premium' : 'Marcar como Premium (pago recibido)'}
+                    style={{ background: t.premium ? '#fff4e5' : 'none', border: `1px solid ${t.premium ? '#ffd8a8' : '#dadce0'}`, borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: t.premium ? '#e8710a' : '#9aa0a6', display: 'flex', alignItems: 'center' }}>
+                    <Star size={15} fill={t.premium ? '#e8710a' : 'none'}/>
+                  </button>
+                )}
                 <button onClick={() => navigate(`/admin/torneos/${t.id}`)}
   style={{ background: 'none', border: '1px solid #1a73e8', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#1a73e8', display: 'flex', alignItems: 'center' }}>
   <Eye size={15}/>

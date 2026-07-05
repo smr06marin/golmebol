@@ -29,15 +29,37 @@ import TorneoPublicoPage from './pages/TorneoPublicoPage'
 import RegistroEquipoPage from './pages/RegistroEquipoPage'
 import AdminRecordsPage from './pages/admin/AdminRecordsPage'
 import PlayerHistorialPage from './pages/PlayerHistorialPage'
+import AdminUsuariosPage from './pages/admin/AdminUsuariosPage'
+import ArbitroPage from './pages/ArbitroPage'
 
-function ProtectedRoute({ children }) {
-  const { user, loading } = useAuthStore()
-  if (loading) return (
+// Correos que siempre son admin (respaldo por si la tabla de roles falla)
+const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
+
+function PantallaCargando() {
+  return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.2rem', color: '#1a73e8', fontWeight: '600' }}>
       Cargando...
     </div>
   )
+}
+
+function ProtectedRoute({ children }) {
+  const { user, loading, rol, rolCargado } = useAuthStore()
+  if (loading) return <PantallaCargando/>
   if (!user) return <Navigate to="/login" replace/>
+  if (!rolCargado) return <PantallaCargando/>
+  // Árbitros van a su portal; cuentas sin rol de administración van al portal jugador
+  if (rol?.rol === 'arbitro') return <Navigate to="/arbitro" replace/>
+  if (rol?.rol !== 'admin' && rol?.rol !== 'organizador') return <Navigate to="/jugador" replace/>
+  return children
+}
+
+function ArbitroRoute({ children }) {
+  const { user, loading, rol, rolCargado } = useAuthStore()
+  if (loading) return <PantallaCargando/>
+  if (!user) return <Navigate to="/login" replace/>
+  if (!rolCargado) return <PantallaCargando/>
+  if (rol?.rol !== 'arbitro' && rol?.rol !== 'admin') return <Navigate to="/admin" replace/>
   return children
 }
 
@@ -53,8 +75,23 @@ function PlayerRoute({ children }) {
 }
 
 export default function App() {
-  const { setUser, setLoading, user } = useAuthStore()
+  const { setUser, setLoading, setRol, user } = useAuthStore()
   const [cardType, setCardType] = useState('normal')
+
+  async function cargarRol(u) {
+    if (!u?.email) { setRol(null); return }
+    try {
+      const { data, error } = await supabase.from('roles_plataforma')
+        .select('rol, plan, activo').eq('email', u.email).maybeSingle()
+      if (error) throw error
+      if (data && data.activo !== false) setRol({ rol: data.rol, plan: data.plan })
+      else if (ADMINS_PRINCIPALES.includes(u.email)) setRol({ rol: 'admin' })
+      else setRol({ rol: null })
+    } catch {
+      // Tabla de roles aún no creada: comportamiento actual (todo usuario logueado es admin)
+      setRol({ rol: 'admin' })
+    }
+  }
 
   useEffect(() => {
     // Timeout de seguridad: si en 5s no resuelve, forzar loading=false
@@ -63,10 +100,12 @@ export default function App() {
       clearTimeout(timeout)
       setUser(session?.user ?? null)
       setLoading(false)
+      cargarRol(session?.user)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       setLoading(false)
+      cargarRol(session?.user)
     })
     return () => { subscription.unsubscribe(); clearTimeout(timeout) }
   }, [])
@@ -95,7 +134,11 @@ export default function App() {
           <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
           <Route path="noticias"      element={<AdminNoticiasPage/>}/>
           <Route path="records"       element={<AdminRecordsPage/>}/>
+          <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
         </Route>
+
+        {/* Portal de árbitros */}
+        <Route path="/arbitro" element={<ArbitroRoute><ArbitroPage/></ArbitroRoute>}/>
 
         {/* Página pública de torneo — sin login */}
         <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
