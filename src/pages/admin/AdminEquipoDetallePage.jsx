@@ -148,7 +148,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   async function fetchLogros() {
     const { data } = await supabase.from('tournament_logros').select('*, tournaments(name), players(name)').eq('team_id', id).order('created_at', { ascending: false })
-    setLogros(data || [])
+    // Los logros de torneo se guardan por cada jugador del equipo — dejar uno por torneo y tipo
+    const unicos = []
+    ;(data || []).forEach(l => {
+      if (!unicos.some(u => u.tournament_id === l.tournament_id && u.tipo === l.tipo)) unicos.push({ ...l, players: null })
+    })
+    setLogros(unicos)
   }
 
   async function handleLogoUpload(file) {
@@ -351,7 +356,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   </div>
                   {logroTorneo && (
                     <span style={{ fontSize: '.8rem', fontWeight: '600', color: logroTorneo.tipo === 'campeon' ? '#e8710a' : '#6c35de', background: logroTorneo.tipo === 'campeon' ? '#fce8d9' : '#f3e8fd', borderRadius: '10px', padding: '4px 12px' }}>
-                      {logroTorneo.tipo === 'campeon' ? '🏆 Campeón' : logroTorneo.tipo === 'subcampeon' ? '🥈 Subcampeón' : logroTorneo.tipo}
+                      {logroTorneo.tipo === 'campeon' ? '🏆 Campeón' : logroTorneo.tipo === 'subcampeon' ? '🥈 Subcampeón' : logroTorneo.tipo === 'tercer_puesto' ? '🥉 Tercer puesto' : logroTorneo.tipo === 'semifinal' ? '⚡ Semifinal' : logroTorneo.tipo === 'cuartos' ? '🔥 Cuartos' : logroTorneo.tipo === 'octavos' ? '⚔️ Octavos' : logroTorneo.tipo === 'fase_grupos' ? '🏟️ Fase de grupos' : logroTorneo.tipo}
                     </span>
                   )}
                 </div>

@@ -821,18 +821,19 @@ export default function AdminTorneoDetallePage() {
     const TIPOS_FASE = ['campeon', 'subcampeon', 'tercer_puesto', 'final', 'semifinal', 'cuartos', 'octavos', 'fase_grupos']
     await supabase.from('tournament_logros').delete().eq('tournament_id', id).in('tipo', TIPOS_FASE)
 
+    // Cada logro se guarda por jugador (con el team_id del equipo): así queda en la
+    // hoja de vida del jugador y del equipo a la vez. (La BD no acepta filas sin jugador.)
     const inserts = []
-    equipos.forEach(e => {
-      inserts.push({ tournament_id: id, team_id: e.id, tipo: tipoEquipo[e.id] })
-    })
     jugadores.forEach(j => {
       if (!j.player_id || !j.team_id || !tipoEquipo[j.team_id]) return
       inserts.push({ tournament_id: id, team_id: j.team_id, player_id: j.player_id, tipo: tipoEquipo[j.team_id] })
     })
+    if (inserts.length === 0) { setGuardandoLogros(false); return showMsg('No hay jugadores inscritos para guardar logros', 'error') }
     const { error } = await supabase.from('tournament_logros').insert(inserts)
     setGuardandoLogros(false)
-    if (error) return showMsg('Error al guardar los logros', 'error')
-    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}`)
+    if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
+    const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
   }
 
   async function handleGenerarSiguienteRonda() {
