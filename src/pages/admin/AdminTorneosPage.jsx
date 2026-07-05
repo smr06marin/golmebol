@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star } from 'lucide-react'
 
 
@@ -33,6 +34,9 @@ export default function AdminTorneosPage() {
   const { user, rol } = useAuthStore()
   const esAdmin       = rol?.rol === 'admin'
   const esOrganizador = rol?.rol === 'organizador'
+  const isMobile      = useIsMobile()
+  const cols2 = isMobile ? '1fr' : '1fr 1fr'
+  const cols3 = isMobile ? '1fr' : '1fr 1fr 1fr'
 
   const [torneos, setTorneos] = useState([])
   const [organizadores, setOrganizadores] = useState({}) // user_id -> email
@@ -201,7 +205,7 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
               <label style={label}>Nombre *</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={input} placeholder="Nombre del torneo"/>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
               <div>
                 <label style={label}>Temporada</label>
                 <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} style={input} placeholder="2025"/>
@@ -211,7 +215,7 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
                 <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} style={input} placeholder="Ciudad"/>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: cols3, gap: '16px' }}>
               <div>
                 <label style={label}>Modalidad</label>
                 <select value={form.modalidad} onChange={e => setForm(f => ({ ...f, modalidad: e.target.value }))} style={input}>
@@ -238,7 +242,7 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
                 {FORMATOS.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
               <div>
                 <label style={label}>Fecha inicio</label>
                 <input type="date" value={form.fecha_inicio} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} style={input}/>
@@ -252,7 +256,7 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
             {/* Precios de tarjetas */}
             <div style={{ borderTop: '1px solid #e8eaed', paddingTop: '16px' }}>
               <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '10px' }}>💳 Precio de las tarjetas</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: cols3, gap: '16px' }}>
                 <div><label style={label}>🟨 Amarilla ($)</label><input type="number" min="0" value={fin.precio_amarilla} onChange={e => setFin(f => ({ ...f, precio_amarilla: e.target.value }))} style={input} placeholder="0"/></div>
                 <div><label style={label}>🟦 Azul ($)</label><input type="number" min="0" value={fin.precio_azul} onChange={e => setFin(f => ({ ...f, precio_azul: e.target.value }))} style={input} placeholder="0"/></div>
                 <div><label style={label}>🟥 Roja ($)</label><input type="number" min="0" value={fin.precio_roja} onChange={e => setFin(f => ({ ...f, precio_roja: e.target.value }))} style={input} placeholder="0"/></div>
@@ -268,19 +272,19 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
               </label>
               {fin.llevar_cuentas && (
                 <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
                     <div><label style={label}>Inscripción por equipo ($)</label><input type="number" min="0" value={fin.inscripcion} onChange={e => setFin(f => ({ ...f, inscripcion: e.target.value }))} style={input} placeholder="0"/></div>
                     <div><label style={label}>Arbitraje que paga cada equipo por partido ($)</label><input type="number" min="0" value={fin.arbitraje_equipo} onChange={e => setFin(f => ({ ...f, arbitraje_equipo: e.target.value }))} style={input} placeholder="0"/></div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
                     <div><label style={label}>Partido W: paga el equipo que se presenta ($)</label><input type="number" min="0" value={fin.valor_w_presenta} onChange={e => setFin(f => ({ ...f, valor_w_presenta: e.target.value }))} style={input} placeholder="0"/></div>
                     <div><label style={label}>Multa al equipo que NO se presenta ($ — 0 si no hay)</label><input type="number" min="0" value={fin.multa_no_presenta} onChange={e => setFin(f => ({ ...f, multa_no_presenta: e.target.value }))} style={input} placeholder="0"/></div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
                     <div><label style={label}>Pago a la cancha por partido jugado ($)</label><input type="number" min="0" value={fin.pago_cancha_partido} onChange={e => setFin(f => ({ ...f, pago_cancha_partido: e.target.value }))} style={input} placeholder="0"/></div>
                     <div><label style={label}>Pago a la cancha por partido W ($)</label><input type="number" min="0" value={fin.pago_cancha_w} onChange={e => setFin(f => ({ ...f, pago_cancha_w: e.target.value }))} style={input} placeholder="0"/></div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
                     <div><label style={label}>Pago a árbitros por partido jugado ($)</label><input type="number" min="0" value={fin.pago_arbitro_partido} onChange={e => setFin(f => ({ ...f, pago_arbitro_partido: e.target.value }))} style={input} placeholder="0"/></div>
                     <div><label style={label}>Pago a árbitros por partido W ($)</label><input type="number" min="0" value={fin.pago_arbitro_w} onChange={e => setFin(f => ({ ...f, pago_arbitro_w: e.target.value }))} style={input} placeholder="0"/></div>
                   </div>

@@ -1614,8 +1614,8 @@ export default function AdminTorneoDetallePage() {
       </button>
 
       {/* Header torneo */}
-      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px 24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '18px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {torneo.logo_url ? <img src={torneo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Trophy size={28} color="#1a73e8"/>}
@@ -1632,7 +1632,7 @@ export default function AdminTorneoDetallePage() {
               }}/>
             </label>
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: '200px' }}>
             <h1 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#202124', margin: '0 0 6px' }}>{torneo.name}</h1>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
               {torneo.season    && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📅 {torneo.season}</span>}
@@ -1647,7 +1647,7 @@ export default function AdminTorneoDetallePage() {
               ✏️ Editar torneo
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '20px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '18px', flexShrink: 0, flexWrap: 'wrap' }}>
             {[
               { label: 'Equipos',  value: equipos.length,        color: '#1a73e8' },
               { label: 'Jugadores',value: jugadores.length,       color: '#6c35de' },
@@ -1664,7 +1664,7 @@ export default function AdminTorneoDetallePage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', maxWidth: '100%', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {TABS.filter(t => t.id !== 'finanzas' || finanzasActivas).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
@@ -2124,8 +2124,8 @@ export default function AdminTorneoDetallePage() {
                       </div>
                     </div>
                   ) : (
-                    <div key={p.id} style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f3f4' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                    <div key={p.id} style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f3f4', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '230px' }}>
                         <div style={{ width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={32}/></div>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
@@ -2235,7 +2235,8 @@ export default function AdminTorneoDetallePage() {
           {/* Goleadores */}
           <div>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de goleadores</div>
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+             <div style={{ minWidth: '640px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 60px 60px 60px 60px 60px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
                 <div>#</div><div>JUGADOR</div><div>EQUIPO</div>
                 <div style={{ textAlign: 'center' }}>PJ</div><div style={{ textAlign: 'center', color: '#1a73e8' }}>⚽</div>
@@ -2265,6 +2266,7 @@ export default function AdminTorneoDetallePage() {
                   <div style={{ textAlign: 'center', fontSize: '.875rem', color: g.total_red > 0 ? '#d93025' : '#dadce0', fontWeight: g.total_red > 0 ? '700' : '400' }}>{g.total_red || '—'}</div>
                 </div>
               ))}
+             </div>
             </div>
           </div>
 
@@ -2363,7 +2365,7 @@ export default function AdminTorneoDetallePage() {
                     {/* 1. Cupos */}
                     <div style={{ marginBottom: '18px' }}>
                       <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>1. ¿Cuántos equipos clasifican?</div>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
                         {[2, 4, 8, 16].map(n => (
                           <button key={n} onClick={() => cambiarCuposElim(n)} disabled={n > equipos.length}
                             style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: n > equipos.length ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '.9rem', border: numClasifElim === n ? '2px solid #e8710a' : '1px solid #dadce0', background: numClasifElim === n ? '#fff4e5' : '#fff', color: n > equipos.length ? '#dadce0' : numClasifElim === n ? '#e8710a' : '#5f6368' }}>
@@ -2742,7 +2744,8 @@ export default function AdminTorneoDetallePage() {
 
             {/* Cuentas por equipo */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px' }}>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+             <div style={{ minWidth: '760px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
                 <div>EQUIPO</div>
                 <div style={{ textAlign: 'right' }}>INSCRIP.</div>
@@ -2792,6 +2795,7 @@ export default function AdminTorneoDetallePage() {
                 </div>
               ))}
               {fin.filas.length === 0 && <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Sin equipos en el torneo</div>}
+             </div>
             </div>
 
             {/* Pagos registrados */}

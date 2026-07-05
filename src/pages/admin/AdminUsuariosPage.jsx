@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import { UserCog, Plus, Trash2 } from 'lucide-react'
 
 const input = {
@@ -16,6 +17,7 @@ const ROL_INFO = {
 }
 
 export default function AdminUsuariosPage() {
+  const isMobile = useIsMobile()
   const [usuarios, setUsuarios] = useState([])
   const [form,     setForm]     = useState({ email: '', rol: 'organizador', notas: '' })
   const [loading,  setLoading]  = useState(false)
@@ -84,7 +86,7 @@ export default function AdminUsuariosPage() {
       {/* Nuevo usuario */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
         <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '14px' }}>Asignar rol a un correo</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 2fr auto', gap: '12px', alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr 2fr auto', gap: '12px', alignItems: 'end' }}>
           <div>
             <label style={label}>Correo *</label>
             <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={input} placeholder="correo@ejemplo.com"/>
@@ -118,7 +120,7 @@ export default function AdminUsuariosPage() {
         ) : usuarios.map((u, i) => {
           const info = ROL_INFO[u.rol] || { label: u.rol, color: '#5f6368', bg: '#f1f3f4' }
           return (
-            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 20px', borderBottom: i < usuarios.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: u.activo ? 1 : .5 }}>
+            <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '13px 16px', borderBottom: i < usuarios.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: u.activo ? 1 : .5, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{u.email}</div>
                 {u.notas && <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{u.notas}</div>}

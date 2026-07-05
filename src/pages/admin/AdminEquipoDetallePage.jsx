@@ -281,7 +281,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', maxWidth: '100%', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTabActiva(t.id)}
             style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tabActiva === t.id ? '#1a73e8' : 'transparent', color: tabActiva === t.id ? '#fff' : '#5f6368' }}>

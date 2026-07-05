@@ -207,7 +207,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
 
         {/* Últimos partidos */}
         <Section title="⚽ Últimos partidos" action="Ver todos" onAction={() => navigate('/admin/calendario')}>
