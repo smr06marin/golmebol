@@ -764,6 +764,14 @@ export default function AdminTorneoDetallePage() {
   }
   function handleDragEnd() { setDrag(null); setDragOver(null) }
 
+  function vecesEnfrentados(idA, idB) {
+    if (!idA || !idB) return 0
+    return partidos.filter(p =>
+      (p.home_team_id === idA && p.away_team_id === idB) ||
+      (p.home_team_id === idB && p.away_team_id === idA)
+    ).length
+  }
+
   async function buscarEquipos(q) {
     setBusquedaEquipo(q)
     if (!q.trim()) { setEquiposDisponibles([]); return }
@@ -1410,8 +1418,11 @@ export default function AdminTorneoDetallePage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {jornadaGenerada.map((p, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : '#fff' }}>
+                    {jornadaGenerada.map((p, i) => {
+                      const veces = p.descanso ? 0 : vecesEnfrentados(p.local?.id, p.visitante?.id)
+                      return (
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {p.descanso ? (
                           <div style={{ flex: 1, color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</div>
                         ) : (
@@ -1435,8 +1446,15 @@ export default function AdminTorneoDetallePage() {
                             </div>
                           </>
                         )}
+                        </div>
+                        {veces > 0 && (
+                          <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600', paddingLeft: '10px' }}>
+                            ⚠️ Estos equipos ya se enfrentaron {veces} {veces > 1 ? 'veces' : 'vez'} en este torneo — puedes dejarlo igual o arrastrar otro equipo
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )}
