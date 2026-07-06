@@ -428,6 +428,11 @@ export default function AdminTorneoDetallePage() {
   const [horaElim,         setHoraElim]         = useState('08:00')
   const [generandoElim,    setGenerandoElim]    = useState(false)
   const [bracket,          setBracket]          = useState([]) // partidos de eliminatorias
+  const [menuEquipoId,     setMenuEquipoId]     = useState(null)
+  const [posterEquipo,     setPosterEquipo]      = useState(null)
+  const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
+  const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
+  const [verDesact,        setVerDesact]        = useState(false)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
