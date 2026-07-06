@@ -1629,8 +1629,8 @@ export default function AdminTorneoDetallePage() {
                 const grupoEq    = grupoEquipos.find(ge => ge.team_id === e.id)
                 const grupo      = grupoEq ? grupos.find(g => g.id === grupoEq.grupo_id) : null
                 const menuAbierto = menuEquipoId === e.id
-                return (
-                  <div key={e.id} style={{ padding: '14px 20px', borderBottom: i < equipos.length - 1 ? '1px solid #f1f3f4' : 'none', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                const equipoDiv = (
+                  <div style={{ padding: '14px 20px', borderBottom: jugadoresEquipoId!==e.id && i < equipos.length - 1 ? '1px solid #f1f3f4' : 'none', display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={44}/></div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1669,7 +1669,11 @@ export default function AdminTorneoDetallePage() {
                       )}
                     </div>
                   </div>
-                  {/* Panel jugadores del equipo */}
+                )
+                return (
+                  <React.Fragment key={e.id}>
+                    {equipoDiv}
+                    {/* Panel jugadores del equipo */}
                   {jugadoresEquipoId === e.id && (
                     <div style={{ padding:'12px 16px 4px', borderTop:'1px solid #f1f3f4', background:'#f8f9fa' }}>
                       <div style={{ fontSize:'.72rem', fontWeight:'600', color:'#5f6368', marginBottom:'8px' }}>👥 Jugadores de {e.name}</div>
@@ -1694,6 +1698,7 @@ export default function AdminTorneoDetallePage() {
                       )}
                     </div>
                   )}
+                  </React.Fragment>
                 )
               })}
             </div>
