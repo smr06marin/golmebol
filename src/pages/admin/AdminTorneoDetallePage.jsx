@@ -1622,7 +1622,7 @@ export default function AdminTorneoDetallePage() {
               <Shield size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay equipos inscritos</div>
             </div>
           ) : (
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '16px' }}>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '16px' }}>
               {equipos.map((e, i) => {
                 const jugsEquipo = jugadores.filter(j => j.team_id === e.id)
                 const grupoEq    = grupoEquipos.find(ge => ge.team_id === e.id)
