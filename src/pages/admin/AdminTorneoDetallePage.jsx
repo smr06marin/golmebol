@@ -3,7 +3,7 @@ import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import PlanillaPartido from '../../components/PlanillaPartido'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, DollarSign } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, DollarSign, Trash2 } from 'lucide-react'
 
 function ModalPartidoAdmin({ partido, onClose }) {
   const [stats,   setStats]   = useState([])
@@ -256,7 +256,8 @@ export default function AdminTorneoDetallePage() {
   const [showFormPartido, setShowFormPartido] = useState(false)
   const [showFormJornada, setShowFormJornada] = useState(false)
   const [showCanchas,     setShowCanchas]     = useState(false)
-  const [fechasAbiertas,  setFechasAbiertas]  = useState({})
+  const [filtroCal,       setFiltroCal]       = useState('proximos') // 'proximos' | 'terminados' | 'todos'
+  const [menuPartido,     setMenuPartido]     = useState(null)       // partido con menú ⋮ abierto
   const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo' })
   const [nuevaCancha,     setNuevaCancha]     = useState('')
 
@@ -1170,6 +1171,13 @@ export default function AdminTorneoDetallePage() {
     fetchPartidos(); showMsg('Partido eliminado')
   }
 
+  async function handleEliminarJornadaCompleta(nombre, lista) {
+    if (!confirm(`¿Eliminar los ${lista.length} partidos de "${nombre}"? Esta acción no se puede deshacer.`)) return
+    await supabase.from('matches').delete().in('id', lista.map(p => p.id))
+    showMsg(`${nombre} eliminada`)
+    fetchPartidos(); fetchBracket()
+  }
+
   async function handleGuardarResultado() {
     if (scoreHome === '' || scoreAway === '') return showMsg('Ingresa el marcador', 'error')
     setGuardando(true)
@@ -1371,18 +1379,24 @@ export default function AdminTorneoDetallePage() {
   const partidosGrupos = partidos.filter(p => !p.fase || p.fase === 'grupo')
   const partidosElim   = partidos.filter(p => p.fase && p.fase !== 'grupo')
 
-  // Partidos agrupados por día (para el calendario colapsable)
-  const partidosPorFecha = (() => {
+  // Partidos agrupados por jornada (o ronda de eliminatorias) para el calendario
+  const partidosPorJornada = (() => {
+    const filtrados = partidos.filter(p =>
+      filtroCal === 'proximos' ? p.status !== 'finished'
+      : filtroCal === 'terminados' ? p.status === 'finished'
+      : true)
     const map = {}
-    partidos.forEach(p => {
-      const key = p.played_at ? p.played_at.substring(0, 10) : 'sin-fecha'
+    filtrados.forEach(p => {
+      const key = p.ronda ? p.ronda : p.matchday ? `Número de Jornada ${p.matchday}` : 'Sin jornada'
       if (!map[key]) map[key] = []
       map[key].push(p)
     })
+    Object.values(map).forEach(lista => lista.sort((a, b) => new Date(a.played_at || 0) - new Date(b.played_at || 0)))
+    // Próximos: lo más cercano arriba · Terminados/Todos: lo más reciente arriba
     return Object.entries(map).sort((a, b) => {
-      if (a[0] === 'sin-fecha') return 1
-      if (b[0] === 'sin-fecha') return -1
-      return a[0].localeCompare(b[0])
+      const maxA = Math.max(...a[1].map(p => new Date(p.played_at || 0).getTime()))
+      const maxB = Math.max(...b[1].map(p => new Date(p.played_at || 0).getTime()))
+      return filtroCal === 'proximos' ? maxA - maxB : maxB - maxA
     })
   })()
 
@@ -2082,81 +2096,120 @@ export default function AdminTorneoDetallePage() {
               )}
             </div>
           )}
-          {/* Partidos agrupados por día */}
-          <div style={{ marginTop: '16px' }}>
-            {partidosPorFecha.map(([fkey, lista]) => {
-              const abierta = !!fechasAbiertas[fkey]
-              const pend = lista.filter(p => p.status !== 'finished').length
-              const jug  = lista.length - pend
-              const label = fkey === 'sin-fecha' ? 'Sin fecha' : new Date(fkey + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-              return (
-                <div key={fkey} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', marginBottom: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                  <div onClick={() => setFechasAbiertas(f => ({ ...f, [fkey]: !f[fkey] }))}
-                    style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                    <Calendar size={16} color="#1a73e8"/>
-                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', flex: 1, textTransform: 'capitalize' }}>{label}</span>
-                    {pend > 0 && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fce8d9', borderRadius: '20px', padding: '2px 10px', fontWeight: '600' }}>{pend} pendiente{pend > 1 ? 's' : ''}</span>}
-                    {jug > 0 && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 10px', fontWeight: '600' }}>{jug} jugado{jug > 1 ? 's' : ''}</span>}
-                    <ChevronDown size={17} color="#9aa0a6" style={{ transform: abierta ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}/>
-                  </div>
-                  {abierta && lista.map(p => p.status === 'finished' ? (
-                    <div key={p.id} onClick={() => setModalPartidoAdmin(p)} style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f3f4', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background='#f8f9fa'} onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                      <div style={{ flex: 1 }}>
-                        {p.matchday && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px', marginRight: '6px' }}>J{p.matchday}</span>}
-                        {p.grupo    && <span style={{ fontSize: '.72rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px', marginRight: '6px' }}>{p.grupo}</span>}
-                        {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px', marginRight: '6px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
-                        {p.played_at && <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>🕐 {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 2, justifyContent: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'flex-end' }}>
-                          <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.home?.name}</span>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={22}/></div>
-                        </div>
-                        <span style={{ fontWeight: '700', fontSize: '1.1rem', color: '#202124', background: '#f1f3f4', padding: '4px 16px', borderRadius: '8px' }}>{p.home_score} - {p.away_score}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={22}/></div>
-                          <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.away?.name}</span>
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                        <button onClick={e => { e.stopPropagation(); setPlanillaPartido(p) }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>Editar</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div key={p.id} style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f3f4', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '230px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={32}/></div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
-                            {p.matchday && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>J{p.matchday}</span>}
-                            {p.grupo    && <span style={{ fontSize: '.72rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px' }}>{p.grupo}</span>}
-                            {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
-                            <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.home?.name} vs {p.away?.name}</span>
-                          </div>
-                          <div style={{ fontSize: '.75rem', color: '#9aa0a6', display: 'flex', gap: '10px' }}>
-                            {p.played_at && <span>🕐 {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>}
-                            {p.location  && <span>📍 {p.location}</span>}
-                          </div>
-                        </div>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={32}/></div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '6px', marginLeft: '12px' }}>
-                        <button onClick={() => { const fecha = p.played_at ? p.played_at.substring(0, 10) : ''; const hora = p.played_at ? p.played_at.substring(11, 16) : ''; setFormEditPartido({ played_at: fecha, hora, location: p.location || '', matchday: p.matchday || '', fase: p.fase || 'grupo' }); setEditandoPartidoForm(p) }} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>✏️</button>
-                        <button onClick={() => setPlanillaPartido(p)} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}><Check size={13}/> Resultado</button>
-                        <button onClick={() => handleEliminarPartido(p.id)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}><X size={14}/></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-            {partidos.length === 0 && (
-              <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
-                <Calendar size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay partidos programados</div>
-              </div>
-            )}
+          {/* Filtro próximos / terminados */}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '16px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            {[
+              { id: 'proximos',   label: `📅 Próximos (${partidosPendientes.length})` },
+              { id: 'terminados', label: `✓ Terminados (${partidosJugados.length})` },
+              { id: 'todos',      label: `Todos (${partidos.length})` },
+            ].map(f => (
+              <button key={f.id} onClick={() => { setFiltroCal(f.id); setMenuPartido(null) }}
+                style={{ padding: '8px 16px', borderRadius: '10px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: filtroCal === f.id ? '2px solid #1e8e3e' : '1px solid #dadce0', background: filtroCal === f.id ? '#e6f4ea' : '#fff', color: filtroCal === f.id ? '#1e8e3e' : '#5f6368' }}>
+                {f.label}
+              </button>
+            ))}
           </div>
+
+          {/* Partidos agrupados por jornada */}
+          {partidosPorJornada.map(([jornada, lista]) => (
+            <div key={jornada} style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', padding: '0 2px' }}>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.92rem' }}>{jornada}</div>
+                <button onClick={() => handleEliminarJornadaCompleta(jornada, lista)} title="Eliminar todos los partidos de esta jornada"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex', padding: '4px' }}>
+                  <Trash2 size={16}/>
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {lista.map(p => {
+                  const jugado  = p.status === 'finished'
+                  const abierto = menuPartido === p.id
+                  return (
+                    <div key={p.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', boxShadow: '0 1px 3px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+                      <div style={{ padding: '16px 14px 12px' }}>
+                        {/* Equipos y marcador */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '10px', alignItems: 'center' }}>
+                          <div style={{ textAlign: 'center', minWidth: 0 }}>
+                            <div style={{ width: '46px', height: '46px', borderRadius: '50%', overflow: 'hidden', margin: '0 auto 6px', background: '#f1f3f4', border: '1px solid #e8eaed' }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={46}/></div>
+                            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', lineHeight: 1.25 }}>{p.home?.name}</div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            {jugado
+                              ? <div style={{ fontSize: '1.7rem', fontWeight: '900', color: '#202124', whiteSpace: 'nowrap' }}>{p.home_score} - {p.away_score}</div>
+                              : <div style={{ fontSize: '.95rem', fontWeight: '800', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '6px 16px' }}>VS</div>}
+                            {p.tipo_resultado === 'w' && <div style={{ fontSize: '.62rem', color: '#e8710a', fontWeight: '700', marginTop: '2px' }}>Por W</div>}
+                          </div>
+                          <div style={{ textAlign: 'center', minWidth: 0 }}>
+                            <div style={{ width: '46px', height: '46px', borderRadius: '50%', overflow: 'hidden', margin: '0 auto 6px', background: '#f1f3f4', border: '1px solid #e8eaed' }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={46}/></div>
+                            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', lineHeight: 1.25 }}>{p.away?.name}</div>
+                          </div>
+                        </div>
+
+                        {/* Fecha, hora y cancha */}
+                        <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '.8rem', color: '#5f6368', textTransform: 'capitalize' }}>
+                          {p.played_at
+                            ? `${new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}, ${new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}`
+                            : 'Sin fecha programada'}
+                        </div>
+                        {p.location && <div style={{ textAlign: 'center', marginTop: '3px', fontSize: '.78rem', color: '#1a73e8', fontWeight: '600' }}>📍 {p.location}</div>}
+                        {(p.grupo || (p.fase && p.fase !== 'grupo')) && (
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {p.grupo && <span style={{ fontSize: '.68rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>{p.grupo}</span>}
+                            {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
+                          </div>
+                        )}
+
+                        {/* Botón acciones */}
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
+                          <button onClick={() => setMenuPartido(abierto ? null : p.id)}
+                            style={{ width: '40px', height: '40px', borderRadius: '50%', background: abierto ? '#e8f0fe' : '#f1f3f4', border: 'none', cursor: 'pointer', fontSize: '1.2rem', fontWeight: '900', color: '#202124', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            ⋮
+                          </button>
+                        </div>
+                      </div>
+
+                      {abierto && (
+                        <div style={{ display: 'flex', gap: '8px', padding: '10px 14px', background: '#f8f9fa', borderTop: '1px solid #f1f3f4', flexWrap: 'wrap' }}>
+                          {!jugado && (
+                            <button onClick={() => { setMenuPartido(null); setPlanillaPartido(p) }}
+                              style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>
+                              <Check size={14}/> Planilla / Resultado
+                            </button>
+                          )}
+                          {jugado && (
+                            <button onClick={() => { setMenuPartido(null); setModalPartidoAdmin(p) }}
+                              style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>
+                              👁 Ver detalles
+                            </button>
+                          )}
+                          {jugado && (
+                            <button onClick={() => { setMenuPartido(null); setPlanillaPartido(p) }}
+                              style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
+                              📋 Editar planilla
+                            </button>
+                          )}
+                          <button onClick={() => { setMenuPartido(null); const fecha = p.played_at ? p.played_at.substring(0, 10) : ''; const hora = p.played_at ? p.played_at.substring(11, 16) : ''; setFormEditPartido({ played_at: fecha, hora, location: p.location || '', matchday: p.matchday || '', fase: p.fase || 'grupo' }); setEditandoPartidoForm(p) }}
+                            style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
+                            ✏️ Fecha/cancha
+                          </button>
+                          <button onClick={() => { setMenuPartido(null); handleEliminarPartido(p.id) }}
+                            style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.78rem', fontWeight: '600' }}>
+                            <Trash2 size={14}/> Eliminar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          {partidosPorJornada.length === 0 && (
+            <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
+              <Calendar size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
+              <div>{filtroCal === 'proximos' ? 'No hay partidos próximos' : filtroCal === 'terminados' ? 'No hay partidos terminados' : 'No hay partidos programados'}</div>
+            </div>
+          )}
         </div>
       )}
 

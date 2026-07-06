@@ -47,6 +47,7 @@ export default function AdminTorneosPage() {
   const [msg, setMsg] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
+  const [menuTorneo, setMenuTorneo] = useState(null) // torneo con menú ⋮ abierto
 
   useEffect(() => { fetchTorneos() }, [])
 
@@ -306,68 +307,74 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
       )}
 
       {/* Buscador */}
-      <div style={{ marginBottom: '16px' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar torneo..." style={{ ...input, maxWidth: '320px' }}/>
+      <div style={{ marginBottom: '14px' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar torneo..." style={{ ...input, maxWidth: isMobile ? '100%' : '360px', padding: '11px 14px', borderRadius: '10px' }}/>
       </div>
 
-      {/* Lista */}
-      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.08)', overflow: 'hidden' }}>
-        {filtered.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
-            <Trophy size={40} style={{ opacity: .3, marginBottom: '12px' }}/>
-            <div style={{ fontSize: '.875rem' }}>No hay torneos aún</div>
-          </div>
-        ) : (
-          filtered.map((t, i) => (
-            <div key={t.id} style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Trophy size={20} color="#1a73e8"/>
-                </div>
-                <div>
-                  <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{t.name}</div>
-                  <div style={{ color: '#9aa0a6', fontSize: '.75rem', marginTop: '3px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {t.city && <span>📍 {t.city}</span>}
-                    {t.season && <span>· {t.season}</span>}
-                    {t.modalidad && <span>· {t.modalidad}</span>}
-                    {t.formato && <span>· {t.formato}</span>}
+      {/* Lista de torneos en tarjetas */}
+      {filtered.length === 0 ? (
+        <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px' }}>
+          <Trophy size={40} style={{ opacity: .3, marginBottom: '12px' }}/>
+          <div style={{ fontSize: '.875rem' }}>No hay torneos aún</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {filtered.map(t => {
+            const estado = t.fase_actual === 'eliminatorias' ? { label: '⚡ Eliminatorias', color: '#fff', bg: '#e8710a' } : { label: 'En calendario', color: '#fff', bg: '#e8710a' }
+            const abierto = menuTorneo === t.id
+            return (
+              <div key={t.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderLeft: '4px solid #1e8e3e', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+                <div onClick={() => navigate(`/admin/torneos/${t.id}`)}
+                  style={{ padding: '14px 14px 14px 16px', display: 'flex', alignItems: 'center', gap: '13px', cursor: 'pointer' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '3px' }}/> : <Trophy size={22} color="#1a73e8"/>}
                   </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {esAdmin && t.organizador_id && (
-                  <span title={organizadores[t.organizador_id] ? `Torneo de ${organizadores[t.organizador_id]}` : 'Torneo de un organizador'}
-                    style={{ fontSize: '.72rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '12px', padding: '3px 10px', fontWeight: '600' }}>
-                    🏢 {organizadores[t.organizador_id] || 'Organizador'}
-                  </span>
-                )}
-                {t.premium && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff4e5', borderRadius: '12px', padding: '3px 10px', fontWeight: '700' }}>⭐ Premium</span>}
-                {t.genero && <span style={{ fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '12px', padding: '3px 10px' }}>{t.genero}</span>}
-                {t.categoria && <span style={{ fontSize: '.75rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '12px', padding: '3px 10px' }}>{t.categoria}</span>}
-                <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '12px', padding: '3px 10px' }}>Activo</span>
-                {esAdmin && (
-                  <button onClick={() => handleTogglePremium(t)} title={t.premium ? 'Quitar Premium' : 'Marcar como Premium (pago recibido)'}
-                    style={{ background: t.premium ? '#fff4e5' : 'none', border: `1px solid ${t.premium ? '#ffd8a8' : '#dadce0'}`, borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: t.premium ? '#e8710a' : '#9aa0a6', display: 'flex', alignItems: 'center' }}>
-                    <Star size={15} fill={t.premium ? '#e8710a' : 'none'}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '6px', lineHeight: 1.25 }}>{t.name}</div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {t.modalidad && <span style={{ fontSize: '.7rem', color: '#202124', background: '#f1f3f4', border: '1px solid #e8eaed', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{t.modalidad}</span>}
+                      <span style={{ fontSize: '.7rem', color: estado.color, background: estado.bg, borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{estado.label}</span>
+                      {t.genero && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{t.genero}</span>}
+                      {t.premium && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fff4e5', borderRadius: '5px', padding: '2px 8px', fontWeight: '700' }}>⭐ Premium</span>}
+                      {esAdmin && t.organizador_id && (
+                        <span style={{ fontSize: '.7rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>
+                          🏢 {organizadores[t.organizador_id] || 'Organizador'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); setMenuTorneo(abierto ? null : t.id) }}
+                    style={{ width: '36px', height: '36px', borderRadius: '50%', background: abierto ? '#e8f0fe' : '#f1f3f4', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '1.1rem', fontWeight: '900', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    ⋮
                   </button>
+                </div>
+                {abierto && (
+                  <div style={{ display: 'flex', gap: '8px', padding: '10px 14px', background: '#f8f9fa', borderTop: '1px solid #f1f3f4', flexWrap: 'wrap' }}>
+                    <button onClick={() => { setMenuTorneo(null); navigate(`/admin/torneos/${t.id}`) }}
+                      style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600' }}>
+                      <Eye size={14}/> Abrir
+                    </button>
+                    <button onClick={() => { setMenuTorneo(null); handleEdit(t) }}
+                      style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
+                      <Pencil size={14}/> Editar
+                    </button>
+                    {esAdmin && (
+                      <button onClick={() => { setMenuTorneo(null); handleTogglePremium(t) }}
+                        style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: t.premium ? '#fff4e5' : '#fff', border: `1px solid ${t.premium ? '#ffd8a8' : '#dadce0'}`, borderRadius: '8px', cursor: 'pointer', color: '#e8710a', fontSize: '.78rem', fontWeight: '600' }}>
+                        <Star size={14} fill={t.premium ? '#e8710a' : 'none'}/> {t.premium ? 'Quitar Premium' : 'Premium'}
+                      </button>
+                    )}
+                    <button onClick={() => { setMenuTorneo(null); handleDelete(t.id) }}
+                      style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.78rem', fontWeight: '600' }}>
+                      <Trash2 size={14}/> Eliminar
+                    </button>
+                  </div>
                 )}
-                <button onClick={() => navigate(`/admin/torneos/${t.id}`)}
-  style={{ background: 'none', border: '1px solid #1a73e8', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#1a73e8', display: 'flex', alignItems: 'center' }}>
-  <Eye size={15}/>
-</button>
-                <button onClick={() => handleEdit(t)}
-                  style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
-                  <Pencil size={15}/>
-                </button>
-                <button onClick={() => handleDelete(t.id)}
-                  style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
-                  <Trash2 size={15}/>
-                </button>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
