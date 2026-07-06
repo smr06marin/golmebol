@@ -1,5 +1,4 @@
-import React from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
@@ -216,8 +215,8 @@ function TeamLogo({ logo_url, name, size = 28 }) {
 }
 
 function ModalPosterEquipo({ equipo, onClose }) {
-  const [generando, setGenerando] = React.useState(false)
-  const [posterHtml, setPosterHtml] = React.useState(null)
+  const [generando, setGenerando] = useState(false)
+  const [posterHtml, setPosterHtml] = useState(null)
 
   async function generarPoster() {
     setGenerando(true)
@@ -253,7 +252,7 @@ function ModalPosterEquipo({ equipo, onClose }) {
     setGenerando(false)
   }
 
-  React.useEffect(() => { generarPoster() }, [])
+  useEffect(() => { generarPoster() }, [])
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px', overflow:'auto' }}>
@@ -281,8 +280,8 @@ function ModalPosterEquipo({ equipo, onClose }) {
 }
 
 function ModalUniformeEquipo({ equipo, onClose }) {
-  const [uploading, setUploading] = React.useState(false)
-  const [preview,   setPreview]   = React.useState(equipo.uniforme_url || null)
+  const [uploading, setUploading] = useState(false)
+  const [preview,   setPreview]   = useState(equipo.uniforme_url || null)
 
   async function handleUpload(e) {
     const file = e.target.files[0]
@@ -323,10 +322,10 @@ function ModalUniformeEquipo({ equipo, onClose }) {
 }
 
 function EquiposDesactivadosTorneo({ torneoId, onReactivar, showMsg }) {
-  const [lista, setLista] = React.useState([])
+  const [lista, setLista] = useState([])
   const navigate = useNavigate()
 
-  React.useEffect(() => {
+  useEffect(() => {
     async function load() {
       const { data } = await supabase
         .from('tournament_teams')
@@ -1671,7 +1670,7 @@ export default function AdminTorneoDetallePage() {
                   </div>
                 )
                 return (
-                  <React.Fragment key={e.id}>
+                  <Fragment key={e.id}>
                     {equipoDiv}
                     {/* Panel jugadores del equipo */}
                   {jugadoresEquipoId === e.id && (
@@ -1698,7 +1697,7 @@ export default function AdminTorneoDetallePage() {
                       )}
                     </div>
                   )}
-                  </React.Fragment>
+                  </Fragment>
                 )
               })}
             </div>
