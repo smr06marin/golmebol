@@ -222,19 +222,32 @@ function ModalPosterEquipo({ equipo, onClose }) {
   async function generarPoster() {
     setGenerando(true)
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 3000,
-          messages: [{ role: 'user', content: `Crea un poster de bienvenida HTML/CSS para el equipo "${equipo.name}" de la liga Golmebol Armenia.
-Datos: Ciudad: ${equipo.city||'Armenia'}, Modalidad: ${equipo.modalidad||'Fútbol'}, Descripción: ${equipo.descripcion||'Equipo participante'}, Logros: ${equipo.logros||'Liga Golmebol 2026'}, Logo: ${equipo.logo_url||''}.
-Genera SOLO el HTML (sin DOCTYPE/html/head/body). Div 600x800px, fondo oscuro degradado azul-negro, logo arriba, nombre grande, descripción, logros con trofeos, "GOLMEBOL Armenia" abajo. Diseño profesional. Solo HTML.` }]
-        })
-      })
-      const data = await response.json()
-      const html = (data.content?.[0]?.text || '').replace(/```html|```/g, '').trim()
+      // Generar poster localmente sin API
+      const logoHtml = equipo.logo_url
+        ? `<div style="width:120px;height:120px;border-radius:50%;overflow:hidden;border:3px solid #f9a825;margin:0 auto 16px;background:#1e2d3d;display:flex;align-items:center;justify-content:center"><img src="${equipo.logo_url}" style="width:100%;height:100%;object-fit:contain;padding:8px"/></div>`
+        : `<div style="width:120px;height:120px;border-radius:50%;background:#1e2d3d;border:3px solid #f9a825;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:3rem">⚽</div>`
+      const logrosHtml = (equipo.logros || 'Participante Liga Golmebol Armenia 2026').split(',').map(l => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.1)"><span style="color:#f9a825;font-size:1.1rem">🏆</span><span style="color:#e8f4fd;font-size:.85rem">${l.trim()}</span></div>`).join('')
+      const html = `<div style="width:600px;min-height:800px;background:linear-gradient(160deg,#07070e 0%,#0d1117 40%,#07224a 100%);padding:48px 40px;box-sizing:border-box;font-family:system-ui,sans-serif;position:relative;overflow:hidden">
+        <div style="position:absolute;top:-60px;right:-60px;width:240px;height:240px;border-radius:50%;background:rgba(26,115,232,.08);border:1px solid rgba(26,115,232,.15)"></div>
+        <div style="position:absolute;bottom:-40px;left:-40px;width:180px;height:180px;border-radius:50%;background:rgba(249,168,37,.05);border:1px solid rgba(249,168,37,.1)"></div>
+        <div style="text-align:center;position:relative;z-index:1">
+          <div style="font-size:.7rem;letter-spacing:.3em;color:#7a9ab5;text-transform:uppercase;margin-bottom:24px">GOLMEBOL · ARMENIA, QUINDÍO</div>
+          ${logoHtml}
+          <div style="font-size:2.2rem;font-weight:900;color:#fff;letter-spacing:.05em;margin-bottom:6px;text-transform:uppercase">${equipo.name}</div>
+          <div style="font-size:.85rem;color:#7a9ab5;margin-bottom:4px">${equipo.modalidad||'Fútbol'} · ${equipo.genero||''} · ${equipo.city||'Armenia'}</div>
+          <div style="width:60px;height:2px;background:linear-gradient(90deg,transparent,#f9a825,transparent);margin:20px auto"></div>
+          ${equipo.descripcion ? `<div style="font-size:.875rem;color:#b8d4e8;line-height:1.7;margin-bottom:24px;padding:0 8px">${equipo.descripcion}</div>` : ''}
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;margin-bottom:24px;text-align:left">
+            <div style="font-size:.7rem;letter-spacing:.2em;color:#f9a825;text-transform:uppercase;margin-bottom:10px;font-weight:700">Palmarés</div>
+            ${logrosHtml}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px">
+            <div style="height:1px;background:rgba(255,255,255,.1);flex:1"></div>
+            <span style="font-size:.7rem;color:#7a9ab5;letter-spacing:.15em">BIENVENIDOS</span>
+            <div style="height:1px;background:rgba(255,255,255,.1);flex:1"></div>
+          </div>
+        </div>
+      </div>`
       setPosterHtml(html)
     } catch(e) { console.error(e) }
     setGenerando(false)
@@ -1639,7 +1652,7 @@ export default function AdminTorneoDetallePage() {
                       {menuAbierto && (
                         <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 200, minWidth: '190px', padding: '6px 0' }}>
                           {[
-                            { label: 'Ver jugadores',     icon: '👥', action: () => { navigate(`/admin/equipos/${e.id}`); setMenuEquipoId(null) } },
+                            { label: 'Ver jugadores',     icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
                             { label: 'Compartir link',    icon: '🔗', action: () => { navigator.clipboard.writeText(`${window.location.origin}/registro/equipo/${e.registro_token}/${id}`); showMsg('Link copiado'); setMenuEquipoId(null) } },
                             { label: 'Poster bienvenida', icon: '🖼️', action: () => { setPosterEquipo(e); setMenuEquipoId(null) } },
                             { label: 'Uniforme',          icon: '👕', action: () => { setUniformeEquipo(e); setMenuEquipoId(null) } },
@@ -1656,6 +1669,31 @@ export default function AdminTorneoDetallePage() {
                       )}
                     </div>
                   </div>
+                  {/* Panel jugadores del equipo */}
+                  {jugadoresEquipoId === e.id && (
+                    <div style={{ padding:'12px 16px 4px', borderTop:'1px solid #f1f3f4', background:'#f8f9fa' }}>
+                      <div style={{ fontSize:'.72rem', fontWeight:'600', color:'#5f6368', marginBottom:'8px' }}>👥 Jugadores de {e.name}</div>
+                      {jugadores.filter(j => j.team_id === e.id).length === 0 ? (
+                        <div style={{ fontSize:'.78rem', color:'#9aa0a6', padding:'8px 0' }}>Sin jugadores registrados</div>
+                      ) : (
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:'8px', marginBottom:'8px' }}>
+                          {jugadores.filter(j => j.team_id === e.id).map(j => (
+                            <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'8px', background:'#fff', borderRadius:'8px', padding:'8px 10px', border:'1px solid #e8eaed' }}>
+                              <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                {j.photo_face_url || j.photo_url
+                                  ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                  : <span style={{ fontSize:'.8rem' }}>👤</span>}
+                              </div>
+                              <div style={{ minWidth:0 }}>
+                                <div style={{ fontSize:'.75rem', fontWeight:'600', color:'#202124', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{j.name}</div>
+                                <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{j.posicion_futbol5 || j.posicion_futbol7 || j.posicion_futbol11 || '—'}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 )
               })}
             </div>
