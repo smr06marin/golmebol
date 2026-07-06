@@ -1,3 +1,4 @@
+import React from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -210,6 +211,143 @@ function TeamLogo({ logo_url, name, size = 28 }) {
   return (
     <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ fontSize: size * 0.32 + 'px', fontWeight: '800', color: '#fff', fontFamily: 'system-ui' }}>{iniciales}</span>
+    </div>
+  )
+}
+
+function ModalPosterEquipo({ equipo, onClose }) {
+  const [generando, setGenerando] = React.useState(false)
+  const [posterHtml, setPosterHtml] = React.useState(null)
+
+  async function generarPoster() {
+    setGenerando(true)
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 3000,
+          messages: [{ role: 'user', content: `Crea un poster de bienvenida HTML/CSS para el equipo "${equipo.name}" de la liga Golmebol Armenia.
+Datos: Ciudad: ${equipo.city||'Armenia'}, Modalidad: ${equipo.modalidad||'Fútbol'}, Descripción: ${equipo.descripcion||'Equipo participante'}, Logros: ${equipo.logros||'Liga Golmebol 2026'}, Logo: ${equipo.logo_url||''}.
+Genera SOLO el HTML (sin DOCTYPE/html/head/body). Div 600x800px, fondo oscuro degradado azul-negro, logo arriba, nombre grande, descripción, logros con trofeos, "GOLMEBOL Armenia" abajo. Diseño profesional. Solo HTML.` }]
+        })
+      })
+      const data = await response.json()
+      const html = (data.content?.[0]?.text || '').replace(/```html|```/g, '').trim()
+      setPosterHtml(html)
+    } catch(e) { console.error(e) }
+    setGenerando(false)
+  }
+
+  React.useEffect(() => { generarPoster() }, [])
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px', overflow:'auto' }}>
+      <div style={{ background:'#fff', borderRadius:'16px', width:'100%', maxWidth:'680px', maxHeight:'95vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div style={{ padding:'14px 20px', borderBottom:'1px solid #e8eaed', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+          <div><div style={{ fontWeight:'700', fontSize:'.9rem', color:'#202124' }}>Poster — {equipo.name}</div><div style={{ fontSize:'.7rem', color:'#9aa0a6' }}>Generado con IA</div></div>
+          <div style={{ display:'flex', gap:'8px' }}>
+            {posterHtml && <button onClick={generarPoster} style={{ padding:'5px 12px', background:'#f1f3f4', border:'none', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.78rem' }}>🔄 Regenerar</button>}
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6' }}><X size={18}/></button>
+          </div>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'20px', display:'flex', justifyContent:'center', alignItems: generando?'center':'flex-start' }}>
+          {generando ? (
+            <div style={{ textAlign:'center', color:'#5f6368' }}>
+              <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🎨</div>
+              <div style={{ fontWeight:'600' }}>Generando poster con IA...</div>
+            </div>
+          ) : posterHtml ? (
+            <div dangerouslySetInnerHTML={{ __html: posterHtml }} style={{ width:'100%', maxWidth:'600px' }}/>
+          ) : <div style={{ color:'#9aa0a6' }}>Error generando poster</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalUniformeEquipo({ equipo, onClose }) {
+  const [uploading, setUploading] = React.useState(false)
+  const [preview,   setPreview]   = React.useState(equipo.uniforme_url || null)
+
+  async function handleUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    const objectUrl = URL.createObjectURL(file)
+    setPreview(objectUrl)
+    const path = `uniformes/${equipo.id}_${Date.now()}.${file.name.split('.').pop()}`
+    const { error } = await supabase.storage.from('teams').upload(path, file, { upsert: true })
+    if (!error) {
+      const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+      await supabase.from('teams').update({ uniforme_url: urlData.publicUrl }).eq('id', equipo.id)
+      setPreview(urlData.publicUrl)
+    }
+    setUploading(false)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:'#fff', borderRadius:'16px', width:'100%', maxWidth:'480px', overflow:'hidden' }}>
+        <div style={{ padding:'14px 20px', borderBottom:'1px solid #e8eaed', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ fontWeight:'700', fontSize:'.9rem', color:'#202124' }}>Uniforme — {equipo.name}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6' }}><X size={18}/></button>
+        </div>
+        <div style={{ padding:'20px' }}>
+          <label style={{ display:'block', border:'2px dashed #dadce0', borderRadius:'12px', padding:'28px', textAlign:'center', cursor:'pointer', background:'#f8f9fa', marginBottom:'14px' }}>
+            <input type="file" accept="image/*" onChange={handleUpload} style={{ display:'none' }}/>
+            {preview
+              ? <img src={preview} style={{ maxHeight:'180px', maxWidth:'100%', objectFit:'contain', borderRadius:'8px' }}/>
+              : <div><div style={{ fontSize:'2rem', marginBottom:'6px' }}>👕</div><div style={{ fontSize:'.875rem', color:'#5f6368' }}>Click para subir foto del uniforme</div></div>}
+          </label>
+          {uploading && <div style={{ textAlign:'center', fontSize:'.8rem', color:'#9aa0a6', marginBottom:'10px' }}>Subiendo...</div>}
+          <button onClick={onClose} style={{ width:'100%', padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'600', fontSize:'.875rem' }}>Listo</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EquiposDesactivadosTorneo({ torneoId, onReactivar, showMsg }) {
+  const [lista, setLista] = React.useState([])
+  const navigate = useNavigate()
+
+  React.useEffect(() => {
+    async function load() {
+      const { data } = await supabase
+        .from('tournament_teams')
+        .select('*, teams(id,name,logo_url,city)')
+        .eq('tournament_id', torneoId)
+        .eq('activo', false)
+      setLista(data || [])
+    }
+    load()
+  }, [torneoId])
+
+  if (lista.length === 0) return <div style={{ fontSize:'.8rem', color:'#9aa0a6', padding:'12px 0' }}>No hay equipos desactivados</div>
+
+  return (
+    <div style={{ background:'#fff', border:'1px solid #fad2cf', borderRadius:'12px', overflow:'hidden' }}>
+      {lista.map((tt, i) => (
+        <div key={tt.id} style={{ padding:'12px 16px', borderBottom: i<lista.length-1?'1px solid #f1f3f4':'none', display:'flex', alignItems:'center', gap:'12px', opacity:.7 }}>
+          <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            {tt.teams?.logo_url ? <img src={tt.teams.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={16} color="#9aa0a6"/>}
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:'600', fontSize:'.875rem', color:'#5f6368' }}>{tt.teams?.name}</div>
+            <div style={{ fontSize:'.7rem', color:'#9aa0a6' }}>Desactivado de este torneo</div>
+          </div>
+          <button onClick={async () => {
+            await supabase.from('tournament_teams').update({ activo: true }).eq('id', tt.id)
+            showMsg(`${tt.teams?.name} reactivado ✓`)
+            onReactivar()
+            setLista(prev => prev.filter(x => x.id !== tt.id))
+          }} style={{ padding:'5px 12px', background:'#e6f4ea', border:'1px solid #ceead6', borderRadius:'8px', cursor:'pointer', color:'#1e8e3e', fontSize:'.8rem', fontWeight:'600' }}>
+            Reactivar
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
@@ -1452,44 +1590,90 @@ export default function AdminTorneoDetallePage() {
       {/* ── TAB EQUIPOS ── */}
       {tab === 'equipos' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-            <button onClick={() => setShowAgregarEquipo(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
-              <Plus size={16}/> Agregar equipo
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ fontSize: '.8rem', color: '#9aa0a6' }}>{equipos.length} equipo{equipos.length!==1?'s':''} activos</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => setVerDesact(!verDesact)}
+                style={{ padding: '6px 14px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
+                {verDesact ? 'Ocultar desactivados' : 'Ver desactivados'}
+              </button>
+              <button onClick={() => setShowAgregarEquipo(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
+                <Plus size={16}/> Agregar equipo
+              </button>
+            </div>
           </div>
+
+          {/* Equipos activos */}
           {equipos.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
               <Shield size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay equipos inscritos</div>
             </div>
           ) : (
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '16px' }}>
               {equipos.map((e, i) => {
                 const jugsEquipo = jugadores.filter(j => j.team_id === e.id)
                 const grupoEq    = grupoEquipos.find(ge => ge.team_id === e.id)
                 const grupo      = grupoEq ? grupos.find(g => g.id === grupoEq.grupo_id) : null
+                const menuAbierto = menuEquipoId === e.id
                 return (
-                  <div key={e.id} style={{ padding: '16px 20px', borderBottom: i < equipos.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={44}/></div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{e.name}</div>
-                          {grupo && <span style={{ fontSize: '.7rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '1px 8px', fontWeight: '600' }}>{grupo.nombre}</span>}
+                  <div key={e.id} style={{ padding: '14px 20px', borderBottom: i < equipos.length - 1 ? '1px solid #f1f3f4' : 'none', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={44}/></div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>{e.name}</div>
+                        {grupo && <span style={{ fontSize: '.68rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '1px 8px', fontWeight: '600' }}>{grupo.nombre}</span>}
+                      </div>
+                      <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px', display: 'flex', gap: '8px' }}>
+                        <span>👥 {jugsEquipo.length} jugadores</span>
+                        {e.city && <span>📍 {e.city}</span>}
+                        {e.modalidad && <span>{e.modalidad}</span>}
+                      </div>
+                    </div>
+                    {/* Menú 3 puntos */}
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <button onClick={() => setMenuEquipoId(menuAbierto ? null : e.id)}
+                        style={{ background: menuAbierto?'#f1f3f4':'none', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5f6368' }}>
+                        ···
+                      </button>
+                      {menuAbierto && (
+                        <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 200, minWidth: '190px', padding: '6px 0' }}>
+                          {[
+                            { label: 'Ver jugadores',     icon: '👥', action: () => { navigate(`/admin/equipos/${e.id}`); setMenuEquipoId(null) } },
+                            { label: 'Compartir link',    icon: '🔗', action: () => { navigator.clipboard.writeText(`${window.location.origin}/registro/equipo/${e.registro_token}/${id}`); showMsg('Link copiado'); setMenuEquipoId(null) } },
+                            { label: 'Poster bienvenida', icon: '🖼️', action: () => { setPosterEquipo(e); setMenuEquipoId(null) } },
+                            { label: 'Uniforme',          icon: '👕', action: () => { setUniformeEquipo(e); setMenuEquipoId(null) } },
+                            { label: 'Desactivar equipo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' },
+                          ].map((op, idx) => (
+                            <button key={idx} onClick={op.action}
+                              style={{ width: '100%', padding: '9px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.875rem', color: op.color||'#202124', textAlign: 'left' }}
+                              onMouseEnter={e2 => e2.currentTarget.style.background='#f8f9fa'}
+                              onMouseLeave={e2 => e2.currentTarget.style.background='none'}>
+                              <span>{op.icon}</span>{op.label}
+                            </button>
+                          ))}
                         </div>
-                        <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px' }}>{jugsEquipo.length} jugadores{e.city && ` · 📍 ${e.city}`}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => navigate(`/admin/equipos/${e.id}`)} style={{ background: 'none', border: '1px solid #1a73e8', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '500' }}>Ver ficha</button>
-                        <button onClick={() => { const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`; navigator.clipboard.writeText(link); showMsg('Link copiado') }} style={{ background: 'none', border: '1px solid #1e8e3e', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#1e8e3e', fontSize: '.8rem' }}>🔗</button>
-                        <button onClick={() => handleQuitarEquipo(e)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}>Quitar</button>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )
               })}
             </div>
           )}
+
+          {/* Equipos desactivados */}
+          {verDesact && (
+            <div>
+              <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#9aa0a6', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                🚫 Equipos desactivados
+              </div>
+              <EquiposDesactivadosTorneo torneoId={id} onReactivar={fetchEquipos} showMsg={showMsg}/>
+            </div>
+          )}
+
+          {/* Modales poster y uniforme */}
+          {posterEquipo   && <ModalPosterEquipo   equipo={posterEquipo}   onClose={() => setPosterEquipo(null)}/>}
+          {uniformeEquipo && <ModalUniformeEquipo equipo={uniformeEquipo} onClose={() => setUniformeEquipo(null)}/>}
         </div>
       )}
 
