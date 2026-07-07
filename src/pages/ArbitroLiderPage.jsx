@@ -10,6 +10,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   const [form,    setForm]    = useState({ name:'', numero_cedula:'', telefono:'', city:'' })
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
+  const [fotoFile,setFotoFile] = useState(null)
 
   async function handleGuardar() {
     if (!form.name || !form.numero_cedula) return setError('Nombre y cédula son obligatorios')
@@ -18,6 +19,15 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
       ...form, rol:'arbitro', es_arbitro:true, activo_membresia:false
     }).select().single()
     if (err) { setError('Error: ' + err.message); setLoading(false); return }
+    // Subir foto si hay
+    if (fotoFile && data?.id) {
+      const path = `fotos/${data.id}.${fotoFile.name.split('.').pop()}`
+      const { error: upErr } = await supabase.storage.from('players').upload(path, fotoFile, { upsert:true })
+      if (!upErr) {
+        const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
+        await supabase.from('players').update({ photo_url: urlData.publicUrl }).eq('id', data.id)
+      }
+    }
     onCreado(data)
     onClose()
   }
@@ -30,6 +40,16 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'16px' }}>
+          {/* Foto */}
+          <div style={{ textAlign:'center' }}>
+            <label style={{ cursor:'pointer' }}>
+              <input type="file" accept="image/*" onChange={e=>setFotoFile(e.target.files[0])} style={{ display:'none' }}/>
+              <div style={{ width:'70px', height:'70px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', border:`2px dashed ${fotoFile?'#00ddd0':'#2a3a4a'}`, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
+                {fotoFile ? <img src={URL.createObjectURL(fotoFile)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.5rem' }}>📷</span>}
+              </div>
+              <div style={{ fontSize:'.68rem', color:'#7a9ab5', marginTop:'4px' }}>Toca para subir foto</div>
+            </label>
+          </div>
           <div><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
           <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} onChange={e=>setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="Número de cédula"/></div>
           <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
@@ -162,10 +182,18 @@ export default function ArbitroLiderPage() {
             <div style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'600' }}>Árbitro Líder</div>
           </div>
         </div>
-        <button onClick={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
-          style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', display:'flex', alignItems:'center', gap:'5px', fontSize:'.75rem' }}>
-          <LogOut size={14}/> Salir
-        </button>
+        <div style={{ display:'flex', gap:'6px' }}>
+          {lider?.rol !== 'arbitro' && (
+            <button onClick={()=>navigate('/jugador')} style={{ background:'none', border:'1px solid rgba(0,221,208,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#00ddd0', fontSize:'.72rem' }}>👤 Mi perfil jugador</button>
+          )}
+          {(lider?.es_arbitro||lider?.rol==='arbitro') && (
+            <button onClick={()=>navigate('/arbitro')} style={{ background:'none', border:'1px solid rgba(249,168,37,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem' }}>🟡 Mi portal árbitro</button>
+          )}
+          <button onClick={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
+            style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 8px', cursor:'pointer', color:'#7a9ab5', display:'flex', alignItems:'center' }}>
+            <LogOut size={14}/>
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth:'700px', margin:'0 auto', padding:'16px' }}>
@@ -324,7 +352,7 @@ export default function ArbitroLiderPage() {
                     </label>
                     {/* Info */}
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:'700', fontSize:'.9rem', color:'#e8f4fd' }}>{a.name}</div>
+                      <div onClick={()=>navigate(`/arbitro/perfil/${a.id}`)} style={{ fontWeight:'700', fontSize:'.9rem', color:'#00ddd0', cursor:'pointer', textDecoration:'underline', textDecorationColor:'rgba(0,221,208,.3)', textUnderlineOffset:'3px' }}>{a.name}</div>
                       <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'2px', display:'flex', gap:'8px', flexWrap:'wrap' }}>
                         {a.numero_cedula && <span>🪪 {a.numero_cedula}</span>}
                         {a.telefono      && <span>📞 {a.telefono}</span>}

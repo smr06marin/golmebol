@@ -31,6 +31,7 @@ import AdminRecordsPage from './pages/admin/AdminRecordsPage'
 import AdminArbitrosPage from './pages/admin/AdminArbitrosPage'
 import ArbitroHomePage from './pages/ArbitroHomePage'
 import ArbitroLiderPage from './pages/ArbitroLiderPage'
+import ArbitroPerfilPage from './pages/ArbitroPerfilPage'
 import PlayerHistorialPage from './pages/PlayerHistorialPage'
 
 function ProtectedRoute({ children }) {
@@ -119,6 +120,7 @@ export default function App() {
         <Route path="/jugador/historial"  element={<PlayerRoute><PlayerHistorialPage/></PlayerRoute>}/>
         <Route path="/arbitro"            element={<ArbitroHomePage/>}/>
         <Route path="/arbitro/lider"       element={<ArbitroLiderPage/>}/>
+        <Route path="/arbitro/perfil/:id"   element={<ArbitroPerfilPage/>}/>
         <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 
       </Routes>
