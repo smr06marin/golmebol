@@ -492,7 +492,7 @@ export default function EncuestaArbitrosPage() {
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text}</div>}
-      {modalNueva && <ModalCrearEncuesta arbitros={arbitros.filter(a=>a.id!==lider?.id)} liderId={lider?.id} onClose={()=>setModalNueva(false)} onCreada={()=>{ fetchEncuestas(lider?.id); showMsgFn('Encuesta creada ✓') }}/>}
+      {modalNueva && <ModalCrearEncuesta arbitros={arbitros} liderId={lider?.id} onClose={()=>setModalNueva(false)} onCreada={()=>{ fetchEncuestas(lider?.id); showMsgFn('Encuesta creada ✓') }}/>}
       {modalVotar && <ModalVotar encuesta={modalVotar} votanteId={lider?.id} onClose={()=>setModalVotar(null)} onVotado={()=>{ fetchEncuestas(lider?.id); showMsgFn('Voto enviado ✓ — anónimo') }}/>}
       {modalRes   && <ModalResultados encuesta={modalRes} arbitros={arbitros} votantes={arbitros} onClose={()=>setModalRes(null)}/>}
 
