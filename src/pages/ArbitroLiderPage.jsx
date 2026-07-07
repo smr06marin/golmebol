@@ -163,6 +163,86 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer }) {
   )
 }
 
+function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
+  const [arbitroId, setArbitroId] = useState('')
+  const [tipo,      setTipo]      = useState('tecnico')
+  const [desc,      setDesc]      = useState('')
+  const [loading,   setLoading]   = useState(false)
+
+  const arbsPartido = [partido.arbitro1_id, partido.arbitro2_id, partido.arbitro3_id]
+    .filter(Boolean).map(aid => arbitros.find(a=>a.id===aid)).filter(Boolean)
+
+  async function handleGuardar() {
+    if (!arbitroId || !desc.trim()) return
+    setLoading(true)
+    await onGuardar(partido, arbitroId, tipo, desc)
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:'#0d1117', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid rgba(217,48,37,.4)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+          <div>
+            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>⚠️ Registrar reclamo</div>
+            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'2px' }}>
+              {partido.home?.name} vs {partido.away?.name}
+              {partido.played_at && ` · ${new Date(partido.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+        </div>
+
+        {/* Árbitros del partido */}
+        <div style={{ marginBottom:'12px' }}>
+          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'6px' }}>Árbitro reclamado *</label>
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+            {arbsPartido.map(a=>(
+              <button key={a.id} onClick={()=>setArbitroId(a.id)}
+                style={{ padding:'7px 14px', borderRadius:'8px', border:`1px solid ${arbitroId===a.id?'#d93025':'#1e2d3d'}`, background:arbitroId===a.id?'rgba(217,48,37,.15)':'transparent', color:arbitroId===a.id?'#d93025':'#7a9ab5', cursor:'pointer', fontSize:'.82rem', fontWeight:'600' }}>
+                {a.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tipo */}
+        <div style={{ marginBottom:'12px' }}>
+          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'6px' }}>Tipo de reclamo</label>
+          <div style={{ display:'flex', gap:'6px' }}>
+            {[{id:'tecnico',label:'Técnico'},{id:'disciplinario',label:'Disciplinario'},{id:'comportamiento',label:'Comportamiento'}].map(t=>(
+              <button key={t.id} onClick={()=>setTipo(t.id)}
+                style={{ flex:1, padding:'6px', borderRadius:'7px', border:`1px solid ${tipo===t.id?'#e8710a':'#1e2d3d'}`, background:tipo===t.id?'rgba(232,113,10,.15)':'transparent', color:tipo===t.id?'#e8710a':'#7a9ab5', cursor:'pointer', fontSize:'.68rem', fontWeight:'600' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Descripción */}
+        <div style={{ marginBottom:'16px' }}>
+          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'4px' }}>Descripción *</label>
+          <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3}
+            style={{ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', resize:'vertical', boxSizing:'border-box' }}
+            placeholder="Describe el reclamo en detalle..."/>
+        </div>
+
+        <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginBottom:'12px', background:'rgba(232,113,10,.06)', border:'1px solid rgba(232,113,10,.15)', borderRadius:'7px', padding:'8px 10px' }}>
+          📱 El árbitro recibirá una notificación de este reclamo
+        </div>
+
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={handleGuardar} disabled={loading||!arbitroId||!desc.trim()}
+            style={{ flex:1, padding:'10px', background:'#d93025', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading||!arbitroId||!desc.trim()?.5:1 }}>
+            {loading?'Registrando...':'Registrar reclamo'}
+          </button>
+          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ArbitroLiderPage() {
   const navigate   = useNavigate()
   const [lider,    setLider]    = useState(null)
@@ -173,8 +253,10 @@ export default function ArbitroLiderPage() {
   const [showNuevo,setShowNuevo]= useState(false)
   const [msg,      setMsg]      = useState(null)
   const [uploading,setUploading]= useState(null)
-  const [busqArb,  setBusqArb]  = useState('')
+  const [busqArb,      setBusqArb]      = useState('')
   const [torneoFiltro, setTorneoFiltro] = useState('')
+  const [modalRec,     setModalRec]     = useState(null)
+  const [reclamosMap,  setReclamosMap]  = useState({})
 
   useEffect(()=>{ fetchTodo() },[])
 
@@ -194,6 +276,11 @@ export default function ArbitroLiderPage() {
       .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
       .order('played_at', { ascending: true })
     setPartidos(data||[])
+    // Cargar reclamos por partido
+    const { data: recs } = await supabase.from('arbitro_reclamos').select('match_id, estado, arbitro_id')
+    const rm = {}
+    ;(recs||[]).forEach(r => { if (!rm[r.match_id]) rm[r.match_id] = []; rm[r.match_id].push(r) })
+    setReclamosMap(rm)
   }
 
   async function fetchArbitros() {
@@ -243,6 +330,29 @@ export default function ArbitroLiderPage() {
 
   function showMsgFn(text,type='ok') { setMsg({text,type}); setTimeout(()=>setMsg(null),3000) }
 
+  async function registrarReclamo(partido, arbitroId, tipo, desc) {
+    if (!arbitroId || !desc.trim()) return
+    // Insertar reclamo
+    const { data: rec } = await supabase.from('arbitro_reclamos').insert({
+      match_id: partido.id, arbitro_id: arbitroId, descripcion: desc,
+      tipo, estado: 'abierto', registrado_por: lider?.id,
+    }).select().single()
+    // Notificar al árbitro
+    const arb = arbitros.find(a=>a.id===arbitroId)
+    if (arb) {
+      await supabase.from('notificaciones').insert({
+        player_id: arbitroId,
+        titulo: '⚠️ Reclamo registrado',
+        mensaje: `Se registró un reclamo en el partido ${partido.home?.name} vs ${partido.away?.name}. Tipo: ${tipo}. "${desc}"`,
+        tipo: 'reclamo',
+        referencia_id: rec?.id,
+      })
+    }
+    showMsgFn('Reclamo registrado — árbitro notificado ✓')
+    setModalRec(null)
+    fetchPartidos()
+  }
+
   if (loading) return <div style={{ minHeight:'100vh',background:'#07070e',display:'flex',alignItems:'center',justifyContent:'center',color:'#00ddd0' }}>Cargando...</div>
 
   // Filtrar por torneo
@@ -265,6 +375,16 @@ export default function ArbitroLiderPage() {
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text}</div>}
+      {/* Modal reclamo */}
+      {modalRec && (
+        <ModalReclamoLider
+          partido={modalRec}
+          arbitros={arbitros}
+          onClose={()=>setModalRec(null)}
+          onGuardar={registrarReclamo}
+        />
+      )}
+
       {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado ✓'); fetchArbitros() }}/>}
 
       {/* Header */}
@@ -352,7 +472,27 @@ export default function ArbitroLiderPage() {
                 <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
                 <div>Sin partidos jugados</div>
               </div>
-            ) : [...jugados].reverse().map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar}/>)}
+            ) : [...jugados].reverse().map(p => {
+              const tieneReclamo = reclamosMap[p.id]?.length > 0
+              const recAbierto   = reclamosMap[p.id]?.some(r=>r.estado==='abierto')
+              const tieneArbitro = p.arbitro1_id||p.arbitro2_id||p.arbitro3_id
+              return (
+                <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#1e2d3d'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
+                  <CardPartido partido={p} arbitros={arbitros} onAsignar={handleAsignar}/>
+                  {tieneArbitro && (
+                    <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
+                      <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
+                        {(reclamosMap[p.id]||[]).map((r,i)=>{
+                          const arb = arbitros.find(a=>a.id===r.arbitro_id)
+                          return <span key={i} style={{ fontSize:'.62rem', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5', background:r.estado==='abierto'?'rgba(217,48,37,.1)':'rgba(122,154,181,.08)', borderRadius:'5px', padding:'2px 7px' }}>⚠️ {arb?.name?.split(' ')[0]||'Árb.'} · {r.estado}</span>
+                        })}
+                      </div>
+                      <button onClick={()=>setModalRec(p)} style={{ padding:'4px 10px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700', flexShrink:0 }}>⚠️ Reclamo</button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

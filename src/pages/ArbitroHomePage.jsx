@@ -117,6 +117,7 @@ export default function ArbitroHomePage() {
   const [tab,       setTab]       = useState('proximos')
   const [showPass,  setShowPass]  = useState(false)
   const [showFlyer, setShowFlyer] = useState(false)
+  const [notifs,    setNotifs]    = useState([])
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -138,6 +139,9 @@ export default function ArbitroHomePage() {
     const lista = pts || []
     setPartidos(lista)
     setStats({ total:lista.length, jugados:lista.filter(m=>m.status==='finished').length, torneos:new Set(lista.map(m=>m.tournament_id)).size })
+    // Notificaciones no leídas
+    const { data: nots } = await supabase.from('notificaciones').select('*').eq('player_id', p.id).eq('leida', false).order('created_at',{ascending:false})
+    setNotifs(nots||[])
     setLoading(false)
   }
 
@@ -150,6 +154,17 @@ export default function ArbitroHomePage() {
 
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
+      {/* Panel notificaciones reclamos */}
+      {notifs.length>0 && (
+        <div style={{ background:'rgba(217,48,37,.08)', borderBottom:'1px solid rgba(217,48,37,.2)', padding:'10px 16px' }}>
+          {notifs.map(n=>(
+            <div key={n.id} style={{ fontSize:'.78rem', color:'#e8f4fd', marginBottom:'4px' }}>
+              <span style={{ color:'#d93025', fontWeight:'700' }}>⚠️ {n.titulo}</span> — {n.mensaje}
+            </div>
+          ))}
+        </div>
+      )}
+
       {showPass  && <ModalCambiarContrasena onClose={()=>setShowPass(false)}/>}
       {showFlyer && <FlyerPartidos arbitro={arbitro} partidos={partidos} onClose={()=>setShowFlyer(false)}/>}
 
@@ -165,6 +180,14 @@ export default function ArbitroHomePage() {
           </div>
         </div>
         <div style={{ display:'flex', gap:'6px' }}>
+          {notifs.length>0 && (
+            <button onClick={async()=>{
+              await supabase.from('notificaciones').update({leida:true}).eq('player_id',arbitro.id).eq('leida',false)
+              setNotifs([])
+            }} style={{ position:'relative', background:'rgba(217,48,37,.15)', border:'1px solid rgba(217,48,37,.4)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700' }}>
+              ⚠️ {notifs.length} reclamo{notifs.length>1?'s':''}
+            </button>
+          )}
           {arbitro?.rol !== 'arbitro' && (
             <button onClick={()=>navigate('/jugador')} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#00ddd0', fontSize:'.72rem' }}>👤 Mi perfil</button>
           )}

@@ -434,9 +434,6 @@ export default function AdminTorneoDetallePage() {
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
   const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
   const [verDesact,        setVerDesact]        = useState(false)
-  const [modalReclamo,     setModalReclamo]     = useState(null)
-  const [reclamosPartidos, setReclamosPartidos] = useState([])
-  const [esLider,          setEsLider]          = useState(false)
   const [abiertosJornada,  setAbiertosJornada]  = useState({})
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
@@ -1000,61 +997,6 @@ export default function AdminTorneoDetallePage() {
 
   return (
     <div>
-      {/* Modal reclamo */}
-      {modalReclamo && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-          <div style={{ background:'#fff', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
-            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#202124', marginBottom:'4px' }}>⚠️ Registrar reclamo</div>
-            <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'16px' }}>
-              {modalReclamo.home?.name} vs {modalReclamo.away?.name}
-              {modalReclamo.played_at && ` · ${new Date(modalReclamo.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`}
-            </div>
-            {/* Árbitros del partido */}
-            <div style={{ marginBottom:'12px' }}>
-              <label style={{ fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'block', marginBottom:'4px' }}>Árbitro reclamado *</label>
-              <select id="rec-arbitro" style={{ width:'100%', padding:'8px 12px', border:'1px solid #dadce0', borderRadius:'8px', fontSize:'.875rem', outline:'none' }}>
-                <option value="">Seleccionar...</option>
-                {[modalReclamo.arbitro1_id, modalReclamo.arbitro2_id, modalReclamo.arbitro3_id].filter(Boolean).map(aid=>{
-                  const arb = arbitrosAdmin.find(a=>a.id===aid)
-                  return arb ? <option key={aid} value={aid}>{arb.name}</option> : null
-                })}
-              </select>
-            </div>
-            <div style={{ marginBottom:'12px' }}>
-              <label style={{ fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'block', marginBottom:'4px' }}>Tipo</label>
-              <div style={{ display:'flex', gap:'6px' }}>
-                {['tecnico','disciplinario','comportamiento'].map(t=>(
-                  <label key={t} style={{ flex:1, textAlign:'center', padding:'6px', border:'1px solid #dadce0', borderRadius:'7px', cursor:'pointer', fontSize:'.72rem', fontWeight:'600', color:'#5f6368' }}>
-                    <input type="radio" name="rec-tipo" value={t} defaultChecked={t==='tecnico'} style={{ display:'none' }}/>
-                    {t==='tecnico'?'Técnico':t==='disciplinario'?'Disciplinario':'Comportamiento'}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div style={{ marginBottom:'16px' }}>
-              <label style={{ fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'block', marginBottom:'4px' }}>Descripción *</label>
-              <textarea id="rec-desc" rows={3} style={{ width:'100%', padding:'8px 12px', border:'1px solid #dadce0', borderRadius:'8px', fontSize:'.875rem', outline:'none', resize:'vertical', boxSizing:'border-box' }} placeholder="Describe el reclamo..."/>
-            </div>
-            <div style={{ display:'flex', gap:'8px' }}>
-              <button onClick={async () => {
-                const arbitroId = document.getElementById('rec-arbitro').value
-                const desc      = document.getElementById('rec-desc').value
-                const tipo      = document.querySelector('input[name="rec-tipo"]:checked')?.value || 'tecnico'
-                if (!arbitroId || !desc.trim()) return
-                await supabase.from('arbitro_reclamos').insert({ match_id:modalReclamo.id, arbitro_id:arbitroId, descripcion:desc, tipo, estado:'abierto', registrado_por:null })
-                const { data:recs } = await supabase.from('arbitro_reclamos').select('match_id,estado')
-                setReclamosPartidos(recs||[])
-                setModalReclamo(null)
-                showMsg('Reclamo registrado ✓')
-              }} style={{ flex:1, padding:'10px', background:'#d93025', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700' }}>
-                Registrar reclamo
-              </button>
-              <button onClick={()=>setModalReclamo(null)} style={{ padding:'10px 16px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368' }}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {planillaPartido && (
         <PlanillaPartido
           partido={planillaPartido}
@@ -1630,7 +1572,7 @@ export default function AdminTorneoDetallePage() {
                         {isOpen && jornada.partidos.map((p, i) => {
                           const esJugado = p.status === 'finished'
                           return (
-                            <div key={p.id} style={{ padding: '10px 16px', borderTop: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', gap: '10px', background: reclamosPartidos.some(r=>r.match_id===p.id) ? 'rgba(217,48,37,.04)' : 'transparent', borderLeft: reclamosPartidos.some(r=>r.match_id===p.id&&r.estado==='abierto') ? '3px solid #d93025' : 'none' }}>
+                            <div key={p.id} style={{ padding: '10px 16px', borderTop: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div style={{ minWidth: '64px', flexShrink: 0 }}>
                                 {p.played_at && <>
                                   <div style={{ fontSize: '.65rem', color: '#5f6368', fontWeight: '600' }}>{new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</div>
@@ -1660,13 +1602,7 @@ export default function AdminTorneoDetallePage() {
                                 <button onClick={() => setPlanillaPartido(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'4px 8px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', display:'flex', alignItems:'center', gap:'4px' }}>
                                   {esJugado ? 'Editar' : <><Check size={11}/> Resultado</>}
                                 </button>
-                                {esJugado && esLider && (p.arbitro1_id||p.arbitro2_id||p.arbitro3_id) && (
-                                  <button onClick={()=>setModalReclamo(p)}
-                                    title="Registrar reclamo"
-                                    style={{ background: reclamosPartidos.some(r=>r.match_id===p.id) ? 'rgba(217,48,37,.1)' : 'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'4px 7px', cursor:'pointer', color:'#d93025', fontSize:'.75rem', fontWeight:'700' }}>
-                                    ⚠️
-                                  </button>
-                                )}
+
                                 {!esJugado && <button onClick={() => handleEliminarPartido(p.id)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'4px 7px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center' }}><X size={13}/></button>}
                               </div>
                             </div>
