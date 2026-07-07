@@ -1629,7 +1629,7 @@ export default function AdminTorneoDetallePage() {
           ) : (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '16px' }}>
               {equipos.map((e, i) => {
-                const jugsEquipo = jugadores.filter(j => j.team_id === e.id)
+                const jugsEquipo = jugadores.filter(j => j.team_id === e.id && j.activo !== false)
                 const grupoEq    = grupoEquipos.find(ge => ge.team_id === e.id)
                 const grupo      = grupoEq ? grupos.find(g => g.id === grupoEq.grupo_id) : null
                 const menuAbierto = menuEquipoId === e.id
