@@ -65,12 +65,33 @@ export default function AdminArbitrosPage() {
   const [uploading,  setUploading]  = useState(null)
   const [msg,        setMsg]        = useState(null)
   const [search,     setSearch]     = useState('')
-  const [modalMem,   setModalMem]   = useState(null)
+  const [modalMem,     setModalMem]     = useState(null)
+  const [buscarJugador,setBuscarJugador] = useState(false)
+  const [jugadoresTodos,setJugadoresTodos] = useState([])
+  const [busqJug,      setBusqJug]      = useState('')
 
-  useEffect(() => { fetchArbitros() }, [])
+  useEffect(() => { fetchArbitros(); fetchJugadoresTodos() }, [])
+
+  async function fetchJugadoresTodos() {
+    const { data } = await supabase.from('players').select('id,name,numero_cedula,photo_url,photo_face_url,es_arbitro,rol').eq('rol', 'jugador').order('name')
+    setJugadoresTodos(data || [])
+  }
+
+  async function handleMarcarArbitro(jugador) {
+    await supabase.from('players').update({ es_arbitro: true }).eq('id', jugador.id)
+    showMsgFn(`${jugador.name} marcado como árbitro ✓`)
+    fetchArbitros(); fetchJugadoresTodos()
+  }
+
+  async function handleQuitarArbitro(jugador) {
+    if (!confirm(`¿Quitar rol de árbitro a ${jugador.name}?`)) return
+    await supabase.from('players').update({ es_arbitro: false }).eq('id', jugador.id)
+    showMsgFn(`Rol de árbitro removido`)
+    fetchArbitros()
+  }
 
   async function fetchArbitros() {
-    const { data } = await supabase.from('players').select('*').eq('rol', 'arbitro').order('name')
+    const { data } = await supabase.from('players').select('*').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
     setArbitros(data || [])
   }
 
@@ -83,7 +104,7 @@ export default function AdminArbitrosPage() {
     if (!form.name)           return showMsgFn('El nombre es obligatorio', 'error')
     if (!form.numero_cedula)  return showMsgFn('La cédula es obligatoria', 'error')
     setLoading(true)
-    const payload = { ...form, rol: 'arbitro' }
+    const payload = { ...form, rol: 'arbitro', es_arbitro: true }
     if (editId) {
       const { error } = await supabase.from('players').update(payload).eq('id', editId)
       if (error) showMsgFn('Error al guardar', 'error')
@@ -158,10 +179,16 @@ export default function AdminArbitrosPage() {
           <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:0 }}>Árbitros</h1>
           <p style={{ color:'#5f6368', margin:'4px 0 0', fontSize:'.875rem' }}>{arbitros.length} árbitros registrados</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={() => { setBuscarJugador(!buscarJugador) }}
+            style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:'1px solid #1a73e8', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#1a73e8', fontSize:'.875rem', fontWeight:'600' }}>
+            👤 Jugador existente
+          </button>
+          <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
           style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600' }}>
-          <Plus size={16}/> Agregar árbitro
+          <Plus size={16}/> Árbitro nuevo
         </button>
+        </div>
       </div>
 
       {/* Form */}
@@ -179,6 +206,35 @@ export default function AdminArbitrosPage() {
             <button onClick={handleSave} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':editId?'Actualizar':'Crear árbitro'}</button>
             <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
           </div>
+        </div>
+      )}
+
+      {/* Panel buscar jugador existente */}
+      {buscarJugador && (
+        <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+          <div style={{ fontWeight:'600', color:'#202124', marginBottom:'12px' }}>Marcar jugador existente como árbitro</div>
+          <input value={busqJug} onChange={e => setBusqJug(e.target.value)} placeholder="Buscar jugador..." style={{...inp, marginBottom:'12px'}}/>
+          <div style={{ maxHeight:'280px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'6px' }}>
+            {jugadoresTodos.filter(j => !j.es_arbitro && j.name.toLowerCase().includes(busqJug.toLowerCase())).map(j => (
+              <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#f8f9fa', borderRadius:'8px', border:'1px solid #e8eaed' }}>
+                <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', background:'#f1f3f4', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {j.photo_face_url||j.photo_url ? <img src={j.photo_face_url||j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span>👤</span>}
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:'600', fontSize:'.875rem', color:'#202124' }}>{j.name}</div>
+                  <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>🪪 {j.numero_cedula}</div>
+                </div>
+                <button onClick={() => { handleMarcarArbitro(j); setBuscarJugador(false) }}
+                  style={{ padding:'6px 14px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                  + Árbitro
+                </button>
+              </div>
+            ))}
+            {jugadoresTodos.filter(j => !j.es_arbitro && j.name.toLowerCase().includes(busqJug.toLowerCase())).length === 0 && (
+              <div style={{ textAlign:'center', color:'#9aa0a6', padding:'20px', fontSize:'.875rem' }}>Sin jugadores</div>
+            )}
+          </div>
+          <button onClick={() => setBuscarJugador(false)} style={{ marginTop:'12px', padding:'7px 16px', background:'#f1f3f4', border:'none', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem' }}>Cerrar</button>
         </div>
       )}
 
@@ -215,7 +271,10 @@ export default function AdminArbitrosPage() {
 
               {/* Info */}
               <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
                 <div style={{ fontWeight:'700', fontSize:'.95rem', color:'#202124' }}>{a.name}</div>
+                {a.es_arbitro && a.rol !== 'arbitro' && <span style={{ fontSize:'.65rem', color:'#9955ff', background:'#f3e8fd', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>Jugador+Árbitro</span>}
+              </div>
                 <div style={{ fontSize:'.75rem', color:'#9aa0a6', marginTop:'2px', display:'flex', gap:'10px', flexWrap:'wrap' }}>
                   {a.numero_cedula && <span>🪪 {a.numero_cedula}</span>}
                   {a.telefono      && <span>📞 {a.telefono}</span>}
@@ -248,6 +307,10 @@ export default function AdminArbitrosPage() {
                 {activo && (
                   <button onClick={() => handleDesactivar(a)}
                     style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Desactivar</button>
+                )}
+                {a.es_arbitro && a.rol !== 'arbitro' && (
+                  <button onClick={() => handleQuitarArbitro(a)}
+                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Quitar rol</button>
                 )}
               </div>
             </div>

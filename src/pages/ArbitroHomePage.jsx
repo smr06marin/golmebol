@@ -18,8 +18,9 @@ export default function ArbitroHomePage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/jugador/login'); return }
 
-    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).eq('rol', 'arbitro').single()
+    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).or('rol.eq.arbitro,es_arbitro.eq.true').single()
     if (!p) { navigate('/jugador/login'); return }
+    if (!p.es_arbitro && p.rol !== 'arbitro') { navigate('/jugador'); return }
     if (!p.activo_membresia) { navigate('/jugador/login'); return }
     setArbitro(p)
 
@@ -76,9 +77,17 @@ export default function ArbitroHomePage() {
             </div>
           </div>
         </div>
-        <button onClick={handleLogout} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', display:'flex', alignItems:'center', gap:'5px', fontSize:'.75rem' }}>
-          <LogOut size={14}/> Salir
-        </button>
+        <div style={{ display:'flex', gap:'6px' }}>
+          {arbitro?.rol !== 'arbitro' && (
+            <button onClick={() => navigate('/jugador')}
+              style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#00ddd0', fontSize:'.75rem' }}>
+              👤 Mi perfil
+            </button>
+          )}
+          <button onClick={handleLogout} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', display:'flex', alignItems:'center', gap:'5px', fontSize:'.75rem' }}>
+            <LogOut size={14}/> Salir
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth:'500px', margin:'0 auto', padding:'16px' }}>
