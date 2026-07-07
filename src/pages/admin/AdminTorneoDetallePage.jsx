@@ -433,6 +433,7 @@ export default function AdminTorneoDetallePage() {
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
   const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
   const [verDesact,        setVerDesact]        = useState(false)
+  const [abiertosJornada,  setAbiertosJornada]  = useState({})
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
