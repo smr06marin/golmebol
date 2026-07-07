@@ -362,10 +362,16 @@ export default function ArbitroLiderPage() {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
               <input value={busqArb} onChange={e=>setBusqArb(e.target.value)} placeholder="Buscar árbitro..."
                 style={{...inp, maxWidth:'220px'}}/>
-              <button onClick={()=>setShowNuevo(true)}
-                style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'8px 14px', cursor:'pointer', color:'#fff', fontSize:'.82rem', fontWeight:'700' }}>
-                <Plus size={14}/> Nuevo
-              </button>
+              <div style={{ display:'flex', gap:'6px' }}>
+                <button onClick={()=>navigate('/arbitro/ranking')}
+                  style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(249,168,37,.1)', border:'1px solid rgba(249,168,37,.3)', borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:'#f9a825', fontSize:'.78rem', fontWeight:'700' }}>
+                  🏆 Ranking
+                </button>
+                <button onClick={()=>setShowNuevo(true)}
+                  style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'8px 14px', cursor:'pointer', color:'#fff', fontSize:'.82rem', fontWeight:'700' }}>
+                  <Plus size={14}/> Nuevo
+                </button>
+              </div>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
               {arbitros.filter(a=>a.name.toLowerCase().includes(busqArb.toLowerCase())).map(a=>{
