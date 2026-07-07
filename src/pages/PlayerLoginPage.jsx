@@ -188,7 +188,7 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { data: p } = await supabase
       .from('players')
-      .select('id, name, activo_membresia, fecha_vencimiento, user_id, primer_ingreso')
+      .select('id, name, activo_membresia, fecha_vencimiento, user_id, primer_ingreso, rol')
       .eq('numero_cedula', cedula.trim())
       .single()
     setLoading(false)
@@ -202,7 +202,7 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Contraseña incorrecta'); setLoading(false); return }
-    const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso').eq('id', player.id).single()
+    const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso, rol').eq('id', player.id).single()
     if (!pActual?.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
     if (pActual.fecha_vencimiento && new Date(pActual.fecha_vencimiento) < new Date()) { await supabase.auth.signOut(); setError('membresia_vencida'); setLoading(false); return }
     if (pActual.primer_ingreso !== false) {
@@ -259,7 +259,7 @@ export default function PlayerLoginPage() {
       sponsor={splash.sponsor}
       cardColor={splash.cardColor}
       cardNombre={splash.cardNombre}
-      onDone={() => navigate('/jugador')}
+      onDone={() => navigate(player?.rol === 'arbitro' ? '/arbitro' : '/jugador')}
     />
   )
 
