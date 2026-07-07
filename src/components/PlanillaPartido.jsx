@@ -203,11 +203,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [showSuggest2,       setShowSuggest2]       = useState(false)
   const [jugadoresLocal,     setJugadoresLocal]     = useState([])
   const [jugadoresVisitante, setJugadoresVisitante] = useState([])
-  const [sancionados,        setSancionados]        = useState({}) // player_id -> motivo
   const [torneo,             setTorneo]             = useState(null)
   const [guardandoDB,        setGuardandoDB]        = useState(false)
   const [isOnline,           setIsOnline]           = useState(navigator.onLine)
   const [hayDatosLocales,    setHayDatosLocales]    = useState(false)
+  const [arbitrosReg,        setArbitrosReg]        = useState([])
+  const [hayCambios,         setHayCambios]         = useState(false)
   const [showMVP,            setShowMVP]            = useState(false)
   const [mvpId,              setMvpId]              = useState('')
   const [showEspecial,       setShowEspecial]       = useState(null)
@@ -295,6 +296,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   useEffect(() => {
     if (loading) return
+    setHayCambios(true)
     const snap = { jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante, savedAt: new Date().toISOString(), pendienteSync: true }
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
   }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante])
@@ -308,6 +310,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   useEffect(() => {
     try { const stored = localStorage.getItem(arbitrosKey); if (stored) setArbitrosTorneo(JSON.parse(stored)) } catch(e) {}
+    // Cargar árbitros registrados en BD
+    supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').eq('activo_membresia', true).order('name').then(({ data }) => setArbitrosReg(data || []))
   }, [])
 
   function getDefaultDuracion(modalidad) {
@@ -414,49 +418,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const applyTarjetas = (jugs, statsArr) => jugs.map(j => { const s = statsArr.find(st => st.player_id === j.id); if (!s) return j; return { ...j, amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, faltasPeriodo: Array(s.fouls || 0).fill(1) } })
       jugsLocalBase = applyTarjetas(jugsLocalBase, stats.filter(s => s.team_id === partido.home_team_id))
       jugsVisBase   = applyTarjetas(jugsVisBase,   stats.filter(s => s.team_id === partido.away_team_id))
-    }
-
-    // ── SANCIONES ─────────────────────────────────────
-    // 1) Roja en el último partido jugado del equipo → sancionado esta fecha (se
-    //    levanta sola al terminar este partido, porque deja de ser el último).
-    // 2) Sanciones manuales activas (aplican a todos los torneos).
-    if (!yaJugado) {
-      const mapSanc = {}
-      try {
-        for (const teamId of [partido.home_team_id, partido.away_team_id]) {
-          const { data: ult } = await supabase.from('matches')
-            .select('id')
-            .eq('tournament_id', partido.tournament_id)
-            .eq('status', 'finished')
-            .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
-            .neq('id', partido.id)
-            .order('played_at', { ascending: false })
-            .limit(1)
-          if (ult && ult[0]) {
-            const { data: rojas } = await supabase.from('player_match_stats')
-              .select('player_id')
-              .eq('match_id', ult[0].id)
-              .eq('team_id', teamId)
-              .gt('red_cards', 0)
-            ;(rojas || []).forEach(r => { mapSanc[r.player_id] = '🟥 Tarjeta roja en el partido anterior — cumple 1 fecha' })
-          }
-        }
-        const idsJug = [...jugsLocalBase, ...jugsVisBase].map(j => j.id).filter(Boolean)
-        if (idsJug.length > 0) {
-          const { data: sanc } = await supabase.from('sanciones')
-            .select('player_id, motivo, fecha_fin')
-            .eq('activa', true)
-            .in('player_id', idsJug)
-          const ahora = new Date()
-          ;(sanc || []).forEach(s => {
-            if (s.fecha_fin && new Date(s.fecha_fin) < ahora) return
-            mapSanc[s.player_id] = `⛔ ${s.motivo || 'Sancionado'} — ${s.fecha_fin ? 'hasta ' + new Date(s.fecha_fin).toLocaleDateString('es-CO') : 'sanción permanente'}`
-          })
-        }
-      } catch (e) { console.error('sanciones:', e) }
-      setSancionados(mapSanc)
-    } else {
-      setSancionados({})
     }
 
     let restaurado = false
@@ -596,6 +557,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setHayDatosLocales(false)
     setGuardandoDB(false)
     onGuardarResultado(golesLocalTotal, golesVisTotal)
+    onClose()
+  }
+
+  function handleCerrar() {
+    if (hayCambios && partido.status !== 'finished') {
+      if (!confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return
+    }
+    // Limpiar localStorage
+    try { localStorage.removeItem(`planilla_${partido.id}`) } catch(e) {}
     onClose()
   }
 
@@ -793,23 +763,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             const repetido = numeroRepetido(equipo, j.numero, idx)
             const esPortero = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
             const esMVP = j.id && j.id === mvpId
-            const sancion = j.id ? sancionados[j.id] : null
             return (
-              <tr key={idx} title={sancion || ''} style={{ height: '17px', background: sancion ? '#fce8e6' : esMVP ? '#fff8e1' : 'transparent', opacity: sancion ? .75 : 1 }}>
+              <tr key={idx} style={{ height: '17px', background: esMVP ? '#fff8e1' : 'transparent' }}>
                 <td style={cell}><input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} style={inp}/></td>
-                <td style={{ ...cellL, background: sancion ? '#fad2cf' : esMVP ? '#fff59d' : (colorEquipo || '#1a3a8a') + '35' }}>
-                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} style={{ ...inpL, fontWeight: '700', color: '#111', textDecoration: sancion ? 'line-through' : 'none' }}/>
-                  {sancion   && <span style={{ fontSize: '6px', color: '#d93025', fontWeight: '800' }}> ⛔SANCIONADO</span>}
-                  {!sancion && esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
-                  {!sancion && esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
+                <td style={{ ...cellL, background: esMVP ? '#fff59d' : (colorEquipo || '#1a3a8a') + '35' }}>
+                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
+                  {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
+                  {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                 </td>
-                {sancion
-                  ? <td style={{ ...cell, background: '#d93025' }}><span style={{ color: '#fff', fontSize: '6px', fontWeight: '800' }}>SANC</span></td>
-                  : <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>}
+                <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
                 {[0,1,2,3,4].map(n => { const tF = faltas.length > n; return <td key={n} style={{ ...cell, background: tF ? '#e0e0e0' : 'transparent' }}>{tF && <span style={{ color: '#111', fontWeight: '700' }}>{n+1}</span>}</td> })}
-                <td style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'amarilla', !j.amarilla)}><span style={{ color: j.amarilla ? '#111' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'azul', !j.azul)}><span style={{ color: j.azul ? '#fff' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'roja', !j.roja)}><span style={{ color: j.roja ? '#fff' : 'transparent' }}>✓</span></td>
+                <td style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'amarilla', !j.amarilla)}><span style={{ color: j.amarilla ? '#111' : 'transparent' }}>✓</span></td>
+                <td style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'azul', !j.azul)}><span style={{ color: j.azul ? '#fff' : 'transparent' }}>✓</span></td>
+                <td style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'roja', !j.roja)}><span style={{ color: j.roja ? '#fff' : 'transparent' }}>✓</span></td>
                 <td style={{ ...cell, background: g1 ? (colorEquipo || '#1a3a8a') : 'transparent', color: g1 ? '#fff' : '#111', fontWeight: '700' }}>{g1||''}</td>
                 <td style={{ ...cell, background: g2 ? (colorEquipo || '#1a3a8a') : 'transparent', color: g2 ? '#fff' : '#111', fontWeight: '700' }}>{g2||''}</td>
                 <td style={{ ...cell, background: (g1+g2) ? (colorEquipo || '#1a3a8a') : 'transparent', color: (g1+g2) ? '#fff' : '#111', fontWeight: '900' }}>{(g1+g2)||''}</td>
@@ -1023,6 +989,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}
               {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales</span>}
               {mvpId && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff8e1', borderRadius: '6px', padding: '4px 10px', fontWeight: '600', border: '1px solid #ffe082' }}>⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || '...'}</span>}
+              <button onClick={handleCerrar}
+                style={{ padding:'6px 12px', background:'none', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem', fontWeight:'600', display:'flex', alignItems:'center', gap:'4px' }}>
+                ✕ Cerrar
+              </button>
               <button onClick={() => setShowEspecial('w')} style={{ padding: '6px 12px', background: '#e8710a', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>🏆 Por W</button>
               <button onClick={() => setShowEspecial('desierto')} style={{ padding: '6px 12px', background: '#5f6368', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>❌ Desierto</button>
               <button onClick={handleClickGuardar} disabled={guardandoDB || !isOnline}
@@ -1134,7 +1104,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 <tr>
                   <td style={{ ...cellL, width: '30%', position: 'relative' }}>
                     <b>ÁRBITRO 1:</b>
-                    <input value={arbitroInput1} onChange={e => { setArbitroInput1(e.target.value); setArbitro1(e.target.value); setShowSuggest1(true) }} onBlur={() => { setTimeout(() => setShowSuggest1(false), 150); guardarArbitroLocal(arbitroInput1) }} onFocus={() => setShowSuggest1(true)} placeholder="Nombre árbitro..." style={{ ...inpL, width: '120px', display: 'inline', borderBottom: '1px solid #000', marginLeft: '3px' }}/>
+                    <select value={arbitro1} onChange={e => { setArbitro1(e.target.value); setArbitroInput1(e.target.value) }} style={{ ...inpL, width:'140px', display:'inline', borderBottom:'1px solid #000', marginLeft:'3px', background:'transparent' }}>
+                          <option value="">-- Seleccionar --</option>
+                          {arbitrosReg.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                          <option value="__otro__">Otro (escribir)</option>
+                        </select>
+                        {(arbitro1 === '__otro__' || (arbitro1 && !arbitrosReg.find(a => a.name === arbitro1))) && (
+                          <input value={arbitroInput1} onChange={e => { setArbitroInput1(e.target.value); setArbitro1(e.target.value) }} placeholder="Nombre árbitro..." style={{ ...inpL, width:'120px', display:'inline', borderBottom:'1px solid #000', marginLeft:'3px' }}/>
+                        )}
                     {showSuggest1 && suggestFiltro1.length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 500, background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,.15)', minWidth: '180px', maxHeight: '120px', overflowY: 'auto' }}>
                         {suggestFiltro1.map((a, i) => <div key={i} onClick={() => { setArbitroInput1(a); setArbitro1(a); setShowSuggest1(false) }} style={{ padding: '5px 10px', cursor: 'pointer', fontSize: '9px', borderBottom: '1px solid #f1f3f4' }} onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>{a}</div>)}
@@ -1147,7 +1124,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   </td>
                   <td style={{ ...cellL, width: '30%', position: 'relative' }}>
                     <b>ÁRBITRO 2:</b>
-                    <input value={arbitroInput2} onChange={e => { setArbitroInput2(e.target.value); setArbitro2(e.target.value); setShowSuggest2(true) }} onBlur={() => { setTimeout(() => setShowSuggest2(false), 150); guardarArbitroLocal(arbitroInput2) }} onFocus={() => setShowSuggest2(true)} placeholder="Nombre árbitro..." style={{ ...inpL, width: '120px', display: 'inline', borderBottom: '1px solid #000', marginLeft: '3px' }}/>
+                    <select value={arbitro2} onChange={e => { setArbitro2(e.target.value); setArbitroInput2(e.target.value) }} style={{ ...inpL, width:'140px', display:'inline', borderBottom:'1px solid #000', marginLeft:'3px', background:'transparent' }}>
+                          <option value="">-- Seleccionar --</option>
+                          {arbitrosReg.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                          <option value="__otro__">Otro (escribir)</option>
+                        </select>
+                        {(arbitro2 === '__otro__' || (arbitro2 && !arbitrosReg.find(a => a.name === arbitro2))) && (
+                          <input value={arbitroInput2} onChange={e => { setArbitroInput2(e.target.value); setArbitro2(e.target.value) }} placeholder="Nombre árbitro..." style={{ ...inpL, width:'120px', display:'inline', borderBottom:'1px solid #000', marginLeft:'3px' }}/>
+                        )}
                     {showSuggest2 && suggestFiltro2.length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 500, background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,.15)', minWidth: '180px', maxHeight: '120px', overflowY: 'auto' }}>
                         {suggestFiltro2.map((a, i) => <div key={i} onClick={() => { setArbitroInput2(a); setArbitro2(a); setShowSuggest2(false) }} style={{ padding: '5px 10px', cursor: 'pointer', fontSize: '9px', borderBottom: '1px solid #f1f3f4' }} onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'} onMouseLeave={e => e.currentTarget.style.background = '#fff'}>{a}</div>)}

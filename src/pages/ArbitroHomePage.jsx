@@ -28,7 +28,7 @@ export default function ArbitroHomePage() {
     const { data: pts } = await supabase
       .from('matches')
       .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-      .or(`arbitro1.eq.${p.name},arbitro2.eq.${p.name}`)
+      .or(`arbitro1.eq.${p.name},arbitro2.eq.${p.name},arbitro1_id.eq.${p.id},arbitro2_id.eq.${p.id}`)
       .order('played_at', { ascending: false })
 
     const lista = pts || []
