@@ -33,6 +33,7 @@ import ArbitroHomePage from './pages/ArbitroHomePage'
 import ArbitroLiderPage from './pages/ArbitroLiderPage'
 import ArbitroPerfilPage from './pages/ArbitroPerfilPage'
 import ArbitroRankingPage from './pages/ArbitroRankingPage'
+import EncuestaArbitrosPage from './pages/EncuestaArbitrosPage'
 import PlayerHistorialPage from './pages/PlayerHistorialPage'
 
 function ProtectedRoute({ children }) {
@@ -123,6 +124,7 @@ export default function App() {
         <Route path="/arbitro/lider"       element={<ArbitroLiderPage/>}/>
         <Route path="/arbitro/perfil/:id"   element={<ArbitroPerfilPage/>}/>
         <Route path="/arbitro/ranking"       element={<ArbitroRankingPage/>}/>
+        <Route path="/arbitro/encuestas"     element={<EncuestaArbitrosPage/>}/>
         <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 
       </Routes>

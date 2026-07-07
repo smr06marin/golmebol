@@ -516,6 +516,10 @@ export default function ArbitroLiderPage() {
                   style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(249,168,37,.1)', border:'1px solid rgba(249,168,37,.3)', borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:'#f9a825', fontSize:'.78rem', fontWeight:'700' }}>
                   🏆 Ranking
                 </button>
+                <button onClick={()=>navigate('/arbitro/encuestas')}
+                  style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(26,115,232,.1)', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:'#1a73e8', fontSize:'.78rem', fontWeight:'700' }}>
+                  📝 Encuestas
+                </button>
                 <button onClick={()=>setShowNuevo(true)}
                   style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'8px 14px', cursor:'pointer', color:'#fff', fontSize:'.82rem', fontWeight:'700' }}>
                   <Plus size={14}/> Nuevo
