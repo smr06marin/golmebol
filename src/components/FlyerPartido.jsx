@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import html2canvas from 'html2canvas'
+
 import { Shield, Download, X } from 'lucide-react'
 
 export default function FlyerPartido({ partido, onClose }) {
@@ -9,7 +9,7 @@ export default function FlyerPartido({ partido, onClose }) {
   async function handleDescargar() {
     if (!flyerRef.current) return
     setDescargando(true)
-    const canvas = await html2canvas(flyerRef.current, {
+    const { default: html2canvas } = await import('html2canvas'); const canvas = await html2canvas(flyerRef.current, {
       scale: 3,
       useCORS: true,
       allowTaint: true,

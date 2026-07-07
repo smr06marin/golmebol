@@ -1,40 +1,50 @@
 // force redeploy
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
-import HomePage from './pages/HomePage'
-import LoginPage from './pages/LoginPage'
-import PlayerLoginPage from './pages/PlayerLoginPage'
-import RecordsPage from './pages/RecordsPage'
-import PlayerHomePage from './pages/PlayerHomePage'
-import ElegirTarjetaPage from './pages/ElegirTarjetaPage'
-import AdminLayout from './pages/admin/AdminLayout'
-import AdminDashboard from './pages/admin/AdminDashboard'
-import AdminCrearPage from './pages/admin/AdminCrearPage'
-import AdminTorneosPage from './pages/admin/AdminTorneosPage'
-import AdminEquiposPage from './pages/admin/AdminEquiposPage'
-import AdminJugadoresPage from './pages/admin/AdminJugadoresPage'
-import AdminJugadorDetallePage from './pages/admin/AdminJugadorDetallePage'
-import AdminCalendarioPage from './pages/admin/AdminCalendarioPage'
-import AdminSponsorsPage from './pages/admin/AdminSponsorsPage'
-import AdminEquipoDetallePage from './pages/admin/AdminEquipoDetallePage'
-import AdminTorneoDetallePage from './pages/admin/AdminTorneoDetallePage'
-import AdminTarjetasPage from './pages/admin/AdminTarjetasPage'
-import AdminNoticiasPage from './pages/admin/AdminNoticiasPage'
-import PlayerTorneoPage from './pages/PlayerTorneoPage'
-import PlayerApuestasPage from './pages/PlayerApuestasPage'
-import PlayerNoticiasPage from './pages/PlayerNoticiasPage'
-import TorneoPublicoPage from './pages/TorneoPublicoPage'
-import RegistroEquipoPage from './pages/RegistroEquipoPage'
-import AdminRecordsPage from './pages/admin/AdminRecordsPage'
-import AdminArbitrosPage from './pages/admin/AdminArbitrosPage'
-import ArbitroHomePage from './pages/ArbitroHomePage'
-import ArbitroLiderPage from './pages/ArbitroLiderPage'
-import ArbitroPerfilPage from './pages/ArbitroPerfilPage'
-import ArbitroRankingPage from './pages/ArbitroRankingPage'
-import EncuestaArbitrosPage from './pages/EncuestaArbitrosPage'
-import PlayerHistorialPage from './pages/PlayerHistorialPage'
+
+// Carga diferida por página: el celular descarga solo el código de la
+// página que visita (antes bajaba 1.4MB de una sola vez en cada carga)
+const LoginPage               = lazy(() => import('./pages/LoginPage'))
+const PlayerLoginPage         = lazy(() => import('./pages/PlayerLoginPage'))
+const RecordsPage             = lazy(() => import('./pages/RecordsPage'))
+const PlayerHomePage          = lazy(() => import('./pages/PlayerHomePage'))
+const AdminLayout             = lazy(() => import('./pages/admin/AdminLayout'))
+const AdminDashboard          = lazy(() => import('./pages/admin/AdminDashboard'))
+const AdminCrearPage          = lazy(() => import('./pages/admin/AdminCrearPage'))
+const AdminTorneosPage        = lazy(() => import('./pages/admin/AdminTorneosPage'))
+const AdminEquiposPage        = lazy(() => import('./pages/admin/AdminEquiposPage'))
+const AdminJugadoresPage      = lazy(() => import('./pages/admin/AdminJugadoresPage'))
+const AdminJugadorDetallePage = lazy(() => import('./pages/admin/AdminJugadorDetallePage'))
+const AdminCalendarioPage     = lazy(() => import('./pages/admin/AdminCalendarioPage'))
+const AdminSponsorsPage       = lazy(() => import('./pages/admin/AdminSponsorsPage'))
+const AdminEquipoDetallePage  = lazy(() => import('./pages/admin/AdminEquipoDetallePage'))
+const AdminTorneoDetallePage  = lazy(() => import('./pages/admin/AdminTorneoDetallePage'))
+const AdminTarjetasPage       = lazy(() => import('./pages/admin/AdminTarjetasPage'))
+const AdminNoticiasPage       = lazy(() => import('./pages/admin/AdminNoticiasPage'))
+const PlayerTorneoPage        = lazy(() => import('./pages/PlayerTorneoPage'))
+const PlayerApuestasPage      = lazy(() => import('./pages/PlayerApuestasPage'))
+const PlayerNoticiasPage      = lazy(() => import('./pages/PlayerNoticiasPage'))
+const TorneoPublicoPage       = lazy(() => import('./pages/TorneoPublicoPage'))
+const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
+const AdminRecordsPage        = lazy(() => import('./pages/admin/AdminRecordsPage'))
+const AdminArbitrosPage       = lazy(() => import('./pages/admin/AdminArbitrosPage'))
+const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
+const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
+const ArbitroPerfilPage       = lazy(() => import('./pages/ArbitroPerfilPage'))
+const ArbitroRankingPage      = lazy(() => import('./pages/ArbitroRankingPage'))
+const EncuestaArbitrosPage    = lazy(() => import('./pages/EncuestaArbitrosPage'))
+const PlayerHistorialPage     = lazy(() => import('./pages/PlayerHistorialPage'))
+
+// Pantalla mínima mientras se descarga el código de una página
+function CargandoPagina() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f4f6f8' }}>
+      <div className="gm-spinner"/>
+    </div>
+  )
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -79,6 +89,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <Suspense fallback={<CargandoPagina/>}>
       <Routes>
 
        {/* Redirigir inicio público al login de jugador */}
@@ -128,6 +139,7 @@ export default function App() {
         <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 
       </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

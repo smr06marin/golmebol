@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
-import html2canvas from 'html2canvas'
+
 import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
@@ -281,7 +281,7 @@ export default function PlayerHomePage() {
     if (!cardRef.current) return
     setCompartiendo(true)
     try {
-      const canvas = await html2canvas(cardRef.current, {
+      const { default: html2canvas } = await import('html2canvas'); const canvas = await html2canvas(cardRef.current, {
         backgroundColor: '#07070e', scale: 3, useCORS: true, allowTaint: true,
         logging: false, foreignObjectRendering: false, imageTimeout: 15000,
         onclone: (doc) => {

@@ -318,7 +318,7 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
           <div style={{ fontSize: '.875rem' }}>No hay torneos aún</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="gm-stagger" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {filtered.map(t => {
             const estado = t.fase_actual === 'eliminatorias' ? { label: '⚡ Eliminatorias', color: '#fff', bg: '#e8710a' } : { label: 'En calendario', color: '#fff', bg: '#e8710a' }
             const abierto = menuTorneo === t.id

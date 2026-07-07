@@ -447,18 +447,28 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchTodo() {
     setLoading(true)
-    await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos(), fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos()])
-    const { data: arbs } = await supabase.from('players').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
-    // Verificar si el usuario actual es árbitro líder
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data: yo } = await supabase.from('players').select('es_arbitro_lider').eq('user_id', user.id).single()
-      setEsLider(yo?.es_arbitro_lider || false)
-    }
-    setArbitrosAdmin(arbs || [])
-    const { data: recs } = await supabase.from('arbitro_reclamos').select('match_id,estado')
-    setReclamosPartidos(recs || [])
+    // Pintar la página apenas llega lo esencial (torneo + partidos + equipos);
+    // el resto carga en segundo plano y va llenando las secciones.
+    await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos()])
     setLoading(false)
+
+    Promise.all([fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos()]).catch(() => {})
+
+    ;(async () => {
+      try {
+        const [{ data: arbs }, { data: recs }, { data: { user } }] = await Promise.all([
+          supabase.from('players').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true').order('name'),
+          supabase.from('arbitro_reclamos').select('match_id,estado'),
+          supabase.auth.getUser(),
+        ])
+        setArbitrosAdmin(arbs || [])
+        setReclamosPartidos(recs || [])
+        if (user) {
+          const { data: yo } = await supabase.from('players').select('es_arbitro_lider').eq('user_id', user.id).single()
+          setEsLider(yo?.es_arbitro_lider || false)
+        }
+      } catch (e) { console.error('carga secundaria:', e) }
+    })()
   }
 
   async function fetchTorneo() {
@@ -1062,7 +1072,7 @@ export default function AdminTorneoDetallePage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem', marginBottom: '20px' }}>Editar torneo</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="gm-stagger" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[{ label: 'Nombre', key: 'name' }, { label: 'Ciudad', key: 'city' }, { label: 'Temporada', key: 'season' }, { label: 'Categoría', key: 'categoria' }].map(f => (
                 <div key={f.key}><label style={labelStyle}>{f.label}</label><input value={formTorneo[f.key] || ''} onChange={e => setFormTorneo(p => ({ ...p, [f.key]: e.target.value }))} style={inputStyle}/></div>
               ))}
@@ -1082,7 +1092,7 @@ export default function AdminTorneoDetallePage() {
           <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem', marginBottom: '6px' }}>Editar partido</div>
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{editandoPartidoForm.home?.name} vs {editandoPartidoForm.away?.name}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="gm-stagger" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div><label style={labelStyle}>Fecha *</label><input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/></div>
                 <div><label style={labelStyle}>Hora *</label><input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/></div>

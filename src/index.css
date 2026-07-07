@@ -28,6 +28,108 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ── Pulido profesional global ─────────────────────── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background: rgba(26, 115, 232, .25);
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+/* Botones: respuesta táctil elegante en toda la app */
+button {
+  transition: transform .12s ease, box-shadow .15s ease, opacity .15s ease, background-color .15s ease;
+  touch-action: manipulation;
+}
+button:active:not(:disabled) {
+  transform: scale(.96);
+}
+button:disabled {
+  cursor: not-allowed;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(26, 115, 232, .55);
+  outline-offset: 2px;
+}
+
+/* Campos de formulario: foco con halo suave */
+input, select, textarea {
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+input:focus, select:focus, textarea:focus {
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, .14);
+}
+
+/* Barras de desplazamiento discretas */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(120, 130, 145, .35); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(120, 130, 145, .55); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Microanimaciones ──────────────────────────────── */
+@keyframes gmFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes gmFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes gmSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Aparición en cascada de tarjetas/listas */
+.gm-stagger > * {
+  animation: gmFadeUp .34s ease both;
+}
+.gm-stagger > *:nth-child(1)  { animation-delay: 0s; }
+.gm-stagger > *:nth-child(2)  { animation-delay: .04s; }
+.gm-stagger > *:nth-child(3)  { animation-delay: .08s; }
+.gm-stagger > *:nth-child(4)  { animation-delay: .12s; }
+.gm-stagger > *:nth-child(5)  { animation-delay: .16s; }
+.gm-stagger > *:nth-child(6)  { animation-delay: .20s; }
+.gm-stagger > *:nth-child(7)  { animation-delay: .24s; }
+.gm-stagger > *:nth-child(8)  { animation-delay: .28s; }
+.gm-stagger > *:nth-child(n+9) { animation-delay: .32s; }
+
+.gm-fade { animation: gmFadeIn .25s ease both; }
+
+/* Spinner de carga de páginas */
+.gm-spinner {
+  width: 34px; height: 34px;
+  border: 3px solid rgba(26, 115, 232, .18);
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: gmSpin .7s linear infinite;
+}
+
+/* Respeto a usuarios con movimiento reducido (accesibilidad) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  html { scroll-behavior: auto; }
+}
+
 /* ── Móvil ─────────────────────────────────────────── */
 @media (max-width: 767px) {
   /* La planilla oficial se desplaza de lado (es una hoja ancha) */

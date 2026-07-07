@@ -147,7 +147,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats principales */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+      <div className="gm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
         <StatCard icon="👥" label="Jugadores"        value={totalJugadores}   sub={`${jugadoresActivos} con membresía activa`}  color="#1a73e8" onClick={() => navigate('/admin/jugadores')}/>
         <StatCard icon="✅" label="Membresías activas" value={jugadoresActivos} sub={`${totalJugadores - jugadoresActivos} inactivos`} color="#1e8e3e" onClick={() => navigate('/admin/jugadores')}/>
         <StatCard icon="⚠️" label="Por activar"      value={jugadoresSinCuenta} sub="Sin cuenta creada"                          color="#e8710a" onClick={() => navigate('/admin/jugadores')}/>
