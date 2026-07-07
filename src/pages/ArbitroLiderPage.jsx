@@ -196,14 +196,25 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
         {/* Árbitros del partido */}
         <div style={{ marginBottom:'12px' }}>
           <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'6px' }}>Árbitro reclamado *</label>
-          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-            {arbsPartido.map(a=>(
-              <button key={a.id} onClick={()=>setArbitroId(a.id)}
-                style={{ padding:'7px 14px', borderRadius:'8px', border:`1px solid ${arbitroId===a.id?'#d93025':'#1e2d3d'}`, background:arbitroId===a.id?'rgba(217,48,37,.15)':'transparent', color:arbitroId===a.id?'#d93025':'#7a9ab5', cursor:'pointer', fontSize:'.82rem', fontWeight:'600' }}>
-                {a.name}
-              </button>
-            ))}
-          </div>
+          {arbsPartido.length > 0 ? (
+            <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+              {arbsPartido.map(a=>(
+                <button key={a.id} onClick={()=>setArbitroId(a.id)}
+                  style={{ padding:'7px 14px', borderRadius:'8px', border:`1px solid ${arbitroId===a.id?'#d93025':'#1e2d3d'}`, background:arbitroId===a.id?'rgba(217,48,37,.15)':'transparent', color:arbitroId===a.id?'#d93025':'#7a9ab5', cursor:'pointer', fontSize:'.82rem', fontWeight:'600' }}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize:'.75rem', color:'#e8710a', marginBottom:'8px' }}>⚠️ Este partido no tiene árbitros asignados — selecciona de la lista:</div>
+              <select value={arbitroId} onChange={e=>setArbitroId(e.target.value)}
+                style={{ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none' }}>
+                <option value="">Seleccionar árbitro...</option>
+                {arbitros.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Tipo */}
@@ -479,8 +490,7 @@ export default function ArbitroLiderPage() {
               return (
                 <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#1e2d3d'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
                   <CardPartido partido={p} arbitros={arbitros} onAsignar={handleAsignar}/>
-                  {tieneArbitro && (
-                    <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
+                  <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
                       <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
                         {(reclamosMap[p.id]||[]).map((r,i)=>{
                           const arb = arbitros.find(a=>a.id===r.arbitro_id)
@@ -489,7 +499,6 @@ export default function ArbitroLiderPage() {
                       </div>
                       <button onClick={()=>setModalRec(p)} style={{ padding:'4px 10px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700', flexShrink:0 }}>⚠️ Reclamo</button>
                     </div>
-                  )}
                 </div>
               )
             })}
