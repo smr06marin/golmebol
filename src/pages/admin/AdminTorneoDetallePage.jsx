@@ -398,7 +398,8 @@ export default function AdminTorneoDetallePage() {
 
   const [subTab,          setSubTab]          = useState('partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
-  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo' })
+  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '' })
+  const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
   const [nuevaCancha,     setNuevaCancha]     = useState('')
 
   const [configJornada,   setConfigJornada]   = useState({ fecha: '', hora_inicio: '', numero: '' })
@@ -822,6 +823,7 @@ export default function AdminTorneoDetallePage() {
       played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00:00'),
       location: formPartido.location || null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
       fase: formPartido.fase || 'grupo', status: 'scheduled',
+      arbitro1_id: formPartido.arbitro1_id || null, arbitro2_id: formPartido.arbitro2_id || null,
     })
     if (error) showMsg('Error al crear partido', 'error')
     else { showMsg('Partido creado ✓'); setShowFormPartido(false); setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo' }); fetchPartidos() }
@@ -1078,6 +1080,10 @@ export default function AdminTorneoDetallePage() {
               <div><label style={labelStyle}>Cancha</label><select value={formEditPartido.location || ''} onChange={e => setFormEditPartido(p => ({ ...p, location: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
               <div><label style={labelStyle}>Jornada #</label><input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
               <div><label style={labelStyle}>Fase</label><select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
+              {arbitrosAdmin.length > 0 && <>
+                <div><label style={labelStyle}>🟡 Árbitro principal</label><select value={formEditPartido.arbitro1_id||''} onChange={e => setFormEditPartido(p=>({...p,arbitro1_id:e.target.value}))} style={inputStyle}><option value="">Sin asignar</option>{arbitrosAdmin.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                <div><label style={labelStyle}>🟡 Árbitro asistente</label><select value={formEditPartido.arbitro2_id||''} onChange={e => setFormEditPartido(p=>({...p,arbitro2_id:e.target.value}))} style={inputStyle}><option value="">Sin asignar</option>{arbitrosAdmin.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+              </>}
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar cambios</button>
@@ -1488,6 +1494,24 @@ export default function AdminTorneoDetallePage() {
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
                       <div><label style={labelStyle}>Fase</label><select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
                     </div>
+                    {arbitrosAdmin.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={labelStyle}>🟡 Árbitro principal</label>
+                          <select value={formPartido.arbitro1_id} onChange={e => setFormPartido(f => ({ ...f, arbitro1_id: e.target.value }))} style={inputStyle}>
+                            <option value="">Sin asignar</option>
+                            {arbitrosAdmin.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>🟡 Árbitro asistente</label>
+                          <select value={formPartido.arbitro2_id} onChange={e => setFormPartido(f => ({ ...f, arbitro2_id: e.target.value }))} style={inputStyle}>
+                            <option value="">Sin asignar</option>
+                            {arbitrosAdmin.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                     <button onClick={handleCrearPartido} disabled={loadingPartido} style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loadingPartido ? .7 : 1 }}>{loadingPartido ? 'Guardando...' : 'Crear partido'}</button>
@@ -1556,7 +1580,7 @@ export default function AdminTorneoDetallePage() {
                                 </div>
                               </div>
                               <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
-                                {!esJugado && <button onClick={() => { const fecha = p.played_at?p.played_at.substring(0,10):''; const hora = p.played_at?p.played_at.substring(11,16):''; setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo'}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'4px 7px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️</button>}
+                                {!esJugado && <button onClick={() => { const fecha = p.played_at?p.played_at.substring(0,10):''; const hora = p.played_at?p.played_at.substring(11,16):''; setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'4px 7px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️</button>}
                                 <button onClick={() => setPlanillaPartido(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'4px 8px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', display:'flex', alignItems:'center', gap:'4px' }}>
                                   {esJugado ? 'Editar' : <><Check size={11}/> Resultado</>}
                                 </button>
