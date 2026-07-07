@@ -351,12 +351,6 @@ export default function ArbitroRankingPage() {
     setMatches(data||[])
   }
 
-  async function fetchReclamos() {
-    const { data } = await supabase.from('arbitro_reclamos')
-      .select('*, matches(id,played_at,home:home_team_id(name),away:away_team_id(name))')
-      .order('created_at',{ascending:false})
-    setReclamos(data||[])
-  }
 
   function showMsgFn(t,type='ok') { setMsg({text:t,type}); setTimeout(()=>setMsg(null),3000) }
 
@@ -400,8 +394,7 @@ export default function ArbitroRankingPage() {
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text}</div>}
-      {modalRec && <ModalReclamo arbitro={modalRec} partidos={partidos} evaluadorId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado ✓') }}/>}
-      {modalRec  && <ModalReclamo arbitro={modalRec.arbitro} partido={modalRec.partido} liderId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado ✓') }}/>}
+      {modalRec && <ModalReclamo arbitro={modalRec.arbitro} partido={modalRec.partido} liderId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado ✓') }}/>}
       {modalEval && <ModalEvaluar arbitro={modalEval} partidos={partidos} evaluadorId={lider?.id} onClose={()=>setModalEval(null)} onGuardado={()=>{ fetchEvals(); showMsgFn('Evaluación guardada ✓') }}/>}
       {modalExam && <ModalExamen  arbitro={modalExam} evaluadorId={lider?.id} onClose={()=>setModalExam(null)} onGuardado={()=>{ fetchExamenes(); showMsgFn('Examen registrado ✓') }}/>}
 
@@ -554,7 +547,16 @@ export default function ArbitroRankingPage() {
                         <div style={{ fontWeight:'700', fontSize:'.88rem', color:'#e8f4fd' }}>{a.name}</div>
                         <div style={{ fontSize:'.68rem', color:'#7a9ab5' }}>{misRec.length} reclamo{misRec.length!==1?'s':''} · {misRec.filter(r=>r.estado==='abierto').length} abierto{misRec.filter(r=>r.estado==='abierto').length!==1?'s':''}</div>
                       </div>
-                      <button onClick={()=>setModalRec(a)} style={{ padding:'6px 12px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.75rem', fontWeight:'700' }}>+ Reclamo</button>
+                      <div>
+                        <div style={{ fontSize:'.62rem', color:'#7a9ab5', marginBottom:'3px' }}>Reclamar en partido:</div>
+                        <select onChange={e=>{ if(e.target.value) setModalRec({arbitro:a, partido:partidos.find(p=>p.id===e.target.value)}); e.target.value='' }}
+                          style={{ background:'#1e2d3d', border:'1px solid #d93025', borderRadius:'6px', padding:'4px 8px', color:'#d93025', fontSize:'.7rem', outline:'none', cursor:'pointer' }}>
+                          <option value="">⚠️ Seleccionar partido...</option>
+                          {partidos.filter(p=>p.status==='finished'&&(p.arbitro1_id===a.id||p.arbitro2_id===a.id||p.arbitro3_id===a.id)).map(p=>(
+                            <option key={p.id} value={p.id}>{p.home?.name} vs {p.away?.name} · {p.played_at?new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):''}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     {misRec.map(r=>(
                       <div key={r.id} style={{ background:'#0d1117', borderRadius:'8px', padding:'8px 10px', marginBottom:'5px', borderLeft:`3px solid ${r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5'}` }}>
