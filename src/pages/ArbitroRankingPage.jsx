@@ -233,6 +233,138 @@ function ModalExamen({ arbitro, evaluadorId, onClose, onGuardado }) {
   )
 }
 
+function ModalReclamo({ arbitro, partidos, evaluadorId, onClose, onGuardado }) {
+  const [matchId, setMatchId] = useState('')
+  const [desc,    setDesc]    = useState('')
+  const [tipo,    setTipo]    = useState('tecnico')
+  const [loading, setLoading] = useState(false)
+
+  const inp2 = { width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
+  const lbl2 = { fontSize:'.72rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'3px' }
+
+  async function handleGuardar() {
+    if (!desc.trim()) return
+    setLoading(true)
+    await supabase.from('arbitro_reclamos').insert({
+      arbitro_id:arbitro.id, match_id:matchId||null,
+      registrado_por:evaluadorId, descripcion:desc, tipo
+    })
+    onGuardado(); onClose()
+    setLoading(false)
+  }
+
+  const partidosArbitro = partidos.filter(p=>p.status==='finished'&&(p.arbitro1_id===arbitro.id||p.arbitro2_id===arbitro.id||p.arbitro3_id===arbitro.id))
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:'#0d1117', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid #1e2d3d' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+          <div>
+            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>Reclamo — {arbitro.name}</div>
+            <div style={{ fontSize:'.7rem', color:'#7a9ab5' }}>Registrar reclamo sobre un partido</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'14px' }}>
+          <div>
+            <label style={lbl2}>Tipo de reclamo</label>
+            <div style={{ display:'flex', gap:'6px' }}>
+              {[{id:'tecnico',label:'⚽ Técnico'},{id:'disciplinario',label:'🟥 Disciplinario'},{id:'comportamiento',label:'🗣️ Comportamiento'}].map(t=>(
+                <button key={t.id} onClick={()=>setTipo(t.id)}
+                  style={{ flex:1, padding:'6px 4px', borderRadius:'7px', border:`1px solid ${tipo===t.id?'#d93025':'#1e2d3d'}`, background:tipo===t.id?'rgba(217,48,37,.15)':'transparent', color:tipo===t.id?'#d93025':'#7a9ab5', cursor:'pointer', fontSize:'.65rem', fontWeight:'600' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={lbl2}>Partido (opcional)</label>
+            <select value={matchId} onChange={e=>setMatchId(e.target.value)} style={inp2}>
+              <option value="">Reclamo general</option>
+              {partidosArbitro.map(p=>(
+                <option key={p.id} value={p.id}>{p.home?.name} vs {p.away?.name} · {p.played_at?new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):''}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={lbl2}>Descripción del reclamo *</label>
+            <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={4} style={{...inp2,resize:'vertical'}} placeholder="Describe detalladamente el reclamo..."/>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={handleGuardar} disabled={loading||!desc.trim()} style={{ flex:1, padding:'10px', background:'#d93025', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading||!desc.trim()?.7:1 }}>
+            {loading?'Guardando...':'Registrar reclamo'}
+          </button>
+          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalReclamo({ arbitro, partido, liderId, onClose, onGuardado }) {
+  const [tipo,    setTipo]    = useState('tecnico')
+  const [desc,    setDesc]    = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleGuardar() {
+    if (!desc.trim()) return
+    setLoading(true)
+    await supabase.from('arbitro_reclamos').insert({
+      arbitro_id: arbitro.id,
+      match_id:   partido.id,
+      registrado_por: liderId,
+      descripcion: desc,
+      tipo,
+      estado: 'abierto',
+    })
+    onGuardado(); onClose()
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:'#0d1117', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid rgba(217,48,37,.3)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+          <div>
+            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>⚠️ Reclamo — {arbitro.name}</div>
+            <div style={{ fontSize:'.7rem', color:'#7a9ab5', marginTop:'2px' }}>
+              {partido.home?.name} vs {partido.away?.name}
+              {partido.played_at && ` · ${new Date(partido.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+        </div>
+        {/* Tipo */}
+        <div style={{ marginBottom:'12px' }}>
+          <label style={lbl}>Tipo de reclamo</label>
+          <div style={{ display:'flex', gap:'6px' }}>
+            {[{id:'tecnico',label:'Técnico'},{id:'disciplinario',label:'Disciplinario'},{id:'comportamiento',label:'Comportamiento'}].map(t=>(
+              <button key={t.id} onClick={()=>setTipo(t.id)}
+                style={{ flex:1, padding:'6px', borderRadius:'7px', border:`1px solid ${tipo===t.id?'#d93025':'#1e2d3d'}`, background:tipo===t.id?'rgba(217,48,37,.15)':'transparent', color:tipo===t.id?'#d93025':'#7a9ab5', cursor:'pointer', fontSize:'.68rem', fontWeight:'600' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Descripción */}
+        <div style={{ marginBottom:'16px' }}>
+          <label style={lbl}>Descripción del reclamo *</label>
+          <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={4}
+            style={{...inp, resize:'vertical'}} placeholder="Describe el reclamo en detalle..."/>
+        </div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={handleGuardar} disabled={loading||!desc.trim()}
+            style={{ flex:1, padding:'10px', background:'#d93025', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading||!desc.trim()?.5:1 }}>
+            {loading?'Guardando...':'Registrar reclamo'}
+          </button>
+          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ArbitroRankingPage() {
   const navigate = useNavigate()
   const [lider,     setLider]     = useState(null)
@@ -247,6 +379,8 @@ export default function ArbitroRankingPage() {
   const [modalEval, setModalEval] = useState(null)
   const [modalExam, setModalExam] = useState(null)
   const [msg,       setMsg]       = useState(null)
+  const [reclamos,  setReclamos]  = useState([])
+  const [modalRec,  setModalRec]  = useState(null)
 
   useEffect(()=>{ fetchTodo() },[])
 
@@ -255,7 +389,7 @@ export default function ArbitroRankingPage() {
     const { data:{user} } = await supabase.auth.getUser()
     const { data:p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     setLider(p)
-    await Promise.all([fetchArbitros(), fetchEvals(), fetchExamenes(), fetchPartidos(), fetchMatchStats()])
+    await Promise.all([fetchArbitros(), fetchEvals(), fetchExamenes(), fetchPartidos(), fetchMatchStats(), fetchReclamos()])
     setLoading(false)
   }
 
@@ -275,10 +409,22 @@ export default function ArbitroRankingPage() {
     const { data } = await supabase.from('matches').select('id,played_at,status,arbitro1_id,arbitro2_id,arbitro3_id,tournament_id,fase,home:home_team_id(name),away:away_team_id(name)').order('played_at',{ascending:false})
     setPartidos(data||[])
   }
+  async function fetchReclamos() {
+    const { data } = await supabase.from('arbitro_reclamos').select('*, matches(id,played_at,home:home_team_id(name),away:away_team_id(name))').order('created_at',{ascending:false})
+    setReclamos(data||[])
+  }
+
   async function fetchMatchStats() {
     // Tarjetas por partido
     const { data } = await supabase.from('match_events').select('match_id,event_type').in('event_type',['yellow_card','blue_card','red_card'])
     setMatches(data||[])
+  }
+
+  async function fetchReclamos() {
+    const { data } = await supabase.from('arbitro_reclamos')
+      .select('*, matches(id,played_at,home:home_team_id(name),away:away_team_id(name))')
+      .order('created_at',{ascending:false})
+    setReclamos(data||[])
   }
 
   function showMsgFn(t,type='ok') { setMsg({text:t,type}); setTimeout(()=>setMsg(null),3000) }
@@ -315,12 +461,16 @@ export default function ArbitroRankingPage() {
       azules:          misTarjetas.filter(t=>t.event_type==='blue_card').length,
       rojas:           misTarjetas.filter(t=>t.event_type==='red_card').length,
       finales, semis,
+      reclamos_total: misReclamos.length,
+      reclamos_abiertos: misReclamos.filter(r=>r.estado==='abierto').length,
     }
   }).sort((a,b)=> (b.promedio||0)-(a.promedio||0) || b.partidos_pitados-a.partidos_pitados)
 
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text}</div>}
+      {modalRec && <ModalReclamo arbitro={modalRec} partidos={partidos} evaluadorId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado ✓') }}/>}
+      {modalRec  && <ModalReclamo arbitro={modalRec.arbitro} partido={modalRec.partido} liderId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado ✓') }}/>}
       {modalEval && <ModalEvaluar arbitro={modalEval} partidos={partidos} evaluadorId={lider?.id} onClose={()=>setModalEval(null)} onGuardado={()=>{ fetchEvals(); showMsgFn('Evaluación guardada ✓') }}/>}
       {modalExam && <ModalExamen  arbitro={modalExam} evaluadorId={lider?.id} onClose={()=>setModalExam(null)} onGuardado={()=>{ fetchExamenes(); showMsgFn('Examen registrado ✓') }}/>}
 
@@ -339,7 +489,7 @@ export default function ArbitroRankingPage() {
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:'4px', marginBottom:'16px', background:'#111827', borderRadius:'10px', padding:'4px' }}>
-          {[{id:'ranking',label:'🏆 Ranking'},{id:'evaluar',label:'📝 Evaluar'},{id:'examenes',label:'🏥 Exámenes'}].map(t=>(
+          {[{id:'ranking',label:'🏆 Ranking'},{id:'evaluar',label:'📝 Evaluar'},{id:'examenes',label:'🏥 Exámenes'},{id:'reclamos',label:'⚠️ Reclamos'}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', cursor:'pointer', fontSize:'.8rem', fontWeight:'700', background:tab===t.id?'#1a73e8':'transparent', color:tab===t.id?'#fff':'#7a9ab5' }}>
               {t.label}
@@ -400,14 +550,15 @@ export default function ArbitroRankingPage() {
                   </div>
 
                   {/* Stats detalle */}
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:'6px' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'6px' }}>
                     {[
                       { label:'Partidos', value:a.partidos_pitados, color:'#00ddd0',  icon:'📋' },
                       { label:'Evals',    value:a.evaluaciones,     color:'#1a73e8',  icon:'📝' },
                       { label:'🟨',       value:a.amarillas,        color:'#f9a825',  icon:'' },
                       { label:'🟦',       value:a.azules,           color:'#1a73e8',  icon:'' },
                       { label:'🟥',       value:a.rojas,            color:'#d93025',  icon:'' },
-                      { label:'Finales',  value:a.finales,          color:'#f9a825',  icon:'🏅' },
+                      { label:'Finales',   value:a.finales,           color:'#f9a825',  icon:'🏅' },
+                      { label:'Reclamos',  value:a.reclamos_total,    color:'#d93025',  icon:'⚠️' },
                     ].map(s=>(
                       <div key={s.label} style={{ background:'#0d1117', borderRadius:'7px', padding:'6px 4px', textAlign:'center' }}>
                         <div style={{ fontSize:s.icon?'.75rem':'.82rem', marginBottom:'1px' }}>{s.icon||s.label}</div>
@@ -452,6 +603,58 @@ export default function ArbitroRankingPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* ── RECLAMOS ── */}
+        {tab==='reclamos' && (
+          <div>
+            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginBottom:'12px' }}>Reclamos por partido ya jugado — visibles solo para el líder</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'20px' }}>
+              {arbitros.map(a=>{
+                const misRec = reclamos.filter(r=>r.arbitro_id===a.id)
+                return (
+                  <div key={a.id} style={{ background:'#111827', border:`1px solid ${misRec.some(r=>r.estado==='abierto')?'rgba(217,48,37,.3)':'#1e2d3d'}`, borderRadius:'12px', padding:'12px 14px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom: misRec.length>0?'10px':'0' }}>
+                      <div style={{ width:'36px', height:'36px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<span>👤</span>}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:'700', fontSize:'.88rem', color:'#e8f4fd' }}>{a.name}</div>
+                        <div style={{ fontSize:'.68rem', color:'#7a9ab5' }}>{misRec.length} reclamo{misRec.length!==1?'s':''} · {misRec.filter(r=>r.estado==='abierto').length} abierto{misRec.filter(r=>r.estado==='abierto').length!==1?'s':''}</div>
+                      </div>
+                      <button onClick={()=>setModalRec(a)} style={{ padding:'6px 12px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.75rem', fontWeight:'700' }}>+ Reclamo</button>
+                    </div>
+                    {misRec.map(r=>(
+                      <div key={r.id} style={{ background:'#0d1117', borderRadius:'8px', padding:'8px 10px', marginBottom:'5px', borderLeft:`3px solid ${r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5'}` }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'3px' }}>
+                          <span style={{ fontSize:'.68rem', fontWeight:'700', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5' }}>
+                            {r.estado==='abierto'?'⚠️ Abierto':r.estado==='resuelto'?'✅ Resuelto':'🔕 Desestimado'} · {r.tipo}
+                          </span>
+                          <span style={{ fontSize:'.62rem', color:'#3a4a5a' }}>{r.matches?.home?.name} vs {r.matches?.away?.name}</span>
+                        </div>
+                        <div style={{ fontSize:'.72rem', color:'#b8d4e8' }}>{r.descripcion}</div>
+                        {r.resolucion && <div style={{ fontSize:'.68rem', color:'#7a9ab5', marginTop:'3px' }}>→ {r.resolucion}</div>}
+                        <div style={{ display:'flex', gap:'6px', marginTop:'5px' }}>
+                          {r.estado==='abierto' && (
+                            <>
+                              <button onClick={async()=>{ await supabase.from('arbitro_reclamos').update({estado:'resuelto'}).eq('id',r.id); fetchReclamos() }}
+                                style={{ padding:'3px 8px', background:'rgba(30,142,62,.15)', border:'1px solid rgba(30,142,62,.3)', borderRadius:'5px', cursor:'pointer', color:'#1e8e3e', fontSize:'.65rem' }}>
+                                Resolver
+                              </button>
+                              <button onClick={async()=>{ await supabase.from('arbitro_reclamos').update({estado:'desestimado'}).eq('id',r.id); fetchReclamos() }}
+                                style={{ padding:'3px 8px', background:'rgba(122,154,181,.1)', border:'1px solid #1e2d3d', borderRadius:'5px', cursor:'pointer', color:'#7a9ab5', fontSize:'.65rem' }}>
+                                Desestimar
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
