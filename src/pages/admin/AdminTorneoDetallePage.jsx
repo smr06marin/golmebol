@@ -448,6 +448,8 @@ export default function AdminTorneoDetallePage() {
   async function fetchTodo() {
     setLoading(true)
     await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos(), fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos()])
+    const { data: arbs } = await supabase.from('players').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
+    setArbitrosAdmin(arbs || [])
     setLoading(false)
   }
 
