@@ -1172,7 +1172,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 </tr>
                 <tr>
                   <td style={cellL}>
-                    <b>ANOTADOR:</b> <input value={anotador} onChange={e=>setAnotador(e.target.value)} style={{...inpL,width:'80px',display:'inline',borderBottom:'1px solid #000'}}/>
+                    <b>ANOTADOR:</b>
+                    <select value={arbitrosReg.find(a=>a.name===anotador)?.id||'__texto__'} onChange={e=>{
+                      if(e.target.value==='__texto__') return
+                      if(e.target.value==='__libre__') { setAnotador(''); return }
+                      const arb=arbitrosReg.find(a=>a.id===e.target.value); if(arb) setAnotador(arb.name)
+                    }} style={{...inpL,width:'90px',display:'inline',borderBottom:'1px solid #000',background:'transparent'}}>
+                      <option value="__texto__">{anotador||'Seleccionar...'}</option>
+                      <option value="__libre__">✏️ Escribir nombre</option>
+                      {arbitrosReg.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    {(!anotador||!arbitrosReg.find(a=>a.name===anotador))&&<input value={anotador} onChange={e=>setAnotador(e.target.value)} style={{...inpL,width:'80px',display:'inline',borderBottom:'1px solid #000',marginLeft:'2px'}} placeholder="Nombre..."/>}
                     <div style={{ display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}>
                       <span style={{ fontSize:'8px', color:'#111' }}>FIRMA:</span>
                       <FirmaSlot label="Anotador" firma={firmas.anotador} onFirmar={() => setFirmaModal('principal-anotador')}/>
