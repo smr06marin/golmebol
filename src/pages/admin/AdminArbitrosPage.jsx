@@ -312,6 +312,13 @@ export default function AdminArbitrosPage() {
                   <button onClick={() => handleQuitarArbitro(a)}
                     style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Quitar rol</button>
                 )}
+                <button onClick={async () => {
+                  await supabase.from('players').update({ es_arbitro_lider: !a.es_arbitro_lider }).eq('id', a.id)
+                  showMsgFn(a.es_arbitro_lider ? 'Rol líder removido' : '👑 Marcado como árbitro líder ✓')
+                  fetchArbitros()
+                }} style={{ background: a.es_arbitro_lider?'rgba(249,168,37,.15)':'none', border:`1px solid ${a.es_arbitro_lider?'#f9a825':'#dadce0'}`, borderRadius:'6px', padding:'5px 8px', cursor:'pointer', color: a.es_arbitro_lider?'#f9a825':'#9aa0a6', fontSize:'.75rem' }} title={a.es_arbitro_lider?'Quitar rol líder':'Marcar como líder'}>
+                  👑
+                </button>
               </div>
             </div>
           )

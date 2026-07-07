@@ -255,6 +255,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   const [arbitro1,         setArbitro1]         = useState('')
   const [arbitro2,         setArbitro2]         = useState('')
+  const [arbitro3,         setArbitro3]         = useState('')
   const [anotador,         setAnotador]         = useState('')
   const [cronometroNombre, setCronometroNombre] = useState('')
   const [observaciones,    setObservaciones]    = useState('')
@@ -297,7 +298,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   useEffect(() => {
     if (loading) return
     setHayCambios(true)
-    const snap = { jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante, savedAt: new Date().toISOString(), pendienteSync: true }
+    const snap = { jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, arbitro3, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante, savedAt: new Date().toISOString(), pendienteSync: true }
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
   }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante])
 
@@ -311,7 +312,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   useEffect(() => {
     try { const stored = localStorage.getItem(arbitrosKey); if (stored) setArbitrosTorneo(JSON.parse(stored)) } catch(e) {}
     // Cargar árbitros registrados en BD
-    supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').eq('activo_membresia', true).order('name').then(({ data }) => setArbitrosReg(data || []))
+    supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name').then(({ data }) => {
+      setArbitrosReg(data || [])
+      // Precargar árbitros asignados al partido si no hay snap local
+      if (!snap) {
+        if (partido.arbitro1_id) { const a = (data||[]).find(x=>x.id===partido.arbitro1_id); if(a) setArbitro1(a.name) }
+        if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) setArbitro2(a.name) }
+        if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(a.name) }
+      }
+    })
   }, [])
 
   function getDefaultDuracion(modalidad) {
@@ -501,6 +510,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (todosEventos.length > 0) await supabase.from('match_events').insert(todosEventos)
 
     const updatePartido = { home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished' }
+    // Actualizar árbitros si se cambiaron en la planilla
+    const arb1Obj = arbitrosReg.find(a => a.name === arbitro1)
+    const arb2Obj = arbitrosReg.find(a => a.name === arbitro2)
+    const arb3Obj = arbitrosReg.find(a => a.name === arbitro3)
+    if (arbitro1) { updatePartido.arbitro1 = arbitro1; if(arb1Obj) updatePartido.arbitro1_id = arb1Obj.id }
+    if (arbitro2) { updatePartido.arbitro2 = arbitro2; if(arb2Obj) updatePartido.arbitro2_id = arb2Obj.id }
+    if (arbitro3) { updatePartido.arbitro3 = arbitro3; if(arb3Obj) updatePartido.arbitro3_id = arb3Obj.id }
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
     if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = penalesGanador }
     await supabase.from('matches').update(updatePartido).eq('id', partido.id)
