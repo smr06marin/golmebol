@@ -750,6 +750,12 @@ export default function PlayerHomePage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '20px', padding: '3px 10px' }}>GOLMEBOL</div>
+          {player?.es_arbitro && (
+            <button onClick={() => navigate('/arbitro')}
+              style={{ background: 'rgba(249,168,37,.15)', border: '1px solid rgba(249,168,37,.4)', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#f9a825', fontSize: '.75rem', fontWeight: '700' }}>
+              🟡 Árbitro
+            </button>
+          )}
           <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem', fontWeight: '500' }}>Salir</button>
         </div>
       </div>
