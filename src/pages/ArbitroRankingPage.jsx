@@ -386,8 +386,8 @@ export default function ArbitroRankingPage() {
       azules:          misTarjetas.filter(t=>t.event_type==='blue_card').length,
       rojas:           misTarjetas.filter(t=>t.event_type==='red_card').length,
       finales, semis,
-      reclamos_total: misReclamos.length,
-      reclamos_abiertos: misReclamos.filter(r=>r.estado==='abierto').length,
+      reclamos_total: reclamos.filter(r=>r.arbitro_id===a.id).length,
+      reclamos_abiertos: reclamos.filter(r=>r.arbitro_id===a.id&&r.estado==='abierto').length,
     }
   }).sort((a,b)=> (b.promedio||0)-(a.promedio||0) || b.partidos_pitados-a.partidos_pitados)
 
