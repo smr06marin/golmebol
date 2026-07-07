@@ -947,6 +947,32 @@ export default function AdminTorneoDetallePage() {
 
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
+
+  function toggleJornada(key) { setAbiertosJornada(prev => ({ ...prev, [key]: !prev[key] })) }
+
+  function agruparPartidosPorJornada(lista) {
+    const FASE_L = { grupo:'Fase de Grupos', octavos:'Octavos de Final', cuartos:'Cuartos de Final', semifinal:'Semifinales', tercero:'Tercer Puesto', final:'Final' }
+    const grupos = {}
+    lista.forEach(p => {
+      let key, label, orden
+      if (p.fase && p.fase !== 'grupo') {
+        key = `fase_${p.fase}`; label = FASE_L[p.fase]||p.fase
+        orden = { final:99, tercero:98, semifinal:97, cuartos:96, octavos:95 }[p.fase]||94
+      } else if (p.matchday) {
+        key = `jornada_${p.matchday}`; label = `Jornada ${p.matchday}`; orden = p.matchday
+      } else {
+        const f = p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : 'Sin fecha'
+        key = `fecha_${f}`; label = f; orden = p.played_at ? new Date(p.played_at).getTime()/1000000 : 0
+      }
+      if (!grupos[key]) grupos[key] = { key, label, orden, partidos:[], fechas:[] }
+      grupos[key].partidos.push(p)
+      if (p.played_at) {
+        const fd = new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})
+        if (!grupos[key].fechas.includes(fd)) grupos[key].fechas.push(fd)
+      }
+    })
+    return Object.values(grupos).sort((a,b) => a.orden - b.orden)
+  }
   const tablaOrdenada      = calcTablaGeneral()
 
   const faseActual         = torneo.fase_actual || 'grupos'
