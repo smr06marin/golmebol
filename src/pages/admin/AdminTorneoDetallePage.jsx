@@ -471,7 +471,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function fetchJugadores() {
-    const { data } = await supabase.from('tournament_player_registrations').select('*, players(*), teams(name)').eq('tournament_id', id).eq('activo', true)
+    const { data } = await supabase.from('tournament_player_registrations').select('*, players(*), teams(name)').eq('tournament_id', id)
     setJugadores(data || [])
   }
 
@@ -1678,30 +1678,73 @@ export default function AdminTorneoDetallePage() {
                   <Fragment key={e.id}>
                     {equipoDiv}
                     {/* Panel jugadores del equipo */}
-                  {jugadoresEquipoId === e.id && (
-                    <div style={{ padding:'12px 16px 4px', borderTop:'1px solid #f1f3f4', background:'#f8f9fa' }}>
-                      <div style={{ fontSize:'.72rem', fontWeight:'600', color:'#5f6368', marginBottom:'8px' }}>👥 Jugadores de {e.name}</div>
-                      {jugadores.filter(j => j.team_id === e.id).length === 0 ? (
-                        <div style={{ fontSize:'.78rem', color:'#9aa0a6', padding:'8px 0' }}>Sin jugadores registrados</div>
-                      ) : (
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:'8px', marginBottom:'8px' }}>
-                          {jugadores.filter(j => j.team_id === e.id).map(j => (
-                            <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'8px', background:'#fff', borderRadius:'8px', padding:'8px 10px', border:'1px solid #e8eaed' }}>
-                              <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                {j.photo_face_url || j.photo_url
-                                  ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                                  : <span style={{ fontSize:'.8rem' }}>👤</span>}
-                              </div>
-                              <div style={{ minWidth:0 }}>
-                                <div style={{ fontSize:'.75rem', fontWeight:'600', color:'#202124', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{j.name}</div>
-                                <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{j.posicion_futbol5 || j.posicion_futbol7 || j.posicion_futbol11 || '—'}</div>
-                              </div>
+                  {jugadoresEquipoId === e.id && (() => {
+                    const jugsActivos = jugadores.filter(j => j.team_id === e.id && j.activo !== false)
+                    const jugsDesact  = jugadores.filter(j => j.team_id === e.id && j.activo === false)
+                    return (
+                      <div style={{ borderTop:'1px solid #f1f3f4', background:'#f8f9fa', padding:'12px 20px 14px' }}>
+                        <div style={{ fontSize:'.72rem', fontWeight:'700', color:'#5f6368', marginBottom:'10px' }}>👥 Jugadores de {e.name}</div>
+                        {jugsActivos.length === 0 ? (
+                          <div style={{ fontSize:'.78rem', color:'#9aa0a6', marginBottom:'8px' }}>Sin jugadores activos</div>
+                        ) : (
+                          <div style={{ display:'flex', flexDirection:'column', gap:'5px', marginBottom:'10px' }}>
+                            {jugsActivos.map(j => {
+                              const p = j.players || {}
+                              return (
+                                <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border:'1px solid #e8eaed' }}>
+                                  <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                    {p.photo_face_url || p.photo_url
+                                      ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                      : <span style={{ fontSize:'.85rem' }}>👤</span>}
+                                  </div>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
+                                    <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
+                                  </div>
+                                  <button onClick={async () => {
+                                    if (!confirm('¿Desactivar a ' + p.name + ' del equipo en este torneo? Sus estadísticas se conservan.')) return
+                                    await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
+                                    fetchJugadores()
+                                  }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
+                                    Desactivar
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                        {jugsDesact.length > 0 && (
+                          <div>
+                            <div style={{ fontSize:'.68rem', fontWeight:'700', color:'#9aa0a6', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }}>🚫 Desactivados</div>
+                            <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
+                              {jugsDesact.map(j => {
+                                const p = j.players || {}
+                                return (
+                                  <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border:'1px solid #fad2cf', opacity:.75 }}>
+                                    <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                      {p.photo_face_url || p.photo_url
+                                        ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                        : <span style={{ fontSize:'.85rem' }}>👤</span>}
+                                    </div>
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#9aa0a6' }}>{p.name||'—'}</div>
+                                      <div style={{ fontSize:'.65rem', color:'#bdbdbd' }}>Desactivado</div>
+                                    </div>
+                                    <button onClick={async () => {
+                                      await supabase.from('tournament_player_registrations').update({ activo: true }).eq('id', j.id)
+                                      fetchJugadores()
+                                    }} style={{ background:'#e6f4ea', border:'1px solid #ceead6', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1e8e3e', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                      Reactivar
+                                    </button>
+                                  </div>
+                                )
+                              })}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   </Fragment>
                 )
               })}
