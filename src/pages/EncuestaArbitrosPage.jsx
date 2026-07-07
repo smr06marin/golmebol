@@ -153,10 +153,12 @@ function ModalVotar({ encuesta, votanteId, onClose, onVotado }) {
     if (Object.values(scores).some(v=>v===0)) return alert('Responde todas las preguntas')
     if (!asignaria) return alert('Indica si asignarías partidos importantes')
     setLoading(true)
+    const esAuto = !!encuesta._esAuto
     await supabase.from('encuesta_respuestas').insert({
       encuesta_id: encuesta.id,
       votante_id: votanteId,
       ...scores, fortaleza, mejora, asignaria_partidos:asignaria, comentarios,
+      es_autoevaluacion: esAuto,
     })
     onVotado()
     onClose()
@@ -176,6 +178,11 @@ function ModalVotar({ encuesta, votanteId, onClose, onVotado }) {
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
         </div>
 
+        {encuesta._esAuto && (
+          <div style={{ background:'rgba(153,85,255,.08)', border:'1px solid rgba(153,85,255,.2)', borderRadius:'8px', padding:'8px 12px', marginBottom:'10px', fontSize:'.75rem', color:'#9955ff', fontWeight:'600' }}>
+            🪞 Autoevaluación — el árbitro líder verá tu respuesta por separado
+          </div>
+        )}
         <div style={{ background:'rgba(26,115,232,.06)', border:'1px solid rgba(26,115,232,.15)', borderRadius:'8px', padding:'8px 12px', marginBottom:'16px', fontSize:'.72rem', color:'#7a9ab5' }}>
           Escala: 1=Muy deficiente · 2=Deficiente · 3=Aceptable · 4=Bueno · 5=Excelente
         </div>
@@ -263,16 +270,18 @@ function ModalResultados({ encuesta, arbitros, votantes, onClose }) {
   if (loading) return null
 
   const total = respuestas.length
+  const respsNormales  = respuestas.filter(r=>!r.es_autoevaluacion)
+  const totalNormal    = respsNormales.length
   const promPorPregunta = PREGUNTAS.map(p=>({
     ...p,
-    promedio: total>0 ? (respuestas.reduce((s,r)=>s+(r[p.key]||0),0)/total).toFixed(1) : 0
+    promedio: totalNormal>0 ? (respsNormales.reduce((s,r)=>s+(r[p.key]||0),0)/totalNormal).toFixed(1) : 0
   }))
-  const promTotal = total>0 ? Math.round(respuestas.reduce((s,r)=>s+(r.total||0),0)/total) : 0
+  const promTotal = totalNormal>0 ? Math.round(respsNormales.reduce((s,r)=>s+(r.total||0),0)/totalNormal) : 0
   const interp    = promTotal>0 ? getInterpretacion(promTotal) : null
 
   // Quiénes NO votaron (solo el líder lo sabe)
   const votaronIds = new Set(respuestas.map(r=>r.votante_id))
-  const sinVotar   = votantes.filter(v=>v.id!==encuesta.arbitro_evaluado_id && !votaronIds.has(v.id))
+  const sinVotar   = votantes.filter(v=>!votaronIds.has(v.id))
 
   // Conteo asignaría
   const siCount  = respuestas.filter(r=>r.asignaria_partidos==='Sí').length
@@ -287,7 +296,7 @@ function ModalResultados({ encuesta, arbitros, votantes, onClose }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
           <div>
             <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'1rem' }}>Resultados — {encuesta.titulo}</div>
-            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'2px' }}>{total} respuesta{total!==1?'s':''} de {votantes.filter(v=>v.id!==encuesta.arbitro_evaluado_id).length} árbitros</div>
+            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'2px' }}>{totalNormal} compañero{totalNormal!==1?'s':''} votaron · {respuestas.filter(r=>r.es_autoevaluacion).length>0?'✅ Se autoevaluó':'⏳ Sin autoevaluar'}</div>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
         </div>
@@ -309,12 +318,42 @@ function ModalResultados({ encuesta, arbitros, votantes, onClose }) {
           )}
         </div>
 
-        {/* Resultados individuales anónimos */}
+        {/* Autoevaluación — visible solo para el líder */}
+        {respuestas.filter(r=>r.es_autoevaluacion).map(r=>{
+          const interp2 = getInterpretacion(r.total||0)
+          return (
+            <div key={r.id} style={{ background:'rgba(153,85,255,.06)', border:'1px solid rgba(153,85,255,.3)', borderRadius:'12px', padding:'12px 14px', marginBottom:'14px' }}>
+              <div style={{ fontSize:'.72rem', fontWeight:'700', color:'#9955ff', marginBottom:'8px' }}>🪞 AUTOEVALUACIÓN del árbitro</div>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'8px' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', gap:'4px', flexWrap:'wrap' }}>
+                    {PREGUNTAS.map(p=>(
+                      <span key={p.key} title={p.label}
+                        style={{ fontSize:'.65rem', color:r[p.key]>=4?'#1e8e3e':r[p.key]>=3?'#f9a825':'#d93025', background:'#1e2d3d', borderRadius:'4px', padding:'1px 5px' }}>
+                        {r[p.key]}
+                      </span>
+                    ))}
+                  </div>
+                  {r.asignaria_partidos && <div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'4px' }}>¿Se asignaría partidos? <b style={{ color:'#9955ff' }}>{r.asignaria_partidos}</b></div>}
+                  {r.fortaleza  && <div style={{ fontSize:'.72rem', color:'#e8f4fd', marginTop:'4px' }}>💪 <b>Fortaleza:</b> {r.fortaleza}</div>}
+                  {r.mejora     && <div style={{ fontSize:'.72rem', color:'#e8f4fd', marginTop:'2px' }}>📈 <b>Mejora:</b> {r.mejora}</div>}
+                  {r.comentarios&& <div style={{ fontSize:'.72rem', color:'#e8f4fd', marginTop:'2px' }}>💬 {r.comentarios}</div>}
+                </div>
+                <div style={{ textAlign:'center', flexShrink:0 }}>
+                  <div style={{ fontSize:'1.3rem', fontWeight:'900', color:interp2.color }}>{r.total}</div>
+                  <div style={{ fontSize:'.6rem', color:'#7a9ab5' }}>/50</div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+
+        {/* Resultados individuales anónimos (excluye autoevaluación) */}
         <div style={{ marginBottom:'16px' }}>
           <div style={{ fontSize:'.72rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em' }}>Votaciones individuales (anónimas)</div>
-          {respuestas.length===0 ? (
+          {respuestas.filter(r=>!r.es_autoevaluacion).length===0 ? (
             <div style={{ textAlign:'center', padding:'20px', color:'#7a9ab5', fontSize:'.85rem' }}>Sin respuestas aún</div>
-          ) : respuestas.map((r,i)=>{
+          ) : respuestas.filter(r=>!r.es_autoevaluacion).map((r,i)=>{
             const interp2 = getInterpretacion(r.total||0)
             return (
               <div key={r.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'10px', padding:'10px 14px', marginBottom:'6px', display:'flex', alignItems:'center', gap:'10px' }}>
@@ -510,9 +549,15 @@ export default function EncuestaArbitrosPage() {
                         ✅ Ya votaste
                       </div>
                     )}
-                    {esEvaluado && (
-                      <div style={{ flex:1, padding:'9px', background:'rgba(122,154,181,.06)', border:'1px solid #1e2d3d', borderRadius:'8px', color:'#7a9ab5', fontSize:'.82rem', textAlign:'center' }}>
-                        🔒 No puedes votar en tu propia evaluación
+                    {esEvaluado && !yaVote && (
+                      <button onClick={()=>setModalVotar({...e, _esAuto:true})}
+                        style={{ flex:1, padding:'9px', background:'rgba(153,85,255,.1)', border:'1px solid rgba(153,85,255,.3)', borderRadius:'8px', cursor:'pointer', color:'#9955ff', fontWeight:'700', fontSize:'.85rem' }}>
+                        🪞 Autoevaluarme
+                      </button>
+                    )}
+                    {esEvaluado && yaVote && (
+                      <div style={{ flex:1, padding:'9px', background:'rgba(153,85,255,.08)', border:'1px solid rgba(153,85,255,.2)', borderRadius:'8px', color:'#9955ff', fontSize:'.82rem', textAlign:'center', fontWeight:'600' }}>
+                        ✅ Ya te autoevaluaste
                       </div>
                     )}
                     {esLider && (
