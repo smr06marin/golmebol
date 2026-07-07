@@ -234,6 +234,9 @@ export default function PlayerLoginPage() {
     if (!nombre.trim())                    { setError('Ingresa tu nombre'); return }
     if (!whatsapp.trim())                  { setError('Ingresa tu WhatsApp'); return }
     if (!pass.trim() || pass.length < 6)  { setError('Mínimo 6 caracteres'); return }
+    // Verificar que el WhatsApp no esté registrado
+    const { data: yaExiste } = await supabase.from('players').select('id').eq('whatsapp', whatsapp.trim()).single()
+    if (yaExiste) { setError('Este número de WhatsApp ya está registrado en otro jugador'); setLoading(false); return }
     if (pass !== pass2)                    { setError('Las contraseñas no coinciden'); return }
     setLoading(true); setError('')
     const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
