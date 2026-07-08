@@ -1,6 +1,4 @@
-import { useId } from 'react'
 export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00ffaa', cardId = 'nivel1_verde' }) {
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
 
     const c = color
     const c2 = colorSecundario
@@ -58,8 +56,8 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
       if (cardId === 'nivel1_plata') return (
         <g opacity=".12">
           {/* Metal pulido — reflejos */}
-          <rect x="20" y="90" width="130" height="390" fill={`url(#n1PlataRef1-${uid})`} opacity=".15"/>
-          <rect x="150" y="90" width="170" height="390" fill={`url(#n1PlataRef2-${uid})`} opacity=".1"/>
+          <rect x="20" y="90" width="130" height="390" fill="url(#n1PlataRef1)" opacity=".15"/>
+          <rect x="150" y="90" width="170" height="390" fill="url(#n1PlataRef2)" opacity=".1"/>
           {/* Líneas finas horizontales */}
           {[0,1,2,3,4,5,6,7,8,9,10,11,12].map(i => (
             <line key={i} x1="20" y1={100 + i * 32} x2="320" y2={100 + i * 32}
@@ -102,79 +100,79 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
-          <linearGradient id={`n1Border-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="n1Border" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={c2} stopOpacity="1"/>
             <stop offset="30%" stopColor="#ffffff" stopOpacity=".5"/>
             <stop offset="60%" stopColor={c} stopOpacity=".9"/>
             <stop offset="100%" stopColor={c} stopOpacity="1"/>
           </linearGradient>
-          <linearGradient id={`n1Shine-${uid}`} x1="0%" y1="0%" x2="60%" y2="100%">
+          <linearGradient id="n1Shine" x1="0%" y1="0%" x2="60%" y2="100%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity=".5"/>
             <stop offset="100%" stopColor={c} stopOpacity="0"/>
           </linearGradient>
-          <linearGradient id={`n1BorderInner-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="n1BorderInner" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={c} stopOpacity=".8"/>
             <stop offset="50%" stopColor={c2} stopOpacity=".4"/>
             <stop offset="100%" stopColor={c} stopOpacity=".8"/>
           </linearGradient>
-          <linearGradient id={`n1Bg-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="n1Bg" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#0a0a1a"/>
             <stop offset="50%" stopColor="#0d0d22"/>
             <stop offset="100%" stopColor="#080812"/>
           </linearGradient>
-          <radialGradient id={`n1BgGlow-${uid}`} cx="50%" cy="40%" r="55%">
+          <radialGradient id="n1BgGlow" cx="50%" cy="40%" r="55%">
             <stop offset="0%" stopColor={c} stopOpacity=".18"/>
             <stop offset="100%" stopColor={c} stopOpacity="0"/>
           </radialGradient>
-          <linearGradient id={`n1Ray1-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="n1Ray1" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={c} stopOpacity="0"/>
             <stop offset="40%" stopColor={c} stopOpacity=".4"/>
             <stop offset="60%" stopColor="#ffffff" stopOpacity=".15"/>
             <stop offset="100%" stopColor={c} stopOpacity="0"/>
           </linearGradient>
-          <linearGradient id={`n1Ray2-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="n1Ray2" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={c} stopOpacity="0"/>
             <stop offset="40%" stopColor={c2} stopOpacity=".28"/>
             <stop offset="100%" stopColor={c} stopOpacity="0"/>
           </linearGradient>
-          <linearGradient id={`n1Ray3-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="n1Ray3" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0"/>
             <stop offset="50%" stopColor="#ffffff" stopOpacity=".1"/>
             <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
           </linearGradient>
-          <radialGradient id={`n1Gem-${uid}`} cx="40%" cy="35%" r="60%">
+          <radialGradient id="n1Gem" cx="40%" cy="35%" r="60%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity=".9"/>
             <stop offset="30%" stopColor={c2} stopOpacity=".8"/>
             <stop offset="70%" stopColor={c} stopOpacity=".6"/>
             <stop offset="100%" stopColor="#000020" stopOpacity=".8"/>
           </radialGradient>
-          <radialGradient id={`n1GemGlow-${uid}`} cx="50%" cy="50%" r="50%">
+          <radialGradient id="n1GemGlow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor={c} stopOpacity=".7"/>
             <stop offset="100%" stopColor={c} stopOpacity="0"/>
           </radialGradient>
           {/* Gradientes textura plata */}
-          <linearGradient id={`n1PlataRef1-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <linearGradient id="n1PlataRef1" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0"/>
             <stop offset="50%" stopColor="#ffffff" stopOpacity=".15"/>
             <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
           </linearGradient>
-          <linearGradient id={`n1PlataRef2-${uid}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <linearGradient id="n1PlataRef2" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#ffffff" stopOpacity=".08"/>
             <stop offset="50%" stopColor="#ffffff" stopOpacity="0"/>
             <stop offset="100%" stopColor="#ffffff" stopOpacity=".05"/>
           </linearGradient>
-          <filter id={`n1Glow-${uid}`} x="-20%" y="-20%" width="140%" height="140%">
+          <filter id="n1Glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <filter id={`n1Soft-${uid}`}>
+          <filter id="n1Soft">
             <feGaussianBlur stdDeviation="2"/>
           </filter>
-          <filter id={`n1GemFilter-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
+          <filter id="n1GemFilter" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="3" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <clipPath id={`activeCardClip-${uid}`} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
+          <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
             <path d="M 20 90 C 20 90 60 88 100 75 C 130 65 150 55 170 50 C 190 55 210 65 240 75 C 280 88 320 90 320 90 L 320 480 L 170 520 L 20 480 Z"/>
           </clipPath>
         </defs>
@@ -193,22 +191,22 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
         <line x1="336" y1="295" x2="358" y2="295" stroke="#ffffff" strokeWidth=".8" opacity=".35"/>
   
         {/* SOMBRA EXTERIOR */}
-        <path d={SHAPE} fill="rgba(0,0,0,.6)" filter={`url(#n1Soft-${uid})`} transform="translate(3,4)"/>
+        <path d={SHAPE} fill="rgba(0,0,0,.6)" filter="url(#n1Soft)" transform="translate(3,4)"/>
   
         {/* FONDO */}
-        <path d={SHAPE} fill={`url(#n1Bg-${uid})`}/>
-        <path d={SHAPE} fill={`url(#n1BgGlow-${uid})`} opacity=".8"/>
+        <path d={SHAPE} fill="url(#n1Bg)"/>
+        <path d={SHAPE} fill="url(#n1BgGlow)" opacity=".8"/>
   
         {/* TEXTURA SEGÚN COLOR */}
         {getTexture()}
   
         {/* RAYOS DIAGONALES */}
         <polygon points="60,90 200,90 320,260 320,380 180,380 40,200"
-          fill={`url(#n1Ray1-${uid})`} opacity=".6"/>
+          fill="url(#n1Ray1)" opacity=".6"/>
         <polygon points="100,90 180,90 320,300 320,400 260,400 80,180"
-          fill={`url(#n1Ray2-${uid})`} opacity=".4"/>
+          fill="url(#n1Ray2)" opacity=".4"/>
         <polygon points="130,90 150,90 320,340 320,360 310,360 120,110"
-          fill={`url(#n1Ray3-${uid})`} opacity=".5"/>
+          fill="url(#n1Ray3)" opacity=".5"/>
         <line x1="80" y1="90" x2="320" y2="360" stroke={c} strokeWidth="1" opacity=".2"/>
         <line x1="120" y1="90" x2="320" y2="310" stroke="#ffffff" strokeWidth=".5" opacity=".1"/>
   
@@ -233,12 +231,12 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
   
         {/* MARCO INTERIOR */}
         <path d={INNER} fill="none" stroke="rgba(0,0,0,.4)" strokeWidth="6"/>
-        <path d={INNER} fill="none" stroke={`url(#n1BorderInner-${uid})`} strokeWidth="2" opacity=".7"/>
+        <path d={INNER} fill="none" stroke="url(#n1BorderInner)" strokeWidth="2" opacity=".7"/>
         <path d={INNER} fill="none" stroke="#ffffff" strokeWidth=".5" opacity=".2"/>
   
         {/* MARCO EXTERIOR */}
-        <path d={SHAPE} fill="none" stroke={`url(#n1Border-${uid})`} strokeWidth="6" filter={`url(#n1Glow-${uid})`}/>
-        <path d={SHAPE} fill="none" stroke={`url(#n1Shine-${uid})`} strokeWidth="2.5" opacity=".6"/>
+        <path d={SHAPE} fill="none" stroke="url(#n1Border)" strokeWidth="6" filter="url(#n1Glow)"/>
+        <path d={SHAPE} fill="none" stroke="url(#n1Shine)" strokeWidth="2.5" opacity=".6"/>
         <path d={SHAPE} fill="none" stroke={c} strokeWidth="1" opacity=".4"/>
   
         {/* MUESCAS */}
@@ -256,9 +254,9 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
         ))}
   
         {/* GEMA HEXAGONAL */}
-        <circle cx="170" cy="528" r="24" fill={`url(#n1GemGlow-${uid})`} opacity=".5"/>
+        <circle cx="170" cy="528" r="24" fill="url(#n1GemGlow)" opacity=".5"/>
         <polygon points="170,548 190,537 190,515 170,504 150,515 150,537"
-          fill={c} opacity=".35" filter={`url(#n1GemFilter-${uid})`}/>
+          fill={c} opacity=".35" filter="url(#n1GemFilter)"/>
         <polygon points="170,548 190,537 190,515 170,504 150,515 150,537"
           fill="none" stroke={c} strokeWidth="2.5" opacity=".9"/>
         <polygon points="170,543 186,534 186,518 170,509 154,518 154,534"
@@ -266,7 +264,7 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
         <polygon points="170,543 186,534 186,518 170,509 154,518 154,534"
           fill="none" stroke="#ffffff" strokeWidth="1" opacity=".35"/>
         <polygon points="170,538 183,531 183,519 170,512 157,519 157,531"
-          fill={`url(#n1Gem-${uid})`} opacity=".95"/>
+          fill="url(#n1Gem)" opacity=".95"/>
         <polygon points="164,519 170,515 176,519 170,525" fill="#ffffff" opacity=".5"/>
         <line x1="170" y1="512" x2="170" y2="538" stroke="#ffffff" strokeWidth=".5" opacity=".3"/>
         <line x1="157" y1="519" x2="183" y2="531" stroke="#ffffff" strokeWidth=".5" opacity=".2"/>
@@ -283,7 +281,7 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
         </g>
   
         {/* GLOW FINAL */}
-        <path d={SHAPE} fill="none" stroke={c} strokeWidth="16" opacity=".05" filter={`url(#n1Soft-${uid})`}/>
+        <path d={SHAPE} fill="none" stroke={c} strokeWidth="16" opacity=".05" filter="url(#n1Soft)"/>
   
         {/* PUNTOS ESQUINAS */}
         <circle cx="20" cy="90" r="3" fill={c} opacity=".8"/>

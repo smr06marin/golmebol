@@ -1,4 +1,3 @@
-import { useId } from 'react'
 // Misma forma que el SVG genérico de PlayerCard (CARD_PATH)
 // Estructura única: picos arriba + bordes redondeados abajo
 
@@ -36,7 +35,6 @@ const PALETA = {
   }
   
   export default function DesignNivel2({ variant = 'inicio' }) {
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
     const p = PALETA[variant] || PALETA.inicio
     const c  = p.c
     const c2 = p.c2
@@ -106,12 +104,12 @@ const PALETA = {
             <feGaussianBlur stdDeviation="3" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <filter id={`n2Soft-${uid}`}><feGaussianBlur stdDeviation="2"/></filter>
+          <filter id="n2Soft"><feGaussianBlur stdDeviation="2"/></filter>
           <filter id={`n2GemF_${variant}`} x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="3" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <clipPath id={`activeCardClip-${uid}`} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
+          <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
             <path d={SHAPE}/>
           </clipPath>
         </defs>
@@ -137,7 +135,7 @@ const PALETA = {
         <polygon points="360,315 344,315 344,322 360,330" fill={c} opacity=".25"/>
   
         {/* ── SOMBRA EXTERIOR ── */}
-        <path d={SHAPE} fill="rgba(0,0,0,.65)" filter={`url(#n2Soft-${uid})`} transform="translate(3,5)"/>
+        <path d={SHAPE} fill="rgba(0,0,0,.65)" filter="url(#n2Soft)" transform="translate(3,5)"/>
   
         {/* ── FONDO ── */}
         <path d={SHAPE} fill={`url(#n2Bg_${variant})`}/>
@@ -255,7 +253,7 @@ const PALETA = {
         </g>
   
         {/* ── GLOW FINAL ── */}
-        <path d={SHAPE} fill="none" stroke={c} strokeWidth="18" opacity=".05" filter={`url(#n2Soft-${uid})`}/>
+        <path d={SHAPE} fill="none" stroke={c} strokeWidth="18" opacity=".05" filter="url(#n2Soft)"/>
   
         {/* ── PUNTOS ESQUINAS ── */}
         <circle cx="20"  cy="0"   r="3" fill={c2} opacity=".85"/>
