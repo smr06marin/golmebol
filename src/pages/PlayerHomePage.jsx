@@ -651,41 +651,52 @@ export default function PlayerHomePage() {
               <button onClick={() => setShowSelector(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#5f6368' }}>✕</button>
             </div>
 
-            {/* Grupos estáticos */}
+            {/* Carrusel deslizable de tarjetas */}
             {GRUPOS.map(grupo => (
-              <div key={grupo.label} style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '.72rem', fontWeight: '600', color: grupo.color, marginBottom: '8px', letterSpacing: '.06em' }}>{grupo.label}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div key={grupo.label} style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '.72rem', fontWeight: '700', color: grupo.color, marginBottom: '10px', letterSpacing: '.06em' }}>{grupo.label}</div>
+                <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                   {grupo.ids.map(cid => {
                     const d       = CARD_DESIGNS.find(x => x.id === cid)
                     const desbloq = estaDesbloqueada(cid)
                     const activa  = cid === cardType
                     const prog    = getProgreso(cid)
-                    const sponsor = getSponsor(cid)
                     if (!d) return null
                     return (
-                      <div key={cid} onClick={() => handleClickTarjeta(d)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: activa ? '2px solid #1a73e8' : '1px solid #e8eaed', background: activa ? '#e8f0fe' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
-                        <div style={{ position: 'relative', flexShrink: 0 }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `linear-gradient(135deg, ${d.color}, ${d.colorSecundario || d.color})`, filter: desbloq ? 'none' : 'grayscale(80%) brightness(0.7)' }}/>
-                          {!desbloq && <span style={{ position: 'absolute', top: '-4px', right: '-4px', fontSize: '.65rem' }}>🔒</span>}
+                      <div key={cid} onClick={() => desbloq ? handleSeleccionarTarjeta(cid) : handleClickTarjeta(d)}
+                        style={{ flexShrink: 0, width: '160px', scrollSnapAlign: 'start', position: 'relative', cursor: 'pointer' }}>
+                        {/* Tarjeta completa con foto y escudos reales */}
+                        <div style={{ width: '160px', opacity: 1 }}>
+                          <PlayerCard
+                            playerName={nombre}
+                            stats={cardStats}
+                            cardType={cid}
+                            esPortero={esPortero}
+                            photoUrlExterno={player.photo_url || null}
+                            torneosData={torneosData}
+                            equiposData={equiposData}
+                          />
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '.82rem', fontWeight: activa ? '700' : '500', color: activa ? '#1a73e8' : desbloq ? '#202124' : '#9aa0a6' }}>{d.nombre}</div>
-                          {sponsor && desbloq && <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>✦ {sponsor.nombre}</div>}
-                          {prog && !desbloq && (
-                            <>
-                              <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '1px' }}>{prog.descripcion}</div>
-                              <div style={{ background: '#f1f3f4', borderRadius: '6px', height: '3px', marginTop: '4px', overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${prog.pct}%`, background: '#1a73e8', borderRadius: '6px' }}/>
+                        {/* Overlay si bloqueada */}
+                        {!desbloq && (
+                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', zIndex: 10 }}>
+                            <span style={{ fontSize: '1.5rem' }}>🔒</span>
+                            {prog && (
+                              <div style={{ width: '80%' }}>
+                                <div style={{ background: 'rgba(255,255,255,.2)', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${prog.pct}%`, background: '#fff', borderRadius: '4px' }}/>
+                                </div>
+                                <div style={{ fontSize: '.55rem', color: 'rgba(255,255,255,.7)', textAlign: 'center', marginTop: '2px' }}>{prog.actual}/{prog.meta}</div>
                               </div>
-                              <div style={{ fontSize: '.6rem', color: '#9aa0a6', marginTop: '2px' }}>{prog.actual} / {prog.meta} logros</div>
-                            </>
-                          )}
-                        </div>
-                        {activa      && <span style={{ fontSize: '.7rem', color: '#1a73e8', fontWeight: '700', flexShrink: 0 }}>✓ Activa</span>}
-                        {desbloq && !activa && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '1px 8px', flexShrink: 0 }}>Usar</span>}
-                        {!desbloq    && <span style={{ fontSize: '.72rem', color: '#1a73e8', flexShrink: 0 }}>👁 Ver</span>}
+                            )}
+                          </div>
+                        )}
+                        {/* Badge activa */}
+                        {activa && (
+                          <div style={{ position: 'absolute', top: '6px', right: '6px', background: '#1a73e8', borderRadius: '20px', padding: '2px 8px', fontSize: '.6rem', fontWeight: '700', color: '#fff', zIndex: 11 }}>✓ Activa</div>
+                        )}
+                        {/* Nombre debajo */}
+                        <div style={{ marginTop: '6px', fontSize: '.7rem', fontWeight: '600', color: activa?'#1a73e8':desbloq?'#202124':'#9aa0a6', textAlign: 'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.nombre}</div>
                       </div>
                     )
                   })}

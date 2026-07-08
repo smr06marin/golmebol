@@ -38,8 +38,8 @@ function Escudo({ item, color, isPremium, size = 62 }) {
   if (!item) return null
   if (item.logo_url) {
     return (
-      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', border: `1.5px solid ${color}66`, background: 'rgba(0,0,0,.4)', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', animation: 'sflt 4.2s ease-in-out infinite', flexShrink: 0 }}>
-        <img src={item.logo_url} alt={item.nombre || item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/>
+      <div style={{ width: size, height: size*1.1, clipPath: 'polygon(50% 0%, 100% 15%, 100% 65%, 50% 100%, 0% 65%, 0% 15%)', overflow: 'hidden', background: 'rgba(0,0,0,.5)', border: 'none', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', animation: 'sflt 4.2s ease-in-out infinite', flexShrink: 0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <img src={item.logo_url} alt={item.nombre || item.name} style={{ width: '85%', height: '85%', objectFit: 'contain' }}/>
       </div>
     )
   }
