@@ -1,3 +1,4 @@
+import { useId } from 'react'
 const VARIANTS = {
     inicio: {
       // ── AZUL PURO — solo azules, sin oro ──
@@ -158,6 +159,7 @@ const VARIANTS = {
   }
   
   export default function DesignPremium({ variant = 'inicio' }) {
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
     const v = VARIANTS[variant] || VARIANTS.inicio
   
     const SHAPE = "M 170 0 Q 140 30 100 45 Q 60 58 20 60 L 20 130 Q 20 165 0 170 L 0 440 Q 0 465 38 480 Q 65 494 98 500 Q 130 506 148 510 Q 159 516 170 522 Q 181 516 192 510 Q 210 506 242 500 Q 275 494 302 480 Q 340 465 340 440 L 340 170 Q 320 165 320 130 L 320 60 Q 280 58 240 45 Q 200 30 170 0 Z"
@@ -240,12 +242,12 @@ const VARIANTS = {
             <feGaussianBlur stdDeviation={isLegendario ? '5.5' : isOro ? '4.5' : '4'} result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <filter id="fSoft_p"><feGaussianBlur stdDeviation="2"/></filter>
-          <filter id="fIG_p" x="-10%" y="-10%" width="120%" height="120%">
+          <filter id={`fSoft_p-${uid}`}><feGaussianBlur stdDeviation="2"/></filter>
+          <filter id={`fIG_p-${uid}`} x="-10%" y="-10%" width="120%" height="120%">
             <feGaussianBlur stdDeviation="1.5" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
+          <clipPath id={`activeCardClip-${uid}`} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
             <path d={SHAPE}/>
           </clipPath>
         </defs>
@@ -364,7 +366,7 @@ const VARIANTS = {
           fill={`url(#gCr2_${variant})`} opacity={parseFloat(v.wingOpacity.outer) * 1.5} filter={`url(#fCrGlow_${variant})`}/>
   
         {/* ── SOMBRA EXTERIOR ── */}
-        <path d={SHAPE} fill="rgba(0,0,0,.75)" filter="url(#fSoft_p)" transform="translate(4,5)"/>
+        <path d={SHAPE} fill="rgba(0,0,0,.75)" filter={`url(#fSoft_p-${uid})`} transform="translate(4,5)"/>
   
         {/* ── FONDO INTERNO ── */}
         <path d={SHAPE} fill={`url(#gBg2_${variant})`}/>
@@ -403,15 +405,15 @@ const VARIANTS = {
   
         {/* ── FRAGMENTOS INTERNOS ── */}
         <polygon points="185,208 228,178 258,228 244,286 200,296 178,256"
-          fill={v.accentLine} opacity={v.fracOp.a} filter="url(#fSoft_p)"/>
+          fill={v.accentLine} opacity={v.fracOp.a} filter={`url(#fSoft_p-${uid})`}/>
         <polygon points="185,208 228,178 258,228 244,286 200,296 178,256"
           fill="none" stroke={v.accentLine} strokeWidth=".9" opacity={v.fracOp.b}/>
         <polygon points="218,160 248,146 266,180 253,208 221,213"
-          fill={v.accentLine} opacity={parseFloat(v.fracOp.a) * .85} filter="url(#fSoft_p)"/>
+          fill={v.accentLine} opacity={parseFloat(v.fracOp.a) * .85} filter={`url(#fSoft_p-${uid})`}/>
         <polygon points="218,160 248,146 266,180 253,208 221,213"
           fill="none" stroke={v.accentLine} strokeWidth=".7" opacity={v.fracOp.c}/>
         <polygon points="198,296 238,286 252,330 233,355 191,346"
-          fill={v.accentLine} opacity={parseFloat(v.fracOp.a) * .7} filter="url(#fSoft_p)"/>
+          fill={v.accentLine} opacity={parseFloat(v.fracOp.a) * .7} filter={`url(#fSoft_p-${uid})`}/>
         <polygon points="198,296 238,286 252,330 233,355 191,346"
           fill="none" stroke={v.accentLine} strokeWidth=".7" opacity={parseFloat(v.fracOp.c) * .85}/>
         <polygon points="244,223 266,213 274,240 257,248"
@@ -423,11 +425,11 @@ const VARIANTS = {
         {isLegendario && (
           <>
             <polygon points="82,220 120,200 138,240 124,288 85,295 68,258"
-              fill={v.accentLine} opacity=".20" filter="url(#fSoft_p)"/>
+              fill={v.accentLine} opacity=".20" filter={`url(#fSoft_p-${uid})`}/>
             <polygon points="82,220 120,200 138,240 124,288 85,295 68,258"
               fill="none" stroke={v.accentLine} strokeWidth=".8" opacity=".35"/>
             <polygon points="105,165 138,152 152,184 138,208 108,212"
-              fill={v.accentLine} opacity=".16" filter="url(#fSoft_p)"/>
+              fill={v.accentLine} opacity=".16" filter={`url(#fSoft_p-${uid})`}/>
             <polygon points="105,165 138,152 152,184 138,208 108,212"
               fill="none" stroke={v.accentLine} strokeWidth=".6" opacity=".30"/>
           </>
@@ -478,7 +480,7 @@ const VARIANTS = {
         <line x1="170" y1="522" x2="90"  y2="500" stroke={v.accentLine} strokeWidth="1" opacity={parseFloat(v.rimOpacity) + .26}/>
         <line x1="170" y1="522" x2="250" y2="500" stroke={v.accentLine} strokeWidth="1" opacity={parseFloat(v.rimOpacity) + .26}/>
         <polygon points="170,530 177,522 170,514 163,522"
-          fill={v.accentDot} opacity={parseFloat(v.centerDot.op) * .85} filter="url(#fIG_p)"/>
+          fill={v.accentDot} opacity={parseFloat(v.centerDot.op) * .85} filter={`url(#fIG_p-${uid})`}/>
   
         {/* ── HEXÁGONO INFERIOR ── */}
         <polygon points="170,542 183,535 183,521 170,514 157,521 157,535"
@@ -505,13 +507,13 @@ const VARIANTS = {
         </g>
   
         {/* ── GLOW FINAL ── */}
-        <path d={SHAPE} fill="none" stroke={v.accentLine} strokeWidth="20" opacity={v.glowFinalOp} filter="url(#fSoft_p)"/>
-        <circle cx="170" cy="28"  r="5"   fill={v.accentDot} opacity={parseFloat(v.centerDot.op) * .90} filter="url(#fIG_p)"/>
+        <path d={SHAPE} fill="none" stroke={v.accentLine} strokeWidth="20" opacity={v.glowFinalOp} filter={`url(#fSoft_p-${uid})`}/>
+        <circle cx="170" cy="28"  r="5"   fill={v.accentDot} opacity={parseFloat(v.centerDot.op) * .90} filter={`url(#fIG_p-${uid})`}/>
         <circle cx="22"  cy="110" r="2.5" fill={v.accentDot} opacity={parseFloat(v.rivetOp) * .70}/>
         <circle cx="318" cy="110" r="2.5" fill={v.accentDot} opacity={parseFloat(v.rivetOp) * .70}/>
         <circle cx="20"  cy="440" r="2.5" fill={v.accentLine} opacity={parseFloat(v.rivetOp) * .60}/>
         <circle cx="320" cy="440" r="2.5" fill={v.accentLine} opacity={parseFloat(v.rivetOp) * .60}/>
-        <circle cx="170" cy="522" r="3"   fill={v.accentDot} opacity={parseFloat(v.centerDot.op) * .80} filter="url(#fIG_p)"/>
+        <circle cx="170" cy="522" r="3"   fill={v.accentDot} opacity={parseFloat(v.centerDot.op) * .80} filter={`url(#fIG_p-${uid})`}/>
   
       </svg>
     )

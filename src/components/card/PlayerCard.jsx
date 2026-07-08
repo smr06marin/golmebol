@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import CardBackground from './CardBackground'
 import CardEffects from './designs/CardEffects'
 import CardDecorations from './designs/CardDecorations'
@@ -25,12 +25,15 @@ const STATS_DEFAULT = {
   eficacia: 76, pg: 9, pe: 1, pp: 2
 }
 
-function getBorderStyle(design) {
-  if (design.borde === 'gradiente_fuego') return 'url(#brdFuego)'
-  if (design.borde === 'gradiente_galaxia') return 'url(#brdGalaxia)'
-  if (design.borde === 'gradiente_diamante') return 'url(#brdDiamante)'
-  if (design.borde === 'gradiente_arcoiris') return 'url(#brdArcoiris)'
-  if (design.borde === 'gradiente_negro_oro') return 'url(#brdNegroOro)'
+// Los ids de SVG llevan un sufijo único por instancia: con varias tarjetas
+// montadas a la vez (carrusel), un id repetido hace que el recorte apunte a
+// otra tarjeta y, si esa se desmonta, la tarjeta queda rectangular.
+function getBorderStyle(design, uid) {
+  if (design.borde === 'gradiente_fuego') return `url(#brdFuego-${uid})`
+  if (design.borde === 'gradiente_galaxia') return `url(#brdGalaxia-${uid})`
+  if (design.borde === 'gradiente_diamante') return `url(#brdDiamante-${uid})`
+  if (design.borde === 'gradiente_arcoiris') return `url(#brdArcoiris-${uid})`
+  if (design.borde === 'gradiente_negro_oro') return `url(#brdNegroOro-${uid})`
   return design.borde || '#00ddd0'
 }
 
@@ -97,12 +100,13 @@ export default function PlayerCard({
   const EQUIPOS = (equiposData && equiposData.length > 0) ? equiposData : EQUIPOS_DEFAULT
 
   const design    = CARD_DESIGNS.find(d => d.id === cardType) || customDesign || CARD_DESIGNS[0]
+  const uid       = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const isPremium = design.premium === true
   const fondo     = design.fondo || ['#00e8d8', '#1558e2', '#110450']
   const color     = design.color || '#00ddd0'
   const color2    = design.colorSecundario || color
   const color3    = design.colorTerciario  || color2
-  const borde     = getBorderStyle(design)
+  const borde     = getBorderStyle(design, uid)
   const gradienteFondo = `linear-gradient(168deg, ${fondo[0]} 0%, ${fondo[1]||fondo[0]} 35%, ${fondo[2]||fondo[1]} 70%, ${fondo[3]||fondo[2]} 100%)`
   const isNivel1  = design.nivel === 1
   const isNivel2  = design.nivel === 2
@@ -143,22 +147,22 @@ export default function PlayerCard({
         ) : (
           <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }} viewBox="0 0 340 492" fill="none">
             <defs>
-              <linearGradient id="brdFuego" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id={`brdFuego-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#ff4400"/><stop offset="50%" stopColor="#ff8800"/><stop offset="100%" stopColor="#ffcc00"/>
               </linearGradient>
-              <linearGradient id="brdGalaxia" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id={`brdGalaxia-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#0a003c"/><stop offset="50%" stopColor="#6432ff"/><stop offset="100%" stopColor="#ff00c8"/>
               </linearGradient>
-              <linearGradient id="brdDiamante" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id={`brdDiamante-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#a0d8ff"/><stop offset="50%" stopColor="#ffffff"/><stop offset="100%" stopColor="#a0d8ff"/>
               </linearGradient>
-              <linearGradient id="brdArcoiris" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id={`brdArcoiris-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#ff0064"/><stop offset="25%" stopColor="#ff8800"/><stop offset="50%" stopColor="#00ff96"/><stop offset="75%" stopColor="#0064ff"/><stop offset="100%" stopColor="#ff00c8"/>
               </linearGradient>
-              <linearGradient id="brdNegroOro" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id={`brdNegroOro-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#ffd700"/><stop offset="50%" stopColor="#ff8800"/><stop offset="100%" stopColor="#ffd700"/>
               </linearGradient>
-              <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
+              <clipPath id={`activeCardClip-${uid}`} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
                 <path d={CARD_PATH}/>
               </clipPath>
             </defs>
@@ -175,7 +179,7 @@ export default function PlayerCard({
         {isNivel3 && (
           <svg style={{ position: 'absolute', width: 0, height: 0 }} viewBox="0 0 340 510">
             <defs>
-              <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001957)">
+              <clipPath id={`activeCardClipB-${uid}`} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001957)">
                 <path d="M 0 52 L 0 420 Q 0 460 35 478 Q 62 490 96 496 Q 122 502 170 503 Q 218 502 244 496 Q 278 490 305 478 Q 340 460 340 420 L 340 52 L 268 52 L 268 0 L 72 0 L 72 52 Z"/>
               </clipPath>
             </defs>
@@ -186,7 +190,7 @@ export default function PlayerCard({
           <CardDecorations decoracion={design.decoracion} color={color} colorSecundario={color2} colorTerciario={color3}/>
         )}
 
-        <div style={{ position: 'absolute', inset: 0, clipPath: 'url(#activeCardClip)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, clipPath: `url(#activeCardClip-${uid})`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {isPremium ? (
             <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(168deg, ${design.fondo[0]} 0%, ${design.fondo[1]} 35%, ${design.fondo[2]} 70%, ${design.fondo[3]} 100%)`, zIndex: 0 }} />
