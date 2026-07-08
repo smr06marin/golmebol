@@ -2,7 +2,8 @@ import { useState, useEffect, Fragment } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign } from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
 
 function ModalPartidoAdmin({ partido, onClose }) {
   const [stats,   setStats]   = useState([])
@@ -167,6 +168,7 @@ const TABS = [
   { id: 'equipos',        label: 'Equipos',         icon: <Shield size={16}/> },
   { id: 'estadisticas',   label: 'Estadísticas',    icon: <BarChart2 size={16}/> },
   { id: 'eliminatorias',  label: 'Eliminatorias',   icon: <GitBranch size={16}/> },
+  { id: 'finanzas',       label: 'Finanzas',        icon: <DollarSign size={16}/> },
 ]
 
 const inputStyle = {
@@ -191,16 +193,19 @@ const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'�
 
 const COLORES_GRUPO = ['#1a73e8','#e8710a','#1e8e3e','#9955ff','#d93025','#00a896','#f9a825','#4488ff']
 
+const FASE_ORDEN = ['octavos', 'cuartos', 'semifinal', 'final']
+
 function getRondaNombre(total) {
-  if (total >= 16) return 'Octavos de final'
-  if (total >= 8)  return 'Cuartos de final'
-  if (total >= 4)  return 'Semifinal'
-  return 'Final'
+  if (total === 16) return 'Octavos de final'
+  if (total === 8)  return 'Cuartos de final'
+  if (total === 4 || total === 3) return 'Semifinal'
+  if (total === 2)  return 'Final'
+  return `Ronda de ${total}`
 }
 function getFaseValue(total) {
-  if (total >= 16) return 'octavos'
-  if (total >= 8)  return 'cuartos'
-  if (total >= 4)  return 'semifinal'
+  if (total > 8) return 'octavos'
+  if (total > 4) return 'cuartos'
+  if (total > 2) return 'semifinal'
   return 'final'
 }
 
@@ -366,6 +371,8 @@ function EquiposDesactivadosTorneo({ torneoId, onReactivar, showMsg }) {
 
 export default function AdminTorneoDetallePage() {
   const { id } = useParams()
+  const { rol } = useAuthStore()
+  const esAdminRol = rol?.rol ? rol.rol === 'admin' : true // sin sistema de roles cargado, el admin ve todo
   const navigate = useNavigate()
 
   const [torneo,    setTorneo]    = useState(null)
@@ -404,6 +411,7 @@ export default function AdminTorneoDetallePage() {
 
   const [configJornada,   setConfigJornada]   = useState({ fecha: '', hora_inicio: '', numero: '' })
   const [jornadaGenerada, setJornadaGenerada] = useState([])
+  const [permitirIntergrupo, setPermitirIntergrupo] = useState(false)
   const [drag,            setDrag]            = useState(null)
   const [dragOver,        setDragOver]        = useState(null)
   const [loadingPartido,  setLoadingPartido]  = useState(false)
@@ -423,12 +431,38 @@ export default function AdminTorneoDetallePage() {
   const [horaGrupos,       setHoraGrupos]       = useState('08:00')
 
   // ── ELIMINATORIAS ───────────────────────────────────
-  const [tipoSorteo,       setTipoSorteo]       = useState('tabla') // 'tabla' | 'sorteo'
   const [idaVuelta,        setIdaVuelta]        = useState(false)
   const [fechaElim,        setFechaElim]        = useState('')
   const [horaElim,         setHoraElim]         = useState('08:00')
   const [generandoElim,    setGenerandoElim]    = useState(false)
   const [bracket,          setBracket]          = useState([]) // partidos de eliminatorias
+  const [showWizardElim,   setShowWizardElim]   = useState(false)
+  const [numClasifElim,    setNumClasifElim]    = useState(8)   // 2 | 4 | 8 | 16
+  const [estiloLlaves,     setEstiloLlaves]     = useState('consecutivo') // 'consecutivo' | 'cruzado' | 'manual'
+  const [ordenManual,      setOrdenManual]      = useState([]) // orden del sorteo físico
+  const [fechaRonda,       setFechaRonda]       = useState('')
+  const [horaRonda,        setHoraRonda]        = useState('08:00')
+  const [generandoRonda,   setGenerandoRonda]   = useState(false)
+  const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
+  const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
+  const [partidoPenales,   setPartidoPenales]   = useState(null) // partido empatado al que se le registran penales
+  const [penalesForm,      setPenalesForm]      = useState({ local: '', visitante: '' })
+  const [guardandoPenales, setGuardandoPenales] = useState(false)
+  const [reemplazoLlave,   setReemplazoLlave]   = useState(null) // llave donde se reemplaza un equipo
+  const [equipoSale,       setEquipoSale]       = useState('')
+  const [equipoEntra,      setEquipoEntra]      = useState('')
+  const [guardandoReemplazo, setGuardandoReemplazo] = useState(false)
+  const [guardandoLogros,  setGuardandoLogros]  = useState(false)
+
+  // ── FINANZAS ────────────────────────────────────────
+  const [movimientos,      setMovimientos]      = useState([])
+  const [statsTarjetas,    setStatsTarjetas]    = useState([])
+  const [pagoModal,        setPagoModal]        = useState(null) // equipo al que se registra pago
+  const [pagoForm,         setPagoForm]         = useState({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
+  const [guardandoPago,    setGuardandoPago]    = useState(false)
+  const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
+
+  useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
@@ -439,6 +473,7 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
+  useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -447,28 +482,30 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchTodo() {
     setLoading(true)
-    // Pintar la página apenas llega lo esencial (torneo + partidos + equipos);
-    // el resto carga en segundo plano y va llenando las secciones.
-    await Promise.all([fetchTorneo(), fetchEquipos(), fetchPartidos()])
+    // Pintar la página apenas llega el torneo; equipos y partidos llegan
+    // en paralelo y van llenando las secciones (clave en celular).
+    const pResto = Promise.all([fetchEquipos(), fetchPartidos()])
+    await fetchTorneo()
     setLoading(false)
+    await pResto
 
     Promise.all([fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos()]).catch(() => {})
 
     ;(async () => {
       try {
-        const [{ data: arbs }, { data: recs }, { data: { user } }] = await Promise.all([
-          supabase.from('players').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true').order('name'),
-          supabase.from('arbitro_reclamos').select('match_id,estado'),
-          supabase.auth.getUser(),
-        ])
+        const { data: arbs } = await supabase.from('players').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
         setArbitrosAdmin(arbs || [])
-        setReclamosPartidos(recs || [])
-        if (user) {
-          const { data: yo } = await supabase.from('players').select('es_arbitro_lider').eq('user_id', user.id).single()
-          setEsLider(yo?.es_arbitro_lider || false)
-        }
       } catch (e) { console.error('carga secundaria:', e) }
     })()
+  }
+
+  // Desactiva al equipo en este torneo: sus jugadores quedan inactivos y el equipo sale del torneo
+  async function handleDesactivarEquipo(equipo) {
+    if (!confirm(`¿Desactivar a "${equipo.name}" de este torneo? Sus jugadores quedarán inactivos y el equipo saldrá del torneo. Sus partidos y estadísticas se conservan.`)) return
+    await supabase.from('tournament_player_registrations').update({ activo: false }).eq('tournament_id', id).eq('team_id', equipo.id)
+    await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
+    showMsg(`${equipo.name} desactivado del torneo`)
+    fetchEquipos(); fetchJugadores()
   }
 
   async function fetchTorneo() {
@@ -733,28 +770,73 @@ export default function AdminTorneoDetallePage() {
     return clasificados.sort((a, b) => a.posicion - b.posicion || b.pts - a.pts || b.dg - a.dg)
   }
 
+  // Participantes de eliminatorias: clasificados directos + mejores de la
+  // reclasificación (mejor perdedor) hasta completar n cupos
+  function getParticipantesElim(n) {
+    const directos = grupos.length > 0 ? getClasificados() : []
+    let lista = [...directos]
+    if (lista.length > n) lista = lista.slice(0, n)
+    if (lista.length < n) {
+      const idsYa = new Set(lista.map(e => e.id))
+      calcTablaGeneral().forEach(row => {
+        if (lista.length >= n || !row.equipo || idsYa.has(row.equipo.id)) return
+        lista.push({ ...row.equipo, posicion: 99, grupo: directos.length > 0 ? 'Mejor perdedor' : null, pts: row.pts, dg: row.gf - row.gc, mejorPerdedor: directos.length > 0 })
+        idsYa.add(row.equipo.id)
+      })
+    }
+    return lista
+  }
+
+  function abrirWizardElim() {
+    setOrdenManual(getParticipantesElim(numClasifElim))
+    setShowWizardElim(true)
+  }
+
+  function cambiarCuposElim(n) {
+    setNumClasifElim(n)
+    setOrdenManual(getParticipantesElim(n))
+  }
+
+  function moverOrdenManual(i, dir) {
+    setOrdenManual(prev => {
+      const j = i + dir
+      if (j < 0 || j >= prev.length) return prev
+      const nueva = [...prev]
+      ;[nueva[i], nueva[j]] = [nueva[j], nueva[i]]
+      return nueva
+    })
+  }
+
+  // Parejas según el estilo elegido (para vista previa y generación)
+  function getParejasElim() {
+    const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesElim(numClasifElim)
+    const total = participantes.length
+    const parejas = []
+    if (estiloLlaves === 'cruzado') {
+      for (let i = 0; i < Math.floor(total / 2); i++) parejas.push([participantes[i], participantes[total - 1 - i]])
+    } else {
+      for (let i = 0; i < total - 1; i += 2) parejas.push([participantes[i], participantes[i + 1]])
+    }
+    return parejas
+  }
+
   async function handleGenerarEliminatorias() {
-    if (!fechaElim) return showMsg('Selecciona una fecha', 'error')
+    if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
+    if (numClasifElim % 2 !== 0) return showMsg('El número de clasificados debe ser par', 'error')
+    const parejas = getParejasElim()
+    if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
     setGenerandoElim(true)
 
-    let clasificados = getClasificados()
-    if (clasificados.length === 0) {
-      // Si no hay grupos, usar todos los equipos ordenados por tabla general
-      const tablaGen = calcTablaGeneral()
-      clasificados = tablaGen.map(row => row.equipo).filter(Boolean)
+    // Un equipo no avanza a eliminatorias con tarjetas sin pagar
+    const idsParticipantes = [...new Set(parejas.flatMap(([a, b]) => [a?.id, b?.id]).filter(Boolean))]
+    const deudores = await getDeudoresTarjetas(idsParticipantes)
+    if (deudores.length > 0) {
+      showMsg(`⛔ Tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
+      setGenerandoElim(false)
+      return
     }
 
-    if (clasificados.length < 2) { showMsg('Necesitas al menos 2 clasificados', 'error'); setGenerandoElim(false); return }
-
-    // Sorteo o por tabla
-    let emparejados = [...clasificados]
-    if (tipoSorteo === 'sorteo') {
-      emparejados = emparejados.sort(() => Math.random() - 0.5)
-    }
-    // Por tabla: 1 vs último, 2 vs penúltimo...
-    // emparejados ya está ordenado por posición
-
-    const total = emparejados.length
+    const total = parejas.length * 2
     const fase  = getFaseValue(total)
     const ronda = getRondaNombre(total)
 
@@ -762,40 +844,451 @@ export default function AdminTorneoDetallePage() {
     await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
 
     const inserts = []
-    for (let i = 0; i < Math.floor(total / 2); i++) {
-      const local     = emparejados[i]
-      const visitante = emparejados[total - 1 - i]
+    parejas.forEach(([local, visitante]) => {
       inserts.push({
-        tournament_id: id,
-        home_team_id:  local.id,
-        away_team_id:  visitante.id,
-        played_at:     `${fechaElim}T${horaElim}:00`,
-        status:        'scheduled',
-        fase,
-        ronda,
-        matchday:      null,
+        tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
+        played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda, matchday: null,
       })
       if (idaVuelta) {
         inserts.push({
-          tournament_id: id,
-          home_team_id:  visitante.id,
-          away_team_id:  local.id,
-          played_at:     `${fechaElim}T${horaElim}:00`,
-          status:        'scheduled',
-          fase,
-          ronda:         `${ronda} (vuelta)`,
-          matchday:      null,
+          tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
+          played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
         })
       }
-    }
+    })
 
-    await supabase.from('matches').insert(inserts)
-    showMsg(`${inserts.length} partidos de eliminatorias generados ✓`)
+    const { error } = await supabase.from('matches').insert(inserts)
+    if (error) { showMsg('Error al crear el bracket', 'error'); setGenerandoElim(false); return }
+    await supabase.from('tournaments').update({ fase_actual: 'eliminatorias' }).eq('id', id)
+    showMsg(`${ronda} creada con ${parejas.length} llaves ✓`)
+    setShowWizardElim(false)
     setGenerandoElim(false)
-    fetchPartidos()
-    fetchBracket()
+    fetchPartidos(); fetchBracket(); fetchTorneo()
   }
 
+  // Agrupa los partidos del bracket en llaves por fase, con marcador global y ganador
+  function getLlavesPorFase() {
+    const porFase = {}
+    FASE_ORDEN.forEach(f => {
+      const ms = bracket.filter(p => p.fase === f)
+      if (ms.length === 0) return
+      const map = {}
+      ms.forEach(m => {
+        const key = [m.home_team_id, m.away_team_id].sort().join('|')
+        if (!map[key]) map[key] = []
+        map[key].push(m)
+      })
+      porFase[f] = Object.values(map).map(matches => {
+        const primero = matches[0]
+        const teamA = { id: primero.home_team_id, name: primero.home?.name, logo_url: primero.home?.logo_url }
+        const teamB = { id: primero.away_team_id, name: primero.away?.name, logo_url: primero.away?.logo_url }
+        const terminada = matches.every(m => m.status === 'finished')
+        let golesA = 0, golesB = 0
+        matches.forEach(m => {
+          if (m.status !== 'finished') return
+          if (m.home_team_id === teamA.id) { golesA += m.home_score || 0; golesB += m.away_score || 0 }
+          else                             { golesA += m.away_score || 0; golesB += m.home_score || 0 }
+        })
+        let ganador = null, porPenales = false
+        if (terminada) {
+          if (golesA > golesB) ganador = teamA
+          else if (golesB > golesA) ganador = teamB
+          else {
+            const conPenales = [...matches].reverse().find(m => m.penales_ganador || (m.penales_local != null && m.penales_visitante != null && m.penales_local !== m.penales_visitante))
+            if (conPenales) {
+              porPenales = true
+              const ganaHome = conPenales.penales_ganador ? conPenales.penales_ganador === 'home' : conPenales.penales_local > conPenales.penales_visitante
+              const idGanador = ganaHome ? conPenales.home_team_id : conPenales.away_team_id
+              ganador = idGanador === teamA.id ? teamA : teamB
+            }
+          }
+        }
+        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales }
+      })
+    })
+    return porFase
+  }
+
+  // Ordena una lista de equipos según la tabla de reclasificación (fase de grupos)
+  function rankPorReclasificacion(lista) {
+    const pos = {}
+    calcTablaGeneral().forEach((row, i) => { if (row.equipo) pos[row.equipo.id] = i })
+    return [...lista].sort((a, b) => (pos[a.id] ?? 999) - (pos[b.id] ?? 999))
+  }
+
+  // Estado actual de las eliminatorias: vivos (incluye byes), perdedores, empates, repechaje
+  function getEstadoEliminatorias() {
+    const porFase = getLlavesPorFase()
+    const fasesExist = FASE_ORDEN.filter(f => porFase[f])
+    if (fasesExist.length === 0) return null
+    let vivos = null
+    fasesExist.forEach(f => {
+      const llavesF = porFase[f]
+      const enFase = new Set(llavesF.flatMap(l => [l.teamA.id, l.teamB.id]))
+      const ganadoresF = llavesF.map(l => l.ganador).filter(Boolean)
+      const byes = vivos ? vivos.filter(v => !enFase.has(v.id)) : []
+      vivos = [...ganadoresF, ...byes]
+    })
+    const actual = fasesExist[fasesExist.length - 1]
+    const llaves = porFase[actual]
+    const enFaseActual = new Set(llaves.flatMap(l => [l.teamA.id, l.teamB.id]))
+    const perdedores = llaves.map(l => l.ganador ? (l.ganador.id === l.teamA.id ? l.teamB : l.teamA) : null).filter(Boolean)
+    const vivosIds = new Set(vivos.map(v => v.id))
+    const perdedoresElegibles = []
+    perdedores.forEach(p => { if (!vivosIds.has(p.id) && !perdedoresElegibles.some(x => x.id === p.id)) perdedoresElegibles.push(p) })
+    const byesActuales = vivos.filter(v => !enFaseActual.has(v.id))
+    const completa = llaves.every(l => l.terminada)
+    const hayEmpates = completa && llaves.some(l => !l.ganador)
+    // Semifinal de 3: ya se jugó el 1° vs 2° y el 3° espera al perdedor
+    const repechajePendiente = actual === 'semifinal' && llaves.length === 1 && completa && !hayEmpates && byesActuales.length === 1
+    return { porFase, fasesExist, actual, llaves, vivos, perdedores, perdedoresElegibles, byesActuales, completa, hayEmpates, repechajePendiente }
+  }
+
+  async function handleGuardarPenales() {
+    const pl = parseInt(penalesForm.local), pv = parseInt(penalesForm.visitante)
+    if (isNaN(pl) || isNaN(pv)) return showMsg('Ingresa los penales de ambos equipos', 'error')
+    if (pl === pv) return showMsg('Los penales no pueden quedar empatados', 'error')
+    setGuardandoPenales(true)
+    const { error } = await supabase.from('matches')
+      .update({ penales_local: pl, penales_visitante: pv, penales_ganador: pl > pv ? 'home' : 'away' })
+      .eq('id', partidoPenales.id)
+    setGuardandoPenales(false)
+    if (error) return showMsg('Error al guardar los penales', 'error')
+    showMsg('Penales registrados ✓ — ganador definido')
+    setPartidoPenales(null)
+    setPenalesForm({ local: '', visitante: '' })
+    fetchBracket(); fetchPartidos()
+  }
+
+  // Equipos disponibles para entrar en una llave (eliminados o que no clasificaron)
+  function getEquiposParaReemplazo() {
+    const est = getEstadoEliminatorias()
+    const ocupados = new Set()
+    bracket.forEach(m => { if (m.status !== 'finished') { ocupados.add(m.home_team_id); ocupados.add(m.away_team_id) } })
+    ;(est?.vivos || []).forEach(v => ocupados.add(v.id))
+    return equipos.filter(e => !ocupados.has(e.id))
+  }
+
+  async function handleReemplazarEquipo() {
+    if (!equipoSale || !equipoEntra) return showMsg('Selecciona el equipo que sale y el que entra', 'error')
+    if (reemplazoLlave.matches.some(m => m.status === 'finished')) return showMsg('No se puede reemplazar: esta llave ya tiene partidos jugados', 'error')
+    setGuardandoReemplazo(true)
+    for (const m of reemplazoLlave.matches) {
+      const upd = {}
+      if (m.home_team_id === equipoSale) upd.home_team_id = equipoEntra
+      if (m.away_team_id === equipoSale) upd.away_team_id = equipoEntra
+      if (Object.keys(upd).length > 0) await supabase.from('matches').update(upd).eq('id', m.id)
+    }
+    setGuardandoReemplazo(false)
+    const entra = equipos.find(e => e.id === equipoEntra)
+    showMsg(`Equipo reemplazado ✓ — entra ${entra?.name || ''}`)
+    setReemplazoLlave(null); setEquipoSale(''); setEquipoEntra('')
+    fetchBracket(); fetchPartidos()
+  }
+
+  // ── FINANZAS ────────────────────────────────────────
+
+  const fmt = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
+
+  async function fetchFinanzas() {
+    const [{ data: movs }, { data: st }] = await Promise.all([
+      supabase.from('torneo_finanzas').select('*, teams(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
+      supabase.from('player_match_stats').select('player_id, team_id, yellow_cards, blue_cards, red_cards, players(name)').eq('tournament_id', id),
+    ])
+    setMovimientos(movs || [])
+    setStatsTarjetas(st || [])
+  }
+
+  // Cuentas calculadas automáticamente desde los partidos y planillas
+  function calcFinanzas() {
+    const fc = torneo?.finanzas_config || {}
+    const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+    const jugados = partidos.filter(p => p.status === 'finished' && p.tipo_resultado !== 'w')
+    const partidosW = partidos.filter(p => p.status === 'finished' && p.tipo_resultado === 'w')
+
+    const porEquipo = {}
+    equipos.forEach(e => {
+      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0 }
+    })
+
+    jugados.forEach(m => {
+      if (porEquipo[m.home_team_id]) porEquipo[m.home_team_id].arbitrajes += fc.arbitraje_equipo || 0
+      if (porEquipo[m.away_team_id]) porEquipo[m.away_team_id].arbitrajes += fc.arbitraje_equipo || 0
+    })
+    partidosW.forEach(m => {
+      const presentaId = (m.home_score || 0) > (m.away_score || 0) ? m.home_team_id : m.away_team_id
+      const ausenteId  = presentaId === m.home_team_id ? m.away_team_id : m.home_team_id
+      if (porEquipo[presentaId]) porEquipo[presentaId].w     += fc.valor_w_presenta || 0
+      if (porEquipo[ausenteId])  porEquipo[ausenteId].multas += fc.multa_no_presenta || 0
+    })
+
+    // Tarjetas por jugador
+    const porJugador = {}
+    statsTarjetas.forEach(s => {
+      const valor = (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR
+      if (valor === 0) return
+      const key = `${s.team_id}|${s.player_id}`
+      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre: s.players?.name, am: 0, az: 0, rj: 0, valor: 0 }
+      porJugador[key].am += s.yellow_cards || 0
+      porJugador[key].az += s.blue_cards || 0
+      porJugador[key].rj += s.red_cards || 0
+      porJugador[key].valor += valor
+    })
+    Object.values(porJugador).forEach(j => {
+      if (porEquipo[j.team_id]) {
+        porEquipo[j.team_id].tarjetas += j.valor
+        porEquipo[j.team_id].tarjetasDetalle.push(j)
+      }
+    })
+
+    movimientos.forEach(mv => {
+      if (!porEquipo[mv.team_id]) return
+      if (mv.tipo === 'pago_tarjetas') porEquipo[mv.team_id].pagosTarjetas += mv.monto || 0
+      if (mv.tipo === 'pago_cargos')   porEquipo[mv.team_id].pagosOtros   += mv.monto || 0
+    })
+
+    const filas = Object.values(porEquipo).map(r => {
+      const cargos = r.inscripcion + r.arbitrajes + r.w + r.multas + r.tarjetas
+      const pagado = r.pagosTarjetas + r.pagosOtros
+      return { ...r, cargos, pagado, saldo: cargos - pagado, saldoTarjetas: r.tarjetas - r.pagosTarjetas }
+    }).sort((a, b) => b.saldo - a.saldo)
+
+    const gastoCanchas  = jugados.length * (fc.pago_cancha_partido || 0) + partidosW.length * (fc.pago_cancha_w || 0)
+    const gastoArbitros = jugados.length * (fc.pago_arbitro_partido || 0) + partidosW.length * (fc.pago_arbitro_w || 0)
+    const gastos = gastoCanchas + gastoArbitros
+    const ingresosEsperados = filas.reduce((a, r) => a + r.cargos, 0)
+    const recaudado = filas.reduce((a, r) => a + r.pagado, 0)
+
+    return { fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos, ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos }
+  }
+
+  async function handleRegistrarPago() {
+    const monto = parseFloat(pagoForm.monto)
+    if (!monto || monto <= 0) return showMsg('Ingresa el monto del pago', 'error')
+    setGuardandoPago(true)
+    const { error } = await supabase.from('torneo_finanzas').insert({
+      tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
+      concepto: pagoForm.concepto || (pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos'),
+    })
+    setGuardandoPago(false)
+    if (error) return showMsg('Error al registrar el pago (¿ejecutaste migracion_finanzas.sql?)', 'error')
+    showMsg('Pago registrado ✓')
+    setPagoModal(null); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
+    fetchFinanzas()
+  }
+
+  async function handleEliminarPago(mv) {
+    if (!confirm('¿Eliminar este pago?')) return
+    await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    fetchFinanzas()
+  }
+
+  // Equipos con tarjetas sin pagar (para bloquear eliminatorias)
+  async function getDeudoresTarjetas(teamIds) {
+    const fc = torneo?.finanzas_config || {}
+    const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+    if (pA + pZ + pR === 0) return []
+    const { data: st } = await supabase.from('player_match_stats').select('team_id, yellow_cards, blue_cards, red_cards').eq('tournament_id', id)
+    const { data: pagos } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_tarjetas')
+    const saldo = {}
+    ;(st || []).forEach(s => { saldo[s.team_id] = (saldo[s.team_id] || 0) + (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR })
+    ;(pagos || []).forEach(p => { saldo[p.team_id] = (saldo[p.team_id] || 0) - (p.monto || 0) })
+    return teamIds
+      .filter(tid => (saldo[tid] || 0) > 0)
+      .map(tid => ({ id: tid, deuda: saldo[tid], name: equipos.find(e => e.id === tid)?.name || 'Equipo' }))
+  }
+
+  // Guarda en tournament_logros la fase alcanzada por cada equipo y sus jugadores,
+  // más campeón, subcampeón y tercer puesto (hoja de vida de equipos y jugadores)
+  async function handleGuardarLogrosTorneo() {
+    const porFase = getLlavesPorFase()
+    const llaveFinal = porFase['final']?.find(l => !(l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+    if (!llaveFinal?.ganador) return showMsg('La final aún no tiene ganador', 'error')
+    if (!confirm('¿Guardar los logros del torneo en la hoja de vida de los equipos y sus jugadores?')) return
+    setGuardandoLogros(true)
+
+    const campeonEq    = llaveFinal.ganador
+    const subcampeonEq = llaveFinal.ganador.id === llaveFinal.teamA.id ? llaveFinal.teamB : llaveFinal.teamA
+    const llaveTercer  = porFase['final']?.find(l => (l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+    const tercerEq     = llaveTercer?.ganador || null
+
+    // Fase máxima que jugó cada equipo (sin contar el partido de tercer puesto)
+    const peso = { octavos: 1, cuartos: 2, semifinal: 3, final: 4 }
+    const faseMax = {}
+    bracket.forEach(m => {
+      if ((m.ronda || '').toLowerCase().includes('tercer')) return
+      ;[m.home_team_id, m.away_team_id].forEach(tid => {
+        if (!faseMax[tid] || peso[m.fase] > peso[faseMax[tid]]) faseMax[tid] = m.fase
+      })
+    })
+
+    const tipoEquipo = {}
+    equipos.forEach(e => {
+      if (e.id === campeonEq.id)                tipoEquipo[e.id] = 'campeon'
+      else if (e.id === subcampeonEq.id)        tipoEquipo[e.id] = 'subcampeon'
+      else if (tercerEq && e.id === tercerEq.id) tipoEquipo[e.id] = 'tercer_puesto'
+      else                                      tipoEquipo[e.id] = faseMax[e.id] || 'fase_grupos'
+    })
+
+    // Reemplazar logros de fase anteriores de este torneo (los MVP no se tocan)
+    const TIPOS_FASE = ['campeon', 'subcampeon', 'tercer_puesto', 'final', 'semifinal', 'cuartos', 'octavos', 'fase_grupos']
+    await supabase.from('tournament_logros').delete().eq('tournament_id', id).in('tipo', TIPOS_FASE)
+
+    // Cada logro se guarda por jugador (con el team_id del equipo): así queda en la
+    // hoja de vida del jugador y del equipo a la vez. (La BD no acepta filas sin jugador.)
+    const inserts = []
+    jugadores.forEach(j => {
+      if (!j.player_id || !j.team_id || !tipoEquipo[j.team_id]) return
+      inserts.push({ tournament_id: id, team_id: j.team_id, player_id: j.player_id, tipo: tipoEquipo[j.team_id] })
+    })
+    if (inserts.length === 0) { setGuardandoLogros(false); return showMsg('No hay jugadores inscritos para guardar logros', 'error') }
+    const { error } = await supabase.from('tournament_logros').insert(inserts)
+    setGuardandoLogros(false)
+    if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
+
+    // Tarjetas sin pagar al cierre del torneo → deuda personal de cada jugador
+    let deudoresPersonales = 0
+    try {
+      const fc = torneo?.finanzas_config || {}
+      const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
+      if (pA + pZ + pR > 0) {
+        const [{ data: st }, { data: pagos }] = await Promise.all([
+          supabase.from('player_match_stats').select('player_id, team_id, yellow_cards, blue_cards, red_cards').eq('tournament_id', id),
+          supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_tarjetas'),
+        ])
+        const cargoEq = {}, pagosEq = {}, valorJug = {}
+        ;(st || []).forEach(s => {
+          const v = (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR
+          if (v === 0) return
+          cargoEq[s.team_id] = (cargoEq[s.team_id] || 0) + v
+          const k = `${s.team_id}|${s.player_id}`
+          valorJug[k] = (valorJug[k] || 0) + v
+        })
+        ;(pagos || []).forEach(p => { pagosEq[p.team_id] = (pagosEq[p.team_id] || 0) + (p.monto || 0) })
+
+        const deudas = []
+        Object.entries(valorJug).forEach(([k, valor]) => {
+          const [team_id, player_id] = k.split('|')
+          const cargo = cargoEq[team_id] || 0
+          const saldo = Math.max(0, cargo - (pagosEq[team_id] || 0))
+          if (cargo === 0 || saldo === 0) return
+          const monto = Math.round(valor * (saldo / cargo))
+          if (monto > 0) deudas.push({ tournament_id: id, team_id, player_id, tipo: 'deuda_personal', monto, concepto: `Tarjetas del torneo ${torneo?.name || ''}`.trim(), pagado: false })
+        })
+
+        await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('tipo', 'deuda_personal')
+        if (deudas.length > 0) await supabase.from('torneo_finanzas').insert(deudas)
+        deudoresPersonales = deudas.length
+      }
+    } catch (e) { console.error('deuda personal:', e) }
+
+    const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${deudoresPersonales > 0 ? ` · 💳 ${deudoresPersonales} jugadores quedaron con deuda personal de tarjetas` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
+  }
+
+  // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
+  async function handleCrearSiguienteEdicion() {
+    const nombreBase = (torneo.name || '').replace(/\s*\(Edición \d+\)\s*$/i, '')
+    const n = (torneo.edicion || 1) + 1
+    const nombre = prompt('Nombre de la nueva edición:', `${nombreBase} (Edición ${n})`)
+    if (!nombre) return
+    const { data, error } = await supabase.from('tournaments').insert({
+      name: nombre, season: torneo.season, city: torneo.city, modalidad: torneo.modalidad,
+      categoria: torneo.categoria, genero: torneo.genero, formato: torneo.formato,
+      status: 'active', organizador_id: torneo.organizador_id || null,
+      premium: false, torneo_padre_id: torneo.torneo_padre_id || torneo.id,
+      edicion: n, finanzas_config: torneo.finanzas_config || null,
+    }).select().single()
+    if (error) return showMsg(`Error al crear la edición: ${error.message}`, 'error')
+    showMsg(`${nombre} creada ✓ — este torneo queda guardado con todo su historial; agrega los equipos de la nueva edición`)
+    navigate(`/admin/torneos/${data.id}`)
+    setTab('actividad')
+  }
+
+  async function handleGenerarSiguienteRonda() {
+    const est = getEstadoEliminatorias()
+    if (!est) return
+    if (est.actual === 'final') return showMsg('El torneo ya está en la final', 'error')
+    if (!est.completa) return showMsg('Faltan partidos por jugar en esta ronda', 'error')
+    if (est.hayEmpates) return showMsg('Hay llaves empatadas — registra los penales en la planilla', 'error')
+    if (!fechaRonda) return showMsg('Selecciona la fecha de la siguiente ronda', 'error')
+    setGenerandoRonda(true)
+
+    // Un equipo no avanza de ronda con tarjetas sin pagar
+    const deudoresRonda = await getDeudoresTarjetas(est.vivos.map(v => v.id))
+    if (deudoresRonda.length > 0) {
+      showMsg(`⛔ Tienen tarjetas sin pagar: ${deudoresRonda.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
+      setGenerandoRonda(false)
+      return
+    }
+
+    const conVuelta = est.llaves.some(l => l.matches.length > 1)
+    const base = { tournament_id: id, played_at: `${fechaRonda}T${horaRonda}:00`, status: 'scheduled', matchday: null }
+    const inserts = []
+
+    // Repechaje de la semifinal de 3: perdedor del 1v2 contra el 3°
+    if (est.repechajePendiente) {
+      const perdedorSemi = est.perdedores[0]
+      const tercero = est.byesActuales[0]
+      inserts.push({ ...base, home_team_id: perdedorSemi.id, away_team_id: tercero.id, fase: 'semifinal', ronda: 'Semifinal (repechaje)' })
+      const { error } = await supabase.from('matches').insert(inserts)
+      if (error) showMsg('Error al generar el repechaje', 'error')
+      else showMsg(`Repechaje generado: ${perdedorSemi.name} vs ${tercero.name} — el ganador va a la final ✓`)
+      setGenerandoRonda(false); fetchPartidos(); fetchBracket()
+      return
+    }
+
+    let equiposRonda = [...est.vivos]
+
+    // Semifinal de 3 equipos: 1° vs 2° de la reclasificación, el 3° espera al perdedor
+    if (equiposRonda.length === 3) {
+      const ordenados = rankPorReclasificacion(equiposRonda)
+      inserts.push({ ...base, home_team_id: ordenados[0].id, away_team_id: ordenados[1].id, fase: 'semifinal', ronda: 'Semifinal' })
+      if (conVuelta) inserts.push({ ...base, home_team_id: ordenados[1].id, away_team_id: ordenados[0].id, fase: 'semifinal', ronda: 'Semifinal (vuelta)' })
+      const { error } = await supabase.from('matches').insert(inserts)
+      if (error) showMsg('Error al generar la semifinal', 'error')
+      else showMsg(`Semifinal de 3: ${ordenados[0].name} vs ${ordenados[1].name} — el perdedor jugará repechaje contra ${ordenados[2].name} ✓`)
+      setGenerandoRonda(false); fetchPartidos(); fetchBracket()
+      return
+    }
+
+    // Cantidad impar (mayor a 3): entra un mejor perdedor o el 1° pasa directo
+    let agregoMejorPerdedor = false
+    if (equiposRonda.length % 2 !== 0) {
+      if (modoImpar === 'mejor_perdedor') {
+        const mejorPerdedor = rankPorReclasificacion(est.perdedoresElegibles)[0]
+        if (!mejorPerdedor) { showMsg('No hay perdedores disponibles para completar el cupo', 'error'); setGenerandoRonda(false); return }
+        equiposRonda = rankPorReclasificacion([...equiposRonda, mejorPerdedor])
+        agregoMejorPerdedor = true
+      } else {
+        equiposRonda = rankPorReclasificacion(equiposRonda).slice(1) // el 1° pasa directo
+      }
+    } else if (est.byesActuales.length > 0) {
+      equiposRonda = rankPorReclasificacion(equiposRonda)
+    }
+
+    const totalVivos = est.vivos.length + (agregoMejorPerdedor ? 1 : 0)
+    const fase  = getFaseValue(totalVivos)
+    const ronda = getRondaNombre(totalVivos)
+
+    for (let i = 0; i + 1 < equiposRonda.length; i += 2) {
+      const local = equiposRonda[i], visitante = equiposRonda[i + 1]
+      inserts.push({ ...base, home_team_id: local.id, away_team_id: visitante.id, fase, ronda })
+      if (conVuelta) inserts.push({ ...base, home_team_id: visitante.id, away_team_id: local.id, fase, ronda: `${ronda} (vuelta)` })
+    }
+
+    // Partido por el tercer puesto (junto con la final)
+    if (totalVivos === 2 && crearTercerPuesto && est.perdedoresElegibles.length >= 2) {
+      const [t1, t2] = rankPorReclasificacion(est.perdedoresElegibles)
+      inserts.push({ ...base, home_team_id: t1.id, away_team_id: t2.id, fase: 'final', ronda: 'Tercer puesto' })
+    }
+
+    const { error } = await supabase.from('matches').insert(inserts)
+    if (error) showMsg('Error al generar la siguiente ronda', 'error')
+    else showMsg(`${ronda} generada ✓ — los ganadores avanzan`)
+    setGenerandoRonda(false)
+    fetchPartidos(); fetchBracket()
+  }
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
@@ -900,12 +1393,60 @@ export default function AdminTorneoDetallePage() {
     if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
+
+    // Cruces que ya existen en el torneo (jugados o programados)
+    const yaJugaron = new Set()
+    partidos.forEach(p => {
+      yaJugaron.add(`${p.home_team_id}|${p.away_team_id}`)
+      yaJugaron.add(`${p.away_team_id}|${p.home_team_id}`)
+    })
+
+    // Grupo de cada equipo (si el torneo tiene grupos)
+    const grupoDe = {}
+    grupoEquipos.forEach(ge => { grupoDe[ge.team_id] = ge.grupo_id })
+    const hayGrupos = grupos.length > 1
+
     const eq = [...equipos].sort(() => Math.random() - 0.5)
+    const usados = new Set()
     const pares = []
-    for (let i = 0; i < eq.length - 1; i += 2) pares.push({ local: eq[i], visitante: eq[i + 1] })
-    if (eq.length % 2 !== 0) pares.push({ local: eq[eq.length - 1], visitante: null, descanso: true })
+    const descansan = []
+
+    for (const a of eq) {
+      if (usados.has(a.id)) continue
+      usados.add(a.id)
+      // 1) Rival del mismo grupo con el que no haya jugado
+      let rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
+      // 2) Si no hay y está permitido, rival de otro grupo con el que no haya jugado
+      if (!rival && hayGrupos && permitirIntergrupo) {
+        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`))
+      }
+      if (rival) {
+        usados.add(rival.id)
+        pares.push({ local: a, visitante: rival, intergrupo: hayGrupos && grupoDe[a.id] !== grupoDe[rival.id] })
+      } else {
+        descansan.push(a)
+      }
+    }
+    // 3) Ya sin rivales nuevos: descansan
+    descansan.forEach(a => pares.push({ local: a, visitante: null, descanso: true }))
+
     const [hIni] = configJornada.hora_inicio.split(':').map(Number)
-    setJornadaGenerada(pares.map((p, i) => ({ ...p, cancha: canchas[i % canchas.length], hora: `${String(hIni + Math.floor(i / canchas.length)).padStart(2, '0')}:00` })))
+    let idx = 0
+    setJornadaGenerada(pares.map(p => {
+      if (p.descanso) return p
+      const asignado = { ...p, cancha: canchas[idx % canchas.length], hora: `${String(hIni + Math.floor(idx / canchas.length)).padStart(2, '0')}:00` }
+      idx++
+      return asignado
+    }))
+  }
+
+  function handleEliminarParejaJornada(i) {
+    const p = jornadaGenerada[i]
+    if (!p || p.descanso) return
+    const nueva = jornadaGenerada.filter((_, idx) => idx !== i)
+    nueva.push({ local: p.local, visitante: null, descanso: true })
+    if (p.visitante) nueva.push({ local: p.visitante, visitante: null, descanso: true })
+    setJornadaGenerada(nueva)
   }
 
   async function handleGuardarJornada() {
@@ -935,12 +1476,40 @@ export default function AdminTorneoDetallePage() {
     if (!drag) return
     if (drag.pi === tpi && drag.slot === tslot) { setDrag(null); setDragOver(null); return }
     const nueva = jornadaGenerada.map(p => ({ ...p }))
+
+    // Dos equipos que descansan → crear un partido nuevo entre ellos
+    if (drag.pi !== tpi && nueva[tpi].descanso && nueva[drag.pi].descanso) {
+      const numPartidos = nueva.filter(p => !p.descanso).length
+      const [hIni] = (configJornada.hora_inicio || '08:00').split(':').map(Number)
+      const partidoNuevo = {
+        local: nueva[tpi].local, visitante: nueva[drag.pi].local,
+        cancha: canchas.length > 0 ? canchas[numPartidos % canchas.length] : null,
+        hora: `${String(hIni + Math.floor(numPartidos / Math.max(canchas.length, 1))).padStart(2, '0')}:00`,
+      }
+      const sinFilas = nueva.filter((_, idx) => idx !== drag.pi && idx !== tpi)
+      const idxPrimerDescanso = sinFilas.findIndex(p => p.descanso)
+      if (idxPrimerDescanso === -1) sinFilas.push(partidoNuevo)
+      else sinFilas.splice(idxPrimerDescanso, 0, partidoNuevo)
+      setJornadaGenerada(sinFilas); setDrag(null); setDragOver(null)
+      return
+    }
+
+    // Intercambio normal (también entre un partido y un equipo que descansa)
     const dest = tslot === 'local' ? nueva[tpi].local : nueva[tpi].visitante
     if (tslot === 'local') nueva[tpi].local = drag.equipo; else nueva[tpi].visitante = drag.equipo
     if (drag.slot === 'local') nueva[drag.pi].local = dest; else nueva[drag.pi].visitante = dest
     setJornadaGenerada(nueva); setDrag(null); setDragOver(null)
   }
   function handleDragEnd() { setDrag(null); setDragOver(null) }
+
+  function vecesEnfrentados(idA, idB) {
+    if (!idA || !idB) return 0
+    return partidos.filter(p =>
+      (p.home_team_id === idA && p.away_team_id === idB) ||
+      (p.home_team_id === idB && p.away_team_id === idA)
+    ).length
+  }
+
 
   async function buscarEquipos(q) {
     setBusquedaEquipo(q)
@@ -971,6 +1540,9 @@ export default function AdminTorneoDetallePage() {
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
 
+  const fcTorneo           = torneo.finanzas_config || {}
+  // La pestaña de cuentas es del admin principal o de torneos Premium
+  const finanzasActivas    = (!!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0) && (esAdminRol || !!torneo.premium)
   function toggleJornada(key) { setAbiertosJornada(prev => ({ ...prev, [key]: !prev[key] })) }
 
   function agruparPartidosPorJornada(lista) {
@@ -1035,6 +1607,106 @@ export default function AdminTorneoDetallePage() {
       {modalPartidoAdmin && (
         <ModalPartidoAdmin partido={modalPartidoAdmin} onClose={() => setModalPartidoAdmin(null)}/>
       )}
+      {/* Modal reemplazar equipo en una llave */}
+      {reemplazoLlave && (() => {
+        const disponibles = getEquiposParaReemplazo()
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+            onClick={e => e.target === e.currentTarget && setReemplazoLlave(null)}>
+            <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '440px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🔄 Reemplazar equipo en la llave</div>
+                <button onClick={() => setReemplazoLlave(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+              </div>
+              <div style={{ padding: '18px 20px' }}>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '14px' }}>
+                  Si un equipo clasificado no puede jugar, elige quién sale y qué equipo eliminado entra en su lugar.
+                </div>
+                <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>¿Quién no puede jugar?</div>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                  {[reemplazoLlave.teamA, reemplazoLlave.teamB].map(t => (
+                    <button key={t.id} onClick={() => setEquipoSale(t.id)}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '10px', cursor: 'pointer', border: equipoSale === t.id ? '2px solid #d93025' : '1px solid #dadce0', background: equipoSale === t.id ? '#fce8e6' : '#fff' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={t.logo_url} name={t.name} size={24}/></div>
+                      <span style={{ fontSize: '.8rem', fontWeight: '600', color: equipoSale === t.id ? '#d93025' : '#202124' }}>{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>¿Quién entra en su lugar?</div>
+                {disponibles.length === 0 ? (
+                  <div style={{ padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem', border: '1px dashed #dadce0', borderRadius: '10px', marginBottom: '16px' }}>No hay equipos eliminados disponibles</div>
+                ) : (
+                  <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'auto', maxHeight: '220px', marginBottom: '16px' }}>
+                    {disponibles.map((eq, i) => (
+                      <div key={eq.id} onClick={() => setEquipoEntra(eq.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', cursor: 'pointer', borderBottom: i < disponibles.length - 1 ? '1px solid #f1f3f4' : 'none', background: equipoEntra === eq.id ? '#e6f4ea' : '#fff' }}>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={26}/></div>
+                        <span style={{ flex: 1, fontSize: '.8rem', fontWeight: equipoEntra === eq.id ? '700' : '500', color: '#202124' }}>{eq.name}</span>
+                        {equipoEntra === eq.id && <span style={{ color: '#1e8e3e', fontWeight: '700' }}>✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setReemplazoLlave(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                  <button onClick={handleReemplazarEquipo} disabled={guardandoReemplazo || !equipoSale || !equipoEntra}
+                    style={{ flex: 1, padding: '10px', background: guardandoReemplazo || !equipoSale || !equipoEntra ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: guardandoReemplazo || !equipoSale || !equipoEntra ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                    {guardandoReemplazo ? 'Guardando...' : 'Reemplazar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Modal registrar penales (llave empatada) */}
+      {partidoPenales && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setPartidoPenales(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '420px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🎯 Definir ganador por penales</div>
+              <button onClick={() => setPartidoPenales(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '14px', textAlign: 'center' }}>
+                {partidoPenales.home?.name} {partidoPenales.home_score} — {partidoPenales.away_score} {partidoPenales.away?.name}
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '2px' }}>El partido quedó empatado — ingresa el resultado de la tanda de penales</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                  <label style={labelStyle}>Penales {partidoPenales.home?.name} *</label>
+                  <input type="number" min="0" value={penalesForm.local} onChange={e => setPenalesForm(f => ({ ...f, local: e.target.value }))} style={{ ...inputStyle, textAlign: 'center', fontWeight: '700', fontSize: '1.1rem' }} placeholder="0"/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Penales {partidoPenales.away?.name} *</label>
+                  <input type="number" min="0" value={penalesForm.visitante} onChange={e => setPenalesForm(f => ({ ...f, visitante: e.target.value }))} style={{ ...inputStyle, textAlign: 'center', fontWeight: '700', fontSize: '1.1rem' }} placeholder="0"/>
+                </div>
+              </div>
+              {penalesForm.local !== '' && penalesForm.visitante !== '' && penalesForm.local !== penalesForm.visitante && (
+                <div style={{ fontSize: '.78rem', color: '#1e8e3e', fontWeight: '700', textAlign: 'center', marginBottom: '12px' }}>
+                  🏆 Ganador: {parseInt(penalesForm.local) > parseInt(penalesForm.visitante) ? partidoPenales.home?.name : partidoPenales.away?.name}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setPartidoPenales(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                <button onClick={handleGuardarPenales} disabled={guardandoPenales}
+                  style={{ flex: 1, padding: '10px', background: guardandoPenales ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPenales ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                  {guardandoPenales ? 'Guardando...' : 'Guardar penales'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {msg && (
+        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? '#d93025' : '#1e8e3e', color: '#fff', borderRadius: '8px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', boxShadow: '0 4px 12px rgba(0,0,0,.2)' }}>
+          {msg.text}
+        </div>
+      )}
+
 
       {msg && (
         <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? '#d93025' : '#1e8e3e', color: '#fff', borderRadius: '8px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', boxShadow: '0 4px 12px rgba(0,0,0,.2)' }}>
@@ -1195,7 +1867,7 @@ export default function AdminTorneoDetallePage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', flexWrap: 'wrap' }}>
-        {TABS.map(t => (
+        {TABS.filter(t => t.id !== 'finanzas' || finanzasActivas).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
             {t.icon} {t.label}
@@ -1627,7 +2299,7 @@ export default function AdminTorneoDetallePage() {
           )}
 
           {subTab === 'jornada' && (
-            <div>
+            <div style={{ marginTop: '16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><Shuffle size={18} color="#1a73e8"/> Configurar jornada automática</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
@@ -1635,7 +2307,16 @@ export default function AdminTorneoDetallePage() {
                   <div><label style={labelStyle}>Fecha *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
                   <div><label style={labelStyle}>Hora inicio *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
                 </div>
-                <button onClick={generarJornada} style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
+                {grupos.length > 1 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
+                    <input type="checkbox" checked={permitirIntergrupo} onChange={e => setPermitirIntergrupo(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }}/>
+                    Permitir partidos intergrupo cuando un equipo ya enfrentó a todos los de su grupo
+                  </label>
+                )}
+                <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
+                  ℹ️ El sorteo evita repetir cruces ya jugados o programados. Si un equipo no tiene rival nuevo, queda descansando.
+                </div>
+                <button onClick={generarJornada} style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
                   <Shuffle size={16}/> Generar jornada aleatoria
                 </button>
               </div>
@@ -1649,10 +2330,19 @@ export default function AdminTorneoDetallePage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {jornadaGenerada.map((p, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : '#fff' }}>
+                    {jornadaGenerada.map((p, i) => {
+                      const veces = p.descanso ? 0 : vecesEnfrentados(p.local?.id, p.visitante?.id)
+                      return (
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {p.descanso ? (
-                          <div style={{ flex: 1, color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</div>
+                          <div draggable onDragStart={() => handleDragStart(i, 'local')} onDragOver={e => handleDragOver(e, i, 'local')} onDrop={e => handleDrop(e, i, 'local')} onDragEnd={handleDragEnd}
+                            style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent' }}>
+                            <GripVertical size={13} color="#9aa0a6"/>
+                            <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
+                            <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</span>
+                            <span style={{ fontSize: '.65rem', color: '#bdbdbd', marginLeft: 'auto' }}>arrástralo a un partido para ponerlo a jugar</span>
+                          </div>
                         ) : (
                           <>
                             <div draggable onDragStart={() => handleDragStart(i, 'local')} onDragOver={e => handleDragOver(e, i, 'local')} onDrop={e => handleDrop(e, i, 'local')} onDragEnd={handleDragEnd}
@@ -1669,13 +2359,25 @@ export default function AdminTorneoDetallePage() {
                               <GripVertical size={13} color="#9aa0a6"/>
                             </div>
                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                              {p.intergrupo && <span style={{ fontSize: '.65rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>Intergrupo</span>}
                               <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {p.hora}</span>
                               <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre}</span>
+                              <button onClick={() => handleEliminarParejaJornada(i)} title="Eliminar partido — ambos equipos pasan a descansar"
+                                style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
+                                <X size={13}/>
+                              </button>
                             </div>
                           </>
                         )}
+                        </div>
+                        {veces > 0 && (
+                          <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600', paddingLeft: '10px' }}>
+                            ⚠️ Estos equipos ya se enfrentaron {veces} {veces > 1 ? 'veces' : 'vez'} en este torneo — puedes dejarlo igual o arrastrar otro equipo
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -1964,124 +2666,541 @@ export default function AdminTorneoDetallePage() {
       )}
 
       {/* ── TAB ELIMINATORIAS ── */}
+      {/* ── TAB ELIMINATORIAS ── */}
       {tab === 'eliminatorias' && (
         <div>
-          {/* Configuración */}
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>⚡ Configurar eliminatorias</div>
+          {/* Iniciar / reconfigurar */}
+          {bracket.length === 0 ? (
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '40px 24px', textAlign: 'center', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <GitBranch size={40} color="#e8710a" style={{ marginBottom: '10px' }}/>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>Eliminaciones directas</div>
+              <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginBottom: '18px', maxWidth: '420px', margin: '0 auto 18px' }}>
+                Cuando termine la fase de grupos, configura cuántos clasifican, el formato y cómo se arman las llaves. El árbol se va armando solo hasta la final.
+              </div>
+              <button onClick={abrirWizardElim}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 28px', background: '#e8710a', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: '700' }}>
+                ⚡ Iniciar eliminaciones directas
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+              <button onClick={abrirWizardElim}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
+                <Shuffle size={13}/> Reconfigurar eliminatorias
+              </button>
+            </div>
+          )}
 
-            {/* Clasificados */}
-            {grupos.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#5f6368', marginBottom: '8px' }}>Clasificados de grupos</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {getClasificados().map((eq, i) => (
-                    <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f3f4', borderRadius: '20px', padding: '4px 10px 4px 4px' }}>
-                      <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '50%', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
-                      <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden' }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={18}/></div>
-                      <span style={{ fontSize: '.75rem', color: '#202124', fontWeight: '500' }}>{eq.name}</span>
-                      <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{eq.grupo}</span>
+          {/* Asistente de configuración */}
+          {showWizardElim && (() => {
+            const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesElim(numClasifElim)
+            const mejores = participantes.filter(p => p.mejorPerdedor)
+            const parejas = getParejasElim()
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+                onClick={e => e.target === e.currentTarget && setShowWizardElim(false)}>
+                <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '640px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+                  <div style={{ padding: '16px 22px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>⚡ ¿Cómo se juegan las eliminaciones directas?</div>
+                    <button onClick={() => setShowWizardElim(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={20}/></button>
+                  </div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
+
+                    {/* 1. Cupos */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>1. ¿Cuántos equipos clasifican?</div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
+                        {[2, 4, 8, 16].map(n => (
+                          <button key={n} onClick={() => cambiarCuposElim(n)} disabled={n > equipos.length}
+                            style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: n > equipos.length ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '.9rem', border: numClasifElim === n ? '2px solid #e8710a' : '1px solid #dadce0', background: numClasifElim === n ? '#fff4e5' : '#fff', color: n > equipos.length ? '#dadce0' : numClasifElim === n ? '#e8710a' : '#5f6368' }}>
+                            {n}
+                          </button>
+                        ))}
+                        <input type="number" min="2" max="16" step="2" value={numClasifElim}
+                          onChange={e => { const v = parseInt(e.target.value); if (v >= 2 && v <= 16) cambiarCuposElim(v) }}
+                          style={{ ...inputStyle, width: '76px', textAlign: 'center', fontWeight: '700', border: ![2,4,8,16].includes(numClasifElim) ? '2px solid #e8710a' : '1px solid #dadce0' }}/>
+                      </div>
+                      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>
+                        Puede ser cualquier número par (ej: 6, 10, 12). Si en una ronda quedan impares, podrás meter un mejor perdedor o dar pase directo al 1° de la reclasificación.
+                      </div>
+                      {numClasifElim % 2 !== 0 && (
+                        <div style={{ marginTop: '6px', fontSize: '.72rem', color: '#d93025', fontWeight: '600' }}>
+                          ⚠️ El número de clasificados debe ser par para armar las llaves iniciales
+                        </div>
+                      )}
+                      {mejores.length > 0 && (
+                        <div style={{ marginTop: '8px', fontSize: '.72rem', color: '#e8710a', background: '#fff4e5', border: '1px solid #ffd8a8', borderRadius: '8px', padding: '8px 12px' }}>
+                          🎟️ Los cupos se completan con los mejores de la reclasificación (mejor perdedor): {mejores.map(m => m.name).join(', ')}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Formato */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>2. Formato de cada llave</div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => setIdaVuelta(false)}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: !idaVuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: !idaVuelta ? '#e8f0fe' : '#fff', color: !idaVuelta ? '#1a73e8' : '#5f6368' }}>
+                          Partido único
+                        </button>
+                        <button onClick={() => setIdaVuelta(true)}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: idaVuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: idaVuelta ? '#e8f0fe' : '#fff', color: idaVuelta ? '#1a73e8' : '#5f6368' }}>
+                          Ida y vuelta
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3. Cómo se arman las llaves */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>3. ¿Cómo se arman las llaves?</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {[
+                          { v: 'consecutivo', t: 'Por reclasificación: 1° vs 2°, 3° vs 4°...', s: 'Según la tabla de reclasificación' },
+                          { v: 'cruzado',     t: 'Por reclasificación cruzada: 1° vs último, 2° vs penúltimo...', s: 'El mejor contra el peor' },
+                          { v: 'manual',      t: 'Sorteo físico: yo acomodo el orden', s: 'Ordena los equipos según como quedó tu sorteo' },
+                        ].map(op => (
+                          <button key={op.v} onClick={() => { setEstiloLlaves(op.v); if (op.v === 'manual' && ordenManual.length === 0) setOrdenManual(getParticipantesElim(numClasifElim)) }}
+                            style={{ textAlign: 'left', padding: '10px 14px', borderRadius: '10px', cursor: 'pointer', border: estiloLlaves === op.v ? '2px solid #e8710a' : '1px solid #dadce0', background: estiloLlaves === op.v ? '#fff4e5' : '#fff' }}>
+                            <div style={{ fontSize: '.8rem', fontWeight: '600', color: estiloLlaves === op.v ? '#e8710a' : '#202124' }}>{op.t}</div>
+                            <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '2px' }}>{op.s}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 4. Participantes (ordenables si es sorteo físico) */}
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>
+                        4. Participantes {estiloLlaves === 'manual' && <span style={{ fontWeight: '400', color: '#9aa0a6' }}>— usa las flechas para dejarlos como quedó el sorteo</span>}
+                      </div>
+                      <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
+                        {participantes.map((eq, i) => (
+                          <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderBottom: i < participantes.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
+                            <span style={{ fontSize: '.7rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                            <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={20}/></div>
+                            <span style={{ flex: 1, fontSize: '.8rem', fontWeight: '500', color: '#202124' }}>{eq.name}</span>
+                            {eq.mejorPerdedor
+                              ? <span style={{ fontSize: '.62rem', color: '#e8710a', background: '#fff4e5', borderRadius: '10px', padding: '1px 7px', fontWeight: '600' }}>Mejor perdedor</span>
+                              : eq.grupo && <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{eq.grupo}</span>}
+                            {estiloLlaves === 'manual' && (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button onClick={() => moverOrdenManual(i, -1)} disabled={i === 0} style={{ background: '#f1f3f4', border: 'none', borderRadius: '5px', padding: '3px 8px', cursor: i === 0 ? 'not-allowed' : 'pointer', color: i === 0 ? '#dadce0' : '#5f6368', fontSize: '.75rem' }}>↑</button>
+                                <button onClick={() => moverOrdenManual(i, 1)} disabled={i === participantes.length - 1} style={{ background: '#f1f3f4', border: 'none', borderRadius: '5px', padding: '3px 8px', cursor: i === participantes.length - 1 ? 'not-allowed' : 'pointer', color: i === participantes.length - 1 ? '#dadce0' : '#5f6368', fontSize: '.75rem' }}>↓</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {participantes.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Sin equipos con partidos aún</div>}
+                      </div>
+                    </div>
+
+                    {/* 5. Vista previa de llaves */}
+                    {parejas.length > 0 && (
+                      <div style={{ marginBottom: '18px' }}>
+                        <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>5. Así quedan las llaves — {getRondaNombre(parejas.length * 2)}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '8px' }}>
+                          {parejas.map(([a, b], i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '8px 12px' }}>
+                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', flexShrink: 0 }}>Llave {i + 1}</span>
+                              <span style={{ flex: 1, fontSize: '.75rem', fontWeight: '600', color: '#202124', textAlign: 'right' }}>{a?.name}</span>
+                              <span style={{ fontSize: '.68rem', fontWeight: '700', color: '#e8710a' }}>vs</span>
+                              <span style={{ flex: 1, fontSize: '.75rem', fontWeight: '600', color: '#202124' }}>{b?.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 6. Fecha */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                      <div><label style={labelStyle}>Fecha primeros partidos *</label><input type="date" value={fechaElim} onChange={e => setFechaElim(e.target.value)} style={inputStyle}/></div>
+                      <div><label style={labelStyle}>Hora inicio</label><input type="time" value={horaElim} onChange={e => setHoraElim(e.target.value)} style={inputStyle}/></div>
+                    </div>
+
+                    {bracket.length > 0 && (
+                      <div style={{ fontSize: '.72rem', color: '#d93025', background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '8px 12px' }}>
+                        ⚠️ Ya existe un bracket: al crear uno nuevo se borran los partidos de eliminatorias anteriores.
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: '14px 22px', borderTop: '1px solid #e8eaed', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
+                    <button onClick={() => setShowWizardElim(false)} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                    <button onClick={handleGenerarEliminatorias} disabled={generandoElim || !fechaElim || parejas.length < 1 || numClasifElim % 2 !== 0}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 22px', background: !fechaElim || generandoElim || parejas.length < 1 || numClasifElim % 2 !== 0 ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaElim || generandoElim || parejas.length < 1 || numClasifElim % 2 !== 0 ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                      <GitBranch size={15}/> {generandoElim ? 'Creando...' : 'Crear árbol de eliminatorias'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Árbol de eliminatorias */}
+          {bracket.length > 0 && (() => {
+            const est = getEstadoEliminatorias()
+            if (!est) return null
+            const { porFase, fasesExist, actual: faseActualElim, llaves: llavesActual, completa: rondaCompleta, hayEmpates, repechajePendiente, vivos } = est
+            const llaveFinal = porFase['final']?.find(l => !(l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+            const campeon = llaveFinal?.ganador || null
+            const subcampeon = campeon ? (llaveFinal.ganador.id === llaveFinal.teamA.id ? llaveFinal.teamB : llaveFinal.teamA) : null
+            const llaveTercer = porFase['final']?.find(l => (l.matches[0].ronda || '').toLowerCase().includes('tercer'))
+            const tercerPuestoEq = llaveTercer?.ganador || null
+            const esImpar = !repechajePendiente && vivos.length % 2 !== 0 && vivos.length > 3
+            const proximaEsFinal = !repechajePendiente && vivos.length === 2
+            const nombreSiguiente = repechajePendiente
+              ? 'repechaje'
+              : vivos.length === 3
+                ? 'Semifinal (1° vs 2°)'
+                : getRondaNombre(esImpar && modoImpar === 'mejor_perdedor' ? vivos.length + 1 : vivos.length)
+
+            // Columnas del árbol: fases jugadas + placeholders, siempre hasta la final
+            const columnas = []
+            let n = porFase[fasesExist[0]].length
+            for (let idx = FASE_ORDEN.indexOf(fasesExist[0]); idx < FASE_ORDEN.length; idx++) {
+              const f = FASE_ORDEN[idx]
+              if (porFase[f]) {
+                columnas.push({ fase: f, llaves: porFase[f] })
+                n = porFase[f].length
+              } else {
+                n = Math.max(Math.floor(n / 2), 1)
+                columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null) })
+              }
+            }
+
+            return (
+              <div>
+                {/* Campeón */}
+                {campeon && (
+                  <div style={{ background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '14px', padding: '18px 24px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '2rem' }}>🏆</span>
+                      <div style={{ width: '44px', height: '44px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={campeon.logo_url} name={campeon.name} size={44}/></div>
+                      <div>
+                        <div style={{ fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>CAMPEÓN DEL TORNEO</div>
+                        <div style={{ fontWeight: '900', color: '#202124', fontSize: '1.2rem' }}>{campeon.name}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
+                      {subcampeon && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥈 Subcampeón: {subcampeon.name}</span>}
+                      {tercerPuestoEq && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥉 Tercer puesto: {tercerPuestoEq.name}</span>}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px', gap: '10px', flexWrap: 'wrap' }}>
+                      <button onClick={handleGuardarLogrosTorneo} disabled={guardandoLogros}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                        💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
+                      </button>
+                      {(esAdminRol || torneo.premium) && (
+                        <button onClick={handleCrearSiguienteEdicion}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#6c35de', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                          🔄 Crear siguiente edición
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center', marginTop: '6px' }}>
+                      Guarda campeón, subcampeón, tercer puesto y hasta qué fase llegó cada equipo — en el historial del equipo y de cada uno de sus jugadores
+                    </div>
+                  </div>
+                )}
+
+                {/* Generar siguiente ronda */}
+                {rondaCompleta && faseActualElim !== 'final' && (
+                  <div style={{ background: hayEmpates ? '#fce8e6' : '#fff8e1', border: `1px solid ${hayEmpates ? '#fad2cf' : '#ffe082'}`, borderRadius: '12px', padding: '14px 18px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ fontWeight: '700', color: '#202124', fontSize: '.875rem' }}>
+                          {hayEmpates ? '⚠️ Hay llaves empatadas' : repechajePendiente ? '🔁 Toca jugar el repechaje' : `✅ ${FASE_LABEL[faseActualElim]} completada`}
+                        </div>
+                        <div style={{ fontSize: '.75rem', color: hayEmpates ? '#d93025' : '#9aa0a6', marginTop: '2px' }}>
+                          {hayEmpates
+                            ? 'Registra los penales en la planilla del partido empatado para definir el ganador'
+                            : repechajePendiente
+                              ? `${est.perdedores[0]?.name} tiene otra oportunidad: juega contra ${est.byesActuales[0]?.name} por el otro cupo a la final`
+                              : vivos.length === 3
+                                ? `Quedan 3 equipos: el 1° juega contra el 2° de la reclasificación y el perdedor tendrá repechaje contra ${rankPorReclasificacion(vivos)[2]?.name} — el 3° no tiene esa ventaja`
+                                : 'Los ganadores avanzan a la siguiente ronda del árbol'}
+                        </div>
+                      </div>
+                      {!hayEmpates && (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <input type="date" value={fechaRonda} onChange={e => setFechaRonda(e.target.value)} style={{ ...inputStyle, width: 'auto' }}/>
+                          <input type="time" value={horaRonda} onChange={e => setHoraRonda(e.target.value)} style={{ ...inputStyle, width: 'auto' }}/>
+                          <button onClick={handleGenerarSiguienteRonda} disabled={generandoRonda || !fechaRonda}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', background: !fechaRonda || generandoRonda ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaRonda || generandoRonda ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                            → {generandoRonda ? 'Generando...' : `Generar ${nombreSiguiente}`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cantidad impar: elegir cómo resolver */}
+                    {!hayEmpates && esImpar && (
+                      <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#795548' }}>Quedan {vivos.length} equipos (impar). ¿Cómo se resuelve?</div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.78rem', color: '#5f6368' }}>
+                          <input type="radio" checked={modoImpar === 'mejor_perdedor'} onChange={() => setModoImpar('mejor_perdedor')} style={{ cursor: 'pointer' }}/>
+                          🎟️ Entra el mejor perdedor de esta ronda ({rankPorReclasificacion(est.perdedoresElegibles)[0]?.name || '—'}) y quedan {vivos.length + 1}
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.78rem', color: '#5f6368' }}>
+                          <input type="radio" checked={modoImpar === 'bye'} onChange={() => setModoImpar('bye')} style={{ cursor: 'pointer' }}/>
+                          ⬆️ El 1° de la reclasificación ({rankPorReclasificacion(vivos)[0]?.name || '—'}) pasa directo y los otros {vivos.length - 1} juegan
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Tercer puesto junto con la final */}
+                    {!hayEmpates && proximaEsFinal && est.perdedoresElegibles.length >= 2 && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.78rem', color: '#5f6368', marginTop: '10px' }}>
+                        <input type="checkbox" checked={crearTercerPuesto} onChange={e => setCrearTercerPuesto(e.target.checked)} style={{ width: '15px', height: '15px', cursor: 'pointer' }}/>
+                        🥉 Crear también el partido por el tercer puesto ({rankPorReclasificacion(est.perdedoresElegibles)[0]?.name} vs {rankPorReclasificacion(est.perdedoresElegibles)[1]?.name})
+                      </label>
+                    )}
+                  </div>
+                )}
+
+                {/* Árbol */}
+                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>🏆 Árbol de eliminatorias</div>
+                <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
+                  {columnas.map(col => (
+                    <div key={col.fase} style={{ minWidth: '235px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.5px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                        {FASE_LABEL[col.fase].toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
+                        {col.llaves.map((ll, i) => ll ? (
+                          <div key={i} onClick={() => {
+                            const pend = ll.matches.find(m => m.status !== 'finished')
+                            if (pend) setPlanillaPartido(pend)
+                            else if (ll.terminada && !ll.ganador) { setPenalesForm({ local: '', visitante: '' }); setPartidoPenales(ll.matches[ll.matches.length - 1]) }
+                            else setModalPartidoAdmin(ll.matches[ll.matches.length - 1])
+                          }}
+                            style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}>
+                            {(ll.matches[0].ronda || '').toLowerCase().includes('repechaje') && (
+                              <div style={{ padding: '3px 12px', background: '#f3e8fd', fontSize: '.62rem', fontWeight: '800', color: '#9955ff', letterSpacing: '1px' }}>🔁 REPECHAJE</div>
+                            )}
+                            {(ll.matches[0].ronda || '').toLowerCase().includes('tercer') && (
+                              <div style={{ padding: '3px 12px', background: '#fff4e5', fontSize: '.62rem', fontWeight: '800', color: '#cd7f32', letterSpacing: '1px' }}>🥉 TERCER PUESTO</div>
+                            )}
+                            {[{ team: ll.teamA, goles: ll.golesA }, { team: ll.teamB, goles: ll.golesB }].map(({ team, goles }, ti) => {
+                              const esGanador  = ll.ganador?.id === team.id
+                              const esPerdedor = ll.terminada && ll.ganador && !esGanador
+                              return (
+                                <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: esGanador ? '#e6f4ea' : '#fff', opacity: esPerdedor ? .45 : 1, borderBottom: ti === 0 ? '1px solid #f1f3f4' : 'none' }}>
+                                  <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={team.logo_url} name={team.name} size={24}/></div>
+                                  <span style={{ flex: 1, fontWeight: esGanador ? '800' : '500', color: '#202124', fontSize: '.8rem', textDecoration: esPerdedor ? 'line-through' : 'none' }}>{team.name}</span>
+                                  <span style={{ fontWeight: '900', fontSize: '1rem', color: esGanador ? '#1e8e3e' : '#9aa0a6' }}>
+                                    {ll.matches.some(m => m.status === 'finished') ? goles : '—'}
+                                  </span>
+                                  {esGanador && <span style={{ fontSize: '.75rem' }}>✓</span>}
+                                </div>
+                              )
+                            })}
+                            <div style={{ padding: '5px 12px', background: '#f8f9fa', fontSize: '.65rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
+                              {!ll.terminada
+                                ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' ' + new Date(ll.matches[0].played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : 'Por jugar'}${ll.matches[0].location ? ' · 📍 ' + ll.matches[0].location : ''} · toca para planilla`
+                                : !ll.ganador
+                                  ? '⚠️ Empate — toca aquí para registrar los penales'
+                                  : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
+                            </div>
+                            {ll.matches.some(m => m.status !== 'finished') && (
+                              <div style={{ padding: '5px 10px', background: '#f8f9fa', borderTop: '1px solid #f1f3f4', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {ll.matches.map((m, mi) => m.status !== 'finished' && (
+                                  <button key={m.id}
+                                    onClick={e => { e.stopPropagation(); const fecha = m.played_at ? m.played_at.substring(0, 10) : ''; const hora = m.played_at ? m.played_at.substring(11, 16) : ''; setFormEditPartido({ played_at: fecha, hora, location: m.location || '', matchday: m.matchday || '', fase: m.fase || 'grupo' }); setEditandoPartidoForm(m) }}
+                                    style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 9px', cursor: 'pointer', color: '#5f6368', fontSize: '.65rem' }}>
+                                    ✏️ {ll.matches.length > 1 ? (mi === 0 ? 'Ida' : 'Vuelta') : 'Fecha/cancha'}
+                                  </button>
+                                ))}
+                                {!ll.matches.some(m => m.status === 'finished') && (
+                                  <button onClick={e => { e.stopPropagation(); setEquipoSale(''); setEquipoEntra(''); setReemplazoLlave(ll) }}
+                                    style={{ background: '#fff', border: '1px solid #ffd8a8', borderRadius: '6px', padding: '3px 9px', cursor: 'pointer', color: '#e8710a', fontSize: '.65rem' }}>
+                                    🔄 Cambiar equipo
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div key={i} style={{ border: '1px dashed #dadce0', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#bdbdbd', fontSize: '.72rem', background: '#fafafa' }}>
+                            Por definir
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
+
+                  {/* Columna campeón */}
+                  <div style={{ minWidth: '170px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.5px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
+                      🏆 CAMPEÓN
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                      {campeon ? (
+                        <div style={{ width: '100%', background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '8px', overflow: 'hidden', margin: '0 auto 8px' }}><TeamLogo logo_url={campeon.logo_url} name={campeon.name} size={40}/></div>
+                          <div style={{ fontWeight: '900', color: '#202124', fontSize: '.85rem' }}>{campeon.name}</div>
+                        </div>
+                      ) : (
+                        <div style={{ width: '100%', border: '1px dashed #f9a825', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#f9a825', fontSize: '.72rem', background: '#fffdf5' }}>
+                          Por definir
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* ── TAB FINANZAS ── */}
+      {tab === 'finanzas' && finanzasActivas && (() => {
+        const fin = calcFinanzas()
+        const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos')
+        return (
+          <div>
+            {/* Resumen */}
+            {fin.fc.llevar_cuentas && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  { label: '💵 Ingresos esperados', value: fmt(fin.ingresosEsperados), color: '#1a73e8' },
+                  { label: '✅ Recaudado',          value: fmt(fin.recaudado),          color: '#1e8e3e' },
+                  { label: '📤 Gastos',             value: fmt(fin.gastos),             color: '#d93025' },
+                  { label: '📈 Ganancia esperada',  value: fmt(fin.gananciaEsperada),   color: '#6c35de' },
+                  { label: '💰 Ganancia actual',    value: fmt(fin.gananciaActual),     color: fin.gananciaActual >= 0 ? '#1e8e3e' : '#d93025' },
+                ].map(c => (
+                  <div key={c.label} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>{c.label}</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: '800', color: c.color }}>{c.value}</div>
+                  </div>
+                ))}
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-              <div>
-                <label style={labelStyle}>Tipo de emparejamiento</label>
-                <select value={tipoSorteo} onChange={e => setTipoSorteo(e.target.value)} style={inputStyle}>
-                  <option value="tabla">Por tabla (1° vs último...)</option>
-                  <option value="sorteo">Sorteo aleatorio</option>
-                </select>
+            {/* Gastos detalle */}
+            {fin.fc.llevar_cuentas && (
+              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
+                <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
+                <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
+                <span>Los cobros a equipos y gastos se calculan automáticamente con cada partido jugado o W.</span>
               </div>
-              <div>
-                <label style={labelStyle}>Formato</label>
-                <select value={idaVuelta ? 'ida_vuelta' : 'directa'} onChange={e => setIdaVuelta(e.target.value === 'ida_vuelta')} style={inputStyle}>
-                  <option value="directa">Eliminación directa</option>
-                  <option value="ida_vuelta">Ida y vuelta</option>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Fecha partidos</label>
-                <input type="date" value={fechaElim} onChange={e => setFechaElim(e.target.value)} style={inputStyle}/>
-              </div>
-              <div>
-                <label style={labelStyle}>Hora inicio</label>
-                <input type="time" value={horaElim} onChange={e => setHoraElim(e.target.value)} style={inputStyle}/>
-              </div>
-            </div>
+            )}
 
-            <button onClick={handleGenerarEliminatorias} disabled={generandoElim || !fechaElim}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 20px', background: !fechaElim || generandoElim ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaElim || generandoElim ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600' }}>
-              <GitBranch size={16}/> {generandoElim ? 'Generando...' : 'Generar bracket de eliminatorias'}
-            </button>
-          </div>
-
-          {/* Bracket */}
-          {bracket.length > 0 && (
-            <div>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>🏆 Bracket de eliminatorias</div>
-              {(() => {
-                const rondas = [...new Set(bracket.map(p => p.ronda))].filter(Boolean)
-                return rondas.map(ronda => (
-                  <div key={ronda} style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                      <div style={{ height: '2px', width: '20px', background: '#e8710a', borderRadius: '2px' }}/>
-                      <span style={{ fontSize: '.72rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>{ronda.toUpperCase()}</span>
+            {/* Cuentas por equipo */}
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+             <div style={{ minWidth: '760px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
+                <div>EQUIPO</div>
+                <div style={{ textAlign: 'right' }}>INSCRIP.</div>
+                <div style={{ textAlign: 'right' }}>ARBITRAJES</div>
+                <div style={{ textAlign: 'right' }}>W/MULTAS</div>
+                <div style={{ textAlign: 'right' }}>TARJETAS</div>
+                <div style={{ textAlign: 'right' }}>PAGADO</div>
+                <div style={{ textAlign: 'right' }}>SALDO</div>
+                <div/>
+              </div>
+              {fin.filas.map((r, i) => (
+                <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: r.tarjetasDetalle.length > 0 ? 'pointer' : 'default' }}
+                    onClick={() => r.tarjetasDetalle.length > 0 && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={24}/></div>
+                      <span style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</span>
+                      {r.tarjetasDetalle.length > 0 && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '10px' }}>
-                      {bracket.filter(p => p.ronda === ronda).map(p => {
-                        const jugado = p.status === 'finished'
-                        const ganadorLocal = jugado && p.home_score > p.away_score
-                        const ganadorVis   = jugado && p.away_score > p.home_score
-                        return (
-                          <div key={p.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                            {/* Local */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: ganadorLocal ? '#e6f4ea' : '#fff', borderBottom: '1px solid #f1f3f4' }}>
-                              <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={28}/></div>
-                              <span style={{ flex: 1, fontWeight: ganadorLocal ? '700' : '500', color: '#202124', fontSize: '.875rem' }}>{p.home?.name}</span>
-                              {jugado && <span style={{ fontWeight: '900', fontSize: '1.2rem', color: ganadorLocal ? '#1e8e3e' : '#9aa0a6' }}>{p.home_score}</span>}
-                              {ganadorLocal && <span style={{ fontSize: '.8rem' }}>✓</span>}
-                            </div>
-                            {/* Visitante */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: ganadorVis ? '#e6f4ea' : '#fff' }}>
-                              <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={28}/></div>
-                              <span style={{ flex: 1, fontWeight: ganadorVis ? '700' : '500', color: '#202124', fontSize: '.875rem' }}>{p.away?.name}</span>
-                              {jugado && <span style={{ fontWeight: '900', fontSize: '1.2rem', color: ganadorVis ? '#1e8e3e' : '#9aa0a6' }}>{p.away_score}</span>}
-                              {ganadorVis && <span style={{ fontSize: '.8rem' }}>✓</span>}
-                            </div>
-                            {/* Footer */}
-                            <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8f9fa' }}>
-                              <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>
-                                {p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'}
-                                {p.location && ` · 📍 ${p.location}`}
-                              </span>
-                              {!jugado && (
-                                <button onClick={() => setPlanillaPartido(p)}
-                                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', background: '#1a73e8', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                                  <Check size={12}/> Resultado
-                                </button>
-                              )}
-                              {jugado && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>✓ Jugado</span>}
-                            </div>
-                          </div>
-                        )
-                      })}
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.inscripcion) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.arbitrajes) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: r.multas > 0 ? '#d93025' : '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
+                    <div style={{ textAlign: 'right' }}>
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setPagoModal(r.equipo) }}
+                        style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '600' }}>
+                        💵 Pago
+                      </button>
                     </div>
                   </div>
-                ))
-              })()}
+                  {equipoFinAbierto === r.equipo.id && r.tarjetasDetalle.length > 0 && (
+                    <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa' }}>
+                      <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>TARJETAS POR JUGADOR</div>
+                      {r.tarjetasDetalle.map(j => (
+                        <div key={j.player_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368', padding: '3px 0' }}>
+                          <span style={{ flex: 1, color: '#202124' }}>{j.nombre}</span>
+                          {j.am > 0 && <span>🟨 ×{j.am}</span>}
+                          {j.az > 0 && <span>🟦 ×{j.az}</span>}
+                          {j.rj > 0 && <span>🟥 ×{j.rj}</span>}
+                          <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(j.valor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {fin.filas.length === 0 && <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Sin equipos en el torneo</div>}
+             </div>
             </div>
-          )}
 
-          {bracket.length === 0 && (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
-              <GitBranch size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
-              <div>Genera el bracket de eliminatorias arriba</div>
-              <div style={{ fontSize: '.78rem', marginTop: '4px' }}>Primero finaliza la fase de grupos en el tab Grupos</div>
+            {/* Pagos registrados */}
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Pagos registrados</div>
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              {pagosRegistrados.length === 0 ? (
+                <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay pagos registrados — usa el botón 💵 Pago de cada equipo</div>
+              ) : pagosRegistrados.map((mv, i) => (
+                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                  <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos')}</span>
+                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'pago_tarjetas' ? '#e8710a' : '#1a73e8', background: mv.tipo === 'pago_tarjetas' ? '#fff4e5' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : 'Cargos'}</span>
+                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: '#1e8e3e' }}>{fmt(mv.monto)}</span>
+                  <button onClick={() => handleEliminarPago(mv)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#d93025', display: 'flex' }}><X size={12}/></button>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )
+      })()}
+
+      {/* Modal registrar pago */}
+      {pagoModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setPagoModal(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>💵 Registrar pago — {pagoModal.name}</div>
+              <button onClick={() => setPagoModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={labelStyle}>¿Qué paga?</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_tarjetas' }))}
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_tarjetas' ? '2px solid #e8710a' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_tarjetas' ? '#fff4e5' : '#fff', color: pagoForm.tipo === 'pago_tarjetas' ? '#e8710a' : '#5f6368' }}>
+                    💳 Tarjetas
+                  </button>
+                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_cargos' }))}
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_cargos' ? '2px solid #1a73e8' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_cargos' ? '#e8f0fe' : '#fff', color: pagoForm.tipo === 'pago_cargos' ? '#1a73e8' : '#5f6368' }}>
+                    🧾 Otros cargos
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={labelStyle}>Monto ($) *</label>
+                <input type="number" min="0" value={pagoForm.monto} onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>Concepto (opcional)</label>
+                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder="Ej: pago tarjetas jornada 3"/>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                <button onClick={handleRegistrarPago} disabled={guardandoPago}
+                  style={{ flex: 1, padding: '10px', background: guardandoPago ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPago ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                  {guardandoPago ? 'Guardando...' : 'Registrar pago'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

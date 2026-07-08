@@ -89,6 +89,9 @@ export default function AdminJugadorDetallePage() {
   const [errMem,        setErrMem]        = useState('')
   const [formJugador,   setFormJugador]   = useState({})
   const [guardandoForm, setGuardandoForm] = useState(false)
+  const [sanciones,        setSanciones]        = useState([])
+  const [formSancion,      setFormSancion]      = useState({ motivo: '', duracion: '8' })
+  const [guardandoSancion, setGuardandoSancion] = useState(false)
 
   useEffect(() => { fetchTodo() }, [id])
 
@@ -99,9 +102,44 @@ export default function AdminJugadorDetallePage() {
 
   async function fetchTodo() {
     setLoading(true)
-    await Promise.all([fetchJugador(), fetchStats(), fetchTorneos()])
+    await Promise.all([fetchJugador(), fetchStats(), fetchTorneos(), fetchSanciones()])
     setLoading(false)
   }
+
+  async function fetchSanciones() {
+    try {
+      const { data } = await supabase.from('sanciones').select('*').eq('player_id', id).order('created_at', { ascending: false })
+      setSanciones(data || [])
+    } catch { setSanciones([]) }
+  }
+
+  async function handleCrearSancion() {
+    if (!formSancion.motivo.trim()) return showMsg('Escribe el motivo de la sanción', 'error')
+    setGuardandoSancion(true)
+    let fecha_fin = null
+    if (formSancion.duracion !== 'siempre') {
+      const f = new Date()
+      f.setMonth(f.getMonth() + parseInt(formSancion.duracion))
+      fecha_fin = f.toISOString()
+    }
+    const { error } = await supabase.from('sanciones').insert({
+      player_id: id, tournament_id: null, motivo: formSancion.motivo.trim(), fecha_fin, activa: true,
+    })
+    setGuardandoSancion(false)
+    if (error) return showMsg('Error al sancionar (¿ejecutaste migracion_sanciones.sql?)', 'error')
+    showMsg('Jugador sancionado ⛔ — aplica en todos los torneos')
+    setFormSancion({ motivo: '', duracion: '8' })
+    fetchSanciones()
+  }
+
+  async function handleLevantarSancion(s) {
+    if (!confirm('¿Levantar esta sanción? El jugador podrá volver a jugar.')) return
+    await supabase.from('sanciones').update({ activa: false }).eq('id', s.id)
+    showMsg('Sanción levantada ✓')
+    fetchSanciones()
+  }
+
+  const sancionesActivas = sanciones.filter(s => s.activa && (!s.fecha_fin || new Date(s.fecha_fin) > new Date()))
 
   async function fetchJugador() {
     const { data } = await supabase.from('players').select('*').eq('id', id).single()
@@ -259,11 +297,12 @@ export default function AdminJugadorDetallePage() {
   }
 
   const TABS = [
-    { id: 'resumen', label: 'Resumen'    },
-    { id: 'editar',  label: '✏️ Editar'  },
-    { id: 'stats',   label: 'Stats'      },
-    { id: 'torneos', label: 'Torneos'    },
-    { id: 'tarjeta', label: 'Tarjeta'    },
+    { id: 'resumen',   label: 'Resumen'    },
+    { id: 'editar',    label: '✏️ Editar'  },
+    { id: 'stats',     label: 'Stats'      },
+    { id: 'torneos',   label: 'Torneos'    },
+    { id: 'tarjeta',   label: 'Tarjeta'    },
+    { id: 'sanciones', label: sancionesActivas.length > 0 ? `⛔ Sanciones (${sancionesActivas.length})` : '⛔ Sanciones' },
   ]
 
   const estadoColor = activo ? '#1e8e3e' : vencida && jugador.user_id ? '#d93025' : porVencer ? '#e8710a' : '#9aa0a6'
@@ -655,6 +694,81 @@ export default function AdminJugadorDetallePage() {
             <span>Tarjeta activa: <b style={{ color: '#202124' }}>{jugador.card_type || 'nivel1_verde'}</b></span>
             <span>Tarjetas vistas: <b style={{ color: '#1a73e8' }}>{(jugador.tarjetas_vistas || []).length}</b></span>
           </div>
+        </div>
+      )}
+
+      {/* SANCIONES */}
+      {tab === 'sanciones' && (
+        <div>
+          {sancionesActivas.length > 0 && (
+            <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px' }}>
+              <div style={{ fontWeight: '800', color: '#d93025', fontSize: '.9rem', marginBottom: '8px' }}>⛔ JUGADOR SANCIONADO — no puede jugar en ningún torneo</div>
+              {sancionesActivas.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderTop: '1px solid #fad2cf', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <div style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{s.motivo || 'Sin motivo registrado'}</div>
+                    <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '2px' }}>
+                      Desde {new Date(s.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })} ·{' '}
+                      {s.fecha_fin ? `hasta ${new Date(s.fecha_fin).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}` : 'PARA SIEMPRE'}
+                    </div>
+                  </div>
+                  <button onClick={() => handleLevantarSancion(s)}
+                    style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem', fontWeight: '600', flexShrink: 0 }}>
+                    Levantar sanción
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>⛔ Sancionar jugador</div>
+            <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '14px' }}>
+              Para faltas graves (pelear, golpear, etc.). Aplica en <b>todos los torneos</b>: no aparecerá disponible en ninguna planilla mientras dure la sanción.
+              La suspensión automática de 1 fecha por tarjeta roja no se registra aquí — esa se aplica y se levanta sola.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+              <div>
+                <label style={{ fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Motivo *</label>
+                <input value={formSancion.motivo} onChange={e => setFormSancion(f => ({ ...f, motivo: e.target.value }))}
+                  style={{ width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', fontSize: '.875rem', boxSizing: 'border-box' }}
+                  placeholder="Ej: agresión a un rival en el partido del 5 de julio"/>
+              </div>
+              <div>
+                <label style={{ fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Duración</label>
+                <select value={formSancion.duracion} onChange={e => setFormSancion(f => ({ ...f, duracion: e.target.value }))}
+                  style={{ width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', fontSize: '.875rem', boxSizing: 'border-box' }}>
+                  <option value="1">1 mes</option>
+                  <option value="2">2 meses</option>
+                  <option value="3">3 meses</option>
+                  <option value="6">6 meses</option>
+                  <option value="8">8 meses</option>
+                  <option value="12">1 año</option>
+                  <option value="24">2 años</option>
+                  <option value="siempre">⛔ Para siempre</option>
+                </select>
+              </div>
+            </div>
+            <button onClick={handleCrearSancion} disabled={guardandoSancion}
+              style={{ padding: '10px 24px', background: guardandoSancion ? '#dadce0' : '#d93025', border: 'none', borderRadius: '8px', cursor: guardandoSancion ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+              {guardandoSancion ? 'Guardando...' : '⛔ Aplicar sanción'}
+            </button>
+          </div>
+
+          {sanciones.filter(s => !sancionesActivas.includes(s)).length > 0 && (
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <div style={{ padding: '12px 20px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontWeight: '700', fontSize: '.78rem', color: '#5f6368' }}>HISTORIAL DE SANCIONES</div>
+              {sanciones.filter(s => !sancionesActivas.includes(s)).map((s, i, arr) => (
+                <div key={s.id} style={{ padding: '10px 20px', borderBottom: i < arr.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                  <div style={{ fontSize: '.82rem', color: '#202124' }}>{s.motivo || 'Sin motivo'}</div>
+                  <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '2px' }}>
+                    {new Date(s.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })} ·{' '}
+                    {!s.activa ? 'Levantada' : 'Cumplida'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

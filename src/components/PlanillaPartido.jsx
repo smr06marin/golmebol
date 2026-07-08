@@ -202,6 +202,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [showSuggest1,       setShowSuggest1]       = useState(false)
   const [showSuggest2,       setShowSuggest2]       = useState(false)
   const [jugadoresLocal,     setJugadoresLocal]     = useState([])
+  const [sancionados,        setSancionados]        = useState({}) // player_id -> motivo
   const [jugadoresVisitante, setJugadoresVisitante] = useState([])
   const [torneo,             setTorneo]             = useState(null)
   const [guardandoDB,        setGuardandoDB]        = useState(false)
@@ -314,8 +315,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     // Cargar árbitros registrados en BD
     supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name').then(({ data }) => {
       setArbitrosReg(data || [])
-      // Precargar árbitros asignados al partido si no hay snap local
-      if (!snap) {
+      // Precargar árbitros asignados al partido si no hay planilla guardada localmente
+      let haySnapLocal = false
+      try { haySnapLocal = !!localStorage.getItem(localKey) } catch { haySnapLocal = false }
+      if (!haySnapLocal) {
         if (partido.arbitro1_id) { const a = (data||[]).find(x=>x.id===partido.arbitro1_id); if(a) setArbitro1(a.name) }
         if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) setArbitro2(a.name) }
         if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(a.name) }
@@ -427,6 +430,49 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const applyTarjetas = (jugs, statsArr) => jugs.map(j => { const s = statsArr.find(st => st.player_id === j.id); if (!s) return j; return { ...j, amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, faltasPeriodo: Array(s.fouls || 0).fill(1) } })
       jugsLocalBase = applyTarjetas(jugsLocalBase, stats.filter(s => s.team_id === partido.home_team_id))
       jugsVisBase   = applyTarjetas(jugsVisBase,   stats.filter(s => s.team_id === partido.away_team_id))
+    }
+
+    // ── SANCIONES ─────────────────────────────────────
+    // 1) Roja en el último partido jugado del equipo → sancionado esta fecha (se
+    //    levanta sola al terminar este partido, porque deja de ser el último).
+    // 2) Sanciones manuales activas (aplican a todos los torneos).
+    if (!yaJugado) {
+      const mapSanc = {}
+      try {
+        for (const teamId of [partido.home_team_id, partido.away_team_id]) {
+          const { data: ult } = await supabase.from('matches')
+            .select('id')
+            .eq('tournament_id', partido.tournament_id)
+            .eq('status', 'finished')
+            .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+            .neq('id', partido.id)
+            .order('played_at', { ascending: false })
+            .limit(1)
+          if (ult && ult[0]) {
+            const { data: rojas } = await supabase.from('player_match_stats')
+              .select('player_id')
+              .eq('match_id', ult[0].id)
+              .eq('team_id', teamId)
+              .gt('red_cards', 0)
+            ;(rojas || []).forEach(r => { mapSanc[r.player_id] = '🟥 Tarjeta roja en el partido anterior — cumple 1 fecha' })
+          }
+        }
+        const idsJug = [...jugsLocalBase, ...jugsVisBase].map(j => j.id).filter(Boolean)
+        if (idsJug.length > 0) {
+          const { data: sanc } = await supabase.from('sanciones')
+            .select('player_id, motivo, fecha_fin')
+            .eq('activa', true)
+            .in('player_id', idsJug)
+          const ahora = new Date()
+          ;(sanc || []).forEach(s => {
+            if (s.fecha_fin && new Date(s.fecha_fin) < ahora) return
+            mapSanc[s.player_id] = `⛔ ${s.motivo || 'Sancionado'} — ${s.fecha_fin ? 'hasta ' + new Date(s.fecha_fin).toLocaleDateString('es-CO') : 'sanción permanente'}`
+          })
+        }
+      } catch (e) { console.error('sanciones:', e) }
+      setSancionados(mapSanc)
+    } else {
+      setSancionados({})
     }
 
     let restaurado = false
@@ -779,19 +825,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             const repetido = numeroRepetido(equipo, j.numero, idx)
             const esPortero = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
             const esMVP = j.id && j.id === mvpId
+            const sancion = j.id ? sancionados[j.id] : null
             return (
-              <tr key={idx} style={{ height: '17px', background: esMVP ? '#fff8e1' : 'transparent' }}>
+              <tr key={idx} title={sancion || ''} style={{ height: '17px', background: sancion ? '#fce8e6' : esMVP ? '#fff8e1' : 'transparent', opacity: sancion ? .75 : 1 }}>
                 <td style={cell}><input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} style={inp}/></td>
-                <td style={{ ...cellL, background: esMVP ? '#fff59d' : (colorEquipo || '#1a3a8a') + '35' }}>
-                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
-                  {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
-                  {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
+                <td style={{ ...cellL, background: sancion ? '#fad2cf' : esMVP ? '#fff59d' : (colorEquipo || '#1a3a8a') + '35' }}>
+                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} style={{ ...inpL, fontWeight: '700', color: '#111', textDecoration: sancion ? 'line-through' : 'none' }}/>
+                  {sancion   && <span style={{ fontSize: '6px', color: '#d93025', fontWeight: '800' }}> ⛔SANCIONADO</span>}
+                  {!sancion && esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
+                  {!sancion && esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                 </td>
-                <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+                {sancion
+                  ? <td style={{ ...cell, background: '#d93025' }}><span style={{ color: '#fff', fontSize: '6px', fontWeight: '800' }}>SANC</span></td>
+                  : <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>}
                 {[0,1,2,3,4].map(n => { const tF = faltas.length > n; return <td key={n} style={{ ...cell, background: tF ? '#e0e0e0' : 'transparent' }}>{tF && <span style={{ color: '#111', fontWeight: '700' }}>{n+1}</span>}</td> })}
-                <td style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'amarilla', !j.amarilla)}><span style={{ color: j.amarilla ? '#111' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'azul', !j.azul)}><span style={{ color: j.azul ? '#fff' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: 'pointer' }} onClick={() => updateJugador(equipo, idx, 'roja', !j.roja)}><span style={{ color: j.roja ? '#fff' : 'transparent' }}>✓</span></td>
+                <td style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'amarilla', !j.amarilla)}><span style={{ color: j.amarilla ? '#111' : 'transparent' }}>✓</span></td>
+                <td style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'azul', !j.azul)}><span style={{ color: j.azul ? '#fff' : 'transparent' }}>✓</span></td>
+                <td style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'roja', !j.roja)}><span style={{ color: j.roja ? '#fff' : 'transparent' }}>✓</span></td>
                 <td style={{ ...cell, background: g1 ? (colorEquipo || '#1a3a8a') : 'transparent', color: g1 ? '#fff' : '#111', fontWeight: '700' }}>{g1||''}</td>
                 <td style={{ ...cell, background: g2 ? (colorEquipo || '#1a3a8a') : 'transparent', color: g2 ? '#fff' : '#111', fontWeight: '700' }}>{g2||''}</td>
                 <td style={{ ...cell, background: (g1+g2) ? (colorEquipo || '#1a3a8a') : 'transparent', color: (g1+g2) ? '#fff' : '#111', fontWeight: '900' }}>{(g1+g2)||''}</td>
