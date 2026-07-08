@@ -31,6 +31,7 @@ const PlayerNoticiasPage      = lazy(() => import('./pages/PlayerNoticiasPage'))
 const PlayerHistorialPage     = lazy(() => import('./pages/PlayerHistorialPage'))
 const TorneoPublicoPage       = lazy(() => import('./pages/TorneoPublicoPage'))
 const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
+const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
 const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
 const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
 const ArbitroPerfilPage       = lazy(() => import('./pages/ArbitroPerfilPage'))
@@ -150,6 +151,7 @@ export default function App() {
           {/* Inicio público */}
           <Route path="/" element={<RecordsPage />} />
           <Route path="/records" element={<RecordsPage />} />
+          <Route path="/test-tarjetas" element={<TestTarjetas/>}/>
 
           {/* Login admin */}
           <Route path="/login" element={user ? <Navigate to="/admin" replace/> : <LoginPage/>}/>
