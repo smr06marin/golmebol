@@ -249,6 +249,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   const [firmaModal, setFirmaModal] = useState(null)
   const [firmas,     setFirmas]     = useState({ capitanLocal: null, capitanVisitante: null, arbitro1: null, arbitro2: null, anotador: null })
+  const [avisoFirmas,    setAvisoFirmas]    = useState(null) // árbitros que faltan por firmar
+  const [avisoAcumulado, setAvisoAcumulado] = useState(null) // jugador que completó sus faltas
 
   const CUERPO_ROLES = ['TECNICO', 'A. TECNICO', 'MASAJISTA', 'MEDICO', 'P. FISICO']
   const [cuerpoLocal, setCuerpoLocal] = useState(CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
@@ -286,8 +288,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             try {
               const ctx = new (window.AudioContext || window.webkitAudioContext)()
               const beep = (freq, start, dur) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = freq; o.start(ctx.currentTime + start); o.stop(ctx.currentTime + start + dur); g.gain.setValueAtTime(0.3, ctx.currentTime + start); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur) }
-              beep(880, 0, 0.3); beep(880, 0.4, 0.3); beep(1100, 0.8, 0.6)
+              beep(880, 0, 0.3); beep(880, 0.4, 0.3); beep(1100, 0.8, 0.6); beep(880, 1.5, 0.3); beep(1100, 1.9, 0.8)
             } catch(e) {}
+            // Vibración en celulares: fin del tiempo
+            try { if (navigator.vibrate) navigator.vibrate([500, 150, 500, 150, 900]) } catch(e) {}
           }
           return next
         })
@@ -622,9 +626,22 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     onClose()
   }
 
+  // Árbitros del partido que aún no han firmado la planilla
+  function firmasFaltantes() {
+    const faltan = []
+    if (arbitro1 && !firmas.arbitro1) faltan.push(arbitro1)
+    if (arbitro2 && !firmas.arbitro2) faltan.push(arbitro2)
+    return faltan
+  }
+
   function handleCerrar() {
-    if (hayCambios && partido.status !== 'finished') {
-      if (!confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return
+    if (partido.status !== 'finished') {
+      // La firma de los árbitros que pitaron es obligatoria para cerrar
+      const faltan = firmasFaltantes()
+      if (faltan.length > 0 && hayCambios) { setAvisoFirmas(faltan); return }
+      if (hayCambios) {
+        if (!confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return
+      }
     }
     // Limpiar localStorage
     try { localStorage.removeItem(`planilla_${partido.id}`) } catch(e) {}
@@ -638,6 +655,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       onClose()
       return
     }
+    // La firma de los árbitros que pitaron es obligatoria antes de guardar
+    const faltan = firmasFaltantes()
+    if (faltan.length > 0) { setAvisoFirmas(faltan); return }
     setShowMVP(true)
   }
 
@@ -672,7 +692,16 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   function addFaltaAJugador(equipo, numero) {
     const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
-    s(prev => prev.map(j => String(j.numero) !== String(numero) ? j : { ...j, faltasPeriodo: [...(j.faltasPeriodo || []), periodo] }))
+    s(prev => prev.map(j => {
+      if (String(j.numero) !== String(numero)) return j
+      const fp = [...(j.faltasPeriodo || []), periodo]
+      // Al completar 5 faltas personales: aviso emergente + vibración
+      if (fp.length === 5) {
+        setAvisoAcumulado({ nombre: j.nombre || `Jugador #${numero}`, numero })
+        try { if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 300]) } catch(e) {}
+      }
+      return { ...j, faltasPeriodo: fp }
+    }))
   }
   function quitarFaltaDeJugador(equipo, numero, per) {
     const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
@@ -756,13 +785,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1), esUl = ul === slotIdx
     const puedeClic = puedeAbrirGol(goles, slotIdx)
     return (
-      <td style={{ border: B, padding: '1px 2px', position: 'relative', verticalAlign: 'middle', background: (colorEquipo || '#1a3a8a') + '30' }}>
+      <td style={{ border: B, padding: '1px 2px', position: 'relative', verticalAlign: 'middle', background: gol ? (gol.periodo === 2 ? ROJO + '45' : AZUL + '45') : (colorEquipo || '#1a3a8a') + '30' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
           <span style={{ fontSize: '8px', color: '#111', minWidth: '9px', fontWeight: '700' }}>{num}</span>
           {gol ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flex: 1 }} onDoubleClick={() => { if (esUl) eliminarGol(equipo, slotIdx) }} title={esUl ? 'Doble click para eliminar' : ''}>
               <span style={{ fontWeight: '900', fontSize: '10px', color: '#111' }}>#{gol.numero}</span>
-              <span style={{ fontSize: '8px', color: '#333' }}>{gol.minuto}</span>
+              <span style={{ fontSize: '8px', color: '#111' }}>{gol.minuto}</span>
               {esUl && <span style={{ marginLeft: 'auto', color: '#aaa', fontSize: '6px' }}>2x✕</span>}
             </div>
           ) : puedeClic ? (
@@ -838,13 +867,40 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 {sancion
                   ? <td style={{ ...cell, background: '#d93025' }}><span style={{ color: '#fff', fontSize: '6px', fontWeight: '800' }}>SANC</span></td>
                   : <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>}
-                {[0,1,2,3,4].map(n => { const tF = faltas.length > n; return <td key={n} style={{ ...cell, background: tF ? '#e0e0e0' : 'transparent' }}>{tF && <span style={{ color: '#111', fontWeight: '700' }}>{n+1}</span>}</td> })}
-                <td style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'amarilla', !j.amarilla)}><span style={{ color: j.amarilla ? '#111' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'azul', !j.azul)}><span style={{ color: j.azul ? '#fff' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }} onClick={() => !sancion && updateJugador(equipo, idx, 'roja', !j.roja)}><span style={{ color: j.roja ? '#fff' : 'transparent' }}>✓</span></td>
-                <td style={{ ...cell, background: g1 ? (colorEquipo || '#1a3a8a') : 'transparent', color: g1 ? '#fff' : '#111', fontWeight: '700' }}>{g1||''}</td>
-                <td style={{ ...cell, background: g2 ? (colorEquipo || '#1a3a8a') : 'transparent', color: g2 ? '#fff' : '#111', fontWeight: '700' }}>{g2||''}</td>
-                <td style={{ ...cell, background: (g1+g2) ? (colorEquipo || '#1a3a8a') : 'transparent', color: (g1+g2) ? '#fff' : '#111', fontWeight: '900' }}>{(g1+g2)||''}</td>
+                {[0,1,2,3,4].map(n => {
+                  const tF = faltas.length > n
+                  const per = faltas[n]
+                  const esUltima = tF && n === faltas.length - 1
+                  return (
+                    <td key={n}
+                      onDoubleClick={() => { if (esUltima && String(j.numero) !== '') quitarFaltaDeJugador(equipo, j.numero, per) }}
+                      title={esUltima ? 'Doble click para borrar esta falta' : ''}
+                      style={{ ...cell, background: tF ? (per === 2 ? ROJO : AZUL) : 'transparent', cursor: esUltima ? 'pointer' : 'default' }}>
+                      {tF && <span style={{ color: '#fff', fontWeight: '800' }}>P</span>}
+                    </td>
+                  )
+                })}
+                <td title={j.amarilla ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
+                  style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }}
+                  onClick={() => { if (!sancion && !j.amarilla) updateJugador(equipo, idx, 'amarilla', formatTiempo(segundos)) }}
+                  onDoubleClick={() => !sancion && updateJugador(equipo, idx, 'amarilla', false)}>
+                  <span style={{ color: j.amarilla ? '#111' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.amarilla === 'string' ? j.amarilla : j.amarilla ? '✓' : '·'}</span>
+                </td>
+                <td title={j.azul ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
+                  style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }}
+                  onClick={() => { if (!sancion && !j.azul) updateJugador(equipo, idx, 'azul', formatTiempo(segundos)) }}
+                  onDoubleClick={() => !sancion && updateJugador(equipo, idx, 'azul', false)}>
+                  <span style={{ color: j.azul ? '#fff' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.azul === 'string' ? j.azul : j.azul ? '✓' : '·'}</span>
+                </td>
+                <td title={j.roja ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
+                  style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: sancion ? 'not-allowed' : 'pointer' }}
+                  onClick={() => { if (!sancion && !j.roja) updateJugador(equipo, idx, 'roja', formatTiempo(segundos)) }}
+                  onDoubleClick={() => !sancion && updateJugador(equipo, idx, 'roja', false)}>
+                  <span style={{ color: j.roja ? '#fff' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.roja === 'string' ? j.roja : j.roja ? '✓' : '·'}</span>
+                </td>
+                <td style={{ ...cell, color: '#111', fontWeight: '700' }}>{g1||''}</td>
+                <td style={{ ...cell, color: '#111', fontWeight: '700' }}>{g2||''}</td>
+                <td style={{ ...cell, background: (g1+g2) ? '#eaff00' : 'transparent', color: '#111', fontWeight: '900' }}>{(g1+g2)||''}</td>
               </tr>
             )
           })}
@@ -979,6 +1035,49 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
       {showEspecial && (
         <ModalEspecial tipo={showEspecial} partido={partido} onConfirmar={handleConfirmarEspecial} onCancelar={() => setShowEspecial(null)}/>
+      )}
+
+      {/* Aviso: faltan firmas de los árbitros para poder cerrar/guardar */}
+      {avisoFirmas && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '380px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+            <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>✍</div>
+            <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '8px' }}>FIRMAR PRIMERO</div>
+            <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '10px' }}>
+              La planilla no se puede cerrar sin la firma de los árbitros que pitaron el partido.
+            </div>
+            <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', marginBottom: '18px' }}>
+              <div style={{ fontSize: '.7rem', fontWeight: '700', color: '#d93025', marginBottom: '4px' }}>FALTA LA FIRMA DE:</div>
+              {avisoFirmas.map((n, i) => (
+                <div key={i} style={{ fontSize: '.9rem', fontWeight: '700', color: '#202124' }}>🧑‍⚖️ {n}</div>
+              ))}
+            </div>
+            <button onClick={() => setAvisoFirmas(null)}
+              style={{ width: '100%', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '700' }}>
+              Ir a firmar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso: jugador completó sus faltas personales */}
+      {avisoAcumulado && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '380px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.5)', border: '3px solid #d93025' }}>
+            <div style={{ fontSize: '2.4rem', marginBottom: '8px' }}>🚨</div>
+            <div style={{ fontWeight: '900', color: '#d93025', fontSize: '1.05rem', marginBottom: '8px', letterSpacing: '.03em' }}>JUGADOR ACUMULADO</div>
+            <div style={{ fontSize: '1rem', fontWeight: '800', color: '#202124', marginBottom: '6px' }}>
+              #{avisoAcumulado.numero} · {avisoAcumulado.nombre}
+            </div>
+            <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '18px' }}>
+              Completó sus <b>5 faltas personales</b>.
+            </div>
+            <button onClick={() => setAvisoAcumulado(null)}
+              style={{ width: '100%', padding: '12px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '700' }}>
+              Entendido
+            </button>
+          </div>
+        </div>
       )}
 
       <button onClick={handleClickGuardar} className="no-print"
