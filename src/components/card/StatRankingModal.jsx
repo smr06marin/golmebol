@@ -143,9 +143,11 @@ export default function StatRankingModal({ statKey, playerId, esPortero, onClose
   const enTop5     = miPuesto && miPuesto.puesto <= 5
   const fuera5     = miPuesto && miPuesto.puesto > 5
   const miIdx      = miPuesto?.idx ?? -1
-  const inicio     = Math.max(5, miIdx - 2)
-  const fin        = Math.min(ranking.length, miIdx + 3)
-  const contexto   = fuera5 ? ranking.slice(inicio, fin) : []
+  // Contexto: 2 antes y 2 después del jugador, sin solapar con top5
+  const ctxStart   = Math.max(5, miIdx - 2)
+  const ctxEnd     = Math.min(ranking.length, miIdx + 3)
+  const contexto   = fuera5 ? ranking.slice(ctxStart, ctxEnd) : []
+  const hayGap     = fuera5 && ctxStart > 5 // hay salto entre top5 y contexto
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.88)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -198,15 +200,29 @@ export default function StatRankingModal({ statKey, playerId, esPortero, onClose
               {/* Contexto del jugador fuera del top 5 */}
               {fuera5 && contexto.length > 0 && (
                 <>
-                  <div style={{ padding: '10px 20px 4px', background: `${S.card}88`, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ flex: 1, height: '1px', background: S.border }}/>
-                    <span style={{ fontSize: '.63rem', color: S.muted, whiteSpace: 'nowrap' }}>tu posición · #{miPuesto.puesto}</span>
-                    <div style={{ flex: 1, height: '1px', background: S.border }}/>
+                  {/* Puntos suspensivos si hay salto */}
+                  {hayGap && (
+                    <div style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1, height: '1px', background: S.border }}/>
+                      <span style={{ fontSize: '.75rem', color: S.muted, fontWeight: '700', letterSpacing: '.15em' }}>• • •</span>
+                      <div style={{ flex: 1, height: '1px', background: S.border }}/>
+                    </div>
+                  )}
+                  {/* Label tu posición */}
+                  <div style={{ padding: '6px 20px 4px', background: S.cyanDim }}>
+                    <span style={{ fontSize: '.63rem', fontWeight: '700', color: S.cyan, letterSpacing: '.1em' }}>TU POSICIÓN · #{miPuesto.puesto}</span>
                   </div>
                   {contexto.map((j, i) => (
-                    <Fila key={j.id} j={j} puesto={inicio + i + 1} esYo={j.id === playerId}/>
+                    <Fila key={j.id} j={j} puesto={ctxStart + i + 1} esYo={j.id === playerId}/>
                   ))}
                 </>
+              )}
+              {/* Si no hay registro propio, mostrar al final */}
+              {!miPuesto && ranking.length > 0 && (
+                <div style={{ padding: '16px 20px', textAlign: 'center', color: S.muted, borderTop: `0.5px solid ${S.border}` }}>
+                  <div style={{ fontSize: '.85rem', marginBottom: '4px' }}>Sin partidos registrados aún</div>
+                  <div style={{ fontSize: '.72rem', color: S.muted }}>Juega partidos para aparecer en el ranking</div>
+                </div>
               )}
 
               {/* Footer */}
