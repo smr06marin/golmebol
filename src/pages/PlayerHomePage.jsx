@@ -8,6 +8,9 @@ import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
 
+// Número de WhatsApp de GOLMEBOL (con indicativo de país) para pedidos de impresión
+const WHATSAPP_GOLMEBOL = '573226490055'
+
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
   { id: 'historial', label: 'Historial',  icon: '📋' },
@@ -847,7 +850,8 @@ export default function PlayerHomePage() {
                       const desbloq  = estaDesbloqueada(c.id)
                       const activa   = c.id === cardType
                       const esSel    = i === cardSel
-                      const cerca    = Math.abs(i - cardSel) <= 2
+                      // La activa siempre se mantiene montada (si se desmonta pierde su forma al volver)
+                      const cerca    = Math.abs(i - cardSel) <= 2 || activa
                       const sponsor  = c.isCustom ? getSponsor(`custom_${c.id}`) : getSponsor(c.id)
                       const marcaAgua = sponsor?.nombre || 'GOLMEBOL'
                       return (
@@ -861,7 +865,7 @@ export default function PlayerHomePage() {
                                 {...(c.isCustom ? { customDesign: { color: c.color, colorSecundario: c.color, fondo: ['#0a0a0a', '#111111', '#080808'], borde: c.color, nivel: 1, efectos: [], decoracion: null } } : {})}
                                 esPortero={esPortero}
                                 photoUrlExterno={player.photo_url || null}
-                                {...(activa && esSel
+                                {...(activa
                                   ? { torneosData, equiposData, onStatClick: handleCardClick }
                                   : { hideShields: true })}
                               />
@@ -999,9 +1003,12 @@ export default function PlayerHomePage() {
           )}
 
           <div style={{ padding: '0 16px 8px' }}>
-            <button onClick={handleCompartir} disabled={compartiendo}
-              style={{ width: '100%', padding: '11px', background: compartiendo ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: compartiendo ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              {compartiendo ? '⏳ Generando imagen...' : '📤 Descargar / Compartir tarjeta'}
+            <button onClick={() => {
+              const texto = `🃏 ¡Hola GOLMEBOL! Soy *${player.name || 'jugador'}* y quiero imprimir mi tarjeta, la quiero en físico. ¿Qué costo tiene?`
+              window.open(`https://wa.me/${WHATSAPP_GOLMEBOL}?text=${encodeURIComponent(texto)}`, '_blank')
+            }}
+              style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #1e8e3e, #25D366)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 3px 12px rgba(37,211,102,.35)' }}>
+              🖨️ Quiero imprimir mi tarjeta — la quiero en físico
             </button>
           </div>
 
