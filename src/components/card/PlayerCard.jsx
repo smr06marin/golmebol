@@ -37,11 +37,9 @@ function getBorderStyle(design) {
 function Escudo({ item, color, isPremium, size = 62 }) {
   if (!item) return null
   if (item.logo_url) {
-    // El escudo conserva su forma original (sin recorte circular): la sombra
-    // drop-shadow sigue la silueta real del logo si tiene transparencia
     return (
-      <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', animation: 'sflt 4.2s ease-in-out infinite', flexShrink: 0 }}>
-        <img src={item.logo_url} alt={item.nombre || item.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}/>
+      <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', border: `1.5px solid ${color}66`, background: 'rgba(0,0,0,.4)', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', animation: 'sflt 4.2s ease-in-out infinite', flexShrink: 0 }}>
+        <img src={item.logo_url} alt={item.nombre || item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/>
       </div>
     )
   }
