@@ -71,7 +71,46 @@ export default function PlayerHomePage() {
   const [pendingPreview,    setPendingPreview]    = useState(null)
   const [splash,            setSplash]            = useState(null)
 
+  // ── Carrusel de tarjetas estilo FIFA ─────────────────
+  const carruselRef = useRef(null)
+  const [cardSel, setCardSel] = useState(0)
+
   useEffect(() => { fetchTodo() }, [])
+
+  // Centrar la tarjeta activa al entrar a la pestaña
+  useEffect(() => {
+    if (tab !== 'tarjeta' || loading) return
+    const lista = [...CARD_DESIGNS, ...tarjetasCustom]
+    const idx = lista.findIndex(c => c.id === cardType)
+    const i = idx >= 0 ? idx : 0
+    setCardSel(i)
+    requestAnimationFrame(() => {
+      const el = carruselRef.current
+      const child = el?.children?.[i]
+      if (!el || !child) return
+      el.scrollLeft = child.offsetLeft - (el.clientWidth - child.clientWidth) / 2
+    })
+  }, [tab, loading, tarjetasCustom.length])
+
+  // Al deslizar a una tarjeta bloqueada, cargar sus logros de desbloqueo
+  useEffect(() => {
+    if (tab !== 'tarjeta' || loading) return
+    const lista = [...CARD_DESIGNS, ...tarjetasCustom]
+    const c = lista[cardSel]
+    if (!c) return
+    if (!estaDesbloqueada(c.id)) { setPreviewLogros([]); fetchLogrosPreview(c.id) }
+  }, [cardSel, tab, loading])
+
+  function onScrollCarrusel(e) {
+    const el = e.currentTarget
+    const first = el.children?.[0]
+    if (!first) return
+    const stride = first.offsetWidth + 14
+    const idx = Math.round(el.scrollLeft / stride)
+    const total = el.children.length
+    const clamped = Math.max(0, Math.min(total - 1, idx))
+    if (clamped !== cardSel) setCardSel(clamped)
+  }
 
   async function fetchTodo() {
     setLoading(true)
@@ -778,24 +817,167 @@ export default function PlayerHomePage() {
       {/* MI TARJETA */}
       {tab === 'tarjeta' && (
         <div>
-          <div style={{ background: `radial-gradient(ellipse 85% 50% at 50% -5%, ${cardColor}22 0%, transparent 62%), #07070e`, padding: '12px 16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.3)', letterSpacing: '.06em' }}>
-                {torneos.length > 0 ? 'Toca el escudo para ver el torneo' : ''}
-              </span>
-              <button onClick={() => setShowSelector(true)}
-                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', color: 'rgba(255,255,255,.7)', fontSize: '.68rem', fontWeight: '500' }}>
-                🃏 {cardDesign?.nombre || 'Cambiar'} {guardandoCard ? '...' : ''}
-              </button>
-            </div>
-            <div ref={cardRef} style={{ width: '100%' }}>
-              <PlayerCard
-                playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero}
-                photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
-                onStatClick={handleCardClick}
-              />
-            </div>
-          </div>
+          {(() => {
+            const listaCartas = [
+              ...CARD_DESIGNS.map(d => ({ ...d, isCustom: false })),
+              ...tarjetasCustom.map(c => ({ id: c.id, nombre: c.nombre, color: c.color || '#e8710a', isCustom: true, descripcion: c.descripcion })),
+            ]
+            const selCard    = listaCartas[cardSel] || listaCartas[0]
+            const selColor   = selCard?.color || cardColor
+            const selDesbloq = selCard ? estaDesbloqueada(selCard.id) : false
+            const selActiva  = selCard?.id === cardType
+            const selProg    = selCard ? getProgreso(selCard.id) : null
+            return (
+              <div>
+                {/* Vitrina estilo FIFA: la activa al frente, las demás deslizables */}
+                <div style={{ background: `radial-gradient(ellipse 85% 50% at 50% -5%, ${selColor}2e 0%, transparent 62%), #07070e`, padding: '10px 0 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.35)', letterSpacing: '.08em', fontWeight: '600' }}>
+                      ← DESLIZA PARA VER TUS TARJETAS →
+                    </span>
+                    <button onClick={() => setShowSelector(true)}
+                      style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', color: 'rgba(255,255,255,.7)', fontSize: '.68rem', fontWeight: '500' }}>
+                      📋 Ver lista
+                    </button>
+                  </div>
+
+                  <div ref={carruselRef} onScroll={onScrollCarrusel} className="gm-carrusel"
+                    style={{ display: 'flex', gap: '14px', overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', padding: '8px calc(50% - min(39vw, 150px)) 6px' }}>
+                    {listaCartas.map((c, i) => {
+                      const desbloq  = estaDesbloqueada(c.id)
+                      const activa   = c.id === cardType
+                      const esSel    = i === cardSel
+                      const cerca    = Math.abs(i - cardSel) <= 2
+                      const sponsor  = c.isCustom ? getSponsor(`custom_${c.id}`) : getSponsor(c.id)
+                      const marcaAgua = sponsor?.nombre || 'GOLMEBOL'
+                      return (
+                        <div key={c.id}
+                          onClick={() => { if (!esSel) { const el = carruselRef.current, ch = el?.children?.[i]; if (el && ch) el.scrollTo({ left: ch.offsetLeft - (el.clientWidth - ch.clientWidth) / 2, behavior: 'smooth' }) } }}
+                          style={{ flex: '0 0 min(78vw, 300px)', scrollSnapAlign: 'center', transition: 'transform .28s ease, opacity .28s ease', transform: esSel ? 'scale(1)' : 'scale(.86)', opacity: esSel ? 1 : .5, position: 'relative', cursor: esSel ? 'default' : 'pointer' }}>
+                          {cerca ? (
+                            <div ref={activa ? cardRef : null} style={{ position: 'relative' }}>
+                              <PlayerCard
+                                playerName={nombre} stats={cardStats} cardType={c.id}
+                                {...(c.isCustom ? { customDesign: { color: c.color, colorSecundario: c.color, fondo: ['#0a0a0a', '#111111', '#080808'], borde: c.color, nivel: 1, efectos: [], decoracion: null } } : {})}
+                                esPortero={esPortero}
+                                photoUrlExterno={player.photo_url || null}
+                                {...(activa && esSel
+                                  ? { torneosData, equiposData, onStatClick: handleCardClick }
+                                  : { hideShields: true })}
+                              />
+                              {!desbloq && (
+                                <>
+                                  {/* Marca de agua */}
+                                  <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px' }}>
+                                    {[...Array(8)].map((_, row) => (
+                                      <div key={row} style={{ position: 'absolute', top: `${row * 15 - 8}%`, left: '-30%', width: '160%', display: 'flex', gap: '28px', transform: 'rotate(-35deg)', whiteSpace: 'nowrap' }}>
+                                        {[...Array(5)].map((_, col) => (
+                                          <span key={col} style={{ fontSize: '1.15rem', fontWeight: '900', color: 'rgba(255,255,255,.4)', letterSpacing: '.16em', textTransform: 'uppercase', flexShrink: 0, fontFamily: 'system-ui' }}>{marcaAgua}</span>
+                                        ))}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {/* Candado / sponsor */}
+                                  <div style={{ position: 'absolute', inset: 0, zIndex: 25, pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                    <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'rgba(30,30,30,.85)', backdropFilter: 'blur(10px)', border: '2px solid rgba(180,180,180,.4)', boxShadow: '0 6px 30px rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                      {sponsor?.logo_url ? <img src={sponsor.logo_url} style={{ width: '72px', height: '72px', objectFit: 'cover' }}/> : <span style={{ fontSize: '2rem', filter: 'grayscale(100%) brightness(0.6)' }}>🔒</span>}
+                                    </div>
+                                    <div style={{ background: 'rgba(30,30,30,.85)', backdropFilter: 'blur(6px)', borderRadius: '20px', padding: '3px 14px', fontSize: '.6rem', color: 'rgba(230,230,230,.9)', fontWeight: '700', letterSpacing: '.14em', border: '1px solid rgba(180,180,180,.3)' }}>
+                                      {sponsor?.logo_url ? sponsor.nombre.toUpperCase() : 'BLOQUEADA'}
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                              {activa && (
+                                <div style={{ position: 'absolute', top: '8px', left: '50%', transform: 'translateX(-50%)', zIndex: 30, background: '#1e8e3e', color: '#fff', borderRadius: '20px', padding: '2px 12px', fontSize: '.6rem', fontWeight: '800', letterSpacing: '.12em', boxShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
+                                  ✓ ACTIVA
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ width: '100%', paddingTop: '145%', position: 'relative', borderRadius: '14px', background: `linear-gradient(160deg, ${c.color || '#333'}33, #0a0a0a 70%)`, border: `1px solid ${c.color || '#333'}44` }}>
+                              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '1.6rem' }}>{desbloq ? '🃏' : '🔒'}</span>
+                                <span style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.55)', fontWeight: '700', letterSpacing: '.08em', textAlign: 'center', padding: '0 10px' }}>{c.nombre}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Indicadores */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '4px', marginTop: '8px', flexWrap: 'wrap', padding: '0 20px' }}>
+                    {listaCartas.map((c, i) => (
+                      <div key={c.id} style={{ width: i === cardSel ? '16px' : '5px', height: '5px', borderRadius: '3px', background: i === cardSel ? (c.color || '#fff') : 'rgba(255,255,255,.25)', transition: 'all .25s' }}/>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Panel de la tarjeta seleccionada */}
+                <div style={{ padding: '12px 16px 4px' }}>
+                  <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: selActiva || selDesbloq ? 0 : '12px' }}>
+                      <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: `linear-gradient(135deg, ${selColor}, ${selCard?.colorSecundario || selColor})`, flexShrink: 0, filter: selDesbloq ? 'none' : 'grayscale(70%) brightness(.75)' }}/>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>{selCard?.nombre}</div>
+                        <div style={{ fontSize: '.7rem', color: selDesbloq ? '#1e8e3e' : '#d93025', fontWeight: '700' }}>
+                          {selActiva ? '✓ Tu tarjeta activa' : selDesbloq ? 'Desbloqueada — lista para usar' : '🔒 Bloqueada'}
+                        </div>
+                      </div>
+                      {selDesbloq && !selActiva && (
+                        <button onClick={() => handleSeleccionarTarjeta(selCard.id)} disabled={guardandoCard}
+                          style={{ background: guardandoCard ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', padding: '9px 18px', cursor: guardandoCard ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700', flexShrink: 0 }}>
+                          {guardandoCard ? 'Guardando...' : 'Usar esta tarjeta'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Logros para desbloquear la tarjeta seleccionada */}
+                    {!selDesbloq && (
+                      <>
+                        {selProg && (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                              <span style={{ fontSize: '.72rem', color: '#5f6368' }}>Tu progreso</span>
+                              <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#202124' }}>{selProg.actual} / {selProg.meta} logros</span>
+                            </div>
+                            <div style={{ background: '#f1f3f4', borderRadius: '10px', height: '7px', overflow: 'hidden', marginBottom: '10px' }}>
+                              <div style={{ height: '100%', width: `${selProg.pct}%`, background: `linear-gradient(90deg, ${selColor}, #6c35de)`, borderRadius: '10px', transition: 'width .4s ease' }}/>
+                            </div>
+                          </>
+                        )}
+                        {previewLogros.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ fontSize: '.66rem', color: '#9aa0a6', fontWeight: '700', letterSpacing: '.06em' }}>LOGROS PARA DESBLOQUEARLA</div>
+                            {previewLogros.map((l, i) => (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '8px', background: l.completado ? '#e6f4ea' : '#f8f9fa', border: `1px solid ${l.completado ? '#1e8e3e33' : '#e8eaed'}` }}>
+                                <span style={{ fontSize: '.85rem', flexShrink: 0 }}>{l.completado ? '✅' : l.tipo === 'universal' ? '⭐' : l.tipo === 'arquero' ? '🧤' : l.tipo === 'defensa' ? '🛡️' : '⚽'}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '.76rem', fontWeight: '500', color: l.completado ? '#1e8e3e' : '#202124' }}>{l.nombre}</div>
+                                  {!l.completado && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                                      <div style={{ flex: 1, background: '#e8eaed', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${Math.min(100, Math.round(((l.valorActual || 0) / (l.meta || 1)) * 100))}%`, background: '#1a73e8', borderRadius: '4px' }}/>
+                                      </div>
+                                      <span style={{ fontSize: '.62rem', color: '#9aa0a6', flexShrink: 0 }}>{l.valorActual}/{l.meta}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '6px', color: '#9aa0a6', fontSize: '.72rem' }}>Cargando logros...</div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           <CardProgressSection
             playerId={player.id}

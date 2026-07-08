@@ -141,3 +141,6 @@ input:focus, select:focus, textarea:focus {
     min-width: 720px;
   }
 }
+/* Carrusel de tarjetas del jugador: sin barra de scroll visible */
+.gm-carrusel { scrollbar-width: none; }
+.gm-carrusel::-webkit-scrollbar { display: none; }
