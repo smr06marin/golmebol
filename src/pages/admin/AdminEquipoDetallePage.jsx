@@ -106,6 +106,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [mostrarFormNuevo,  setMostrarFormNuevo]  = useState(false)
   const [formNuevo,         setFormNuevo]         = useState(EMPTY_NUEVO)
   const [guardando,         setGuardando]         = useState(false)
+  const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
 
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tabActiva === 'jugadores') fetchJugadoresGlobal() }, [tabActiva])
@@ -113,6 +114,14 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
     setTimeout(() => setMsg(null), 3500)
+  }
+
+  function handleCopiarLinkRegistro(t) {
+    const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}/${t.tournament_id}`
+    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+    navigator.clipboard.writeText(mensaje)
+    showMsg('Link copiado con la descripción ✓')
+    setMostrarSelectorTorneo(false)
   }
 
   async function fetchTodo() {
@@ -534,13 +543,34 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
           )}
 {!modoLectura && (
   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-    <button onClick={() => {
-      const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}`
-      navigator.clipboard.writeText(link)
-      showMsg('Link copiado al portapapeles ✓')
-    }} style={{ ...glassBtn('#5b9dff', false), display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', color: '#8ec3ff' }}>
-      🔗 Copiar link de registro
-    </button>
+    {torneos.length === 0 ? (
+      <div style={{ fontSize: '.78rem', color: TXT_MUTED }}>Inscribí el equipo en un torneo para generar el link de registro</div>
+    ) : torneos.length === 1 ? (
+      <button onClick={() => handleCopiarLinkRegistro(torneos[0])}
+        style={{ ...glassBtn('#5b9dff', false), display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', color: '#8ec3ff' }}>
+        🔗 Copiar link de registro
+      </button>
+    ) : (
+      <div style={{ position: 'relative' }}>
+        <button onClick={() => setMostrarSelectorTorneo(o => !o)}
+          style={{ ...glassBtn('#5b9dff', false), display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', color: '#8ec3ff' }}>
+          🔗 Copiar link de registro
+        </button>
+        {mostrarSelectorTorneo && (
+          <div style={{ position: 'absolute', top: '46px', right: 0, ...GLASS, borderRadius: '14px', padding: '6px', zIndex: 300, minWidth: '220px' }}>
+            <div style={{ fontSize: '.7rem', color: TXT_MUTED, padding: '6px 10px' }}>¿Para qué torneo?</div>
+            {torneos.map(t => (
+              <button key={t.id} onClick={() => handleCopiarLinkRegistro(t)}
+                style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', color: TXT, fontSize: '.82rem', borderRadius: '8px' }}
+                onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.08)'}
+                onMouseLeave={e => e.currentTarget.style.background='none'}>
+                {t.tournaments?.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
   </div>
 )}
           <SectionTitle icon={<Users size={18} color="#8ec3ff"/>} title="Jugadores del equipo"/>
