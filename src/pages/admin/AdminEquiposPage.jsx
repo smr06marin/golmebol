@@ -16,13 +16,37 @@ const labelStyle = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', di
 
 function MenuAcciones({ equipo, onEdit, onJugadores, onUniforme, onPoster, navigate }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef()
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const btnRef = useRef()
+  const menuRef = useRef()
 
   useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function handle(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target) && btnRef.current && !btnRef.current.contains(e.target)) setOpen(false)
+    }
     document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    window.addEventListener('scroll', () => setOpen(false), true)
+    window.addEventListener('resize', () => setOpen(false))
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      window.removeEventListener('scroll', () => setOpen(false), true)
+      window.removeEventListener('resize', () => setOpen(false))
+    }
   }, [])
+
+  const MENU_HEIGHT = 200
+  const MENU_WIDTH  = 190
+
+  function toggleOpen() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      const espacioAbajo = window.innerHeight - r.bottom
+      const top  = espacioAbajo < MENU_HEIGHT ? Math.max(8, r.top - MENU_HEIGHT - 4) : r.bottom + 4
+      const left = Math.min(window.innerWidth - MENU_WIDTH - 8, Math.max(8, r.right - MENU_WIDTH))
+      setPos({ top, left })
+    }
+    setOpen(o => !o)
+  }
 
   const opciones = [
     { label: 'Editar equipo',    icon: '✏️', action: () => { onEdit(equipo); setOpen(false) } },
@@ -32,13 +56,13 @@ function MenuAcciones({ equipo, onEdit, onJugadores, onUniforme, onPoster, navig
   ]
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(!open)}
+    <div style={{ position: 'relative' }}>
+      <button ref={btnRef} onClick={toggleOpen}
         style={{ background: open?'#f1f3f4':'none', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5f6368' }}>
         <MoreVertical size={18}/>
       </button>
       {open && (
-        <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 100, minWidth: '190px', padding: '6px 0', overflow: 'hidden' }}>
+        <div ref={menuRef} style={{ position: 'fixed', top: `${pos.top}px`, left: `${pos.left}px`, background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.18)', zIndex: 1000, minWidth: `${MENU_WIDTH}px`, padding: '6px 0', overflow: 'hidden' }}>
           {opciones.map((op, i) => (
             <button key={i} onClick={op.action}
               style={{ width: '100%', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.875rem', color: '#202124', textAlign: 'left' }}
@@ -239,8 +263,15 @@ export default function AdminEquiposPage() {
   const [uniforme,  setUniforme]  = useState(null)
   const [poster,    setPoster]    = useState(null)
   const [filtro,    setFiltro]    = useState('todos')
+  const formRef = useRef(null)
 
   useEffect(() => { fetchEquipos() }, [])
+
+  useEffect(() => {
+    if (showForm && formRef.current) {
+      formRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [showForm])
 
   async function fetchEquipos() {
     const { data } = await supabase.from('teams').select('*, tournament_player_registrations(id)').order('name')
@@ -315,7 +346,7 @@ export default function AdminEquiposPage() {
 
       {/* Form */}
       {showForm && (
-        <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+        <div ref={formRef} style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
           <div style={{ fontWeight:'600', color:'#202124', marginBottom:'16px' }}>{editId ? 'Editar equipo' : 'Nuevo equipo'}</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'14px', marginBottom:'14px' }}>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Nombre *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="Nombre del equipo"/></div>

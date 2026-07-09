@@ -34,6 +34,8 @@ export default function AdminCrearPage() {
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
+  const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
+  const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
 
   useEffect(() => {
     supabase.from('tournaments').select('*').eq('status', 'active').then(({ data }) => setTorneos(data || []))
@@ -102,10 +104,17 @@ export default function AdminCrearPage() {
 
   function abrirCrearEquipo() {
     setNuevoEquipoForm({ name: equipoSearch, city: '', representante_nombre: '', representante_telefono: '' })
+    setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
   }
 
-  // Crea el equipo (con su representante), lo inscribe en el torneo y lo deja seleccionado
+  function handleNuevoEquipoLogo(file) {
+    if (!file) return
+    setNuevoEquipoLogo(file)
+    setNuevoEquipoLogoPreview(URL.createObjectURL(file))
+  }
+
+  // Crea el equipo (con su representante y escudo), lo inscribe en el torneo y lo deja seleccionado
   async function handleCrearEquipoYSeleccionar() {
     if (!nuevoEquipoForm.name.trim())                 return showMsg('El nombre del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_nombre.trim()) return showMsg('El representante del equipo es obligatorio', 'error')
@@ -117,6 +126,15 @@ export default function AdminCrearPage() {
       representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
     }).select().single()
     if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
+    if (nuevoEquipoLogo) {
+      const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
+      const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
+      if (!errorLogo) {
+        const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+        await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
+        nuevo.logo_url = urlData.publicUrl
+      }
+    }
     const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: torneoSel, team_id: nuevo.id })
     if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
     setEquipos(prev => [...prev, nuevo].sort((a, b) => a.name.localeCompare(b.name)))
@@ -279,6 +297,19 @@ export default function AdminCrearPage() {
                       Se crea el equipo y queda inscrito en este torneo de una vez.
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '56px', height: '56px', borderRadius: '10px', border: '2px dashed #dadce0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, overflow: 'hidden', background: '#f8f9fa' }}>
+                          {nuevoEquipoLogoPreview
+                            ? <img src={nuevoEquipoLogoPreview} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                            : <Shield size={22} color="#9aa0a6"/>
+                          }
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleNuevoEquipoLogo(e.target.files[0])}/>
+                        </label>
+                        <div>
+                          <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>Escudo del equipo</div>
+                          <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{nuevoEquipoLogoPreview ? 'Imagen seleccionada' : 'Opcional — podés subirlo después'}</div>
+                        </div>
+                      </div>
                       <div><label style={label}>Nombre del equipo *</label><input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={input}/></div>
                       <div><label style={label}>Ciudad</label><input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={input}/></div>
                       <div><label style={label}>Representante / dueño del equipo *</label><input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={input}/></div>

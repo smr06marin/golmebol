@@ -423,6 +423,8 @@ export default function AdminTorneoDetallePage() {
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
+  const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
+  const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
 
   // ── GRUPOS ──────────────────────────────────────────
   const [grupos,           setGrupos]           = useState([])
@@ -1533,15 +1535,23 @@ export default function AdminTorneoDetallePage() {
 
   function abrirCrearEquipo() {
     setNuevoEquipoForm({ name: busquedaEquipo, city: '', representante_nombre: '', representante_telefono: '' })
+    setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
+  }
+
+  function handleNuevoEquipoLogo(file) {
+    if (!file) return
+    setNuevoEquipoLogo(file)
+    setNuevoEquipoLogoPreview(URL.createObjectURL(file))
   }
 
   function cerrarModalEquipo() {
     setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
     setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+    setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
   }
 
-  // Crea el equipo (con su representante) y lo inscribe en el torneo en el mismo paso
+  // Crea el equipo (con su representante y escudo) y lo inscribe en el torneo en el mismo paso
   async function handleCrearEquipoYAgregar() {
     if (!nuevoEquipoForm.name.trim())                  return showMsg('El nombre del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_nombre.trim())  return showMsg('El representante del equipo es obligatorio', 'error')
@@ -1553,6 +1563,14 @@ export default function AdminTorneoDetallePage() {
       representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
     }).select().single()
     if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
+    if (nuevoEquipoLogo) {
+      const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
+      const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
+      if (!errorLogo) {
+        const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+        await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
+      }
+    }
     const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
     if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
     showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
@@ -1866,6 +1884,19 @@ export default function AdminTorneoDetallePage() {
                   Se crea el equipo y queda inscrito en este torneo de una vez.
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <label style={{ width: '56px', height: '56px', borderRadius: '10px', border: '2px dashed #dadce0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, overflow: 'hidden', background: '#f8f9fa' }}>
+                      {nuevoEquipoLogoPreview
+                        ? <img src={nuevoEquipoLogoPreview} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                        : <Shield size={22} color="#9aa0a6"/>
+                      }
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleNuevoEquipoLogo(e.target.files[0])}/>
+                    </label>
+                    <div>
+                      <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>Escudo del equipo</div>
+                      <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{nuevoEquipoLogoPreview ? 'Imagen seleccionada' : 'Opcional — podés subirlo después'}</div>
+                    </div>
+                  </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Nombre del equipo *</label>
                     <input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={inputStyle}/>
