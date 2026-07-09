@@ -316,8 +316,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   useEffect(() => {
     try { const stored = localStorage.getItem(arbitrosKey); if (stored) setArbitrosTorneo(JSON.parse(stored)) } catch(e) {}
-    // Cargar árbitros registrados en BD
-    supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name').then(({ data }) => {
+    // Cargar árbitros registrados en BD y arqueros
+    ;(async () => {
+      const { data } = await supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
       setArbitrosReg(data || [])
       // Precargar arqueros si ya fueron guardados
       const { data: arqData } = await supabase.from('partido_arqueros').select('*').eq('match_id', partido.id).order('orden')
@@ -341,7 +342,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) setArbitro2(a.name) }
         if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(a.name) }
       }
-    })
+    })()
   }, [])
 
   function getDefaultDuracion(modalidad) {
