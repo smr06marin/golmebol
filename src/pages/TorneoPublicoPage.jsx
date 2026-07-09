@@ -15,6 +15,84 @@ function TeamLogo({ logo_url, name, size = 28 }) {
 
 const FASE_LABEL = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final' }
 
+const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
+
+// Banner estilo "poster" con el podio de goleadores y la valla menos vencida del torneo
+function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
+  const top3 = goleadores.slice(0, 3)
+  if (top3.length === 0 && !vallaRow) return null
+
+  return (
+    <div style={{
+      background: 'radial-gradient(circle at 50% 0%, #241a05 0%, #0a0a12 55%, #07070e 100%)',
+      borderRadius: '18px',
+      padding: '26px 16px 22px',
+      marginBottom: '16px',
+      border: '1px solid #2a2410',
+      boxShadow: '0 8px 30px rgba(0,0,0,.25)',
+    }}>
+      {top3.length > 0 && (
+        <>
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+            <div style={{ fontSize: '1.7rem', marginBottom: '4px' }}>🏆</div>
+            <div style={{ fontWeight: '900', color: '#fff', fontSize: '1.05rem', letterSpacing: '.02em', textTransform: 'uppercase', lineHeight: 1.3 }}>
+              Top Goleadores
+            </div>
+            <div style={{ color: '#f9a825', fontWeight: '800', fontSize: '.68rem', letterSpacing: '.18em', marginTop: '2px' }}>
+              DEL TORNEO
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {top3.map((g, i) => (
+              <div key={`${g.player_id}-${g.team_id}`} style={{ width: '104px', textAlign: 'center' }}>
+                <div style={{ width: '74px', height: '74px', borderRadius: '50%', margin: '0 auto', border: `3px solid ${MEDALLA[i]}`, overflow: 'hidden', background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 16px ${MEDALLA[i]}55` }}>
+                  {g.photo_url ? <img src={g.photo_url} alt={g.player_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.6rem' }}>👤</span>}
+                </div>
+                <div style={{ marginTop: '-13px', display: 'flex', justifyContent: 'center' }}>
+                  <div style={{ background: MEDALLA[i], color: '#000', fontWeight: '900', fontSize: '.7rem', borderRadius: '10px', padding: '2px 9px', border: '2px solid #0a0a12', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>{g.total_goals}</span>
+                    <div style={{ width: '11px', height: '11px', borderRadius: '2px', overflow: 'hidden', flexShrink: 0 }}>
+                      <TeamLogo logo_url={g.team_logo} name={g.team_name} size={11}/>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop: '7px', color: '#fff', fontWeight: '800', fontSize: '.7rem', textTransform: 'uppercase', lineHeight: 1.2 }}>{g.player_name}</div>
+                <div style={{ color: '#8a8f9a', fontSize: '.62rem', marginTop: '2px' }}>{g.team_name}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {vallaRow && (
+        <div style={{ marginTop: top3.length > 0 ? '22px' : '0', paddingTop: top3.length > 0 ? '18px' : '0', borderTop: top3.length > 0 ? '1px solid rgba(255,255,255,.08)' : 'none', textAlign: 'center' }}>
+          <div style={{ color: '#00ddd0', fontWeight: '800', fontSize: '.68rem', letterSpacing: '.14em', marginBottom: '10px' }}>🧤 VALLA MENOS VENCIDA</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: vallaArqueros.length > 0 ? '12px' : '0', flexWrap: 'wrap' }}>
+            <div style={{ width: '30px', height: '30px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
+              <TeamLogo logo_url={vallaRow.equipo.logo_url} name={vallaRow.equipo.name} size={30}/>
+            </div>
+            <div style={{ color: '#fff', fontWeight: '800', fontSize: '.85rem' }}>{vallaRow.equipo.name}</div>
+            <div style={{ background: '#00ddd0', color: '#000', fontWeight: '900', fontSize: '.68rem', borderRadius: '10px', padding: '2px 10px' }}>{vallaRow.gc} gol{vallaRow.gc === 1 ? '' : 'es'} en contra</div>
+          </div>
+          {vallaArqueros.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              {vallaArqueros.map(a => (
+                <div key={a.id} style={{ textAlign: 'center', width: '68px' }}>
+                  <div style={{ width: '50px', height: '50px', borderRadius: '50%', margin: '0 auto', border: '2px solid #00ddd0', overflow: 'hidden', background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {a.photo_url || a.photo_face_url ? <img src={a.photo_face_url || a.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.1rem' }}>🧤</span>}
+                  </div>
+                  <div style={{ marginTop: '5px', color: '#fff', fontWeight: '700', fontSize: '.6rem', lineHeight: 1.2 }}>{a.name}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TorneoPublicoPage() {
   const { id } = useParams()
 
@@ -22,6 +100,7 @@ export default function TorneoPublicoPage() {
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
   const [goleadores, setGoleadores] = useState([])
+  const [porteros,  setPorteros]  = useState([]) // { team_id, id, name, photo_url, photo_face_url }
   const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState('posiciones')
 
@@ -38,6 +117,24 @@ export default function TorneoPublicoPage() {
       setEquipos((teData || []).map(d => ({ ...d.teams })))
       setPartidos(pData || [])
       setGoleadores(gData || [])
+
+      // Arqueros de cada equipo del torneo (para la valla menos vencida)
+      const teamIds = (teData || []).map(d => d.teams?.id).filter(Boolean)
+      if (teamIds.length > 0) {
+        const { data: tpData } = await supabase
+          .from('team_players')
+          .select('team_id, players(id,name,photo_url,photo_face_url,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
+          .in('team_id', teamIds)
+        const modalidad = t?.modalidad || ''
+        const campoPos = modalidad.includes('11') ? 'posicion_futbol11' : modalidad.includes('7') ? 'posicion_futbol7' : 'posicion_futbol5'
+        const arqueros = (tpData || [])
+          .filter(tp => tp.players && (tp.players[campoPos] === 'Portero' || tp.players.posicion_futbol5 === 'Portero' || tp.players.posicion_futbol7 === 'Portero' || tp.players.posicion_futbol11 === 'Portero'))
+          .map(tp => ({ team_id: tp.team_id, ...tp.players }))
+        setPorteros(arqueros)
+      } else {
+        setPorteros([])
+      }
+
       setLoading(false)
     }
     fetchAll()
@@ -76,6 +173,13 @@ export default function TorneoPublicoPage() {
     }
   })
   const tablaOrdenada = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+
+  // Valla menos vencida: equipo con menos goles en contra (entre los que ya jugaron)
+  const equiposJugados = tablaOrdenada.filter(r => r.pj > 0)
+  const vallaRow = equiposJugados.length > 0
+    ? [...equiposJugados].sort((a, b) => a.gc - b.gc || b.pj - a.pj)[0]
+    : null
+  const vallaArqueros = vallaRow ? porteros.filter(p => p.team_id === vallaRow.equipo.id) : []
 
   const tabs = [
     { id: 'posiciones', label: 'Posiciones' },
@@ -280,6 +384,8 @@ export default function TorneoPublicoPage() {
 
         {/* GOLEADORES */}
         {tab === 'goleadores' && (
+          <>
+          <TopGoleadoresBanner goleadores={goleadores} vallaRow={vallaRow} vallaArqueros={vallaArqueros}/>
           <div style={s.card}>
             <div style={s.cardTitle}>Top goleadores</div>
             {goleadores.length === 0 ? (
@@ -312,6 +418,7 @@ export default function TorneoPublicoPage() {
               </div>
             ))}
           </div>
+          </>
         )}
 
         <div style={{ textAlign: 'center', marginTop: '24px', color: '#c4c7ca', fontSize: '.72rem' }}>
