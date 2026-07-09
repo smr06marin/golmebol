@@ -5,43 +5,44 @@ import { supabase } from '../lib/supabase'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS, NIVEL_COLORES, NIVEL_NOMBRES } from '../components/card/designs/cardDesigns'
 
-const FONDOS = {
-  nivel1_verde:   'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=80',
-  nivel1_azul:    'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=80',
-  nivel1_bronce:  'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=80',
-  nivel1_plata:   'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=80',
-  nivel1_oro:     'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=80',
-  normal_teal:    'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=800&q=80',
-  normal_azul:    'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=80',
-  normal_verde:   'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=80',
-  normal_gris:    'https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&q=80',
-  normal_blanco:  'https://images.unsplash.com/photo-1508098682722-e99c643e7f0b?w=800&q=80',
-  bronce_cobre:       'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=80',
-  bronce_naranja:     'https://images.unsplash.com/photo-1551958219-acbc595d2475?w=800&q=80',
-  bronce_terracota:   'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800&q=80',
-  bronce_arena:       'https://images.unsplash.com/photo-1560272564-c83b66b1ad12?w=800&q=80',
-  bronce_oxido:       'https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=800&q=80',
-  plata_acero:    'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=80',
-  plata_cyan:     'https://images.unsplash.com/photo-1515703407324-5f753afd8be8?w=800&q=80',
-  plata_celeste:  'https://images.unsplash.com/photo-1624880357913-a8539238245b?w=800&q=80',
-  plata_lila:     'https://images.unsplash.com/photo-1520116468816-95b69f847357?w=800&q=80',
-  plata_rosa:     'https://images.unsplash.com/photo-1553778263-73a83bab9b0c?w=800&q=80',
-  oro_campeon:    'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=80',
-  oro_solar:      'https://images.unsplash.com/photo-1600679472829-3044539ce8ed?w=800&q=80',
-  oro_champagne:  'https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?w=800&q=80',
-  oro_laurel:     'https://images.unsplash.com/photo-1606925797300-0b35e9d1794e?w=800&q=80',
-  oro_trofeo:     'https://images.unsplash.com/photo-1464983953574-0892a716854b?w=800&q=80',
-  elite_realeza:  'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?w=800&q=80',
-  elite_sangre:   'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=80',
-  elite_rayo:     'https://images.unsplash.com/photo-1531415074968-036ba1b575da?w=800&q=80',
-  elite_matrix:   'https://images.unsplash.com/photo-1510025751374-b73c7e5b1438?w=800&q=80',
-  elite_cyber:    'https://images.unsplash.com/photo-1520116468816-95b69f847357?w=800&q=80',
-  leyenda_infierno: 'https://images.unsplash.com/photo-1551958219-acbc595d2475?w=800&q=80',
-  leyenda_cosmos:   'https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?w=800&q=80',
-  leyenda_cristal:  'https://images.unsplash.com/photo-1515703407324-5f753afd8be8?w=800&q=80',
-  leyenda_spectrum: 'https://images.unsplash.com/photo-1502481851512-e9e2529bfbf9?w=800&q=80',
-  leyenda_icon:     'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=80',
-  premium:          'https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?w=800&q=80',
+// Fondo ambiental propio de Golmebol: sin fotos de stock, se adapta al color
+// del nivel/diseño actual con degradés, viñeta y una textura fina tipo carbono.
+function AmbientBackground({ color }) {
+  return (
+    <>
+      {/* Base */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: 'radial-gradient(circle at 50% -8%, #12121e 0%, #07070e 55%, #050509 100%)' }} />
+
+      {/* Glow de color según el diseño actual */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+        background: `
+          radial-gradient(ellipse 70% 45% at 15% 6%, ${color}30 0%, transparent 62%),
+          radial-gradient(ellipse 65% 42% at 88% 80%, ${color}24 0%, transparent 62%),
+          radial-gradient(ellipse 90% 55% at 50% 102%, ${color}1c 0%, transparent 68%)
+        `,
+        transition: 'background .6s ease',
+      }} />
+
+      {/* Líneas de cancha muy sutiles */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', opacity: .05,
+        backgroundImage: `
+          repeating-linear-gradient(90deg, transparent 0, transparent 78px, ${color}aa 78px, ${color}aa 79px),
+          repeating-linear-gradient(0deg, transparent 0, transparent 78px, ${color}aa 78px, ${color}aa 79px)
+        `,
+      }} />
+
+      {/* Textura fina diagonal */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', opacity: .04,
+        backgroundImage: 'repeating-linear-gradient(118deg, #fff 0px, #fff 1px, transparent 1px, transparent 30px)',
+      }} />
+
+      {/* Viñeta */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 100% 68% at 50% 42%, transparent 42%, rgba(3,3,8,.65) 100%)' }} />
+    </>
+  )
 }
 
 function Particles({ color }) {
@@ -64,15 +65,12 @@ export default function HomePage() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const [cardIndex, setCardIndex] = useState(0)
-  const [bgLoaded, setBgLoaded] = useState(false)
   const [showSponsor, setShowSponsor] = useState(false)
   const [sponsors, setSponsors] = useState({})
 
   const currentDesign = CARD_DESIGNS[cardIndex]
   const nivelColor = NIVEL_COLORES[currentDesign.nivel]
-  const bgUrl = FONDOS[currentDesign.id]
   const sponsor = sponsors[currentDesign.id]
-  console.log('sponsor actual:', currentDesign.id, sponsor)
 
   // Cargar sponsors desde Supabase
   useEffect(() => {
@@ -83,14 +81,6 @@ export default function HomePage() {
       setSponsors(map)
     })
   }, [])
-
-  useEffect(() => {
-    setBgLoaded(false)
-    if (!bgUrl) return
-    const img = new Image()
-    img.onload = () => setBgLoaded(true)
-    img.src = bgUrl
-  }, [bgUrl])
 
   useEffect(() => {
     setShowSponsor(false)
@@ -122,26 +112,8 @@ export default function HomePage() {
   return (
     <div style={{ position: 'relative', width: '100%', maxWidth: 'var(--max-width)', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
-      {/* Fondo imagen */}
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 0,
-        backgroundImage: bgLoaded && bgUrl ? `url(${bgUrl})` : 'none',
-        backgroundColor: '#07070e',
-        backgroundSize: 'cover', backgroundPosition: 'center',
-        transition: 'opacity .6s ease',
-        opacity: bgLoaded ? 1 : 0,
-      }} />
-
-      {/* Overlay oscuro */}
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 0,
-        background: `linear-gradient(180deg, rgba(7,7,14,.82) 0%, rgba(7,7,14,.55) 40%, rgba(7,7,14,.85) 100%),
-          radial-gradient(ellipse 80% 50% at 50% 0%, ${currentDesign.color}33 0%, transparent 60%)`,
-        pointerEvents: 'none', transition: 'background .5s ease',
-      }} />
-
-      {/* Base oscura */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: '#07070e' }} />
+      {/* Fondo ambiental (sin fotos de stock) */}
+      <AmbientBackground color={currentDesign.color}/>
 
       {/* Marca de agua */}
       <div style={{
