@@ -14,6 +14,27 @@ const TABS = [
   { id: 'predix',    label: 'Predix',     icon: '🎯' },
 ]
 
+// Fondo ambiental detrás de la tarjeta: degradés en capas + textura fina + viñeta,
+// en vez de un único radial-gradient plano. Se adapta al color de la tarjeta activa.
+function CardStageBackground({ color }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', inset: 0, background: '#07070e' }}/>
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `
+          radial-gradient(ellipse 80% 55% at 50% -8%, ${color}30 0%, transparent 62%),
+          radial-gradient(ellipse 55% 38% at 6% 100%, ${color}1c 0%, transparent 60%),
+          radial-gradient(ellipse 55% 38% at 96% 92%, ${color}1c 0%, transparent 60%)
+        `,
+        transition: 'background .5s ease',
+      }}/>
+      <div style={{ position: 'absolute', inset: 0, opacity: .05, backgroundImage: 'repeating-linear-gradient(118deg, #fff 0px, #fff 1px, transparent 1px, transparent 28px)' }}/>
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 100% 75% at 50% 38%, transparent 48%, rgba(3,3,8,.55) 100%)' }}/>
+    </div>
+  )
+}
+
 function NotifBanner({ notifs, onDismiss }) {
   const [idx, setIdx] = useState(0)
   if (!notifs || notifs.length === 0) return null
@@ -803,8 +824,9 @@ export default function PlayerHomePage() {
       {/* MI TARJETA */}
       {tab === 'tarjeta' && (
         <div>
-          <div style={{ background: `radial-gradient(ellipse 85% 50% at 50% -5%, ${cardColor}22 0%, transparent 62%), #07070e`, padding: '12px 16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <div style={{ position: 'relative', overflow: 'hidden', padding: '12px 16px 20px' }}>
+            <CardStageBackground color={cardColor}/>
+            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.3)', letterSpacing: '.06em' }}>
                 {torneos.length > 0 ? 'Toca el escudo para ver el torneo' : ''}
               </span>
@@ -813,7 +835,7 @@ export default function PlayerHomePage() {
                 🃏 {cardDesign?.nombre || 'Cambiar'} {guardandoCard ? '...' : ''}
               </button>
             </div>
-            <div ref={cardRef} style={{ width: '100%' }}>
+            <div ref={cardRef} style={{ position: 'relative', zIndex: 1, width: '100%' }}>
               <PlayerCard
                 playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero} esDefensa={esDefensa}
                 photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
