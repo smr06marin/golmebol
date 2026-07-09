@@ -14,40 +14,60 @@ const EMPTY_NUEVO = {
   posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
 }
 
-// ── Paleta y sombras "claymorfismo": superficies suaves tipo plastilina,
-// con sombra clara arriba-izq. y oscura abajo-der. para dar volumen.
-const CLAY_BG      = '#e7ecf6'
-const CLAY_SURFACE = 'linear-gradient(145deg, #f4f7fc, #e2e8f3)'
-const CLAY_SHADOW    = '9px 9px 18px rgba(163,177,198,.55), -9px -9px 18px rgba(255,255,255,.9)'
-const CLAY_SHADOW_SM = '5px 5px 11px rgba(163,177,198,.5), -5px -5px 11px rgba(255,255,255,.85)'
-const CLAY_SHADOW_IN = 'inset 4px 4px 8px rgba(163,177,198,.4), inset -4px -4px 8px rgba(255,255,255,.75)'
+// ── Paleta "glassmorfismo": paneles de vidrio esmerilado (translúcidos + blur)
+// sobre un fondo degradado vivo, con texto claro y acentos de color brillantes.
+const GLASS_BG = 'linear-gradient(150deg, #0f1c3f 0%, #17296b 35%, #3a1f80 75%, #1a3a8a 100%)'
+const GLASS = {
+  background: 'rgba(255,255,255,.10)',
+  backdropFilter: 'blur(18px)',
+  WebkitBackdropFilter: 'blur(18px)',
+  border: '1px solid rgba(255,255,255,.18)',
+  boxShadow: '0 8px 28px rgba(0,0,0,.28)',
+}
+const GLASS_SM = {
+  background: 'rgba(255,255,255,.08)',
+  backdropFilter: 'blur(14px)',
+  WebkitBackdropFilter: 'blur(14px)',
+  border: '1px solid rgba(255,255,255,.15)',
+  boxShadow: '0 4px 16px rgba(0,0,0,.22)',
+}
+const GLASS_INSET = {
+  background: 'rgba(0,0,0,.18)',
+  border: '1px solid rgba(255,255,255,.12)',
+  boxShadow: 'inset 0 1px 4px rgba(0,0,0,.35)',
+}
+const TXT       = '#ffffff'
+const TXT_SOFT  = 'rgba(255,255,255,.72)'
+const TXT_MUTED = 'rgba(255,255,255,.5)'
 
-function clayBtn(color, active = true) {
+function glassBtn(color, active = true) {
   return {
-    background: active ? `linear-gradient(145deg, ${color}, ${color}dd)` : CLAY_SURFACE,
-    border: 'none', borderRadius: '14px', cursor: 'pointer',
-    color: active ? '#fff' : '#5f6368', fontSize: '.875rem', fontWeight: '600',
-    boxShadow: active ? `4px 4px 10px ${color}55, -3px -3px 8px rgba(255,255,255,.6)` : CLAY_SHADOW_SM,
+    background: active ? `linear-gradient(135deg, ${color}, ${color}bb)` : 'rgba(255,255,255,.08)',
+    border: active ? `1px solid ${color}88` : '1px solid rgba(255,255,255,.16)',
+    borderRadius: '14px', cursor: 'pointer',
+    color: active ? '#fff' : TXT_SOFT, fontSize: '.875rem', fontWeight: '600',
+    boxShadow: active ? `0 4px 16px ${color}55` : 'none',
+    backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
     transition: 'all .15s',
   }
 }
 
 const inputStyle = {
-  width: '100%', background: '#eef2fa', border: 'none',
-  borderRadius: '12px', padding: '10px 14px', color: '#202124',
+  width: '100%', background: 'rgba(0,0,0,.18)', border: '1px solid rgba(255,255,255,.16)',
+  borderRadius: '12px', padding: '10px 14px', color: TXT,
   fontSize: '.875rem', outline: 'none', boxSizing: 'border-box',
-  fontFamily: 'system-ui, sans-serif', boxShadow: CLAY_SHADOW_IN,
+  fontFamily: 'system-ui, sans-serif',
 }
 const labelStyle = {
-  fontSize: '.75rem', fontWeight: '600', color: '#5f6368',
+  fontSize: '.75rem', fontWeight: '600', color: TXT_SOFT,
   display: 'block', marginBottom: '6px',
 }
 
-function StatBox({ label, value, color = '#1a73e8' }) {
+function StatBox({ label, value, color = '#5b9dff' }) {
   return (
-    <div style={{ background: CLAY_SURFACE, borderRadius: '18px', padding: '18px 14px', textAlign: 'center', boxShadow: CLAY_SHADOW_SM }}>
+    <div style={{ ...GLASS_SM, borderRadius: '18px', padding: '18px 14px', textAlign: 'center' }}>
       <div style={{ fontSize: '1.6rem', fontWeight: '800', color }}>{value ?? '—'}</div>
-      <div style={{ fontSize: '.72rem', color: '#7a8494', marginTop: '4px', fontWeight: '600' }}>{label}</div>
+      <div style={{ fontSize: '.72rem', color: TXT_MUTED, marginTop: '4px', fontWeight: '600' }}>{label}</div>
     </div>
   )
 }
@@ -55,10 +75,10 @@ function StatBox({ label, value, color = '#1a73e8' }) {
 function SectionTitle({ icon, title }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', marginTop: '28px' }}>
-      <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '32px', height: '32px', borderRadius: '10px', ...GLASS_SM, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {icon}
       </div>
-      <span style={{ fontSize: '1rem', fontWeight: '700', color: '#3a4256' }}>{title}</span>
+      <span style={{ fontSize: '1rem', fontWeight: '700', color: TXT }}>{title}</span>
     </div>
   )
 }
@@ -227,15 +247,15 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     const esLocal = partido.home_team_id === id
     const gf = esLocal ? partido.home_score : partido.away_score
     const gc = esLocal ? partido.away_score : partido.home_score
-    if (gf > gc) return { texto: 'G', color: '#1e8e3e', bg: '#e6f4ea' }
-    if (gf === gc) return { texto: 'E', color: '#e8710a', bg: '#fce8d9' }
-    return { texto: 'P', color: '#d93025', bg: '#fce8e6' }
+    if (gf > gc) return { texto: 'G', color: '#51cf66' }
+    if (gf === gc) return { texto: 'E', color: '#ffa94d' }
+    return { texto: 'P', color: '#ff6b6b' }
   }
 
   function getRival(partido) { return partido.home_team_id === id ? partido.away : partido.home }
 
-  if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
-  if (!equipo) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Equipo no encontrado</div>
+  if (loading) return <div style={{ background: GLASS_BG, minHeight: '100vh', padding: '60px', textAlign: 'center', color: TXT_MUTED }}>Cargando...</div>
+  if (!equipo) return <div style={{ background: GLASS_BG, minHeight: '100vh', padding: '40px', textAlign: 'center', color: TXT_MUTED }}>Equipo no encontrado</div>
 
   const TABS = [
     { id: 'resumen',   label: 'Resumen'   },
@@ -246,58 +266,56 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   ]
 
   return (
-    <div style={{ background: CLAY_BG, minHeight: '100vh', padding: '16px', borderRadius: '24px' }}>
+    <div style={{ background: GLASS_BG, minHeight: '100vh', padding: '16px', borderRadius: '24px' }}>
       {msg && (
-        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? 'linear-gradient(145deg,#e8564a,#d93025)' : 'linear-gradient(145deg,#2ba14e,#1e8e3e)', color: '#fff', borderRadius: '16px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', fontWeight: '600', boxShadow: '6px 6px 14px rgba(0,0,0,.25), -4px -4px 10px rgba(255,255,255,.15)' }}>
+        <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? 'linear-gradient(135deg,#ff8a80,#ff6b6b)' : 'linear-gradient(135deg,#69db7c,#51cf66)', color: '#0f1c3f', borderRadius: '16px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', fontWeight: '700', boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
           {msg.text}
         </div>
       )}
 
-      {(!modoLectura || modoLectura) && (
-        <button onClick={() => modoLectura ? navigate(-1) : navigate('/admin/equipos')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: CLAY_SURFACE, border: 'none', borderRadius: '12px', padding: '8px 16px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', fontWeight: '600', marginBottom: '20px', boxShadow: CLAY_SHADOW_SM }}>
-          <ArrowLeft size={16}/> Volver
-        </button>
-      )}
+      <button onClick={() => modoLectura ? navigate(-1) : navigate('/admin/equipos')}
+        style={{ display: 'flex', alignItems: 'center', gap: '6px', ...GLASS_SM, borderRadius: '12px', padding: '8px 16px', cursor: 'pointer', color: TXT_SOFT, fontSize: '.875rem', fontWeight: '600', marginBottom: '20px' }}>
+        <ArrowLeft size={16}/> Volver
+      </button>
 
       {/* Header */}
-      <div style={{ background: CLAY_SURFACE, borderRadius: '26px', padding: '24px', marginBottom: '20px', boxShadow: CLAY_SHADOW }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+      <div style={{ ...GLASS, borderRadius: '26px', padding: '24px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{ width: '80px', height: '80px', borderRadius: '22px', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_IN, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            <div style={{ width: '80px', height: '80px', borderRadius: '22px', ...GLASS_INSET, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {equipo.logo_url
                 ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
-                : <Shield size={36} color="#9aa0a6"/>}
+                : <Shield size={36} color="rgba(255,255,255,.5)"/>}
             </div>
             {!modoLectura && (
-              <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(145deg, #4a90f5, #1a73e8)', border: '3px solid #eef2fa', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '3px 3px 8px rgba(26,115,232,.5)' }}>
+              <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #5b9dff, #1a73e8)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 3px 10px rgba(91,157,255,.6)' }}>
                 <Camera size={13} color="#fff"/>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
               </label>
             )}
           </div>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#3a4256', margin: '0 0 8px' }}>{equipo.name}</h1>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: TXT, margin: '0 0 8px' }}>{equipo.name}</h1>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {equipo.city      && <span style={{ fontSize: '.78rem', color: '#5f6368', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>📍 {equipo.city}</span>}
-              {equipo.modalidad && <span style={{ fontSize: '.78rem', color: '#1a73e8', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.modalidad}</span>}
-              {equipo.genero    && <span style={{ fontSize: '.78rem', color: '#6c35de', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.genero}</span>}
-              <span style={{ fontSize: '.78rem', color: '#1e8e3e', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{torneos.length} torneos</span>
+              {equipo.city      && <span style={{ fontSize: '.78rem', color: TXT_SOFT, ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>📍 {equipo.city}</span>}
+              {equipo.modalidad && <span style={{ fontSize: '.78rem', color: '#8ec3ff', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.modalidad}</span>}
+              {equipo.genero    && <span style={{ fontSize: '.78rem', color: '#cbb2ff', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.genero}</span>}
+              <span style={{ fontSize: '.78rem', color: '#8ef0a8', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{torneos.length} torneos</span>
             </div>
-            {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '8px', fontWeight: '600' }}>Subiendo logo...</div>}
+            {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#8ec3ff', marginTop: '8px', fontWeight: '600' }}>Subiendo logo...</div>}
           </div>
-          <div style={{ textAlign: 'center', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '18px', padding: '12px 18px' }}>
-            <div style={{ fontSize: '2rem', fontWeight: '800', color: '#e8710a' }}>{logros.filter(l => l.tipo === 'campeon').length}</div>
-            <div style={{ fontSize: '.72rem', color: '#7a8494', fontWeight: '600' }}>🏆 Títulos</div>
+          <div style={{ textAlign: 'center', ...GLASS_SM, borderRadius: '18px', padding: '12px 18px' }}>
+            <div style={{ fontSize: '2rem', fontWeight: '800', color: '#ffd43b' }}>{logros.filter(l => l.tipo === 'campeon').length}</div>
+            <div style={{ fontSize: '.72rem', color: TXT_MUTED, fontWeight: '600' }}>🏆 Títulos</div>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', background: CLAY_SURFACE, borderRadius: '18px', padding: '6px', maxWidth: '100%', width: 'fit-content', boxShadow: CLAY_SHADOW_IN, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      {/* Tabs — todos los botones visibles siempre, sin deslizar (envuelve si hace falta) */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px', ...GLASS_INSET, borderRadius: '18px', padding: '8px' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTabActiva(t.id)} style={clayBtn('#1a73e8', tabActiva === t.id)}>
-            <span style={{ padding: '5px 10px', display: 'inline-block' }}>{t.label}</span>
+          <button key={t.id} onClick={() => setTabActiva(t.id)} style={{ ...glassBtn('#5b9dff', tabActiva === t.id), flex: '1 1 auto', minWidth: '90px', padding: '9px 12px' }}>
+            {t.label}
           </button>
         ))}
       </div>
@@ -306,23 +324,23 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {tabActiva === 'resumen' && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-            <StatBox label="Partidos Jugados"  value={stats?.pj || 0}             color="#1a73e8"/>
-            <StatBox label="Ganados"           value={stats?.pg || 0}             color="#1e8e3e"/>
-            <StatBox label="Empatados"         value={stats?.pe || 0}             color="#e8710a"/>
-            <StatBox label="Perdidos"          value={stats?.pp || 0}             color="#d93025"/>
-            <StatBox label="Goles a Favor"     value={stats?.gf || 0}             color="#1a73e8"/>
-            <StatBox label="Goles en Contra"   value={stats?.gc || 0}             color="#d93025"/>
-            <StatBox label="Puntos Totales"    value={stats?.pts || 0}            color="#6c35de"/>
-            <StatBox label="Títulos"           value={logros.filter(l => l.tipo === 'campeon').length} color="#e8710a"/>
-            <StatBox label="Racha sin perder"  value={stats?.rachaSinPerder || 0} color="#1e8e3e"/>
-            <StatBox label="Racha sin ganar"   value={stats?.rachaSinGanar || 0}  color="#d93025"/>
-            <StatBox label="Rival frecuente"   value={stats?.rivalFrecuente}      color="#5f6368"/>
-            <StatBox label="Más derrotas vs"   value={stats?.mayorRival}          color="#d93025"/>
-            <StatBox label="Más victorias vs"  value={stats?.rivalVictorias}      color="#1e8e3e"/>
+            <StatBox label="Partidos Jugados"  value={stats?.pj || 0}             color="#5b9dff"/>
+            <StatBox label="Ganados"           value={stats?.pg || 0}             color="#51cf66"/>
+            <StatBox label="Empatados"         value={stats?.pe || 0}             color="#ffa94d"/>
+            <StatBox label="Perdidos"          value={stats?.pp || 0}             color="#ff6b6b"/>
+            <StatBox label="Goles a Favor"     value={stats?.gf || 0}             color="#5b9dff"/>
+            <StatBox label="Goles en Contra"   value={stats?.gc || 0}             color="#ff6b6b"/>
+            <StatBox label="Puntos Totales"    value={stats?.pts || 0}            color="#cbb2ff"/>
+            <StatBox label="Títulos"           value={logros.filter(l => l.tipo === 'campeon').length} color="#ffd43b"/>
+            <StatBox label="Racha sin perder"  value={stats?.rachaSinPerder || 0} color="#51cf66"/>
+            <StatBox label="Racha sin ganar"   value={stats?.rachaSinGanar || 0}  color="#ff6b6b"/>
+            <StatBox label="Rival frecuente"   value={stats?.rivalFrecuente}      color={TXT_SOFT}/>
+            <StatBox label="Más derrotas vs"   value={stats?.mayorRival}          color="#ff6b6b"/>
+            <StatBox label="Más victorias vs"  value={stats?.rivalVictorias}      color="#51cf66"/>
           </div>
           {partidos.length > 0 && (
             <>
-              <SectionTitle icon={<Calendar size={18} color="#1a73e8"/>} title="Últimos partidos"/>
+              <SectionTitle icon={<Calendar size={18} color="#8ec3ff"/>} title="Últimos partidos"/>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {partidos.slice(0, 5).map((p, i) => {
                   const res     = getResultado(p)
@@ -331,15 +349,15 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   const gf      = esLocal ? p.home_score : p.away_score
                   const gc      = esLocal ? p.away_score : p.home_score
                   return (
-                    <div key={p.id} style={{ background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px' }}>
+                    <div key={p.id} style={{ ...GLASS_SM, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '.72rem', fontWeight: '800', color: '#fff', background: res.color, borderRadius: '10px', padding: '3px 9px', boxShadow: `2px 2px 5px ${res.color}55` }}>{res.texto}</span>
+                        <span style={{ fontSize: '.72rem', fontWeight: '800', color: '#0f1c3f', background: res.color, borderRadius: '10px', padding: '3px 9px' }}>{res.texto}</span>
                         <div>
-                          <div style={{ fontSize: '.875rem', color: '#3a4256', fontWeight: '600' }}>vs {rival?.name}</div>
-                          <div style={{ fontSize: '.72rem', color: '#8a93a6' }}>{p.tournaments?.name}{p.played_at && ` · ${new Date(p.played_at).toLocaleDateString('es-CO')}`}</div>
+                          <div style={{ fontSize: '.875rem', color: TXT, fontWeight: '600' }}>vs {rival?.name}</div>
+                          <div style={{ fontSize: '.72rem', color: TXT_MUTED }}>{p.tournaments?.name}{p.played_at && ` · ${new Date(p.played_at).toLocaleDateString('es-CO')}`}</div>
                         </div>
                       </div>
-                      <div style={{ fontWeight: '800', color: '#3a4256', fontSize: '1rem' }}>{gf} - {gc}</div>
+                      <div style={{ fontWeight: '800', color: TXT, fontSize: '1rem' }}>{gf} - {gc}</div>
                     </div>
                   )
                 })}
@@ -353,29 +371,29 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {tabActiva === 'torneos' && (
         <div>
           {torneos.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#8a93a6', background: CLAY_SURFACE, borderRadius: '20px', boxShadow: CLAY_SHADOW_SM }}>
+            <div style={{ padding: '48px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px' }}>
               <Trophy size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No ha participado en torneos aún</div>
             </div>
           ) : torneos.map(t => {
             const logroTorneo = logros.find(l => l.tournament_id === t.tournament_id)
             const jugs        = jugadoresPorTorneo[t.tournament_id] || []
             return (
-              <div key={t.id} style={{ background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '20px', padding: '20px', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <div key={t.id} style={{ ...GLASS_SM, borderRadius: '20px', padding: '20px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
-                    <div style={{ fontWeight: '700', color: '#3a4256', fontSize: '.9rem' }}>{t.tournaments?.name}</div>
-                    <div style={{ fontSize: '.75rem', color: '#8a93a6', marginTop: '2px' }}>{[t.tournaments?.modalidad, t.tournaments?.categoria, t.tournaments?.season].filter(Boolean).join(' · ')}</div>
+                    <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem' }}>{t.tournaments?.name}</div>
+                    <div style={{ fontSize: '.75rem', color: TXT_MUTED, marginTop: '2px' }}>{[t.tournaments?.modalidad, t.tournaments?.categoria, t.tournaments?.season].filter(Boolean).join(' · ')}</div>
                   </div>
                   {logroTorneo && (
-                    <span style={{ fontSize: '.8rem', fontWeight: '700', color: logroTorneo.tipo === 'campeon' ? '#e8710a' : '#6c35de', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '14px', padding: '5px 14px' }}>
+                    <span style={{ fontSize: '.8rem', fontWeight: '700', color: logroTorneo.tipo === 'campeon' ? '#ffd43b' : '#cbb2ff', ...GLASS_INSET, borderRadius: '14px', padding: '5px 14px' }}>
                       {logroTorneo.tipo === 'campeon' ? '🏆 Campeón' : logroTorneo.tipo === 'subcampeon' ? '🥈 Subcampeón' : logroTorneo.tipo === 'tercer_puesto' ? '🥉 Tercer puesto' : logroTorneo.tipo === 'semifinal' ? '⚡ Semifinal' : logroTorneo.tipo === 'cuartos' ? '🔥 Cuartos' : logroTorneo.tipo === 'octavos' ? '⚔️ Octavos' : logroTorneo.tipo === 'fase_grupos' ? '🏟️ Fase de grupos' : logroTorneo.tipo}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '8px', fontWeight: '600' }}>JUGADORES INSCRITOS ({jugs.length})</div>
+                <div style={{ fontSize: '.75rem', color: TXT_SOFT, marginBottom: '8px', fontWeight: '600' }}>JUGADORES INSCRITOS ({jugs.length})</div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {jugs.map(j => (
-                    <span key={j.id} style={{ fontSize: '.75rem', color: '#3a4256', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '20px', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '500' }}>
+                    <span key={j.id} style={{ fontSize: '.75rem', color: TXT_SOFT, ...GLASS_INSET, borderRadius: '20px', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '500' }}>
                       {j.players?.photo_url && <img src={j.players.photo_url} style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }}/>}
                       {j.players?.name}
                     </span>
@@ -391,7 +409,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {tabActiva === 'partidos' && (
         <div>
           {partidos.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#8a93a6', background: CLAY_SURFACE, borderRadius: '20px', boxShadow: CLAY_SHADOW_SM }}>
+            <div style={{ padding: '48px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px' }}>
               <Calendar size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay partidos jugados aún</div>
             </div>
           ) : (
@@ -403,23 +421,23 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 const gf      = esLocal ? p.home_score : p.away_score
                 const gc      = esLocal ? p.away_score : p.home_score
                 return (
-                  <div key={p.id} style={{ background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px' }}>
+                  <div key={p.id} style={{ ...GLASS_SM, borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexWrap: 'wrap', gap: '10px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '.75rem', fontWeight: '800', color: '#fff', background: res.color, borderRadius: '10px', padding: '3px 9px', minWidth: '24px', textAlign: 'center', boxShadow: `2px 2px 5px ${res.color}55` }}>{res.texto}</span>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                        {rival?.logo_url ? <img src={rival.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={16} color="#9aa0a6"/>}
+                      <span style={{ fontSize: '.75rem', fontWeight: '800', color: '#0f1c3f', background: res.color, borderRadius: '10px', padding: '3px 9px', minWidth: '24px', textAlign: 'center' }}>{res.texto}</span>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '10px', ...GLASS_INSET, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {rival?.logo_url ? <img src={rival.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={16} color="rgba(255,255,255,.5)"/>}
                       </div>
                       <div>
-                        <div style={{ fontWeight: '600', color: '#3a4256', fontSize: '.875rem' }}>
+                        <div style={{ fontWeight: '600', color: TXT, fontSize: '.875rem' }}>
                           {esLocal ? 'vs' : 'en'} {rival?.name}
-                          <span style={{ fontSize: '.72rem', color: '#8a93a6', marginLeft: '6px' }}>{esLocal ? '(Local)' : '(Visitante)'}</span>
+                          <span style={{ fontSize: '.72rem', color: TXT_MUTED, marginLeft: '6px' }}>{esLocal ? '(Local)' : '(Visitante)'}</span>
                         </div>
-                        <div style={{ fontSize: '.72rem', color: '#8a93a6', marginTop: '2px' }}>
+                        <div style={{ fontSize: '.72rem', color: TXT_MUTED, marginTop: '2px' }}>
                           {p.tournaments?.name}{p.played_at && ` · ${new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}`}
                         </div>
                       </div>
                     </div>
-                    <div style={{ fontWeight: '800', color: '#3a4256', fontSize: '1.1rem' }}>{gf} - {gc}</div>
+                    <div style={{ fontWeight: '800', color: TXT, fontSize: '1.1rem' }}>{gf} - {gc}</div>
                   </div>
                 )
               })}
@@ -432,14 +450,14 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {tabActiva === 'jugadores' && (
         <div>
           {!modoLectura && (
-            <div style={{ background: CLAY_SURFACE, boxShadow: CLAY_SHADOW, borderRadius: '22px', padding: '20px', marginBottom: '20px' }}>
-              <div style={{ fontWeight: '700', color: '#3a4256', fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo</div>
+            <div style={{ ...GLASS, borderRadius: '22px', padding: '20px', marginBottom: '20px' }}>
+              <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo</div>
               {!jugadorEncontrado && !mostrarFormNuevo && (
                 <div>
                   <label style={labelStyle}>Número de cédula</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} placeholder="Ingresa el número de cédula..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleBuscarCedula()}/>
-                    <button onClick={handleBuscarCedula} disabled={buscando} style={{ ...clayBtn('#1a73e8'), padding: '10px 18px', whiteSpace: 'nowrap', opacity: buscando ? .7 : 1 }}>
+                    <button onClick={handleBuscarCedula} disabled={buscando} style={{ ...glassBtn('#5b9dff'), padding: '10px 18px', whiteSpace: 'nowrap', opacity: buscando ? .7 : 1 }}>
                       {buscando ? 'Buscando...' : 'Buscar'}
                     </button>
                   </div>
@@ -447,28 +465,28 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               )}
               {jugadorEncontrado && (
                 <div>
-                  <div style={{ background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '16px', padding: '16px', marginBottom: '12px' }}>
-                    <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#1e8e3e', marginBottom: '10px' }}>✓ JUGADOR ENCONTRADO</div>
+                  <div style={{ ...GLASS_INSET, borderRadius: '16px', padding: '16px', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#51cf66', marginBottom: '10px' }}>✓ JUGADOR ENCONTRADO</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {jugadorEncontrado.photo_url ? <img src={jugadorEncontrado.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={20} color="#1e8e3e"/>}
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', ...GLASS_SM, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {jugadorEncontrado.photo_url ? <img src={jugadorEncontrado.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={20} color="#51cf66"/>}
                       </div>
                       <div>
-                        <div style={{ fontWeight: '700', color: '#3a4256', fontSize: '.9rem' }}>{jugadorEncontrado.name}</div>
-                        <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>🪪 {jugadorEncontrado.numero_cedula}{jugadorEncontrado.city && ` · 📍 ${jugadorEncontrado.city}`}</div>
+                        <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem' }}>{jugadorEncontrado.name}</div>
+                        <div style={{ fontSize: '.75rem', color: TXT_SOFT, marginTop: '2px' }}>🪪 {jugadorEncontrado.numero_cedula}{jugadorEncontrado.city && ` · 📍 ${jugadorEncontrado.city}`}</div>
                       </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleAgregarJugadorGlobal} style={{ ...clayBtn('#1e8e3e'), padding: '10px 18px' }}>+ Agregar al equipo</button>
-                    <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ ...clayBtn('#1a73e8', false), padding: '10px 18px' }}>Buscar otro</button>
+                    <button onClick={handleAgregarJugadorGlobal} style={{ ...glassBtn('#51cf66'), padding: '10px 18px' }}>+ Agregar al equipo</button>
+                    <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Buscar otro</button>
                   </div>
                 </div>
               )}
               {mostrarFormNuevo && (
                 <div>
-                  <div style={{ background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '16px', padding: '12px 16px', marginBottom: '16px' }}>
-                    <div style={{ fontSize: '.8rem', color: '#d93025', fontWeight: '600' }}>⚠️ No existe jugador con cédula <strong>{cedulaBuscar}</strong>. Completa los datos para crearlo.</div>
+                  <div style={{ ...GLASS_INSET, borderRadius: '16px', padding: '12px 16px', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '.8rem', color: '#ff9b9b', fontWeight: '600' }}>⚠️ No existe jugador con cédula <strong>{cedulaBuscar}</strong>. Completa los datos para crearlo.</div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -500,10 +518,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                    <button onClick={handleCrearYAgregar} disabled={guardando} style={{ ...clayBtn('#1a73e8'), padding: '10px 18px', opacity: guardando ? .7 : 1 }}>
+                    <button onClick={handleCrearYAgregar} disabled={guardando} style={{ ...glassBtn('#5b9dff'), padding: '10px 18px', opacity: guardando ? .7 : 1 }}>
                       {guardando ? 'Creando...' : 'Crear y agregar al equipo'}
                     </button>
-                    <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar('') }} style={{ ...clayBtn('#1a73e8', false), padding: '10px 18px' }}>Cancelar</button>
+                    <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar('') }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Cancelar</button>
                   </div>
                 </div>
               )}
@@ -515,34 +533,34 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}`
       navigator.clipboard.writeText(link)
       showMsg('Link copiado al portapapeles ✓')
-    }} style={{ ...clayBtn('#1a73e8', false), display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', color: '#1a73e8' }}>
+    }} style={{ ...glassBtn('#5b9dff', false), display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', color: '#8ec3ff' }}>
       🔗 Copiar link de registro
     </button>
   </div>
 )}
-          <SectionTitle icon={<Users size={18} color="#1a73e8"/>} title="Jugadores del equipo"/>
+          <SectionTitle icon={<Users size={18} color="#8ec3ff"/>} title="Jugadores del equipo"/>
           {jugadoresEquipoGlobal.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#8a93a6', background: CLAY_SURFACE, borderRadius: '20px', boxShadow: CLAY_SHADOW_SM }}>
+            <div style={{ padding: '48px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px' }}>
               <Users size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay jugadores en este equipo aún</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {jugadoresEquipoGlobal.map((j, i) => (
-                <div key={j.id} style={{ background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '18px', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="#9aa0a6"/>}
+                <div key={j.id} style={{ ...GLASS_SM, borderRadius: '18px', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', color: '#3a4256', fontSize: '.875rem' }}>{j.name}</div>
-                    <div style={{ fontSize: '.72rem', color: '#8a93a6', display: 'flex', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: '600', color: TXT, fontSize: '.875rem' }}>{j.name}</div>
+                    <div style={{ fontSize: '.72rem', color: TXT_MUTED, display: 'flex', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
                       <span>🪪 {j.numero_cedula}</span>
                       {j.city && <span>📍 {j.city}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                      {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F5: {j.posicion_futbol5}</span>}
-                      {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F7: {j.posicion_futbol7}</span>}
-                      {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#e8710a', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F11: {j.posicion_futbol11}</span>}
-                      <span style={{ fontSize: '.68rem', fontWeight: '700', color: jugadoresActivos.includes(j.id) ? '#1e8e3e' : '#9aa0a6', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, borderRadius: '20px', padding: '2px 9px' }}>
+                      {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#8ec3ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F5: {j.posicion_futbol5}</span>}
+                      {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#8ef0a8', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F7: {j.posicion_futbol7}</span>}
+                      {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#ffc078', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F11: {j.posicion_futbol11}</span>}
+                      <span style={{ fontSize: '.68rem', fontWeight: '700', color: jugadoresActivos.includes(j.id) ? '#8ef0a8' : TXT_MUTED, ...GLASS_INSET, borderRadius: '20px', padding: '2px 9px' }}>
   {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
 </span>
                     </div>
@@ -558,21 +576,21 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {tabActiva === 'palmares' && (
         <div>
           {logros.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#8a93a6', background: CLAY_SURFACE, borderRadius: '20px', boxShadow: CLAY_SHADOW_SM }}>
+            <div style={{ padding: '48px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px' }}>
               <Award size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay logros registrados aún</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {logros.map(l => (
-                <div key={l.id} style={{ background: CLAY_SURFACE, boxShadow: CLAY_SHADOW_SM, borderRadius: '18px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ fontSize: '2rem', width: '54px', height: '54px', borderRadius: '16px', background: CLAY_BG, boxShadow: CLAY_SHADOW_IN, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div key={l.id} style={{ ...GLASS_SM, borderRadius: '18px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ fontSize: '2rem', width: '54px', height: '54px', borderRadius: '16px', ...GLASS_INSET, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {l.tipo === 'campeon' ? '🏆' : l.tipo === 'subcampeon' ? '🥈' : l.tipo === 'tercer_puesto' ? '🥉' : l.tipo === 'goleador' ? '⚽' : l.tipo === 'mejor_jugador' ? '⭐' : '🎖️'}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '700', color: '#3a4256', fontSize: '.9rem', textTransform: 'capitalize' }}>{l.tipo?.replace(/_/g, ' ')}</div>
-                    <div style={{ fontSize: '.75rem', color: '#8a93a6', marginTop: '2px' }}>{l.tournaments?.name}</div>
-                    {l.descripcion   && <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{l.descripcion}</div>}
-                    {l.players?.name && <div style={{ fontSize: '.75rem', color: '#1a73e8', marginTop: '2px', fontWeight: '600' }}>👤 {l.players.name}</div>}
+                    <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem', textTransform: 'capitalize' }}>{l.tipo?.replace(/_/g, ' ')}</div>
+                    <div style={{ fontSize: '.75rem', color: TXT_MUTED, marginTop: '2px' }}>{l.tournaments?.name}</div>
+                    {l.descripcion   && <div style={{ fontSize: '.75rem', color: TXT_SOFT, marginTop: '2px' }}>{l.descripcion}</div>}
+                    {l.players?.name && <div style={{ fontSize: '.75rem', color: '#8ec3ff', marginTop: '2px', fontWeight: '600' }}>👤 {l.players.name}</div>}
                   </div>
                 </div>
               ))}
