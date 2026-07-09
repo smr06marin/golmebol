@@ -37,7 +37,8 @@ html {
 }
 
 body {
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 ::selection {
@@ -131,6 +132,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ── Móvil ─────────────────────────────────────────── */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  /* En algunos navegadores/WebViews de Android (WhatsApp, Samsung Internet, MIUI)
+     "scroll-behavior: smooth" hace que el scroll con el dedo se sienta pegajoso/atascado.
+     Se deja el scroll suave solo para desktop. */
+  html { scroll-behavior: auto; }
+}
+
 @media (max-width: 767px) {
   /* La planilla oficial se desplaza de lado (es una hoja ancha) */
   #planilla-print {
