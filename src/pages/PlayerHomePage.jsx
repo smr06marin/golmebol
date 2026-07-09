@@ -99,7 +99,14 @@ export default function PlayerHomePage() {
     const pp        = raw.filter(r => r.team_result === 'loss').length
     const eficacia  = pj > 0 ? Math.round((pg / pj) * 100) : 0
     const esPort    = p.posicion_futbol5 === 'Portero' || p.posicion_futbol7 === 'Portero' || p.posicion_futbol11 === 'Portero'
+    const esDefensa = !esPort && (p.posicion_futbol5?.includes('Defens') || p.posicion_futbol7?.includes('Defens') || p.posicion_futbol11?.includes('Defens'))
     const promedio  = pj > 0 ? parseFloat((esPort ? recibidos / pj : goles / pj).toFixed(2)) : 0
+    // Stats adicionales
+    const amarillas    = raw.reduce((s, r) => s + (r.yellow_cards || 0), 0)
+    const rojas        = raw.reduce((s, r) => s + (r.red_cards    || 0), 0)
+    const vallasCero   = esPort ? raw.filter(r => r.goals_conceded === 0).length : 0
+    const golesComoJug = raw.filter(r=>!r.fue_arquero).reduce((s,r)=>s+(r.goals_scored||0),0)
+    const golesComoArq = raw.filter(r=>r.fue_arquero).reduce((s,r)=>s+(r.goals_scored||0),0)
 
     let rachaVictorias = 0
     for (const r of [...raw].reverse()) {
@@ -110,7 +117,7 @@ export default function PlayerHomePage() {
     const { data: logrosJug } = await supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon')
     const titulos = (logrosJug || []).length
 
-    const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort }
+    const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort, esDefensa, amarillas, rojas, vallasCero, golesComoJug, golesComoArq }
     setStats(statsCalc)
 
     const { data: histData } = await supabase
@@ -440,14 +447,20 @@ export default function PlayerHomePage() {
   const cardDesign = CARD_DESIGNS.find(d => d.id === cardType) || CARD_DESIGNS[0]
   const cardColor  = cardDesign?.color || '#00ee55'
 
+  const esDefensa  = stats?.esDefensa || false
   const cardStats = {
-    pj:          stats?.pj        || 0,
-    golesContra: esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0),
-    promedio:    stats?.promedio   || 0,
-    eficacia:    stats?.eficacia   || 0,
-    pg:          stats?.pg         || 0,
-    pe:          stats?.pe         || 0,
-    pp:          stats?.pp         || 0,
+    pj:           stats?.pj          || 0,
+    golesContra:  esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0),
+    promedio:     stats?.promedio     || 0,
+    eficacia:     stats?.eficacia     || 0,
+    pg:           stats?.pg           || 0,
+    pe:           stats?.pe           || 0,
+    pp:           stats?.pp           || 0,
+    amarillas:    stats?.amarillas    || 0,
+    rojas:        stats?.rojas        || 0,
+    vallasCero:   stats?.vallasCero   || 0,
+    golesComoJug: stats?.golesComoJug || 0,
+    golesComoArq: stats?.golesComoArq || 0,
   }
 
   const nombre      = player.name?.toUpperCase().split(' ')[0] || 'JUGADOR'
@@ -672,6 +685,7 @@ export default function PlayerHomePage() {
                             stats={cardStats}
                             cardType={cid}
                             esPortero={esPortero}
+                            esDefensa={esDefensa}
                             photoUrlExterno={player.photo_url || null}
                             torneosData={torneosData}
                             equiposData={equiposData}
@@ -801,7 +815,7 @@ export default function PlayerHomePage() {
             </div>
             <div ref={cardRef} style={{ width: '100%' }}>
               <PlayerCard
-                playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero}
+                playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero} esDefensa={esDefensa}
                 photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
                 onStatClick={handleCardClick}
               />

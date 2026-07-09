@@ -83,6 +83,7 @@ export default function PlayerCard({
   hideShields     = false,
   photoUrlExterno = null,
   esPortero       = false,
+  esDefensa       = false,
   torneosData     = null,
   equiposData     = null,
 }) {
@@ -117,8 +118,14 @@ export default function PlayerCard({
   const statsIzquierda = esPortero
     ? [
         { label: 'GC',    value: stats.golesContra,    key: 'gc',   dot: true  },
-        { label: 'GC/PJ', value: stats.promedio,       key: 'prom', dot: true  },
+        { label: 'VC',    value: stats.vallasCero||0,  key: 'vc',   dot: true  },
         { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
+      ]
+    : esDefensa
+    ? [
+        { label: 'GOLES', value: stats.golesContra,    key: 'gc',   dot: true  },
+        { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
+        { label: '🟨',    value: stats.amarillas||0,   key: 'am',   dot: false },
       ]
     : [
         { label: 'GOLES', value: stats.golesContra,    key: 'gc',   dot: true  },
