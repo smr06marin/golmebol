@@ -9,6 +9,79 @@ const TABS = [
   { id: 'goleadores', label: 'Goleadores' },
 ]
 
+const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
+
+// Banner tipo "poster" con el podio de goleadores y la valla menos vencida del torneo
+function TopGoleadoresBanner({ goleadores, vallaDestacados, vallaRecibidos }) {
+  const top3 = goleadores.slice(0, 3)
+  if (top3.length === 0 && vallaDestacados.length === 0) return null
+
+  return (
+    <div style={{
+      background: 'radial-gradient(circle at 50% 0%, #241a05 0%, #0a0a12 55%, #07070e 100%)',
+      borderRadius: '18px',
+      padding: '26px 16px 22px',
+      marginBottom: '16px',
+      border: '1px solid #2a2410',
+      boxShadow: '0 8px 30px rgba(0,0,0,.25)',
+    }}>
+      {top3.length > 0 && (
+        <>
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+            <div style={{ fontSize: '1.7rem', marginBottom: '4px' }}>🏆</div>
+            <div style={{ fontWeight: '900', color: '#fff', fontSize: '1.05rem', letterSpacing: '.02em', textTransform: 'uppercase', lineHeight: 1.3 }}>
+              Top Goleadores
+            </div>
+            <div style={{ color: '#f9a825', fontWeight: '800', fontSize: '.68rem', letterSpacing: '.18em', marginTop: '2px' }}>
+              DEL TORNEO
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {top3.map((g, i) => (
+              <div key={`${g.player_id}-${g.team_id}`} style={{ width: '104px', textAlign: 'center' }}>
+                <div style={{ width: '74px', height: '74px', borderRadius: '50%', margin: '0 auto', border: `3px solid ${MEDALLA[i]}`, overflow: 'hidden', background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 16px ${MEDALLA[i]}55` }}>
+                  {g.photo_url ? <img src={g.photo_url} alt={g.player_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.6rem' }}>👤</span>}
+                </div>
+                <div style={{ marginTop: '-13px', display: 'flex', justifyContent: 'center' }}>
+                  <div style={{ background: MEDALLA[i], color: '#000', fontWeight: '900', fontSize: '.7rem', borderRadius: '10px', padding: '2px 9px', border: '2px solid #0a0a12', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>{g.total_goals}</span>
+                    {g.team_logo && <img src={g.team_logo} style={{ width: '11px', height: '11px', objectFit: 'contain', flexShrink: 0 }}/>}
+                  </div>
+                </div>
+                <div style={{ marginTop: '7px', color: '#fff', fontWeight: '800', fontSize: '.7rem', textTransform: 'uppercase', lineHeight: 1.2 }}>{g.player_name}</div>
+                <div style={{ color: '#8a8f9a', fontSize: '.62rem', marginTop: '2px' }}>{g.team_name}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {vallaDestacados.length > 0 && (
+        <div style={{ marginTop: top3.length > 0 ? '22px' : '0', paddingTop: top3.length > 0 ? '18px' : '0', borderTop: top3.length > 0 ? '1px solid rgba(255,255,255,.08)' : 'none', textAlign: 'center' }}>
+          <div style={{ color: '#00ddd0', fontWeight: '800', fontSize: '.68rem', letterSpacing: '.14em', marginBottom: '10px' }}>
+            🧤 VALLA MENOS VENCIDA · {vallaRecibidos} gol{vallaRecibidos === 1 ? '' : 'es'} recibido{vallaRecibidos === 1 ? '' : 's'}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            {vallaDestacados.map(a => (
+              <div key={a.player_id} style={{ textAlign: 'center', width: '86px' }}>
+                <div style={{ width: '58px', height: '58px', borderRadius: '50%', margin: '0 auto', border: '2px solid #00ddd0', overflow: 'hidden', background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 14px #00ddd055' }}>
+                  {a.foto ? <img src={a.foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.2rem' }}>🧤</span>}
+                </div>
+                <div style={{ marginTop: '6px', color: '#fff', fontWeight: '700', fontSize: '.65rem', lineHeight: 1.2 }}>{a.nombre}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '3px' }}>
+                  {a.team_logo && <img src={a.team_logo} style={{ width: '11px', height: '11px', objectFit: 'contain' }}/>}
+                  <span style={{ color: '#8a8f9a', fontSize: '.6rem' }}>{a.team_name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Modal historial de partido
 function ModalPartido({ partido, onClose }) {
   const [stats,   setStats]   = useState([])
@@ -342,6 +415,11 @@ export default function PlayerTorneoPage() {
     }
   })
   const tablaOrdenada      = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+
+  // Valla menos vencida destacada: arquero(s) con menos goles recibidos en total
+  // (si dos arqueros del mismo equipo empatan en el mínimo, se muestran ambos)
+  const vallaRecibidos   = vallas.opcion2.length > 0 ? vallas.opcion2[0].total_recibidos : null
+  const vallaDestacados  = vallaRecibidos !== null ? vallas.opcion2.filter(p => p.total_recibidos === vallaRecibidos) : []
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
   const idsPartidosTorneo  = new Set(partidos.map(p => p.id))
@@ -624,6 +702,8 @@ export default function PlayerTorneoPage() {
         {/* ── GOLEADORES ── */}
         {tab === 'goleadores' && (
           <div>
+            <TopGoleadoresBanner goleadores={goleadores} vallaDestacados={vallaDestacados} vallaRecibidos={vallaRecibidos}/>
+
             {goleadores.length === 0 ? (
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
                 <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚽</div>
