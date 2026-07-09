@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Shield, Upload, X, Search, MoreVertical, Users, Trophy, FileText, Shirt, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-const EMPTY = { name: '', city: '', genero: '', modalidad: '', descripcion: '', logros: '' }
+const EMPTY = { name: '', city: '', genero: '', modalidad: '', descripcion: '', logros: '', representante_nombre: '', representante_telefono: '' }
 const MODALIDADES = ['Fútbol 5', 'Fútbol 7', 'Fútbol 11']
 const GENEROS = ['Masculino', 'Femenino', 'Mixto']
 
@@ -259,7 +259,7 @@ export default function AdminEquiposPage() {
   async function handleSave() {
     if (!form.name) return showMsgFn('El nombre es obligatorio', 'error')
     setLoading(true)
-    const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros }
+    const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_telefono: form.representante_telefono || null }
     if (editId) {
       const { error } = await supabase.from('teams').update(payload).eq('id', editId)
       if (error) showMsgFn('Error al guardar', 'error')
@@ -322,6 +322,8 @@ export default function AdminEquiposPage() {
             <div><label style={labelStyle}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inputStyle} placeholder="Ciudad"/></div>
             <div><label style={labelStyle}>Modalidad</label><select value={form.modalidad} onChange={e => setForm(f=>({...f,modalidad:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{MODALIDADES.map(m=><option key={m}>{m}</option>)}</select></div>
             <div><label style={labelStyle}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{GENEROS.map(g=><option key={g}>{g}</option>)}</select></div>
+            <div><label style={labelStyle}>Representante / dueño</label><input value={form.representante_nombre} onChange={e => setForm(f=>({...f,representante_nombre:e.target.value}))} style={inputStyle} placeholder="Nombre completo"/></div>
+            <div><label style={labelStyle}>Teléfono del representante</label><input value={form.representante_telefono} onChange={e => setForm(f=>({...f,representante_telefono:e.target.value}))} style={inputStyle} placeholder="300 000 0000"/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Descripción del equipo</label><textarea value={form.descripcion} onChange={e => setForm(f=>({...f,descripcion:e.target.value}))} style={{...inputStyle,height:'70px',resize:'vertical'}} placeholder="Historia, estilo de juego, descripción..."/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Logros y palmarés</label><textarea value={form.logros} onChange={e => setForm(f=>({...f,logros:e.target.value}))} style={{...inputStyle,height:'60px',resize:'vertical'}} placeholder="Campeonatos, títulos, participaciones destacadas..."/></div>
           </div>
@@ -381,6 +383,9 @@ export default function AdminEquiposPage() {
                 </span>
                 {equipo.logros    && <span style={{ color:'#f9a825' }}>🏆 {equipo.logros.substring(0,40)}{equipo.logros.length>40?'...':''}</span>}
               </div>
+              <div style={{ fontSize:'.72rem', marginTop:'3px', color: equipo.representante_nombre ? '#5f6368' : '#d93025' }}>
+                {equipo.representante_nombre ? `👤 ${equipo.representante_nombre}` : '⚠️ Sin representante registrado'}
+              </div>
             </div>
 
             {/* Indicadores */}
@@ -392,7 +397,7 @@ export default function AdminEquiposPage() {
             {/* Acciones */}
             <MenuAcciones
               equipo={equipo}
-              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'' }); setEditId(eq.id); setShowForm(true) }}
+              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setShowForm(true) }}
               onJugadores={eq => navigate(`/admin/equipos/${eq.id}`)}
               onUniforme={eq => setUniforme(eq)}
               onPoster={eq => setPoster(eq)}

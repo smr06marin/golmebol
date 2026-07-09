@@ -31,6 +31,9 @@ export default function AdminCrearPage() {
   const [loading, setLoading] = useState(false)
   const [expandedEquipo, setExpandedEquipo] = useState(null)
   const [equiposInscritos, setEquiposInscritos] = useState([])
+  const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
+  const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+  const [creandoEquipo,      setCreandoEquipo]      = useState(false)
 
   useEffect(() => {
     supabase.from('tournaments').select('*').eq('status', 'active').then(({ data }) => setTorneos(data || []))
@@ -95,6 +98,33 @@ export default function AdminCrearPage() {
     if (error) showMsg('Error al inscribir equipo', 'error')
     else { showMsg('Equipo inscrito ✓'); fetchEquiposInscritos() }
     setLoading(false)
+  }
+
+  function abrirCrearEquipo() {
+    setNuevoEquipoForm({ name: equipoSearch, city: '', representante_nombre: '', representante_telefono: '' })
+    setMostrarCrearEquipo(true)
+  }
+
+  // Crea el equipo (con su representante), lo inscribe en el torneo y lo deja seleccionado
+  async function handleCrearEquipoYSeleccionar() {
+    if (!nuevoEquipoForm.name.trim())                 return showMsg('El nombre del equipo es obligatorio', 'error')
+    if (!nuevoEquipoForm.representante_nombre.trim()) return showMsg('El representante del equipo es obligatorio', 'error')
+    setCreandoEquipo(true)
+    const { data: nuevo, error } = await supabase.from('teams').insert({
+      name: nuevoEquipoForm.name.trim(),
+      city: nuevoEquipoForm.city.trim() || null,
+      representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+      representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+    }).select().single()
+    if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
+    const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: torneoSel, team_id: nuevo.id })
+    if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
+    setEquipos(prev => [...prev, nuevo].sort((a, b) => a.name.localeCompare(b.name)))
+    showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
+    setCreandoEquipo(false)
+    setMostrarCrearEquipo(false)
+    await handleSeleccionarEquipo(nuevo)
+    fetchEquiposInscritos()
   }
 
   async function handleAgregarJugador(jugador) {
@@ -236,9 +266,31 @@ export default function AdminCrearPage() {
                         ? <img src={equipoSel.logo_url} style={{ width: '32px', height: '32px', borderRadius: '6px', objectFit: 'contain' }}/>
                         : <Shield size={20} color="#1e8e3e"/>
                       }
-                      <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{equipoSel.name}</span>
+                      <div>
+                        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{equipoSel.name}</div>
+                        {equipoSel.representante_nombre && <div style={{ fontSize: '.72rem', color: '#5f6368' }}>👤 {equipoSel.representante_nombre}</div>}
+                      </div>
                     </div>
                     <button onClick={() => setEquipoSel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368' }}><X size={16}/></button>
+                  </div>
+                ) : mostrarCrearEquipo ? (
+                  <div>
+                    <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '14px' }}>
+                      Se crea el equipo y queda inscrito en este torneo de una vez.
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div><label style={label}>Nombre del equipo *</label><input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={input}/></div>
+                      <div><label style={label}>Ciudad</label><input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={input}/></div>
+                      <div><label style={label}>Representante / dueño del equipo *</label><input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={input}/></div>
+                      <div><label style={label}>Teléfono del representante</label><input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" style={input}/></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                      <button onClick={handleCrearEquipoYSeleccionar} disabled={creandoEquipo}
+                        style={{ flex: 1, padding: '9px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: creandoEquipo ? .7 : 1 }}>
+                        {creandoEquipo ? 'Creando...' : '+ Crear e inscribir'}
+                      </button>
+                      <button onClick={() => setMostrarCrearEquipo(false)} style={{ padding: '9px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
+                    </div>
                   </div>
                 ) : (
                   <div style={{ position: 'relative' }}>
@@ -252,25 +304,39 @@ export default function AdminCrearPage() {
                       />
                     </div>
                     {equipoSearch && (
-                      <div style={{ position: 'absolute', top: '44px', left: 0, right: 0, background: '#fff', border: '1px solid #e8eaed', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,.12)', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                      <div style={{ position: 'absolute', top: '44px', left: 0, right: 0, background: '#fff', border: '1px solid #e8eaed', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,.12)', zIndex: 50, maxHeight: '260px', overflowY: 'auto' }}>
                         {equiposFiltrados.length === 0 ? (
-                          <div style={{ padding: '12px 16px', color: '#9aa0a6', fontSize: '.875rem' }}>No se encontraron equipos</div>
-                        ) : equiposFiltrados.map(e => (
-                          <div key={e.id} onClick={() => handleSeleccionarEquipo(e)}
-                            style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f3f4' }}
-                            onMouseEnter={ev => ev.currentTarget.style.background = '#f8f9fa'}
-                            onMouseLeave={ev => ev.currentTarget.style.background = '#fff'}
-                          >
-                            {e.logo_url
-                              ? <img src={e.logo_url} style={{ width: '28px', height: '28px', borderRadius: '6px', objectFit: 'contain' }}/>
-                              : <Shield size={18} color="#9aa0a6"/>
-                            }
-                            <div>
-                              <div style={{ fontWeight: '500', color: '#202124', fontSize: '.875rem' }}>{e.name}</div>
-                              {e.city && <div style={{ color: '#9aa0a6', fontSize: '.75rem' }}>{e.city}</div>}
-                            </div>
+                          <div style={{ padding: '14px 16px', textAlign: 'center' }}>
+                            <div style={{ color: '#9aa0a6', fontSize: '.875rem', marginBottom: '10px' }}>No se encontró ningún equipo con ese nombre</div>
+                            <button onClick={abrirCrearEquipo} style={{ padding: '7px 16px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>+ Crear equipo nuevo</button>
                           </div>
-                        ))}
+                        ) : (
+                          <>
+                            <div style={{ padding: '8px 16px 0', fontSize: '.68rem', color: '#9aa0a6' }}>Revisá el escudo y el representante — puede haber nombres parecidos.</div>
+                            {equiposFiltrados.map(e => (
+                              <div key={e.id} onClick={() => handleSeleccionarEquipo(e)}
+                                style={{ padding: '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f3f4' }}
+                                onMouseEnter={ev => ev.currentTarget.style.background = '#f8f9fa'}
+                                onMouseLeave={ev => ev.currentTarget.style.background = '#fff'}
+                              >
+                                {e.logo_url
+                                  ? <img src={e.logo_url} style={{ width: '28px', height: '28px', borderRadius: '6px', objectFit: 'contain' }}/>
+                                  : <Shield size={18} color="#9aa0a6"/>
+                                }
+                                <div>
+                                  <div style={{ fontWeight: '500', color: '#202124', fontSize: '.875rem' }}>{e.name}</div>
+                                  {e.city && <div style={{ color: '#9aa0a6', fontSize: '.75rem' }}>{e.city}</div>}
+                                  <div style={{ fontSize: '.7rem', color: e.representante_nombre ? '#1a73e8' : '#d93025' }}>
+                                    {e.representante_nombre ? `👤 ${e.representante_nombre}` : '⚠️ Sin representante'}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{ padding: '8px 16px' }}>
+                              <button onClick={abrirCrearEquipo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem', textDecoration: 'underline' }}>¿No es ninguno de estos? Crear equipo nuevo</button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

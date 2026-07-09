@@ -420,6 +420,9 @@ export default function AdminTorneoDetallePage() {
   const [busquedaEquipo,     setBusquedaEquipo]     = useState('')
   const [equiposDisponibles, setEquiposDisponibles] = useState([])
   const [loadingEquipos,     setLoadingEquipos]     = useState(false)
+  const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
+  const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+  const [creandoEquipo,      setCreandoEquipo]      = useState(false)
 
   // ── GRUPOS ──────────────────────────────────────────
   const [grupos,           setGrupos]           = useState([])
@@ -1513,6 +1516,7 @@ export default function AdminTorneoDetallePage() {
 
   async function buscarEquipos(q) {
     setBusquedaEquipo(q)
+    setMostrarCrearEquipo(false)
     if (!q.trim()) { setEquiposDisponibles([]); return }
     setLoadingEquipos(true)
     const { data } = await supabase.from('teams').select('*').ilike('name', `%${q}%`).limit(10)
@@ -1524,7 +1528,35 @@ export default function AdminTorneoDetallePage() {
   async function handleAgregarEquipo(equipo) {
     const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: equipo.id })
     if (error) return showMsg('Error al agregar equipo', 'error')
-    showMsg(`${equipo.name} agregado al torneo ✓`); setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([]); fetchEquipos()
+    showMsg(`${equipo.name} agregado al torneo ✓`); cerrarModalEquipo(); fetchEquipos()
+  }
+
+  function abrirCrearEquipo() {
+    setNuevoEquipoForm({ name: busquedaEquipo, city: '', representante_nombre: '', representante_telefono: '' })
+    setMostrarCrearEquipo(true)
+  }
+
+  function cerrarModalEquipo() {
+    setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
+    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+  }
+
+  // Crea el equipo (con su representante) y lo inscribe en el torneo en el mismo paso
+  async function handleCrearEquipoYAgregar() {
+    if (!nuevoEquipoForm.name.trim())                  return showMsg('El nombre del equipo es obligatorio', 'error')
+    if (!nuevoEquipoForm.representante_nombre.trim())  return showMsg('El representante del equipo es obligatorio', 'error')
+    setCreandoEquipo(true)
+    const { data: nuevo, error } = await supabase.from('teams').insert({
+      name: nuevoEquipoForm.name.trim(),
+      city: nuevoEquipoForm.city.trim() || null,
+      representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+      representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+    }).select().single()
+    if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
+    const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
+    if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
+    showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
+    setCreandoEquipo(false); cerrarModalEquipo(); fetchEquipos()
   }
 
   async function handleQuitarEquipo(equipo) {
@@ -1788,23 +1820,75 @@ export default function AdminTorneoDetallePage() {
 
       {showAgregarEquipo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '440px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '440px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem' }}>Agregar equipo al torneo</div>
-              <button onClick={() => { setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([]) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+              <button onClick={cerrarModalEquipo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
             </div>
-            <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Buscar equipo por nombre..." style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
-            {loadingEquipos && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
-            {!loadingEquipos && busquedaEquipo && equiposDisponibles.length === 0 && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>No se encontraron equipos disponibles</div>}
-            {equiposDisponibles.length > 0 && (
-              <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
-                {equiposDisponibles.map((e, i) => (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderBottom: i < equiposDisponibles.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={36}/></div>
-                    <div style={{ flex: 1 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{e.name}</div>{e.city && <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>📍 {e.city}</div>}</div>
-                    <button onClick={() => handleAgregarEquipo(e)} style={{ padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}>+ Agregar</button>
+
+            {!mostrarCrearEquipo && (
+              <>
+                <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Buscar equipo por nombre..." style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
+                {loadingEquipos && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
+                {!loadingEquipos && busquedaEquipo && equiposDisponibles.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '16px 4px' }}>
+                    <div style={{ color: '#9aa0a6', fontSize: '.875rem', marginBottom: '12px' }}>No se encontró ningún equipo con ese nombre</div>
+                    <button onClick={abrirCrearEquipo} style={{ padding: '8px 18px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600' }}>+ Crear equipo nuevo</button>
                   </div>
-                ))}
+                )}
+                {equiposDisponibles.length > 0 && (
+                  <>
+                    <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginBottom: '8px' }}>Revisá el escudo y el representante antes de agregar — puede haber equipos con nombres parecidos.</div>
+                    <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden', marginBottom: '12px' }}>
+                      {equiposDisponibles.map((e, i) => (
+                        <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderBottom: i < equiposDisponibles.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={36}/></div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{e.name}</div>
+                            {e.city && <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>📍 {e.city}</div>}
+                            <div style={{ fontSize: '.72rem', color: e.representante_nombre ? '#1a73e8' : '#d93025', marginTop: '1px' }}>
+                              {e.representante_nombre ? `👤 ${e.representante_nombre}` : '⚠️ Sin representante registrado'}
+                            </div>
+                          </div>
+                          <button onClick={() => handleAgregarEquipo(e)} style={{ padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500', flexShrink: 0 }}>+ Agregar</button>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={abrirCrearEquipo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', textDecoration: 'underline' }}>¿No es ninguno de estos? Crear equipo nuevo</button>
+                  </>
+                )}
+              </>
+            )}
+
+            {mostrarCrearEquipo && (
+              <div>
+                <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '14px' }}>
+                  Se crea el equipo y queda inscrito en este torneo de una vez.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Nombre del equipo *</label>
+                    <input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={inputStyle}/>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Ciudad</label>
+                    <input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={inputStyle}/>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Representante / dueño del equipo *</label>
+                    <input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={inputStyle}/>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Teléfono del representante</label>
+                    <input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" style={inputStyle}/>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
+                  <button onClick={handleCrearEquipoYAgregar} disabled={creandoEquipo} style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: creandoEquipo ? .7 : 1 }}>
+                    {creandoEquipo ? 'Creando...' : '+ Crear e inscribir en el torneo'}
+                  </button>
+                  <button onClick={() => setMostrarCrearEquipo(false)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
+                </div>
               </div>
             )}
           </div>

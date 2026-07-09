@@ -302,6 +302,11 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               {equipo.genero    && <span style={{ fontSize: '.78rem', color: '#cbb2ff', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.genero}</span>}
               <span style={{ fontSize: '.78rem', color: '#8ef0a8', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{torneos.length} torneos</span>
             </div>
+            <div style={{ fontSize: '.78rem', color: equipo.representante_nombre ? TXT_SOFT : '#ff9b9b', marginTop: '8px', fontWeight: '600' }}>
+              {equipo.representante_nombre
+                ? `👤 Representante: ${equipo.representante_nombre}${equipo.representante_telefono ? ` · 📞 ${equipo.representante_telefono}` : ''}`
+                : '⚠️ Sin representante registrado'}
+            </div>
             {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#8ec3ff', marginTop: '8px', fontWeight: '600' }}>Subiendo logo...</div>}
           </div>
           <div style={{ textAlign: 'center', ...GLASS_SM, borderRadius: '18px', padding: '12px 18px' }}>
