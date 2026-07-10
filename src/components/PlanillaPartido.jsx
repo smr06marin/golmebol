@@ -297,6 +297,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [duracionInput,    setDuracionInput]    = useState('20')
 
   const timerRef  = useRef(null)
+  const syncTimerRef = useRef(null) // debounce de la sincronización con el servidor
   const [cronoPos, setCronoPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 200, y: 20 })
   const dragStart = useRef(null)
 
@@ -344,6 +345,74 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const arbitrosKey  = `arbitros_torneo_${partido.tournament_id}`
   const limiteSegundos = duracionMinutos * 60 + tiempoExtra * 60
 
+  // Snapshot completo de la planilla (datos + cronómetro) para poder
+  // continuar exactamente igual desde OTRO celular si el que la estaba
+  // llenando se daña/apaga. snapshotAt permite recalcular cuántos segundos
+  // han pasado realmente si el cronómetro seguía corriendo.
+  function construirSnap() {
+    return {
+      jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis,
+      finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis,
+      arbitro1, arbitro2, arbitro3, anotador, cronometroNombre, observaciones,
+      horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante,
+      duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante,
+      periodo, segundos, corriendo, tiempoAgotado, tiempoExtra,
+      savedAt: new Date().toISOString(), pendienteSync: true,
+    }
+  }
+
+  // Sube el snapshot a Supabase (matches.live_state) para que cualquier otro
+  // celular asignado a este partido pueda retomarlo tal cual. No bloquea la
+  // interfaz ni rompe nada si falla (ej. sin internet): es solo un respaldo.
+  function sincronizarRemoto(snap, { inmediato = false } = {}) {
+    clearTimeout(syncTimerRef.current)
+    const subir = () => {
+      supabase.from('matches').update({ live_state: snap, live_state_updated_at: snap.savedAt }).eq('id', partido.id).then(() => {}, () => {})
+    }
+    if (inmediato) subir()
+    else syncTimerRef.current = setTimeout(subir, 1500)
+  }
+
+  // Aplica un snapshot (local o del servidor) al estado de la planilla. Si el
+  // cronómetro seguía corriendo, se le suma el tiempo real transcurrido desde
+  // que se guardó, para que al retomar desde otro celular el reloj muestre lo
+  // que realmente debería marcar en este momento, no lo último que se guardó.
+  function aplicarSnap(snap, defaultDur) {
+    setJugadoresLocal(snap.jugadoresLocal || []); setJugadoresVisitante(snap.jugadoresVisitante || [])
+    setGolesLocal(snap.golesLocal || Array(24).fill(null)); setGolesVisitante(snap.golesVisitante || Array(24).fill(null))
+    setFaltasAcumLocal(snap.faltasAcumLocal || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
+    setFaltasAcumVis(snap.faltasAcumVis || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
+    setFinalistasLocal(snap.finalistasLocal || Array(5).fill('')); setFinalistasVis(snap.finalistasVis || Array(5).fill(''))
+    setIngresosLocal(snap.ingresosLocal || Array(7).fill('')); setIngresosVis(snap.ingresosVis || Array(7).fill(''))
+    setCuerpoLocal(snap.cuerpoLocal || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+    setCuerpoVis(snap.cuerpoVis || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
+    setArbitro1(snap.arbitro1 || ''); setArbitroInput1(snap.arbitro1 || '')
+    setArbitro2(snap.arbitro2 || ''); setArbitroInput2(snap.arbitro2 || '')
+    setAnotador(snap.anotador || ''); setCronometroNombre(snap.cronometroNombre || ''); setObservaciones(snap.observaciones || '')
+    setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
+    setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
+    if (snap.mvpId) setMvpId(snap.mvpId)
+    if (snap.huboPenales) setHuboPenales(snap.huboPenales); if (snap.penalesGanador) setPenalesGanador(snap.penalesGanador)
+    if (snap.penalesLocal) setPenalesLocal(snap.penalesLocal); if (snap.penalesVisitante) setPenalesVisitante(snap.penalesVisitante)
+    const dur = snap.duracionMinutos || defaultDur
+    setDuracionMinutos(dur); setDuracionInput(String(dur))
+
+    if (snap.periodo) setPeriodo(snap.periodo)
+    const extra = typeof snap.tiempoExtra === 'number' ? snap.tiempoExtra : 0
+    setTiempoExtra(extra)
+    let segs = typeof snap.segundos === 'number' ? snap.segundos : 0
+    if (snap.corriendo && snap.savedAt) {
+      const transcurrido = Math.floor((Date.now() - new Date(snap.savedAt).getTime()) / 1000)
+      if (transcurrido > 0) segs += transcurrido
+    }
+    const limite = dur * 60 + extra * 60
+    if (segs >= limite) { segs = limite; setCorriendo(false); setTiempoAgotado(true) }
+    else { setCorriendo(!!snap.corriendo); if (snap.tiempoAgotado) setTiempoAgotado(true) }
+    setSegundos(segs)
+
+    setHayDatosLocales(true)
+  }
+
   useEffect(() => {
     const on = () => setIsOnline(true), off = () => setIsOnline(false)
     window.addEventListener('online', on); window.addEventListener('offline', off)
@@ -382,6 +451,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             // Vibración en celulares: fin del tiempo
             try { if (navigator.vibrate) navigator.vibrate([500, 150, 500, 150, 900]) } catch(e) {}
           }
+          // Cada ~8s con el reloj corriendo, se guarda también en el servidor
+          // para que si este celular se apaga, otro pueda retomar el cronómetro
+          // calculando cuánto tiempo real pasó desde el último guardado.
+          if (!loading && next % 8 === 0) {
+            const snap = construirSnap()
+            try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
+            sincronizarRemoto(snap)
+          }
           return next
         })
       }, 1000)
@@ -389,12 +466,22 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     return () => clearInterval(timerRef.current)
   }, [corriendo, limiteSegundos, tiempoAgotado])
 
+  // Al arrancar o pausar el cronómetro, guardar de inmediato (sin esperar el
+  // debounce) para que el estado corriendo/pausado quede reflejado ya mismo.
+  useEffect(() => {
+    if (loading) return
+    const snap = construirSnap()
+    try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
+    sincronizarRemoto(snap, { inmediato: true })
+  }, [corriendo])
+
   useEffect(() => {
     if (loading) return
     setHayCambios(true)
-    const snap = { jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, arbitro3, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante, savedAt: new Date().toISOString(), pendienteSync: true }
+    const snap = construirSnap()
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
-  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante])
+    sincronizarRemoto(snap)
+  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra])
 
   useEffect(() => { fetchTodo() }, [])
   useEffect(() => {
@@ -426,7 +513,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         }
       }
       // Precargar árbitros asignados al partido si no hay snap local
-      if (!snap) {
+      if (!localStorage.getItem(localKey)) {
         if (partido.arbitro1_id) { const a = (data||[]).find(x=>x.id===partido.arbitro1_id); if(a) setArbitro1(a.name) }
         if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) setArbitro2(a.name) }
         if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(a.name) }
@@ -461,25 +548,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         const snap = localStorage.getItem(localKey)
         const cache = localStorage.getItem(cacheJugsKey)
         if (snap) {
-          const s = JSON.parse(snap)
-          setJugadoresLocal(s.jugadoresLocal || []); setJugadoresVisitante(s.jugadoresVisitante || [])
-          setGolesLocal(s.golesLocal || Array(24).fill(null)); setGolesVisitante(s.golesVisitante || Array(24).fill(null))
-          setFaltasAcumLocal(s.faltasAcumLocal || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
-          setFaltasAcumVis(s.faltasAcumVis || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
-          setFinalistasLocal(s.finalistasLocal || Array(5).fill('')); setFinalistasVis(s.finalistasVis || Array(5).fill(''))
-          setIngresosLocal(s.ingresosLocal || Array(7).fill('')); setIngresosVis(s.ingresosVis || Array(7).fill(''))
-          setCuerpoLocal(s.cuerpoLocal || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
-          setCuerpoVis(s.cuerpoVis || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
-          setArbitro1(s.arbitro1 || ''); setArbitroInput1(s.arbitro1 || '')
-          setArbitro2(s.arbitro2 || ''); setArbitroInput2(s.arbitro2 || '')
-          setAnotador(s.anotador || ''); setCronometroNombre(s.cronometroNombre || ''); setObservaciones(s.observaciones || '')
-          setHoraInicio1(s.horaInicio1 || ''); setHoraFin1(s.horaFin1 || ''); setHoraInicio2(s.horaInicio2 || ''); setHoraFin2(s.horaFin2 || '')
-          setTiroInicial(s.tiroInicial || null); setColorLocal(s.colorLocal || '#1a3a8a'); setColorVisitante(s.colorVisitante || '#d93025')
-          if (s.mvpId) setMvpId(s.mvpId)
-          if (s.huboPenales) setHuboPenales(s.huboPenales); if (s.penalesGanador) setPenalesGanador(s.penalesGanador)
-          if (s.penalesLocal) setPenalesLocal(s.penalesLocal); if (s.penalesVisitante) setPenalesVisitante(s.penalesVisitante)
-          const dur = s.duracionMinutos || 20; setDuracionMinutos(dur); setDuracionInput(String(dur))
-          setHayDatosLocales(true)
+          aplicarSnap(JSON.parse(snap), 20)
         } else if (cache) {
           const c = JSON.parse(cache)
           setJugadoresLocal(c.jugadoresLocal || []); setJugadoresVisitante(c.jugadoresVisitante || [])
@@ -490,13 +559,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       setLoading(false); return
     }
 
-    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB] = await Promise.all([
+    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
       supabase.from('match_events').select('*').eq('match_id', partido.id).order('created_at', { ascending: true }),
       supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('match_id', partido.id),
       supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').maybeSingle(),
+      // Snapshot que haya dejado guardado OTRO celular (árbitro/admin) llenando esta misma planilla
+      supabase.from('matches').select('live_state, live_state_updated_at').eq('id', partido.id).maybeSingle(),
     ])
 
     const evs = eventos.data || [], stats = statsDB.data || [], yaJugado = stats.length > 0, torneoData = torn.data
@@ -540,30 +611,24 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       jugsVisBase   = applyTarjetas(jugsVisBase,   stats.filter(s => s.team_id === partido.away_team_id))
     }
 
+    // Elegir el snapshot más reciente entre el de ESTE celular (localStorage)
+    // y el que haya dejado guardado OTRO celular en el servidor (matches.live_state).
+    // Así, si el celular que llenaba la planilla se dañó, cualquier otro árbitro
+    // asignado o el admin puede entrar y sigue exactamente donde iba.
     let restaurado = false
     try {
       const local = localStorage.getItem(localKey)
-      if (local) {
-        const snap = JSON.parse(local)
-        if (snap.pendienteSync) {
-          setJugadoresLocal(snap.jugadoresLocal); setJugadoresVisitante(snap.jugadoresVisitante)
-          setGolesLocal(snap.golesLocal); setGolesVisitante(snap.golesVisitante)
-          setFaltasAcumLocal(snap.faltasAcumLocal); setFaltasAcumVis(snap.faltasAcumVis)
-          setFinalistasLocal(snap.finalistasLocal); setFinalistasVis(snap.finalistasVis)
-          setIngresosLocal(snap.ingresosLocal); setIngresosVis(snap.ingresosVis)
-          setCuerpoLocal(snap.cuerpoLocal); setCuerpoVis(snap.cuerpoVis)
-          setArbitro1(snap.arbitro1 || ''); setArbitroInput1(snap.arbitro1 || '')
-          setArbitro2(snap.arbitro2 || ''); setArbitroInput2(snap.arbitro2 || '')
-          setAnotador(snap.anotador || ''); setCronometroNombre(snap.cronometroNombre || ''); setObservaciones(snap.observaciones || '')
-          setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
-          setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
-          if (snap.mvpId) setMvpId(snap.mvpId)
-          if (snap.huboPenales) setHuboPenales(snap.huboPenales); if (snap.penalesGanador) setPenalesGanador(snap.penalesGanador)
-          if (snap.penalesLocal) setPenalesLocal(snap.penalesLocal); if (snap.penalesVisitante) setPenalesVisitante(snap.penalesVisitante)
-          const dur = snap.duracionMinutos || getDefaultDuracion(torneoData?.modalidad)
-          setDuracionMinutos(dur); setDuracionInput(String(dur))
-          setHayDatosLocales(true); restaurado = true
-        }
+      const localSnap  = local ? JSON.parse(local) : null
+      const remoteSnap = liveDB?.data?.live_state || null
+      const localTime  = localSnap?.pendienteSync ? new Date(localSnap.savedAt || 0).getTime() : -1
+      const remoteTime = remoteSnap ? new Date(liveDB.data.live_state_updated_at || remoteSnap.savedAt || 0).getTime() : -1
+      if (localTime >= 0 || remoteTime >= 0) {
+        const ganador = remoteTime > localTime ? remoteSnap : localSnap
+        aplicarSnap(ganador, getDefaultDuracion(torneoData?.modalidad))
+        // Si el snapshot que ganó vino del servidor, lo guardamos también aquí
+        // para que este celular quede sincronizado desde ya.
+        if (ganador === remoteSnap) { try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch(e) {} }
+        restaurado = true
       }
     } catch(e) {}
 
@@ -620,7 +685,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const todosEventos = [...eventosGolLocal, ...eventosGolVis, ...eventosTarjetas, ...eventosFaltas]
     if (todosEventos.length > 0) await supabase.from('match_events').insert(todosEventos)
 
-    const updatePartido = { home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished' }
+    const updatePartido = { home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished', live_state: null, live_state_updated_at: null }
     // Actualizar árbitros si se cambiaron en la planilla
     const arb1Obj = arbitrosReg.find(a => a.name === arbitro1)
     const arb2Obj = arbitrosReg.find(a => a.name === arbitro2)
