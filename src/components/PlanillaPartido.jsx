@@ -1016,24 +1016,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             const hayArqueroEquipo = !!arqueroActual
             return (
               <tr key={idx} style={{ height: '19px', background: esMVP ? '#fff8e1' : esArqueroActual ? '#c8f7d4' : 'transparent' }}>
-                <td style={cell}><input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} style={inp}/></td>
+                <td style={cell}><span style={{ ...inp, display: 'block' }}>{j.cedula}</span></td>
                 <td style={{ ...cellL, background: esMVP ? '#fff59d' : esArqueroActual ? '#a8f0c0' : (colorEquipo || '#1a3a8a') + '35' }}>
-                  {/* Marcado de arquero: clic arriba del nombre para asignar (si no hay arquero) o doble-click al nombre marcado para cambiarlo */}
-                  <div
-                    onClick={() => { if (!hayArqueroEquipo && j.numero) seleccionarArquero(equipo, j) }}
-                    title={esArqueroActual ? 'Arquero titular — doble click en el nombre para cambiarlo' : hayArqueroEquipo ? '' : j.numero ? 'Toca para marcar como arquero titular' : 'Asigna primero el número de camiseta'}
-                    style={{ fontSize: '6px', fontWeight: '800', lineHeight: 1, cursor: (!hayArqueroEquipo && j.numero) ? 'pointer' : 'default',
-                      color: esArqueroActual ? '#1e8e3e' : (!hayArqueroEquipo && j.numero) ? '#1a73e8' : '#ccc' }}>
-                    {esArqueroActual ? '🧤 ARQUERO' : (!hayArqueroEquipo && j.numero) ? '🧤 marcar arquero' : ' '}
-                  </div>
-                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
-                    onDoubleClick={() => { if (esArqueroActual) liberarArquero(equipo); else updateJugador(equipo, idx, 'nombre', '') }}
-                    title={esArqueroActual ? 'Doble click para cambiar de arquero' : ''}
-                    style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
+                  {esArqueroActual && <div style={{ fontSize: '6px', fontWeight: '800', lineHeight: 1, color: '#1e8e3e' }}>ARQUERO TITULAR</div>}
+                  <span style={{ ...inpL, display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#111' }}>{j.nombre}
+                    {esArqueroActual && <button onClick={() => liberarArquero(equipo)} title="Cambiar de arquero" style={{ background: '#fff', border: '1px solid #1e8e3e', borderRadius: '3px', cursor: 'pointer', fontSize: '8px', padding: '0 3px', color: '#1e8e3e' }}>🔄 cambiar</button>}
+                    {esArqueroActual ? '' : ' '}
+                  </span>
                   {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                 </td>
-                <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+                {hayArqueroEquipo ? (
+                  <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+                ) : (
+                  <td style={{ ...cell, background: '#fff3cd', padding: '1px' }}>
+                    <button onClick={() => seleccionarArquero(equipo, j)} title="Marcar como arquero titular" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px', lineHeight: 1 }}>🧤</button>
+                  </td>
+                )}
                 {[0,1,2,3,4].map(n => {
                   const tF = faltas.length > n
                   const per = faltas[n]
@@ -1260,11 +1259,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         </div>
       )}
 
+      {/* (Antiguo popup obligatorio de arquero eliminado: ahora se marca con el guante 🧤 en la columna N°) */}
       {/* Popup obligatorio: se muestra solo mientras un equipo tenga jugadores numerados pero sin arquero asignado */}
-      {!arqueroLocal && jugadoresLocal.some(j => j.numero) && (
+      {false && !arqueroLocal && jugadoresLocal.some(j => j.numero) && (
         <ModalSeleccionArquero nombreEquipo={partido.home?.name} jugadores={jugadoresLocal} onSeleccionar={j => seleccionarArquero('local', j)}/>
       )}
-      {arqueroLocal && !arqueroVis && jugadoresVisitante.some(j => j.numero) && (
+      {false && arqueroLocal && !arqueroVis && jugadoresVisitante.some(j => j.numero) && (
         <ModalSeleccionArquero nombreEquipo={partido.away?.name} jugadores={jugadoresVisitante} onSeleccionar={j => seleccionarArquero('visitante', j)}/>
       )}
 
