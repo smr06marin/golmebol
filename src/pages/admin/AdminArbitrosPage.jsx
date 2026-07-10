@@ -104,17 +104,35 @@ export default function AdminArbitrosPage() {
     if (!form.name)           return showMsgFn('El nombre es obligatorio', 'error')
     if (!form.numero_cedula)  return showMsgFn('La cédula es obligatoria', 'error')
     setLoading(true)
-    const payload = { ...form, rol: 'arbitro', es_arbitro: true }
     if (editId) {
+      const payload = { ...form, rol: 'arbitro', es_arbitro: true }
       const { error } = await supabase.from('players').update(payload).eq('id', editId)
       if (error) showMsgFn('Error al guardar', 'error')
       else { showMsgFn('Árbitro actualizado ✓'); setEditId(null) }
     } else {
+      // Árbitros son 100% gratis: quedan activos de inmediato, sin membresía ni
+      // vencimiento. Solo les falta entrar a /jugador/login con su cédula y
+      // crear su propia contraseña para empezar a usar la cuenta.
+      const payload = {
+        ...form, rol: 'arbitro', es_arbitro: true,
+        activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
+      }
       const { error } = await supabase.from('players').insert(payload)
       if (error) showMsgFn('Error al crear', 'error')
-      else showMsgFn('Árbitro creado ✓')
+      else showMsgFn('Árbitro creado ✓ — ya puede entrar con su cédula en /jugador/login y crear su contraseña')
     }
     setShowForm(false); setForm(EMPTY); setLoading(false); fetchArbitros()
+  }
+
+  // Activación gratuita para árbitros puros (sin membresía/vencimiento). Se usa
+  // solo para árbitros antiguos que quedaron sin acceso antes de este cambio.
+  async function handleActivarGratis(arbitro) {
+    const { error } = await supabase.from('players').update({
+      activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
+    }).eq('id', arbitro.id)
+    if (error) return showMsgFn('Error al activar', 'error')
+    showMsgFn('✅ Acceso gratuito activado')
+    fetchArbitros()
   }
 
   async function handleFoto(arbitro, file) {
@@ -252,8 +270,9 @@ export default function AdminArbitrosPage() {
             <div>No hay árbitros registrados</div>
           </div>
         ) : filtrados.map((a, i) => {
+          const esPuro = a.rol === 'arbitro' // árbitro puro: acceso gratis, sin membresía/vencimiento
           const dias = a.fecha_vencimiento ? Math.ceil((new Date(a.fecha_vencimiento) - new Date()) / 86400000) : null
-          const activo = a.activo_membresia && dias !== null && dias > 0
+          const activo = esPuro ? !!a.activo_membresia : (a.activo_membresia && dias !== null && dias > 0)
           return (
             <div key={a.id} style={{ padding:'14px 20px', borderBottom: i<filtrados.length-1?'1px solid #f1f3f4':'none', display:'flex', alignItems:'center', gap:'14px' }}>
               {/* Foto */}
@@ -282,9 +301,18 @@ export default function AdminArbitrosPage() {
                 </div>
               </div>
 
-              {/* Estado membresía */}
+              {/* Estado de acceso */}
               <div style={{ textAlign:'center', flexShrink:0 }}>
-                {!a.user_id ? (
+                {esPuro ? (
+                  activo ? (
+                    <div>
+                      <div style={{ fontSize:'.72rem', color:'#1e8e3e', fontWeight:'700' }}>✅ Activo</div>
+                      <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{a.user_id ? 'gratis' : 'falta crear contraseña'}</div>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize:'.72rem', color:'#9aa0a6', background:'#f1f3f4', borderRadius:'6px', padding:'2px 8px' }}>Sin acceso</span>
+                  )
+                ) : !a.user_id ? (
                   <span style={{ fontSize:'.72rem', color:'#9aa0a6', background:'#f1f3f4', borderRadius:'6px', padding:'2px 8px' }}>Sin acceso</span>
                 ) : activo ? (
                   <div>
@@ -300,10 +328,19 @@ export default function AdminArbitrosPage() {
               <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
                 <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEditId(a.id); setShowForm(true) }}
                   style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem' }}>✏️</button>
-                <button onClick={() => setModalMem(a)}
-                  style={{ background: activo?'none':'#1a73e8', border: activo?'1px solid #1a73e8':'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', color: activo?'#1a73e8':'#fff', fontSize:'.8rem', fontWeight:'600' }}>
-                  {!a.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
-                </button>
+                {esPuro ? (
+                  !activo && (
+                    <button onClick={() => handleActivarGratis(a)}
+                      style={{ background:'#1a73e8', border:'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                      Activar gratis
+                    </button>
+                  )
+                ) : (
+                  <button onClick={() => setModalMem(a)}
+                    style={{ background: activo?'none':'#1a73e8', border: activo?'1px solid #1a73e8':'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', color: activo?'#1a73e8':'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                    {!a.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
+                  </button>
+                )}
                 {activo && (
                   <button onClick={() => handleDesactivar(a)}
                     style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Desactivar</button>
@@ -314,9 +351,9 @@ export default function AdminArbitrosPage() {
                 )}
                 <button onClick={async () => {
                   await supabase.from('players').update({ es_arbitro_lider: !a.es_arbitro_lider }).eq('id', a.id)
-                  showMsgFn(a.es_arbitro_lider ? 'Rol líder removido' : '👑 Marcado como árbitro líder ✓')
+                  showMsgFn(a.es_arbitro_lider ? 'Rol de coordinador removido' : '👑 Marcado como Coordinador ✓')
                   fetchArbitros()
-                }} style={{ background: a.es_arbitro_lider?'rgba(249,168,37,.15)':'none', border:`1px solid ${a.es_arbitro_lider?'#f9a825':'#dadce0'}`, borderRadius:'6px', padding:'5px 8px', cursor:'pointer', color: a.es_arbitro_lider?'#f9a825':'#9aa0a6', fontSize:'.75rem' }} title={a.es_arbitro_lider?'Quitar rol líder':'Marcar como líder'}>
+                }} style={{ background: a.es_arbitro_lider?'rgba(249,168,37,.15)':'none', border:`1px solid ${a.es_arbitro_lider?'#f9a825':'#dadce0'}`, borderRadius:'6px', padding:'5px 8px', cursor:'pointer', color: a.es_arbitro_lider?'#f9a825':'#9aa0a6', fontSize:'.75rem' }} title={a.es_arbitro_lider?'Quitar rol de coordinador':'Marcar como coordinador/a'}>
                   👑
                 </button>
               </div>

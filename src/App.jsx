@@ -1,5 +1,5 @@
 // force redeploy
-import { useEffect, lazy, Suspense } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
@@ -99,6 +99,37 @@ function PlayerRoute({ children }) {
     </div>
   )
   if (!user) return <Navigate to="/jugador/login" replace/>
+  return children
+}
+
+// Solo deja pasar cuentas que son árbitro (rol='arbitro', es_arbitro o
+// es_arbitro_lider) — un jugador sin ese rol nunca debe poder ver el portal
+// de árbitros aunque escriba la URL a mano.
+function ArbitroRoute({ children }) {
+  const { user, loading } = useAuthStore()
+  const [estado, setEstado] = useState('cargando') // cargando | ok | no_arbitro | sin_perfil
+
+  useEffect(() => {
+    if (loading) return
+    if (!user) { setEstado('sin_perfil'); return }
+    let cancelado = false
+    supabase.from('players').select('rol, es_arbitro, es_arbitro_lider').eq('user_id', user.id).maybeSingle()
+      .then(({ data: p }) => {
+        if (cancelado) return
+        if (!p) setEstado('sin_perfil')
+        else if (p.rol === 'arbitro' || p.es_arbitro || p.es_arbitro_lider) setEstado('ok')
+        else setEstado('no_arbitro')
+      })
+    return () => { cancelado = true }
+  }, [loading, user])
+
+  if (loading || estado === 'cargando') return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
+      CARGANDO...
+    </div>
+  )
+  if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
+  if (estado === 'no_arbitro')  return <Navigate to="/jugador" replace/>
   return children
 }
 
@@ -218,11 +249,11 @@ export default function App() {
           <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 
           {/* Portal árbitros */}
-          <Route path="/arbitro"             element={<ArbitroHomePage/>}/>
-          <Route path="/arbitro/lider"       element={<ArbitroLiderPage/>}/>
-          <Route path="/arbitro/perfil/:id"  element={<ArbitroPerfilPage/>}/>
-          <Route path="/arbitro/ranking"     element={<ArbitroRankingPage/>}/>
-          <Route path="/arbitro/encuestas"   element={<EncuestaArbitrosPage/>}/>
+          <Route path="/arbitro"             element={<ArbitroRoute><ArbitroHomePage/></ArbitroRoute>}/>
+          <Route path="/arbitro/lider"       element={<ArbitroRoute><ArbitroLiderPage/></ArbitroRoute>}/>
+          <Route path="/arbitro/perfil/:id"  element={<ArbitroRoute><ArbitroPerfilPage/></ArbitroRoute>}/>
+          <Route path="/arbitro/ranking"     element={<ArbitroRoute><ArbitroRankingPage/></ArbitroRoute>}/>
+          <Route path="/arbitro/encuestas"   element={<ArbitroRoute><EncuestaArbitrosPage/></ArbitroRoute>}/>
 
         </Routes>
       </Suspense>

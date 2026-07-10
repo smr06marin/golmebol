@@ -22,8 +22,11 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   async function handleGuardar() {
     if (!form.name || !form.numero_cedula) return setError('Nombre y cédula son obligatorios')
     setLoading(true)
+    // Gratis: queda activo de inmediato, sin membresía ni vencimiento. Solo le
+    // falta entrar con su cédula en /jugador/login y crear su contraseña.
     const { data, error: err } = await supabase.from('players').insert({
-      ...form, rol:'arbitro', es_arbitro:true, activo_membresia:false
+      ...form, rol:'arbitro', es_arbitro:true,
+      activo_membresia:true, fecha_vencimiento:null, primer_ingreso:false,
     }).select().single()
     if (err) { setError('Error: ' + err.message); setLoading(false); return }
     if (fotoFile && data?.id) {
@@ -316,13 +319,19 @@ export default function ArbitroLiderPage() {
   }
 
   async function handleActivar(arb) {
-    const fechaVenc = new Date(); fechaVenc.setMonth(fechaVenc.getMonth()+3)
-    const email = `${arb.numero_cedula}@golmebol.com`
+    // Los árbitros son gratis: sin membresía ni fecha de vencimiento. Si ya
+    // tiene cuenta creada, basta con marcarlo activo; si no, se le crea con
+    // una contraseña inicial (puede cambiarla luego con su cédula).
     try {
-      const { data:authData, error:authErr } = await supabase.auth.signUp({ email, password:String(arb.numero_cedula), options:{ data:{player_id:arb.id,rol:'arbitro'} } })
-      if (authErr) throw authErr
-      await supabase.from('players').update({ user_id:authData.user?.id, activo_membresia:true, fecha_vencimiento:fechaVenc.toISOString(), primer_ingreso:true }).eq('id',arb.id)
-      showMsgFn('✅ Acceso activado'); fetchArbitros()
+      if (arb.user_id) {
+        await supabase.from('players').update({ activo_membresia:true, fecha_vencimiento:null }).eq('id',arb.id)
+      } else {
+        const email = `${arb.numero_cedula}@golmebol.com`
+        const { data:authData, error:authErr } = await supabase.auth.signUp({ email, password:String(arb.numero_cedula), options:{ data:{player_id:arb.id,rol:'arbitro'} } })
+        if (authErr) throw authErr
+        await supabase.from('players').update({ user_id:authData.user?.id, activo_membresia:true, fecha_vencimiento:null, primer_ingreso:true }).eq('id',arb.id)
+      }
+      showMsgFn('✅ Acceso activado (gratis)'); fetchArbitros()
     } catch(e) { showMsgFn('Error: '+e.message,'error') }
   }
 
@@ -406,7 +415,7 @@ export default function ArbitroLiderPage() {
           </div>
           <div>
             <div style={{ fontWeight:'700', fontSize:'.9rem', color:'#e8f4fd' }}>{lider?.name?.split(' ')[0]}</div>
-            <div style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'600' }}>Árbitro Líder</div>
+            <div style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'600' }}>{lider?.genero === 'Femenino' ? 'Coordinadora' : 'Coordinador'}</div>
           </div>
         </div>
         <div style={{ display:'flex', gap:'6px' }}>
@@ -529,7 +538,7 @@ export default function ArbitroLiderPage() {
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
               {arbitros.filter(a=>a.name.toLowerCase().includes(busqArb.toLowerCase())).map(a=>{
                 const dias = a.fecha_vencimiento ? Math.ceil((new Date(a.fecha_vencimiento)-new Date())/86400000) : null
-                const activo = a.activo_membresia && dias>0
+                const activo = a.activo_membresia && (dias===null || dias>0) // sin vencimiento = gratis, siempre activo
                 return (
                   <div key={a.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'12px' }}>
                     <label style={{ cursor:'pointer', flexShrink:0, position:'relative' }}>

@@ -180,7 +180,7 @@ function ModalVotar({ encuesta, votanteId, onClose, onVotado }) {
 
         {encuesta._esAuto && (
           <div style={{ background:'rgba(153,85,255,.08)', border:'1px solid rgba(153,85,255,.2)', borderRadius:'8px', padding:'8px 12px', marginBottom:'10px', fontSize:'.75rem', color:'#9955ff', fontWeight:'600' }}>
-            🪞 Autoevaluación — el árbitro líder verá tu respuesta por separado
+            🪞 Autoevaluación — el/la coordinador/a verá tu respuesta por separado
           </div>
         )}
         <div style={{ background:'rgba(26,115,232,.06)', border:'1px solid rgba(26,115,232,.15)', borderRadius:'8px', padding:'8px 12px', marginBottom:'16px', fontSize:'.72rem', color:'#7a9ab5' }}>
@@ -604,7 +604,7 @@ export default function EncuestaArbitrosPage() {
           <div style={{ textAlign:'center', padding:'60px 20px', color:'#7a9ab5' }}>
             <div style={{ fontSize:'3rem', marginBottom:'12px' }}>📝</div>
             <div style={{ fontWeight:'700', fontSize:'1rem', marginBottom:'6px' }}>Sin encuestas</div>
-            <div style={{ fontSize:'.85rem' }}>{esLider?'Crea una nueva encuesta con el botón +':'El árbitro líder creará encuestas de evaluación'}</div>
+            <div style={{ fontSize:'.85rem' }}>{esLider?'Crea una nueva encuesta con el botón +':'El/la coordinador/a creará encuestas de evaluación'}</div>
           </div>
         )}
       </div>

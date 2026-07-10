@@ -100,8 +100,9 @@ export default function PlayerHomePage() {
     if (!user) { navigate('/jugador/login'); return }
 
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (p?.rol === 'arbitro' && !p?.es_arbitro && !p?.es_arbitro_lider) { navigate('/arbitro'); return }
     if (!p) { navigate('/jugador/login'); return }
+    // Árbitro puro (no es también jugador): este portal no es para él, va directo a su portal
+    if (p.rol === 'arbitro') { navigate(p.es_arbitro_lider ? '/arbitro/lider' : '/arbitro'); return }
 
     if (!p.activo_membresia || (p.fecha_vencimiento && new Date(p.fecha_vencimiento) < new Date())) {
       await supabase.auth.signOut(); navigate('/jugador/login'); return
@@ -799,7 +800,7 @@ export default function PlayerHomePage() {
           {(player?.es_arbitro || player?.es_arbitro_lider) && (
             <button onClick={() => navigate(player?.es_arbitro_lider ? '/arbitro/lider' : '/arbitro')}
               style={{ background: 'rgba(249,168,37,.15)', border: '1px solid rgba(249,168,37,.4)', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#f9a825', fontSize: '.75rem', fontWeight: '700' }}>
-              {player?.es_arbitro_lider ? '👑 Líder' : '🟡 Árbitro'}
+              {player?.es_arbitro_lider ? (player?.genero === 'Femenino' ? '👑 Coordinadora' : '👑 Coordinador') : '🟡 Árbitro'}
             </button>
           )}
           <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem', fontWeight: '500' }}>Salir</button>

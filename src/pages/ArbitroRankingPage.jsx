@@ -533,7 +533,7 @@ export default function ArbitroRankingPage() {
         {/* ── RECLAMOS ── */}
         {tab==='reclamos' && (
           <div>
-            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginBottom:'12px' }}>Reclamos por partido ya jugado — visibles solo para el líder</div>
+            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginBottom:'12px' }}>Reclamos por partido ya jugado — visibles solo para el/la coordinador/a</div>
             <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'20px' }}>
               {arbitros.map(a=>{
                 const misRec = reclamos.filter(r=>r.arbitro_id===a.id)
