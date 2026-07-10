@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
@@ -50,6 +50,7 @@ function agruparPorJornada(partidos) {
 
 export default function AdminCalendarioPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [partidos,        setPartidos]        = useState([])
   const [loading,         setLoading]         = useState(true)
   const [filtro,          setFiltro]          = useState('todos')
@@ -60,8 +61,31 @@ export default function AdminCalendarioPage() {
   const [abiertos,        setAbiertos]        = useState({})
 
   useEffect(() => { fetchTodo() }, [])
-  // Si había una planilla abierta cuando el navegador recargó/mató la pestaña, reabrirla
-  useEffect(() => { recuperarPlanillaAbierta().then(p => { if (p) setPlanillaPartido(p) }) }, [])
+  // La planilla abierta queda marcada en la URL (?planilla=<id>): así, sin
+  // importar qué haga el navegador al volver (recargar, matar la pestaña,
+  // etc.), se reabre exactamente la misma planilla. Solo el botón "Salir"
+  // (cerrarPlanilla) puede sacar de la planilla.
+  useEffect(() => {
+    const matchId = searchParams.get('planilla')
+    if (matchId) {
+      supabase.from('matches')
+        .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+        .eq('id', matchId).single()
+        .then(({ data }) => { if (data) setPlanillaPartido(data) })
+    } else {
+      recuperarPlanillaAbierta().then(p => { if (p) abrirPlanilla(p) })
+    }
+  }, [])
+
+  function abrirPlanilla(p) {
+    setPlanillaPartido(p)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
+  }
+  function cerrarPlanilla() {
+    setPlanillaPartido(null)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
+    fetchTodo()
+  }
 
   async function fetchTodo() {
     setLoading(true)
@@ -89,7 +113,7 @@ export default function AdminCalendarioPage() {
   return (
     <div>
       {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
-      {planillaPartido && <PlanillaPartido partido={planillaPartido} onClose={() => { setPlanillaPartido(null); fetchTodo() }}/>}
+      {planillaPartido && <PlanillaPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
 
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Calendario Global</h1>
@@ -157,65 +181,69 @@ export default function AdminCalendarioPage() {
                     {jornada.partidos.map((p, i) => {
                       const esJugado = p.status === 'finished'
                       return (
-                        <div key={p.id} style={{ padding: '12px 18px', borderTop: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          {/* Fecha y hora */}
-                          <div style={{ minWidth: '72px', flexShrink: 0 }}>
-                            {p.played_at && (
-                              <>
-                                <div style={{ fontSize: '.68rem', color: '#5f6368', fontWeight: '600' }}>
-                                  {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}
-                                </div>
-                                <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>
-                                  {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                              </>
-                            )}
-                            {p.location && <div style={{ fontSize: '.62rem', color: '#1a73e8', marginTop: '2px' }}>📍 {p.location}</div>}
-                          </div>
+                        <div key={p.id} style={{ padding: '12px 18px', borderTop: '1px solid #f1f3f4', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {/* Fecha y hora */}
+                            <div style={{ minWidth: '64px', flexShrink: 0 }}>
+                              {p.played_at && (
+                                <>
+                                  <div style={{ fontSize: '.68rem', color: '#5f6368', fontWeight: '600' }}>
+                                    {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}
+                                  </div>
+                                  <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>
+                                    {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </>
+                              )}
+                              {p.location && <div style={{ fontSize: '.62rem', color: '#1a73e8', marginTop: '2px' }}>📍 {p.location}</div>}
+                            </div>
 
-                          {/* Partido */}
-                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
-                              <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', textAlign: 'right' }}>{p.home?.name}</span>
-                              <div style={{ width: '30px', height: '30px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
-                                <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={30}/>
+                            {/* Partido */}
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                                <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name}</span>
+                                <div style={{ width: '26px', height: '26px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
+                                  <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={26}/>
+                                </div>
+                              </div>
+                              {esJugado ? (
+                                <div style={{ fontWeight: '800', fontSize: '.92rem', color: '#202124', background: '#f1f3f4', padding: '3px 10px', borderRadius: '8px', flexShrink: 0, minWidth: '50px', textAlign: 'center' }}>
+                                  {p.home_score} - {p.away_score}
+                                </div>
+                              ) : (
+                                <div style={{ fontWeight: '700', fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', padding: '3px 9px', borderRadius: '8px', flexShrink: 0 }}>VS</div>
+                              )}
+                              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <div style={{ width: '26px', height: '26px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
+                                  <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={26}/>
+                                </div>
+                                <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name}</span>
                               </div>
                             </div>
-                            {esJugado ? (
-                              <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#202124', background: '#f1f3f4', padding: '4px 14px', borderRadius: '8px', flexShrink: 0, minWidth: '60px', textAlign: 'center' }}>
-                                {p.home_score} - {p.away_score}
-                              </div>
-                            ) : (
-                              <div style={{ fontWeight: '700', fontSize: '.8rem', color: '#1a73e8', background: '#e8f0fe', padding: '4px 12px', borderRadius: '8px', flexShrink: 0 }}>VS</div>
-                            )}
-                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ width: '30px', height: '30px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
-                                <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={30}/>
-                              </div>
-                              <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.away?.name}</span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* Torneo + estado */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                              <span style={{ fontSize: '.65rem', color: '#9aa0a6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tournaments?.name}</span>
+                              <span style={{ fontSize: '.65rem', fontWeight: '600', color: esJugado?'#1e8e3e':'#e8710a', background: esJugado?'#e6f4ea':'#fce8d9', borderRadius: '6px', padding: '1px 6px', flexShrink: 0 }}>
+                                {esJugado ? '✓ Jugado' : '⏳ Pendiente'}
+                              </span>
                             </div>
-                          </div>
 
-                          {/* Torneo + estado */}
-                          <div style={{ minWidth: '90px', flexShrink: 0, textAlign: 'right' }}>
-                            <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginBottom: '3px' }}>{p.tournaments?.name}</div>
-                            <span style={{ fontSize: '.65rem', fontWeight: '600', color: esJugado?'#1e8e3e':'#e8710a', background: esJugado?'#e6f4ea':'#fce8d9', borderRadius: '6px', padding: '1px 6px' }}>
-                              {esJugado ? '✓ Jugado' : '⏳ Pendiente'}
-                            </span>
-                          </div>
-
-                          {/* Acciones */}
-                          <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
-                            <button onClick={() => setFlyerPartido(p)}
-                              style={{ background: '#6c35de', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              <Image size={11}/> Flyer
-                            </button>
-                            <button onClick={() => setPlanillaPartido(p)}
-                              style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: esJugado?'#5f6368':'#fff', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              {esJugado ? '✏️' : <><Check size={11}/> Resultado</>}
-                            </button>
-                            <button onClick={() => navigate(`/admin/torneos/${p.tournament_id}`)}
-                              style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.7rem' }}>→</button>
+                            {/* Acciones */}
+                            <div style={{ display: 'flex', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
+                              <button onClick={() => setFlyerPartido(p)}
+                                style={{ background: '#6c35de', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <Image size={11}/> Flyer
+                              </button>
+                              <button onClick={() => abrirPlanilla(p)}
+                                style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: esJugado?'#5f6368':'#fff', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                {esJugado ? '✏️ Editar' : <><Check size={11}/> Resultado</>}
+                              </button>
+                              <button onClick={() => navigate(`/admin/torneos/${p.tournament_id}`)}
+                                style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.7rem' }}>Ver torneo →</button>
+                            </div>
                           </div>
                         </div>
                       )

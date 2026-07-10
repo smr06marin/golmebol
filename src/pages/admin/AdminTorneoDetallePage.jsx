@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
-import { useParams, useNavigate, Navigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
@@ -375,6 +375,7 @@ export default function AdminTorneoDetallePage() {
   const { rol } = useAuthStore()
   const esAdminRol = rol?.rol ? rol.rol === 'admin' : true // sin sistema de roles cargado, el admin ve todo
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [torneo,    setTorneo]    = useState(null)
   const [equipos,   setEquipos]   = useState([])
@@ -477,8 +478,32 @@ export default function AdminTorneoDetallePage() {
   const [abiertosJornada,  setAbiertosJornada]  = useState({})
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
-  // Si había una planilla abierta cuando el navegador recargó/mató la pestaña, reabrirla
-  useEffect(() => { recuperarPlanillaAbierta().then(p => { if (p) setPlanillaPartido(p) }) }, [])
+  // La planilla abierta queda marcada en la URL (?planilla=<id>). Así, sin
+  // importar qué pase — el celular recarga la pestaña al volver de otra app,
+  // el usuario refresca a mano, se cae el internet — al volver a cargar esta
+  // página se reabre exactamente la misma planilla. La ÚNICA forma de salir
+  // de la planilla es el botón "Salir" (que llama a cerrarPlanilla()).
+  useEffect(() => {
+    const matchId = searchParams.get('planilla')
+    if (matchId) {
+      supabase.from('matches')
+        .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+        .eq('id', matchId).single()
+        .then(({ data }) => { if (data) setPlanillaPartido(data) })
+    } else {
+      // Respaldo por si la URL no la trae (ej. entrada vieja ya guardada)
+      recuperarPlanillaAbierta().then(p => { if (p) abrirPlanilla(p) })
+    }
+  }, [])
+
+  function abrirPlanilla(p) {
+    setPlanillaPartido(p)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
+  }
+  function cerrarPlanilla() {
+    setPlanillaPartido(null)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
+  }
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
@@ -1635,7 +1660,7 @@ export default function AdminTorneoDetallePage() {
       {planillaPartido && (
         <PlanillaPartido
           partido={planillaPartido}
-          onClose={() => setPlanillaPartido(null)}
+          onClose={cerrarPlanilla}
           onGuardarResultado={async (local, visitante) => {
             const { error } = await supabase.from('matches').update({ home_score: local, away_score: visitante, status: 'finished' }).eq('id', planillaPartido.id)
             if (!error) {
@@ -1651,7 +1676,7 @@ export default function AdminTorneoDetallePage() {
                   await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
                 }
               }
-              showMsg('Resultado guardado ✓'); setPlanillaPartido(null); fetchPartidos(); fetchBracket()
+              showMsg('Resultado guardado ✓'); cerrarPlanilla(); fetchPartidos(); fetchBracket()
             }
           }}
         />
@@ -2135,13 +2160,13 @@ export default function AdminTorneoDetallePage() {
                               <span style={{ fontSize: '.72rem', color: '#9aa0a6', minWidth: '60px' }}>
                                 {p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'}
                               </span>
-                              <span style={{ flex: 1, fontSize: '.75rem', color: '#202124', fontWeight: '500', textAlign: 'right' }}>{p.home?.name}</span>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: '.75rem', color: '#202124', fontWeight: '500', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name}</span>
                               <span style={{ fontWeight: '700', color: '#202124', background: p.status === 'finished' ? '#f1f3f4' : '#e8f0fe', borderRadius: '6px', padding: '2px 8px', fontSize: '.78rem', flexShrink: 0 }}>
                                 {p.status === 'finished' ? `${p.home_score} - ${p.away_score}` : 'vs'}
                               </span>
-                              <span style={{ flex: 1, fontSize: '.75rem', color: '#202124', fontWeight: '500' }}>{p.away?.name}</span>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: '.75rem', color: '#202124', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name}</span>
                               {p.status !== 'finished' && (
-                                <button onClick={() => setPlanillaPartido(p)}
+                                <button onClick={() => abrirPlanilla(p)}
                                   style={{ padding: '3px 8px', background: '#1a73e8', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.68rem' }}>
                                   ▶
                                 </button>
@@ -2372,38 +2397,39 @@ export default function AdminTorneoDetallePage() {
                         {isOpen && jornada.partidos.map((p, i) => {
                           const esJugado = p.status === 'finished'
                           return (
-                            <div key={p.id} style={{ padding: '10px 16px', borderTop: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div style={{ minWidth: '64px', flexShrink: 0 }}>
-                                {p.played_at && <>
-                                  <div style={{ fontSize: '.65rem', color: '#5f6368', fontWeight: '600' }}>{new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</div>
-                                  <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
-                                </>}
-                                {p.location && <div style={{ fontSize: '.6rem', color: '#1a73e8' }}>📍 {p.location}</div>}
-                              </div>
-                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-                                  <span style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem', textAlign: 'right' }}>{p.home?.name}</span>
-                                  <div style={{ width: '26px', height: '26px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={26}/></div>
+                            <div key={p.id} style={{ padding: '10px 16px', borderTop: '1px solid #f1f3f4', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ minWidth: '58px', flexShrink: 0 }}>
+                                  {p.played_at && <>
+                                    <div style={{ fontSize: '.65rem', color: '#5f6368', fontWeight: '600' }}>{new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</div>
+                                    <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
+                                  </>}
+                                  {p.location && <div style={{ fontSize: '.6rem', color: '#1a73e8' }}>📍 {p.location}</div>}
                                 </div>
-                                {esJugado ? (
-                                  <div style={{ fontWeight: '800', fontSize: '1rem', color: '#202124', background: '#f1f3f4', padding: '3px 12px', borderRadius: '7px', flexShrink: 0 }} onClick={() => setModalPartidoAdmin(p)}>
-                                    {p.home_score} - {p.away_score}
+                                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name}</span>
+                                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={24}/></div>
                                   </div>
-                                ) : (
-                                  <div style={{ fontWeight: '700', fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', padding: '3px 10px', borderRadius: '7px', flexShrink: 0 }}>VS</div>
-                                )}
-                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{ width: '26px', height: '26px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={26}/></div>
-                                  <span style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem' }}>{p.away?.name}</span>
+                                  {esJugado ? (
+                                    <div style={{ fontWeight: '800', fontSize: '.92rem', color: '#202124', background: '#f1f3f4', padding: '3px 10px', borderRadius: '7px', flexShrink: 0 }} onClick={() => setModalPartidoAdmin(p)}>
+                                      {p.home_score} - {p.away_score}
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontWeight: '700', fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', padding: '3px 9px', borderRadius: '7px', flexShrink: 0 }}>VS</div>
+                                  )}
+                                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={24}/></div>
+                                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name}</span>
+                                  </div>
                                 </div>
                               </div>
-                              <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
-                                {!esJugado && <button onClick={() => { const fecha = p.played_at?p.played_at.substring(0,10):''; const hora = p.played_at?p.played_at.substring(11,16):''; setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'4px 7px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️</button>}
-                                <button onClick={() => setPlanillaPartido(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'4px 8px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', display:'flex', alignItems:'center', gap:'4px' }}>
-                                  {esJugado ? 'Editar' : <><Check size={11}/> Resultado</>}
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                {!esJugado && <button onClick={() => { const fecha = p.played_at?p.played_at.substring(0,10):''; const hora = p.played_at?p.played_at.substring(11,16):''; setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️ Editar</button>}
+                                <button onClick={() => abrirPlanilla(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', fontWeight: '600', display:'flex', alignItems:'center', gap:'4px' }}>
+                                  {esJugado ? '✏️ Resultado' : <><Check size={12}/> Resultado</>}
                                 </button>
-
-                                {!esJugado && <button onClick={() => handleEliminarPartido(p.id)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'4px 7px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center' }}><X size={13}/></button>}
+                                {!esJugado && <button onClick={() => handleEliminarPartido(p.id)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center', gap:'4px', fontSize:'.75rem' }}><X size={13}/> Eliminar</button>}
                               </div>
                             </div>
                           )
@@ -3093,7 +3119,7 @@ export default function AdminTorneoDetallePage() {
                         {col.llaves.map((ll, i) => ll ? (
                           <div key={i} onClick={() => {
                             const pend = ll.matches.find(m => m.status !== 'finished')
-                            if (pend) setPlanillaPartido(pend)
+                            if (pend) abrirPlanilla(pend)
                             else if (ll.terminada && !ll.ganador) { setPenalesForm({ local: '', visitante: '' }); setPartidoPenales(ll.matches[ll.matches.length - 1]) }
                             else setModalPartidoAdmin(ll.matches[ll.matches.length - 1])
                           }}
