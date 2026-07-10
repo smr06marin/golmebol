@@ -3,7 +3,8 @@ import { create } from 'zustand'
 export const useAuthStore = create((set) => ({
   user: null,
   player: null,
-  loading: false,
+  loading: true, // arranca en true: evita que ProtectedRoute/PlayerRoute redirijan a login
+                  // antes de que supabase.auth.getSession() confirme la sesión guardada (bug de reload)
   rol: null,        // { rol: 'admin' | 'organizador' | 'arbitro' | null, plan }
   rolCargado: false,
   setUser: (user) => set({ user }),

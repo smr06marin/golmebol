@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
+import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 
@@ -476,6 +477,8 @@ export default function AdminTorneoDetallePage() {
   const [abiertosJornada,  setAbiertosJornada]  = useState({})
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
+  // Si había una planilla abierta cuando el navegador recargó/mató la pestaña, reabrirla
+  useEffect(() => { recuperarPlanillaAbierta().then(p => { if (p) setPlanillaPartido(p) }) }, [])
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])

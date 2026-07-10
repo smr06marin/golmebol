@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
 import PlanillaPartido from '../../components/PlanillaPartido'
+import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 
 function TeamLogo({ logo_url, name, size = 32 }) {
   if (logo_url) return <img src={logo_url} style={{ width: size, height: size, objectFit: 'contain' }}/>
@@ -59,6 +60,8 @@ export default function AdminCalendarioPage() {
   const [abiertos,        setAbiertos]        = useState({})
 
   useEffect(() => { fetchTodo() }, [])
+  // Si había una planilla abierta cuando el navegador recargó/mató la pestaña, reabrirla
+  useEffect(() => { recuperarPlanillaAbierta().then(p => { if (p) setPlanillaPartido(p) }) }, [])
 
   async function fetchTodo() {
     setLoading(true)

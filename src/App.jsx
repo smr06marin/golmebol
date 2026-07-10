@@ -102,8 +102,34 @@ function PlayerRoute({ children }) {
   return children
 }
 
+// Pregunta confirmación antes de salir de Golmebol con el botón "atrás" del
+// celular/navegador, para evitar salidas accidentales que obligan a volver a
+// iniciar sesión. Solo interrumpe cuando ese "atrás" realmente sacaría de la
+// app — la navegación normal entre páginas internas no se ve afectada.
+function useConfirmarSalida() {
+  useEffect(() => {
+    const MARCA = 'golmebolGuard'
+    if (!(window.history.state && window.history.state[MARCA])) {
+      window.history.pushState({ [MARCA]: true }, '', window.location.href)
+    }
+    function onPopState(e) {
+      if (!(e.state && e.state[MARCA])) return // navegación normal dentro de la app: no hacer nada
+      const salir = window.confirm('¿Seguro que quieres salir de Golmebol?')
+      if (salir) {
+        window.removeEventListener('popstate', onPopState)
+        window.history.back()
+      } else {
+        window.history.pushState({ [MARCA]: true }, '', window.location.href)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+}
+
 export default function App() {
   const { setUser, setLoading, setRol, empezarCargaRol, user } = useAuthStore()
+  useConfirmarSalida()
 
   async function cargarRol(u) {
     if (!u?.email) { setRol(null); return }

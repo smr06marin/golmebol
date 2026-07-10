@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PlanillaPartido from '../components/PlanillaPartido'
+import { recuperarPlanillaAbierta } from '../lib/planillaRecovery'
 import { ArrowLeft, Trophy, MapPin, Check, Filter } from 'lucide-react'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
@@ -29,6 +30,8 @@ export default function ArbitroPage() {
   const [msg,         setMsg]         = useState(null)
 
   useEffect(() => { fetchTorneos() }, [])
+  // Si había una planilla abierta cuando el navegador recargó/mató la pestaña, reabrirla
+  useEffect(() => { recuperarPlanillaAbierta().then(p => { if (p) setPlanillaPartido(p) }) }, [])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
+import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -13,14 +14,39 @@ function FirmaCanvas({ titulo, onSave, onClose }) {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height)
     ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.lineCap = 'round'
   }, [])
-  function getPos(e, c) {
+  function getPos(clientX, clientY, c) {
     const r = c.getBoundingClientRect()
-    if (e.touches) return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top }
-    return { x: e.clientX - r.left, y: e.clientY - r.top }
+    return { x: clientX - r.left, y: clientY - r.top }
   }
-  function start(e) { e.preventDefault(); drawing.current = true; const c = canvasRef.current, ctx = c.getContext('2d'), p = getPos(e, c); ctx.beginPath(); ctx.moveTo(p.x, p.y) }
-  function draw(e) { e.preventDefault(); if (!drawing.current) return; const c = canvasRef.current, ctx = c.getContext('2d'), p = getPos(e, c); ctx.lineTo(p.x, p.y); ctx.stroke() }
-  function stop(e) { e.preventDefault(); drawing.current = false }
+  function startAt(x, y) { const c = canvasRef.current, ctx = c.getContext('2d'); drawing.current = true; ctx.beginPath(); ctx.moveTo(x, y) }
+  function drawAt(x, y) { if (!drawing.current) return; const c = canvasRef.current, ctx = c.getContext('2d'); ctx.lineTo(x, y); ctx.stroke() }
+  function stopDrawing() { drawing.current = false }
+
+  // Listeners táctiles nativos y explícitamente NO pasivos: los handlers sintéticos
+  // de React para touchmove pueden quedar pasivos en algunos navegadores Android,
+  // haciendo que preventDefault() no funcione y la página haga scroll/zoom en vez
+  // de dibujar — eso es lo que hacía fallar la firma a veces.
+  useEffect(() => {
+    const c = canvasRef.current
+    if (!c) return
+    function onTouchStart(e) { e.preventDefault(); const t = e.touches[0]; const p = getPos(t.clientX, t.clientY, c); startAt(p.x, p.y) }
+    function onTouchMove(e)  { e.preventDefault(); const t = e.touches[0]; const p = getPos(t.clientX, t.clientY, c); drawAt(p.x, p.y) }
+    function onTouchEnd(e)   { e.preventDefault(); stopDrawing() }
+    c.addEventListener('touchstart', onTouchStart, { passive: false })
+    c.addEventListener('touchmove',  onTouchMove,  { passive: false })
+    c.addEventListener('touchend',   onTouchEnd,   { passive: false })
+    c.addEventListener('touchcancel', onTouchEnd,  { passive: false })
+    return () => {
+      c.removeEventListener('touchstart', onTouchStart)
+      c.removeEventListener('touchmove',  onTouchMove)
+      c.removeEventListener('touchend',   onTouchEnd)
+      c.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [])
+
+  function handleMouseDown(e) { const p = getPos(e.clientX, e.clientY, canvasRef.current); startAt(p.x, p.y) }
+  function handleMouseMove(e) { const p = getPos(e.clientX, e.clientY, canvasRef.current); drawAt(p.x, p.y) }
+  function handleMouseUp() { stopDrawing() }
   function limpiar() { const c = canvasRef.current, ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height) }
   function guardar() { onSave(canvasRef.current.toDataURL('image/png')); onClose() }
   return (
@@ -28,7 +54,7 @@ function FirmaCanvas({ titulo, onSave, onClose }) {
       <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 8px 32px rgba(0,0,0,.3)' }}>
         <div style={{ fontWeight: '600', color: '#202124', marginBottom: '12px', textAlign: 'center', fontSize: '.9rem' }}>✍ Firma: {titulo}</div>
         <canvas ref={canvasRef} width={320} height={120} style={{ border: '2px solid #dadce0', borderRadius: '8px', cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-          onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop} onTouchStart={start} onTouchMove={draw} onTouchEnd={stop}/>
+          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}/>
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
           <button onClick={limpiar} style={{ padding: '7px 14px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', fontSize: '.85rem' }}>Limpiar</button>
           <button onClick={guardar} style={{ padding: '7px 18px', background: AZUL, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600' }}>Guardar</button>
@@ -49,6 +75,7 @@ function FirmaSlot({ label, firma, onFirmar }) {
 
 function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
   const ref = useRef(null)
+  const [focused, setFocused] = useState(false)
   useEffect(() => {
     if (ref.current && document.activeElement !== ref.current) ref.current.value = String(value ?? '')
   }, [value])
@@ -56,17 +83,27 @@ function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
     const val = e.target.value.replace(/\D/g, '').slice(0, 2)
     e.target.value = val
     if (val.length === 2 || val.length === 0) onChange(val)
+    if (val.length === 2 && ref.current) ref.current.blur() // apenas se completa el número, vuelve a su tamaño normal
   }
-  function handleBlur(e) { onChange(e.target.value.replace(/\D/g, '').slice(0, 2)) }
+  function handleBlur(e) { onChange(e.target.value.replace(/\D/g, '').slice(0, 2)); setFocused(false) }
   function handleDoubleClick() { if (ref.current) ref.current.value = ''; onChange(''); onDoubleClick() }
   const bg = !value ? '#fff3cd' : repetido ? '#ff4444' : '#111'
   const color = !value ? '#e8710a' : '#fff'
   return (
-    <td style={{ border: '1px solid #000', padding: '1px', background: bg, textAlign: 'center', verticalAlign: 'middle' }}
+    <td style={{ border: '1px solid #000', padding: '1px', background: bg, textAlign: 'center', verticalAlign: 'middle', position: 'relative' }}
       title={repetido ? '⚠ Número repetido' : !value ? 'Número obligatorio' : ''}>
-      <input ref={ref} defaultValue={String(value ?? '')} onChange={handleChange} onBlur={handleBlur}
+      <input ref={ref} defaultValue={String(value ?? '')} onChange={handleChange} onFocus={() => setFocused(true)} onBlur={handleBlur}
         onDoubleClick={handleDoubleClick} placeholder="N°" maxLength={2} inputMode="numeric"
-        style={{ border: 'none', outline: 'none', width: '100%', fontSize: '11px', fontWeight: '900', textAlign: 'center', background: 'transparent', color }}/>
+        style={{
+          border: focused ? '2px solid #1a73e8' : 'none', outline: 'none',
+          width: focused ? '40px' : '100%', height: focused ? '32px' : 'auto',
+          fontSize: focused ? '19px' : '11px', fontWeight: '900', textAlign: 'center',
+          background: focused ? '#fff' : 'transparent', color: focused ? '#111' : color,
+          position: focused ? 'absolute' : 'static', top: focused ? '50%' : 'auto', left: focused ? '50%' : 'auto',
+          transform: focused ? 'translate(-50%, -50%)' : 'none', zIndex: focused ? 60 : 'auto',
+          borderRadius: focused ? '7px' : '0', boxShadow: focused ? '0 4px 14px rgba(0,0,0,.4)' : 'none',
+          transition: 'all .12s ease',
+        }}/>
     </td>
   )
 }
@@ -152,6 +189,35 @@ function ModalMVP({ jugadoresLocal, jugadoresVisitante, partido, mvpGuardado, on
   )
 }
 
+function ModalSeleccionArquero({ nombreEquipo, jugadores, onSeleccionar }) {
+  const disponibles = jugadores.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined)
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '14px' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '6px' }}>🧤</div>
+          <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem' }}>Arquero obligatorio</div>
+          <div style={{ fontSize: '.82rem', color: '#5f6368', marginTop: '4px', fontWeight: '600' }}>{nombreEquipo}</div>
+          <div style={{ fontSize: '.72rem', color: '#d93025', marginTop: '8px', fontWeight: '600' }}>Selecciona quién arranca en el arco. No se puede anotar nada de este equipo sin esto.</div>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #e8eaed', borderRadius: '10px' }}>
+          {disponibles.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: '.8rem', color: '#9aa0a6' }}>Primero asigna los números de camiseta para poder elegir el arquero.</div>
+          ) : disponibles.map(j => (
+            <div key={j.id || j.numero} onClick={() => onSeleccionar(j)}
+              style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f1f3f4' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+              <span style={{ fontWeight: '800', color: '#111', minWidth: '32px', background: '#e8f0fe', borderRadius: '6px', textAlign: 'center', padding: '4px 6px', fontSize: '.9rem' }}>#{j.numero}</span>
+              <span style={{ fontSize: '.9rem', color: '#202124', fontWeight: '600' }}>{j.nombre || 'Sin nombre'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
   const esW = tipo === 'w'
   const [equipoGana, setEquipoGana] = useState('')
@@ -223,7 +289,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [periodo,          setPeriodo]          = useState(1)
   const [segundos,         setSegundos]         = useState(0)
   const [corriendo,        setCorriendo]        = useState(false)
-  const [miniCrono,        setMiniCrono]        = useState(false)
+  const [miniCrono,        setMiniCrono]        = useState(true)
   const [tiempoAgotado,    setTiempoAgotado]    = useState(false)
   const [tiempoExtra,      setTiempoExtra]      = useState(0)
   const [duracionMinutos,  setDuracionMinutos]  = useState(20)
@@ -263,6 +329,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [arqueroVis,       setArqueroVis]       = useState(null)
   const [histArquerosLocal,setHistArquerosLocal]= useState([])   // [{id,numero,name,orden}]
   const [histArquerosVis,  setHistArquerosVis]  = useState([])
+  const [avisoArqueroFaltante, setAvisoArqueroFaltante] = useState(null) // nombre del equipo sin arquero al intentar anotar
+  const arqueroSalienteRef = useRef({ local: null, visitante: null })
   const [anotador,         setAnotador]         = useState('')
   const [cronometroNombre, setCronometroNombre] = useState('')
   const [observaciones,    setObservaciones]    = useState('')
@@ -280,6 +348,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const on = () => setIsOnline(true), off = () => setIsOnline(false)
     window.addEventListener('online', on); window.addEventListener('offline', off)
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+
+  // Marca en localStorage qué partido está abierto, para poder reabrir esta
+  // misma planilla automáticamente si el navegador recarga la página o mata
+  // la pestaña (ej. al pasar a WhatsApp y volver). Se borra al cerrar normal.
+  useEffect(() => {
+    try { localStorage.setItem(PLANILLA_ABIERTA_KEY, JSON.stringify({ id: partido.id })) } catch(e) {}
+    return () => { try { localStorage.removeItem(PLANILLA_ABIERTA_KEY) } catch(e) {} }
+  }, [partido.id])
+
+  // Bloquear el zoom (pinch/gotas de lluvia) mientras la planilla está abierta.
+  // Se restaura el viewport original al cerrar para no afectar al resto de la web.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]')
+    const original = meta ? meta.getAttribute('content') : null
+    if (meta) meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no')
+    return () => { if (meta) meta.setAttribute('content', original || 'width=device-width, initial-scale=1.0') }
   }, [])
 
   useEffect(() => {
@@ -564,15 +649,21 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
     const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
     const statsRows = []
-    const procesarStats = (jugadores, goles, team_id, esLocal) => {
+    // Solo cuentan como "jugaron" los marcados en INICIALES o INGRESOS de su equipo
+    // (además del arquero, por si quedó marcado sin estar en esas listas). Tener un
+    // número de camiseta escrito ya NO alcanza por sí solo para contar en las estadísticas.
+    const procesarStats = (jugadores, goles, team_id, esLocal, iniciales, ingresos) => {
       const gF = esLocal ? golesLocalTotal : golesVisTotal
       const gC = esLocal ? golesVisTotal   : golesLocalTotal
       const arqueroIds = esLocal ? todosArquerosLocalIds : todosArquerosVisIds
       // El arquero actual (último) recibe todos los GC
       const arqueroActualId = esLocal ? arqueroLocal?.id : arqueroVis?.id
+      const jugaronNumeros = new Set([...iniciales, ...ingresos].filter(n => n !== '' && n !== null && n !== undefined).map(String))
       jugadores.forEach(j => {
         if (!j.id || !j.numero) return
         const esArqueroEnEstePartido = arqueroIds.has(j.id)
+        const jugoPartido = jugaronNumeros.has(String(j.numero)) || esArqueroEnEstePartido
+        if (!jugoPartido) return
         const esArqueroActual        = j.id === arqueroActualId
         const golesAnotados          = goles.filter(g => g && String(g.numero) === String(j.numero)).length
         // GC solo al arquero actual (o último que tapó)
@@ -589,8 +680,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         })
       })
     }
-    procesarStats(jugadoresLocal, golesLocal, partido.home_team_id, true)
-    procesarStats(jugadoresVisitante, golesVisitante, partido.away_team_id, false)
+    procesarStats(jugadoresLocal, golesLocal, partido.home_team_id, true, finalistasLocal, ingresosLocal)
+    procesarStats(jugadoresVisitante, golesVisitante, partido.away_team_id, false, finalistasVis, ingresosVis)
     if (statsRows.length > 0) await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
 
     // MVP
@@ -662,6 +753,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       onClose()
       return
     }
+    // Arquero obligatorio de ambos equipos antes de guardar
+    if (!arqueroLocal) { setAvisoArqueroFaltante(partido.home?.name); return }
+    if (!arqueroVis)   { setAvisoArqueroFaltante(partido.away?.name); return }
     // La firma de los árbitros que pitaron es obligatoria antes de guardar
     const faltan = firmasFaltantes()
     if (faltan.length > 0) { setAvisoFirmas(faltan); return }
@@ -685,6 +779,36 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
 
   function formatTiempo(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}` }
+
+  // ── ARQUERO OBLIGATORIO ──────────────────────────────────────────────────
+  function seleccionarArquero(equipo, jugador) {
+    const saliente = arqueroSalienteRef.current[equipo]
+    const nuevoArq = { id: jugador.id, numero: jugador.numero, name: jugador.nombre || jugador.name }
+    const setArq  = equipo === 'local' ? setArqueroLocal : setArqueroVis
+    const setHist = equipo === 'local' ? setHistArquerosLocal : setHistArquerosVis
+    setArq(nuevoArq)
+    setHist(prev => {
+      if (saliente && saliente.id !== jugador.id) {
+        const base = prev.length > 0 ? prev : [{ ...saliente, orden: 1 }]
+        if (base.some(a => a.id === jugador.id)) return base
+        return [...base, { ...nuevoArq, orden: base.length + 1 }]
+      }
+      if (prev.length === 0) return [{ ...nuevoArq, orden: 1 }]
+      return prev
+    })
+    arqueroSalienteRef.current[equipo] = null
+  }
+  // Doble click al arquero ya marcado: lo borra y obliga a elegir uno nuevo (popup)
+  function liberarArquero(equipo) {
+    const actual = equipo === 'local' ? arqueroLocal : arqueroVis
+    arqueroSalienteRef.current[equipo] = actual
+    if (equipo === 'local') setArqueroLocal(null); else setArqueroVis(null)
+  }
+  function equipoTieneArquero(equipo) { return equipo === 'local' ? !!arqueroLocal : !!arqueroVis }
+  function intentarAccionConArquero(equipo, accion) {
+    if (!equipoTieneArquero(equipo)) { setAvisoArqueroFaltante(equipo === 'local' ? partido.home?.name : partido.away?.name); return }
+    accion()
+  }
 
   const updateJugador = useCallback((equipo, idx, campo, valor) => {
     const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
@@ -772,7 +896,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (dropdownOpen !== dropKey) return null
     const jugsConNumero = jugs.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined)
     return (
-      <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,.2)', minWidth: '160px', maxHeight: '180px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,.2)', minWidth: '160px', display: 'flex', flexDirection: 'column' }}>
         {jugsConNumero.length === 0 && <div style={{ padding: '8px 12px', fontSize: '9px', color: '#9aa0a6' }}>Sin números asignados</div>}
         {jugsConNumero.map(j => (
           <div key={j.numero} onClick={() => onSelect(j.numero)}
@@ -802,8 +926,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               {esUl && <span style={{ marginLeft: 'auto', color: '#aaa', fontSize: '6px' }}>2x✕</span>}
             </div>
           ) : puedeClic ? (
-            <div style={{ flex: 1, position: 'relative' }} onClick={e => { e.stopPropagation(); setDropdownOpen(dropdownOpen === dropKey ? null : dropKey) }}>
-              <span style={{ fontSize: '9px', color: '#555', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
+            <div style={{ flex: 1, position: 'relative' }} onClick={e => { e.stopPropagation(); intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}>
+              <span style={{ fontSize: '9px', color: equipoTieneArquero(equipo) ? '#555' : '#ccc', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
               <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarGol(equipo, slotIdx, n)}/>
             </div>
           ) : <span style={{ fontSize: '7px', color: '#bbb' }}>—</span>}
@@ -817,7 +941,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const puedeClic = puedeAbrirFalta(faltasAcum, key, i)
     return (
       <td style={{ border: B, padding: '2px 1px', position: 'relative', textAlign: 'center', verticalAlign: 'middle', background: val !== null ? (per === 1 ? '#ddeeff' : '#ffdddd') : puedeClic ? '#f8f9fa' : '#f1f3f4', cursor: 'pointer' }}
-        onClick={e => { e.stopPropagation(); if (puedeClic && val === null) setDropdownOpen(dropdownOpen === dropKey ? null : dropKey) }}
+        onClick={e => { e.stopPropagation(); if (puedeClic && val === null) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
         onDoubleClick={e => { e.stopPropagation(); if (val !== null) eliminarFaltaAcum(equipo, per, i) }}
         title={val !== null ? 'Doble click para eliminar' : ''}>
         {val !== null ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>{val}<span style={{ fontSize: '6px', color: '#aaa' }}>2x</span></span>
@@ -825,6 +949,32 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
         <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}/>
       </td>
+    )
+  }
+
+  // Casillas INICIALES e INGRESOS: mismo comportamiento que Faltas Acumulativas
+  // (se hunden en orden y al click aparece la lista de jugadores del equipo).
+  function registrarSeleccion(setArr, valores, i, numero) {
+    if (i > 0 && valores[i - 1] === '') return
+    setArr(prev => { const n = [...prev]; n[i] = numero; return n })
+    setDropdownOpen(null)
+  }
+  function eliminarSeleccion(setArr, i) {
+    setArr(prev => { const n = [...prev]; n[i] = ''; return n })
+  }
+  function SlotSeleccion({ equipo, i, valores, setArr, jugs, dropKeyPrefix, ultimaCol }) {
+    const val = valores[i], dropKey = `${dropKeyPrefix}-${equipo}-${i}`
+    const puedeClic = i === 0 ? valores[0] === '' : valores[i - 1] !== '' && valores[i] === ''
+    return (
+      <div style={{ flex: 1, borderRight: ultimaCol ? 'none' : B, padding: '2px', textAlign: 'center', position: 'relative', cursor: 'pointer', background: val ? '#e6f4ea' : puedeClic ? '#f8f9fa' : '#f1f3f4' }}
+        onClick={e => { e.stopPropagation(); if (puedeClic && !val) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
+        onDoubleClick={e => { e.stopPropagation(); if (val) eliminarSeleccion(setArr, i) }}
+        title={val ? 'Doble click para borrar' : ''}>
+        {val ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>#{val}</span>
+          : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
+          : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
+        <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarSeleccion(setArr, valores, i, n)}/>
+      </div>
     )
   }
 
@@ -861,12 +1011,26 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             const repetido = numeroRepetido(equipo, j.numero, idx)
             const esPortero = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
             const esMVP = j.id && j.id === mvpId
+            const arqueroActual   = equipo === 'local' ? arqueroLocal : arqueroVis
+            const esArqueroActual = j.id && arqueroActual?.id === j.id
+            const hayArqueroEquipo = !!arqueroActual
             return (
-              <tr key={idx} style={{ height: '17px', background: esMVP ? '#fff8e1' : 'transparent' }}>
+              <tr key={idx} style={{ height: '19px', background: esMVP ? '#fff8e1' : esArqueroActual ? '#c8f7d4' : 'transparent' }}>
                 <td style={cell}><input value={j.cedula} onChange={e => updateJugador(equipo, idx, 'cedula', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'cedula', '')} style={inp}/></td>
-                <td style={{ ...cellL, background: esMVP ? '#fff59d' : (colorEquipo || '#1a3a8a') + '35' }}>
-                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)} onDoubleClick={() => updateJugador(equipo, idx, 'nombre', '')} style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
-                  {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> 🧤</span>}
+                <td style={{ ...cellL, background: esMVP ? '#fff59d' : esArqueroActual ? '#a8f0c0' : (colorEquipo || '#1a3a8a') + '35' }}>
+                  {/* Marcado de arquero: clic arriba del nombre para asignar (si no hay arquero) o doble-click al nombre marcado para cambiarlo */}
+                  <div
+                    onClick={() => { if (!hayArqueroEquipo && j.numero) seleccionarArquero(equipo, j) }}
+                    title={esArqueroActual ? 'Arquero titular — doble click en el nombre para cambiarlo' : hayArqueroEquipo ? '' : j.numero ? 'Toca para marcar como arquero titular' : 'Asigna primero el número de camiseta'}
+                    style={{ fontSize: '6px', fontWeight: '800', lineHeight: 1, cursor: (!hayArqueroEquipo && j.numero) ? 'pointer' : 'default',
+                      color: esArqueroActual ? '#1e8e3e' : (!hayArqueroEquipo && j.numero) ? '#1a73e8' : '#ccc' }}>
+                    {esArqueroActual ? '🧤 ARQUERO' : (!hayArqueroEquipo && j.numero) ? '🧤 marcar arquero' : ' '}
+                  </div>
+                  <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
+                    onDoubleClick={() => { if (esArqueroActual) liberarArquero(equipo); else updateJugador(equipo, idx, 'nombre', '') }}
+                    title={esArqueroActual ? 'Doble click para cambiar de arquero' : ''}
+                    style={{ ...inpL, fontWeight: '700', color: '#111' }}/>
+                  {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                 </td>
                 <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
@@ -885,19 +1049,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 })}
                 <td title={j.amarilla ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
                   style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (!j.amarilla) updateJugador(equipo, idx, 'amarilla', formatTiempo(segundos)) }}
+                  onClick={() => { if (!j.amarilla) intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'amarilla', formatTiempo(segundos))) }}
                   onDoubleClick={() => updateJugador(equipo, idx, 'amarilla', false)}>
                   <span style={{ color: j.amarilla ? '#111' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.amarilla === 'string' ? j.amarilla : j.amarilla ? '✓' : '·'}</span>
                 </td>
                 <td title={j.azul ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
                   style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (!j.azul) updateJugador(equipo, idx, 'azul', formatTiempo(segundos)) }}
+                  onClick={() => { if (!j.azul) intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'azul', formatTiempo(segundos))) }}
                   onDoubleClick={() => updateJugador(equipo, idx, 'azul', false)}>
                   <span style={{ color: j.azul ? '#fff' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.azul === 'string' ? j.azul : j.azul ? '✓' : '·'}</span>
                 </td>
                 <td title={j.roja ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
                   style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (!j.roja) updateJugador(equipo, idx, 'roja', formatTiempo(segundos)) }}
+                  onClick={() => { if (!j.roja) intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'roja', formatTiempo(segundos))) }}
                   onDoubleClick={() => updateJugador(equipo, idx, 'roja', false)}>
                   <span style={{ color: j.roja ? '#fff' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.roja === 'string' ? j.roja : j.roja ? '✓' : '·'}</span>
                 </td>
@@ -944,20 +1108,16 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             </div>
           </div>
           <div style={{ flex: '0 0 50%' }}>
-            <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>FINALISTAS</div>
+            <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>INICIALES</div>
             <div style={{ display: 'flex', borderBottom: B }}>
               {[0,1,2,3,4].map(i => (
-                <div key={i} style={{ flex: 1, borderRight: i < 4 ? B : 'none', padding: '2px', textAlign: 'center' }}>
-                  <input value={finalistas[i]} onChange={e => setFinalistas(prev => { const n=[...prev]; n[i]=e.target.value; return n })} onDoubleClick={() => setFinalistas(prev => { const n=[...prev]; n[i]=''; return n })} style={{ ...inp, fontWeight: finalistas[i]?'700':'400', color: '#111', fontSize: '9px' }} placeholder="N°"/>
-                </div>
+                <SlotSeleccion key={i} equipo={equipo} i={i} valores={finalistas} setArr={setFinalistas} jugs={jugs} dropKeyPrefix="inicial" ultimaCol={i === 4}/>
               ))}
             </div>
             <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>INGRESOS</div>
             <div style={{ display: 'flex' }}>
               {[0,1,2,3,4,5,6].map(i => (
-                <div key={i} style={{ flex: 1, borderRight: i < 6 ? B : 'none', padding: '2px', textAlign: 'center' }}>
-                  <input value={ingresos[i]} onChange={e => setIngresos(prev => { const n=[...prev]; n[i]=e.target.value; return n })} onDoubleClick={() => setIngresos(prev => { const n=[...prev]; n[i]=''; return n })} style={{ ...inp, fontWeight: ingresos[i]?'700':'400', color: '#111', fontSize: '9px' }} placeholder="N°"/>
-                </div>
+                <SlotSeleccion key={i} equipo={equipo} i={i} valores={ingresos} setArr={setIngresos} jugs={jugs} dropKeyPrefix="ingreso" ultimaCol={i === 6}/>
               ))}
             </div>
           </div>
@@ -1083,6 +1243,31 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         </div>
       )}
 
+      {/* Aviso corto: intentaron anotar algo de un equipo sin arquero marcado */}
+      {avisoArqueroFaltante && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '26px', width: '100%', maxWidth: '360px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+            <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>🧤</div>
+            <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '8px' }}>Falta marcar el arquero</div>
+            <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '18px' }}>
+              No puedes anotar datos de <b>{avisoArqueroFaltante}</b> sin marcar antes quién es su arquero titular.
+            </div>
+            <button onClick={() => setAvisoArqueroFaltante(null)}
+              style={{ width: '100%', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '700' }}>
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Popup obligatorio: se muestra solo mientras un equipo tenga jugadores numerados pero sin arquero asignado */}
+      {!arqueroLocal && jugadoresLocal.some(j => j.numero) && (
+        <ModalSeleccionArquero nombreEquipo={partido.home?.name} jugadores={jugadoresLocal} onSeleccionar={j => seleccionarArquero('local', j)}/>
+      )}
+      {arqueroLocal && !arqueroVis && jugadoresVisitante.some(j => j.numero) && (
+        <ModalSeleccionArquero nombreEquipo={partido.away?.name} jugadores={jugadoresVisitante} onSeleccionar={j => seleccionarArquero('visitante', j)}/>
+      )}
+
       <button onClick={handleClickGuardar} className="no-print"
         style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998, width: '52px', height: '52px', borderRadius: '50%', background: '#d93025', border: '3px solid #fff', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.5)' }}>
         <X size={22}/>
@@ -1147,7 +1332,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         )}
       </div>
 
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflowY: 'auto' }}>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflowY: 'auto', touchAction: 'pan-x pan-y' }}>
         <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '980px', marginBottom: '20px' }}>
 
           {/* Barra superior */}
@@ -1171,62 +1356,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             </div>
           </div>
 
-          {/* Selector obligatorio de arquero */}
+          {/* Estado del arquero obligatorio — se marca tocando el nombre en la tabla de cada equipo */}
           <div className="no-print" style={{ padding: '10px 16px', background: '#fffde7', borderBottom: '1px solid #ffe082', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '.78rem', fontWeight: '700', color: '#f57f17' }}>🧤 Arquero obligatorio:</span>
-            {/* Local */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '.72rem', color: '#5f6368', fontWeight: '600' }}>{partido.home?.name}:</span>
-              <select value={arqueroLocal?.id || ''} onChange={e => {
-                const jug = jugadoresLocal.find(j => j.id === e.target.value)
-                if (!jug) return
-                const nuevoArq = { id: jug.id, numero: jug.numero, name: jug.nombre || jug.name }
-                setArqueroLocal(nuevoArq)
-                // Si ya hay arquero y es diferente, registrar cambio
-                if (arqueroLocal?.id && arqueroLocal.id !== jug.id) {
-                  setHistArquerosLocal(prev => {
-                    const base = prev.length > 0 ? prev : [{ ...arqueroLocal, orden: 1 }]
-                    return [...base, { ...nuevoArq, orden: base.length + 1 }]
-                  })
-                } else if (!arqueroLocal) {
-                  setHistArquerosLocal([{ ...nuevoArq, orden: 1 }])
-                }
-              }}
-                style={{ padding: '4px 8px', border: `2px solid ${arqueroLocal ? '#1e8e3e' : '#f57f17'}`, borderRadius: '6px', fontSize: '.78rem', outline: 'none', background: '#fff' }}>
-                <option value="">-- Seleccionar --</option>
-                {jugadoresLocal.filter(j => j.numero).map(j => (
-                  <option key={j.id||j.numero} value={j.id}>{j.numero} - {j.nombre || j.name}</option>
-                ))}
-              </select>
-              {arqueroLocal && <span style={{ fontSize: '.7rem', color: '#1e8e3e', fontWeight: '600' }}>✓ #{arqueroLocal.numero}</span>}
+              {arqueroLocal
+                ? <span style={{ fontSize: '.75rem', color: '#1e8e3e', fontWeight: '700' }}>✓ #{arqueroLocal.numero} {arqueroLocal.name}</span>
+                : <span style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '700' }}>⚠️ Sin marcar — toca el nombre en la tabla</span>}
             </div>
-            {/* Visitante */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '.72rem', color: '#5f6368', fontWeight: '600' }}>{partido.away?.name}:</span>
-              <select value={arqueroVis?.id || ''} onChange={e => {
-                const jug = jugadoresVisitante.find(j => j.id === e.target.value)
-                if (!jug) return
-                const nuevoArq = { id: jug.id, numero: jug.numero, name: jug.nombre || jug.name }
-                setArqueroVis(nuevoArq)
-                if (arqueroVis?.id && arqueroVis.id !== jug.id) {
-                  setHistArquerosVis(prev => {
-                    const base = prev.length > 0 ? prev : [{ ...arqueroVis, orden: 1 }]
-                    return [...base, { ...nuevoArq, orden: base.length + 1 }]
-                  })
-                } else if (!arqueroVis) {
-                  setHistArquerosVis([{ ...nuevoArq, orden: 1 }])
-                }
-              }}
-                style={{ padding: '4px 8px', border: `2px solid ${arqueroVis ? '#1e8e3e' : '#f57f17'}`, borderRadius: '6px', fontSize: '.78rem', outline: 'none', background: '#fff' }}>
-                <option value="">-- Seleccionar --</option>
-                {jugadoresVisitante.filter(j => j.numero).map(j => (
-                  <option key={j.id||j.numero} value={j.id}>{j.numero} - {j.nombre || j.name}</option>
-                ))}
-              </select>
-              {arqueroVis && <span style={{ fontSize: '.7rem', color: '#1e8e3e', fontWeight: '600' }}>✓ #{arqueroVis.numero}</span>}
+              {arqueroVis
+                ? <span style={{ fontSize: '.75rem', color: '#1e8e3e', fontWeight: '700' }}>✓ #{arqueroVis.numero} {arqueroVis.name}</span>
+                : <span style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '700' }}>⚠️ Sin marcar — toca el nombre en la tabla</span>}
             </div>
             {(!arqueroLocal || !arqueroVis) && (
-              <span style={{ fontSize: '.7rem', color: '#d93025', fontWeight: '600' }}>⚠️ Selecciona ambos arqueros antes de guardar</span>
+              <span style={{ fontSize: '.7rem', color: '#d93025', fontWeight: '600' }}>No se pueden anotar goles, faltas ni tarjetas del equipo sin arquero marcado</span>
             )}
           </div>
 
