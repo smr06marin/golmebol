@@ -14,6 +14,12 @@ html, body {
   width: 100%; min-height: 100vh;
   background: var(--color-bg);
   font-family: var(--font-body);
+}
+
+/* overflow-x solo en body: ponerlo también en html le quita al navegador
+   el scroll nativo de la página y en Samsung Internet / varios Android
+   eso rompe o traba el scroll con el dedo en todo el sitio. */
+body {
   overflow-x: hidden;
 }
 
