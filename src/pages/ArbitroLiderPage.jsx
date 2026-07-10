@@ -87,50 +87,64 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer }) {
   const tieneArbitro = !!(p.arbitro1_id || p.arbitro2_id || p.arbitro3_id)
 
   return (
-    <div style={{ background:'#111827', border:`1px solid ${!tieneArbitro&&!esJugado?'rgba(232,113,10,.3)':'#1e2d3d'}`, borderRadius:'12px', marginBottom:'8px', overflow:'hidden' }}>
-      {/* Fila principal */}
-      <div style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:'10px' }}>
-        {/* Fecha */}
-        <div style={{ minWidth:'52px', flexShrink:0, textAlign:'center' }}>
+    <div style={{
+      background:'linear-gradient(180deg, #131e2e 0%, #101a28 100%)',
+      border:`1px solid ${!tieneArbitro&&!esJugado?'rgba(232,113,10,.35)':'#1c2937'}`,
+      borderRadius:'16px', marginBottom:'10px', overflow:'hidden',
+      boxShadow: !tieneArbitro&&!esJugado ? '0 2px 10px rgba(232,113,10,.08)' : '0 2px 8px rgba(0,0,0,.18)',
+    }}>
+      {/* Encabezado: fecha + torneo/jornada */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px 0' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+          <span style={{ fontSize:'.62rem', fontWeight:'700', color:'#00ddd0', background:'rgba(0,221,208,.08)', borderRadius:'20px', padding:'2px 9px' }}>{p.tournaments?.name}</span>
+          {p.matchday && <span style={{ fontSize:'.62rem', color:'#7a9ab5', fontWeight:'600' }}>Jornada {p.matchday}</span>}
+          {p.fase && p.fase!=='grupo' && <span style={{ fontSize:'.62rem', color:'#f9a825', fontWeight:'700' }}>{p.fase.toUpperCase()}</span>}
+        </div>
+        <div style={{ textAlign:'right', flexShrink:0 }}>
           {p.played_at ? (
-            <>
-              <div style={{ fontSize:'.7rem', fontWeight:'700', color:'#e8f4fd' }}>{new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</div>
-              <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>{new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
-            </>
+            <div style={{ fontSize:'.68rem', color:'#7a9ab5', fontWeight:'600' }}>
+              {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} · {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
+            </div>
           ) : <div style={{ fontSize:'.65rem', color:'#7a9ab5' }}>Sin fecha</div>}
         </div>
+      </div>
 
-        {/* Partido */}
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-            <div style={{ flex:1, display:'flex', alignItems:'center', gap:'5px', justifyContent:'flex-end' }}>
-              {p.home?.logo_url && <img src={p.home.logo_url} style={{ width:'18px', height:'18px', objectFit:'contain', flexShrink:0 }}/>}
-              <span style={{ fontSize:'.8rem', fontWeight:'700', color:'#e8f4fd', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.home?.name}</span>
-            </div>
-            <div style={{ fontWeight:'900', fontSize: esJugado?'.9rem':'.75rem', color: esJugado?'#e8f4fd':'#7a9ab5', background:'#1e2d3d', padding:'3px 8px', borderRadius:'6px', flexShrink:0 }}>
-              {esJugado ? `${p.home_score}-${p.away_score}` : 'VS'}
-            </div>
-            <div style={{ flex:1, display:'flex', alignItems:'center', gap:'5px' }}>
-              <span style={{ fontSize:'.8rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.away?.name}</span>
-              {p.away?.logo_url && <img src={p.away.logo_url} style={{ width:'18px', height:'18px', objectFit:'contain', flexShrink:0 }}/>}
-            </div>
-          </div>
-          {/* Info secundaria */}
-          <div style={{ display:'flex', gap:'6px', marginTop:'4px', flexWrap:'wrap' }}>
-            <span style={{ fontSize:'.6rem', color:'#00ddd0', background:'rgba(0,221,208,.08)', borderRadius:'4px', padding:'1px 6px' }}>{p.tournaments?.name}</span>
-            {p.matchday && <span style={{ fontSize:'.6rem', color:'#7a9ab5' }}>J{p.matchday}</span>}
-            {p.fase && p.fase!=='grupo' && <span style={{ fontSize:'.6rem', color:'#f9a825', fontWeight:'700' }}>{p.fase.toUpperCase()}</span>}
-            {p.location && <span style={{ fontSize:'.6rem', color:'#7a9ab5' }}>📍 {p.location}</span>}
-            {tieneArbitro && !esJugado && (
-              <span style={{ fontSize:'.6rem', color:'#1e8e3e' }}>✅ {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
-            )}
-          </div>
+      {/* Partido */}
+      <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 14px' }}>
+        <div style={{ flex:1, display:'flex', alignItems:'center', gap:'7px', justifyContent:'flex-end', minWidth:0 }}>
+          {p.home?.logo_url && <img src={p.home.logo_url} style={{ width:'24px', height:'24px', objectFit:'contain', flexShrink:0 }}/>}
+          <span style={{ fontSize:'.85rem', fontWeight:'700', color:'#e8f4fd', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.home?.name}</span>
+        </div>
+        <div style={{ fontWeight:'900', fontSize: esJugado?'.95rem':'.72rem', color: esJugado?'#e8f4fd':'#7a9ab5', background:'#1c2937', padding:'4px 10px', borderRadius:'8px', flexShrink:0, letterSpacing:'.03em' }}>
+          {esJugado ? `${p.home_score}-${p.away_score}` : 'VS'}
+        </div>
+        <div style={{ flex:1, display:'flex', alignItems:'center', gap:'7px', minWidth:0 }}>
+          <span style={{ fontSize:'.85rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.away?.name}</span>
+          {p.away?.logo_url && <img src={p.away.logo_url} style={{ width:'24px', height:'24px', objectFit:'contain', flexShrink:0 }}/>}
+        </div>
+      </div>
+
+      {/* Pie: ubicación / árbitros asignados + acción */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', padding:'10px 14px', borderTop:'1px solid #1c2937', background:'rgba(0,0,0,.15)' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'3px', minWidth:0 }}>
+          {p.location && <span style={{ fontSize:'.68rem', color:'#7a9ab5' }}>📍 {p.location}</span>}
+          {tieneArbitro && !esJugado && (
+            <span style={{ fontSize:'.68rem', color:'#1e8e3e', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>✅ {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
+          )}
+          {!tieneArbitro && !esJugado && <span style={{ fontSize:'.68rem', color:'#e8710a', fontWeight:'600' }}>⚠️ Sin árbitro asignado</span>}
         </div>
 
-        {/* Botón asignar / expandir */}
         {!esJugado && (
           <button onClick={()=>setAbierto(!abierto)}
-            style={{ background: abierto?'#1a73e8':(!tieneArbitro?'rgba(232,113,10,.15)':'rgba(30,142,62,.1)'), border:`1px solid ${abierto?'#1a73e8':(!tieneArbitro?'#e8710a':'#1e8e3e')}`, borderRadius:'8px', padding:'5px 10px', cursor:'pointer', color: abierto?'#fff':(!tieneArbitro?'#e8710a':'#1e8e3e'), fontSize:'.72rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'4px' }}>
+            style={{
+              background: abierto ? '#1a73e8' : (!tieneArbitro ? 'linear-gradient(135deg,#e8710a,#f9a825)' : 'rgba(30,142,62,.12)'),
+              border: abierto ? 'none' : (!tieneArbitro ? 'none' : '1px solid #1e8e3e'),
+              borderRadius:'10px', padding:'8px 14px', cursor:'pointer',
+              color: abierto ? '#fff' : (!tieneArbitro ? '#0d1117' : '#1e8e3e'),
+              fontSize:'.75rem', fontWeight:'800', flexShrink:0, display:'flex', alignItems:'center', gap:'5px',
+              boxShadow: !tieneArbitro && !abierto ? '0 2px 8px rgba(232,113,10,.35)' : 'none',
+              transition:'transform .1s',
+            }}>
             {abierto ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
             {!tieneArbitro ? 'Asignar' : 'Cambiar'}
           </button>
@@ -139,8 +153,8 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer }) {
 
       {/* Panel asignación */}
       {abierto && !esJugado && (
-        <div style={{ borderTop:'0.5px solid #1e2d3d', padding:'10px 14px', background:'#0d1117' }}>
-          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.08em' }}>🟡 Asignar árbitros</div>
+        <div style={{ borderTop:'1px solid #1c2937', padding:'14px', background:'#0d1117' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em' }}>🟡 Asignar árbitros</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
             {[
               { campo:'arbitro1_id', label:'Principal', val:p.arbitro1_id },
@@ -148,17 +162,17 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer }) {
               { campo:'arbitro3_id', label:'Asistente 2', val:p.arbitro3_id },
             ].map(({campo,label,val})=>(
               <div key={campo}>
-                <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginBottom:'3px' }}>{label}</div>
+                <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginBottom:'4px', fontWeight:'600' }}>{label}</div>
                 <select value={val||''} onChange={e=>onAsignar(p.id,campo,e.target.value||null)}
-                  style={{ width:'100%', background:'#1e2d3d', border:`1px solid ${val?'#00ddd0':'#2a3a4a'}`, borderRadius:'6px', padding:'5px 6px', color:val?'#00ddd0':'#7a9ab5', fontSize:'.72rem', outline:'none' }}>
+                  style={{ width:'100%', background:'#1c2937', border:`1px solid ${val?'#00ddd0':'#2a3a4a'}`, borderRadius:'8px', padding:'7px 8px', color:val?'#00ddd0':'#a9bccb', fontSize:'.74rem', outline:'none', boxSizing:'border-box' }}>
                   <option value="">Sin asignar</option>
                   {arbitros.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
             ))}
           </div>
-          <button onClick={()=>setAbierto(false)} style={{ marginTop:'8px', padding:'4px 12px', background:'#1a73e8', border:'none', borderRadius:'6px', cursor:'pointer', color:'#fff', fontSize:'.72rem', fontWeight:'600', display:'flex', alignItems:'center', gap:'4px' }}>
-            <Check size={12}/> Listo
+          <button onClick={()=>setAbierto(false)} style={{ marginTop:'12px', width:'100%', padding:'9px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}>
+            <Check size={13}/> Listo
           </button>
         </div>
       )}
