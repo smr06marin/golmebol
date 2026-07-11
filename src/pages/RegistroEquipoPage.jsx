@@ -302,6 +302,31 @@ export default function RegistroEquipoPage() {
     </div>
   )
 
+  // El link para registrar jugadores vence 24h después de que se compartió
+  // (teams.registro_token_generado_en se actualiza cada vez que el admin/
+  // coordinador lo copia para enviarlo). Si nunca se registró esa fecha
+  // (equipos viejos, antes de este cambio) se deja pasar sin restricción.
+  const vencido = equipo.registro_token_generado_en &&
+    (Date.now() - new Date(equipo.registro_token_generado_en).getTime()) > 24 * 60 * 60 * 1000
+
+  if (vencido) return (
+    <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '32px 24px', textAlign: 'center', maxWidth: '380px', width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
+        <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>⏰</div>
+        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#d93025', marginBottom: '10px' }}>Link vencido</div>
+        <div style={{ fontSize: '.85rem', color: '#5f6368', lineHeight: 1.6, marginBottom: '22px' }}>
+          Este link de registro ya venció (es válido por 24 horas desde que se envió).
+          Pide a Golmebol que te comparta uno nuevo para seguir inscribiendo jugadores del equipo <strong>{equipo.name}</strong> en el torneo <strong>{torneo.name}</strong>.
+        </div>
+        <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Quiero registrar otro jugador, ¿me podrías enviar el link? Equipo: ${equipo.name} — Torneo: ${torneo.name}`)}`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25D366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
+          📲 Escribir a Golmebol por WhatsApp
+        </a>
+      </div>
+    </div>
+  )
+
   if (exito) return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#fff', borderRadius: '16px', padding: '40px', textAlign: 'center', maxWidth: '360px', width: '90%', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>

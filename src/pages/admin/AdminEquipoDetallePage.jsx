@@ -118,8 +118,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   function handleCopiarLinkRegistro(t) {
     const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}/${t.tournament_id}`
-    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\n⏰ Válido por 24 horas desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
     navigator.clipboard.writeText(mensaje)
+    // Reinicia el reloj de 24h del link cada vez que se comparte de nuevo
+    supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString() }).eq('id', equipo.id).then(() => {}, () => {})
     showMsg('Link copiado con la descripción ✓')
     setMostrarSelectorTorneo(false)
   }
