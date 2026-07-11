@@ -437,6 +437,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     return () => { if (meta) meta.setAttribute('content', original || 'width=device-width, initial-scale=1.0') }
   }, [])
 
+  // Pantalla completa real: oculta la barra de direcciones/menú del navegador en
+  // celular mientras la planilla está abierta. Si el navegador no lo soporta (ej.
+  // iOS Safari) simplemente no pasa nada — el fondo blanco de borde a borde ya
+  // tapa el resto de la página igual.
+  useEffect(() => {
+    try { document.documentElement.requestFullscreen?.().catch(() => {}) } catch (e) {}
+    return () => { try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) } catch (e) {} }
+  }, [])
+
   useEffect(() => {
     if (corriendo) {
       timerRef.current = setInterval(() => {
@@ -1457,8 +1466,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         )}
       </div>
 
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px', overflowY: 'auto', touchAction: 'pan-x pan-y' }}>
-        <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '980px', marginBottom: '20px' }}>
+      {/* Pantalla completa: sin overlay oscuro, sin márgenes ni bordes redondeados,
+          para que no se alcance a ver ni un pedacito del menú/cabezote de la página
+          de atrás — la planilla tapa TODO el viewport de borde a borde. */}
+      <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', touchAction: 'pan-x pan-y' }}>
+        <div style={{ background: '#fff', width: '100%', maxWidth: '980px', minHeight: '100%' }}>
 
           {/* Barra superior */}
           <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '8px' }}>
