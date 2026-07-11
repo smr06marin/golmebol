@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check } from 'lucide-react'
+import PlanillaPartido from '../components/PlanillaPartido'
 
 const inp = { width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
@@ -77,7 +78,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   )
 }
 
-function CardPartido({ partido, arbitros, onAsignar, modoVer }) {
+function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }) {
   const [abierto, setAbierto] = useState(false)
   const p = partido
   const esJugado = p.status === 'finished'
@@ -147,6 +148,12 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer }) {
             }}>
             {abierto ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
             {!tieneArbitro ? 'Asignar' : 'Cambiar'}
+          </button>
+        )}
+        {esJugado && onEditarPlanilla && (
+          <button onClick={()=>onEditarPlanilla(p)}
+            style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', color:'#7a9ab5', fontSize:'.75rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'5px' }}>
+            ✏️ Editar planilla
           </button>
         )}
       </div>
@@ -273,6 +280,7 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
 
 export default function ArbitroLiderPage() {
   const navigate   = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [lider,    setLider]    = useState(null)
   const [partidos, setPartidos] = useState([])
   const [arbitros, setArbitros] = useState([])
@@ -285,8 +293,26 @@ export default function ArbitroLiderPage() {
   const [torneoFiltro, setTorneoFiltro] = useState('')
   const [modalRec,     setModalRec]     = useState(null)
   const [reclamosMap,  setReclamosMap]  = useState({})
+  const [planillaPartido, setPlanillaPartido] = useState(null)
+
+  function abrirPlanilla(p) {
+    setPlanillaPartido(p)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
+  }
+  function cerrarPlanilla() {
+    setPlanillaPartido(null)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
+    fetchTodo()
+  }
 
   useEffect(() => {
+    const matchId = searchParams.get('planilla')
+    if (matchId) {
+      supabase.from('matches')
+        .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+        .eq('id', matchId).single()
+        .then(({ data }) => { if (data) setPlanillaPartido(data) })
+    }
     fetchTodo()
     function onPageShow(e) { if (e.persisted) fetchTodo() }
     function onVisibility() { if (document.visibilityState === 'visible') fetchTodo() }
@@ -431,6 +457,14 @@ export default function ArbitroLiderPage() {
 
       {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado ✓'); fetchArbitros() }}/>}
 
+      {planillaPartido && (
+        <PlanillaPartido
+          partido={planillaPartido}
+          onClose={cerrarPlanilla}
+          onGuardarResultado={() => {}}
+        />
+      )}
+
       {/* Header */}
       <div style={{ background:'#0d1117', borderBottom:'0.5px solid #1e2d3d', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:50 }}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
@@ -522,7 +556,7 @@ export default function ArbitroLiderPage() {
               const tieneArbitro = p.arbitro1_id||p.arbitro2_id||p.arbitro3_id
               return (
                 <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#1e2d3d'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
-                  <CardPartido partido={p} arbitros={arbitros} onAsignar={handleAsignar}/>
+                  <CardPartido partido={p} arbitros={arbitros} onAsignar={handleAsignar} onEditarPlanilla={abrirPlanilla}/>
                   <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
                       <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
                         {(reclamosMap[p.id]||[]).map((r,i)=>{

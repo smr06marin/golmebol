@@ -278,6 +278,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [showMVP,            setShowMVP]            = useState(false)
   const [mvpId,              setMvpId]              = useState('')
   const [showEspecial,       setShowEspecial]       = useState(null)
+  const [logEdicion,         setLogEdicion]         = useState([]) // historial de ediciones después de cerrada
 
   const [hubopenales,      setHuboPenales]      = useState(false)
   const [penalesGanador,   setPenalesGanador]   = useState('')
@@ -559,7 +560,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       setLoading(false); return
     }
 
-    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB] = await Promise.all([
+    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
@@ -568,7 +569,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').maybeSingle(),
       // Snapshot que haya dejado guardado OTRO celular (árbitro/admin) llenando esta misma planilla
       supabase.from('matches').select('live_state, live_state_updated_at').eq('id', partido.id).maybeSingle(),
+      // Historial de ediciones hechas DESPUÉS de que la planilla ya estaba cerrada
+      supabase.from('match_edit_log').select('*').eq('match_id', partido.id).order('edited_at', { ascending: false }),
     ])
+    setLogEdicion(editLogDB?.data || [])
 
     const evs = eventos.data || [], stats = statsDB.data || [], yaJugado = stats.length > 0, torneoData = torn.data
     if (logrosDB.data?.player_id) setMvpId(logrosDB.data.player_id)
@@ -650,6 +654,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   // mvpIdFinal: id del jugador MVP (viene del modal)
   async function guardarEnDB(esEspecial = null, mvpIdFinal = null) {
     setGuardandoDB(true)
+
+    // Si el partido YA estaba cerrado (finalizado) antes de este guardado, es una
+    // reedición posterior al cierre: queda registrado quién y cuándo la hizo.
+    if (partido.status === 'finished') {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        let editorName = user?.email || 'Desconocido'
+        if (user?.id) {
+          const { data: pRow } = await supabase.from('players').select('name').eq('user_id', user.id).maybeSingle()
+          if (pRow?.name) editorName = pRow.name
+        }
+        await supabase.from('match_edit_log').insert({
+          match_id: partido.id, editor_user_id: user?.id || null,
+          editor_name: editorName, editor_email: user?.email || null,
+        })
+      } catch (e) { console.error('No se pudo registrar la edición post-cierre:', e) }
+    }
 
     let golesLocalTotal, golesVisTotal, tipoPartido = null
     if (esEspecial) {
@@ -1420,6 +1441,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500' }}><Printer size={13}/> Imprimir</button>
             </div>
           </div>
+
+          {/* Aviso: esta planilla ya estaba cerrada y fue reeditada — queda quién y cuándo */}
+          {partido.status === 'finished' && logEdicion.length > 0 && (
+            <div className="no-print" style={{ padding: '10px 16px', background: '#fce8e6', borderBottom: '1px solid #fad2cf' }}>
+              <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#d93025', marginBottom: '4px' }}>⚠️ Planilla cerrada editada después del cierre:</div>
+              {logEdicion.map(l => (
+                <div key={l.id} style={{ fontSize: '.72rem', color: '#8c1d18' }}>
+                  {l.editor_name} · {new Date(l.edited_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})} {new Date(l.edited_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Estado del arquero obligatorio — se marca tocando el nombre en la tabla de cada equipo */}
           <div className="no-print" style={{ padding: '10px 16px', background: '#fffde7', borderBottom: '1px solid #ffe082', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>

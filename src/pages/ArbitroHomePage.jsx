@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { LogOut, Shield, Download } from 'lucide-react'
+import { LogOut, Shield, Download, Check } from 'lucide-react'
+import PlanillaPartido from '../components/PlanillaPartido'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -110,6 +111,7 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
 
 export default function ArbitroHomePage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [arbitro,   setArbitro]   = useState(null)
   const [partidos,  setPartidos]  = useState([])
   const [stats,     setStats]     = useState({ total:0, jugados:0, torneos:0 })
@@ -118,8 +120,33 @@ export default function ArbitroHomePage() {
   const [showPass,  setShowPass]  = useState(false)
   const [showFlyer, setShowFlyer] = useState(false)
   const [notifs,    setNotifs]    = useState([])
+  const [planillaPartido, setPlanillaPartido] = useState(null)
+
+  function abrirPlanilla(p) {
+    setPlanillaPartido(p)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
+  }
+  function cerrarPlanilla() {
+    setPlanillaPartido(null)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
+    fetchTodo()
+  }
 
   useEffect(() => {
+    // Si hay una planilla abierta reflejada en la URL (?planilla=id), recuperarla
+    // primero — así nunca se pierde aunque el navegador recargue la página.
+    const matchId = searchParams.get('planilla')
+    if (matchId) {
+      supabase.from('matches')
+        .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+        .eq('id', matchId).single()
+        .then(({ data }) => {
+          // Un árbitro no puede editar una planilla ya cerrada (solo admin/coordinador),
+          // ni siquiera armando el link a mano.
+          if (data && data.status !== 'finished') setPlanillaPartido(data)
+          else if (data) setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace:true })
+        })
+    }
     fetchTodo()
     // Si el celular restaura la página desde memoria (bfcache) al volver de otra
     // app/pestaña, o simplemente vuelve a quedar visible, refrescamos los datos
@@ -192,6 +219,13 @@ export default function ArbitroHomePage() {
 
       {showPass  && <ModalCambiarContrasena onClose={()=>setShowPass(false)}/>}
       {showFlyer && <FlyerPartidos arbitro={arbitro} partidos={partidos} onClose={()=>setShowFlyer(false)}/>}
+      {planillaPartido && (
+        <PlanillaPartido
+          partido={planillaPartido}
+          onClose={cerrarPlanilla}
+          onGuardarResultado={() => {}}
+        />
+      )}
 
       {/* Header */}
       <div style={{ background:'#0d1117', borderBottom:'0.5px solid #1e2d3d', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:50 }}>
@@ -299,6 +333,17 @@ export default function ArbitroHomePage() {
                   {p.played_at && <span>🕐 {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>}
                   {p.location  && <span>📍 {p.location}</span>}
                 </div>
+              )}
+              {esJugado ? (
+                <div title="Solo el coordinador o el admin pueden editar una planilla cerrada"
+                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'1px solid #1e2d3d', background:'none', color:'#5a6b7a', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', boxSizing:'border-box' }}>
+                  🔒 Planilla cerrada
+                </div>
+              ) : (
+                <button onClick={()=>abrirPlanilla(p)}
+                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background:'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
+                  <Check size={14}/> Llenar planilla
+                </button>
               )}
             </div>
           )
