@@ -59,10 +59,12 @@ function puntosApuesta(apuesta, partido, cruces, apuestas) {
   return { neto, estado: neto > 0 ? 'ganada' : neto < 0 ? 'perdida' : 'empate' }
 }
 
+// La mesa de apuestas se cierra solo cuando el partido ya quedó marcado
+// como jugado — no por la hora programada, porque en la práctica los
+// partidos casi nunca arrancan exactamente a la hora que quedó agendada
+// (se atrasan, se cambian, etc.) y eso cerraba la mesa antes de tiempo.
 function puedeApostar(p) {
-  if (!p || p.status === 'finished') return false
-  if (p.played_at && new Date(p.played_at) <= new Date()) return false
-  return true
+  return !!p && p.status !== 'finished'
 }
 
 export default function PredixApuestasPage() {
