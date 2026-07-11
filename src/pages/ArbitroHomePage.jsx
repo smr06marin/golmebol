@@ -144,13 +144,24 @@ export default function ArbitroHomePage() {
     if (!p.activo_membresia) { navigate('/jugador/login'); return }
     setArbitro(p)
 
-    const { data: pts } = await supabase
-      .from('matches')
-      .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-      .or(`arbitro1_id.eq.${p.id},arbitro2_id.eq.${p.id},arbitro3_id.eq.${p.id},arbitro1.eq.${p.name},arbitro2.eq.${p.name}`)
-      .order('played_at', { ascending: false })
+    const selectCols = '*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
+    // Se separan en consultas independientes (en vez de un solo .or() con el
+    // nombre metido en el filtro) para que un nombre con caracteres raros no
+    // rompa el filtro entero y haga desaparecer TODOS los partidos asignados.
+    const [porId, porNombre1, porNombre2] = await Promise.all([
+      supabase.from('matches').select(selectCols)
+        .or(`arbitro1_id.eq.${p.id},arbitro2_id.eq.${p.id},arbitro3_id.eq.${p.id}`),
+      p.name ? supabase.from('matches').select(selectCols).eq('arbitro1', p.name) : Promise.resolve({ data: [] }),
+      p.name ? supabase.from('matches').select(selectCols).eq('arbitro2', p.name) : Promise.resolve({ data: [] }),
+    ])
+    if (porId.error) console.error('Error cargando partidos por id de árbitro:', porId.error)
+    if (porNombre1.error) console.error('Error cargando partidos por arbitro1:', porNombre1.error)
+    if (porNombre2.error) console.error('Error cargando partidos por arbitro2:', porNombre2.error)
 
-    const lista = pts || []
+    const vistos = new Set()
+    const lista = [...(porId.data||[]), ...(porNombre1.data||[]), ...(porNombre2.data||[])]
+      .filter(m => { if (vistos.has(m.id)) return false; vistos.add(m.id); return true })
+      .sort((a,b) => new Date(b.played_at||0) - new Date(a.played_at||0))
     setPartidos(lista)
     setStats({ total:lista.length, jugados:lista.filter(m=>m.status==='finished').length, torneos:new Set(lista.map(m=>m.tournament_id)).size })
     // Notificaciones no leídas
