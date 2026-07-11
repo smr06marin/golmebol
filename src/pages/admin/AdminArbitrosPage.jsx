@@ -70,6 +70,14 @@ export default function AdminArbitrosPage() {
   const [jugadoresTodos,setJugadoresTodos] = useState([])
   const [busqJug,      setBusqJug]      = useState('')
 
+  // Flujo "cédula primero": al crear un árbitro nuevo, lo primero que se
+  // pide es la cédula para revisar si esa persona ya existe en Golmebol
+  // (como jugador, árbitro, etc.) antes de mostrar el resto del formulario.
+  const [cedulaBuscar,       setCedulaBuscar]       = useState('')
+  const [buscandoCedula,     setBuscandoCedula]     = useState(false)
+  const [personaEncontrada,  setPersonaEncontrada]  = useState(null)
+  const [mostrarCamposNuevo, setMostrarCamposNuevo] = useState(false)
+
   useEffect(() => { fetchArbitros(); fetchJugadoresTodos() }, [])
 
   async function fetchJugadoresTodos() {
@@ -100,6 +108,51 @@ export default function AdminArbitrosPage() {
     setTimeout(() => setMsg(null), 3000)
   }
 
+  function cerrarFormNuevo() {
+    setShowForm(false); setForm(EMPTY); setEditId(null)
+    setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false)
+  }
+
+  function rolActualLabel(p) {
+    const esArbitro = p.es_arbitro || p.rol === 'arbitro'
+    const esJugador = p.rol === 'jugador' || !esArbitro
+    if (esArbitro && esJugador) return p.es_arbitro_lider ? 'jugador y coordinador de árbitros' : 'jugador y árbitro'
+    if (esArbitro) return p.es_arbitro_lider ? 'coordinador de árbitros' : 'árbitro'
+    return 'jugador'
+  }
+
+  // Paso 1 del alta: revisar si ya existe una persona con esta cédula en
+  // Golmebol (en cualquier rol) antes de pedir el resto de los datos.
+  async function handleBuscarCedulaNueva() {
+    if (!cedulaBuscar.trim()) return showMsgFn('Ingresa la cédula', 'error')
+    setBuscandoCedula(true)
+    setPersonaEncontrada(null)
+    setMostrarCamposNuevo(false)
+    const { data } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim()).maybeSingle()
+    if (data) setPersonaEncontrada(data)
+    else { setMostrarCamposNuevo(true); setForm(f => ({ ...f, numero_cedula: cedulaBuscar.trim() })) }
+    setBuscandoCedula(false)
+  }
+
+  // Se confirmó que sí es la misma persona: se habilita el rol de árbitro
+  // sobre su registro existente, sin crear una cuenta nueva.
+  async function handleConfirmarPersonaEncontrada() {
+    const existente = personaEncontrada
+    if (existente.es_arbitro || existente.rol === 'arbitro') {
+      showMsgFn(`${existente.name} ya está registrado como árbitro con esta cédula`, 'error')
+      return
+    }
+    setLoading(true)
+    const { error } = await supabase.from('players').update({
+      es_arbitro: true, activo_membresia: true, fecha_vencimiento: null,
+    }).eq('id', existente.id)
+    setLoading(false)
+    if (error) return showMsgFn('Error al habilitar como árbitro', 'error')
+    showMsgFn(`${existente.name} ahora también es árbitro ✓ — entra con la misma cuenta`)
+    cerrarFormNuevo()
+    fetchArbitros()
+  }
+
   async function handleSave() {
     if (!form.name)           return showMsgFn('El nombre es obligatorio', 'error')
     if (!form.numero_cedula)  return showMsgFn('La cédula es obligatoria', 'error')
@@ -121,7 +174,7 @@ export default function AdminArbitrosPage() {
       if (error) showMsgFn('Error al crear', 'error')
       else showMsgFn('Árbitro creado ✓ — ya puede entrar con su cédula en /jugador/login y crear su contraseña')
     }
-    setShowForm(false); setForm(EMPTY); setLoading(false); fetchArbitros()
+    cerrarFormNuevo(); setLoading(false); fetchArbitros()
   }
 
   // Activación gratuita para árbitros puros (sin membresía/vencimiento). Se usa
@@ -202,17 +255,17 @@ export default function AdminArbitrosPage() {
             style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:'1px solid #1a73e8', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#1a73e8', fontSize:'.875rem', fontWeight:'600' }}>
             👤 Jugador existente
           </button>
-          <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
+          <button onClick={() => { setForm(EMPTY); setEditId(null); setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setShowForm(true) }}
           style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600' }}>
           <Plus size={16}/> Árbitro nuevo
         </button>
         </div>
       </div>
 
-      {/* Form */}
-      {showForm && (
+      {/* Form: editar árbitro existente (va directo al formulario completo) */}
+      {showForm && editId && (
         <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
-          <div style={{ fontWeight:'600', color:'#202124', marginBottom:'16px' }}>{editId ? 'Editar árbitro' : 'Nuevo árbitro'}</div>
+          <div style={{ fontWeight:'600', color:'#202124', marginBottom:'16px' }}>Editar árbitro</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'14px', marginBottom:'14px' }}>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre del árbitro"/></div>
             <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="Número de cédula"/></div>
@@ -221,8 +274,65 @@ export default function AdminArbitrosPage() {
             <div><label style={lbl}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}><option value="">Seleccionar...</option><option>Masculino</option><option>Femenino</option></select></div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
-            <button onClick={handleSave} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':editId?'Actualizar':'Crear árbitro'}</button>
-            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
+            <button onClick={handleSave} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':'Actualizar'}</button>
+            <button onClick={cerrarFormNuevo} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Alta nueva — Paso 1: cédula primero, para revisar si la persona ya existe */}
+      {showForm && !editId && !personaEncontrada && !mostrarCamposNuevo && (
+        <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+          <div style={{ fontWeight:'600', color:'#202124', marginBottom:'6px' }}>Nuevo árbitro</div>
+          <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'14px' }}>Primero escribe su número de cédula — así revisamos si ya está registrado en Golmebol.</div>
+          <div style={{ display:'flex', gap:'8px' }}>
+            <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} onKeyDown={e => e.key==='Enter' && handleBuscarCedulaNueva()} style={{...inp, maxWidth:'260px'}} placeholder="Número de cédula" autoFocus/>
+            <button onClick={handleBuscarCedulaNueva} disabled={buscandoCedula} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:buscandoCedula?.7:1 }}>{buscandoCedula?'Buscando...':'Buscar'}</button>
+            <button onClick={cerrarFormNuevo} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Alta nueva — Paso 2a: ya existe una persona con esta cédula */}
+      {showForm && !editId && personaEncontrada && (
+        <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+          <div style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'10px', padding:'16px', marginBottom:'16px' }}>
+            <div style={{ fontSize:'.72rem', fontWeight:'700', color:'#1a73e8', marginBottom:'10px', letterSpacing:'.05em' }}>YA ESTÁ REGISTRADO EN GOLMEBOL</div>
+            <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+              <div style={{ width:'48px', height:'48px', borderRadius:'50%', overflow:'hidden', background:'#d2e3fc', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.2rem' }}>👤</span>}
+              </div>
+              <div>
+                <div style={{ fontWeight:'700', color:'#202124', fontSize:'1rem' }}>{personaEncontrada.name}</div>
+                <div style={{ fontSize:'.8rem', color:'#5f6368', marginTop:'2px' }}>🪪 {personaEncontrada.numero_cedula} · actualmente registrado como <strong>{rolActualLabel(personaEncontrada)}</strong></div>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize:'.85rem', color:'#202124', marginBottom:'16px' }}>
+            ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando? Si confirmas, también quedará habilitado como <strong>árbitro</strong> — con los mismos datos y podrá entrar con la misma cuenta y contraseña a los dos portales.
+          </div>
+          <div style={{ display:'flex', gap:'8px' }}>
+            <button onClick={handleConfirmarPersonaEncontrada} disabled={loading} style={{ flex:1, padding:'11px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':`✓ Sí, también registrar a ${personaEncontrada.name.split(' ')[0]} como árbitro`}</button>
+            <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar('') }} style={{ padding:'11px 16px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>No, buscar otra cédula</button>
+          </div>
+        </div>
+      )}
+
+      {/* Alta nueva — Paso 2b: no existe, se completan los datos */}
+      {showForm && !editId && mostrarCamposNuevo && (
+        <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+          <div style={{ fontWeight:'600', color:'#202124', marginBottom:'4px' }}>Nuevo árbitro</div>
+          <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'14px' }}>⚠️ No hay nadie registrado con la cédula <strong>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'14px', marginBottom:'14px' }}>
+            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre del árbitro"/></div>
+            <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#f1f3f4', color:'#9aa0a6'}}/></div>
+            <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
+            <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
+            <div><label style={lbl}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}><option value="">Seleccionar...</option><option>Masculino</option><option>Femenino</option></select></div>
+          </div>
+          <div style={{ display:'flex', gap:'8px' }}>
+            <button onClick={handleSave} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':'Crear árbitro'}</button>
+            <button onClick={cerrarFormNuevo} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
           </div>
         </div>
       )}

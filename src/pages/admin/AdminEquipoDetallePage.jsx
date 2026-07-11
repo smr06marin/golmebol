@@ -493,6 +493,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       </div>
                     </div>
                   </div>
+                  {(jugadorEncontrado.es_arbitro || jugadorEncontrado.rol === 'arbitro') && (
+                    <div style={{ ...GLASS_INSET, borderRadius: '16px', padding: '12px 16px', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '.8rem', color: '#5b9dff', fontWeight: '700', marginBottom: '2px' }}>🟡 Esta persona ya está registrada como árbitro</div>
+                      <div style={{ fontSize: '.78rem', color: TXT_SOFT }}>Al agregarla al equipo quedará también como jugador con los mismos datos — entra con la misma cuenta y contraseña a los dos portales.</div>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button onClick={handleAgregarJugadorGlobal} style={{ ...glassBtn('#51cf66'), padding: '10px 18px' }}>+ Agregar al equipo</button>
                     <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Buscar otro</button>

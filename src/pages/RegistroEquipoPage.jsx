@@ -473,6 +473,16 @@ export default function RegistroEquipoPage() {
               </div>
             </div>
 
+            {(jugadorExiste.es_arbitro || jugadorExiste.rol === 'arbitro') && (
+              <div style={{ background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#1a73e8', marginBottom: '4px' }}>🟡 Esta persona ya está registrada como árbitro en Golmebol</div>
+                <div style={{ fontSize: '.8rem', color: '#5f6368' }}>
+                  Si confirman la inscripción, <strong>{jugadorExiste.name}</strong> quedará también habilitado como jugador usando los mismos datos —
+                  podrá entrar con la misma cuenta y contraseña tanto al portal de jugador como al de árbitro.
+                </div>
+              </div>
+            )}
+
             {/* Fotos cédula opcionales para jugadores existentes */}
             {(!jugadorExiste.cedula_frontal_url || !jugadorExiste.cedula_trasera_url) && (
               <div style={{ marginBottom: '20px' }}>

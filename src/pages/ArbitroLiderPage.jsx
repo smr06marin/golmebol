@@ -14,11 +14,51 @@ const TABS = [
   { id:'arbitros',    label:'Árbitros',       icon:'🟡' },
 ]
 
+function rolActualLabel(p) {
+  const esArbitro = p.es_arbitro || p.rol === 'arbitro'
+  const esJugador = p.rol === 'jugador' || !esArbitro
+  if (esArbitro && esJugador) return p.es_arbitro_lider ? 'jugador y coordinador de árbitros' : 'jugador y árbitro'
+  if (esArbitro) return p.es_arbitro_lider ? 'coordinador de árbitros' : 'árbitro'
+  return 'jugador'
+}
+
 function ModalNuevoArbitro({ onClose, onCreado }) {
   const [form,     setForm]     = useState({ name:'', numero_cedula:'', telefono:'', city:'' })
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
   const [fotoFile, setFotoFile] = useState(null)
+
+  // Flujo "cédula primero": lo primero que se pide es la cédula para
+  // revisar si esa persona ya existe en Golmebol antes de pedir el resto.
+  const [cedulaBuscar,       setCedulaBuscar]       = useState('')
+  const [buscandoCedula,     setBuscandoCedula]     = useState(false)
+  const [personaEncontrada,  setPersonaEncontrada]  = useState(null)
+  const [mostrarCamposNuevo, setMostrarCamposNuevo] = useState(false)
+
+  async function handleBuscarCedula() {
+    if (!cedulaBuscar.trim()) return setError('Ingresa la cédula')
+    setError('')
+    setBuscandoCedula(true)
+    const { data } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim()).maybeSingle()
+    if (data) setPersonaEncontrada(data)
+    else { setMostrarCamposNuevo(true); setForm(f => ({ ...f, numero_cedula: cedulaBuscar.trim() })) }
+    setBuscandoCedula(false)
+  }
+
+  async function handleConfirmarPersonaEncontrada() {
+    const existente = personaEncontrada
+    if (existente.es_arbitro || existente.rol === 'arbitro') {
+      setError(`${existente.name} ya está registrado como árbitro con esta cédula`)
+      return
+    }
+    setLoading(true)
+    const { data: actualizado, error: errUpd } = await supabase.from('players').update({
+      es_arbitro: true, activo_membresia: true, fecha_vencimiento: null,
+    }).eq('id', existente.id).select().single()
+    setLoading(false)
+    if (errUpd) { setError('Error: ' + errUpd.message); return }
+    onCreado(actualizado); onClose()
+  }
 
   async function handleGuardar() {
     if (!form.name || !form.numero_cedula) return setError('Nombre y cédula son obligatorios')
@@ -41,13 +81,71 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
     onCreado(data); onClose()
   }
 
+  // Paso 1: solo se pide la cédula
+  if (!personaEncontrada && !mostrarCamposNuevo) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+        <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'400px', border:'1px solid #1e2d3d' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Nuevo árbitro</div>
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+          </div>
+          <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginBottom:'16px' }}>Primero escribe su número de cédula — así revisamos si ya está registrado en Golmebol.</div>
+          <div><label style={lbl}>Cédula *</label><input value={cedulaBuscar} onChange={e=>setCedulaBuscar(e.target.value)} onKeyDown={e => e.key==='Enter' && handleBuscarCedula()} style={inp} placeholder="Número de cédula" autoFocus/></div>
+          {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginTop:'10px' }}>{error}</div>}
+          <div style={{ display:'flex', gap:'8px', marginTop:'16px' }}>
+            <button onClick={handleBuscarCedula} disabled={buscandoCedula} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:buscandoCedula?.7:1 }}>
+              {buscandoCedula?'Buscando...':'Buscar'}
+            </button>
+            <button onClick={onClose} style={{ padding:'10px 16px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Paso 2a: ya existe alguien con esa cédula
+  if (personaEncontrada) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+        <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'420px', border:'1px solid #1e2d3d' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Ya está registrado en Golmebol</div>
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+          </div>
+          <div style={{ background:'rgba(0,221,208,.06)', border:'1px solid rgba(0,221,208,.2)', borderRadius:'10px', padding:'14px', marginBottom:'16px', display:'flex', alignItems:'center', gap:'12px' }}>
+            <div style={{ width:'46px', height:'46px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.2rem' }}>👤</span>}
+            </div>
+            <div>
+              <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>{personaEncontrada.name}</div>
+              <div style={{ fontSize:'.75rem', color:'#7a9ab5', marginTop:'2px' }}>🪪 {personaEncontrada.numero_cedula} · actualmente <strong style={{ color:'#00ddd0' }}>{rolActualLabel(personaEncontrada)}</strong></div>
+            </div>
+          </div>
+          <div style={{ fontSize:'.82rem', color:'#e8f4fd', marginBottom:'16px' }}>
+            ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando? Si confirmas, también quedará habilitado como <strong>árbitro</strong>, con los mismos datos y la misma cuenta/contraseña para entrar a los dos portales.
+          </div>
+          {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'10px' }}>{error}</div>}
+          <div style={{ display:'flex', gap:'8px' }}>
+            <button onClick={handleConfirmarPersonaEncontrada} disabled={loading} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
+              {loading?'Guardando...':'✓ Sí, también como árbitro'}
+            </button>
+            <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar(''); setError('') }} style={{ padding:'10px 16px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>No, buscar otra</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Paso 2b: no existe — se completa el resto del formulario
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
       <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'420px', border:'1px solid #1e2d3d', maxHeight:'90vh', overflowY:'auto' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
           <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Nuevo árbitro</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
         </div>
+        <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginBottom:'16px' }}>⚠️ No hay nadie registrado con la cédula <strong style={{ color:'#e8f4fd' }}>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
         <div style={{ textAlign:'center', marginBottom:'16px' }}>
           <label style={{ cursor:'pointer' }}>
             <input type="file" accept="image/*" onChange={e=>setFotoFile(e.target.files[0])} style={{ display:'none' }}/>
@@ -59,7 +157,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'16px' }}>
           <div><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
-          <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} onChange={e=>setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="Número de cédula"/></div>
+          <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#131e2e', color:'#7a9ab5'}}/></div>
           <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
           <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
         </div>

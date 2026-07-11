@@ -100,6 +100,14 @@ export default function AdminJugadoresPage() {
   const [msg,             setMsg]             = useState(null)
   const [search,          setSearch]          = useState('')
   const [filtroMembresia, setFiltroMembresia] = useState('todos')
+
+  // Flujo "cédula primero": al crear un jugador nuevo, lo primero que se
+  // pide es la cédula para revisar si esa persona ya existe en Golmebol
+  // (por ejemplo, ya está registrada como árbitro) antes de pedir el resto.
+  const [cedulaBuscar,       setCedulaBuscar]       = useState('')
+  const [buscandoCedula,     setBuscandoCedula]     = useState(false)
+  const [personaEncontrada,  setPersonaEncontrada]  = useState(null)
+  const [mostrarCamposNuevo, setMostrarCamposNuevo] = useState(false)
   const [modalMembresia,  setModalMembresia]  = useState(null)
   const [modalReset,      setModalReset]      = useState(null)
   const [loadingReset,    setLoadingReset]    = useState(false)
@@ -125,6 +133,48 @@ export default function AdminJugadoresPage() {
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
     setTimeout(() => setMsg(null), 4000)
+  }
+
+  function rolActualLabel(p) {
+    const esArbitro = p.es_arbitro || p.rol === 'arbitro'
+    const esJugador = p.rol === 'jugador' || !esArbitro
+    if (esArbitro && esJugador) return p.es_arbitro_lider ? 'jugador y coordinador de árbitros' : 'jugador y árbitro'
+    if (esArbitro) return p.es_arbitro_lider ? 'coordinador de árbitros' : 'árbitro'
+    return 'jugador'
+  }
+
+  function cerrarFormNuevo() {
+    setShowForm(false); setForm(EMPTY); setEditId(null)
+    setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false)
+  }
+
+  // Paso 1 del alta: revisar si ya existe una persona con esta cédula en
+  // Golmebol (en cualquier rol) antes de pedir el resto de los datos.
+  async function handleBuscarCedulaNueva() {
+    if (!cedulaBuscar.trim()) return showMsg('Ingresa la cédula', 'error')
+    setBuscandoCedula(true)
+    setPersonaEncontrada(null)
+    setMostrarCamposNuevo(false)
+    const { data } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim()).maybeSingle()
+    if (data) setPersonaEncontrada(data)
+    else { setMostrarCamposNuevo(true); setForm(f => ({ ...f, numero_cedula: cedulaBuscar.trim() })) }
+    setBuscandoCedula(false)
+  }
+
+  async function handleConfirmarPersonaEncontrada() {
+    const existente = personaEncontrada
+    const yaEsJugador = existente.rol === 'jugador' || !existente.es_arbitro
+    if (yaEsJugador) {
+      showMsg(`${existente.name} ya está registrado como jugador con esta cédula`, 'error')
+      return
+    }
+    setLoading(true)
+    const { error } = await supabase.from('players').update({ rol: existente.rol, es_arbitro: existente.es_arbitro }).eq('id', existente.id)
+    setLoading(false)
+    if (error) return showMsg('Error al actualizar', 'error')
+    showMsg(`${existente.name} ahora también está registrado como jugador ✓ — entra con la misma cuenta`)
+    cerrarFormNuevo()
+    fetchJugadores()
   }
 
   async function handleSave() {
@@ -345,7 +395,7 @@ export default function AdminJugadoresPage() {
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Jugadores</h1>
           <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{jugadores.length} registrados</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
+        <button onClick={() => { setForm(EMPTY); setEditId(null); setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
           <Plus size={18}/> Nuevo jugador
         </button>
@@ -388,11 +438,11 @@ export default function AdminJugadoresPage() {
         </div>
       )}
 
-      {showForm && (
+      {showForm && editId && (
         <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>{editId ? 'Editar jugador' : 'Nuevo jugador'}</div>
-            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Editar jugador</div>
+            <button onClick={cerrarFormNuevo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
@@ -429,9 +479,102 @@ export default function AdminJugadoresPage() {
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
             <button onClick={handleSave} disabled={loading}
               style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
-              {loading ? 'Guardando...' : editId ? 'Actualizar' : 'Crear jugador'}
+              {loading ? 'Guardando...' : 'Actualizar'}
             </button>
-            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }}
+            <button onClick={cerrarFormNuevo}
+              style={{ padding: '8px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Alta nueva — Paso 1: cédula primero */}
+      {showForm && !editId && !personaEncontrada && !mostrarCamposNuevo && (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Nuevo jugador</div>
+            <button onClick={cerrarFormNuevo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+          </div>
+          <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '14px' }}>Primero escribe su número de cédula — así revisamos si ya está registrado en Golmebol.</div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} onKeyDown={e => e.key==='Enter' && handleBuscarCedulaNueva()} style={{ ...inp, maxWidth: '260px' }} placeholder="Número de cédula" autoFocus/>
+            <button onClick={handleBuscarCedulaNueva} disabled={buscandoCedula} style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: buscandoCedula?.7:1 }}>{buscandoCedula?'Buscando...':'Buscar'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Alta nueva — Paso 2a: ya existe una persona con esa cédula */}
+      {showForm && !editId && personaEncontrada && (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
+          <div style={{ background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '16px', marginBottom: '16px' }}>
+            <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#1a73e8', marginBottom: '10px', letterSpacing: '.05em' }}>YA ESTÁ REGISTRADO EN GOLMEBOL</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#d2e3fc', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.2rem' }}>👤</span>}
+              </div>
+              <div>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>{personaEncontrada.name}</div>
+                <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '2px' }}>🪪 {personaEncontrada.numero_cedula} · actualmente registrado como <strong>{rolActualLabel(personaEncontrada)}</strong></div>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: '.85rem', color: '#202124', marginBottom: '16px' }}>
+            ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando? Si confirmas, también quedará habilitado como <strong>jugador</strong> — con los mismos datos y podrá entrar con la misma cuenta y contraseña a los dos portales.
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleConfirmarPersonaEncontrada} disabled={loading} style={{ flex: 1, padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: loading?.7:1 }}>{loading?'Guardando...':`✓ Sí, también registrar a ${personaEncontrada.name.split(' ')[0]} como jugador`}</button>
+            <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar('') }} style={{ padding: '11px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>No, buscar otra</button>
+          </div>
+        </div>
+      )}
+
+      {/* Alta nueva — Paso 2b: no existe, se completan los datos */}
+      {showForm && !editId && mostrarCamposNuevo && (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Nuevo jugador</div>
+            <button onClick={cerrarFormNuevo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+          </div>
+          <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '16px' }}>⚠️ No hay nadie registrado con la cédula <strong>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
+              <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
+              <div><label style={lbl}>Número de cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#f1f3f4', color:'#9aa0a6'}}/></div>
+              <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
+              <div>
+                <label style={lbl}>Género</label>
+                <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
+                  <option value="">Seleccionar</option>
+                  {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div><label style={lbl}>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
+            </div>
+            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones por modalidad</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+              {Object.entries(POSICIONES).map(([modalidad, posiciones]) => {
+                const key = `posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`
+                return (
+                  <div key={modalidad}>
+                    <label style={lbl}>{modalidad}</label>
+                    <select value={form[key]} onChange={e => setForm(f=>({...f,[key]:e.target.value}))} style={inp}>
+                      <option value="">No juega</option>
+                      {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+            <button onClick={handleSave} disabled={loading}
+              style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
+              {loading ? 'Guardando...' : 'Crear jugador'}
+            </button>
+            <button onClick={cerrarFormNuevo}
               style={{ padding: '8px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
               Cancelar
             </button>
