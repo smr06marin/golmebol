@@ -1176,22 +1176,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                     </td>
                   )
                 })}
-                <td title={j.amarilla ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
+                <td title={j.amarilla ? 'Doble click para quitar' : 'Doble click para marcar con el tiempo del cronómetro'}
                   style={{ ...cell, background: j.amarilla ? '#ffcc00' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (!j.amarilla) intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'amarilla', formatTiempo(segundos))) }}
-                  onDoubleClick={() => updateJugador(equipo, idx, 'amarilla', false)}>
+                  onDoubleClick={() => { if (j.amarilla) updateJugador(equipo, idx, 'amarilla', false); else intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'amarilla', formatTiempo(segundos))) }}>
                   <span style={{ color: j.amarilla ? '#111' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.amarilla === 'string' ? j.amarilla : j.amarilla ? '✓' : '·'}</span>
                 </td>
-                <td title={j.azul ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
+                <td title={j.azul ? 'Doble click para quitar' : 'Doble click para marcar con el tiempo del cronómetro'}
                   style={{ ...cell, background: j.azul ? '#4488ff' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (!j.azul) intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'azul', formatTiempo(segundos))) }}
-                  onDoubleClick={() => updateJugador(equipo, idx, 'azul', false)}>
+                  onDoubleClick={() => { if (j.azul) updateJugador(equipo, idx, 'azul', false); else intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'azul', formatTiempo(segundos))) }}>
                   <span style={{ color: j.azul ? '#fff' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.azul === 'string' ? j.azul : j.azul ? '✓' : '·'}</span>
                 </td>
-                <td title={j.roja ? 'Doble click para borrar' : 'Click para marcar con el tiempo del cronómetro'}
+                <td title={j.roja ? 'Doble click para quitar' : 'Doble click para marcar con el tiempo del cronómetro'}
                   style={{ ...cell, background: j.roja ? '#dd2211' : 'transparent', cursor: 'pointer' }}
-                  onClick={() => { if (!j.roja) intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'roja', formatTiempo(segundos))) }}
-                  onDoubleClick={() => updateJugador(equipo, idx, 'roja', false)}>
+                  onDoubleClick={() => { if (j.roja) updateJugador(equipo, idx, 'roja', false); else intentarAccionConArquero(equipo, () => updateJugador(equipo, idx, 'roja', formatTiempo(segundos))) }}>
                   <span style={{ color: j.roja ? '#fff' : 'transparent', fontSize: '6.5px', fontWeight: '800' }}>{typeof j.roja === 'string' ? j.roja : j.roja ? '✓' : '·'}</span>
                 </td>
                 <td style={{ ...cell, color: '#111', fontWeight: '700' }}>{g1||''}</td>
@@ -1282,9 +1279,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                     <FirmaSlot label={m.rol} firma={m.firma} onFirmar={() => setFirmaModal(cfk)}/>
                     {firmaModal === cfk && <FirmaCanvas titulo={m.rol} onSave={img => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,firma:img}:mm))} onClose={() => setFirmaModal(null)}/>}
                   </td>
-                  <td style={{ ...cell, background: m.amarilla?'#ffcc00':'transparent', cursor:'pointer' }} onClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,amarilla:!mm.amarilla}:mm))}><span style={{ color: m.amarilla?'#111':'transparent' }}>✓</span></td>
-                  <td style={{ ...cell, background: m.azul?'#4488ff':'transparent', cursor:'pointer' }} onClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,azul:!mm.azul}:mm))}><span style={{ color: m.azul?'#fff':'transparent' }}>✓</span></td>
-                  <td style={{ ...cell, background: m.roja?'#dd2211':'transparent', cursor:'pointer' }} onClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,roja:!mm.roja}:mm))}><span style={{ color: m.roja?'#fff':'transparent' }}>✓</span></td>
+                  <td title="Doble click para marcar/quitar" style={{ ...cell, background: m.amarilla?'#ffcc00':'transparent', cursor:'pointer' }} onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,amarilla:!mm.amarilla}:mm))}><span style={{ color: m.amarilla?'#111':'transparent' }}>✓</span></td>
+                  <td title="Doble click para marcar/quitar" style={{ ...cell, background: m.azul?'#4488ff':'transparent', cursor:'pointer' }} onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,azul:!mm.azul}:mm))}><span style={{ color: m.azul?'#fff':'transparent' }}>✓</span></td>
+                  <td title="Doble click para marcar/quitar" style={{ ...cell, background: m.roja?'#dd2211':'transparent', cursor:'pointer' }} onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,roja:!mm.roja}:mm))}><span style={{ color: m.roja?'#fff':'transparent' }}>✓</span></td>
                   {[0,1,2,3].map(ci => <SlotGol key={ci} equipo={equipo} slotIdx={rowIdx*4+ci} goles={goles} jugs={jugs} colorEquipo={colorEquipo}/>)}
                 </tr>
               )
@@ -1596,8 +1593,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <FirmaSlot label="Capitán Local" firma={firmas.capitanLocal} onFirmar={() => setFirmaModal('principal-capitanLocal')}/>
                 </div>
               </div>
-              <TablaJugadores jugs={jugadoresLocal} equipo="local" goles={golesLocal} colorEquipo={colorLocal}/>
-              <ParteInferior equipo="local" jugs={jugadoresLocal} faltasAcum={faltasAcumLocal} cuerpo={cuerpoLocal} setCuerpo={setCuerpoLocal} goles={golesLocal} finalistas={finalistasLocal} setFinalistas={setFinalistasLocal} ingresos={ingresosLocal} setIngresos={setIngresosLocal} colorEquipo={colorLocal}/>
+              {/* Se invocan como función normal (no como <Componente/>) porque están
+                  definidas dentro de este mismo componente y se recrean en cada
+                  render (cada segundo, por el cronómetro). Usarlas como JSX hacía
+                  que React las desmontara y remontara cada segundo, perdiendo el
+                  foco justo cuando alguien estaba escribiendo un número de camiseta
+                  o un nombre — por eso "no dejaba escribir" con el cronómetro corriendo. */}
+              {TablaJugadores({ jugs: jugadoresLocal, equipo: 'local', goles: golesLocal, colorEquipo: colorLocal })}
+              {ParteInferior({ equipo: 'local', jugs: jugadoresLocal, faltasAcum: faltasAcumLocal, cuerpo: cuerpoLocal, setCuerpo: setCuerpoLocal, goles: golesLocal, finalistas: finalistasLocal, setFinalistas: setFinalistasLocal, ingresos: ingresosLocal, setIngresos: setIngresosLocal, colorEquipo: colorLocal })}
             </div>
 
             {/* EQUIPO VISITANTE */}
@@ -1616,8 +1619,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <FirmaSlot label="Capitán Visitante" firma={firmas.capitanVisitante} onFirmar={() => setFirmaModal('principal-capitanVisitante')}/>
                 </div>
               </div>
-              <TablaJugadores jugs={jugadoresVisitante} equipo="visitante" goles={golesVisitante} colorEquipo={colorVisitante}/>
-              <ParteInferior equipo="visitante" jugs={jugadoresVisitante} faltasAcum={faltasAcumVis} cuerpo={cuerpoVis} setCuerpo={setCuerpoVis} goles={golesVisitante} finalistas={finalistasVis} setFinalistas={setFinalistasVis} ingresos={ingresosVis} setIngresos={setIngresosVis} colorEquipo={colorVisitante}/>
+              {TablaJugadores({ jugs: jugadoresVisitante, equipo: 'visitante', goles: golesVisitante, colorEquipo: colorVisitante })}
+              {ParteInferior({ equipo: 'visitante', jugs: jugadoresVisitante, faltasAcum: faltasAcumVis, cuerpo: cuerpoVis, setCuerpo: setCuerpoVis, goles: golesVisitante, finalistas: finalistasVis, setFinalistas: setFinalistasVis, ingresos: ingresosVis, setIngresos: setIngresosVis, colorEquipo: colorVisitante })}
             </div>
 
             {/* ÁRBITROS Y RESULTADO */}
