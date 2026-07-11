@@ -819,16 +819,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
 
   function handleCerrar() {
-    if (partido.status !== 'finished') {
-      // La firma de los árbitros que pitaron es obligatoria para cerrar
-      const faltan = firmasFaltantes()
-      if (faltan.length > 0 && hayCambios) { setAvisoFirmas(faltan); return }
-      if (hayCambios) {
-        if (!confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return
-      }
-    }
-    // Limpiar localStorage
-    try { localStorage.removeItem(`planilla_${partido.id}`) } catch(e) {}
+    // La X roja y el botón "✕ Cerrar" SOLO guardan lo llenado hasta ahora como
+    // borrador (localStorage + snapshot remoto en vivo), para que al volver a
+    // entrar aparezca tal cual quedó (números, goles, etc.). No exigen firma
+    // ni MVP, y NO suben resultado ni marcan el partido como jugado — eso solo
+    // pasa al tocar "💾 Guardar resultado".
+    const snap = construirSnap()
+    try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
+    sincronizarRemoto(snap, { inmediato: true })
     onClose()
   }
 
