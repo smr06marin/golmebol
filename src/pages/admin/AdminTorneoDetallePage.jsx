@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
@@ -1506,11 +1506,39 @@ export default function AdminTorneoDetallePage() {
     setLoadingPartido(false)
   }
 
-  function handleDragStart(pi, slot) { setDrag({ pi, slot, equipo: slot === 'local' ? jornadaGenerada[pi].local : jornadaGenerada[pi].visitante }) }
-  function handleDragOver(e, pi, slot) { e.preventDefault(); setDragOver({ pi, slot }) }
-  function handleDrop(e, tpi, tslot) {
-    e.preventDefault()
-    if (!drag) return
+  // Arrastrar equipos para intercambiarlos: usa Pointer Events (funciona con
+  // mouse Y con dedo en celular) en vez del drag-and-drop nativo HTML5 que
+  // no responde al tacto. dragEquipoRef guarda el origen de forma síncrona
+  // (no depende del re-render de React) para que el seguimiento del dedo
+  // nunca se pierda un frame.
+  const dragEquipoRef = useRef(null)
+
+  function iniciarDragEquipo(pi, slot) {
+    const equipo = slot === 'local' ? jornadaGenerada[pi].local : jornadaGenerada[pi].visitante
+    if (!equipo) return
+    dragEquipoRef.current = { pi, slot, equipo }
+    setDrag({ pi, slot, equipo })
+    setDragOver(null)
+  }
+  function moverDragEquipo(clientX, clientY) {
+    if (!dragEquipoRef.current) return
+    const el = document.elementFromPoint(clientX, clientY)
+    const slotEl = el?.closest('[data-drop-pi]')
+    if (slotEl) setDragOver({ pi: parseInt(slotEl.dataset.dropPi, 10), slot: slotEl.dataset.dropSlot })
+    else setDragOver(null)
+  }
+  function soltarDragEquipo(clientX, clientY) {
+    if (!dragEquipoRef.current) return
+    const drag = dragEquipoRef.current
+    dragEquipoRef.current = null
+    const el = document.elementFromPoint(clientX, clientY)
+    const slotEl = el?.closest('[data-drop-pi]')
+    if (!slotEl) { setDrag(null); setDragOver(null); return }
+    ejecutarSwapEquipo(drag, parseInt(slotEl.dataset.dropPi, 10), slotEl.dataset.dropSlot)
+  }
+  function cancelarDragEquipo() { dragEquipoRef.current = null; setDrag(null); setDragOver(null) }
+
+  function ejecutarSwapEquipo(drag, tpi, tslot) {
     if (drag.pi === tpi && drag.slot === tslot) { setDrag(null); setDragOver(null); return }
     const nueva = jornadaGenerada.map(p => ({ ...p }))
 
@@ -1537,7 +1565,6 @@ export default function AdminTorneoDetallePage() {
     if (drag.slot === 'local') nueva[drag.pi].local = dest; else nueva[drag.pi].visitante = dest
     setJornadaGenerada(nueva); setDrag(null); setDragOver(null)
   }
-  function handleDragEnd() { setDrag(null); setDragOver(null) }
 
   function vecesEnfrentados(idA, idB) {
     if (!idA || !idB) return 0
@@ -2471,32 +2498,47 @@ export default function AdminTorneoDetallePage() {
                     {jornadaGenerada.map((p, i) => {
                       const veces = p.descanso ? 0 : vecesEnfrentados(p.local?.id, p.visitante?.id)
                       return (
-                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 12px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
                         {p.descanso ? (
-                          <div draggable onDragStart={() => handleDragStart(i, 'local')} onDragOver={e => handleDragOver(e, i, 'local')} onDrop={e => handleDrop(e, i, 'local')} onDragEnd={handleDragEnd}
-                            style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent' }}>
-                            <GripVertical size={13} color="#9aa0a6"/>
-                            <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
-                            <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</span>
-                            <span style={{ fontSize: '.65rem', color: '#bdbdbd', marginLeft: 'auto' }}>arrástralo a un partido para ponerlo a jugar</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <div data-drop-pi={i} data-drop-slot="local"
+                              onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); iniciarDragEquipo(i, 'local') }}
+                              onPointerMove={e => moverDragEquipo(e.clientX, e.clientY)}
+                              onPointerUp={e => soltarDragEquipo(e.clientX, e.clientY)}
+                              onPointerCancel={cancelarDragEquipo}
+                              style={{ flex: 1, minWidth: '160px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'local' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'local' ? 'rgba(26,115,232,.06)' : 'transparent' }}>
+                              <GripVertical size={13} color="#9aa0a6"/>
+                              <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
+                              <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</span>
+                            </div>
+                            <span style={{ fontSize: '.65rem', color: '#bdbdbd' }}>arrástralo sobre un partido para ponerlo a jugar</span>
                           </div>
                         ) : (
                           <>
-                            <div draggable onDragStart={() => handleDragStart(i, 'local')} onDragOver={e => handleDragOver(e, i, 'local')} onDrop={e => handleDrop(e, i, 'local')} onDragEnd={handleDragEnd}
-                              style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <div data-drop-pi={i} data-drop-slot="local"
+                              onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); iniciarDragEquipo(i, 'local') }}
+                              onPointerMove={e => moverDragEquipo(e.clientX, e.clientY)}
+                              onPointerUp={e => soltarDragEquipo(e.clientX, e.clientY)}
+                              onPointerCancel={cancelarDragEquipo}
+                              style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'local' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'local' ? 'rgba(26,115,232,.06)' : 'transparent' }}>
                               <GripVertical size={13} color="#9aa0a6"/>
                               <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
-                              <div><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem' }}>{p.local?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Local</div></div>
+                              <div style={{ minWidth: 0 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.local?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Local</div></div>
                             </div>
                             <span style={{ fontWeight: '700', color: '#9aa0a6', fontSize: '.75rem', flexShrink: 0 }}>VS</span>
-                            <div draggable onDragStart={() => handleDragStart(i, 'visitante')} onDragOver={e => handleDragOver(e, i, 'visitante')} onDrop={e => handleDrop(e, i, 'visitante')} onDragEnd={handleDragEnd}
-                              style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', border: dragOver?.pi === i && dragOver?.slot === 'visitante' ? '2px dashed #e8710a' : '2px solid transparent' }}>
-                              <div style={{ textAlign: 'right' }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem' }}>{p.visitante?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Visitante</div></div>
+                            <div data-drop-pi={i} data-drop-slot="visitante"
+                              onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); iniciarDragEquipo(i, 'visitante') }}
+                              onPointerMove={e => moverDragEquipo(e.clientX, e.clientY)}
+                              onPointerUp={e => soltarDragEquipo(e.clientX, e.clientY)}
+                              onPointerCancel={cancelarDragEquipo}
+                              style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'visitante' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'visitante' ? '2px dashed #e8710a' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'visitante' ? 'rgba(232,113,10,.06)' : 'transparent' }}>
+                              <div style={{ textAlign: 'right', minWidth: 0 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.visitante?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Visitante</div></div>
                               <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.visitante?.logo_url} name={p.visitante?.name} size={24}/></div>
                               <GripVertical size={13} color="#9aa0a6"/>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                               {p.intergrupo && <span style={{ fontSize: '.65rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>Intergrupo</span>}
                               <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {p.hora}</span>
                               <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre}</span>
@@ -2504,10 +2546,9 @@ export default function AdminTorneoDetallePage() {
                                 style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
                                 <X size={13}/>
                               </button>
-                            </div>
+                          </div>
                           </>
                         )}
-                        </div>
                         {veces > 0 && (
                           <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600', paddingLeft: '10px' }}>
                             ⚠️ Estos equipos ya se enfrentaron {veces} {veces > 1 ? 'veces' : 'vez'} en este torneo — puedes dejarlo igual o arrastrar otro equipo
