@@ -286,7 +286,17 @@ export default function ArbitroLiderPage() {
   const [modalRec,     setModalRec]     = useState(null)
   const [reclamosMap,  setReclamosMap]  = useState({})
 
-  useEffect(()=>{ fetchTodo() },[])
+  useEffect(() => {
+    fetchTodo()
+    function onPageShow(e) { if (e.persisted) fetchTodo() }
+    function onVisibility() { if (document.visibilityState === 'visible') fetchTodo() }
+    window.addEventListener('pageshow', onPageShow)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pageshow', onPageShow)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
 
   async function fetchTodo() {
     setLoading(true)

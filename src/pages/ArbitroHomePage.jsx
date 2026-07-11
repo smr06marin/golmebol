@@ -119,7 +119,21 @@ export default function ArbitroHomePage() {
   const [showFlyer, setShowFlyer] = useState(false)
   const [notifs,    setNotifs]    = useState([])
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => {
+    fetchTodo()
+    // Si el celular restaura la página desde memoria (bfcache) al volver de otra
+    // app/pestaña, o simplemente vuelve a quedar visible, refrescamos los datos
+    // para que un partido recién asignado por el coordinador aparezca sin
+    // necesidad de recargar manualmente.
+    function onPageShow(e) { if (e.persisted) fetchTodo() }
+    function onVisibility() { if (document.visibilityState === 'visible') fetchTodo() }
+    window.addEventListener('pageshow', onPageShow)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pageshow', onPageShow)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
 
   async function fetchTodo() {
     setLoading(true)
