@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 
 function ModalPartidoAdmin({ partido, onClose }) {
@@ -1082,7 +1082,11 @@ export default function AdminTorneoDetallePage() {
 
     const filas = Object.values(porEquipo).map(r => {
       const cargos = r.inscripcion + r.arbitrajes + r.w + r.multas + r.tarjetas
-      const pagado = r.pagosTarjetas + r.pagosOtros
+      // El arbitraje se paga en efectivo directo en la cancha el día del partido:
+      // en cuanto el partido queda "jugado" se da por pagado automáticamente, no
+      // hace falta registrar ese pago a mano. Lo único manual sigue siendo
+      // inscripción (abonos), multas/W y tarjetas.
+      const pagado = r.pagosTarjetas + r.pagosOtros + r.arbitrajes
       return { ...r, cargos, pagado, saldo: cargos - pagado, saldoTarjetas: r.tarjetas - r.pagosTarjetas }
     }).sort((a, b) => b.saldo - a.saldo)
 
@@ -1958,15 +1962,17 @@ export default function AdminTorneoDetallePage() {
         <ArrowLeft size={16}/> Volver a torneos
       </button>
 
-      {/* Header torneo */}
-      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px 24px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      {/* Header torneo — compacto: los conteos (equipos/jugadores/partidos) ya se
+          repiten más abajo en la pestaña Actividad y en cada pestaña específica,
+          así que aquí solo queda la identidad del torneo (logo, nombre, datos clave). */}
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {torneo.logo_url ? <img src={torneo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Trophy size={28} color="#1a73e8"/>}
+            <div style={{ width: '38px', height: '38px', borderRadius: '9px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              {torneo.logo_url ? <img src={torneo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Trophy size={18} color="#1a73e8"/>}
             </div>
-            <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '22px', height: '22px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <Camera size={11} color="#fff"/>
+            <label style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '16px', height: '16px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Camera size={8} color="#fff"/>
               <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
                 const file = e.target.files[0]; if (!file) return
                 const ext = file.name.split('.').pop(), path = `logos/${id}.${ext}`
@@ -1977,34 +1983,22 @@ export default function AdminTorneoDetallePage() {
               }}/>
             </label>
           </div>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#202124', margin: '0 0 6px' }}>{torneo.name}</h1>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              {torneo.season    && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📅 {torneo.season}</span>}
-              {torneo.city      && <span style={{ fontSize: '.8rem', color: '#5f6368' }}>📍 {torneo.city}</span>}
-              {torneo.modalidad && <span style={{ fontSize: '.8rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 10px' }}>{torneo.modalidad}</span>}
-              {torneo.genero    && <span style={{ fontSize: '.8rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '10px', padding: '2px 10px' }}>{torneo.genero}</span>}
-              {torneo.categoria && <span style={{ fontSize: '.8rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '10px', padding: '2px 10px' }}>{torneo.categoria}</span>}
-              {gruposFinalizados && <span style={{ fontSize: '.8rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 10px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
+          <div style={{ flex: 1, minWidth: '160px' }}>
+            <div style={{ fontSize: '1rem', fontWeight: '700', color: '#202124', lineHeight: 1.2, marginBottom: '3px' }}>{torneo.name}</div>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center', fontSize: '.68rem' }}>
+              {torneo.season    && <span style={{ color: '#9aa0a6' }}>📅 {torneo.season}</span>}
+              {torneo.city      && <span style={{ color: '#9aa0a6' }}>📍 {torneo.city}</span>}
+              {torneo.modalidad && <span style={{ color: '#1a73e8', background: '#e8f0fe', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>{torneo.modalidad}</span>}
+              {torneo.genero    && <span style={{ color: '#6c35de', background: '#f3e8fd', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>{torneo.genero}</span>}
+              {torneo.categoria && <span style={{ color: '#5f6368', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>{torneo.categoria}</span>}
+              {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
             </div>
-            <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero }); setEditandoTorneo(true) }}
-              style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '4px 12px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>
-              ✏️ Editar torneo
-            </button>
           </div>
-          <div style={{ display: 'flex', gap: '20px', flexShrink: 0 }}>
-            {[
-              { label: 'Equipos',  value: equipos.length,        color: '#1a73e8' },
-              { label: 'Jugadores',value: jugadores.length,       color: '#6c35de' },
-              { label: 'Partidos', value: partidos.length,        color: '#e8710a' },
-              { label: 'Jugados',  value: partidosJugados.length, color: '#1e8e3e' },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: '700', color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: '.7rem', color: '#9aa0a6' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero }); setEditandoTorneo(true) }}
+            title="Editar torneo"
+            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
+            <Pencil size={13}/>
+          </button>
         </div>
       </div>
 
@@ -2323,7 +2317,7 @@ export default function AdminTorneoDetallePage() {
                         )
                       })()}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
                       <div><label style={labelStyle}>Fecha *</label><input type="date" value={formPartido.played_at} onChange={e => setFormPartido(f => ({ ...f, played_at: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.hora} onChange={e => setFormPartido(f => ({ ...f, hora: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Cancha</label><select value={formPartido.location} onChange={e => setFormPartido(f => ({ ...f, location: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
@@ -2331,7 +2325,7 @@ export default function AdminTorneoDetallePage() {
                       <div><label style={labelStyle}>Fase</label><select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
                     </div>
                     {arbitrosAdmin.length > 0 && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
                         <div>
                           <label style={labelStyle}>🟡 Árbitro principal</label>
                           <select value={formPartido.arbitro1_id} onChange={e => setFormPartido(f => ({ ...f, arbitro1_id: e.target.value }))} style={inputStyle}>
@@ -2585,8 +2579,10 @@ export default function AdminTorneoDetallePage() {
                             { label: 'Ver jugadores',     icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
                             { label: 'Compartir link',    icon: '🔗', action: () => {
                                 const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
-                                const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+                                const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por 24 horas desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
                                 navigator.clipboard.writeText(mensaje)
+                                // Reinicia el reloj de 24h del link cada vez que se comparte de nuevo
+                                supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString() }).eq('id', e.id).then(() => {}, () => {})
                                 showMsg('Link copiado con la descripción ✓')
                                 setMenuEquipoId(null)
                               } },
@@ -3232,7 +3228,7 @@ export default function AdminTorneoDetallePage() {
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
                 <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
                 <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
-                <span>Los cobros a equipos y gastos se calculan automáticamente con cada partido jugado o W.</span>
+                <span>Los cobros a equipos y gastos se calculan automáticamente con cada partido jugado o W. El arbitraje se da por pagado solo (se cobra en efectivo en la cancha) — lo único que se registra a mano es inscripción, multas/W y tarjetas.</span>
               </div>
             )}
 
@@ -3260,7 +3256,7 @@ export default function AdminTorneoDetallePage() {
                       {r.tarjetasDetalle.length > 0 && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.inscripcion) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.arbitrajes) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }} title="Se paga en efectivo en la cancha — se da por pagado automáticamente al jugarse el partido">{fin.fc.llevar_cuentas ? (r.arbitrajes > 0 ? <>{fmt(r.arbitrajes)} <span style={{ color: '#1e8e3e' }}>✓</span></> : fmt(r.arbitrajes)) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: r.multas > 0 ? '#d93025' : '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
