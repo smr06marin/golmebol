@@ -954,9 +954,46 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
   function puedeAbrirFalta(fa, key, i) { return i === 0 ? fa[key][0] === null : fa[key][i-1] !== null && fa[key][i] === null }
   function puedeAbrirGol(goles, si) { return si === 0 ? goles[0] === null : goles[si-1] !== null && goles[si] === null }
-  function onDragStart(e) { dragStart.current = { mx: e.clientX, my: e.clientY, ox: cronoPos.x, oy: cronoPos.y }; window.addEventListener('mousemove', onDrag); window.addEventListener('mouseup', onDragEnd) }
-  function onDrag(e) { if (!dragStart.current) return; setCronoPos({ x: dragStart.current.ox + (e.clientX - dragStart.current.mx), y: dragStart.current.oy + (e.clientY - dragStart.current.my) }) }
-  function onDragEnd() { dragStart.current = null; window.removeEventListener('mousemove', onDrag); window.removeEventListener('mouseup', onDragEnd) }
+  // Arrastre del cronómetro: funciona tocando/clickeando en CUALQUIER parte del
+  // widget (no solo en una barrita específica). Se distingue de un tap/click sobre
+  // un botón interno (Play, Minimizar, etc.) con un umbral de movimiento: si el dedo
+  // no se mueve más de unos px, se deja pasar el click normal; si se mueve, se
+  // considera arrastre y se mueve el cronómetro, bloqueando el click para que no
+  // se dispare por error el botón que quedó debajo del dedo.
+  function onDragStart(e) {
+    const t = e.touches ? e.touches[0] : e
+    dragStart.current = { mx: t.clientX, my: t.clientY, ox: cronoPos.x, oy: cronoPos.y, moved: false }
+    if (e.touches) {
+      window.addEventListener('touchmove', onDrag, { passive: false })
+      window.addEventListener('touchend', onDragEnd)
+      window.addEventListener('touchcancel', onDragEnd)
+    } else {
+      window.addEventListener('mousemove', onDrag)
+      window.addEventListener('mouseup', onDragEnd)
+    }
+  }
+  function onDrag(e) {
+    if (!dragStart.current) return
+    const t = e.touches ? e.touches[0] : e
+    const dx = t.clientX - dragStart.current.mx, dy = t.clientY - dragStart.current.my
+    if (!dragStart.current.moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) dragStart.current.moved = true
+    if (dragStart.current.moved) {
+      if (e.touches) e.preventDefault()
+      setCronoPos({ x: dragStart.current.ox + dx, y: dragStart.current.oy + dy })
+    }
+  }
+  function onDragEnd() {
+    if (dragStart.current?.moved) {
+      // Hubo arrastre real: se traga el próximo click (o el actual, si ya se
+      // disparó) para que no le pegue por accidente al botón que quedó debajo.
+      const bloquear = ev => { ev.stopPropagation(); ev.preventDefault() }
+      window.addEventListener('click', bloquear, { capture: true, once: true })
+      setTimeout(() => window.removeEventListener('click', bloquear, { capture: true }), 400)
+    }
+    dragStart.current = null
+    window.removeEventListener('mousemove', onDrag); window.removeEventListener('mouseup', onDragEnd)
+    window.removeEventListener('touchmove', onDrag); window.removeEventListener('touchend', onDragEnd); window.removeEventListener('touchcancel', onDragEnd)
+  }
   function iniciarPeriodo2() { setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setPeriodo(2) }
   function agregarTiempoExtra(mins) { setTiempoExtra(prev => prev + mins); setTiempoAgotado(false); setCorriendo(true) }
   function confirmarDuracion() {
@@ -1354,14 +1391,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <ModalSeleccionArquero nombreEquipo={partido.away?.name} jugadores={jugadoresVisitante} onSeleccionar={j => seleccionarArquero('visitante', j)}/>
       )}
 
-      <button onClick={handleClickGuardar} className="no-print"
+      {/* Botón flotante rojo: SOLO cierra la planilla (con la misma confirmación
+          de cambios sin guardar que el botón "✕ Cerrar" de la barra superior).
+          NO guarda — para guardar está el botón verde "💾 Guardar resultado". */}
+      <button onClick={handleCerrar} className="no-print"
         style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9998, width: '52px', height: '52px', borderRadius: '50%', background: '#d93025', border: '3px solid #fff', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.5)' }}>
         <X size={22}/>
       </button>
 
       {/* CRONÓMETRO */}
-      <div style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono?'50px':'20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono?'150px':'310px', userSelect: 'none' }}>
-        <div onMouseDown={onDragStart} style={{ cursor: 'grab', padding: miniCrono?'8px 12px':'10px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div onMouseDown={onDragStart} onTouchStart={onDragStart}
+        style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono?'50px':'20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono?'150px':'310px', userSelect: 'none', touchAction: 'none', cursor: 'grab' }}>
+        <div style={{ padding: miniCrono?'8px 12px':'10px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Move size={miniCrono?12:14} color="rgba(255,255,255,.6)"/>
             {!miniCrono && <span style={{ fontSize: '10px', color: 'rgba(255,255,255,.9)', fontWeight: '600' }}>{tiempoAgotado ? '⏰ TIEMPO AGOTADO' : periodo===1 ? '1ER PERIODO' : '2DO PERIODO'}{torneo?.modalidad && ` · ${torneo.modalidad}`}</span>}
