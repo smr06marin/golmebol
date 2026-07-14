@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag } from 'lucide-react'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, CalendarDays } from 'lucide-react'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
 
@@ -105,6 +106,7 @@ export default function AdminNoticiasPage() {
   const { user, rol } = useAuthStore()
   const esOrganizador = rol?.rol === 'organizador'
   const [tienePremium, setTienePremium] = useState(true)
+  const isMobile = useIsMobile()
 
   const [torneos,   setTorneos]   = useState([])
   const [torneoId,  setTorneoId]  = useState('')
@@ -114,6 +116,7 @@ export default function AdminNoticiasPage() {
   const [msg,       setMsg]       = useState(null)
   const [copiado,   setCopiado]   = useState(null)
   const [expanded,  setExpanded]  = useState(null)
+  const [fechaSeleccionada, setFechaSeleccionada] = useState('')
 
   const [chatPartido,    setChatPartido]    = useState(null)
   const [chatTipo,       setChatTipo]       = useState('pre_partido') // 'pre_partido' | 'post_partido'
@@ -130,6 +133,17 @@ export default function AdminNoticiasPage() {
   }, [])
   useEffect(() => { if (torneoId) { fetchPartidos(); fetchNoticias() } }, [torneoId])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
+  useEffect(() => {
+    const jornadas = [...new Set(
+      partidos.filter(p => p.status==='finished' && p.matchday !== null && p.matchday !== undefined && p.matchday !== '').map(p => p.matchday)
+    )].sort((a,b) => Number(a) - Number(b))
+    if (jornadas.length && !jornadas.map(String).includes(String(fechaSeleccionada))) {
+      setFechaSeleccionada(jornadas[jornadas.length - 1])
+    } else if (!jornadas.length && fechaSeleccionada) {
+      setFechaSeleccionada('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidos])
   useEffect(() => {
     if (!esOrganizador) { setTienePremium(true); return }
     supabase.from('tournaments').select('id').eq('organizador_id', user?.id).eq('premium', true).limit(1)
@@ -351,6 +365,93 @@ export default function AdminNoticiasPage() {
     }
   }
 
+  async function cargarDatosFecha(jornadaNum) {
+    const partidosFecha = partidos.filter(p => p.status === 'finished' && String(p.matchday) === String(jornadaNum))
+    const idsFecha = partidosFecha.map(p => p.id)
+
+    const [{ data: statsFecha }, { data: todosPartidos }] = await Promise.all([
+      idsFecha.length
+        ? supabase.from('player_match_stats').select('goals_scored,players(name),team_id,match_id').in('match_id', idsFecha).gt('goals_scored', 0)
+        : Promise.resolve({ data: [] }),
+      supabase.from('matches').select('id,home_score,away_score,status,played_at,fase,matchday,home_team_id,away_team_id,home:home_team_id(name),away:away_team_id(name)')
+        .eq('tournament_id', torneoId).eq('status', 'finished').eq('fase', 'grupo').order('played_at', { ascending: true }),
+    ])
+
+    // Tabla antes (excluyendo los partidos de esta fecha) y después (con todos)
+    const tablaAntes = {}
+    const tablaDespues = {}
+    ;(todosPartidos || []).forEach(p => {
+      if (!tablaAntes[p.home_team_id])   tablaAntes[p.home_team_id]   = { name: p.home?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
+      if (!tablaAntes[p.away_team_id])   tablaAntes[p.away_team_id]   = { name: p.away?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
+      if (!tablaDespues[p.home_team_id]) tablaDespues[p.home_team_id] = { name: p.home?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
+      if (!tablaDespues[p.away_team_id]) tablaDespues[p.away_team_id] = { name: p.away?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
+
+      const esDeEstaFecha = idsFecha.includes(p.id)
+      if (!esDeEstaFecha) {
+        tablaAntes[p.home_team_id].pj++; tablaAntes[p.away_team_id].pj++
+        if (p.home_score > p.away_score)      { tablaAntes[p.home_team_id].pg++; tablaAntes[p.home_team_id].pts+=3; tablaAntes[p.away_team_id].pp++ }
+        else if (p.home_score===p.away_score) { tablaAntes[p.home_team_id].pe++; tablaAntes[p.home_team_id].pts++; tablaAntes[p.away_team_id].pe++; tablaAntes[p.away_team_id].pts++ }
+        else                                  { tablaAntes[p.away_team_id].pg++; tablaAntes[p.away_team_id].pts+=3; tablaAntes[p.home_team_id].pp++ }
+      }
+      tablaDespues[p.home_team_id].pj++; tablaDespues[p.away_team_id].pj++
+      if (p.home_score > p.away_score)      { tablaDespues[p.home_team_id].pg++; tablaDespues[p.home_team_id].pts+=3; tablaDespues[p.away_team_id].pp++ }
+      else if (p.home_score===p.away_score) { tablaDespues[p.home_team_id].pe++; tablaDespues[p.home_team_id].pts++; tablaDespues[p.away_team_id].pe++; tablaDespues[p.away_team_id].pts++ }
+      else                                  { tablaDespues[p.away_team_id].pg++; tablaDespues[p.away_team_id].pts+=3; tablaDespues[p.home_team_id].pp++ }
+    })
+
+    const golesFecha = (statsFecha || []).reduce((acc,s) => { const n = s.players?.name; if (n) acc[n] = (acc[n]||0) + s.goals_scored; return acc }, {})
+    const golesFechaArr = Object.entries(golesFecha).map(([nombre,goles]) => ({ nombre, goles })).sort((a,b) => b.goles - a.goles)
+    const hatTricks = golesFechaArr.filter(g => g.goles >= 3)
+
+    const golear = [...partidosFecha].sort((a,b) => Math.abs(b.home_score-b.away_score) - Math.abs(a.home_score-a.away_score))[0] || null
+
+    return {
+      partidosFecha,
+      resultados: partidosFecha.map(p => `${p.home?.name} ${p.home_score}-${p.away_score} ${p.away?.name}${p.fase && p.fase!=='grupo' ? ` [${FASES_LABEL[p.fase]}]` : ''}`),
+      tablaOrdenadaAntes:   Object.values(tablaAntes).sort((a,b)=>b.pts-a.pts),
+      tablaOrdenadaDespues: Object.values(tablaDespues).sort((a,b)=>b.pts-a.pts),
+      golesFecha: golesFechaArr,
+      hatTricks,
+      golear,
+      cantidadPartidos: partidosFecha.length,
+    }
+  }
+
+  function buildContextoFecha(jornadaNum, datos) {
+    const tablaAntesStr   = datos.tablaOrdenadaAntes.length   ? datos.tablaOrdenadaAntes.map((t,i)=>`${i+1}.${t.name} ${t.pts}pts`).join(' | ')   : 'Sin datos previos'
+    const tablaDespuesStr = datos.tablaOrdenadaDespues.length ? datos.tablaOrdenadaDespues.map((t,i)=>`${i+1}.${t.name} ${t.pts}pts`).join(' | ') : 'Sin datos'
+    const golesStr = datos.golesFecha.length ? datos.golesFecha.map(g=>`${g.nombre}(${g.goles})`).join(', ') : 'Sin goleadores registrados'
+    const hatsStr  = datos.hatTricks.length ? datos.hatTricks.map(g=>`${g.nombre}(${g.goles} goles)`).join(', ') : 'Ninguno'
+    const golearStr = datos.golear ? `${datos.golear.home?.name} ${datos.golear.home_score}-${datos.golear.away_score} ${datos.golear.away?.name}` : 'N/A'
+    return `FECHA ${jornadaNum} — ${datos.cantidadPartidos} partido(s) jugado(s)
+RESULTADOS DE LA FECHA: ${datos.resultados.join(' | ') || 'Sin resultados'}
+TABLA ANTES DE LA FECHA: ${tablaAntesStr}
+TABLA DESPUÉS DE LA FECHA: ${tablaDespuesStr}
+GOLEADORES DE LA FECHA: ${golesStr}
+HAT-TRICKS DE LA FECHA: ${hatsStr}
+RESULTADO MÁS CONTUNDENTE: ${golearStr}`
+  }
+
+  async function abrirChatFecha(jornadaNum) {
+    if (!jornadaNum) return
+    setChatPartido({ esFecha: true, matchday: jornadaNum })
+    setChatTipo('semanal')
+    setChatMessages([])
+    setChatInput('')
+    setChatLoading(true)
+
+    const datos = await cargarDatosFecha(jornadaNum)
+    setChatDatos(datos)
+    const ctx = buildContextoFecha(jornadaNum, datos)
+    setChatContexto(ctx)
+
+    const promptInicial = `Analista deportivo GOLMEBOL. Resumen de la FECHA ${jornadaNum} completa (todos los partidos de esa jornada):\n${ctx}\n\nDame máx 4 puntos con los datos MÁS INTERESANTES de toda la fecha (equipo que más brilló, cambios en la tabla, goleador de la fecha, resultado más contundente, hat-tricks). Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
+
+    const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
+    setChatMessages([{ role: 'assistant', content: respuestaIA }])
+    setChatLoading(false)
+  }
+
   async function abrirChat(partido, tipo) {
     setChatPartido(partido)
     setChatTipo(tipo)
@@ -402,6 +503,37 @@ export default function AdminNoticiasPage() {
   async function generarNoticiaDesdeChaT() {
     if (!chatDatos || !chatPartido) return
     setGenerandoFinal(true)
+
+    if (chatPartido.esFecha) {
+      const jornadaNum = chatPartido.matchday
+      const datoClave = chatMessages[0]?.content?.split('\n').slice(0,4).join(' ') || ''
+      const prompt = `Periodista deportivo GOLMEBOL, Armenia, Colombia. Resumen de una FECHA completa del torneo (varios partidos) para Instagram/WhatsApp.
+
+${chatContexto}
+
+DATO CLAVE DEL ANÁLISIS: ${datoClave}
+
+Escribe:
+1. Título IMPACTANTE en mayúsculas (máx 8 palabras) sobre la Fecha ${jornadaNum}
+2. Máx 5 líneas — cuenta la fecha como una historia: qué equipo brilló, quién se hundió, el resultado más contundente, goleador de la fecha, cómo quedó la tabla. No listes los resultados uno por uno, narra el conjunto.
+3. 4 hashtags (#Golmebol #Armenia obligatorio)
+
+Texto plano, sin markdown. 15 segundos de lectura.`
+
+      try {
+        const texto = await llamarIA([{ role: 'user', content: prompt }], 550)
+        if (!texto) { showMsg('La IA no devolvió respuesta', 'error'); setGenerandoFinal(false); return }
+        const { titulo, cuerpo, hashtags } = parseNoticia(texto)
+        await supabase.from('noticias').insert({ tournament_id: torneoId, match_id: null, tipo: 'semanal', titulo, cuerpo, hashtags })
+        showMsg('✅ Resumen de fecha generado')
+        fetchNoticias()
+        setChatPartido(null)
+      } catch (e) {
+        showMsg('Error: ' + e.message, 'error')
+      }
+      setGenerandoFinal(false)
+      return
+    }
 
     const partido = chatPartido
     const esFaseElim = partido.fase && partido.fase !== 'grupo'
@@ -471,9 +603,13 @@ Texto plano, sin markdown. 10 segundos de lectura.`
 
   const pendientes = partidos.filter(p => p.status !== 'finished')
   const jugados    = partidos.filter(p => p.status === 'finished')
-  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Semanal' }
+  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha' }
   const tipoColor  = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de' }
   const tipoBg     = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd' }
+
+  const jornadasConPartidos = [...new Set(
+    jugados.filter(p => p.matchday !== null && p.matchday !== undefined && p.matchday !== '').map(p => p.matchday)
+  )].sort((a,b) => Number(a) - Number(b))
 
   return (
     <div>
@@ -490,12 +626,14 @@ Texto plano, sin markdown. 10 segundos de lectura.`
             <div style={{ padding:'16px 20px', borderBottom:'1px solid #e8eaed', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
               <div>
                 <div style={{ fontWeight:'700', color:'#202124', fontSize:'.95rem', display:'flex', alignItems:'center', gap:'6px' }}>
-                  <MessageSquare size={16} color={chatTipo==='post_partido'?'#1e8e3e':'#1a73e8'}/>
-                  {chatTipo==='post_partido' ? '🏁 Análisis Post-partido' : '⚡ Análisis Pre-partido'}
+                  <MessageSquare size={16} color={chatPartido.esFecha?'#6c35de':chatTipo==='post_partido'?'#1e8e3e':'#1a73e8'}/>
+                  {chatPartido.esFecha ? `📋 Resumen de la Fecha ${chatPartido.matchday}` : chatTipo==='post_partido' ? '🏁 Análisis Post-partido' : '⚡ Análisis Pre-partido'}
                 </div>
                 <div style={{ fontSize:'.75rem', color:'#5f6368', marginTop:'2px' }}>
-                  {chatPartido.home?.name} {chatTipo==='post_partido'?`${chatPartido.home_score} - ${chatPartido.away_score}`:''} {chatPartido.away?.name}
-                  {chatPartido.fase&&chatPartido.fase!=='grupo' && <span style={{ color:'#e8710a', fontWeight:'700', marginLeft:'6px' }}>{FASES_LABEL[chatPartido.fase]}</span>}
+                  {chatPartido.esFecha
+                    ? `${chatDatos?.cantidadPartidos ?? 0} partido(s) de esa fecha`
+                    : <>{chatPartido.home?.name} {chatTipo==='post_partido'?`${chatPartido.home_score} - ${chatPartido.away_score}`:''} {chatPartido.away?.name}
+                      {chatPartido.fase&&chatPartido.fase!=='grupo' && <span style={{ color:'#e8710a', fontWeight:'700', marginLeft:'6px' }}>{FASES_LABEL[chatPartido.fase]}</span>}</>}
                 </div>
               </div>
               <button onClick={() => setChatPartido(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6', padding:'4px' }}><X size={20}/></button>
@@ -532,7 +670,7 @@ Texto plano, sin markdown. 10 segundos de lectura.`
                 </button>
               </div>
               <button onClick={generarNoticiaDesdeChaT} disabled={generandoFinal||chatLoading||chatMessages.length===0}
-                style={{ width:'100%', padding:'11px', background:generandoFinal||chatMessages.length===0?'#f1f3f4':chatTipo==='post_partido'?'#1e8e3e':'#1a73e8', border:'none', borderRadius:'10px', cursor:generandoFinal||chatMessages.length===0?'not-allowed':'pointer', color:generandoFinal||chatMessages.length===0?'#9aa0a6':'#fff', fontWeight:'700', fontSize:'.875rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+                style={{ width:'100%', padding:'11px', background:generandoFinal||chatMessages.length===0?'#f1f3f4':chatPartido?.esFecha?'#6c35de':chatTipo==='post_partido'?'#1e8e3e':'#1a73e8', border:'none', borderRadius:'10px', cursor:generandoFinal||chatMessages.length===0?'not-allowed':'pointer', color:generandoFinal||chatMessages.length===0?'#9aa0a6':'#fff', fontWeight:'700', fontSize:'.875rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
                 {generandoFinal ? <><RefreshCw size={14} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <><Zap size={14}/> Generar noticia con este análisis</>}
               </button>
             </div>
@@ -540,7 +678,7 @@ Texto plano, sin markdown. 10 segundos de lectura.`
         </div>
       )}
 
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
+      <div style={{ display:'flex', alignItems:isMobile?'flex-start':'center', justifyContent:'space-between', marginBottom:'20px', flexWrap:'wrap', gap:'10px' }}>
         <div>
           <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:0, display:'flex', alignItems:'center', gap:'8px' }}>
             <Newspaper size={20} color="#1a73e8"/> Noticias del Torneo
@@ -554,7 +692,7 @@ Texto plano, sin markdown. 10 segundos de lectura.`
         </select>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'320px 1fr', gap:'20px', alignItems:'start' }}>
+      <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':'320px 1fr', gap:'20px', alignItems:'start' }}>
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
 
           {/* Pre-partido */}
@@ -617,6 +755,33 @@ Texto plano, sin markdown. 10 segundos de lectura.`
                 </div>
               )
             })}
+          </div>
+
+          {/* Resumen de fecha (jornada completa) */}
+          <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'16px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ fontWeight:'600', color:'#202124', fontSize:'.9rem', marginBottom:'4px', display:'flex', alignItems:'center', gap:'6px' }}>
+              <CalendarDays size={16} color="#6c35de"/> Resumen de fecha
+            </div>
+            <div style={{ fontSize:'.75rem', color:'#5f6368', marginBottom:'10px' }}>Recap de toda una jornada, no solo un partido</div>
+            {jornadasConPartidos.length === 0 ? (
+              <div style={{ fontSize:'.78rem', color:'#9aa0a6', textAlign:'center', padding:'12px' }}>Sin fechas jugadas todavía</div>
+            ) : (
+              <div style={{ padding:'10px 12px', background:'#f8f9fa', borderRadius:'8px', border:'1px solid #e8eaed' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+                  <span style={{ fontSize:'.75rem', color:'#5f6368', flexShrink:0 }}>Fecha</span>
+                  <select value={fechaSeleccionada} onChange={e => setFechaSeleccionada(e.target.value)}
+                    style={{ flex:1, background:'#fff', border:'1px solid #dadce0', borderRadius:'6px', padding:'6px 8px', fontSize:'.8rem', color:'#202124', outline:'none' }}>
+                    {jornadasConPartidos.map(j => (
+                      <option key={j} value={j}>Fecha {j} ({jugados.filter(p=>String(p.matchday)===String(j)).length} partidos)</option>
+                    ))}
+                  </select>
+                </div>
+                <button onClick={() => abrirChatFecha(fechaSeleccionada)} disabled={!fechaSeleccionada}
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#6c35de', border:'none', borderRadius:'8px', cursor:fechaSeleccionada?'pointer':'not-allowed', color:'#fff', fontSize:'.75rem', fontWeight:'600', opacity:fechaSeleccionada?1:.6 }}>
+                  <MessageSquare size={13}/> Analizar y Generar
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={{ background:'#e8f0fe', borderRadius:'10px', padding:'12px 14px' }}>
