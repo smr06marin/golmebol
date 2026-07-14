@@ -91,6 +91,7 @@ export default function PlayerHomePage() {
   const [splashPreview,     setSplashPreview]     = useState(null)
   const [pendingPreview,    setPendingPreview]    = useState(null)
   const [splash,            setSplash]            = useState(null)
+  const [sinEquipo,         setSinEquipo]         = useState(false) // no está en ningún equipo → solo PREDIX
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -171,6 +172,11 @@ export default function PlayerHomePage() {
       .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
       .eq('player_id', p.id).eq('activo', true)
     setTorneos(regs || [])
+
+    // ¿Está registrado como jugador en algún equipo? Si no (ni en torneos ni
+    // en la plantilla de ningún equipo), su portal se limita a PREDIX.
+    const { data: tps } = await supabase.from('team_players').select('id').eq('player_id', p.id).limit(1)
+    setSinEquipo((regs || []).length === 0 && (tps || []).length === 0)
 
     // NOTIFICACIONES
     const notifsList = []
@@ -473,6 +479,35 @@ export default function PlayerHomePage() {
   )
 
   if (!player) return null
+
+  // No está registrado como jugador en ningún equipo: su portal es solo PREDIX
+  if (sinEquipo) return (
+    <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <div style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
+        <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#00ddd0', letterSpacing: '3px', marginBottom: '18px' }}>PREDIX · GOLMEBOL</div>
+        <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '18px', padding: '28px 24px' }}>
+          <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>🎯</div>
+          <div style={{ fontWeight: '800', color: '#fff', fontSize: '1.15rem', marginBottom: '10px' }}>Hola, {player.name?.split(' ')[0]}</div>
+          <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.6, marginBottom: '20px' }}>
+            No estás registrado como jugador en ningún equipo, así que por ahora tu acceso es solo a <b style={{ color: '#00ddd0' }}>PREDIX</b>: predice resultados, compite en el ranking y gana premios.
+          </div>
+          <button onClick={() => navigate('/jugador/apuestas')}
+            style={{ width: '100%', padding: '14px', background: 'linear-gradient(90deg, #00ddd0, #1a73e8)', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '800', fontSize: '1rem', marginBottom: '12px' }}>
+            🎯 ENTRAR A PREDIX →
+          </button>
+          <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`)}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{ display: 'block', padding: '12px', background: 'rgba(37,211,102,.15)', border: '1px solid rgba(37,211,102,.4)', borderRadius: '12px', color: '#25d366', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', marginBottom: '12px' }}>
+            📲 ¿Juegas en un equipo? Escríbenos
+          </a>
+          <button onClick={async () => { await supabase.auth.signOut(); navigate('/jugador/login') }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.35)', fontSize: '.75rem' }}>
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   const esPortero  = stats?.esPortero || false
   const nivelTexto = (stats?.pj || 0) < 10 ? 'Nivel 1' : (stats?.pj || 0) < 25 ? 'Nivel 2' : 'Nivel 3'

@@ -282,6 +282,25 @@ export default function AdminJugadoresPage() {
     setModalReset(null)
   }
 
+  // ── Verificación de cuentas nuevas (registradas desde la app) ────────────
+  async function handleVerificarJugador(j) {
+    await supabase.from('players').update({ verificado: true }).eq('id', j.id)
+    showMsg(`✅ ${j.name} verificado — ya puede entrar`)
+    fetchJugadores()
+  }
+  async function handleRechazarJugador(j) {
+    if (!confirm(`¿Bloquear la cuenta de ${j.name}? No podrá entrar hasta que la reactives.`)) return
+    await supabase.from('players').update({ activo_membresia: false }).eq('id', j.id)
+    showMsg(`Cuenta de ${j.name} bloqueada`)
+    fetchJugadores()
+  }
+  function abrirWhatsAppVerificacion(j) {
+    const numero = (j.whatsapp || '').replace(/\D/g, '')
+    const nombre = j.name?.split(' ')[0] || 'jugador'
+    const texto  = `Hola ${nombre} 👋, recibimos tu registro en *Golmebol*. Para verificar tu cuenta confírmanos tu nombre completo, cédula y el equipo en el que juegas. ✅`
+    window.open(`https://wa.me/57${numero}?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
   function abrirWhatsApp(jugador) {
     const numero  = (jugador.whatsapp || jugador.telefono || '').replace(/\D/g, '')
     const dias    = diasRestantes(jugador.fecha_vencimiento)
@@ -386,6 +405,48 @@ export default function AdminJugadoresPage() {
                 {loadingReset ? 'Reseteando...' : '🔄 Sí, resetear'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pendientes de verificación por WhatsApp ── */}
+      {jugadores.filter(j => j.verificado === false && j.activo_membresia).length > 0 && (
+        <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
+          <div style={{ fontWeight: '700', color: '#e8710a', fontSize: '.95rem', marginBottom: '4px' }}>
+            ⏳ Pendientes de verificación ({jugadores.filter(j => j.verificado === false && j.activo_membresia).length})
+          </div>
+          <div style={{ fontSize: '.75rem', color: '#8a5a00', marginBottom: '14px' }}>
+            Se registraron desde la app. Compara con el mensaje de WhatsApp que te enviaron y verifica solo si los datos coinciden.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {jugadores.filter(j => j.verificado === false && j.activo_membresia).map(j => (
+              <div key={j.id} style={{ background: '#fff', border: '1px solid #f1e3b0', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '180px' }}>
+                  <div style={{ fontWeight: '700', color: '#202124', fontSize: '.88rem' }}>{j.name}</div>
+                  <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '2px' }}>
+                    🪪 {j.numero_cedula} · 📱 {j.whatsapp || 'sin WhatsApp'}
+                  </div>
+                  <div style={{ fontSize: '.72rem', color: j.equipo_deseado ? '#1a73e8' : '#e8710a', marginTop: '2px', fontWeight: '600' }}>
+                    {j.equipo_deseado ? `⚽ Dice jugar en: ${j.equipo_deseado}` : '🎯 Sin equipo — solo PREDIX'}
+                  </div>
+                  {j.fecha_registro && <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '2px' }}>Registrado: {new Date(j.fecha_registro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <button onClick={() => abrirWhatsAppVerificacion(j)}
+                    style={{ padding: '8px 12px', background: '#25d366', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.75rem', fontWeight: '700' }}>
+                    📲 WhatsApp
+                  </button>
+                  <button onClick={() => handleVerificarJugador(j)}
+                    style={{ padding: '8px 12px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.75rem', fontWeight: '700' }}>
+                    ✓ Verificar
+                  </button>
+                  <button onClick={() => handleRechazarJugador(j)}
+                    style={{ padding: '8px 12px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.75rem', fontWeight: '700' }}>
+                    ✗ Bloquear
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

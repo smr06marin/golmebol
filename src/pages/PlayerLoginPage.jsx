@@ -14,8 +14,25 @@ const inp = {
 const WA_LINK = (texto) =>
   `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
 
-function ErrorBox({ error }) {
+function ErrorBox({ error, waTexto }) {
   if (!error) return null
+  if (error === 'pendiente_verificacion') {
+    return (
+      <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '12px', padding: '14px 16px' }}>
+        <div style={{ fontWeight: '700', color: '#e8710a', fontSize: '.85rem', marginBottom: '6px' }}>
+          ⏳ Tu cuenta está pendiente de verificación
+        </div>
+        <div style={{ fontSize: '.78rem', color: '#8a5a00', marginBottom: '12px', lineHeight: 1.5 }}>
+          Para activarla, envíanos por WhatsApp tu nombre completo, cédula y el equipo en el que juegas. Apenas te verifiquemos podrás entrar.
+        </div>
+        <a href={WA_LINK(waTexto || 'Hola! Quiero verificar mi cuenta de Golmebol ✅')}
+          target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '11px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
+          📲 Enviar mensaje de verificación
+        </a>
+      </div>
+    )
+  }
   if (error === 'membresia_inactiva' || error === 'membresia_vencida') {
     return (
       <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '12px', padding: '14px 16px' }}>
@@ -161,6 +178,7 @@ export default function PlayerLoginPage() {
   const [pass2,           setPass2]           = useState('')
   const [nombre,          setNombre]          = useState('')
   const [whatsapp,        setWhatsapp]        = useState('')
+  const [equipo,          setEquipo]          = useState('')
   const [player,          setPlayer]          = useState(null)
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
@@ -188,7 +206,7 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { data: p } = await supabase
       .from('players')
-      .select('id, name, activo_membresia, fecha_vencimiento, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider')
+      .select('id, name, activo_membresia, fecha_vencimiento, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, equipo_deseado')
       .eq('numero_cedula', cedula.trim())
       .single()
     setLoading(false)
@@ -202,7 +220,8 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Contraseña incorrecta'); setLoading(false); return }
-    const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso, rol, es_arbitro, es_arbitro_lider').eq('id', player.id).single()
+    const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso, rol, es_arbitro, es_arbitro_lider, verificado').eq('id', player.id).single()
+    if (pActual?.verificado === false) { await supabase.auth.signOut(); setError('pendiente_verificacion'); setLoading(false); return }
     if (!pActual?.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
     if (pActual.fecha_vencimiento && new Date(pActual.fecha_vencimiento) < new Date()) { await supabase.auth.signOut(); setError('membresia_vencida'); setLoading(false); return }
     if (pActual.primer_ingreso !== false) {
@@ -241,22 +260,29 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
-    // Acceso gratis desde el día 1: ya no queda pendiente de activación manual.
+    // Los registros nuevos quedan PENDIENTES de verificación por WhatsApp:
+    // el jugador debe enviarnos nombre, cédula y equipo, y el admin lo aprueba
+    // manualmente en Admin > Jugadores. Hasta entonces no puede entrar.
     const { data: nuevoPlayer, error: playerError } = await supabase.from('players').insert({
       user_id: authData.user?.id, name: nombre.trim(), numero_cedula: cedula.trim(),
-      whatsapp: whatsapp.trim(), activo_membresia: true, primer_ingreso: false, fecha_registro: new Date().toISOString(),
+      whatsapp: whatsapp.trim(), equipo_deseado: equipo.trim() || null, verificado: false,
+      activo_membresia: true, primer_ingreso: false, fecha_registro: new Date().toISOString(),
     }).select().single()
     if (playerError) { setError('Error al crear perfil: ' + playerError.message); setLoading(false); return }
+    await supabase.auth.signOut() // no entra hasta que el admin lo verifique
     setPlayer(nuevoPlayer)
-    const splashData = await fetchSplashData(nuevoPlayer.id)
     setLoading(false)
-    setSplash(splashData)
+    setStep('verificar')
   }
 
   const volver = () => {
     setStep('cedula'); setPass(''); setPass2(''); setError('')
-    setNombre(''); setWhatsapp(''); setPlayer(null); setShowPromo(false)
+    setNombre(''); setWhatsapp(''); setEquipo(''); setPlayer(null); setShowPromo(false)
   }
+
+  // Mensaje de WhatsApp con los datos que el admin necesita para verificar
+  const textoVerificacion = (nom, ced, eq) =>
+    `Hola! Quiero verificar mi cuenta de Golmebol ✅\nNombre: ${nom}\nCédula: ${ced}\nEquipo: ${eq || 'Ninguno — solo quiero PREDIX'}`
 
   // Mostrar splash
   if (splash) return (
@@ -370,7 +396,7 @@ export default function PlayerLoginPage() {
                   <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Tu contraseña" type="password" style={inp}
                     onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'} autoFocus/>
                 </div>
-                <ErrorBox error={error}/>
+                <ErrorBox error={error} waTexto={textoVerificacion(player?.name || '', cedula.trim(), player?.equipo_deseado || '')}/>
                 <button type="submit" disabled={loading}
                   style={{ marginTop: '4px', padding: '12px', background: loading ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.95rem' }}>
                   {loading ? 'Ingresando...' : 'Ingresar'}
@@ -417,6 +443,30 @@ export default function PlayerLoginPage() {
             </>
           )}
 
+          {step === 'verificar' && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>📲</div>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem', marginBottom: '8px' }}>¡Último paso, {nombre.split(' ')[0]}!</div>
+              <div style={{ fontSize: '.82rem', color: '#5f6368', lineHeight: 1.6, marginBottom: '16px' }}>
+                Tu cuenta quedó creada pero <b>pendiente de verificación</b>. Envíanos el mensaje de WhatsApp con tus datos y te activamos la cuenta.
+              </div>
+              {!equipo.trim() && (
+                <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#8a5a00', marginBottom: '16px', lineHeight: 1.5, textAlign: 'left' }}>
+                  ⚠️ Como no estás registrado como jugador en ningún equipo, al verificarte solo podrás ingresar a <b>PREDIX</b> (predicciones y ranking).
+                </div>
+              )}
+              <a href={WA_LINK(textoVerificacion(nombre.trim(), cedula.trim(), equipo.trim()))}
+                target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25d366', borderRadius: '12px', color: '#fff', fontWeight: '800', fontSize: '.95rem', textDecoration: 'none', marginBottom: '10px' }}>
+                📲 Enviar mensaje de verificación
+              </a>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '14px' }}>
+                El mensaje ya lleva tu nombre, cédula y equipo — solo dale enviar.
+              </div>
+              <button onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Volver al inicio</button>
+            </div>
+          )}
+
           {step === 'registro' && (
             <>
               <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '4px' }}>Crear cuenta gratis</div>
@@ -437,6 +487,16 @@ export default function PlayerLoginPage() {
                   <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>WhatsApp</label>
                   <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="Ej: 3001234567" type="tel" style={inp}
                     onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>¿En qué equipo vas a jugar?</label>
+                  <input value={equipo} onChange={e => setEquipo(e.target.value)} placeholder="Nombre del equipo (vacío si solo quieres PREDIX)" type="text" style={inp}
+                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
+                  {!equipo.trim() && (
+                    <div style={{ fontSize: '.7rem', color: '#e8710a', marginTop: '5px', lineHeight: 1.4 }}>
+                      ⚠️ Si no estás registrado como jugador en ningún equipo, solo podrás ingresar a PREDIX.
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Contraseña</label>
