@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-
 import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import RankingPoster from '../../components/RankingPoster'
+import TablaPosiciones from '../../components/TablaPosiciones'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
@@ -2864,26 +2865,7 @@ export default function AdminTorneoDetallePage() {
           {/* Tabla general */}
           <div>
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de posiciones — Fase de grupos</div>
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
-                <div>EQUIPO</div>{['PJ','PG','PE','PP','GF','GC','PTS'].map(h => <div key={h} style={{ textAlign: 'center' }}>{h}</div>)}
-              </div>
-              {tablaOrdenada.length === 0 ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>No hay resultados aún</div>
-              ) : tablaOrdenada.map((row, i) => (
-                <div key={row.equipo.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '12px 16px', borderBottom: i < tablaOrdenada.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '.75rem', fontWeight: '700', color: i < 3 ? '#1a73e8' : '#9aa0a6', width: '20px' }}>{i + 1}</span>
-                    <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden' }}><TeamLogo logo_url={row.equipo.logo_url} name={row.equipo.name} size={28}/></div>
-                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{row.equipo.name}</span>
-                  </div>
-                  {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((val, j) => (
-                    <div key={j} style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{val}</div>
-                  ))}
-                  <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '.9rem', color: '#1a73e8' }}>{row.pts}</div>
-                </div>
-              ))}
-            </div>
+            <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún"/>
           </div>
 
           {/* Goleadores */}

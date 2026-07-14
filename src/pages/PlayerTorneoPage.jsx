@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Shield, X } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
+import TablaPosiciones from '../components/TablaPosiciones'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -462,42 +463,7 @@ export default function PlayerTorneoPage() {
         {/* ── POSICIONES ── */}
         {tab === 'posiciones' && (
           <div>
-            {tablaOrdenada.length === 0 ? (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
-                <div style={{ fontSize: '.875rem' }}>Sin resultados aún</div>
-              </div>
-            ) : (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px 32px 32px 32px 32px 32px 40px', gap: '2px', padding: '10px 12px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.65rem', fontWeight: '600', color: '#5f6368' }}>
-                  <div>#</div><div>Equipo</div>
-                  <div style={{ textAlign: 'center' }}>PJ</div><div style={{ textAlign: 'center' }}>PG</div>
-                  <div style={{ textAlign: 'center' }}>PE</div><div style={{ textAlign: 'center' }}>PP</div>
-                  <div style={{ textAlign: 'center' }}>GF</div><div style={{ textAlign: 'center' }}>GC</div>
-                  <div style={{ textAlign: 'center', color: '#1a73e8' }}>PTS</div>
-                </div>
-                {tablaOrdenada.map((row, i) => {
-                  const esMiEquipo = row.equipo.id === miEquipoId
-                  return (
-                    <div key={row.equipo.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 32px 32px 32px 32px 32px 32px 40px', gap: '2px', padding: '10px 12px', borderBottom: i < tablaOrdenada.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center', background: esMiEquipo ? '#e8f0fe' : '#fff', borderLeft: esMiEquipo ? '3px solid #1a73e8' : '3px solid transparent' }}>
-                      <div style={{ fontSize: '.75rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#bdbdbd' }}>{i + 1}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {row.equipo.logo_url ? <img src={row.equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={12} color="#9aa0a6"/>}
-                        </div>
-                        <span style={{ fontSize: '.78rem', fontWeight: esMiEquipo ? '700' : '500', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.equipo.name}</span>
-                      </div>
-                      {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
-                        <div key={j} style={{ textAlign: 'center', fontSize: '.78rem', color: '#5f6368' }}>{v}</div>
-                      ))}
-                      <div style={{ textAlign: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '.88rem', color: esMiEquipo ? '#fff' : '#202124', background: esMiEquipo ? '#1a73e8' : '#f1f3f4', borderRadius: '6px', padding: '2px 7px' }}>{row.pts}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} miEquipoId={miEquipoId}/>
             <div style={{ marginTop: '12px', display: 'flex', gap: '16px', padding: '10px 14px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', fontSize: '.68rem', color: '#5f6368', flexWrap: 'wrap' }}>
               <span>PJ=Jugados</span><span>PG=Ganados</span><span>PE=Empates</span><span>PP=Perdidos</span><span>GF=Goles Favor</span><span>GC=Goles Contra</span>
             </div>

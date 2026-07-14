@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Trophy, MapPin, Calendar } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
+import TablaPosiciones from '../components/TablaPosiciones'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -258,46 +259,7 @@ export default function TorneoPublicoPage() {
 
         {/* POSICIONES */}
         {tab === 'posiciones' && (
-          <div style={s.card}>
-            <div style={s.cardTitle}>Tabla de posiciones</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.82rem' }}>
-                <thead>
-                  <tr style={{ background: '#f8f9fa' }}>
-                    <th style={{ padding: '10px 8px 10px 16px', textAlign: 'left', color: '#5f6368', fontWeight: '600', whiteSpace: 'nowrap' }}>#</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', color: '#5f6368', fontWeight: '600' }}>Equipo</th>
-                    {['PJ','PG','PE','PP','GF','GC','DIF','PTS'].map(h => (
-                      <th key={h} style={{ padding: '10px 8px', textAlign: 'center', color: h === 'PTS' ? '#1a73e8' : '#5f6368', fontWeight: '600', minWidth: '34px' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tablaOrdenada.length === 0 ? (
-                    <tr><td colSpan={10} style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6' }}>Sin resultados aún</td></tr>
-                  ) : tablaOrdenada.map((row, i) => (
-                    <tr key={row.equipo.id} style={{ borderTop: '1px solid #f1f3f4', background: i % 2 === 0 ? '#fff' : '#fafbfc' }}>
-                      <td style={{ padding: '11px 8px 11px 16px', fontWeight: '700', color: i < 3 ? '#1a73e8' : '#9aa0a6', fontSize: '.8rem' }}>{i + 1}</td>
-                      <td style={{ padding: '11px 8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '26px', height: '26px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-                            <TeamLogo logo_url={row.equipo.logo_url} name={row.equipo.name} size={26}/>
-                          </div>
-                          <span style={{ fontWeight: '600', color: '#202124', whiteSpace: 'nowrap' }}>{row.equipo.name}</span>
-                        </div>
-                      </td>
-                      {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
-                        <td key={j} style={{ padding: '11px 8px', textAlign: 'center', color: '#5f6368' }}>{v}</td>
-                      ))}
-                      <td style={{ padding: '11px 8px', textAlign: 'center', color: (row.gf - row.gc) > 0 ? '#1e8e3e' : (row.gf - row.gc) < 0 ? '#d93025' : '#5f6368', fontWeight: '600' }}>
-                        {(row.gf - row.gc) > 0 ? '+' : ''}{row.gf - row.gc}
-                      </td>
-                      <td style={{ padding: '11px 16px 11px 8px', textAlign: 'center', fontWeight: '800', color: '#1a73e8', fontSize: '.95rem' }}>{row.pts}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada}/>
         )}
 
         {/* RESULTADOS */}
