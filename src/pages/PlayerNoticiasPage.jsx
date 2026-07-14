@@ -64,8 +64,8 @@ export default function PlayerNoticiasPage() {
     setLoading(false)
   }
 
-  const tipoLabel = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha' }
-  const tipoColor = { pre_partido: S.cyan, post_partido: '#4caf50', semanal: S.gold }
+  const tipoLabel = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha', ranking: '🏆 Ranking' }
+  const tipoColor = { pre_partido: S.cyan, post_partido: '#4caf50', semanal: S.gold, ranking: '#ff9800' }
 
   return (
     <div style={{ minHeight: '100vh', background: S.navy, fontFamily: 'system-ui, sans-serif', color: S.text }}>

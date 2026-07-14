@@ -18,7 +18,8 @@ async function llamarIA(messages, maxTokens = 600) {
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, messages }),
+    // Haiku en vez de Sonnet: mismo texto corto y estructurado, 3 veces más barato.
+    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages }),
   })
   let data
   try { data = await res.json() } catch { data = null }
@@ -29,6 +30,14 @@ async function llamarIA(messages, maxTokens = 600) {
   const texto = data?.content?.[0]?.text
   if (!texto) throw new Error('La IA devolvió una respuesta vacía, intenta de nuevo')
   return texto
+}
+
+// Bloque de contexto con cache_control: si el mismo texto se reenvía dentro
+// de los ~5 minutos siguientes (abrir chat, preguntar algo, generar la
+// noticia final), Anthropic lo cobra hasta 90% más barato en vez de cobrar
+// el contexto completo cada vez.
+function bloqueContexto(ctx) {
+  return { type: 'text', text: `DATOS:\n${ctx}`, cache_control: { type: 'ephemeral' } }
 }
 
 function parseNoticia(texto) {
@@ -46,10 +55,23 @@ const FASES_LABEL = {
   grupo: '🏟️ Grupo', octavos: '⚔️ Octavos', cuartos: '🔥 Cuartos', semifinal: '⚡ Semifinal', final: '🏆 Final',
 }
 
+// Recorta la tabla a lo esencial (top 3 + los equipos que importan para esta
+// noticia) en vez de mandarle a la IA la liga completa — en torneos grandes
+// eso son muchos tokens de más pagados en cada llamada, por nada.
+function resumirTabla(tablaOrdenada, destacar = []) {
+  if (!tablaOrdenada || tablaOrdenada.length === 0) return 'Sin datos'
+  const filas = tablaOrdenada
+    .map((t, i) => ({ ...t, pos: i + 1 }))
+    .filter(t => t.pos <= 3 || destacar.includes(t.name))
+  const texto = filas.map(t => `${t.pos}.${t.name} ${t.pts}pts`).join(' | ')
+  const restantes = tablaOrdenada.length - filas.length
+  return texto + (restantes > 0 ? ` (+${restantes} equipos más, ${tablaOrdenada.length} en total)` : '')
+}
+
 function buildContextoPre(partido, datos) {
   const esFaseElim = partido.fase && partido.fase !== 'grupo'
   const tablaStr = datos.tablaOrdenada.length > 0
-    ? datos.tablaOrdenada.map((t,i) => `${i+1}.${t.name} ${t.pts}pts`).join(' | ')
+    ? resumirTabla(datos.tablaOrdenada, [partido.home?.name, partido.away?.name])
     : 'Sin resultados aún'
   const histStr = datos.enfrentamientos.length === 0 ? 'Primer enfrentamiento' : datos.enfrentamientos.join(' | ')
   const golH = Object.entries(datos.golesHomeTorneo).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([n,g])=>`${n}(${g})`).join(', ') || 'sin goles'
@@ -78,11 +100,11 @@ function buildContextoPost(partido, datos) {
 
   // Tabla ANTES del partido (excluyendo este partido)
   const tablaAntes = datos.tablaOrdenadaAntes.length > 0
-    ? datos.tablaOrdenadaAntes.map((t,i) => `${i+1}.${t.name} ${t.pts}pts`).join(' | ')
+    ? resumirTabla(datos.tablaOrdenadaAntes, [partido.home?.name, partido.away?.name])
     : 'Sin datos previos'
   // Tabla DESPUÉS del partido
   const tablaDespues = datos.tablaOrdenadaDespues.length > 0
-    ? datos.tablaOrdenadaDespues.map((t,i) => `${i+1}.${t.name} ${t.pts}pts`).join(' | ')
+    ? resumirTabla(datos.tablaOrdenadaDespues, [partido.home?.name, partido.away?.name])
     : 'Sin datos'
 
   // Goleadores del partido
@@ -127,6 +149,8 @@ export default function AdminNoticiasPage() {
   const [copiado,   setCopiado]   = useState(null)
   const [expanded,  setExpanded]  = useState(null)
   const [fechaSeleccionada, setFechaSeleccionada] = useState('')
+  const [generandoDirecto, setGenerandoDirecto] = useState(null) // id de la tarjeta que está generando de una sola pasada
+  const [indicaciones, setIndicaciones] = useState({}) // idKey -> texto que el admin escribió para guiar la noticia
 
   const [chatPartido,    setChatPartido]    = useState(null)
   const [chatTipo,       setChatTipo]       = useState('pre_partido') // 'pre_partido' | 'post_partido'
@@ -161,6 +185,12 @@ export default function AdminNoticiasPage() {
   }, [esOrganizador, user?.id])
 
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3500) }
+
+  // Evita gastar otra llamada a la IA por accidente sobre algo que ya se generó.
+  function confirmarRegenerar(yaGenerada) {
+    if (!yaGenerada) return true
+    return confirm('Ya existe una noticia para esto. ¿Generar de nuevo? (gasta otra llamada a la IA)')
+  }
 
   async function fetchTorneos() {
     let query = supabase.from('tournaments').select('id, name, organizador_id').order('created_at', { ascending: false })
@@ -232,7 +262,7 @@ export default function AdminNoticiasPage() {
       const tiempo = dias ? dias>60 ? `hace ${Math.floor(dias/30)} meses` : `hace ${dias} días` : ''
       const fl = e.fase&&e.fase!=='grupo' ? ` [${FASES_LABEL[e.fase]}]` : ''
       return `${e.home?.name} ${e.home_score}-${e.away_score} ${e.away?.name}${fl} (${tiempo})`
-    })
+    }).slice(-3)
 
     const golesHomeTorneo = (statsHome||[]).reduce((acc,s)=>{ const n=s.players?.name; if(n) acc[n]=(acc[n]||0)+s.goals_scored; return acc },{})
     const golesAwayTorneo = (statsAway||[]).reduce((acc,s)=>{ const n=s.players?.name; if(n) acc[n]=(acc[n]||0)+s.goals_scored; return acc },{})
@@ -336,7 +366,7 @@ export default function AdminNoticiasPage() {
       const tiempo = dias ? dias>60 ? `hace ${Math.floor(dias/30)} meses` : `hace ${dias} días` : ''
       const fl = e.fase&&e.fase!=='grupo' ? ` [${FASES_LABEL[e.fase]}]` : ''
       return `${e.home?.name} ${e.home_score}-${e.away_score} ${e.away?.name}${fl} (${tiempo})`
-    })
+    }).slice(-3)
 
     // Goleadores del partido
     const golesPartido = (statsPartido||[]).reduce((acc,s)=>{ const n=s.players?.name; if(n) acc[n]=(acc[n]||0)+s.goals_scored; return acc },{})
@@ -428,8 +458,9 @@ export default function AdminNoticiasPage() {
   }
 
   function buildContextoFecha(jornadaNum, datos) {
-    const tablaAntesStr   = datos.tablaOrdenadaAntes.length   ? datos.tablaOrdenadaAntes.map((t,i)=>`${i+1}.${t.name} ${t.pts}pts`).join(' | ')   : 'Sin datos previos'
-    const tablaDespuesStr = datos.tablaOrdenadaDespues.length ? datos.tablaOrdenadaDespues.map((t,i)=>`${i+1}.${t.name} ${t.pts}pts`).join(' | ') : 'Sin datos'
+    const equiposFecha = [...new Set((datos.partidosFecha||[]).flatMap(p => [p.home?.name, p.away?.name]).filter(Boolean))]
+    const tablaAntesStr   = datos.tablaOrdenadaAntes.length   ? resumirTabla(datos.tablaOrdenadaAntes, equiposFecha)   : 'Sin datos previos'
+    const tablaDespuesStr = datos.tablaOrdenadaDespues.length ? resumirTabla(datos.tablaOrdenadaDespues, equiposFecha) : 'Sin datos'
     const golesStr = datos.golesFecha.length ? datos.golesFecha.map(g=>`${g.nombre}(${g.goles})`).join(', ') : 'Sin goleadores registrados'
     const hatsStr  = datos.hatTricks.length ? datos.hatTricks.map(g=>`${g.nombre}(${g.goles} goles)`).join(', ') : 'Ninguno'
     const golearStr = datos.golear ? `${datos.golear.home?.name} ${datos.golear.home_score}-${datos.golear.away_score} ${datos.golear.away?.name}` : 'N/A'
@@ -440,6 +471,90 @@ TABLA DESPUÉS DE LA FECHA: ${tablaDespuesStr}
 GOLEADORES DE LA FECHA: ${golesStr}
 HAT-TRICKS DE LA FECHA: ${hatsStr}
 RESULTADO MÁS CONTUNDENTE: ${golearStr}`
+  }
+
+  // Ranking del torneo: goleador, valla menos vencida y tabla — sin depender
+  // de un partido puntual (útil cuando no viste el partido y solo quieres
+  // contenido con datos duros de la planilla).
+  async function cargarDatosRanking() {
+    const [{ data: goleadoresData }, { data: statsPorteros }, { data: partidosGrupo }] = await Promise.all([
+      supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', torneoId).gt('total_goals', 0).order('total_goals', { ascending: false }),
+      supabase.from('player_match_stats').select('player_id, goals_conceded, players(name, posicion_futbol5, posicion_futbol7, posicion_futbol11), teams(name)').eq('tournament_id', torneoId),
+      supabase.from('matches').select('home_score,away_score,status,fase,home_team_id,away_team_id,home:home_team_id(name),away:away_team_id(name)').eq('tournament_id', torneoId).eq('status','finished').eq('fase','grupo'),
+    ])
+
+    const goleadores = (goleadoresData || []).slice(0, 5)
+
+    const mapPorteros = {}
+    ;(statsPorteros || []).forEach(s => {
+      const esPortero = s.players?.posicion_futbol5 === 'Portero' || s.players?.posicion_futbol7 === 'Portero' || s.players?.posicion_futbol11 === 'Portero'
+      if (!esPortero) return
+      if (!mapPorteros[s.player_id]) mapPorteros[s.player_id] = { nombre: s.players?.name, equipo: s.teams?.name, pj: 0, recibidos: 0 }
+      mapPorteros[s.player_id].pj++
+      mapPorteros[s.player_id].recibidos += s.goals_conceded || 0
+    })
+    const vallas = Object.values(mapPorteros).filter(p => p.pj > 0).sort((a,b) => a.recibidos - b.recibidos).slice(0, 3)
+
+    const tabla = {}
+    ;(partidosGrupo || []).forEach(p => {
+      if (!tabla[p.home_team_id]) tabla[p.home_team_id] = { name: p.home?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
+      if (!tabla[p.away_team_id]) tabla[p.away_team_id] = { name: p.away?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
+      tabla[p.home_team_id].pj++; tabla[p.away_team_id].pj++
+      if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts+=3; tabla[p.away_team_id].pp++ }
+      else if (p.home_score===p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts++; tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts++ }
+      else                                  { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts+=3; tabla[p.home_team_id].pp++ }
+    })
+
+    return {
+      goleadores,
+      vallas,
+      tablaOrdenada: Object.values(tabla).sort((a,b)=>b.pts-a.pts),
+      cantidadPartidos: (partidosGrupo||[]).length,
+    }
+  }
+
+  function buildContextoRanking(datos) {
+    const golStr = datos.goleadores.length
+      ? datos.goleadores.map((g,i) => `${i+1}.${g.player_name} (${g.team_name}) ${g.total_goals} goles`).join(' | ')
+      : 'Sin goleadores registrados'
+    const vallaStr = datos.vallas.length
+      ? datos.vallas.map((v,i) => `${i+1}.${v.nombre} (${v.equipo}) ${v.recibidos} recibidos en ${v.pj} PJ`).join(' | ')
+      : 'Sin datos de arqueros'
+    const tablaStr = datos.tablaOrdenada.length
+      ? datos.tablaOrdenada.slice(0,5).map((t,i)=>`${i+1}.${t.name} ${t.pts}pts`).join(' | ') + (datos.tablaOrdenada.length>5 ? ` (+${datos.tablaOrdenada.length-5} equipos más)` : '')
+      : 'Sin datos'
+    return `RANKING DEL TORNEO — ${datos.cantidadPartidos} partido(s) de grupo jugado(s)
+TABLA DE POSICIONES: ${tablaStr}
+GOLEADOR DEL TORNEO: ${golStr}
+VALLA MENOS VENCIDA (arqueros con menos goles recibidos): ${vallaStr}`
+  }
+
+  async function generarNoticiaRankingDirecta() {
+    const idKey = 'ranking'
+    setGenerandoDirecto(idKey)
+    try {
+      const datos = await cargarDatosRanking()
+      const ctx = buildContextoRanking(datos)
+      const indicacion = (indicaciones[idKey] || '').trim()
+
+      const instruccion = `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia de RANKING/ESTADÍSTICAS del torneo (no es sobre un partido puntual, es sobre los números acumulados) para Instagram/WhatsApp.
+
+Escribe:
+1. Título IMPACTANTE en mayúsculas (máx 8 palabras)
+2. Máx 4 líneas — menciona quién lidera la tabla, quién es el goleador del torneo, y qué arquero/equipo tiene la valla menos vencida
+3. 4 hashtags (#Golmebol #Armenia obligatorio)
+
+Texto plano, sin markdown.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cuenta por encima de lo demás): ${indicacion}` : ''}`
+
+      const texto = await llamarIA([{ role: 'user', content: `DATOS:\n${ctx}\n\n${instruccion}` }], 500)
+      const { titulo, cuerpo, hashtags } = parseNoticia(texto)
+      await supabase.from('noticias').insert({ tournament_id: torneoId, match_id: null, tipo: 'ranking', titulo, cuerpo, hashtags })
+      showMsg('✅ Ranking generado')
+      fetchNoticias()
+    } catch (e) {
+      showMsg(e.message, 'error')
+    }
+    setGenerandoDirecto(null)
   }
 
   async function abrirChatFecha(jornadaNum) {
@@ -455,10 +570,10 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
     const ctx = buildContextoFecha(jornadaNum, datos)
     setChatContexto(ctx)
 
-    const promptInicial = `Analista deportivo GOLMEBOL. Resumen de la FECHA ${jornadaNum} completa (todos los partidos de esa jornada):\n${ctx}\n\nDame máx 4 puntos con los datos MÁS INTERESANTES de toda la fecha (equipo que más brilló, cambios en la tabla, goleador de la fecha, resultado más contundente, hat-tricks). Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
+    const instruccion = `Analista deportivo GOLMEBOL. Resumen de la FECHA ${jornadaNum} completa (todos los partidos de esa jornada).\n\nDame máx 4 puntos con los datos MÁS INTERESANTES de toda la fecha (equipo que más brilló, cambios en la tabla, goleador de la fecha, resultado más contundente, hat-tricks). Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
 
     try {
-      const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
+      const respuestaIA = await llamarIA([{ role: 'user', content: [bloqueContexto(ctx), { type: 'text', text: instruccion }] }], 400)
       setChatMessages([{ role: 'assistant', content: respuestaIA }])
     } catch (e) {
       setChatMessages([{ role: 'assistant', content: `⚠️ ${e.message}` }])
@@ -489,10 +604,10 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
     const esFaseElim = partido.fase && partido.fase !== 'grupo'
     const tipoTexto = tipo === 'pre_partido' ? 'PRE-PARTIDO' : 'POST-PARTIDO'
 
-    const promptInicial = `Analista deportivo GOLMEBOL. Datos del ${tipoTexto}:\n${ctx}\n\nDame máx 4 puntos con los datos MÁS INTERESANTES y picantes para la noticia${tipo==='post_partido' ? ' (prioriza: cambios en tabla, rachas, récords rotos, hat-tricks, primera victoria histórica entre estos equipos)' : ' (prioriza hitos ⚠️, hat-tricks, fases eliminatorias, historial)'}. Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
+    const instruccion = `Analista deportivo GOLMEBOL. Datos del ${tipoTexto}.\n\nDame máx 4 puntos con los datos MÁS INTERESANTES y picantes para la noticia${tipo==='post_partido' ? ' (prioriza: cambios en tabla, rachas, récords rotos, hat-tricks, primera victoria histórica entre estos equipos)' : ' (prioriza hitos ⚠️, hat-tricks, fases eliminatorias, historial)'}. Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
 
     try {
-      const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
+      const respuestaIA = await llamarIA([{ role: 'user', content: [bloqueContexto(ctx), { type: 'text', text: instruccion }] }], 400)
       setChatMessages([{ role: 'assistant', content: respuestaIA }])
     } catch (e) {
       setChatMessages([{ role: 'assistant', content: `⚠️ ${e.message}` }])
@@ -510,7 +625,7 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
     setChatLoading(true)
 
     const mensajesParaIA = [
-      { role: 'user', content: `Analista GOLMEBOL. Datos:\n${chatContexto}\n\n---\n${chatMessages[0]?.content || ''}` },
+      { role: 'user', content: [bloqueContexto(chatContexto), { type: 'text', text: 'Analista GOLMEBOL.' }] },
       { role: 'assistant', content: chatMessages[0]?.content || '' },
       ...nuevosMensajes.slice(1),
     ]
@@ -532,9 +647,7 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
     if (chatPartido.esFecha) {
       const jornadaNum = chatPartido.matchday
       const datoClave = chatMessages[0]?.content?.split('\n').slice(0,4).join(' ') || ''
-      const prompt = `Periodista deportivo GOLMEBOL, Armenia, Colombia. Resumen de una FECHA completa del torneo (varios partidos) para Instagram/WhatsApp.
-
-${chatContexto}
+      const instruccion = `Periodista deportivo GOLMEBOL, Armenia, Colombia. Resumen de una FECHA completa del torneo (varios partidos) para Instagram/WhatsApp.
 
 DATO CLAVE DEL ANÁLISIS: ${datoClave}
 
@@ -546,7 +659,7 @@ Escribe:
 Texto plano, sin markdown. 15 segundos de lectura.`
 
       try {
-        const texto = await llamarIA([{ role: 'user', content: prompt }], 550)
+        const texto = await llamarIA([{ role: 'user', content: [bloqueContexto(chatContexto), { type: 'text', text: instruccion }] }], 550)
         if (!texto) { showMsg('La IA no devolvió respuesta', 'error'); setGenerandoFinal(false); return }
         const { titulo, cuerpo, hashtags } = parseNoticia(texto)
         await supabase.from('noticias').insert({ tournament_id: torneoId, match_id: null, tipo: 'semanal', titulo, cuerpo, hashtags })
@@ -566,10 +679,8 @@ Texto plano, sin markdown. 15 segundos de lectura.`
     const datoClave  = chatMessages[0]?.content?.split('\n').slice(0,4).join(' ') || ''
     const esPost     = chatTipo === 'post_partido'
 
-    const prompt = esPost
+    const instruccion = esPost
       ? `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia POST-PARTIDO explosiva para Instagram/WhatsApp.
-
-${chatContexto}
 
 DATO CLAVE DEL ANÁLISIS: ${datoClave}
 
@@ -581,8 +692,6 @@ Escribe:
 Texto plano, sin markdown. 10 segundos de lectura.`
       : `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia PRE-PARTIDO explosiva para Instagram/WhatsApp.
 
-${chatContexto}
-
 DATO CLAVE DEL ANÁLISIS: ${datoClave}
 
 Escribe:
@@ -593,7 +702,7 @@ Escribe:
 Texto plano, sin markdown. 10 segundos de lectura.`
 
     try {
-      const texto = await llamarIA([{ role: 'user', content: prompt }], 500)
+      const texto = await llamarIA([{ role: 'user', content: [bloqueContexto(chatContexto), { type: 'text', text: instruccion }] }], 500)
       if (!texto) { showMsg('La IA no devolvió respuesta', 'error'); setGenerandoFinal(false); return }
       const { titulo, cuerpo, hashtags } = parseNoticia(texto)
 
@@ -626,11 +735,97 @@ Texto plano, sin markdown. 10 segundos de lectura.`
     setTimeout(() => setCopiado(null), 2000)
   }
 
+  // Genera la noticia en UNA sola llamada a la IA (sin el paso de análisis/chat previo) — cuesta la mitad.
+  async function generarNoticiaDirecta(partido, tipo) {
+    const idKey = `${tipo}_${partido.id}`
+    setGenerandoDirecto(idKey)
+    try {
+      const datos = tipo === 'pre_partido' ? await cargarDatosPre(partido) : await cargarDatosPost(partido)
+      const ctx   = tipo === 'pre_partido' ? buildContextoPre(partido, datos) : buildContextoPost(partido, datos)
+      const esFaseElim = partido.fase && partido.fase !== 'grupo'
+      const faseLabel  = FASES_LABEL[partido.fase||'grupo'] || ''
+      const esPost = tipo === 'post_partido'
+      const indicacion = (indicaciones[idKey] || '').trim()
+
+      const instruccion = esPost
+        ? `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia POST-PARTIDO explosiva para Instagram/WhatsApp.
+
+Primero identifica tú mismo, de los datos, el dato más picante (cambio en tabla, racha, récord roto, hat-trick, primera victoria histórica) y úsalo como eje de la noticia.
+
+Escribe:
+1. Título IMPACTANTE mayúsculas (máx 8 palabras) — menciona el resultado${esFaseElim?' y la '+faseLabel:''}
+2. Máx 3 líneas — arranca con el resultado, usa el dato más picante que identificaste. Termina con qué viene ahora.
+3. 4 hashtags (#Golmebol #Armenia obligatorio)
+
+Texto plano, sin markdown. 10 segundos de lectura.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cuenta por encima de lo demás): ${indicacion}` : ''}`
+        : `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia PRE-PARTIDO explosiva para Instagram/WhatsApp.
+
+Primero identifica tú mismo, de los datos, el dato más interesante (hitos, hat-tricks, fases eliminatorias, historial) y úsalo como gancho.
+
+Escribe:
+1. Título IMPACTANTE mayúsculas (máx 8 palabras)${esFaseElim?' — incluye '+faseLabel:''}
+2. Máx 3 líneas — usa el dato clave como gancho, termina generando expectativa
+3. 4 hashtags (#Golmebol #Armenia obligatorio)
+
+Texto plano, sin markdown. 10 segundos de lectura.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cuenta por encima de lo demás): ${indicacion}` : ''}`
+
+      // Sin cache_control aquí: es una sola llamada, nunca se reusa este texto,
+      // así que "cachearlo" solo pagaría el 25% extra de escritura sin beneficio.
+      const texto = await llamarIA([{ role: 'user', content: `DATOS:\n${ctx}\n\n${instruccion}` }], 500)
+      const { titulo, cuerpo, hashtags } = parseNoticia(texto)
+
+      const { data: existente } = await supabase.from('noticias').select('id')
+        .eq('match_id', partido.id).eq('tipo', tipo).maybeSingle()
+      if (existente) {
+        await supabase.from('noticias').update({ titulo, cuerpo, hashtags }).eq('id', existente.id)
+      } else {
+        await supabase.from('noticias').insert({ tournament_id: torneoId, match_id: partido.id, tipo, titulo, cuerpo, hashtags })
+      }
+      showMsg('✅ Noticia generada')
+      fetchNoticias()
+    } catch (e) {
+      showMsg(e.message, 'error')
+    }
+    setGenerandoDirecto(null)
+  }
+
+  async function generarNoticiaFechaDirecta(jornadaNum) {
+    if (!jornadaNum) return
+    const idKey = `fecha_${jornadaNum}`
+    setGenerandoDirecto(idKey)
+    try {
+      const datos = await cargarDatosFecha(jornadaNum)
+      const ctx   = buildContextoFecha(jornadaNum, datos)
+      const indicacion = (indicaciones[idKey] || '').trim()
+
+      const instruccion = `Periodista deportivo GOLMEBOL, Armenia, Colombia. Resumen de una FECHA completa del torneo (varios partidos) para Instagram/WhatsApp.
+
+Primero identifica tú mismo, de los datos, el dato más interesante de toda la fecha (equipo que más brilló, cambios en la tabla, goleador de la fecha, resultado más contundente, hat-tricks) y úsalo como eje.
+
+Escribe:
+1. Título IMPACTANTE en mayúsculas (máx 8 palabras) sobre la Fecha ${jornadaNum}
+2. Máx 5 líneas — cuenta la fecha como una historia: qué equipo brilló, quién se hundió, el resultado más contundente, goleador de la fecha, cómo quedó la tabla. No listes los resultados uno por uno, narra el conjunto.
+3. 4 hashtags (#Golmebol #Armenia obligatorio)
+
+Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cuenta por encima de lo demás): ${indicacion}` : ''}`
+
+      // Sin cache_control aquí tampoco, por la misma razón: es una sola llamada.
+      const texto = await llamarIA([{ role: 'user', content: `DATOS:\n${ctx}\n\n${instruccion}` }], 550)
+      const { titulo, cuerpo, hashtags } = parseNoticia(texto)
+      await supabase.from('noticias').insert({ tournament_id: torneoId, match_id: null, tipo: 'semanal', titulo, cuerpo, hashtags })
+      showMsg('✅ Resumen de fecha generado')
+      fetchNoticias()
+    } catch (e) {
+      showMsg(e.message, 'error')
+    }
+    setGenerandoDirecto(null)
+  }
+
   const pendientes = partidos.filter(p => p.status !== 'finished')
   const jugados    = partidos.filter(p => p.status === 'finished')
-  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha' }
-  const tipoColor  = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de' }
-  const tipoBg     = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd' }
+  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha', ranking: '🏆 Ranking' }
+  const tipoColor  = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de', ranking: '#e8710a' }
+  const tipoBg     = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd', ranking: '#fce8d9' }
 
   const jornadasConPartidos = [...new Set(
     jugados.filter(p => p.matchday !== null && p.matchday !== undefined && p.matchday !== '').map(p => p.matchday)
@@ -741,9 +936,18 @@ Texto plano, sin markdown. 10 segundos de lectura.`
                       {yaGenerada && <span style={{ color:'#1e8e3e' }}>✓</span>}
                     </div>
                   </div>
-                  <button onClick={() => abrirChat(p, 'pre_partido')}
-                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:esFaseElim?'#e8710a':'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600' }}>
+                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) abrirChat(p, 'pre_partido') }}
+                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:esFaseElim?'#e8710a':'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600', marginBottom:'6px' }}>
                     <MessageSquare size={13}/> {yaGenerada?'Analizar y Regenerar':'Analizar y Generar'}
+                  </button>
+                  <input value={indicaciones[`pre_partido_${p.id}`] || ''}
+                    onChange={e => setIndicaciones(prev => ({ ...prev, [`pre_partido_${p.id}`]: e.target.value }))}
+                    placeholder="¿Qué quieres que diga? (opcional)"
+                    style={{ width:'100%', boxSizing:'border-box', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
+                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) generarNoticiaDirecta(p, 'pre_partido') }} disabled={generandoDirecto===`pre_partido_${p.id}`}
+                    title="Genera de una sola vez, sin chat previo — más barato"
+                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'6px', background:'#fff', border:'1px solid '+(esFaseElim?'#e8710a':'#1a73e8'), borderRadius:'8px', cursor:generandoDirecto?'not-allowed':'pointer', color:esFaseElim?'#e8710a':'#1a73e8', fontSize:'.72rem', fontWeight:'600', opacity:generandoDirecto&&generandoDirecto!==`pre_partido_${p.id}`?.5:1 }}>
+                    {generandoDirecto===`pre_partido_${p.id}` ? <><RefreshCw size={12} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar directo</>}
                   </button>
                 </div>
               )
@@ -773,9 +977,18 @@ Texto plano, sin markdown. 10 segundos de lectura.`
                       {yaGenerada && <span style={{ color:'#1e8e3e' }}>✓</span>}
                     </div>
                   </div>
-                  <button onClick={() => abrirChat(p, 'post_partido')}
-                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#1e8e3e', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600' }}>
+                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) abrirChat(p, 'post_partido') }}
+                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#1e8e3e', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600', marginBottom:'6px' }}>
                     <MessageSquare size={13}/> {yaGenerada?'Analizar y Regenerar':'Analizar y Generar'}
+                  </button>
+                  <input value={indicaciones[`post_partido_${p.id}`] || ''}
+                    onChange={e => setIndicaciones(prev => ({ ...prev, [`post_partido_${p.id}`]: e.target.value }))}
+                    placeholder="¿Qué quieres que diga? (opcional)"
+                    style={{ width:'100%', boxSizing:'border-box', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
+                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) generarNoticiaDirecta(p, 'post_partido') }} disabled={generandoDirecto===`post_partido_${p.id}`}
+                    title="Genera de una sola vez, sin chat previo — más barato"
+                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'6px', background:'#fff', border:'1px solid #1e8e3e', borderRadius:'8px', cursor:generandoDirecto?'not-allowed':'pointer', color:'#1e8e3e', fontSize:'.72rem', fontWeight:'600', opacity:generandoDirecto&&generandoDirecto!==`post_partido_${p.id}`?.5:1 }}>
+                    {generandoDirecto===`post_partido_${p.id}` ? <><RefreshCw size={12} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar directo</>}
                   </button>
                 </div>
               )
@@ -802,11 +1015,36 @@ Texto plano, sin markdown. 10 segundos de lectura.`
                   </select>
                 </div>
                 <button onClick={() => abrirChatFecha(fechaSeleccionada)} disabled={!fechaSeleccionada}
-                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#6c35de', border:'none', borderRadius:'8px', cursor:fechaSeleccionada?'pointer':'not-allowed', color:'#fff', fontSize:'.75rem', fontWeight:'600', opacity:fechaSeleccionada?1:.6 }}>
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#6c35de', border:'none', borderRadius:'8px', cursor:fechaSeleccionada?'pointer':'not-allowed', color:'#fff', fontSize:'.75rem', fontWeight:'600', marginBottom:'6px', opacity:fechaSeleccionada?1:.6 }}>
                   <MessageSquare size={13}/> Analizar y Generar
+                </button>
+                <input value={indicaciones[`fecha_${fechaSeleccionada}`] || ''}
+                  onChange={e => setIndicaciones(prev => ({ ...prev, [`fecha_${fechaSeleccionada}`]: e.target.value }))}
+                  placeholder="¿Qué quieres que diga? (opcional)"
+                  style={{ width:'100%', boxSizing:'border-box', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
+                <button onClick={() => generarNoticiaFechaDirecta(fechaSeleccionada)} disabled={!fechaSeleccionada || generandoDirecto===`fecha_${fechaSeleccionada}`}
+                  title="Genera de una sola vez, sin chat previo — más barato"
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'6px', background:'#fff', border:'1px solid #6c35de', borderRadius:'8px', cursor:fechaSeleccionada&&!generandoDirecto?'pointer':'not-allowed', color:'#6c35de', fontSize:'.72rem', fontWeight:'600', opacity:!fechaSeleccionada||(generandoDirecto&&generandoDirecto!==`fecha_${fechaSeleccionada}`)?.5:1 }}>
+                  {generandoDirecto===`fecha_${fechaSeleccionada}` ? <><RefreshCw size={12} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar directo</>}
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Ranking del torneo — goleador, valla menos vencida, tabla */}
+          <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'16px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ fontWeight:'600', color:'#202124', fontSize:'.9rem', marginBottom:'4px', display:'flex', alignItems:'center', gap:'6px' }}>
+              🏆 Ranking del torneo
+            </div>
+            <div style={{ fontSize:'.75rem', color:'#5f6368', marginBottom:'10px' }}>Goleador, valla menos vencida y tabla — sin partido puntual</div>
+            <input value={indicaciones['ranking'] || ''}
+              onChange={e => setIndicaciones(prev => ({ ...prev, ranking: e.target.value }))}
+              placeholder="¿Qué quieres que diga? (opcional)"
+              style={{ width:'100%', boxSizing:'border-box', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
+            <button onClick={generarNoticiaRankingDirecta} disabled={generandoDirecto==='ranking'}
+              style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#e8710a', border:'none', borderRadius:'8px', cursor:generandoDirecto?'not-allowed':'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600', opacity:generandoDirecto&&generandoDirecto!=='ranking'?.5:1 }}>
+              {generandoDirecto==='ranking' ? <><RefreshCw size={13} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar ranking</>}
+            </button>
           </div>
 
           <div style={{ background:'#e8f0fe', borderRadius:'10px', padding:'12px 14px' }}>
