@@ -266,6 +266,8 @@ export default function RegistroEquipoPage() {
     const { data: nuevo, error } = await supabase.from('players').insert({
       ...formNuevo,
       numero_cedula: cedula.trim(),
+      activo_membresia: true,
+      fecha_registro: new Date().toISOString(),
     }).select().single()
     if (error) { showMsg('Error al crear el jugador. Intenta de nuevo.'); setGuardando(false); setSubiendoFotos(false); return }
 

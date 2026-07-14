@@ -188,7 +188,7 @@ export default function AdminJugadoresPage() {
       if (error) showMsg('Error al guardar', 'error')
       else { showMsg('Jugador actualizado ✓'); setEditId(null) }
     } else {
-      const { error } = await supabase.from('players').insert(form)
+      const { error } = await supabase.from('players').insert({ ...form, activo_membresia: true, fecha_registro: new Date().toISOString() })
       if (error) showMsg('Error al crear', 'error')
       else showMsg('Jugador creado ✓')
     }

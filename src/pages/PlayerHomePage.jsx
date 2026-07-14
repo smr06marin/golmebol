@@ -270,6 +270,17 @@ export default function PlayerHomePage() {
       })
     }
 
+    // Aviso informativo: acceso gratis por ahora, suscripción futura
+    const nidGratis = 'acceso_gratis_v1'
+    if (!dismissed.includes(nidGratis)) {
+      notifsList.push({
+        id: nidGratis, icon: '🎁',
+        titulo: 'Golmebol es gratis por ahora',
+        texto: 'Más adelante habrá una suscripción de $10.000/mes para seguir disfrutando de la app completa. Te avisaremos con tiempo antes de que empiece a aplicar.',
+        color: '#8e44ad', bg: '#f8f0fc',
+      })
+    }
+
     setNotifs(notifsList)
 
     if (clp && clp.length > 0) {

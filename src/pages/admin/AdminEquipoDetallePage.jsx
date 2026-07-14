@@ -246,7 +246,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
       return showMsg('Selecciona al menos una posición', 'error')
     setGuardando(true)
-    const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar }).select().single()
+    const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString() }).select().single()
     if (error) { showMsg('Error al crear jugador', 'error'); setGuardando(false); return }
     if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); setGuardando(false); return }
     const torneo = torneos[0]

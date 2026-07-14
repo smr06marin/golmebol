@@ -241,13 +241,16 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
-    const { error: playerError } = await supabase.from('players').insert({
+    // Acceso gratis desde el día 1: ya no queda pendiente de activación manual.
+    const { data: nuevoPlayer, error: playerError } = await supabase.from('players').insert({
       user_id: authData.user?.id, name: nombre.trim(), numero_cedula: cedula.trim(),
-      whatsapp: whatsapp.trim(), activo_membresia: false, primer_ingreso: false,
-    })
+      whatsapp: whatsapp.trim(), activo_membresia: true, primer_ingreso: false, fecha_registro: new Date().toISOString(),
+    }).select().single()
     if (playerError) { setError('Error al crear perfil: ' + playerError.message); setLoading(false); return }
+    setPlayer(nuevoPlayer)
+    const splashData = await fetchSplashData(nuevoPlayer.id)
     setLoading(false)
-    setStep('pendiente')
+    setSplash(splashData)
   }
 
   const volver = () => {
@@ -453,29 +456,6 @@ export default function PlayerLoginPage() {
                 <button type="button" onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Volver</button>
               </form>
             </>
-          )}
-
-          {step === 'pendiente' && (
-            <div style={{ textAlign: 'center', padding: '8px 0' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>🎉</div>
-              <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem', marginBottom: '8px' }}>¡Registro exitoso!</div>
-              <div style={{ fontSize: '.82rem', color: '#5f6368', marginBottom: '20px', lineHeight: 1.6 }}>
-                Tu cuenta fue creada. Para activarla y competir por
-                <span style={{ fontWeight: '700', color: '#1a73e8' }}> $50.000</span>, escríbenos por WhatsApp y te activamos el primer mes gratis.
-              </div>
-              <div style={{ background: '#f8f9fa', borderRadius: '12px', padding: '14px', marginBottom: '20px' }}>
-                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px' }}>Tu número registrado</div>
-                <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>📱 {whatsapp}</div>
-              </div>
-              <a href={WA_LINK(`Hola! Me acabo de registrar en PREDIX Golmebol. Mi nombre es ${nombre}, cédula ${cedula} y quiero activar mi primer mes gratis 🎯`)}
-                target="_blank" rel="noopener noreferrer"
-                style={{ display: 'block', padding: '14px', background: '#25d366', borderRadius: '12px', color: '#fff', fontWeight: '800', fontSize: '1rem', textDecoration: 'none', marginBottom: '10px' }}>
-                📲 ESCRIBIR A GOLMEBOL →
-              </a>
-              <button onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.78rem' }}>
-                Volver al inicio
-              </button>
-            </div>
           )}
 
         </div>
