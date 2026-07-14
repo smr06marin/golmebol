@@ -6,6 +6,21 @@ import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
 
+// La planilla física siempre trae 12 casillas por equipo. Las que sobran
+// (sin jugador de la nómina) quedan como filas en blanco que el árbitro
+// puede llenar a mano con alguien que no está registrado en el sistema
+// (id: null) — se identifican por no tener id, y en la fila se puede
+// escribir el nombre directamente.
+function conRellenoA12(jugs) {
+  const base = jugs || []
+  const faltan = Math.max(0, 12 - base.length)
+  const vacios = Array.from({ length: faltan }).map(() => ({
+    id: null, nombre: '', cedula: '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false,
+    posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
+  }))
+  return [...base, ...vacios]
+}
+
 function FirmaCanvas({ titulo, onSave, onClose }) {
   const canvasRef = useRef(null)
   const drawing = useRef(false)
@@ -134,6 +149,7 @@ function ModalMVP({ jugadoresLocal, jugadoresVisitante, partido, mvpGuardado, on
     if (!equipo)  { setError('Selecciona el equipo'); return }
     if (!numero)  { setError('Ingresa el número de camiseta'); return }
     if (!jugador) { setError('No se encontró ese número en el equipo'); return }
+    if (!jugador.id) { setError('Ese jugador no está registrado en el sistema — no puede ser MVP'); return }
     onGuardar(jugador.id)
   }
 
@@ -379,7 +395,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   // que se guardó, para que al retomar desde otro celular el reloj muestre lo
   // que realmente debería marcar en este momento, no lo último que se guardó.
   function aplicarSnap(snap, defaultDur) {
-    setJugadoresLocal(snap.jugadoresLocal || []); setJugadoresVisitante(snap.jugadoresVisitante || [])
+    setJugadoresLocal(conRellenoA12(snap.jugadoresLocal)); setJugadoresVisitante(conRellenoA12(snap.jugadoresVisitante))
     setGolesLocal(snap.golesLocal || Array(24).fill(null)); setGolesVisitante(snap.golesVisitante || Array(24).fill(null))
     setFaltasAcumLocal(snap.faltasAcumLocal || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
     setFaltasAcumVis(snap.faltasAcumVis || { p1: Array(5).fill(null), p2: Array(5).fill(null) })
@@ -561,7 +577,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           aplicarSnap(JSON.parse(snap), 20)
         } else if (cache) {
           const c = JSON.parse(cache)
-          setJugadoresLocal(c.jugadoresLocal || []); setJugadoresVisitante(c.jugadoresVisitante || [])
+          setJugadoresLocal(conRellenoA12(c.jugadoresLocal)); setJugadoresVisitante(conRellenoA12(c.jugadoresVisitante))
           setTorneo(c.torneo || null)
           const dur = c.duracion || 20; setDuracionMinutos(dur); setDuracionInput(String(dur))
         }
@@ -623,6 +639,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       jugsLocalBase = applyTarjetas(jugsLocalBase, stats.filter(s => s.team_id === partido.home_team_id))
       jugsVisBase   = applyTarjetas(jugsVisBase,   stats.filter(s => s.team_id === partido.away_team_id))
     }
+    jugsLocalBase = conRellenoA12(jugsLocalBase)
+    jugsVisBase   = conRellenoA12(jugsVisBase)
 
     // Elegir el snapshot más reciente entre el de ESTE celular (localStorage)
     // y el que haya dejado guardado OTRO celular en el servidor (matches.live_state).
@@ -1144,19 +1162,29 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             const arqueroActual   = equipo === 'local' ? arqueroLocal : arqueroVis
             const esArqueroActual = j.id && arqueroActual?.id === j.id
             const hayArqueroEquipo = !!arqueroActual
+            const sinRegistro = !j.id
+            const tieneNombreEscrito = sinRegistro && (j.nombre || '').trim() !== ''
             return (
-              <tr key={idx} style={{ height: '19px', background: esMVP ? '#fff8e1' : esArqueroActual ? '#c8f7d4' : 'transparent' }}>
-                <td style={cell}><span style={{ ...inp, display: 'block' }}>{j.cedula}</span></td>
-                <td style={{ ...cellL, background: esMVP ? '#fff59d' : esArqueroActual ? '#a8f0c0' : (colorEquipo || '#1a3a8a') + '35' }}>
+              <tr key={idx} style={{ height: '19px', background: esMVP ? '#fff8e1' : esArqueroActual ? '#c8f7d4' : tieneNombreEscrito ? '#ffe6c2' : 'transparent' }}>
+                <td style={cell}>
+                  {sinRegistro
+                    ? <span style={{ ...inp, display: 'block', color: tieneNombreEscrito ? '#c46200' : '#bbb', fontWeight: '700', fontStyle: 'italic' }}>{tieneNombreEscrito ? 'Sin registro' : ''}</span>
+                    : <span style={{ ...inp, display: 'block' }}>{j.cedula}</span>}
+                </td>
+                <td style={{ ...cellL, background: esMVP ? '#fff59d' : esArqueroActual ? '#a8f0c0' : tieneNombreEscrito ? '#ffdca6' : (colorEquipo || '#1a3a8a') + '35' }}>
                   {esArqueroActual && <div style={{ fontSize: '6px', fontWeight: '800', lineHeight: 1, color: '#1e8e3e' }}>ARQUERO TITULAR</div>}
-                  <span style={{ ...inpL, display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#111' }}>{j.nombre}
+                  {sinRegistro && (
+                    <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
+                      placeholder="Jugador sin registrar..." style={{ ...inpL, fontWeight: '700', color: '#111', width: '100%' }}/>
+                  )}
+                  <span style={{ ...inpL, display: sinRegistro ? 'none' : 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#111' }}>{j.nombre}
                     {esArqueroActual && <button onClick={() => liberarArquero(equipo)} title="Cambiar de arquero" style={{ background: '#fff', border: '1px solid #1e8e3e', borderRadius: '3px', cursor: 'pointer', fontSize: '8px', padding: '0 3px', color: '#1e8e3e' }}>🔄 cambiar</button>}
                     {esArqueroActual ? '' : ' '}
                   </span>
                   {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                 </td>
-                {hayArqueroEquipo ? (
+                {(hayArqueroEquipo || sinRegistro) ? (
                   <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
                 ) : (
                   <td style={{ ...cell, background: '#fff3cd', padding: '1px' }}>
@@ -1197,9 +1225,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               </tr>
             )
           })}
-          {Array.from({ length: Math.max(0, 12 - jugs.length) }).map((_, i) => (
-            <tr key={`e${i}`} style={{ height: '17px' }}>{Array.from({ length: 14 }).map((_, j) => <td key={j} style={cell}>&nbsp;</td>)}</tr>
-          ))}
         </tbody>
       </table>
     )

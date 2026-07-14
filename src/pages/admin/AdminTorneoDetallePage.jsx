@@ -388,6 +388,8 @@ export default function AdminTorneoDetallePage() {
   const [msg,       setMsg]       = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [modalPartidoAdmin, setModalPartidoAdmin] = useState(null)
+  const [partidoAEliminar, setPartidoAEliminar] = useState(null)
+  const [eliminandoPartido, setEliminandoPartido] = useState(false)
 
   const [goleadores,   setGoleadores]   = useState([])
   const [vallas,        setVallas]        = useState({ opcion1: [], opcion2: [] })
@@ -1380,10 +1382,21 @@ export default function AdminTorneoDetallePage() {
     setLoadingPartido(false)
   }
 
-  async function handleEliminarPartido(pid) {
-    if (!confirm('¿Eliminar partido?')) return
-    await supabase.from('matches').delete().eq('id', pid)
-    fetchPartidos(); showMsg('Partido eliminado')
+  // Borra el partido y todo lo que quedó enganchado a él (estadísticas,
+  // MVP, apuestas de Predix, predicciones, historial de ediciones). Cada
+  // tabla se intenta por separado y en orden: si alguna no existe en este
+  // proyecto o falla, no frena la limpieza de las demás ni el borrado final.
+  async function handleEliminarPartidoConfirmado(pid) {
+    setEliminandoPartido(true)
+    const dependientes = ['player_match_stats', 'predicciones', 'tournament_logros', 'predix_apuestas', 'predix_cruces', 'match_edit_log']
+    for (const tabla of dependientes) {
+      try { await supabase.from(tabla).delete().eq('match_id', pid) } catch (e) { /* la tabla puede no existir */ }
+    }
+    const { error } = await supabase.from('matches').delete().eq('id', pid)
+    setEliminandoPartido(false)
+    setPartidoAEliminar(null)
+    if (error) { showMsg('Error al eliminar el partido', 'error'); return }
+    fetchPartidos(); fetchBracket(); showMsg('Partido eliminado ✓')
   }
 
   async function handleGuardarResultado() {
@@ -1716,6 +1729,57 @@ export default function AdminTorneoDetallePage() {
       {modalPartidoAdmin && (
         <ModalPartidoAdmin partido={modalPartidoAdmin} onClose={() => setModalPartidoAdmin(null)}/>
       )}
+
+      {/* Confirmación al eliminar un partido — avisa qué más se borra */}
+      {partidoAEliminar && (() => {
+        const p = partidoAEliminar
+        const esJugadoEliminar = p.status === 'finished'
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+            onClick={e => e.target === e.currentTarget && !eliminandoPartido && setPartidoAEliminar(null)}>
+            <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '440px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>🗑️ Eliminar partido</div>
+                <button onClick={() => !eliminandoPartido && setPartidoAEliminar(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+              </div>
+              <div style={{ padding: '20px' }}>
+                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>{p.home?.name} vs {p.away?.name}</div>
+                {p.played_at && <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '16px' }}>📅 {new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'long',day:'2-digit',month:'long'})}</div>}
+
+                <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px' }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: '800', color: '#d93025', marginBottom: '8px' }}>Esto es definitivo. Además del partido, también se borra:</div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '.78rem', color: '#5f6368', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {esJugadoEliminar ? (
+                      <>
+                        <li>El resultado y la planilla (goles, tarjetas, faltas de cada jugador)</li>
+                        <li>El MVP del partido, si se marcó alguno</li>
+                        <li>Deja de contar en las estadísticas del torneo y ya no se le cobrará arbitraje a los equipos por este partido</li>
+                        <li>Las predicciones y apuestas Predix 1x1 que otros jugadores hicieron sobre este partido</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Los árbitros asignados a este partido</li>
+                        <li>Las predicciones y apuestas Predix 1x1 que ya se hayan hecho sobre este partido</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                  <button onClick={() => setPartidoAEliminar(null)} disabled={eliminandoPartido}
+                    style={{ flex: 1, padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', fontWeight: '600' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={() => handleEliminarPartidoConfirmado(p.id)} disabled={eliminandoPartido}
+                    style={{ flex: 1, padding: '11px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: eliminandoPartido ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '700', opacity: eliminandoPartido ? .7 : 1 }}>
+                    {eliminandoPartido ? 'Eliminando...' : 'Sí, eliminar todo'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       {/* Modal reemplazar equipo en una llave */}
       {reemplazoLlave && (() => {
         const disponibles = getEquiposParaReemplazo()
@@ -2450,7 +2514,7 @@ export default function AdminTorneoDetallePage() {
                                 <button onClick={() => abrirPlanilla(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', fontWeight: '600', display:'flex', alignItems:'center', gap:'4px' }}>
                                   {esJugado ? '✏️ Resultado' : <><Check size={12}/> Resultado</>}
                                 </button>
-                                {!esJugado && <button onClick={() => handleEliminarPartido(p.id)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center', gap:'4px', fontSize:'.75rem' }}><X size={13}/> Eliminar</button>}
+                                <button onClick={() => setPartidoAEliminar(p)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center', gap:'4px', fontSize:'.75rem' }}><X size={13}/> Eliminar</button>
                               </div>
                             </div>
                           )
