@@ -374,6 +374,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante,
       duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante,
       periodo, segundos, corriendo, tiempoAgotado, tiempoExtra,
+      arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis,
       savedAt: new Date().toISOString(), pendienteSync: true,
     }
   }
@@ -409,6 +410,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
     setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
     if (snap.mvpId) setMvpId(snap.mvpId)
+    // Arqueros ya marcados: se restauran para no volver a pedirlos.
+    // (snapshots viejos no traen estos campos — en ese caso no se toca nada)
+    if (snap.arqueroLocal) setArqueroLocal(snap.arqueroLocal)
+    if (snap.arqueroVis)   setArqueroVis(snap.arqueroVis)
+    if (snap.histArquerosLocal?.length) setHistArquerosLocal(snap.histArquerosLocal)
+    if (snap.histArquerosVis?.length)   setHistArquerosVis(snap.histArquerosVis)
     if (snap.huboPenales) setHuboPenales(snap.huboPenales); if (snap.penalesGanador) setPenalesGanador(snap.penalesGanador)
     if (snap.penalesLocal) setPenalesLocal(snap.penalesLocal); if (snap.penalesVisitante) setPenalesVisitante(snap.penalesVisitante)
     const dur = snap.duracionMinutos || defaultDur
@@ -507,7 +514,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const snap = construirSnap()
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
     sincronizarRemoto(snap)
-  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra])
+  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis])
 
   useEffect(() => { fetchTodo() }, [])
   useEffect(() => {
@@ -527,15 +534,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       if (arqData && arqData.length > 0) {
         const arqLocales = arqData.filter(a => a.team_id === partido.home_team_id)
         const arqVises   = arqData.filter(a => a.team_id === partido.away_team_id)
+        // prev || ...: si el snapshot de autoguardado ya restauró un arquero
+        // (más reciente), no se pisa con lo que haya guardado en la BD.
         if (arqLocales.length > 0) {
           const ultimo = arqLocales[arqLocales.length-1]
-          setArqueroLocal({ id: ultimo.player_id, orden: ultimo.orden })
-          setHistArquerosLocal(arqLocales.map(a => ({ id: a.player_id, orden: a.orden })))
+          setArqueroLocal(prev => prev || { id: ultimo.player_id, orden: ultimo.orden })
+          setHistArquerosLocal(prev => prev.length > 0 ? prev : arqLocales.map(a => ({ id: a.player_id, orden: a.orden })))
         }
         if (arqVises.length > 0) {
           const ultimo = arqVises[arqVises.length-1]
-          setArqueroVis({ id: ultimo.player_id, orden: ultimo.orden })
-          setHistArquerosVis(arqVises.map(a => ({ id: a.player_id, orden: a.orden })))
+          setArqueroVis(prev => prev || { id: ultimo.player_id, orden: ultimo.orden })
+          setHistArquerosVis(prev => prev.length > 0 ? prev : arqVises.map(a => ({ id: a.player_id, orden: a.orden })))
         }
       }
       // Precargar árbitros asignados al partido si no hay snap local
