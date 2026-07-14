@@ -179,6 +179,7 @@ export default function PlayerLoginPage() {
   const [nombre,          setNombre]          = useState('')
   const [whatsapp,        setWhatsapp]        = useState('')
   const [equipo,          setEquipo]          = useState('')
+  const [nombreVerif,     setNombreVerif]     = useState('') // nombre + primer apellido para verificar identidad
   const [player,          setPlayer]          = useState(null)
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
@@ -210,8 +211,24 @@ export default function PlayerLoginPage() {
       .eq('numero_cedula', cedula.trim())
       .single()
     setLoading(false)
-    if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('crear_pass') }
+    // Si el jugador existe pero aún no tiene cuenta, NO se muestra su nombre de
+    // una vez: primero debe demostrar que es él escribiendo nombre y primer
+    // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).
+    if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('verificar_nombre') }
     else setShowPromo(true)
+  }
+
+  // Compara lo que escribió contra el nombre guardado (sin tildes ni mayúsculas)
+  function handleVerificarNombre(e) {
+    e.preventDefault()
+    const normalizar = s => (s || '').toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').trim()
+    const escrito  = normalizar(nombreVerif).split(/\s+/).filter(Boolean)
+    const guardado = normalizar(player?.name).split(/\s+/).filter(Boolean)
+    if (escrito.length < 2) { setError('Escribe tu nombre y tu primer apellido'); return }
+    const coincide = escrito.every(palabra => guardado.includes(palabra))
+    if (!coincide) { setError('Los datos no coinciden con el jugador registrado. Verifica tu nombre y primer apellido, o escríbenos por WhatsApp.'); return }
+    setError('')
+    setStep('crear_pass')
   }
 
   async function handleLogin(e) {
@@ -277,7 +294,7 @@ export default function PlayerLoginPage() {
 
   const volver = () => {
     setStep('cedula'); setPass(''); setPass2(''); setError('')
-    setNombre(''); setWhatsapp(''); setEquipo(''); setPlayer(null); setShowPromo(false)
+    setNombre(''); setWhatsapp(''); setEquipo(''); setNombreVerif(''); setPlayer(null); setShowPromo(false)
   }
 
   // Mensaje de WhatsApp con los datos que el admin necesita para verificar
@@ -410,18 +427,60 @@ export default function PlayerLoginPage() {
             </>
           )}
 
+          {step === 'verificar_nombre' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>🛡️</div>
+                <div>
+                  <div style={{ fontWeight: '600', color: '#202124', fontSize: '.95rem' }}>¡Ya estás registrado!</div>
+                  <div style={{ fontSize: '.75rem', color: '#5f6368' }}>Cédula {cedula}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '20px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 12px', lineHeight: 1.5 }}>
+                Para verificar que eres tú, escribe tu <b>nombre y primer apellido</b> tal como te registraron.
+              </div>
+              <form onSubmit={handleVerificarNombre} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Nombre y primer apellido</label>
+                  <input value={nombreVerif} onChange={e => setNombreVerif(e.target.value)} placeholder="Ej: Juan Pérez" type="text" style={inp} autoFocus
+                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
+                </div>
+                {error && (
+                  <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.82rem', color: '#d93025' }}>
+                    {error}
+                    <a href={WA_LINK(`Hola! Estoy intentando activar mi cuenta de Golmebol con la cédula ${cedula} pero no me deja verificar mi nombre. ¿Me ayudan? 🙏`)}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#25d366', borderRadius: '8px', color: '#fff', fontWeight: '700', fontSize: '.8rem', textDecoration: 'none', marginTop: '10px' }}>
+                      📲 Escribir a Golmebol
+                    </a>
+                  </div>
+                )}
+                <button type="submit"
+                  style={{ marginTop: '4px', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '600', fontSize: '.95rem' }}>
+                  Verificar →
+                </button>
+                <button type="button" onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Usar otra cédula</button>
+              </form>
+            </>
+          )}
+
           {step === 'crear_pass' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                 <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#e6f4ea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>✅</div>
                 <div>
                   <div style={{ fontWeight: '600', color: '#202124', fontSize: '.95rem' }}>{player?.name}</div>
-                  <div style={{ fontSize: '.75rem', color: '#1e8e3e', fontWeight: '500' }}>Jugador registrado · Crea tu contraseña</div>
+                  <div style={{ fontSize: '.75rem', color: '#1e8e3e', fontWeight: '500' }}>Identidad verificada · Crea tu contraseña</div>
                 </div>
               </div>
-              <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '20px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 12px' }}>
+              <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '12px', background: '#f8f9fa', borderRadius: '8px', padding: '10px 12px' }}>
                 Tu perfil ya existe. Crea una contraseña para acceder al portal.
               </div>
+              <a href={WA_LINK(`Hola! Soy ${player?.name}, cédula ${cedula}. Estoy activando mi cuenta de Golmebol ✅`)}
+                target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: '#e6f9ee', border: '1px solid #b7e4c7', borderRadius: '8px', color: '#128c4b', fontWeight: '700', fontSize: '.78rem', textDecoration: 'none', marginBottom: '20px' }}>
+                📲 Avisar a Golmebol por WhatsApp (con mis datos guardados)
+              </a>
               <form onSubmit={handleCrearCuenta} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Contraseña</label>
