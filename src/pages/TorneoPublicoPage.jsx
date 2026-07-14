@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Trophy, MapPin, Calendar, Star } from 'lucide-react'
+import { Trophy, MapPin, Calendar } from 'lucide-react'
+import RankingPoster from '../components/RankingPoster'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -111,7 +112,7 @@ export default function TorneoPublicoPage() {
         supabase.from('tournaments').select('*').eq('id', id).single(),
         supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', id),
         supabase.from('matches').select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('tournament_id', id).order('played_at', { ascending: true }),
-        supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).order('total_goals', { ascending: false }).limit(10),
+        supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false }),
       ])
       setTorneo(t)
       setEquipos((teData || []).map(d => ({ ...d.teams })))
@@ -386,38 +387,20 @@ export default function TorneoPublicoPage() {
         {tab === 'goleadores' && (
           <>
           <TopGoleadoresBanner goleadores={goleadores} vallaRow={vallaRow} vallaArqueros={vallaArqueros}/>
-          <div style={s.card}>
-            <div style={s.cardTitle}>Top goleadores</div>
-            {goleadores.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Sin estadísticas aún</div>
-            ) : goleadores.map((g, i) => (
-              <div key={`${g.player_id}-${g.team_id}`} style={{ padding: '12px 18px', borderTop: i > 0 ? '1px solid #f1f3f4' : 'none', display: 'flex', alignItems: 'center', gap: '12px', background: i === 0 ? '#fffbf0' : '#fff' }}>
-                <div style={{ width: '28px', textAlign: 'center', fontWeight: '800', fontSize: '.9rem', color: i === 0 ? '#f59e0b' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#c9cdd2', flexShrink: 0 }}>
-                  {i === 0 ? <Star size={18} fill="#f59e0b" color="#f59e0b"/> : i + 1}
-                </div>
-                <div style={{ width: '38px', height: '38px', borderRadius: '50%', overflow: 'hidden', background: '#f1f3f4', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {g.photo_url ? <img src={g.photo_url} alt={g.player_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1rem' }}>👤</span>}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.player_name}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
-                    <div style={{ width: '16px', height: '16px', borderRadius: '3px', overflow: 'hidden', flexShrink: 0 }}>
-                      <TeamLogo logo_url={g.team_logo} name={g.team_name} size={16}/>
-                    </div>
-                    <span style={{ fontSize: '.75rem', color: '#5f6368' }}>{g.team_name}</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontWeight: '800', fontSize: '1.25rem', color: '#1a73e8', lineHeight: 1 }}>{g.total_goals}</div>
-                    <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>goles</div>
-                  </div>
-                  {g.total_yellow > 0 && <span style={{ fontSize: '.75rem', background: '#fef9c3', color: '#ca8a04', borderRadius: '6px', padding: '2px 7px', fontWeight: '700' }}>🟨{g.total_yellow}</span>}
-                  {g.total_red    > 0 && <span style={{ fontSize: '.75rem', background: '#fee2e2', color: '#dc2626', borderRadius: '6px', padding: '2px 7px', fontWeight: '700' }}>🟥{g.total_red}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
+          <RankingPoster
+            titulo="⚽ Top goleadores"
+            statLabel="goles" statColor="#ffd54a"
+            vacio="Sin estadísticas aún"
+            rows={goleadores.map(g => ({
+              id: `${g.player_id}-${g.team_id}`,
+              nombre: g.player_name,
+              foto: g.photo_url,
+              teamName: g.team_name,
+              teamLogo: g.team_logo,
+              valor: g.total_goals,
+              sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
+            }))}
+          />
           </>
         )}
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Shield, X } from 'lucide-react'
+import RankingPoster from '../components/RankingPoster'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -704,42 +705,20 @@ export default function PlayerTorneoPage() {
           <div>
             <TopGoleadoresBanner goleadores={goleadores} vallaDestacados={vallaDestacados} vallaRecibidos={vallaRecibidos}/>
 
-            {goleadores.length === 0 ? (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚽</div>
-                <div style={{ fontSize: '.875rem' }}>Sin goles aún</div>
-              </div>
-            ) : (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 36px 30px 30px 30px', gap: '2px', padding: '10px 12px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.65rem', fontWeight: '600', color: '#5f6368' }}>
-                  <div>#</div><div>Jugador</div><div>Equipo</div>
-                  <div style={{ textAlign: 'center', color: '#1a73e8' }}>⚽</div>
-                  <div style={{ textAlign: 'center' }}>🟨</div><div style={{ textAlign: 'center' }}>🟦</div><div style={{ textAlign: 'center' }}>🟥</div>
-                </div>
-                {goleadores.map((g, i) => (
-                  <div key={`${g.player_id}-${g.team_id}`} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 1fr 36px 30px 30px 30px', gap: '2px', padding: '11px 12px', borderBottom: i < goleadores.length - 1 ? '1px solid #f1f3f4' : 'none', alignItems: 'center' }}>
-                    <div style={{ fontSize: '.78rem', fontWeight: '700', color: i === 0 ? '#f9a825' : i === 1 ? '#9aa0a6' : i === 2 ? '#cd7f32' : '#bdbdbd' }}>{i + 1}°</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0 }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {g.photo_url ? <img src={g.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '.9rem' }}>👤</span>}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.player_name}</div>
-                        <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{g.partidos_jugados} PJ</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
-                      {g.team_logo && <img src={g.team_logo} style={{ width: '16px', height: '16px', objectFit: 'contain', flexShrink: 0 }}/>}
-                      <span style={{ fontSize: '.72rem', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.team_name}</span>
-                    </div>
-                    <div style={{ textAlign: 'center' }}><span style={{ fontWeight: '700', fontSize: '.95rem', color: i === 0 ? '#f9a825' : '#1a73e8' }}>{g.total_goals}</span></div>
-                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_yellow||0)>0?'#f9a825':'#bdbdbd', fontWeight: (g.total_yellow||0)>0?'600':'400' }}>{g.total_yellow||0}</div>
-                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_blue ||0)>0?'#1a73e8':'#bdbdbd', fontWeight: (g.total_blue ||0)>0?'600':'400' }}>{g.total_blue ||0}</div>
-                    <div style={{ textAlign: 'center', fontSize: '.8rem', color: (g.total_red  ||0)>0?'#d93025':'#bdbdbd', fontWeight: (g.total_red  ||0)>0?'600':'400' }}>{g.total_red  ||0}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <RankingPoster
+              titulo="⚽ Goleadores"
+              statLabel="goles" statColor="#ffd54a"
+              vacio="Sin goles aún"
+              rows={goleadores.map(g => ({
+                id: `${g.player_id}-${g.team_id}`,
+                nombre: g.player_name,
+                foto: g.photo_url,
+                teamName: g.team_name,
+                teamLogo: g.team_logo,
+                valor: g.total_goals,
+                sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_blue||0)>0?` · 🟦${g.total_blue}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
+              }))}
+            />
 
             {/* Valla menos vencida */}
             <div style={{ marginTop: '20px' }}>
@@ -761,34 +740,20 @@ export default function PlayerTorneoPage() {
                   ? '📊 Promedio de goles recibidos por partido — equipos clasificados a eliminatoria'
                   : '🏆 Arqueros finalistas y tercer/cuarto puesto — total goles recibidos'}
               </div>
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 60px 60px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.72rem', fontWeight: '600', color: '#5f6368' }}>
-                  <div>#</div><div>ARQUERO</div><div>EQUIPO</div>
-                  <div style={{ textAlign: 'center' }}>PJ</div>
-                  <div style={{ textAlign: 'center', color: '#1e8e3e' }}>{modoValla==='opcion1'?'PROM':'GC'}</div>
-                </div>
-                {(modoValla === 'opcion1' ? vallas.opcion1 : vallas.opcion2).length === 0 ? (
-                  <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Sin datos de arqueros aún</div>
-                ) : (modoValla === 'opcion1' ? vallas.opcion1 : vallas.opcion2).map((p, i) => (
-                  <div key={p.player_id} style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 60px 60px', padding: '11px 16px', borderBottom: i < (modoValla==='opcion1'?vallas.opcion1:vallas.opcion2).length-1?'1px solid #f1f3f4':'none', alignItems: 'center' }}>
-                    <div style={{ fontSize: '.8rem', fontWeight: '700', color: i===0?'#f9a825':i===1?'#9aa0a6':i===2?'#cd7f32':'#9aa0a6' }}>{i+1}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {p.foto ? <img src={p.foto} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>🧤</span>}
-                      </div>
-                      <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{p.nombre}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {p.team_logo && <div style={{ width:'20px', height:'20px', borderRadius:'4px', overflow:'hidden' }}><img src={p.team_logo} style={{ width:'100%', height:'100%', objectFit:'contain' }}/></div>}
-                      <span style={{ fontSize: '.8rem', color: '#5f6368' }}>{p.team_name}</span>
-                    </div>
-                    <div style={{ textAlign: 'center', fontSize: '.875rem', color: '#5f6368' }}>{p.pj}</div>
-                    <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '1rem', color: '#1e8e3e' }}>
-                      {modoValla==='opcion1' ? p.promedio : p.total_recibidos}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <RankingPoster
+                titulo="🧤 Valla menos vencida"
+                statLabel={modoValla === 'opcion1' ? 'prom' : 'GC'} statColor="#00ddd0"
+                vacio="Sin datos de arqueros aún"
+                rows={(modoValla === 'opcion1' ? vallas.opcion1 : vallas.opcion2).map(p => ({
+                  id: p.player_id,
+                  nombre: p.nombre,
+                  foto: p.foto,
+                  teamName: p.team_name,
+                  teamLogo: p.team_logo,
+                  valor: modoValla === 'opcion1' ? p.promedio : p.total_recibidos,
+                  sub: `${p.pj} PJ`,
+                }))}
+              />
             </div>
           </div>
         )}
