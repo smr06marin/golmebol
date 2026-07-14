@@ -377,6 +377,16 @@ export default function AdminTorneoDetallePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // Borrador de la jornada aleatoria: se guarda en localStorage para que si
+  // el navegador recarga o el admin cambia de pestaña y vuelve, siga exactamente
+  // donde iba. Solo "Guardar jornada" o "Salir" lo eliminan.
+  const draftJornadaKey = `jornada_draft_${id}`
+  const draftJornadaRef = useRef(undefined)
+  if (draftJornadaRef.current === undefined) {
+    try { draftJornadaRef.current = JSON.parse(localStorage.getItem(`jornada_draft_${id}`)) || null } catch { draftJornadaRef.current = null }
+  }
+  const draftJornada = draftJornadaRef.current
+
   const [torneo,    setTorneo]    = useState(null)
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
@@ -384,7 +394,7 @@ export default function AdminTorneoDetallePage() {
   const [canchas,   setCanchas]   = useState([])
   const [fechas,    setFechas]    = useState([])
   const [loading,   setLoading]   = useState(true)
-  const [tab,       setTab]       = useState('actividad')
+  const [tab,       setTab]       = useState(draftJornada ? 'partidos' : 'actividad')
   const [msg,       setMsg]       = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [modalPartidoAdmin, setModalPartidoAdmin] = useState(null)
@@ -407,15 +417,16 @@ export default function AdminTorneoDetallePage() {
   const [editandoPartidoForm, setEditandoPartidoForm] = useState(null)
   const [formEditPartido,     setFormEditPartido]     = useState({})
 
-  const [subTab,          setSubTab]          = useState('partidos')
+  const [subTab,          setSubTab]          = useState(draftJornada ? 'jornada' : 'partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
   const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '' })
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
   const [nuevaCancha,     setNuevaCancha]     = useState('')
 
-  const [configJornada,   setConfigJornada]   = useState({ fecha: '', hora_inicio: '', numero: '' })
-  const [jornadaGenerada, setJornadaGenerada] = useState([])
-  const [permitirIntergrupo, setPermitirIntergrupo] = useState(false)
+  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', hora_inicio: '', numero: '' })
+  const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
+  const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
+  const [editJornadaIdx,  setEditJornadaIdx]  = useState(null) // índice del partido generado en edición (hora/cancha)
   const [drag,            setDrag]            = useState(null)
   const [dragOver,        setDragOver]        = useState(null)
   const [loadingPartido,  setLoadingPartido]  = useState(false)
@@ -509,6 +520,23 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
+
+  // Guardar el borrador de la jornada aleatoria en cada cambio. Así, sin
+  // importar qué pase (recarga, cambio de pestaña, se cae el internet), al
+  // volver se retoma exactamente igual. Solo Guardar o Salir lo eliminan.
+  useEffect(() => {
+    const hayBorrador = jornadaGenerada.length > 0 || configJornada.fecha || configJornada.hora_inicio || configJornada.numero
+    if (hayBorrador) {
+      localStorage.setItem(draftJornadaKey, JSON.stringify({ config: configJornada, jornada: jornadaGenerada, intergrupo: permitirIntergrupo }))
+    }
+  }, [jornadaGenerada, configJornada, permitirIntergrupo])
+
+  function salirJornada() {
+    localStorage.removeItem(draftJornadaKey)
+    setJornadaGenerada([])
+    setConfigJornada({ fecha: '', hora_inicio: '', numero: '' })
+    setEditJornadaIdx(null)
+  }
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -1439,6 +1467,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   function generarJornada() {
+    setEditJornadaIdx(null)
     if (!configJornada.fecha) return showMsg('Selecciona la fecha', 'error')
     if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
@@ -1490,9 +1519,14 @@ export default function AdminTorneoDetallePage() {
     }))
   }
 
+  function actualizarPartidoJornada(i, cambios) {
+    setJornadaGenerada(prev => prev.map((p, idx) => idx === i ? { ...p, ...cambios } : p))
+  }
+
   function handleEliminarParejaJornada(i) {
     const p = jornadaGenerada[i]
     if (!p || p.descanso) return
+    setEditJornadaIdx(null)
     const nueva = jornadaGenerada.filter((_, idx) => idx !== i)
     nueva.push({ local: p.local, visitante: null, descanso: true })
     if (p.visitante) nueva.push({ local: p.visitante, visitante: null, descanso: true })
@@ -1509,13 +1543,13 @@ export default function AdminTorneoDetallePage() {
     if (fechaErr) { showMsg('Error al crear jornada', 'error'); setLoadingPartido(false); return }
     const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
       tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
-      played_at: `${configJornada.fecha}T${p.hora}:00-05:00`, location: p.cancha?.nombre || null,
+      played_at: `${configJornada.fecha}T${p.hora || configJornada.hora_inicio}:00-05:00`, location: p.cancha?.nombre || null,
       matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id,
       status: 'scheduled', fase: 'grupo',
     }))
     const { error } = await supabase.from('matches').insert(inserts)
     if (error) showMsg('Error al guardar partidos', 'error')
-    else { showMsg(`Jornada creada con ${inserts.length} partidos ✓`); setJornadaGenerada([]); fetchPartidos(); fetchFechas() }
+    else { showMsg(`Jornada creada con ${inserts.length} partidos ✓`); salirJornada(); fetchPartidos(); fetchFechas() }
     setLoadingPartido(false)
   }
 
@@ -2554,6 +2588,7 @@ export default function AdminTorneoDetallePage() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Jornada {configJornada.numero || fechas.length + 1}</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={salirJornada} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}><X size={14}/> Salir</button>
                       <button onClick={generarJornada} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}><Shuffle size={14}/> Regenerar</button>
                       <button onClick={handleGuardarJornada} disabled={loadingPartido} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1e8e3e', border: 'none', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500', opacity: loadingPartido ? .7 : 1 }}><Check size={14}/> {loadingPartido ? 'Guardando...' : 'Guardar jornada'}</button>
                     </div>
@@ -2604,8 +2639,30 @@ export default function AdminTorneoDetallePage() {
                           </div>
                           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                               {p.intergrupo && <span style={{ fontSize: '.65rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>Intergrupo</span>}
-                              <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {p.hora}</span>
-                              <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre}</span>
+                              {editJornadaIdx === i ? (
+                                <>
+                                  <input type="time" value={p.hora || ''} onChange={e => actualizarPartidoJornada(i, { hora: e.target.value })}
+                                    style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124' }}/>
+                                  <select value={p.cancha ? String(p.cancha.id) : ''} onChange={e => actualizarPartidoJornada(i, { cancha: canchas.find(c => String(c.id) === e.target.value) || null })}
+                                    style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124', maxWidth: '140px' }}>
+                                    <option value="">Sin cancha</option>
+                                    {canchas.map(c => <option key={c.id} value={String(c.id)}>{c.nombre}</option>)}
+                                  </select>
+                                  <button onClick={() => setEditJornadaIdx(null)} title="Listo"
+                                    style={{ background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center' }}>
+                                    <Check size={13}/>
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {p.hora}</span>
+                                  <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre || 'Sin cancha'}</span>
+                                  <button onClick={() => setEditJornadaIdx(i)} title="Editar horario y cancha"
+                                    style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem' }}>
+                                    ✏️ Editar
+                                  </button>
+                                </>
+                              )}
                               <button onClick={() => handleEliminarParejaJornada(i)} title="Eliminar partido — ambos equipos pasan a descansar"
                                 style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '4px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
                                 <X size={13}/>
