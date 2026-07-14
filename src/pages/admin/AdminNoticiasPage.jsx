@@ -7,6 +7,9 @@ import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, C
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
 
 async function llamarIA(messages, maxTokens = 600) {
+  if (!API_KEY) {
+    throw new Error('Falta configurar la clave de IA en este sitio (VITE_ANTHROPIC_API_KEY). Avísale a quien administra el hosting.')
+  }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -17,8 +20,15 @@ async function llamarIA(messages, maxTokens = 600) {
     },
     body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, messages }),
   })
-  const data = await res.json()
-  return data.content?.[0]?.text || ''
+  let data
+  try { data = await res.json() } catch { data = null }
+  if (!res.ok) {
+    const detalle = data?.error?.message || `${res.status} ${res.statusText}`
+    throw new Error(`La IA no respondió (${detalle})`)
+  }
+  const texto = data?.content?.[0]?.text
+  if (!texto) throw new Error('La IA devolvió una respuesta vacía, intenta de nuevo')
+  return texto
 }
 
 function parseNoticia(texto) {
@@ -447,8 +457,13 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
 
     const promptInicial = `Analista deportivo GOLMEBOL. Resumen de la FECHA ${jornadaNum} completa (todos los partidos de esa jornada):\n${ctx}\n\nDame máx 4 puntos con los datos MÁS INTERESANTES de toda la fecha (equipo que más brilló, cambios en la tabla, goleador de la fecha, resultado más contundente, hat-tricks). Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
 
-    const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
-    setChatMessages([{ role: 'assistant', content: respuestaIA }])
+    try {
+      const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
+      setChatMessages([{ role: 'assistant', content: respuestaIA }])
+    } catch (e) {
+      setChatMessages([{ role: 'assistant', content: `⚠️ ${e.message}` }])
+      showMsg(e.message, 'error')
+    }
     setChatLoading(false)
   }
 
@@ -476,8 +491,13 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
 
     const promptInicial = `Analista deportivo GOLMEBOL. Datos del ${tipoTexto}:\n${ctx}\n\nDame máx 4 puntos con los datos MÁS INTERESANTES y picantes para la noticia${tipo==='post_partido' ? ' (prioriza: cambios en tabla, rachas, récords rotos, hat-tricks, primera victoria histórica entre estos equipos)' : ' (prioriza hitos ⚠️, hat-tricks, fases eliminatorias, historial)'}. Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
 
-    const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
-    setChatMessages([{ role: 'assistant', content: respuestaIA }])
+    try {
+      const respuestaIA = await llamarIA([{ role: 'user', content: promptInicial }], 400)
+      setChatMessages([{ role: 'assistant', content: respuestaIA }])
+    } catch (e) {
+      setChatMessages([{ role: 'assistant', content: `⚠️ ${e.message}` }])
+      showMsg(e.message, 'error')
+    }
     setChatLoading(false)
   }
 
@@ -495,8 +515,13 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
       ...nuevosMensajes.slice(1),
     ]
 
-    const respuesta = await llamarIA(mensajesParaIA, 350)
-    setChatMessages(prev => [...prev, { role: 'assistant', content: respuesta }])
+    try {
+      const respuesta = await llamarIA(mensajesParaIA, 350)
+      setChatMessages(prev => [...prev, { role: 'assistant', content: respuesta }])
+    } catch (e) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${e.message}` }])
+      showMsg(e.message, 'error')
+    }
     setChatLoading(false)
   }
 
