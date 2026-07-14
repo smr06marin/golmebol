@@ -14,6 +14,161 @@ const S = {
 
 const PUNTOS = { ganador: 3, empate: 5, golesExactosCada: 3, bonusExacto: 10, goleador: 2 }
 
+// ── Duelos 1v1 (retar a un jugador puntual apostando puntos de Predix) ──
+// Quema creciente en revanchas: entre el mismo par de jugadores, el primer
+// duelo el ganador se queda con 50% del monto del rival, el segundo 30%,
+// del tercero en adelante 10%. Así no compensa usar siempre al mismo
+// "compinche" para transferir puntos de forma repetida.
+const FACTOR_DUELO = { 1: 0.5, 2: 0.3 }
+function factorRepeticion(n) { return FACTOR_DUELO[n] ?? 0.1 }
+
+function resultadoRealPartido(p) {
+  if (!p || p.status !== 'finished' || p.home_score == null || p.away_score == null) return null
+  if (p.home_score === p.away_score) {
+    if (p.penales_ganador === 'home') return 'local'
+    if (p.penales_ganador === 'away') return 'visitante'
+    return 'empate'
+  }
+  return p.home_score > p.away_score ? 'local' : 'visitante'
+}
+function huboPenalesPartido(p) { return p && p.home_score === p.away_score && !!p.penales_ganador }
+
+// Cuántos duelos aceptados y ya resueltos hubo antes entre este mismo par
+// de jugadores (sin importar quién retó a quién) — determina el factor.
+function repeticionParaDuelo(duelo, duelos, partidos) {
+  const par = [duelo.retador_id, duelo.retado_id].sort().join('|')
+  const anteriores = (duelos || []).filter(d => {
+    if (d.estado !== 'aceptado' || d.id === duelo.id) return false
+    if ([d.retador_id, d.retado_id].sort().join('|') !== par) return false
+    const partido = partidos.find(pp => pp.id === d.match_id)
+    if (!partido || partido.status !== 'finished') return false
+    return new Date(d.created_at) < new Date(duelo.created_at)
+  })
+  return anteriores.length + 1
+}
+
+// Neto de puntos para retador y retado de un duelo (0 si aún no se puede resolver).
+function calcularDuelo(duelo, partidos, duelos) {
+  const partido = partidos.find(p => p.id === duelo.match_id)
+  if (!partido || partido.status !== 'finished') return { retador: 0, retado: 0, estado: 'pendiente' }
+  const real = resultadoRealPartido(partido)
+  if (real === null) return { retador: 0, retado: 0, estado: 'pendiente' }
+  if (real === 'empate') return { retador: -0.2 * duelo.monto, retado: -0.2 * duelo.monto, estado: 'empate' }
+  const factor = huboPenalesPartido(partido) ? 0.5 : factorRepeticion(repeticionParaDuelo(duelo, duelos, partidos))
+  const ganaRetador = duelo.retador_equipo === real
+  return ganaRetador
+    ? { retador: factor * duelo.monto, retado: -duelo.monto, estado: 'resuelto' }
+    : { retador: -duelo.monto, retado: factor * duelo.monto, estado: 'resuelto' }
+}
+
+function saldoPredicciones(playerId, allPreds) {
+  return (allPreds || []).filter(pr => pr.player_id === playerId).reduce((s, pr) => s + (pr.puntos_ganados || 0), 0)
+}
+
+function netoDuelosResueltos(playerId, duelos, partidos) {
+  let neto = 0
+  ;(duelos || []).filter(d => d.estado === 'aceptado' && (d.retador_id === playerId || d.retado_id === playerId)).forEach(d => {
+    const r = calcularDuelo(d, partidos, duelos)
+    if (r.estado === 'pendiente') return
+    neto += d.retador_id === playerId ? r.retador : r.retado
+  })
+  return neto
+}
+
+function comprometidoEnDuelos(playerId, duelos, partidos) {
+  return (duelos || []).filter(d => {
+    if (d.estado !== 'pendiente' && d.estado !== 'aceptado') return false
+    if (d.retador_id !== playerId && d.retado_id !== playerId) return false
+    if (d.estado === 'aceptado') {
+      const partido = partidos.find(p => p.id === d.match_id)
+      if (partido && partido.status === 'finished') return false
+    }
+    return true
+  }).reduce((s, d) => s + d.monto, 0)
+}
+
+// Un jugador no puede ser retado en un partido donde él mismo esté jugando
+// (para no darle motivo a manipular el resultado real).
+function jugadorJuegaEnPartido(playerId, partido, registros) {
+  return (registros || []).some(j => j.players?.id === playerId && (j.team_id === partido.home_team_id || j.team_id === partido.away_team_id))
+}
+
+// ── Apuestas abiertas (mercado) ──
+// Igual que un duelo directo, pero en vez de retar a alguien puntual, se
+// deja la apuesta abierta y se cruza sola contra quien le meta puntos al
+// equipo contrario (parcial permitido, como en Predix Apuestas 1x1).
+function repeticionParaCruce(cruce, cruces, posturas, partidos) {
+  const posturaA = posturas.find(p => p.id === cruce.postura_a_id)
+  const posturaB = posturas.find(p => p.id === cruce.postura_b_id)
+  if (!posturaA || !posturaB) return 1
+  const par = [posturaA.player_id, posturaB.player_id].sort().join('|')
+  const anteriores = (cruces || []).filter(c => {
+    if (c.id === cruce.id) return false
+    const a = posturas.find(p => p.id === c.postura_a_id)
+    const b = posturas.find(p => p.id === c.postura_b_id)
+    if (!a || !b) return false
+    if ([a.player_id, b.player_id].sort().join('|') !== par) return false
+    const partido = partidos.find(pp => pp.id === c.match_id)
+    if (!partido || partido.status !== 'finished') return false
+    return new Date(c.created_at) < new Date(cruce.created_at)
+  })
+  return anteriores.length + 1
+}
+
+function calcularCrucePostura(cruce, posturas, cruces, partidos) {
+  const partido = partidos.find(p => p.id === cruce.match_id)
+  if (!partido || partido.status !== 'finished') return { a: 0, b: 0, estado: 'pendiente' }
+  const real = resultadoRealPartido(partido)
+  if (real === null) return { a: 0, b: 0, estado: 'pendiente' }
+  const posturaA = posturas.find(p => p.id === cruce.postura_a_id)
+  const posturaB = posturas.find(p => p.id === cruce.postura_b_id)
+  if (!posturaA || !posturaB) return { a: 0, b: 0, estado: 'pendiente' }
+  if (real === 'empate') return { a: -0.2 * cruce.monto, b: -0.2 * cruce.monto, estado: 'empate' }
+  const factor = huboPenalesPartido(partido) ? 0.5 : factorRepeticion(repeticionParaCruce(cruce, cruces, posturas, partidos))
+  const aGana = posturaA.equipo === real
+  return aGana
+    ? { a: factor * cruce.monto, b: -cruce.monto, estado: 'resuelto' }
+    : { a: -cruce.monto, b: factor * cruce.monto, estado: 'resuelto' }
+}
+
+function netoPostura(postura, cruces, posturas, partidos) {
+  let neto = 0
+  ;(cruces || []).filter(c => c.postura_a_id === postura.id || c.postura_b_id === postura.id).forEach(c => {
+    const soyA = c.postura_a_id === postura.id
+    const r = calcularCrucePostura(c, posturas, cruces, partidos)
+    if (r.estado === 'pendiente') return
+    neto += soyA ? r.a : r.b
+  })
+  return neto
+}
+
+function netoPosturasJugador(playerId, posturas, cruces, partidos) {
+  return (posturas || []).filter(p => p.player_id === playerId).reduce((s, p) => {
+    const partido = partidos.find(pp => pp.id === p.match_id)
+    if (!partido || partido.status !== 'finished') return s
+    return s + netoPostura(p, cruces, posturas, partidos)
+  }, 0)
+}
+
+function comprometidoEnPosturas(playerId, posturas, partidos) {
+  return (posturas || []).filter(p => {
+    if (p.player_id !== playerId) return false
+    const partido = partidos.find(pp => pp.id === p.match_id)
+    return !partido || partido.status !== 'finished'
+  }).reduce((s, p) => s + p.monto, 0)
+}
+
+// Saldo disponible para arriesgar en duelos/apuestas: puntos por
+// predicciones + neto de duelos y posturas ya resueltos - lo que ya
+// tiene comprometido en duelos/posturas pendientes o sin resolver.
+function saldoDisponible(playerId, allPreds, duelos, partidos, posturas, cruces) {
+  return saldoPredicciones(playerId, allPreds)
+    + netoDuelosResueltos(playerId, duelos, partidos)
+    + netoPosturasJugador(playerId, posturas, cruces, partidos)
+    - comprometidoEnDuelos(playerId, duelos, partidos)
+    - comprometidoEnPosturas(playerId, posturas, partidos)
+}
+
 function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, onClose }) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
@@ -153,6 +308,24 @@ export default function PlayerApuestasPage() {
   const [torneoFiltro, setTorneoFiltro] = useState(null)
   const [collapsed,    setCollapsed]    = useState({})
 
+  // Duelos 1v1
+  const [duelos,           setDuelos]           = useState([])
+  const [jugadoresTodos,   setJugadoresTodos]   = useState([])
+  const [todasPredicciones,setTodasPredicciones]= useState([])
+  const [modalReto,        setModalReto]        = useState(null)
+  const [busquedaRival,    setBusquedaRival]    = useState('')
+  const [guardandoReto,    setGuardandoReto]    = useState(false)
+  const [msgReto,          setMsgReto]          = useState(null)
+  const [procesandoDuelo,  setProcesandoDuelo]  = useState(null)
+
+  // Apuestas abiertas (mercado)
+  const [posturas,        setPosturas]        = useState([])
+  const [cruces,          setCruces]          = useState([])
+  const [modalPostura,    setModalPostura]    = useState(null)
+  const [guardandoPostura,setGuardandoPostura]= useState(false)
+  const [msgPostura,      setMsgPostura]      = useState(null)
+  const [subTabDuelos,    setSubTabDuelos]    = useState('retos')
+
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
@@ -164,7 +337,7 @@ export default function PlayerApuestasPage() {
     if (!p || !p.activo_membresia) { navigate('/jugador'); return }
     setPlayer(p)
 
-    const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }] = await Promise.all([
+    const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }, { data: duelosData }, { data: activos }, { data: posturasData }, { data: crucesData }] = await Promise.all([
       supabase.from('matches')
         .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url), tournaments(id,name,modalidad)')
         .order('played_at', { ascending: true })
@@ -176,7 +349,16 @@ export default function PlayerApuestasPage() {
         .select('tournament_id, team_id, players(id,name,photo_url)')
         .eq('activo', true),
       supabase.from('predicciones').select('player_id, puntos_ganados'),
+      supabase.from('predix_duelos').select('*').order('created_at', { ascending: false }),
+      supabase.from('players').select('id, name, photo_face_url, photo_url, user_id, es_arbitro, rol').eq('activo_membresia', true).order('name'),
+      supabase.from('predix_posturas').select('*').order('created_at', { ascending: true }),
+      supabase.from('predix_posturas_cruces').select('*'),
     ])
+    setDuelos(duelosData || [])
+    setJugadoresTodos((activos || []).filter(pl => pl.id !== p.id && !pl.es_arbitro && pl.rol !== 'arbitro'))
+    setTodasPredicciones(allPreds || [])
+    setPosturas(posturasData || [])
+    setCruces(crucesData || [])
 
     // Traer MVPs de todos los partidos terminados
     const partidosData = pts || []
@@ -200,13 +382,39 @@ export default function PlayerApuestasPage() {
     const predMap = {}
     ;(preds || []).forEach(pr => { predMap[pr.match_id] = pr })
     setMiscPreds(predMap)
-    setMisPuntos((preds || []).reduce((s, pr) => s + (pr.puntos_ganados || 0), 0))
+    const netoDuelosPropios   = netoDuelosResueltos(p.id, duelosData || [], partidosData)
+    const netoPosturasPropias = netoPosturasJugador(p.id, posturasData || [], crucesData || [], partidosData)
+    setMisPuntos((preds || []).reduce((s, pr) => s + (pr.puntos_ganados || 0), 0) + netoDuelosPropios + netoPosturasPropias)
     setJugadores(jugs || [])
 
+    // Ranking combinado: puntos por predicciones + neto de duelos y posturas 1v1 ya resueltos
     const rankMap = {}
     ;(allPreds || []).forEach(pr => {
       if (!rankMap[pr.player_id]) rankMap[pr.player_id] = { id: pr.player_id, puntos: 0, nombre: null, foto: null }
       rankMap[pr.player_id].puntos += pr.puntos_ganados || 0
+    })
+    ;(duelosData || []).filter(d => d.estado === 'aceptado').forEach(d => {
+      const partido = partidosData.find(pp => pp.id === d.match_id)
+      if (!partido || partido.status !== 'finished') return
+      const r = calcularDuelo(d, partidosData, duelosData || [])
+      if (r.estado === 'pendiente') return
+      if (!rankMap[d.retador_id]) rankMap[d.retador_id] = { id: d.retador_id, puntos: 0, nombre: d.retador_nombre, foto: null }
+      if (!rankMap[d.retado_id])  rankMap[d.retado_id]  = { id: d.retado_id,  puntos: 0, nombre: d.retado_nombre,  foto: null }
+      rankMap[d.retador_id].puntos += r.retador
+      rankMap[d.retado_id].puntos  += r.retado
+    })
+    ;(crucesData || []).forEach(c => {
+      const partido = partidosData.find(pp => pp.id === c.match_id)
+      if (!partido || partido.status !== 'finished') return
+      const r = calcularCrucePostura(c, posturasData || [], crucesData || [], partidosData)
+      if (r.estado === 'pendiente') return
+      const posturaA = (posturasData || []).find(p => p.id === c.postura_a_id)
+      const posturaB = (posturasData || []).find(p => p.id === c.postura_b_id)
+      if (!posturaA || !posturaB) return
+      if (!rankMap[posturaA.player_id]) rankMap[posturaA.player_id] = { id: posturaA.player_id, puntos: 0, nombre: posturaA.nombre, foto: null }
+      if (!rankMap[posturaB.player_id]) rankMap[posturaB.player_id] = { id: posturaB.player_id, puntos: 0, nombre: posturaB.nombre, foto: null }
+      rankMap[posturaA.player_id].puntos += r.a
+      rankMap[posturaB.player_id].puntos += r.b
     })
     const playerIds = Object.keys(rankMap)
     if (playerIds.length > 0) {
@@ -248,6 +456,82 @@ export default function PlayerApuestasPage() {
     fetchTodo()
   }
 
+  async function crearReto() {
+    if (!modalReto?.rival || !modalReto?.partido || !modalReto?.equipo) return
+    const monto = parseFloat(modalReto.monto)
+    if (!monto || monto <= 0) { setMsgReto({ tipo:'error', texto:'Pon un número válido' }); return }
+    const disponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+    const tope = disponible * 0.25
+    if (monto > tope) { setMsgReto({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible: ${Math.round(disponible)})` }); return }
+    setGuardandoReto(true)
+    const { error } = await supabase.from('predix_duelos').insert({
+      match_id: modalReto.partido.id,
+      tournament_id: modalReto.partido.tournament_id,
+      retador_id: player.id, retador_user_id: player.user_id, retador_nombre: player.name,
+      retador_equipo: modalReto.equipo,
+      retado_id: modalReto.rival.id, retado_user_id: modalReto.rival.user_id, retado_nombre: modalReto.rival.name,
+      monto, estado: 'pendiente',
+    })
+    setGuardandoReto(false)
+    if (error) { setMsgReto({ tipo:'error', texto:'No se pudo crear el reto' }); return }
+    setModalReto(null)
+    fetchTodo()
+  }
+
+  async function responderReto(duelo, nuevoEstado) {
+    setProcesandoDuelo(duelo.id)
+    if (nuevoEstado === 'aceptado') {
+      const disponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+      const tope = disponible * 0.25
+      if (duelo.monto > tope) {
+        alert(`No tienes saldo suficiente para aceptar este duelo (máximo permitido ahora mismo: ${Math.floor(tope)} pts).`)
+        setProcesandoDuelo(null)
+        return
+      }
+    }
+    await supabase.from('predix_duelos').update({ estado: nuevoEstado, respondido_at: new Date().toISOString() }).eq('id', duelo.id)
+    setProcesandoDuelo(null)
+    fetchTodo()
+  }
+
+  async function crearPostura() {
+    if (!modalPostura?.partido || !modalPostura?.equipo) return
+    const monto = parseFloat(modalPostura.monto)
+    if (!monto || monto <= 0) { setMsgPostura({ tipo:'error', texto:'Pon un número válido' }); return }
+    const disponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+    const tope = disponible * 0.25
+    if (monto > tope) { setMsgPostura({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible: ${Math.round(disponible)})` }); return }
+    setGuardandoPostura(true)
+    const equipoRival = modalPostura.equipo === 'local' ? 'visitante' : 'local'
+
+    const { data: rivales } = await supabase.from('predix_posturas')
+      .select('*').eq('match_id', modalPostura.partido.id).eq('equipo', equipoRival).eq('estado', 'abierta')
+      .order('created_at', { ascending: true })
+
+    const { data: nueva, error } = await supabase.from('predix_posturas')
+      .insert({ match_id: modalPostura.partido.id, tournament_id: modalPostura.partido.tournament_id, player_id: player.id, user_id: player.user_id, nombre: player.name, equipo: modalPostura.equipo, monto, monto_emparejado: 0, estado: 'abierta' })
+      .select().single()
+    if (error || !nueva) { setMsgPostura({ tipo:'error', texto:'No se pudo registrar la apuesta' }); setGuardandoPostura(false); return }
+
+    let restante = monto
+    for (const riv of (rivales || [])) {
+      if (restante <= 0) break
+      const capacidad = riv.monto - riv.monto_emparejado
+      if (capacidad <= 0) continue
+      const cruce = Math.min(restante, capacidad)
+      await supabase.from('predix_posturas_cruces').insert({ match_id: modalPostura.partido.id, postura_a_id: nueva.id, postura_b_id: riv.id, monto: cruce })
+      const nuevoEmp = riv.monto_emparejado + cruce
+      await supabase.from('predix_posturas').update({ monto_emparejado: nuevoEmp, estado: nuevoEmp >= riv.monto ? 'cerrada' : 'abierta' }).eq('id', riv.id)
+      restante -= cruce
+    }
+    const empPropio = monto - restante
+    await supabase.from('predix_posturas').update({ monto_emparejado: empPropio, estado: empPropio >= monto ? 'cerrada' : 'abierta' }).eq('id', nueva.id)
+
+    setGuardandoPostura(false)
+    setModalPostura(null)
+    fetchTodo()
+  }
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
@@ -275,10 +559,263 @@ export default function PlayerApuestasPage() {
 
   function toggleCollapse(tid) { setCollapsed(prev => ({ ...prev, [tid]: !prev[tid] })) }
 
+  // Duelos 1v1 — datos derivados
+  const miSaldoDisponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+  const misDuelos          = duelos.filter(d => d.retador_id === player.id || d.retado_id === player.id)
+  const retosRecibidos     = misDuelos.filter(d => d.retado_id === player.id && d.estado === 'pendiente')
+  const retosEnviados      = misDuelos.filter(d => d.retador_id === player.id && d.estado === 'pendiente')
+  const duelosEnJuego      = misDuelos.filter(d => {
+    if (d.estado !== 'aceptado') return false
+    const partido = partidos.find(p => p.id === d.match_id)
+    return !partido || partido.status !== 'finished'
+  })
+  const duelosResueltos = misDuelos.filter(d => {
+    if (d.estado === 'rechazado' || d.estado === 'cancelado') return true
+    if (d.estado !== 'aceptado') return false
+    const partido = partidos.find(p => p.id === d.match_id)
+    return partido && partido.status === 'finished'
+  })
+
+  const jugadoresFiltrados = jugadoresTodos.filter(j => j.name.toLowerCase().includes(busquedaRival.toLowerCase()))
+  const partidosElegibles = modalReto?.rival
+    ? pendientes.filter(p => !jugadorJuegaEnPartido(player.id, p, jugadores) && !jugadorJuegaEnPartido(modalReto.rival.id, p, jugadores))
+    : []
+
+  // Apuestas abiertas — datos derivados
+  const partidosElegiblesPostura = pendientes.filter(p => !jugadorJuegaEnPartido(player.id, p, jugadores))
+  function resumenPosturasPartido(matchId) {
+    const ps = posturas.filter(p => p.match_id === matchId)
+    return { local: ps.filter(p => p.equipo === 'local'), visitante: ps.filter(p => p.equipo === 'visitante') }
+  }
+  const partidosConMercado = partidosElegiblesPostura.filter(p => {
+    const { local, visitante } = resumenPosturasPartido(p.id)
+    return [...local, ...visitante].some(x => x.monto - x.monto_emparejado > 0)
+  })
+  const misPosturas = posturas.filter(p => p.player_id === player.id)
+
+  function PosturaCard(pu) {
+    const partido = partidos.find(p => p.id === pu.match_id)
+    const partidoTerminado = partido && partido.status === 'finished'
+    const equipoNombre = pu.equipo === 'local' ? partido?.home?.name : partido?.away?.name
+    const libre = pu.monto - pu.monto_emparejado
+    const neto = partidoTerminado ? netoPostura(pu, cruces, posturas, partidos) : 0
+    const colorEstado = !partidoTerminado ? S.gold : neto > 0 ? S.win : neto < 0 ? S.loss : S.gold
+    const labelEstado = !partidoTerminado
+      ? (pu.monto_emparejado === 0 ? 'Sin cruzar todavía' : libre > 0 ? `Cruzada parcial · ${libre} libre` : 'Cruzada completa')
+      : (pu.monto_emparejado === 0 ? 'Nadie cruzó · sin efecto' : neto > 0 ? `Ganaste · +${Math.round(neto*10)/10} pts` : neto < 0 ? `Perdiste · ${Math.round(neto*10)/10} pts` : 'Empate')
+    return (
+      <div key={pu.id} style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'10px', border:`0.5px solid ${S.border}` }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
+          <span style={{ fontSize:'.72rem', color:S.muted }}>{partido?.tournaments?.name}</span>
+          <span style={{ fontSize:'.72rem', fontWeight:'800', color:colorEstado, background:`${colorEstado}22`, borderRadius:'10px', padding:'2px 10px' }}>{labelEstado}</span>
+        </div>
+        <div style={{ fontSize:'.85rem', fontWeight:'600', color:S.text, marginBottom:'4px' }}>{partido?.home?.name} vs {partido?.away?.name}</div>
+        <div style={{ fontSize:'.75rem', color:S.text2 }}>
+          Pusiste <span style={{ color:S.cyan, fontWeight:'700' }}>{pu.monto}</span> pts a <span style={{ fontWeight:'700' }}>{equipoNombre}</span>
+          {pu.monto_emparejado > 0 && <span> · cruzado: {pu.monto_emparejado}</span>}
+        </div>
+      </div>
+    )
+  }
+
+  function DueloCard(d) {
+    const partido = partidos.find(p => p.id === d.match_id)
+    const soyRetador = d.retador_id === player.id
+    const rivalNombre = soyRetador ? d.retado_nombre : d.retador_nombre
+    const miEquipoVal = soyRetador ? d.retador_equipo : (d.retador_equipo === 'local' ? 'visitante' : 'local')
+    const miEquipoNombre = miEquipoVal === 'local' ? partido?.home?.name : partido?.away?.name
+    const partidoTerminado = partido && partido.status === 'finished'
+    const calc = partidoTerminado ? calcularDuelo(d, partidos, duelos) : null
+    const miNeto = calc ? (soyRetador ? calc.retador : calc.retado) : 0
+    const colorEstado = d.estado === 'rechazado' || d.estado === 'cancelado' ? S.muted
+      : d.estado === 'pendiente' ? S.gold
+      : !partidoTerminado ? S.cyan
+      : miNeto > 0 ? S.win : miNeto < 0 ? S.loss : S.gold
+    const labelEstado = d.estado === 'rechazado' ? 'Rechazado' : d.estado === 'cancelado' ? 'Cancelado'
+      : d.estado === 'pendiente' ? 'Esperando respuesta'
+      : !partidoTerminado ? 'En juego'
+      : miNeto > 0 ? `Ganaste · +${Math.round(miNeto*10)/10} pts` : miNeto < 0 ? `Perdiste · ${Math.round(miNeto*10)/10} pts` : 'Empate'
+    return (
+      <div key={d.id} style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'10px', border:`0.5px solid ${S.border}` }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
+          <span style={{ fontSize:'.72rem', color:S.muted }}>vs {rivalNombre}</span>
+          <span style={{ fontSize:'.72rem', fontWeight:'800', color:colorEstado, background:`${colorEstado}22`, borderRadius:'10px', padding:'2px 10px' }}>{labelEstado}</span>
+        </div>
+        <div style={{ fontSize:'.85rem', fontWeight:'600', color:S.text, marginBottom:'4px' }}>{partido?.home?.name} vs {partido?.away?.name}</div>
+        <div style={{ fontSize:'.75rem', color:S.text2 }}>
+          Le apostaste <span style={{ color:S.cyan, fontWeight:'700' }}>{d.monto}</span> pts a <span style={{ fontWeight:'700' }}>{miEquipoNombre}</span>
+        </div>
+        {d.estado === 'pendiente' && d.retado_id === player.id && (
+          <div style={{ display:'flex', gap:'8px', marginTop:'10px' }}>
+            <button disabled={procesandoDuelo === d.id} onClick={() => responderReto(d, 'aceptado')} style={{ flex:1, padding:'9px', background:S.win, border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', fontSize:'.78rem' }}>Aceptar</button>
+            <button disabled={procesandoDuelo === d.id} onClick={() => responderReto(d, 'rechazado')} style={{ flex:1, padding:'9px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.muted, fontWeight:'700', fontSize:'.78rem' }}>Rechazar</button>
+          </div>
+        )}
+        {d.estado === 'pendiente' && d.retador_id === player.id && (
+          <button disabled={procesandoDuelo === d.id} onClick={() => responderReto(d, 'cancelado')} style={{ marginTop:'10px', width:'100%', padding:'9px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.muted, fontWeight:'700', fontSize:'.78rem' }}>Cancelar reto</button>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
 
       {teamSheet && <TeamSheet {...teamSheet} onClose={() => setTeamSheet(null)}/>}
+
+      {/* Modal: retar a alguien (Duelos 1v1) */}
+      {modalReto && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:300, display:'flex', alignItems:'flex-end', justifyContent:'center' }} onClick={e => e.target === e.currentTarget && setModalReto(null)}>
+          <div style={{ background:S.surface, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:'480px', maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', border:`0.5px solid ${S.border}` }}>
+            <div style={{ padding:'16px 20px', borderBottom:`0.5px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+              <div style={{ fontWeight:'700', fontSize:'.95rem', color:S.text }}>⚔️ Retar a alguien</div>
+              <button onClick={() => setModalReto(null)} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'1.2rem' }}>✕</button>
+            </div>
+
+            <div style={{ flex:1, overflowY:'auto', padding:'20px' }}>
+              {!modalReto.rival ? (
+                <div>
+                  <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text, marginBottom:'12px' }}>¿A quién quieres retar?</div>
+                  <input value={busquedaRival} onChange={e => setBusquedaRival(e.target.value)} placeholder="Buscar jugador..."
+                    style={{ width:'100%', padding:'10px 14px', borderRadius:'10px', border:`1px solid ${S.border}`, background:S.card, color:S.text, fontSize:'.85rem', marginBottom:'12px', boxSizing:'border-box' }}/>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'320px', overflowY:'auto' }}>
+                    {jugadoresFiltrados.length === 0 ? (
+                      <div style={{ color:S.muted, fontSize:'.8rem', textAlign:'center', padding:'16px' }}>Sin resultados</div>
+                    ) : jugadoresFiltrados.map(j => (
+                      <div key={j.id} onClick={() => setModalReto(m => ({ ...m, rival:j }))}
+                        style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', borderRadius:'10px', cursor:'pointer', border:`1px solid ${S.border}`, background:S.card }}>
+                        <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          {j.photo_face_url || j.photo_url ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.8rem' }}>👤</span>}
+                        </div>
+                        <span style={{ fontSize:'.85rem', fontWeight:'500', color:S.text }}>{j.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : !modalReto.partido ? (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'12px' }}>
+                    <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text }}>Retando a <span style={{ color:S.cyan }}>{modalReto.rival.name}</span></div>
+                    <button onClick={() => setModalReto(m => ({ ...m, rival:null }))} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'.72rem' }}>Cambiar</button>
+                  </div>
+                  <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'10px' }}>Elige un partido donde ninguno de los dos esté jugando:</div>
+                  {partidosElegibles.length === 0 ? (
+                    <div style={{ color:S.muted, fontSize:'.8rem', textAlign:'center', padding:'24px' }}>No hay partidos disponibles para retar a este jugador ahora mismo.</div>
+                  ) : (
+                    <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'320px', overflowY:'auto' }}>
+                      {partidosElegibles.map(p => (
+                        <div key={p.id} onClick={() => setModalReto(m => ({ ...m, partido:p }))}
+                          style={{ padding:'10px 12px', borderRadius:'10px', cursor:'pointer', border:`1px solid ${S.border}`, background:S.card }}>
+                          <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text }}>{p.home?.name} vs {p.away?.name}</div>
+                          <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>{p.tournaments?.name}{p.played_at ? ` · ${new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}` : ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'4px' }}>
+                    <div style={{ fontSize:'.9rem', fontWeight:'700', color:S.text }}>{modalReto.partido.home?.name} vs {modalReto.partido.away?.name}</div>
+                    <button onClick={() => setModalReto(m => ({ ...m, partido:null }))} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'.72rem' }}>Cambiar</button>
+                  </div>
+                  <div style={{ fontSize:'.75rem', color:S.muted, marginBottom:'16px' }}>Retando a {modalReto.rival.name}</div>
+
+                  <div style={{ fontSize:'.8rem', fontWeight:'600', color:S.text, marginBottom:'10px' }}>¿A cuál equipo le pones?</div>
+                  <div style={{ display:'flex', gap:'8px', marginBottom:'18px' }}>
+                    {[{ val:'local', label:modalReto.partido.home?.name },{ val:'visitante', label:modalReto.partido.away?.name }].map(opt => (
+                      <div key={opt.val} onClick={() => setModalReto(m => ({ ...m, equipo:opt.val }))}
+                        style={{ flex:1, padding:'14px 10px', borderRadius:'12px', textAlign:'center', cursor:'pointer', border:`1px solid ${modalReto.equipo===opt.val ? S.cyan : S.border}`, background: modalReto.equipo===opt.val ? S.cyanDim : S.card }}>
+                        <span style={{ fontWeight:'700', fontSize:'.85rem', color: modalReto.equipo===opt.val ? S.cyan : S.text }}>{opt.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize:'.8rem', fontWeight:'600', color:S.text, marginBottom:'8px' }}>¿Cuántos puntos apuestas?</div>
+                  <input type="number" inputMode="numeric" value={modalReto.monto} onChange={e => setModalReto(m => ({ ...m, monto:e.target.value }))} placeholder="Ej: 20"
+                    style={{ width:'100%', padding:'14px 16px', borderRadius:'12px', border:`1px solid ${S.border}`, background:S.card, color:S.text, fontSize:'1.3rem', fontWeight:'700', textAlign:'center', marginBottom:'8px', boxSizing:'border-box' }}/>
+                  <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'16px' }}>
+                    Tu saldo disponible: {Math.round(miSaldoDisponible*10)/10} pts · máximo por duelo: {Math.max(0, Math.floor(miSaldoDisponible*0.25))} pts.
+                    Si tu rival acepta y ganas, te quedas con parte de su apuesta (menos si ya se han enfrentado antes); si pierdes, pierdes toda tu apuesta.
+                  </div>
+
+                  {msgReto && <div style={{ fontSize:'.75rem', color: msgReto.tipo==='error'?S.loss:S.win, marginBottom:'10px' }}>{msgReto.texto}</div>}
+
+                  <button disabled={guardandoReto || !modalReto.equipo} onClick={crearReto}
+                    style={{ width:'100%', padding:'13px', background: modalReto.equipo ? S.cyan : S.border, border:'none', borderRadius:'12px', cursor: guardandoReto||!modalReto.equipo ? 'not-allowed' : 'pointer', color: modalReto.equipo ? '#000' : S.muted, fontWeight:'800', fontSize:'.9rem', opacity: guardandoReto?.7:1 }}>
+                    {guardandoReto ? 'Enviando reto...' : 'ENVIAR RETO'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: apuesta abierta (mercado) */}
+      {modalPostura && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:300, display:'flex', alignItems:'flex-end', justifyContent:'center' }} onClick={e => e.target === e.currentTarget && setModalPostura(null)}>
+          <div style={{ background:S.surface, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:'480px', maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', border:`0.5px solid ${S.border}` }}>
+            <div style={{ padding:'16px 20px', borderBottom:`0.5px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+              <div style={{ fontWeight:'700', fontSize:'.95rem', color:S.text }}>📢 Apuesta abierta</div>
+              <button onClick={() => setModalPostura(null)} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'1.2rem' }}>✕</button>
+            </div>
+
+            <div style={{ flex:1, overflowY:'auto', padding:'20px' }}>
+              {!modalPostura.partido ? (
+                <div>
+                  <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text, marginBottom:'12px' }}>¿En qué partido quieres apostar?</div>
+                  {partidosElegiblesPostura.length === 0 ? (
+                    <div style={{ color:S.muted, fontSize:'.8rem', textAlign:'center', padding:'24px' }}>No hay partidos disponibles ahora mismo (no puedes apostar en uno donde tú estés jugando).</div>
+                  ) : (
+                    <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'380px', overflowY:'auto' }}>
+                      {partidosElegiblesPostura.map(p => (
+                        <div key={p.id} onClick={() => setModalPostura(m => ({ ...m, partido:p }))}
+                          style={{ padding:'10px 12px', borderRadius:'10px', cursor:'pointer', border:`1px solid ${S.border}`, background:S.card }}>
+                          <div style={{ fontSize:'.82rem', fontWeight:'600', color:S.text }}>{p.home?.name} vs {p.away?.name}</div>
+                          <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>{p.tournaments?.name}{p.played_at ? ` · ${new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}` : ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
+                    <div style={{ fontSize:'.9rem', fontWeight:'700', color:S.text }}>{modalPostura.partido.home?.name} vs {modalPostura.partido.away?.name}</div>
+                    <button onClick={() => setModalPostura(m => ({ ...m, partido:null, equipo:null }))} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'.72rem' }}>Cambiar</button>
+                  </div>
+
+                  <div style={{ fontSize:'.8rem', fontWeight:'600', color:S.text, marginBottom:'10px' }}>¿A cuál equipo le pones?</div>
+                  <div style={{ display:'flex', gap:'8px', marginBottom:'18px' }}>
+                    {[{ val:'local', label:modalPostura.partido.home?.name },{ val:'visitante', label:modalPostura.partido.away?.name }].map(opt => (
+                      <div key={opt.val} onClick={() => setModalPostura(m => ({ ...m, equipo:opt.val }))}
+                        style={{ flex:1, padding:'14px 10px', borderRadius:'12px', textAlign:'center', cursor:'pointer', border:`1px solid ${modalPostura.equipo===opt.val ? S.cyan : S.border}`, background: modalPostura.equipo===opt.val ? S.cyanDim : S.card }}>
+                        <span style={{ fontWeight:'700', fontSize:'.85rem', color: modalPostura.equipo===opt.val ? S.cyan : S.text }}>{opt.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize:'.8rem', fontWeight:'600', color:S.text, marginBottom:'8px' }}>¿Cuántos puntos apuestas?</div>
+                  <input type="number" inputMode="numeric" value={modalPostura.monto} onChange={e => setModalPostura(m => ({ ...m, monto:e.target.value }))} placeholder="Ej: 50"
+                    style={{ width:'100%', padding:'14px 16px', borderRadius:'12px', border:`1px solid ${S.border}`, background:S.card, color:S.text, fontSize:'1.3rem', fontWeight:'700', textAlign:'center', marginBottom:'8px', boxSizing:'border-box' }}/>
+                  <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'16px' }}>
+                    Tu saldo disponible: {Math.round(miSaldoDisponible*10)/10} pts · máximo por apuesta: {Math.max(0, Math.floor(miSaldoDisponible*0.25))} pts.
+                    Se cruza automáticamente contra lo que otros pongan al equipo contrario. Lo que no se cruce con nadie no gana ni pierde.
+                  </div>
+
+                  {msgPostura && <div style={{ fontSize:'.75rem', color: msgPostura.tipo==='error'?S.loss:S.win, marginBottom:'10px' }}>{msgPostura.texto}</div>}
+
+                  <button disabled={guardandoPostura || !modalPostura.equipo} onClick={crearPostura}
+                    style={{ width:'100%', padding:'13px', background: modalPostura.equipo ? S.cyan : S.border, border:'none', borderRadius:'12px', cursor: guardandoPostura||!modalPostura.equipo ? 'not-allowed' : 'pointer', color: modalPostura.equipo ? '#000' : S.muted, fontWeight:'800', fontSize:'.9rem', opacity: guardandoPostura?.7:1 }}>
+                    {guardandoPostura ? 'Enviando...' : 'CONFIRMAR APUESTA'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal predicción */}
       {modal && (
@@ -442,10 +979,12 @@ export default function PlayerApuestasPage() {
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:'4px', padding:'12px 0', position:'sticky', top:0, background:S.navy, zIndex:10 }}>
-          {[{ id:'pendientes', label:'Próximos' },{ id:'mias', label:'Mis predicciones' },{ id:'ranking', label:'Ranking' }].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ flex:1, padding:'9px 4px', borderRadius:'10px', border:'none', cursor:'pointer', fontSize:'.78rem', fontWeight:'700', transition:'all .15s', background: tab===t.id ? S.cyan : S.card, color: tab===t.id ? '#000' : S.muted }}>
+          {[{ id:'pendientes', label:'Próximos' },{ id:'mias', label:'Mis predicciones' },{ id:'duelos', label:'Duelos 1v1' },{ id:'ranking', label:'Ranking' }].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex:1, padding:'9px 4px', borderRadius:'10px', border:'none', cursor:'pointer', fontSize:'.78rem', fontWeight:'700', transition:'all .15s', background: tab===t.id ? S.cyan : S.card, color: tab===t.id ? '#000' : S.muted, position:'relative' }}>
               {t.label}
+              {t.id === 'duelos' && retosRecibidos.length > 0 && (
+                <span style={{ position:'absolute', top:'-4px', right:'-4px', background:S.loss, color:'#fff', borderRadius:'50%', width:'16px', height:'16px', fontSize:'.6rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center' }}>{retosRecibidos.length}</span>
+              )}
             </button>
           ))}
         </div>
@@ -606,6 +1145,113 @@ export default function PlayerApuestasPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* TAB: Duelos 1v1 */}
+        {tab === 'duelos' && (
+          <div>
+            <div style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'14px', border:`0.5px solid ${S.border}` }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
+                <div>
+                  <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.08em' }}>Saldo disponible para duelos</div>
+                  <div style={{ fontSize:'1.4rem', fontWeight:'900', color: miSaldoDisponible >= 0 ? S.gold : S.loss }}>{Math.round(miSaldoDisponible*10)/10} pts</div>
+                </div>
+              </div>
+              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'10px' }}>Puedes apostar hasta el 25% de tu saldo por duelo/apuesta. No puedes participar en un partido donde tú (o a quien retes) estén jugando.</div>
+              <div style={{ display:'flex', gap:'8px' }}>
+                <button onClick={() => { setModalReto({ rival:null, partido:null, equipo:null, monto:'' }); setBusquedaRival(''); setMsgReto(null) }}
+                  style={{ flex:1, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.82rem' }}>
+                  ⚔️ Retar a alguien
+                </button>
+                <button onClick={() => { setModalPostura({ partido:null, equipo:null, monto:'' }); setMsgPostura(null) }}
+                  style={{ flex:1, padding:'11px', background:S.card2, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontWeight:'800', fontSize:'.82rem' }}>
+                  📢 Apuesta abierta
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-tabs */}
+            <div style={{ display:'flex', gap:'4px', marginBottom:'14px' }}>
+              {[{ id:'retos', label:'Retos directos' },{ id:'mercado', label:'Mercado abierto' }].map(t => (
+                <button key={t.id} onClick={() => setSubTabDuelos(t.id)}
+                  style={{ flex:1, padding:'7px 4px', borderRadius:'8px', cursor:'pointer', fontSize:'.72rem', fontWeight:'700', background: subTabDuelos===t.id ? S.card2 : 'transparent', color: subTabDuelos===t.id ? S.cyan : S.muted, border: subTabDuelos===t.id ? `1px solid ${S.cyan}` : `1px solid ${S.border}` }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {subTabDuelos === 'retos' ? (
+              retosRecibidos.length === 0 && retosEnviados.length === 0 && duelosEnJuego.length === 0 && duelosResueltos.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted }}><div style={{ fontSize:'2rem', marginBottom:'12px' }}>⚔️</div><div>Aún no tienes retos directos</div></div>
+              ) : (
+                <>
+                  {retosRecibidos.length > 0 && (
+                    <div style={{ marginBottom:'16px' }}>
+                      <div style={{ fontSize:'.72rem', fontWeight:'700', color:S.gold, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Te retaron</div>
+                      {retosRecibidos.map(d => DueloCard(d))}
+                    </div>
+                  )}
+                  {retosEnviados.length > 0 && (
+                    <div style={{ marginBottom:'16px' }}>
+                      <div style={{ fontSize:'.72rem', fontWeight:'700', color:S.muted, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Retos enviados</div>
+                      {retosEnviados.map(d => DueloCard(d))}
+                    </div>
+                  )}
+                  {duelosEnJuego.length > 0 && (
+                    <div style={{ marginBottom:'16px' }}>
+                      <div style={{ fontSize:'.72rem', fontWeight:'700', color:S.cyan, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>En juego</div>
+                      {duelosEnJuego.map(d => DueloCard(d))}
+                    </div>
+                  )}
+                  {duelosResueltos.length > 0 && (
+                    <div>
+                      <div style={{ fontSize:'.72rem', fontWeight:'700', color:S.muted, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Historial</div>
+                      {duelosResueltos.map(d => DueloCard(d))}
+                    </div>
+                  )}
+                </>
+              )
+            ) : (
+              <>
+                <div style={{ fontSize:'.72rem', fontWeight:'700', color:S.gold, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Apuestas abiertas de todos</div>
+                {partidosConMercado.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'24px 20px', color:S.muted, marginBottom:'16px' }}><div style={{ fontSize:'1.6rem', marginBottom:'8px' }}>📢</div><div style={{ fontSize:'.82rem' }}>No hay apuestas abiertas ahora mismo</div></div>
+                ) : partidosConMercado.map(p => {
+                  const { local, visitante } = resumenPosturasPartido(p.id)
+                  const libreLocal = local.reduce((s,x) => s + (x.monto - x.monto_emparejado), 0)
+                  const libreVisitante = visitante.reduce((s,x) => s + (x.monto - x.monto_emparejado), 0)
+                  return (
+                    <div key={p.id} style={{ marginBottom:'12px', background:S.card, borderRadius:'14px', padding:'12px 14px', border:`0.5px solid ${S.border}` }}>
+                      <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'8px' }}>{p.tournaments?.name}</div>
+                      <div style={{ display:'flex', gap:'8px' }}>
+                        {[{ eq:'local', nombre:p.home?.name, libre:libreLocal },{ eq:'visitante', nombre:p.away?.name, libre:libreVisitante }].map(col => (
+                          <div key={col.eq} style={{ flex:1, background:S.navy, borderRadius:'10px', padding:'10px', border:`0.5px solid ${S.border}` }}>
+                            <div style={{ fontSize:'.78rem', fontWeight:'700', color:S.text, marginBottom:'6px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{col.nombre}</div>
+                            {col.libre > 0 ? (
+                              <>
+                                <div style={{ fontSize:'.7rem', color:S.gold, marginBottom:'6px' }}>{col.libre} pts libres</div>
+                                <button onClick={() => { setModalPostura({ partido:p, equipo:col.eq, monto:'' }); setMsgPostura(null) }}
+                                  style={{ width:'100%', padding:'6px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontWeight:'700', fontSize:'.68rem' }}>
+                                  + Igualar
+                                </button>
+                              </>
+                            ) : (
+                              <div style={{ fontSize:'.7rem', color:S.muted }}>Sin apuestas libres</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                <div style={{ fontSize:'.72rem', fontWeight:'700', color:S.muted, margin:'16px 0 8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Mis apuestas abiertas</div>
+                {misPosturas.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'24px 20px', color:S.muted }}><div style={{ fontSize:'.82rem' }}>Aún no has puesto ninguna</div></div>
+                ) : misPosturas.slice().reverse().map(pu => PosturaCard(pu))}
+              </>
+            )}
           </div>
         )}
 
