@@ -1,7 +1,16 @@
 import { supabase } from '../lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Shield, Check, Users, Upload } from 'lucide-react'
+
+// Cliente aparte SIN sesión persistente: se usa solo para verificar la cédula y
+// contraseña de quien desactiva un jugador, sin tocar la sesión del navegador.
+const supabaseVerify = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+)
 
 const POSICIONES = {
   'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
@@ -69,6 +78,16 @@ export default function RegistroEquipoPage() {
   const [msg,           setMsg]           = useState(null)
   const [exito,         setExito]         = useState(false)
 
+  // Desactivar jugador desde el link (pide cédula + contraseña de quien lo hace)
+  const [showDesactivar,      setShowDesactivar]      = useState(false)
+  const [plantilla,           setPlantilla]           = useState([])
+  const [jugadorADesactivar,  setJugadorADesactivar]  = useState(null)
+  const [authCedula,          setAuthCedula]          = useState('')
+  const [authPass,            setAuthPass]            = useState('')
+  const [desactivando,        setDesactivando]        = useState(false)
+  const [errorDesactivar,     setErrorDesactivar]     = useState('')
+  const [desactivadoOk,       setDesactivadoOk]       = useState(null)
+
   // Fotos cédula
   const [fotoFrontal,        setFotoFrontal]        = useState(null)
   const [fotoTrasera,        setFotoTrasera]        = useState(null)
@@ -91,6 +110,54 @@ export default function RegistroEquipoPage() {
   function showMsg(text, type = 'error') {
     setMsg({ text, type })
     setTimeout(() => setMsg(null), 5000)
+  }
+
+  // ── DESACTIVAR JUGADOR (con verificación de identidad) ───────────────────
+  async function abrirDesactivar() {
+    setShowDesactivar(true); setJugadorADesactivar(null); setAuthCedula(''); setAuthPass('')
+    setErrorDesactivar(''); setDesactivadoOk(null)
+    const { data } = await supabase.from('tournament_player_registrations')
+      .select('id, player_id, players(name, numero_cedula)')
+      .eq('tournament_id', tournamentId).eq('team_id', equipo.id).eq('activo', true)
+    setPlantilla(data || [])
+  }
+
+  async function handleDesactivarJugador(e) {
+    e.preventDefault()
+    if (!jugadorADesactivar) { setErrorDesactivar('Primero selecciona el jugador a desactivar'); return }
+    if (!authCedula.trim() || !authPass) { setErrorDesactivar('Ingresa tu cédula y tu contraseña de Golmebol'); return }
+    setDesactivando(true); setErrorDesactivar('')
+
+    // Verificar la identidad de quien desactiva (cliente aparte: no toca la sesión)
+    const { data: auth, error: authErr } = await supabaseVerify.auth.signInWithPassword({
+      email: `${authCedula.trim()}@golmebol.com`, password: authPass,
+    })
+    if (authErr || !auth?.user) {
+      setErrorDesactivar('Cédula o contraseña incorrecta — no se desactivó nada')
+      setDesactivando(false)
+      return
+    }
+
+    // Nombre de quien desactiva, para dejar el rastro
+    let quien = `CC ${authCedula.trim()}`
+    const { data: pQuien } = await supabaseVerify.from('players').select('name').eq('user_id', auth.user.id).maybeSingle()
+    if (pQuien?.name) quien = `${pQuien.name} (CC ${authCedula.trim()})`
+
+    let { error: err } = await supabaseVerify.from('tournament_player_registrations')
+      .update({ activo: false, desactivado_por: quien, desactivado_at: new Date().toISOString() })
+      .eq('id', jugadorADesactivar.id)
+    if (err && (err.message || '').includes('desactivado')) {
+      // La BD aún no tiene las columnas de auditoría: desactivar igual
+      ;({ error: err } = await supabaseVerify.from('tournament_player_registrations')
+        .update({ activo: false }).eq('id', jugadorADesactivar.id))
+    }
+    await supabaseVerify.auth.signOut()
+    setDesactivando(false)
+    if (err) { setErrorDesactivar('No se pudo desactivar: ' + err.message); return }
+
+    setDesactivadoOk(jugadorADesactivar.players?.name || 'Jugador')
+    setPlantilla(prev => prev.filter(x => x.id !== jugadorADesactivar.id))
+    setJugadorADesactivar(null); setAuthPass('')
   }
 
   function handleFotoFrontal(e) {
@@ -614,6 +681,73 @@ export default function RegistroEquipoPage() {
               </button>
               <button onClick={() => { setMostrarNuevo(false); setCedula('') }}
                 style={{ padding: '13px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>←</button>
+            </div>
+          </div>
+        )}
+
+        {/* Desactivar un jugador del equipo (con verificación de identidad) */}
+        <div style={{ textAlign: 'center', marginTop: '28px' }}>
+          <button onClick={abrirDesactivar}
+            style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 18px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem', fontWeight: '600' }}>
+            🚫 Desactivar un jugador del equipo
+          </button>
+        </div>
+
+        {showDesactivar && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', overflowY: 'auto' }}>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,.4)', maxHeight: '90vh', overflowY: 'auto' }}>
+              {desactivadoOk ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>✅</div>
+                  <div style={{ fontWeight: '800', color: '#1e8e3e', fontSize: '1rem', marginBottom: '8px' }}>Jugador desactivado</div>
+                  <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '18px' }}>
+                    <b>{desactivadoOk}</b> quedó desactivado del equipo <b>{equipo.name}</b>. Quedó registrado quién hizo el cambio.
+                  </div>
+                  <button onClick={() => setShowDesactivar(false)}
+                    style={{ width: '100%', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.9rem' }}>
+                    Listo
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '4px' }}>🚫 Desactivar jugador</div>
+                  <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '16px', lineHeight: 1.5 }}>
+                    Equipo <b>{equipo.name}</b> · {torneo.name}. Para hacerlo debes identificarte con tu cuenta de Golmebol: <b>quedará registrado quién desactivó al jugador</b>.
+                  </div>
+
+                  <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '6px' }}>1. ¿A quién desactivas?</div>
+                  <div style={{ maxHeight: '180px', overflowY: 'auto', border: '1px solid #e8eaed', borderRadius: '10px', marginBottom: '16px' }}>
+                    {plantilla.length === 0 && <div style={{ padding: '14px', fontSize: '.8rem', color: '#9aa0a6', textAlign: 'center' }}>Cargando jugadores del equipo...</div>}
+                    {plantilla.map(r => (
+                      <div key={r.id} onClick={() => setJugadorADesactivar(r)}
+                        style={{ padding: '11px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', gap: '8px', background: jugadorADesactivar?.id === r.id ? '#fce8e6' : '#fff' }}>
+                        <span style={{ fontSize: '.9rem' }}>{jugadorADesactivar?.id === r.id ? '🔴' : '⚪'}</span>
+                        <div>
+                          <div style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{r.players?.name}</div>
+                          <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>CC {r.players?.numero_cedula}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleDesactivarJugador} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368' }}>2. Identifícate (tu cuenta de Golmebol)</div>
+                    <input value={authCedula} onChange={e => setAuthCedula(e.target.value)} placeholder="Tu número de cédula" type="number" style={inputStyle}/>
+                    <input value={authPass} onChange={e => setAuthPass(e.target.value)} placeholder="Tu contraseña" type="password" style={inputStyle}/>
+                    {errorDesactivar && (
+                      <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.78rem', color: '#d93025' }}>{errorDesactivar}</div>
+                    )}
+                    <button type="submit" disabled={desactivando}
+                      style={{ padding: '13px', background: desactivando ? '#dadce0' : '#d93025', border: 'none', borderRadius: '10px', cursor: desactivando ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '800', fontSize: '.9rem' }}>
+                      {desactivando ? 'Verificando...' : '🚫 Desactivar jugador'}
+                    </button>
+                    <button type="button" onClick={() => setShowDesactivar(false)}
+                      style={{ padding: '10px', background: 'none', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.82rem' }}>
+                      Cancelar
+                    </button>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         )}
