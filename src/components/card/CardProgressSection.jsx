@@ -201,8 +201,10 @@ const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','niv
             <div style={{ fontWeight: '800', color: cardColor, fontSize: '.9rem', letterSpacing: '.06em' }}>
               {subnivel_activo.card?.nombre} · {subnivel_activo.nombre}
             </div>
-            <div style={{ fontSize: '.68rem', color: S.muted, marginTop: '2px' }}>
-              {desbloqueada ? '✓ Desbloqueada' : `Necesitas ${requeridos} de ${totalLogros} logros`}
+            <div style={{ fontSize: '.68rem', color: desbloqueada ? S.muted : (requeridos - logrosCompletos) <= 1 ? S.gold : S.muted, fontWeight: (requeridos - logrosCompletos) <= 1 && !desbloqueada ? '800' : '400', marginTop: '2px' }}>
+              {desbloqueada ? '✓ Desbloqueada'
+                : (requeridos - logrosCompletos) === 1 ? '🔥 ¡Te falta solo 1 logro para romperla!'
+                : `💪 Rompe ${requeridos - logrosCompletos} logros más y es tuya (${requeridos} de ${totalLogros})`}
             </div>
           </div>
           {desbloqueada && (
@@ -235,8 +237,8 @@ const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','niv
               {logrosCompletos}/{totalLogros} · {Math.min(logrosCompletos, requeridos)}/{requeridos} requeridos
             </span>
           </div>
-          <div style={{ background: 'rgba(255,255,255,.06)', borderRadius: '8px', height: '8px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.min(100, pct)}%`, background: `linear-gradient(90deg, ${cardColor}, ${cardColor}aa)`, borderRadius: '8px', transition: 'width .5s ease' }}/>
+          <div style={{ background: 'rgba(255,255,255,.06)', borderRadius: '8px', height: '10px', overflow: 'hidden' }}>
+            <div className="gm-barra-shimmer" style={{ height: '100%', width: `${Math.min(100, pct)}%`, background: `linear-gradient(90deg, ${cardColor}, ${cardColor}aa)`, borderRadius: '8px', transition: 'width .5s ease' }}/>
           </div>
           {/* Marcador del mínimo requerido */}
           <div style={{ position: 'relative', height: '12px' }}>
@@ -252,33 +254,36 @@ const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','niv
             const completado  = achMap[a.id]?.completado || false
             const valorActual = getValorActual(a.stat_key, cache)
             const pctLogro    = Math.min(100, Math.round((valorActual / Number(a.meta)) * 100))
+            const falta       = Math.max(0, Number(a.meta) - valorActual)
+            const casi        = !completado && valorActual > 0 && (falta === 1 || pctLogro >= 75)
             return (
-              <div key={a.id} style={{
+              <div key={a.id} className={`gm-logro${casi ? ' gm-casi' : ''}`} style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '8px 12px', borderRadius: '10px',
-                background: completado ? S.winDim : 'rgba(255,255,255,.03)',
-                border: `1px solid ${completado ? S.win + '44' : 'rgba(255,255,255,.06)'}`,
+                padding: '9px 12px', borderRadius: '10px',
+                background: completado ? S.winDim : casi ? 'rgba(249,168,37,.08)' : 'rgba(255,255,255,.03)',
+                border: `1.5px solid ${completado ? S.win + '44' : casi ? S.gold : 'rgba(255,255,255,.06)'}`,
               }}>
-                <div style={{ width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: completado ? S.win : 'rgba(255,255,255,.08)', border: `1.5px solid ${completado ? S.win : 'rgba(255,255,255,.15)'}` }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: completado ? S.win : casi ? 'rgba(249,168,37,.2)' : 'rgba(255,255,255,.08)', border: `1.5px solid ${completado ? S.win : casi ? S.gold : 'rgba(255,255,255,.15)'}` }}>
                   {completado
                     ? <span style={{ fontSize: '.75rem', color: '#fff' }}>✓</span>
-                    : <span style={{ fontSize: '.55rem', color: S.muted }}>{a.tipo === 'universal' ? '★' : a.tipo === 'campo' ? '⚽' : a.tipo === 'defensa' ? '🛡' : '🧤'}</span>}
+                    : <span style={{ fontSize: '.6rem', color: casi ? S.gold : S.muted }}>{a.tipo === 'universal' ? '★' : a.tipo === 'campo' ? '⚽' : a.tipo === 'defensa' ? '🛡' : '🧤'}</span>}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '.78rem', fontWeight: completado ? '700' : '500', color: completado ? '#fff' : S.text2, lineHeight: 1.2 }}>
+                  <div style={{ fontSize: '.78rem', fontWeight: completado || casi ? '700' : '500', color: completado ? '#fff' : casi ? '#ffe9c4' : S.text2, lineHeight: 1.2 }}>
                     {a.nombre}
                   </div>
                   {!completado && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                      <div style={{ flex: 1, background: 'rgba(255,255,255,.06)', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pctLogro}%`, background: cardColor, borderRadius: '4px' }}/>
+                      <div style={{ flex: 1, background: 'rgba(255,255,255,.06)', borderRadius: '4px', height: '5px', overflow: 'hidden' }}>
+                        <div className={pctLogro > 0 ? 'gm-barra-shimmer' : ''} style={{ height: '100%', width: `${pctLogro}%`, background: casi ? `linear-gradient(90deg, ${S.gold}, #ff6f00)` : cardColor, borderRadius: '4px', transition: 'width .5s ease' }}/>
                       </div>
-                      <span style={{ fontSize: '.6rem', color: S.muted, flexShrink: 0 }}>{valorActual}/{Number(a.meta)}</span>
+                      <span style={{ fontSize: '.62rem', color: casi ? S.gold : S.muted, fontWeight: casi ? '800' : '400', flexShrink: 0 }}>{valorActual}/{Number(a.meta)}</span>
                     </div>
                   )}
+                  {casi && <div style={{ fontSize: '.62rem', color: S.gold, fontWeight: '800', marginTop: '3px' }}>🔥 ¡Te falta{falta === 1 ? '' : 'n'} {falta} para romperlo!</div>}
                 </div>
                 {completado && (
-                  <span style={{ fontSize: '.65rem', color: S.win, flexShrink: 0 }}>+1</span>
+                  <span style={{ fontSize: '.62rem', color: S.win, fontWeight: '800', flexShrink: 0 }}>¡ROTO! 💥</span>
                 )}
               </div>
             )

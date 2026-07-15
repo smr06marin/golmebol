@@ -92,6 +92,9 @@ export default function PlayerHomePage() {
   const [pendingPreview,    setPendingPreview]    = useState(null)
   const [splash,            setSplash]            = useState(null)
   const [sinEquipo,         setSinEquipo]         = useState(false) // no está en ningún equipo → solo PREDIX
+  // Logros, progreso y stats precargados UNA vez: así al tocar cualquier
+  // tarjeta la lista de logros sale AL INSTANTE (antes eran 3 consultas por toque)
+  const [logrosData,        setLogrosData]        = useState(null)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -177,6 +180,18 @@ export default function PlayerHomePage() {
     // en la plantilla de ningún equipo), su portal se limita a PREDIX.
     const { data: tps } = await supabase.from('team_players').select('id').eq('player_id', p.id).limit(1)
     setSinEquipo((regs || []).length === 0 && (tps || []).length === 0)
+
+    // Precargar TODOS los logros + progreso + stats en paralelo (sin bloquear
+    // la pantalla): cuando el jugador toque una tarjeta, el show sale de una.
+    Promise.all([
+      supabase.from('achievements').select('*'),
+      supabase.from('player_achievement_progress').select('*').eq('player_id', p.id),
+      supabase.from('player_stats_cache').select('*').eq('player_id', p.id).single(),
+    ]).then(([a, pr, ca]) => {
+      const progresoMap = {}
+      ;(pr.data || []).forEach(x => { progresoMap[x.achievement_id] = x })
+      setLogrosData({ achievements: a.data || [], progresoMap, cache: ca.data || {} })
+    }).catch(() => {})
 
     // NOTIFICACIONES
     const notifsList = []
@@ -408,25 +423,37 @@ export default function PlayerHomePage() {
     if (!levelId || !player) return
 
     const pos = getPosicionTipo(player)
-    const { data: logros } = await supabase
-      .from('achievements').select('*')
-      .eq('card_level_id', levelId)
-      .in('tipo', ['universal', pos])
-      .order('orden')
+
+    // Camino rápido: si ya están precargados, la lista sale AL INSTANTE
+    let logros, progresoMap, cache
+    if (logrosData) {
+      logros = logrosData.achievements
+        .filter(l => l.card_level_id === levelId && ['universal', pos].includes(l.tipo))
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+      progresoMap = logrosData.progresoMap
+      cache = logrosData.cache
+    } else {
+      // Respaldo por red (solo si el prefetch aún no ha terminado)
+      const { data: lg } = await supabase
+        .from('achievements').select('*')
+        .eq('card_level_id', levelId)
+        .in('tipo', ['universal', pos])
+        .order('orden')
+      logros = lg
+      if (!logros || logros.length === 0) return
+      const { data: progreso } = await supabase
+        .from('player_achievement_progress').select('*')
+        .eq('player_id', player.id)
+        .in('achievement_id', logros.map(l => l.id))
+      progresoMap = {}
+      ;(progreso || []).forEach(p => { progresoMap[p.achievement_id] = p })
+      const { data: ca } = await supabase
+        .from('player_stats_cache').select('*')
+        .eq('player_id', player.id).single()
+      cache = ca
+    }
 
     if (!logros || logros.length === 0) return
-
-    const { data: progreso } = await supabase
-      .from('player_achievement_progress').select('*')
-      .eq('player_id', player.id)
-      .in('achievement_id', logros.map(l => l.id))
-
-    const progresoMap = {}
-    ;(progreso || []).forEach(p => { progresoMap[p.achievement_id] = p })
-
-    const { data: cache } = await supabase
-      .from('player_stats_cache').select('*')
-      .eq('player_id', player.id).single()
 
     const statValor = (key) => ({
       pj: cache?.pj, victorias: cache?.victorias, goles: cache?.goles,
@@ -675,33 +702,45 @@ export default function PlayerHomePage() {
                       <span style={{ fontSize: '.75rem', color: '#5f6368' }}>Tu progreso</span>
                       <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#202124' }}>{prog.actual} / {prog.meta} logros</span>
                     </div>
-                    <div style={{ background: '#f1f3f4', borderRadius: '10px', height: '8px', overflow: 'hidden', marginBottom: '8px' }}>
-                      <div style={{ height: '100%', width: `${prog.pct}%`, background: 'linear-gradient(90deg,#1a73e8,#6c35de)', borderRadius: '10px' }}/>
+                    <div style={{ background: '#f1f3f4', borderRadius: '10px', height: '10px', overflow: 'hidden', marginBottom: '8px' }}>
+                      <div className="gm-barra-shimmer" style={{ height: '100%', width: `${prog.pct}%`, background: 'linear-gradient(90deg,#1a73e8,#6c35de)', borderRadius: '10px', transition: 'width .6s ease' }}/>
                     </div>
-                    <div style={{ fontSize: '.72rem', color: prog.pct >= 80 ? '#1e8e3e' : '#9aa0a6', textAlign: 'center', fontWeight: '500', marginBottom: previewLogros.length > 0 ? '12px' : '0' }}>
-                      {prog.pct}% completado {prog.pct >= 80 ? '🔥 ¡Ya casi!' : ''}
+                    <div style={{ fontSize: '.75rem', color: prog.pct >= 80 ? '#e8710a' : '#9aa0a6', textAlign: 'center', fontWeight: prog.pct >= 80 ? '800' : '500', marginBottom: previewLogros.length > 0 ? '12px' : '0' }}>
+                      {prog.pct >= 100 ? <>¡Lista para romper! <span className="gm-trofeo">🏆</span></>
+                        : prog.pct >= 80 ? `🔥 ${prog.pct}% — ¡Estás a NADA de romperla!`
+                        : `${prog.pct}% completado — ¡tú puedes! 💪`}
                     </div>
                   </>
                 )}
                 {previewLogros.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>LOGROS REQUERIDOS</div>
-                    {previewLogros.map((l, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '8px', background: l.completado ? '#e6f4ea' : '#f8f9fa', border: `1px solid ${l.completado ? '#1e8e3e33' : '#e8eaed'}` }}>
-                        <span style={{ fontSize: '.85rem', flexShrink: 0 }}>{l.completado ? '✅' : l.tipo === 'universal' ? '⭐' : l.tipo === 'arquero' ? '🧤' : l.tipo === 'defensa' ? '🛡️' : '⚽'}</span>
+                    {previewLogros.map((l, i) => {
+                      const pctL  = Math.min(100, Math.round((l.valorActual / l.meta) * 100))
+                      const falta = Math.max(0, l.meta - l.valorActual)
+                      const casi  = !l.completado && (falta === 1 || pctL >= 75) && l.valorActual > 0
+                      return (
+                      <div key={i} className={`gm-logro${casi ? ' gm-casi' : ''}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px', borderRadius: '10px',
+                          background: l.completado ? '#e6f4ea' : casi ? '#fff8e1' : '#f8f9fa',
+                          border: `1.5px solid ${l.completado ? '#1e8e3e55' : casi ? '#f9a825' : '#e8eaed'}` }}>
+                        <span style={{ fontSize: '1rem', flexShrink: 0 }}>{l.completado ? '✅' : l.tipo === 'universal' ? '⭐' : l.tipo === 'arquero' ? '🧤' : l.tipo === 'defensa' ? '🛡️' : '⚽'}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '.76rem', fontWeight: '500', color: l.completado ? '#1e8e3e' : '#202124' }}>{l.nombre}</div>
+                          <div style={{ fontSize: '.78rem', fontWeight: l.completado || casi ? '700' : '500', color: l.completado ? '#1e8e3e' : '#202124' }}>{l.nombre}</div>
                           {!l.completado && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-                              <div style={{ flex: 1, background: '#e8eaed', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${Math.min(100, Math.round((l.valorActual / l.meta) * 100))}%`, background: '#1a73e8', borderRadius: '4px' }}/>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                              <div style={{ flex: 1, background: '#e8eaed', borderRadius: '4px', height: '5px', overflow: 'hidden' }}>
+                                <div className={pctL > 0 ? 'gm-barra-shimmer' : ''} style={{ height: '100%', width: `${pctL}%`, background: casi ? 'linear-gradient(90deg,#f9a825,#ff6f00)' : '#1a73e8', borderRadius: '4px', transition: 'width .6s ease' }}/>
                               </div>
-                              <span style={{ fontSize: '.62rem', color: '#9aa0a6', flexShrink: 0 }}>{l.valorActual}/{l.meta}</span>
+                              <span style={{ fontSize: '.64rem', color: casi ? '#e8710a' : '#9aa0a6', fontWeight: casi ? '800' : '400', flexShrink: 0 }}>{l.valorActual}/{l.meta}</span>
                             </div>
                           )}
+                          {casi && <div style={{ fontSize: '.66rem', color: '#e8710a', fontWeight: '800', marginTop: '3px' }}>🔥 ¡Te falta{falta === 1 ? '' : 'n'} {falta} para romperlo!</div>}
                         </div>
+                        {l.completado && <span style={{ fontSize: '.66rem', color: '#1e8e3e', fontWeight: '800', flexShrink: 0 }}>¡ROTO! 💥</span>}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
                 {previewLogros.length === 0 && (

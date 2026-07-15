@@ -159,3 +159,33 @@ input:focus, select:focus, textarea:focus {
 /* Carrusel de tarjetas del jugador: sin barra de scroll visible */
 .gm-carrusel { scrollbar-width: none; }
 .gm-carrusel::-webkit-scrollbar { display: none; }
+
+/* ── Logros: el "show" ───────────────────────────────
+   Animaciones para que las barras y logros se sientan vivos
+   e inciten a completarlos. Solo transform/opacity (rápidas
+   en celulares, no tocan el layout). */
+@keyframes gmShimmer { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
+@keyframes gmPulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249,168,37,0); }
+  50%      { box-shadow: 0 0 14px 2px rgba(249,168,37,.55); }
+}
+@keyframes gmLogroPop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes gmTrofeo { 0%,100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-10deg) scale(1.18); } 75% { transform: rotate(10deg) scale(1.18); } }
+
+/* Cada logro entra en cascada */
+.gm-logro { animation: gmLogroPop .32s ease both; }
+.gm-logro:nth-child(2) { animation-delay: .05s; } .gm-logro:nth-child(3) { animation-delay: .10s; }
+.gm-logro:nth-child(4) { animation-delay: .15s; } .gm-logro:nth-child(5) { animation-delay: .20s; }
+.gm-logro:nth-child(6) { animation-delay: .25s; } .gm-logro:nth-child(n+7) { animation-delay: .30s; }
+
+/* Destello que recorre las barras de progreso */
+.gm-barra-shimmer { position: relative; overflow: hidden; }
+.gm-barra-shimmer::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+  transform: translateX(-110%); animation: gmShimmer 2.2s ease-in-out infinite;
+}
+
+/* Logro a punto de romperse: pulso dorado */
+.gm-casi { animation: gmPulseGlow 1.5s ease-in-out infinite; }
+.gm-trofeo { display: inline-block; animation: gmTrofeo 1.8s ease-in-out infinite; }
