@@ -196,9 +196,13 @@ function ModalMVP({ jugadoresLocal, jugadoresVisitante, partido, mvpGuardado, on
             style={{ padding: '12px', background: !jugador ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: !jugador ? 'not-allowed' : 'pointer', color: !jugador ? '#9aa0a6' : '#fff', fontWeight: '700', fontSize: '.95rem' }}>
             ⭐ Guardar MVP y resultado
           </button>
-          <button onClick={onSaltear} style={{ padding: '10px', background: 'none', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#9aa0a6', fontSize: '.78rem' }}>
-            Cerrar sin MVP (no recomendado)
+          {/* Ya no existe "guardar sin MVP": el resultado NO se guarda hasta
+              elegir el MVP. Este botón solo vuelve a la planilla para revisar
+              los jugadores y recordar quién fue. */}
+          <button onClick={onSaltear} style={{ padding: '11px', background: 'none', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.82rem', fontWeight: '600' }}>
+            ← Volver a ver la planilla
           </button>
+          <div style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center' }}>El resultado no se guarda hasta que elijas el MVP</div>
         </div>
       </div>
     </div>
@@ -332,6 +336,20 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   const [firmaModal, setFirmaModal] = useState(null)
   const [firmas,     setFirmas]     = useState({ capitanLocal: null, capitanVisitante: null, arbitro1: null, arbitro2: null, anotador: null })
+  const [capitanes,  setCapitanes]  = useState({ local: '', visitante: '' }) // N° de camiseta del capitán
+  // Alarma de fin de tiempo: pita y vibra SIN PARAR hasta que le den "Parar"
+  const [alarmaActiva, setAlarmaActiva] = useState(false)
+  const alarmaRef = useRef(null)
+  // Aviso al tocar casillas del 1er tiempo estando en el 2do
+  const [avisoPeriodo, setAvisoPeriodo] = useState(false)
+  // Informe del partido (obligatorio con roja o partido terminado antes de tiempo)
+  const [showInforme,      setShowInforme]      = useState(null) // { motivo, continuar:'mvp'|null, continuarEspecial:info|null }
+  const [informeTipo,      setInformeTipo]      = useState('')
+  const [informeTexto,     setInformeTexto]     = useState('')
+  const [informeGuardado,  setInformeGuardado]  = useState(false)
+  const [guardandoInforme, setGuardandoInforme] = useState(false)
+  const [dictando,         setDictando]         = useState(false)
+  const recVozRef = useRef(null)
   const [avisoFirmas,    setAvisoFirmas]    = useState(null) // árbitros que faltan por firmar
   const [avisoAcumulado, setAvisoAcumulado] = useState(null) // jugador que completó sus faltas
 
@@ -375,6 +393,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante,
       periodo, segundos, corriendo, tiempoAgotado, tiempoExtra,
       arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis,
+      firmas, capitanes, informeTexto, informeTipo, informeGuardado,
       savedAt: new Date().toISOString(), pendienteSync: true,
     }
   }
@@ -406,6 +425,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setCuerpoVis(snap.cuerpoVis || CUERPO_ROLES.map(r => ({ rol: r, nombre: '', ci: '', firma: null, amarilla: false, azul: false, roja: false })))
     setArbitro1(snap.arbitro1 || ''); setArbitroInput1(snap.arbitro1 || '')
     setArbitro2(snap.arbitro2 || ''); setArbitroInput2(snap.arbitro2 || '')
+    if (snap.arbitro3) setArbitro3(snap.arbitro3)
+    // Firmas y capitanes: se restauran para que no se pierdan al reabrir
+    if (snap.firmas) setFirmas(prev => ({ ...prev, ...snap.firmas }))
+    if (snap.capitanes) setCapitanes(snap.capitanes)
+    if (snap.informeTexto) setInformeTexto(snap.informeTexto)
+    if (snap.informeTipo) setInformeTipo(snap.informeTipo)
+    if (snap.informeGuardado) setInformeGuardado(true)
     setAnotador(snap.anotador || ''); setCronometroNombre(snap.cronometroNombre || ''); setObservaciones(snap.observaciones || '')
     setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
     setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
@@ -476,13 +502,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           const next = s + 1
           if (next >= limiteSegundos && !tiempoAgotado) {
             setTiempoAgotado(true); setCorriendo(false)
-            try {
-              const ctx = new (window.AudioContext || window.webkitAudioContext)()
-              const beep = (freq, start, dur) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = freq; o.start(ctx.currentTime + start); o.stop(ctx.currentTime + start + dur); g.gain.setValueAtTime(0.3, ctx.currentTime + start); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur) }
-              beep(880, 0, 0.3); beep(880, 0.4, 0.3); beep(1100, 0.8, 0.6); beep(880, 1.5, 0.3); beep(1100, 1.9, 0.8)
-            } catch(e) {}
-            // Vibración en celulares: fin del tiempo
-            try { if (navigator.vibrate) navigator.vibrate([500, 150, 500, 150, 900]) } catch(e) {}
+            // Alarma insistente: pita y vibra SIN PARAR hasta que le den "Parar
+            // alarma" — así nadie se pasa del tiempo sin darse cuenta.
+            iniciarAlarma()
           }
           // Cada ~8s con el reloj corriendo, se guarda también en el servidor
           // para que si este celular se apaga, otro pueda retomar el cronómetro
@@ -514,7 +536,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const snap = construirSnap()
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
     sincronizarRemoto(snap)
-  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis])
+  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado])
 
   useEffect(() => { fetchTodo() }, [])
   useEffect(() => {
@@ -547,12 +569,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           setHistArquerosVis(prev => prev.length > 0 ? prev : arqVises.map(a => ({ id: a.player_id, orden: a.orden })))
         }
       }
-      // Precargar árbitros asignados al partido si no hay snap local
-      if (!localStorage.getItem(localKey)) {
-        if (partido.arbitro1_id) { const a = (data||[]).find(x=>x.id===partido.arbitro1_id); if(a) setArbitro1(a.name) }
-        if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) setArbitro2(a.name) }
-        if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(a.name) }
-      }
+      // Precargar árbitros asignados al partido SIEMPRE que el campo esté
+      // vacío (antes solo se hacía si no había borrador local, y los árbitros
+      // asignados por la coordinadora no salían automáticamente). prev || ...:
+      // si la planilla ya tiene un nombre puesto, no se pisa.
+      if (partido.arbitro1_id) { const a = (data||[]).find(x=>x.id===partido.arbitro1_id); if(a) { setArbitro1(prev => prev || a.name); setArbitroInput1(prev => prev || a.name) } }
+      if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) { setArbitro2(prev => prev || a.name); setArbitroInput2(prev => prev || a.name) } }
+      if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(prev => prev || a.name) }
     })()
   }, [])
 
@@ -602,11 +625,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('match_id', partido.id),
       supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').maybeSingle(),
       // Snapshot que haya dejado guardado OTRO celular (árbitro/admin) llenando esta misma planilla
-      supabase.from('matches').select('live_state, live_state_updated_at').eq('id', partido.id).maybeSingle(),
+      supabase.from('matches').select('live_state, live_state_updated_at, firmas, capitan_local, capitan_visitante').eq('id', partido.id).maybeSingle(),
       // Historial de ediciones hechas DESPUÉS de que la planilla ya estaba cerrada
       supabase.from('match_edit_log').select('*').eq('match_id', partido.id).order('edited_at', { ascending: false }),
     ])
     setLogEdicion(editLogDB?.data || [])
+
+    // Firmas y capitanes guardados en la BD (de un guardado anterior). Se
+    // aplican primero: si el borrador (snapshot) trae unos más recientes,
+    // los pisará más abajo al restaurarse.
+    if (liveDB?.data?.firmas) setFirmas(prev => ({ ...prev, ...liveDB.data.firmas }))
+    if (liveDB?.data?.capitan_local || liveDB?.data?.capitan_visitante) {
+      setCapitanes(prev => ({ local: prev.local || liveDB.data.capitan_local || '', visitante: prev.visitante || liveDB.data.capitan_visitante || '' }))
+    }
 
     const evs = eventos.data || [], stats = statsDB.data || [], yaJugado = stats.length > 0, torneoData = torn.data
     if (logrosDB.data?.player_id) setMvpId(logrosDB.data.player_id)
@@ -738,11 +769,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       faltasAcumVis[key].filter(Boolean).forEach(numero => { const j = jugadoresVisitante.find(jj => String(jj.numero) === String(numero)); if (j?.id) eventosFaltas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id: partido.away_team_id, player_id: j.id, event_type: 'falta_acum', periodo: per }) })
     })
 
+    // Errores de guardado: antes se ignoraban en silencio y el árbitro creía
+    // que había guardado cuando en realidad el partido nunca pasó a "jugado".
+    const erroresGuardado = []
+
     await supabase.from('match_events').delete().eq('match_id', partido.id)
     const todosEventos = [...eventosGolLocal, ...eventosGolVis, ...eventosTarjetas, ...eventosFaltas]
-    if (todosEventos.length > 0) await supabase.from('match_events').insert(todosEventos)
+    if (todosEventos.length > 0) {
+      const { error: errEv } = await supabase.from('match_events').insert(todosEventos)
+      if (errEv) erroresGuardado.push('Eventos: ' + errEv.message)
+    }
 
-    const updatePartido = { home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished', live_state: null, live_state_updated_at: null }
+    const updatePartido = { home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished', live_state: null, live_state_updated_at: null, firmas, capitan_local: capitanes.local || null, capitan_visitante: capitanes.visitante || null }
     // Actualizar árbitros si se cambiaron en la planilla
     const arb1Obj = arbitrosReg.find(a => a.name === arbitro1)
     const arb2Obj = arbitrosReg.find(a => a.name === arbitro2)
@@ -752,7 +790,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (arbitro3) { updatePartido.arbitro3 = arbitro3; if(arb3Obj) updatePartido.arbitro3_id = arb3Obj.id }
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
     if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = penalesGanador }
-    await supabase.from('matches').update(updatePartido).eq('id', partido.id)
+    let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
+    if (errPartido && (errPartido.message || '').includes('firmas')) {
+      // La BD aún no tiene las columnas nuevas (falta correr la migración):
+      // reintentar sin ellas para no bloquear el resultado.
+      delete updatePartido.firmas; delete updatePartido.capitan_local; delete updatePartido.capitan_visitante
+      ;({ error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id))
+    }
+    if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
     // Guardar arqueros del partido
     await supabase.from('partido_arqueros').delete().eq('match_id', partido.id)
@@ -804,7 +849,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
     procesarStats(jugadoresLocal, golesLocal, partido.home_team_id, true, finalistasLocal, ingresosLocal)
     procesarStats(jugadoresVisitante, golesVisitante, partido.away_team_id, false, finalistasVis, ingresosVis)
-    if (statsRows.length > 0) await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
+    if (statsRows.length > 0) {
+      const { error: errStats } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
+      if (errStats) erroresGuardado.push('Estadísticas: ' + errStats.message)
+    }
 
     // MVP
     const mvpFinal = mvpIdFinal || mvpId
@@ -837,6 +885,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       }
     } else {
       await supabase.from('predicciones').update({ puntos_ganados: 0, resuelta: true }).eq('match_id', partido.id).eq('resuelta', false)
+    }
+
+    // Si algo crítico falló, NO se cierra la planilla ni se borra el borrador:
+    // se muestra el error para reintentar (o avisar al administrador).
+    if (erroresGuardado.length > 0) {
+      setGuardandoDB(false)
+      alert('⚠️ NO SE PUDO GUARDAR EL RESULTADO:\n\n' + erroresGuardado.join('\n') + '\n\nLa planilla NO se cerró y tus datos siguen guardados como borrador. Intenta de nuevo con buena señal, o avisa al administrador con este mensaje.')
+      return
     }
 
     try { localStorage.removeItem(localKey) } catch(e) {}
@@ -879,6 +935,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     // La firma de los árbitros que pitaron es obligatoria antes de guardar
     const faltan = firmasFaltantes()
     if (faltan.length > 0) { setAvisoFirmas(faltan); return }
+    // Con tarjeta roja el informe del partido es OBLIGATORIO antes de guardar
+    const hayRoja = [...jugadoresLocal, ...jugadoresVisitante].some(j => j.roja)
+    if (hayRoja && !informeGuardado) {
+      if (!informeTipo) setInformeTipo('roja')
+      setShowInforme({ motivo: 'roja', continuar: 'mvp' })
+      return
+    }
     setShowMVP(true)
   }
 
@@ -888,14 +951,62 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     await guardarEnDB(null, playerId)
   }
 
-  async function handleSaltearMVP() {
-    setShowMVP(false)
-    await guardarEnDB(null, null)
-  }
-
   async function handleConfirmarEspecial(info) {
     setShowEspecial(null)
+    // Partido terminado antes de tiempo / no jugado (W o desierto):
+    // el informe de lo que pasó es OBLIGATORIO antes de guardar
+    if (!informeGuardado) {
+      if (!informeTipo) setInformeTipo('terminado_antes')
+      setShowInforme({ motivo: 'especial', continuarEspecial: info })
+      return
+    }
     await guardarEnDB(info, null)
+  }
+
+  // ── INFORME DEL PARTIDO (dictado por voz o escrito) ──────────────────────
+  function toggleDictado() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { alert('Este navegador no soporta dictado por voz — escribe el informe con el teclado.'); return }
+    if (dictando) { try { recVozRef.current?.stop() } catch(e) {}; setDictando(false); return }
+    const rec = new SR()
+    rec.lang = 'es-CO'; rec.continuous = true; rec.interimResults = false
+    rec.onresult = e => {
+      let t = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) t += e.results[i][0].transcript
+      if (t.trim()) setInformeTexto(prev => (prev ? prev.trim() + ' ' : '') + t.trim())
+    }
+    rec.onend   = () => setDictando(false)
+    rec.onerror = () => setDictando(false)
+    recVozRef.current = rec
+    try { rec.start(); setDictando(true) } catch(e) { setDictando(false) }
+  }
+
+  async function guardarInforme() {
+    if (!informeTipo) { alert('Selecciona el motivo del informe'); return }
+    if ((informeTexto || '').trim().length < 10) { alert('Escribe o dicta el informe (mínimo unas palabras) — es obligatorio.'); return }
+    setGuardandoInforme(true)
+    try { recVozRef.current?.stop() } catch(e) {}
+    setDictando(false)
+    let creadoPor = null
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      creadoPor = user?.email || null
+      if (user?.id) {
+        const { data: pRow } = await supabase.from('players').select('name').eq('user_id', user.id).maybeSingle()
+        if (pRow?.name) creadoPor = pRow.name
+      }
+    } catch(e) {}
+    const { error } = await supabase.from('match_informes').insert({
+      match_id: partido.id, tournament_id: partido.tournament_id,
+      tipo: informeTipo, descripcion: informeTexto.trim(), creado_por: creadoPor,
+    })
+    setGuardandoInforme(false)
+    if (error) { alert('No se pudo guardar el informe: ' + error.message + '\nRevisa la señal e intenta de nuevo.'); return }
+    setInformeGuardado(true)
+    const pendiente = showInforme
+    setShowInforme(null)
+    if (pendiente?.continuarEspecial) await guardarEnDB(pendiente.continuarEspecial, null)
+    else if (pendiente?.continuar === 'mvp') setShowMVP(true)
   }
 
   function formatTiempo(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}` }
@@ -1028,8 +1139,30 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     window.removeEventListener('mousemove', onDrag); window.removeEventListener('mouseup', onDragEnd)
     window.removeEventListener('touchmove', onDrag); window.removeEventListener('touchend', onDragEnd); window.removeEventListener('touchcancel', onDragEnd)
   }
-  function iniciarPeriodo2() { setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setPeriodo(2) }
-  function agregarTiempoExtra(mins) { setTiempoExtra(prev => prev + mins); setTiempoAgotado(false); setCorriendo(true) }
+  // ── ALARMA DE FIN DE TIEMPO (no para hasta que la paren) ────────────────
+  function sonarAlarmaUnaVez() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const beep = (freq, start, dur) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = freq; o.start(ctx.currentTime + start); o.stop(ctx.currentTime + start + dur); g.gain.setValueAtTime(0.3, ctx.currentTime + start); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur) }
+      beep(880, 0, 0.3); beep(1100, 0.4, 0.6)
+    } catch(e) {}
+    try { if (navigator.vibrate) navigator.vibrate([450, 150, 450]) } catch(e) {}
+  }
+  function iniciarAlarma() {
+    if (alarmaRef.current) return
+    sonarAlarmaUnaVez()
+    alarmaRef.current = setInterval(sonarAlarmaUnaVez, 1500)
+    setAlarmaActiva(true)
+  }
+  function pararAlarma() {
+    clearInterval(alarmaRef.current); alarmaRef.current = null
+    setAlarmaActiva(false)
+    try { if (navigator.vibrate) navigator.vibrate(0) } catch(e) {}
+  }
+  useEffect(() => () => { clearInterval(alarmaRef.current); try { navigator.vibrate && navigator.vibrate(0) } catch(e) {} }, [])
+
+  function iniciarPeriodo2() { pararAlarma(); setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setPeriodo(2) }
+  function agregarTiempoExtra(mins) { pararAlarma(); setTiempoExtra(prev => prev + mins); setTiempoAgotado(false); setCorriendo(true) }
   function confirmarDuracion() {
     const val = parseInt(duracionInput)
     if (!isNaN(val) && val > 0 && val <= 90) { setDuracionMinutos(val); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setCorriendo(false) }
@@ -1049,22 +1182,43 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const progreso = Math.min(segundos / limiteSegundos, 1)
   const cronoBg  = tiempoAgotado ? '#b71c1c' : periodo === 1 ? AZUL : ROJO
 
-  function DropdownCamisetas({ jugs, dropKey, onSelect }) {
+  // Lista de camisetas GRANDE y siempre visible: se pinta con position:fixed
+  // centrada en la pantalla (la hoja tiene scroll lateral y una lista absoluta
+  // podía quedar fuera de la parte visible). El equipo de ARRIBA (local) la
+  // despliega en la mitad superior; el de ABAJO (visitante) en la inferior.
+  // `excluir`: números que ya fueron usados y no deben volver a salir.
+  function DropdownCamisetas({ jugs, dropKey, onSelect, equipo, excluir = [] }) {
     if (dropdownOpen !== dropKey) return null
-    const jugsConNumero = jugs.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined)
+    const usados = new Set((excluir || []).filter(n => n !== '' && n !== null && n !== undefined).map(String))
+    const jugsConNumero = jugs.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined && !usados.has(String(j.numero)))
+    const arriba = equipo !== 'visitante'
     return (
-      <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000, background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,.2)', minWidth: '160px', display: 'flex', flexDirection: 'column' }}>
-        {jugsConNumero.length === 0 && <div style={{ padding: '8px 12px', fontSize: '9px', color: '#9aa0a6' }}>Sin números asignados</div>}
-        {jugsConNumero.map(j => (
-          <div key={j.numero} onClick={() => onSelect(j.numero)}
-            style={{ padding: '5px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f1f3f4' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
-            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-            <span style={{ fontWeight: '700', color: '#111', minWidth: '26px', background: '#e8f0fe', borderRadius: '4px', textAlign: 'center', padding: '1px 3px', fontSize: '10px' }}>#{j.numero}</span>
-            <span style={{ fontSize: '10px', color: '#111' }}>{j.nombre}</span>
+      <>
+        {/* Fondo oscuro: enfoca la lista y al tocarlo se cierra */}
+        <div onClick={e => { e.stopPropagation(); setDropdownOpen(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9490 }}/>
+        <div onClick={e => e.stopPropagation()}
+          style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)',
+            ...(arriba ? { top: '60px' } : { bottom: '20px' }),
+            zIndex: 9500, background: '#fff', border: '1px solid #dadce0', borderRadius: '14px',
+            boxShadow: '0 12px 40px rgba(0,0,0,.45)', width: 'min(92vw, 340px)', maxHeight: '62vh',
+            overflowY: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 14px', background: arriba ? colorLocal : colorVisitante, color: '#fff', fontWeight: 800, fontSize: '.82rem', position: 'sticky', top: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{arriba ? partido.home?.name : partido.away?.name}</span>
+            <span onClick={() => setDropdownOpen(null)} style={{ cursor: 'pointer', fontWeight: 900, padding: '0 4px' }}>✕</span>
           </div>
-        ))}
-      </div>
+          {jugsConNumero.length === 0 && <div style={{ padding: '16px', fontSize: '.85rem', color: '#9aa0a6', textAlign: 'center' }}>Sin números disponibles</div>}
+          {jugsConNumero.map(j => (
+            <div key={j.numero} onClick={() => onSelect(j.numero)}
+              style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #f1f3f4' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+              <span style={{ fontWeight: 900, color: '#111', minWidth: '44px', background: '#e8f0fe', borderRadius: '8px', textAlign: 'center', padding: '6px 4px', fontSize: '1.05rem' }}>#{j.numero}</span>
+              <span style={{ fontSize: '.92rem', color: '#111', fontWeight: 600 }}>{j.nombre}</span>
+            </div>
+          ))}
+        </div>
+      </>
     )
   }
 
@@ -1085,7 +1239,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           ) : puedeClic ? (
             <div style={{ flex: 1, position: 'relative' }} onClick={e => { e.stopPropagation(); intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}>
               <span style={{ fontSize: '9px', color: equipoTieneArquero(equipo) ? '#555' : '#ccc', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
-              <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarGol(equipo, slotIdx, n)}/>
+              <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarGol(equipo, slotIdx, n)}/>
             </div>
           ) : <span style={{ fontSize: '7px', color: '#bbb' }}>—</span>}
         </div>
@@ -1095,16 +1249,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   function SlotFalta({ equipo, per, i, faltasAcum, jugs }) {
     const key = `p${per}`, val = faltasAcum[key][i], dropKey = `falta-${equipo}-p${per}-${i}`
-    const puedeClic = puedeAbrirFalta(faltasAcum, key, i)
+    // En el 2do tiempo las casillas del 1er tiempo quedan BLOQUEADAS
+    const bloqueadaPorPeriodo = per < periodo
+    const puedeClic = !bloqueadaPorPeriodo && puedeAbrirFalta(faltasAcum, key, i)
     return (
-      <td style={{ border: B, padding: '2px 1px', position: 'relative', textAlign: 'center', verticalAlign: 'middle', background: val !== null ? (per === 1 ? '#ddeeff' : '#ffdddd') : puedeClic ? '#f8f9fa' : '#f1f3f4', cursor: 'pointer' }}
-        onClick={e => { e.stopPropagation(); if (puedeClic && val === null) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
-        onDoubleClick={e => { e.stopPropagation(); if (val !== null) eliminarFaltaAcum(equipo, per, i) }}
+      <td style={{ border: B, padding: '2px 1px', position: 'relative', textAlign: 'center', verticalAlign: 'middle', background: val !== null ? (per === 1 ? '#ddeeff' : '#ffdddd') : bloqueadaPorPeriodo ? '#e0e0e0' : puedeClic ? '#f8f9fa' : '#f1f3f4', cursor: 'pointer' }}
+        onClick={e => { e.stopPropagation(); if (bloqueadaPorPeriodo && val === null) { setAvisoPeriodo(true); return } if (puedeClic && val === null) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
+        onDoubleClick={e => { e.stopPropagation(); if (val !== null) { if (bloqueadaPorPeriodo) { setAvisoPeriodo(true); return } eliminarFaltaAcum(equipo, per, i) } }}
         title={val !== null ? 'Doble click para eliminar' : ''}>
         {val !== null ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>{val}<span style={{ fontSize: '6px', color: '#aaa' }}>2x</span></span>
           : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
-          : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
-        <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}/>
+          : <span style={{ color: bloqueadaPorPeriodo ? '#999' : '#ccc', fontSize: '8px' }}>{bloqueadaPorPeriodo ? '🔒' : '—'}</span>}
+        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}/>
       </td>
     )
   }
@@ -1130,7 +1286,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         {val ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>#{val}</span>
           : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
           : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
-        <DropdownCamisetas jugs={jugs} dropKey={dropKey} onSelect={n => registrarSeleccion(setArr, valores, i, n)}/>
+        {/* excluir={valores}: un número ya elegido en esta lista no vuelve a salir */}
+        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} excluir={valores} onSelect={n => registrarSeleccion(setArr, valores, i, n)}/>
       </div>
     )
   }
@@ -1353,7 +1510,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       )}
 
       {showMVP && (
-        <ModalMVP jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante} partido={partido} mvpGuardado={mvpId} onGuardar={handleGuardarMVP} onSaltear={handleSaltearMVP}/>
+        <ModalMVP jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante} partido={partido} mvpGuardado={mvpId} onGuardar={handleGuardarMVP} onSaltear={() => setShowMVP(false)}/>
       )}
 
       {showEspecial && (
@@ -1399,6 +1556,74 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               style={{ width: '100%', padding: '12px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '700' }}>
               Entendido
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso: intentaron llenar una casilla del 1er tiempo estando en el 2do */}
+      {avisoPeriodo && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '26px', width: '100%', maxWidth: '360px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+            <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>🔒</div>
+            <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '8px' }}>Estás en el 2do tiempo</div>
+            <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '18px' }}>
+              Las casillas del <b>1er tiempo</b> quedaron bloqueadas. Tienes que llenar las del <b>2do tiempo</b>.
+            </div>
+            <button onClick={() => setAvisoPeriodo(false)}
+              style={{ width: '100%', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '700' }}>
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* INFORME DEL PARTIDO — obligatorio con roja o partido terminado antes */}
+      {showInforme && (
+        <div className="no-print" style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 9800, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ maxWidth: '560px', margin: '0 auto', padding: '20px 18px 40px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '2.2rem', marginBottom: '6px' }}>📝</div>
+              <div style={{ fontWeight: '900', color: '#202124', fontSize: '1.15rem' }}>Informe del partido</div>
+              <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '4px' }}>{partido.home?.name} vs {partido.away?.name}</div>
+              {showInforme.motivo !== 'otro' && (
+                <div style={{ marginTop: '10px', background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', fontSize: '.8rem', color: '#d93025', fontWeight: '700' }}>
+                  {showInforme.motivo === 'roja' ? '🟥 Hay tarjeta roja: el informe es OBLIGATORIO para poder guardar.' : '⏱️ El partido no se completó: el informe es OBLIGATORIO para poder guardar.'}
+                </div>
+              )}
+            </div>
+
+            <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#5f6368', marginBottom: '6px' }}>Motivo</div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              {[{ id: 'roja', t: '🟥 Tarjeta roja' }, { id: 'terminado_antes', t: '⏱️ Terminado antes de tiempo' }, { id: 'otro', t: '📝 Otro' }].map(op => (
+                <button key={op.id} onClick={() => setInformeTipo(op.id)}
+                  style={{ padding: '9px 14px', borderRadius: '20px', border: `2px solid ${informeTipo === op.id ? '#1a73e8' : '#dadce0'}`, background: informeTipo === op.id ? '#e8f0fe' : '#fff', color: informeTipo === op.id ? '#1a73e8' : '#5f6368', fontSize: '.82rem', fontWeight: '700', cursor: 'pointer' }}>
+                  {op.t}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#5f6368' }}>¿Qué pasó? (escribe o dicta)</div>
+              <button onClick={toggleDictado}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', background: dictando ? '#d93025' : '#1a73e8', color: '#fff', fontWeight: '800', fontSize: '.82rem', animation: dictando ? 'parpadeo 1s infinite' : 'none' }}>
+                {dictando ? '⏹ Parar dictado' : '🎤 Hablar'}
+              </button>
+            </div>
+            <textarea value={informeTexto} onChange={e => setInformeTexto(e.target.value)}
+              placeholder={'Ej: Al minuto 12 del segundo tiempo el jugador #7 recibió tarjeta roja por...\n\nToca 🎤 Hablar y dicta el informe con tu voz.'}
+              style={{ width: '100%', minHeight: '180px', border: '2px solid #dadce0', borderRadius: '12px', padding: '14px', fontSize: '1rem', lineHeight: 1.5, color: '#202124', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}/>
+            {dictando && <div style={{ fontSize: '.75rem', color: '#d93025', fontWeight: '700', marginTop: '6px' }}>🎙️ Escuchando... habla claro y cerca del celular. Lo que digas se va escribiendo arriba.</div>}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
+              <button onClick={guardarInforme} disabled={guardandoInforme}
+                style={{ padding: '14px', background: guardandoInforme ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '12px', cursor: guardandoInforme ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '800', fontSize: '1rem' }}>
+                {guardandoInforme ? 'Guardando...' : '✓ Guardar informe y continuar'}
+              </button>
+              <button onClick={() => { try { recVozRef.current?.stop() } catch(e) {}; setDictando(false); setShowInforme(null) }}
+                style={{ padding: '11px', background: 'none', border: '1px solid #dadce0', borderRadius: '12px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem', fontWeight: '600' }}>
+                ← Volver a la planilla{showInforme.motivo !== 'otro' ? ' (sin el informe no se puede guardar)' : ''}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1451,7 +1676,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         {miniCrono ? (
           <div style={{ padding: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', animation: tiempoAgotado ? 'parpadeo 1s infinite' : 'none' }}>{formatTiempo(segundos)}</span>
-            <button onClick={() => { if (!tiempoAgotado) setCorriendo(!corriendo) }} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{corriendo?<Pause size={14}/>:<Play size={14}/>}</button>
+            {alarmaActiva ? (
+              <button onClick={pararAlarma} style={{ background: '#fff', border: 'none', borderRadius: '14px', padding: '4px 10px', cursor: 'pointer', color: '#b71c1c', fontWeight: '900', fontSize: '.72rem', animation: 'parpadeo 1s infinite' }}>🔕 PARAR</button>
+            ) : (
+              <button onClick={() => { if (!tiempoAgotado) setCorriendo(!corriendo) }} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{corriendo?<Pause size={14}/>:<Play size={14}/>}</button>
+            )}
           </div>
         ) : (
           <div style={{ padding: '0 16px 14px' }}>
@@ -1474,6 +1703,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             {tiempoAgotado ? (
               <div style={{ marginTop: '10px' }}>
                 <div style={{ textAlign: 'center', color: '#fff', fontWeight: '700', fontSize: '.85rem', marginBottom: '8px' }}>⏰ Fin del {periodo===1 ? '1er' : '2do'} periodo</div>
+                {alarmaActiva && (
+                  <button onClick={pararAlarma} style={{ width: '100%', marginBottom: '8px', padding: '12px', background: '#fff', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#b71c1c', fontSize: '1rem', fontWeight: '900', animation: 'parpadeo 1s infinite', letterSpacing: '.05em' }}>
+                    🔕 PARAR ALARMA
+                  </button>
+                )}
                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
                   {[1,2,3,5].map(m => <button key={m} onClick={() => agregarTiempoExtra(m)} style={{ padding: '6px 10px', background: 'rgba(255,255,255,.25)', border: '1px solid rgba(255,255,255,.4)', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600' }}>+{m} min</button>)}
                 </div>
@@ -1485,7 +1719,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <button onClick={() => setCorriendo(!corriendo)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 18px', background: corriendo?'rgba(255,255,255,.25)':'rgba(255,255,255,.9)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: corriendo?'#fff':cronoBg, fontSize: '.85rem', fontWeight: '700' }}>
                     {corriendo?<><Pause size={16}/> Pausar</>:<><Play size={16}/> {segundos>0?'Continuar':'Iniciar'}</>}
                   </button>
-                  <button onClick={() => { setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem' }}><RotateCcw size={14}/> Reset</button>
+                  <button onClick={() => { pararAlarma(); setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem' }}><RotateCcw size={14}/> Reset</button>
                 </div>
                 <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>Restante: {formatTiempo(Math.max(0, limiteSegundos - segundos))}{tiempoExtra > 0 && <span style={{ color: '#ffdd44' }}> (+{tiempoExtra}' extra)</span>}</div>
                 {periodo===1 && <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '7px', background: 'rgba(0,0,0,.3)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>→ Saltar a 2do Periodo</button>}
@@ -1500,7 +1734,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       {/* Pantalla completa: sin overlay oscuro, sin márgenes ni bordes redondeados,
           para que no se alcance a ver ni un pedacito del menú/cabezote de la página
           de atrás — la planilla tapa TODO el viewport de borde a borde. */}
-      <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', touchAction: 'pan-x pan-y' }}>
+      <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 300, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflowY: 'auto', touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
         <div style={{ background: '#fff', width: '100%', maxWidth: '980px', minHeight: '100%' }}>
 
           {/* Barra superior */}
@@ -1514,6 +1748,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 style={{ padding:'6px 12px', background:'none', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem', fontWeight:'600', display:'flex', alignItems:'center', gap:'4px' }}>
                 ✕ Cerrar
               </button>
+              <button onClick={() => { if (!informeTipo) setInformeTipo('otro'); setShowInforme({ motivo: 'otro' }) }} style={{ padding: '6px 12px', background: informeGuardado ? '#1e8e3e' : '#7b1fa2', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>{informeGuardado ? '✓ Informe' : '📝 Informe'}</button>
               <button onClick={() => setShowEspecial('w')} style={{ padding: '6px 12px', background: '#e8710a', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>🏆 Por W</button>
               <button onClick={() => setShowEspecial('desierto')} style={{ padding: '6px 12px', background: '#5f6368', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>❌ Desierto</button>
               <button onClick={handleClickGuardar} disabled={guardandoDB || !isOnline}
@@ -1622,7 +1857,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   </label>
                 </div>
                 <div style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: '#111' }}><b>CAPITÁN N°:</b> <input style={{...inp,width:'20px',display:'inline',borderBottom:'1px solid #000'}}/></span>
+                  <span style={{ color: '#111', position: 'relative' }} onClick={e => { e.stopPropagation(); setDropdownOpen(dropdownOpen === 'capitan-local' ? null : 'capitan-local') }}>
+                    <b>CAPITÁN N°:</b> <span style={{ display: 'inline-block', minWidth: '24px', borderBottom: '1px solid #000', fontWeight: '900', cursor: 'pointer', textAlign: 'center', background: capitanes.local ? '#e6f4ea' : '#fff3cd' }}>{capitanes.local ? `#${capitanes.local}` : '+'}</span>
+                    <DropdownCamisetas jugs={jugadoresLocal} dropKey="capitan-local" equipo="local" onSelect={n => { setCapitanes(prev => ({ ...prev, local: n })); setDropdownOpen(null) }}/>
+                  </span>
                   <span style={{ color: '#111' }}><b>FIRMA:</b></span>
                   <FirmaSlot label="Capitán Local" firma={firmas.capitanLocal} onFirmar={() => setFirmaModal('principal-capitanLocal')}/>
                 </div>
@@ -1648,7 +1886,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   </label>
                 </div>
                 <div style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: '#111' }}><b>CAPITÁN N°:</b> <input style={{...inp,width:'20px',display:'inline',borderBottom:'1px solid #000'}}/></span>
+                  <span style={{ color: '#111', position: 'relative' }} onClick={e => { e.stopPropagation(); setDropdownOpen(dropdownOpen === 'capitan-visitante' ? null : 'capitan-visitante') }}>
+                    <b>CAPITÁN N°:</b> <span style={{ display: 'inline-block', minWidth: '24px', borderBottom: '1px solid #000', fontWeight: '900', cursor: 'pointer', textAlign: 'center', background: capitanes.visitante ? '#e6f4ea' : '#fff3cd' }}>{capitanes.visitante ? `#${capitanes.visitante}` : '+'}</span>
+                    <DropdownCamisetas jugs={jugadoresVisitante} dropKey="capitan-visitante" equipo="visitante" onSelect={n => { setCapitanes(prev => ({ ...prev, visitante: n })); setDropdownOpen(null) }}/>
+                  </span>
                   <span style={{ color: '#111' }}><b>FIRMA:</b></span>
                   <FirmaSlot label="Capitán Visitante" firma={firmas.capitanVisitante} onFirmar={() => setFirmaModal('principal-capitanVisitante')}/>
                 </div>
