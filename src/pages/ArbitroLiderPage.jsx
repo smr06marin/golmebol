@@ -283,9 +283,12 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }
               )
             })}
           </div>
-          {/* Lista de árbitros del campo desplegado (reemplaza al select nativo) */}
+          {/* Lista de árbitros del campo desplegado (reemplaza al select nativo).
+              Sin scroll interno: en algunos celulares (Oppo) el scroll dentro de
+              cajas no responde — se muestra completa y se usa el scroll normal
+              de la página. */}
           {pickerCampo && (
-            <div style={{ marginTop:'10px', background:'#131e2e', border:'1px solid #2a3a4a', borderRadius:'10px', maxHeight:'220px', overflowY:'auto' }}>
+            <div style={{ marginTop:'10px', background:'#131e2e', border:'1px solid #2a3a4a', borderRadius:'10px' }}>
               <button type="button" onClick={()=>{ onAsignar(p.id, pickerCampo, null); setPickerCampo(null) }}
                 style={{ display:'block', width:'100%', textAlign:'left', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color:'#7a9ab5', fontSize:'.78rem' }}>
                 — Sin asignar
@@ -631,7 +634,9 @@ export default function ArbitroLiderPage() {
 
         {/* Filtro torneo (solo para tabs de partidos) */}
         {tab !== 'arbitros' && torneos.length > 1 && (
-          <div style={{ display:'flex', gap:'6px', overflowX:'auto', marginBottom:'12px', paddingBottom:'4px', scrollbarWidth:'none' }}>
+          {/* flexWrap en vez de scroll lateral: en algunos celulares el scroll
+              horizontal no responde y los torneos de más quedaban invisibles */}
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'12px' }}>
             <button onClick={()=>setTorneoFiltro('')}
               style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.72rem', whiteSpace:'nowrap', background:!torneoFiltro?'#1a73e8':'#111827', color:!torneoFiltro?'#fff':'#7a9ab5' }}>
               Todos ({partidos.filter(p=> tab==='sin_asignar'?p.status!=='finished'&&!p.arbitro1_id : tab==='asignados'?p.status!=='finished'&&(p.arbitro1_id||p.arbitro2_id) : p.status==='finished').length})
@@ -702,10 +707,12 @@ export default function ArbitroLiderPage() {
         {/* Tab Árbitros */}
         {tab==='arbitros' && (
           <div>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+            {/* flexWrap: antes esta fila era más ancha que la pantalla del celular
+                y los botones de la derecha quedaban cortados e inalcanzables */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'8px' }}>
               <input value={busqArb} onChange={e=>setBusqArb(e.target.value)} placeholder="Buscar árbitro..."
                 style={{...inp, maxWidth:'220px'}}/>
-              <div style={{ display:'flex', gap:'6px' }}>
+              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
                 <button onClick={()=>navigate('/arbitro/ranking')}
                   style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(249,168,37,.1)', border:'1px solid rgba(249,168,37,.3)', borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:'#f9a825', fontSize:'.78rem', fontWeight:'700' }}>
                   🏆 Ranking
