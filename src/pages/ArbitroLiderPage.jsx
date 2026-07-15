@@ -178,6 +178,10 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
 
 function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }) {
   const [abierto, setAbierto] = useState(false)
+  // Selector propio en vez de <select> nativo: en algunos celulares (Oppo/
+  // ColorOS) abrir el select del sistema sobre esta página oscura dejaba la
+  // pantalla en negro. campo actualmente desplegado: 'arbitro1_id' | ... | null
+  const [pickerCampo, setPickerCampo] = useState(null)
   const p = partido
   const esJugado = p.status === 'finished'
   const arb1 = arbitros.find(a=>a.id===p.arbitro1_id)
@@ -265,18 +269,43 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }
               { campo:'arbitro1_id', label:'Principal', val:p.arbitro1_id },
               { campo:'arbitro2_id', label:'Asistente 1', val:p.arbitro2_id },
               { campo:'arbitro3_id', label:'Asistente 2', val:p.arbitro3_id },
-            ].map(({campo,label,val})=>(
+            ].map(({campo,label,val})=>{
+              const seleccionado = arbitros.find(a=>a.id===val)
+              const desplegado   = pickerCampo === campo
+              return (
               <div key={campo}>
                 <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginBottom:'4px', fontWeight:'600' }}>{label}</div>
-                <select value={val||''} onChange={e=>onAsignar(p.id,campo,e.target.value||null)}
-                  style={{ width:'100%', background:'#1c2937', border:`1px solid ${val?'#00ddd0':'#2a3a4a'}`, borderRadius:'8px', padding:'7px 8px', color:val?'#00ddd0':'#a9bccb', fontSize:'.74rem', outline:'none', boxSizing:'border-box' }}>
-                  <option value="">Sin asignar</option>
-                  {arbitros.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
+                <button type="button" onClick={()=>setPickerCampo(desplegado?null:campo)}
+                  style={{ width:'100%', background: desplegado?'#1a73e8':'#1c2937', border:`1px solid ${desplegado?'#1a73e8':val?'#00ddd0':'#2a3a4a'}`, borderRadius:'8px', padding:'7px 8px', color: desplegado?'#fff':val?'#00ddd0':'#a9bccb', fontSize:'.72rem', cursor:'pointer', boxSizing:'border-box', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'left' }}>
+                  {seleccionado ? seleccionado.name : 'Sin asignar'} {desplegado?'▲':'▼'}
+                </button>
               </div>
-            ))}
+              )
+            })}
           </div>
-          <button onClick={()=>setAbierto(false)} style={{ marginTop:'12px', width:'100%', padding:'9px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}>
+          {/* Lista de árbitros del campo desplegado (reemplaza al select nativo) */}
+          {pickerCampo && (
+            <div style={{ marginTop:'10px', background:'#131e2e', border:'1px solid #2a3a4a', borderRadius:'10px', maxHeight:'220px', overflowY:'auto' }}>
+              <button type="button" onClick={()=>{ onAsignar(p.id, pickerCampo, null); setPickerCampo(null) }}
+                style={{ display:'block', width:'100%', textAlign:'left', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color:'#7a9ab5', fontSize:'.78rem' }}>
+                — Sin asignar
+              </button>
+              {arbitros.map(a=>{
+                const actual = (pickerCampo==='arbitro1_id'?p.arbitro1_id:pickerCampo==='arbitro2_id'?p.arbitro2_id:p.arbitro3_id) === a.id
+                return (
+                <button key={a.id} type="button" onClick={()=>{ onAsignar(p.id, pickerCampo, a.id); setPickerCampo(null) }}
+                  style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 12px', background: actual?'rgba(0,221,208,.08)':'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color: actual?'#00ddd0':'#e8f4fd', fontSize:'.78rem', fontWeight: actual?'700':'500' }}>
+                  <div style={{ width:'24px', height:'24px', borderRadius:'50%', overflow:'hidden', background:'#1c2937', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.7rem' }}>
+                    {(a.photo_face_url||a.photo_url) ? <img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : '🟡'}
+                  </div>
+                  <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.name}</span>
+                  {actual && <Check size={13}/>}
+                </button>
+                )
+              })}
+            </div>
+          )}
+          <button onClick={()=>{ setAbierto(false); setPickerCampo(null) }} style={{ marginTop:'12px', width:'100%', padding:'9px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}>
             <Check size={13}/> Listo
           </button>
         </div>

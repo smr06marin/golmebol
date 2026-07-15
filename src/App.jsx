@@ -1,5 +1,5 @@
 // force redeploy
-import { useEffect, useState, lazy, Suspense } from 'react'
+import { useEffect, useState, lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
@@ -51,6 +51,31 @@ if (typeof window !== 'undefined') {
       window.location.reload()
     }
   })
+}
+
+// Si algo revienta en cualquier página, en vez de quedar la pantalla en negro
+// (o en blanco) se muestra un mensaje con botón para recargar. Clave en
+// celulares donde no se puede abrir la consola para ver el error.
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div style={{ minHeight: '100vh', background: '#f4f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '16px', padding: '32px', textAlign: 'center', maxWidth: '380px', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
+          <div style={{ fontSize: '2.2rem', marginBottom: '10px' }}>😵</div>
+          <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '8px' }}>Algo salió mal</div>
+          <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '8px' }}>Recarga la página para continuar. Si sigue pasando, avísanos por WhatsApp.</div>
+          <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginBottom: '18px', wordBreak: 'break-word' }}>{String(this.state.error?.message || this.state.error)}</div>
+          <button onClick={() => window.location.reload()}
+            style={{ width: '100%', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.9rem' }}>
+            🔄 Recargar
+          </button>
+        </div>
+      </div>
+    )
+  }
 }
 
 function PantallaCargando() {
@@ -202,6 +227,7 @@ export default function App() {
   }, [])
 
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>
@@ -263,5 +289,6 @@ export default function App() {
         </Routes>
       </Suspense>
     </BrowserRouter>
+    </ErrorBoundary>
   )
 }
