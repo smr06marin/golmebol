@@ -1,10 +1,15 @@
 <!doctype html>
-<html lang="en">
+<!-- lang="es" + notranslate: la página YA está en español. Antes decía lang="en"
+     y el traductor automático de algunos celulares (Oppo, Chrome) "traducía" la
+     página envolviendo los textos en etiquetas propias, lo que rompe React con
+     el error "insertBefore en Node" y dejaba la pantalla en negro. -->
+<html lang="es" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>golmebol</title>
+    <title>Golmebol</title>
   </head>
   <body>
     <div id="root"></div>
