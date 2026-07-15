@@ -157,7 +157,7 @@ const VARIANTS = {
     },
   }
   
-  export default function DesignPremium({ variant = 'inicio' }) {
+  export default function DesignPremium({ variant = 'inicio', clipId = 'activeCardClip' }) {
     const v = VARIANTS[variant] || VARIANTS.inicio
   
     const SHAPE = "M 20 110 C 28 110 38 105 50 95 C 62 82 70 58 88 48 C 105 38 120 36 127 32 C 134 40 141 45 153 40 C 159 36 164 32 170 28 C 176 32 181 36 187 40 C 199 45 206 40 213 32 C 220 36 235 38 252 48 C 270 58 278 82 290 95 C 302 105 312 110 320 110 L 320 440 Q 320 465 302 480 Q 275 494 242 500 Q 210 506 192 510 Q 181 516 170 522 Q 159 516 148 510 Q 130 506 98 500 Q 65 494 38 480 Q 20 465 20 440 Z"
@@ -246,7 +246,7 @@ const VARIANTS = {
             <feGaussianBlur stdDeviation="1.5" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
+          <clipPath id={clipId} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
             <path d={SHAPE}/>
           </clipPath>
         </defs>

@@ -133,18 +133,24 @@ export default function PlayerCard({
         { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
       ]
 
+  // Id de recorte ÚNICO por tarjeta: antes todas las tarjetas del documento
+  // compartían el id "activeCardClip" (con escalas distintas por diseño) y el
+  // navegador usaba la primera que encontrara — en Android eso dañaba el fondo
+  // y desubicaba el contenido cuando había varias tarjetas en pantalla.
+  const [clipId] = useState(() => 'cardClip_' + Math.random().toString(36).slice(2, 9))
+
   return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: `drop-shadow(0 10px 40px rgba(0,0,0,.78)) drop-shadow(0 0 14px ${color}40) drop-shadow(0 0 2px ${color}cc)` }}>
+    <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: `drop-shadow(0 10px 30px rgba(0,0,0,.75)) drop-shadow(0 0 10px ${color}55)` }}>
       <div style={{ position: 'relative', width: '100%', paddingBottom: '155%' }}>
 
         {isPremium ? (
-          <DesignPremium variant={design.premiumVariant || 'inicio'} />
+          <DesignPremium variant={design.premiumVariant || 'inicio'} clipId={clipId} />
         ) : isNivel1 ? (
-          <DesignNivel1 color={color} colorSecundario={color2} cardId={design.id} />
+          <DesignNivel1 color={color} colorSecundario={color2} cardId={design.id} clipId={clipId} />
         ) : isNivel2 ? (
-          <DesignNivel2 variant={design.nivel2Variant || 'inicio'} />
+          <DesignNivel2 variant={design.nivel2Variant || 'inicio'} clipId={clipId} />
         ) : isNivel3 ? (
-          <DesignNivel3 variant={design.nivel3Variant || 'inicio'} />
+          <DesignNivel3 variant={design.nivel3Variant || 'inicio'} clipId={clipId} />
         ) : (
           <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }} viewBox="0 0 340 492" fill="none">
             <defs>
@@ -163,7 +169,7 @@ export default function PlayerCard({
               <linearGradient id="brdNegroOro" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#ffd700"/><stop offset="50%" stopColor="#ff8800"/><stop offset="100%" stopColor="#ffd700"/>
               </linearGradient>
-              <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
+              <clipPath id={clipId} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
                 <path d={CARD_PATH}/>
               </clipPath>
             </defs>
@@ -180,7 +186,8 @@ export default function PlayerCard({
         {isNivel3 && (
           <svg style={{ position: 'absolute', width: 0, height: 0 }} viewBox="0 0 340 510">
             <defs>
-              <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001957)">
+              {/* Def de respaldo con id propio (el activo lo define DesignNivel3) */}
+              <clipPath id={clipId + '_n3'} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001957)">
                 <path d="M 0 52 L 0 420 Q 0 460 35 478 Q 62 490 96 496 Q 122 502 170 503 Q 218 502 244 496 Q 278 490 305 478 Q 340 460 340 420 L 340 52 L 268 52 L 268 0 L 72 0 L 72 52 Z"/>
               </clipPath>
             </defs>
@@ -191,7 +198,7 @@ export default function PlayerCard({
           <CardDecorations decoracion={design.decoracion} color={color} colorSecundario={color2} colorTerciario={color3}/>
         )}
 
-        <div style={{ position: 'absolute', inset: 0, clipPath: 'url(#activeCardClip)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, clipPath: `url(#${clipId})`, WebkitClipPath: `url(#${clipId})`, transform: 'translateZ(0)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {isPremium ? (
             <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(168deg, ${design.fondo[0]} 0%, ${design.fondo[1]} 35%, ${design.fondo[2]} 70%, ${design.fondo[3]} 100%)`, zIndex: 0 }} />
@@ -239,7 +246,9 @@ export default function PlayerCard({
 
             {/* Panel izquierdo escudos */}
             {!hideShields && (
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '25%', zIndex: 12, display: 'flex', flexDirection: 'column', padding: '4% 0 2% 8%', gap: '5px', background: 'rgba(0,0,0,.25)', backdropFilter: 'blur(4px)', borderRight: '1px solid rgba(255,255,255,.08)' }}>
+              /* Sin backdropFilter: el desenfoque detrás de un recorte SVG se
+                 daña en varios Android — se reemplaza por fondo más opaco */
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '25%', zIndex: 12, display: 'flex', flexDirection: 'column', padding: '4% 0 2% 8%', gap: '5px', background: 'rgba(0,0,0,.45)', borderRight: '1px solid rgba(255,255,255,.08)' }}>
 
                 {/* TORNEO */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>

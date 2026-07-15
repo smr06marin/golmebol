@@ -34,7 +34,7 @@ const PALETA = {
     },
   }
   
-  export default function DesignNivel2({ variant = 'inicio' }) {
+  export default function DesignNivel2({ variant = 'inicio', clipId = 'activeCardClip' }) {
     const p = PALETA[variant] || PALETA.inicio
     const c  = p.c
     const c2 = p.c2
@@ -109,7 +109,7 @@ const PALETA = {
             <feGaussianBlur stdDeviation="3" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
+          <clipPath id={clipId} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
             <path d={SHAPE}/>
           </clipPath>
         </defs>

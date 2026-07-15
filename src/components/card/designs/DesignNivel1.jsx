@@ -1,4 +1,4 @@
-export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00ffaa', cardId = 'nivel1_verde' }) {
+export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00ffaa', cardId = 'nivel1_verde', clipId = 'activeCardClip' }) {
 
     const c = color
     const c2 = colorSecundario
@@ -172,7 +172,7 @@ export default function DesignNivel1({ color = '#00ee55', colorSecundario = '#00
             <feGaussianBlur stdDeviation="3" result="b"/>
             <feComposite in="SourceGraphic" in2="b" operator="over"/>
           </filter>
-          <clipPath id="activeCardClip" clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
+          <clipPath id={clipId} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001887)">
             <path d="M 20 90 C 20 90 60 88 100 75 C 130 65 150 55 170 50 C 190 55 210 65 240 75 C 280 88 320 90 320 90 L 320 480 L 170 520 L 20 480 Z"/>
           </clipPath>
         </defs>
