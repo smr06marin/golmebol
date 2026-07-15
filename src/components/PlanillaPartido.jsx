@@ -1326,7 +1326,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             const esPortero = j.posicion_futbol5 === 'Portero' || j.posicion_futbol7 === 'Portero' || j.posicion_futbol11 === 'Portero'
             const esMVP = j.id && j.id === mvpId
             const arqueroActual   = equipo === 'local' ? arqueroLocal : arqueroVis
-            const esArqueroActual = j.id && arqueroActual?.id === j.id
+            // Un jugador sin registro (sin id) también puede ser arquero: se
+            // identifica por su número y nombre escritos en la planilla.
+            const esArqueroActual = !!arqueroActual && (
+              (j.id && arqueroActual.id === j.id) ||
+              (!j.id && !arqueroActual.id && String(arqueroActual.numero) === String(j.numero) && (arqueroActual.name || '') === (j.nombre || ''))
+            )
             const hayArqueroEquipo = !!arqueroActual
             const sinRegistro = !j.id
             const tieneNombreEscrito = sinRegistro && (j.nombre || '').trim() !== ''
@@ -1340,8 +1345,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 <td style={{ ...cellL, background: esMVP ? '#fff59d' : esArqueroActual ? '#a8f0c0' : tieneNombreEscrito ? '#ffdca6' : (colorEquipo || '#1a3a8a') + '35' }}>
                   {esArqueroActual && <div style={{ fontSize: '6px', fontWeight: '800', lineHeight: 1, color: '#1e8e3e' }}>ARQUERO TITULAR</div>}
                   {sinRegistro && (
-                    <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
-                      placeholder="Jugador sin registrar..." style={{ ...inpL, fontWeight: '700', color: '#111', width: '100%' }}/>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
+                        placeholder="Jugador sin registrar..." style={{ ...inpL, fontWeight: '700', color: '#111', width: '100%' }}/>
+                      {/* Un jugador sin registro también puede marcarse como arquero */}
+                      {tieneNombreEscrito && !hayArqueroEquipo && (
+                        <button onClick={() => { if (!j.numero) { alert('Primero escribe su número de camiseta para poder marcarlo como arquero 🧤'); return } seleccionarArquero(equipo, j) }}
+                          title="Marcar como arquero titular" style={{ background: '#fff3cd', border: '1px solid #f9a825', borderRadius: '3px', cursor: 'pointer', fontSize: '12px', padding: '0 3px', lineHeight: 1.4, flexShrink: 0 }}>🧤</button>
+                      )}
+                      {esArqueroActual && (
+                        <button onClick={() => liberarArquero(equipo)} title="Cambiar de arquero" style={{ background: '#fff', border: '1px solid #1e8e3e', borderRadius: '3px', cursor: 'pointer', fontSize: '8px', padding: '0 3px', color: '#1e8e3e', flexShrink: 0 }}>🔄</button>
+                      )}
+                    </div>
                   )}
                   <span style={{ ...inpL, display: sinRegistro ? 'none' : 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#111' }}>{j.nombre}
                     {esArqueroActual && <button onClick={() => liberarArquero(equipo)} title="Cambiar de arquero" style={{ background: '#fff', border: '1px solid #1e8e3e', borderRadius: '3px', cursor: 'pointer', fontSize: '8px', padding: '0 3px', color: '#1e8e3e' }}>🔄 cambiar</button>}
