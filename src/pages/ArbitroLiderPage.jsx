@@ -634,8 +634,8 @@ export default function ArbitroLiderPage() {
 
         {/* Filtro torneo (solo para tabs de partidos) */}
         {tab !== 'arbitros' && torneos.length > 1 && (
-          {/* flexWrap en vez de scroll lateral: en algunos celulares el scroll
-              horizontal no responde y los torneos de más quedaban invisibles */}
+          /* flexWrap en vez de scroll lateral: en algunos celulares el scroll
+             horizontal no responde y los torneos de más quedaban invisibles */
           <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'12px' }}>
             <button onClick={()=>setTorneoFiltro('')}
               style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.72rem', whiteSpace:'nowrap', background:!torneoFiltro?'#1a73e8':'#111827', color:!torneoFiltro?'#fff':'#7a9ab5' }}>
