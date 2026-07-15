@@ -95,6 +95,7 @@ export default function PlayerHomePage() {
   // Logros, progreso y stats precargados UNA vez: así al tocar cualquier
   // tarjeta la lista de logros sale AL INSTANTE (antes eran 3 consultas por toque)
   const [logrosData,        setLogrosData]        = useState(null)
+  const [previewLogrosListo, setPreviewLogrosListo] = useState(false) // ya terminó de buscar (aunque no haya logros)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -187,10 +188,11 @@ export default function PlayerHomePage() {
       supabase.from('achievements').select('*'),
       supabase.from('player_achievement_progress').select('*').eq('player_id', p.id),
       supabase.from('player_stats_cache').select('*').eq('player_id', p.id).single(),
-    ]).then(([a, pr, ca]) => {
+      supabase.from('card_levels').select('*'),
+    ]).then(([a, pr, ca, cl]) => {
       const progresoMap = {}
       ;(pr.data || []).forEach(x => { progresoMap[x.achievement_id] = x })
-      setLogrosData({ achievements: a.data || [], progresoMap, cache: ca.data || {} })
+      setLogrosData({ achievements: a.data || [], progresoMap, cache: ca.data || {}, cardLevels: cl.data || [] })
     }).catch(() => {})
 
     // NOTIFICACIONES
@@ -411,7 +413,11 @@ export default function PlayerHomePage() {
   function getSponsor(cardId) { return sponsors.find(s => s.card_id === cardId) || null }
 
   async function fetchLogrosPreview(cardId) {
-    // Buscar card_level_id — puede ser estático o custom
+    setPreviewLogrosListo(false)
+    // Buscar card_level_id — puede ser estático o custom. Antes solo se buscaba
+    // en el progreso del jugador: si nunca había empezado esa tarjeta, no había
+    // fila y se quedaba en "Cargando logros..." para siempre. Ahora también se
+    // resuelve desde el catálogo completo de niveles (precargado).
     let levelId = null
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
     if (clp) {
@@ -420,7 +426,16 @@ export default function PlayerHomePage() {
       const custom = tarjetasCustom.find(c => c.id === cardId)
       if (custom && custom.card_levels?.length > 0) levelId = custom.card_levels[0].id
     }
-    if (!levelId || !player) return
+    if (!levelId && logrosData?.cardLevels) {
+      const lvl = logrosData.cardLevels.find(l => l.card_design_id === cardId)
+      if (lvl) levelId = lvl.id
+    }
+    if (!levelId && player) {
+      // Último recurso por red (por si el prefetch aún no llega)
+      const { data: lvl } = await supabase.from('card_levels').select('id').eq('card_design_id', cardId).limit(1).maybeSingle()
+      if (lvl) levelId = lvl.id
+    }
+    if (!levelId || !player) { setPreviewLogrosListo(true); return }
 
     const pos = getPosicionTipo(player)
 
@@ -440,7 +455,7 @@ export default function PlayerHomePage() {
         .in('tipo', ['universal', pos])
         .order('orden')
       logros = lg
-      if (!logros || logros.length === 0) return
+      if (!logros || logros.length === 0) { setPreviewLogrosListo(true); return }
       const { data: progreso } = await supabase
         .from('player_achievement_progress').select('*')
         .eq('player_id', player.id)
@@ -453,7 +468,7 @@ export default function PlayerHomePage() {
       cache = ca
     }
 
-    if (!logros || logros.length === 0) return
+    if (!logros || logros.length === 0) { setPreviewLogrosListo(true); return }
 
     const statValor = (key) => ({
       pj: cache?.pj, victorias: cache?.victorias, goles: cache?.goles,
@@ -472,6 +487,7 @@ export default function PlayerHomePage() {
       valorActual: statValor(l.stat_key),
       meta: Number(l.meta),
     })))
+    setPreviewLogrosListo(true)
   }
 
   async function handleSeleccionarTarjeta(id) {
@@ -744,7 +760,9 @@ export default function PlayerHomePage() {
                   </div>
                 )}
                 {previewLogros.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '8px', color: '#9aa0a6', fontSize: '.72rem' }}>Cargando logros...</div>
+                  <div style={{ textAlign: 'center', padding: '8px', color: '#9aa0a6', fontSize: '.72rem' }}>
+                    {previewLogrosListo ? '📋 Esta tarjeta aún no tiene logros configurados' : 'Cargando logros...'}
+                  </div>
                 )}
                 {sponsor && (
                   <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f3f4', fontSize: '.7rem', color: '#9aa0a6', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
