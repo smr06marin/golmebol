@@ -113,6 +113,140 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tabActiva === 'jugadores') fetchJugadoresGlobal() }, [tabActiva])
 
+  // ── BUSCADOR DE DATOS DEL EQUIPO ──────────────────────────────────────────
+  const [busqueda,       setBusqueda]       = useState('')
+  const [statsJugadores, setStatsJugadores] = useState(null) // stats individuales del equipo
+  useEffect(() => {
+    if (tabActiva === 'buscador' && !statsJugadores) {
+      supabase.from('player_match_stats')
+        .select('player_id, goals_scored, goals_conceded, fue_arquero, players(name), matches(tournament_id, tournaments(name))')
+        .eq('team_id', id)
+        .then(({ data }) => setStatsJugadores(data || []))
+    }
+  }, [tabActiva])
+
+  const normalizarTexto = s => (s || '').toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+
+  // Construye TODAS las respuestas posibles a partir de lo guardado
+  function construirRespuestas() {
+    const R = []
+    const finalizados = partidos.map(p => {
+      const esLocal = p.home_team_id === id
+      return {
+        gf: (esLocal ? p.home_score : p.away_score) || 0,
+        gc: (esLocal ? p.away_score : p.home_score) || 0,
+        rival: esLocal ? p.away?.name : p.home?.name,
+        torneo: p.tournaments?.name || '',
+        fecha: p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+        marcador: esLocal ? `${p.home_score}-${p.away_score}` : `${p.away_score}-${p.home_score}`,
+      }
+    })
+    if (finalizados.length === 0) return R
+
+    const nombresTorneos = [...new Set(finalizados.map(m => m.torneo).filter(Boolean))]
+
+    // Resumen histórico
+    const pg = finalizados.filter(m => m.gf > m.gc).length
+    const pe = finalizados.filter(m => m.gf === m.gc).length
+    const pp = finalizados.filter(m => m.gf < m.gc).length
+    const gf = finalizados.reduce((s, m) => s + m.gf, 0)
+    const gc = finalizados.reduce((s, m) => s + m.gc, 0)
+    R.push({ icono: '📊', titulo: 'Historial completo del equipo',
+      respuesta: `${finalizados.length} jugados · ${pg} ganados · ${pe} empatados · ${pp} perdidos`,
+      detalle: `${gf} goles a favor · ${gc} en contra`,
+      kw: 'resumen historial record estadisticas totales partidos jugados ganados perdidos empatados' })
+
+    // Rivales: quién nos ha ganado más / a quién le ganamos más (global y por torneo)
+    const contarRivales = (lista, cond) => {
+      const c = {}
+      lista.filter(cond).forEach(m => { if (m.rival) c[m.rival] = (c[m.rival] || 0) + 1 })
+      return Object.entries(c).sort((a, b) => b[1] - a[1])
+    }
+    const agregarFactRival = (lista, sufijo, kwTorneo) => {
+      const nosGanan = contarRivales(lista, m => m.gc > m.gf)
+      if (nosGanan.length > 0) R.push({ icono: '😤', titulo: `Rival que más nos ha ganado${sufijo}`,
+        respuesta: `${nosGanan[0][0]} — ${nosGanan[0][1]} victoria${nosGanan[0][1] > 1 ? 's' : ''} sobre nosotros`,
+        detalle: nosGanan.slice(1, 4).map(([n, v]) => `${n} (${v})`).join(' · ') || null,
+        kw: `rival equipo mas nos ha ganado vencido perdido contra verdugo ${kwTorneo}` })
+      const lesGanamos = contarRivales(lista, m => m.gf > m.gc)
+      if (lesGanamos.length > 0) R.push({ icono: '💪', titulo: `Rival al que más le hemos ganado${sufijo}`,
+        respuesta: `${lesGanamos[0][0]} — le ganamos ${lesGanamos[0][1]} vez${lesGanamos[0][1] > 1 ? 'es' : ''}`,
+        detalle: lesGanamos.slice(1, 4).map(([n, v]) => `${n} (${v})`).join(' · ') || null,
+        kw: `rival equipo al que mas le hemos ganado victima favorito victorias ${kwTorneo}` })
+    }
+    agregarFactRival(finalizados, '', '')
+    nombresTorneos.forEach(t => agregarFactRival(finalizados.filter(m => m.torneo === t), ` en ${t}`, normalizarTexto(t)))
+
+    // Partidos récord
+    const masGoles = [...finalizados].sort((a, b) => b.gf - a.gf)[0]
+    R.push({ icono: '🔥', titulo: 'Partido donde más goles metimos',
+      respuesta: `${masGoles.gf} goles — ${masGoles.marcador} vs ${masGoles.rival}`,
+      detalle: `${masGoles.torneo} · ${masGoles.fecha}`,
+      kw: 'partido mas goles metido anotado marcamos hicimos mayor cantidad' })
+    const masRecibidos = [...finalizados].sort((a, b) => b.gc - a.gc)[0]
+    R.push({ icono: '🥅', titulo: 'Partido donde más goles nos hicieron',
+      respuesta: `${masRecibidos.gc} goles en contra — ${masRecibidos.marcador} vs ${masRecibidos.rival}`,
+      detalle: `${masRecibidos.torneo} · ${masRecibidos.fecha}`,
+      kw: 'partido mas goles recibidos en contra nos hicieron peor derrota goleada' })
+    const mejorDif = [...finalizados].sort((a, b) => (b.gf - b.gc) - (a.gf - a.gc))[0]
+    if (mejorDif.gf > mejorDif.gc) R.push({ icono: '🏆', titulo: 'Mayor goleada a favor',
+      respuesta: `${mejorDif.marcador} vs ${mejorDif.rival}`,
+      detalle: `${mejorDif.torneo} · ${mejorDif.fecha}`,
+      kw: 'mayor goleada paliza victoria mas amplia diferencia' })
+
+    // Jugadores (si ya cargaron las stats individuales)
+    if (statsJugadores && statsJugadores.length > 0) {
+      const porJugador = {}
+      statsJugadores.forEach(s => {
+        const n = s.players?.name; if (!n) return
+        if (!porJugador[n]) porJugador[n] = { goles: 0, pj: 0, gcArq: 0, pjArq: 0 }
+        porJugador[n].goles += s.goals_scored || 0
+        porJugador[n].pj++
+        if (s.fue_arquero) { porJugador[n].gcArq += s.goals_conceded || 0; porJugador[n].pjArq++ }
+      })
+      const topGoles = Object.entries(porJugador).sort((a, b) => b[1].goles - a[1].goles)
+      if (topGoles.length > 0 && topGoles[0][1].goles > 0) R.push({ icono: '⚽', titulo: 'Goleador histórico del equipo',
+        respuesta: `${topGoles[0][0]} — ${topGoles[0][1].goles} goles`,
+        detalle: topGoles.slice(1, 5).filter(([, d]) => d.goles > 0).map(([n, d]) => `${n} (${d.goles})`).join(' · ') || null,
+        kw: 'jugador con mas goles goleador historico maximo anotador quien' })
+      const topPJ = Object.entries(porJugador).sort((a, b) => b[1].pj - a[1].pj)
+      R.push({ icono: '🎽', titulo: 'Jugador con más partidos',
+        respuesta: `${topPJ[0][0]} — ${topPJ[0][1].pj} partidos`,
+        detalle: topPJ.slice(1, 4).map(([n, d]) => `${n} (${d.pj})`).join(' · ') || null,
+        kw: 'jugador con mas partidos jugados presencias veterano' })
+      const arqueros = Object.entries(porJugador).filter(([, d]) => d.pjArq > 0)
+        .sort((a, b) => (a[1].gcArq / a[1].pjArq) - (b[1].gcArq / b[1].pjArq))
+      if (arqueros.length > 0) R.push({ icono: '🧤', titulo: 'Mejor arquero del equipo (promedio)',
+        respuesta: `${arqueros[0][0]} — ${(arqueros[0][1].gcArq / arqueros[0][1].pjArq).toFixed(2)} goles por partido (${arqueros[0][1].gcArq} en ${arqueros[0][1].pjArq} PJ)`,
+        detalle: arqueros.slice(1, 3).map(([n, d]) => `${n} (${(d.gcArq / d.pjArq).toFixed(2)})`).join(' · ') || null,
+        kw: 'arquero portero valla menos goles recibidos mejor promedio' })
+    }
+
+    // Palmarés
+    const titulos = logros.filter(l => l.tipo === 'campeon')
+    if (titulos.length > 0) R.push({ icono: '🏆', titulo: 'Títulos del equipo',
+      respuesta: `${titulos.length} campeonato${titulos.length > 1 ? 's' : ''}`,
+      detalle: titulos.map(l => l.tournaments?.name).filter(Boolean).join(' · ') || null,
+      kw: 'titulos campeon campeonatos ganados palmares copas' })
+
+    return R
+  }
+
+  function buscarRespuestas() {
+    const todas = construirRespuestas()
+    const q = normalizarTexto(busqueda).split(/\s+/).filter(t => t.length > 2)
+    if (q.length === 0) return todas.slice(0, 4) // sin búsqueda: las más generales
+    return todas
+      .map(r => {
+        const texto = normalizarTexto(`${r.kw} ${r.titulo} ${r.respuesta}`)
+        const score = q.filter(t => texto.includes(t)).length
+        return { ...r, score }
+      })
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+  }
+
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
     setTimeout(() => setMsg(null), 3500)
@@ -283,6 +417,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     { id: 'partidos',  label: 'Partidos'  },
     { id: 'jugadores', label: 'Jugadores' },
     { id: 'palmares',  label: 'Palmarés'  },
+    { id: 'buscador',  label: '🔎 Buscador' },
   ]
 
   return (
@@ -671,6 +806,56 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* BUSCADOR DE DATOS DEL EQUIPO */}
+      {tabActiva === 'buscador' && (
+        <div>
+          <div style={{ ...GLASS, borderRadius: '22px', padding: '20px', marginBottom: '16px' }}>
+            <div style={{ fontWeight: '700', color: TXT, fontSize: '.95rem', marginBottom: '4px' }}>🔎 Pregúntale a la historia del equipo</div>
+            <div style={{ fontSize: '.75rem', color: TXT_MUTED, marginBottom: '14px' }}>
+              Busca cualquier dato guardado: rivales, goleadas, goleadores, arqueros, títulos... por torneo o histórico.
+            </div>
+            <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
+              placeholder="Ej: quién nos ha ganado más · partido con más goles · goleador..."
+              style={{ ...inputStyle, fontSize: '1rem', padding: '13px 16px' }} autoFocus/>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
+              {['¿Quién nos ha ganado más?', 'Partido con más goles', 'Goleador histórico', 'Peor derrota', 'Mejor arquero', 'Títulos'].map(s => (
+                <button key={s} onClick={() => setBusqueda(s)}
+                  style={{ ...glassBtn('#5b9dff', normalizarTexto(busqueda) === normalizarTexto(s)), padding: '6px 12px', fontSize: '.72rem' }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {partidos.length === 0 ? (
+            <div style={{ padding: '48px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px' }}>
+              El equipo aún no tiene partidos jugados — cuando juegue, aquí podrás buscar todos sus datos.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {buscarRespuestas().length === 0 && (
+                <div style={{ padding: '32px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px', fontSize: '.85rem' }}>
+                  No encontré datos para esa búsqueda — prueba con otras palabras (rival, goles, goleador, arquero, derrota, títulos o el nombre de un torneo)
+                </div>
+              )}
+              {buscarRespuestas().map((r, i) => (
+                <div key={i} className="gm-logro" style={{ ...GLASS_SM, borderRadius: '18px', padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                  <div style={{ fontSize: '1.6rem', flexShrink: 0 }}>{r.icono}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '.72rem', color: TXT_MUTED, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.06em' }}>{r.titulo}</div>
+                    <div style={{ fontSize: '.98rem', color: TXT, fontWeight: '800', marginTop: '3px' }}>{r.respuesta}</div>
+                    {r.detalle && <div style={{ fontSize: '.75rem', color: TXT_SOFT, marginTop: '4px' }}>{r.detalle}</div>}
+                  </div>
+                </div>
+              ))}
+              {!statsJugadores && (
+                <div style={{ textAlign: 'center', color: TXT_MUTED, fontSize: '.72rem', padding: '8px' }}>Cargando datos de jugadores...</div>
+              )}
             </div>
           )}
         </div>
