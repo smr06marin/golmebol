@@ -1073,23 +1073,45 @@ export default function AdminTorneoDetallePage() {
   const fmt = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
 
   async function fetchFinanzas() {
-    const [{ data: movs }, { data: st }] = await Promise.all([
+    const [{ data: movs }, { data: evs }, { data: st }] = await Promise.all([
       supabase.from('torneo_finanzas').select('*, teams(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
-      // Tarjetas desde los EVENTOS del partido (no desde player_match_stats):
-      // los eventos siempre se guardan, mientras que las stats solo se guardan
-      // si el jugador quedó marcado en iniciales/ingresos — por eso había
-      // amarillas que no se sumaban en la contabilidad.
-      supabase.from('match_events').select('player_id, team_id, event_type, player_nombre, players(name)')
+      // Tarjetas de DOS fuentes combinadas:
+      // 1. Eventos del partido: incluyen jugadores sin registro (con su nombre)
+      // 2. Estadísticas: respaldo para partidos viejos guardados sin eventos
+      supabase.from('match_events').select('match_id, player_id, team_id, event_type, player_nombre, players(name)')
         .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']),
+      supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, blue_cards, red_cards, players(name)')
+        .eq('tournament_id', id),
     ])
     setMovimientos(movs || [])
-    if (st) setStatsTarjetas(st)
-    else {
+
+    let eventos = evs
+    if (!eventos) {
       // Respaldo si la columna player_nombre aún no existe (falta migración)
-      const { data: st2 } = await supabase.from('match_events').select('player_id, team_id, event_type, players(name)')
+      const { data: evs2 } = await supabase.from('match_events').select('match_id, player_id, team_id, event_type, players(name)')
         .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card'])
-      setStatsTarjetas(st2 || [])
+      eventos = evs2 || []
     }
+
+    // Normalizar: filas { team_id, player_id, nombre, am, az, rj }
+    // Si un partido tiene eventos de tarjeta, manda el evento; si no tiene
+    // ninguno (planilla vieja), se usan sus estadísticas.
+    const partidosConEventos = new Set(eventos.map(e => e.match_id))
+    const filasTarjetas = []
+    eventos.forEach(e => filasTarjetas.push({
+      team_id: e.team_id, player_id: e.player_id,
+      nombre: e.players?.name || (e.player_nombre ? `${e.player_nombre} (sin registro)` : 'Jugador sin registro'),
+      am: e.event_type === 'yellow_card' ? 1 : 0,
+      az: e.event_type === 'blue_card'   ? 1 : 0,
+      rj: e.event_type === 'red_card'    ? 1 : 0,
+    }))
+    ;(st || []).forEach(s => {
+      if (partidosConEventos.has(s.match_id)) return
+      const am = s.yellow_cards || 0, az = s.blue_cards || 0, rj = s.red_cards || 0
+      if (am + az + rj === 0) return
+      filasTarjetas.push({ team_id: s.team_id, player_id: s.player_id, nombre: s.players?.name, am, az, rj })
+    })
+    setStatsTarjetas(filasTarjetas)
   }
 
   // Cuentas calculadas automáticamente desde los partidos y planillas
@@ -1115,24 +1137,18 @@ export default function AdminTorneoDetallePage() {
       if (porEquipo[ausenteId])  porEquipo[ausenteId].multas += fc.multa_no_presenta || 0
     })
 
-    // Tarjetas por jugador (un evento = una tarjeta). Ya no se omite al
-    // jugador cuando el precio está en $0: la tarjeta se muestra igual en el
-    // detalle aunque no genere cobro.
+    // Tarjetas por jugador (filas ya normalizadas en fetchFinanzas). No se
+    // omite a nadie aunque el precio esté en $0: la tarjeta se ve igual.
+    // Los sin registro se identifican por su nombre (no se fusionan entre sí).
     const porJugador = {}
     statsTarjetas.forEach(s => {
-      const am = s.event_type === 'yellow_card' ? 1 : 0
-      const az = s.event_type === 'blue_card'   ? 1 : 0
-      const rj = s.event_type === 'red_card'    ? 1 : 0
-      if (am + az + rj === 0) return
-      // Jugadores sin registro: se identifican por su nombre escrito en la
-      // planilla (player_id nulo), sin fusionarse entre sí
-      const key = `${s.team_id}|${s.player_id || 'nr:' + (s.player_nombre || 'sin nombre')}`
-      const nombre = s.players?.name || (s.player_nombre ? `${s.player_nombre} (sin registro)` : 'Jugador sin registro')
-      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre, am: 0, az: 0, rj: 0, valor: 0 }
-      porJugador[key].am += am
-      porJugador[key].az += az
-      porJugador[key].rj += rj
-      porJugador[key].valor += am * pA + az * pZ + rj * pR
+      if ((s.am || 0) + (s.az || 0) + (s.rj || 0) === 0) return
+      const key = `${s.team_id}|${s.player_id || 'nr:' + (s.nombre || 'sin nombre')}`
+      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre: s.nombre || 'Jugador sin registro', am: 0, az: 0, rj: 0, valor: 0 }
+      porJugador[key].am += s.am || 0
+      porJugador[key].az += s.az || 0
+      porJugador[key].rj += s.rj || 0
+      porJugador[key].valor += (s.am || 0) * pA + (s.az || 0) * pZ + (s.rj || 0) * pR
     })
     Object.values(porJugador).forEach(j => {
       if (porEquipo[j.team_id]) {
