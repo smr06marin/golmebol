@@ -1076,11 +1076,17 @@ export default function AdminTorneoDetallePage() {
       // los eventos siempre se guardan, mientras que las stats solo se guardan
       // si el jugador quedó marcado en iniciales/ingresos — por eso había
       // amarillas que no se sumaban en la contabilidad.
-      supabase.from('match_events').select('player_id, team_id, event_type, players(name)')
+      supabase.from('match_events').select('player_id, team_id, event_type, player_nombre, players(name)')
         .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']),
     ])
     setMovimientos(movs || [])
-    setStatsTarjetas(st || [])
+    if (st) setStatsTarjetas(st)
+    else {
+      // Respaldo si la columna player_nombre aún no existe (falta migración)
+      const { data: st2 } = await supabase.from('match_events').select('player_id, team_id, event_type, players(name)')
+        .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card'])
+      setStatsTarjetas(st2 || [])
+    }
   }
 
   // Cuentas calculadas automáticamente desde los partidos y planillas
@@ -1115,8 +1121,11 @@ export default function AdminTorneoDetallePage() {
       const az = s.event_type === 'blue_card'   ? 1 : 0
       const rj = s.event_type === 'red_card'    ? 1 : 0
       if (am + az + rj === 0) return
-      const key = `${s.team_id}|${s.player_id}`
-      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre: s.players?.name, am: 0, az: 0, rj: 0, valor: 0 }
+      // Jugadores sin registro: se identifican por su nombre escrito en la
+      // planilla (player_id nulo), sin fusionarse entre sí
+      const key = `${s.team_id}|${s.player_id || 'nr:' + (s.player_nombre || 'sin nombre')}`
+      const nombre = s.players?.name || (s.player_nombre ? `${s.player_nombre} (sin registro)` : 'Jugador sin registro')
+      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre, am: 0, az: 0, rj: 0, valor: 0 }
       porJugador[key].am += am
       porJugador[key].az += az
       porJugador[key].rj += rj

@@ -754,10 +754,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
     const eventosTarjetas = []
     const procesarTarjetas = (jugadores, team_id) => jugadores.forEach(j => {
-      if (!j.id) return
-      if (j.amarilla) eventosTarjetas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'yellow_card', periodo })
-      if (j.azul)    eventosTarjetas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'blue_card', periodo })
-      if (j.roja)    eventosTarjetas.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'red_card', periodo })
+      if (!j.amarilla && !j.azul && !j.roja) return
+      // Jugadores SIN registro también: la tarjeta queda con player_id nulo y
+      // el nombre escrito en la planilla, para que las finanzas la cobren.
+      if (!j.id && !(j.nombre || '').trim()) return
+      const base = { match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id || null, player_nombre: j.id ? null : (j.nombre || '').trim() }
+      if (j.amarilla) eventosTarjetas.push({ ...base, event_type: 'yellow_card', periodo })
+      if (j.azul)    eventosTarjetas.push({ ...base, event_type: 'blue_card', periodo })
+      if (j.roja)    eventosTarjetas.push({ ...base, event_type: 'red_card', periodo })
     })
     procesarTarjetas(jugadoresLocal, partido.home_team_id)
     procesarTarjetas(jugadoresVisitante, partido.away_team_id)
@@ -776,7 +780,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     await supabase.from('match_events').delete().eq('match_id', partido.id)
     const todosEventos = [...eventosGolLocal, ...eventosGolVis, ...eventosTarjetas, ...eventosFaltas]
     if (todosEventos.length > 0) {
-      const { error: errEv } = await supabase.from('match_events').insert(todosEventos)
+      let { error: errEv } = await supabase.from('match_events').insert(todosEventos)
+      if (errEv && (errEv.message || '').includes('player_nombre')) {
+        // La BD aún no tiene la columna (falta migración): reintentar sin ella
+        ;({ error: errEv } = await supabase.from('match_events').insert(todosEventos.map(({ player_nombre, ...e }) => e)))
+      }
       if (errEv) erroresGuardado.push('Eventos: ' + errEv.message)
     }
 
