@@ -481,6 +481,9 @@ export default function AdminTorneoDetallePage() {
   // ── FINANZAS ────────────────────────────────────────
   const [movimientos,      setMovimientos]      = useState([])
   const [statsTarjetas,    setStatsTarjetas]    = useState([])
+  const [showConfigFin,    setShowConfigFin]    = useState(false)
+  const [formFin,          setFormFin]          = useState({})
+  const [guardandoFin,     setGuardandoFin]     = useState(false)
   const [pagoModal,        setPagoModal]        = useState(null) // equipo al que se registra pago
   const [pagoForm,         setPagoForm]         = useState({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
   const [guardandoPago,    setGuardandoPago]    = useState(false)
@@ -1184,6 +1187,31 @@ export default function AdminTorneoDetallePage() {
     fetchFinanzas()
   }
 
+  // ── Configurar precios de finanzas (editables en cualquier momento) ──────
+  function abrirConfigFin() {
+    const fc = torneo?.finanzas_config || {}
+    setFormFin({
+      inscripcion: fc.inscripcion || 0, arbitraje_equipo: fc.arbitraje_equipo || 0,
+      valor_w_presenta: fc.valor_w_presenta || 0, multa_no_presenta: fc.multa_no_presenta || 0,
+      precio_amarilla: fc.precio_amarilla || 0, precio_azul: fc.precio_azul || 0, precio_roja: fc.precio_roja || 0,
+      pago_cancha_partido: fc.pago_cancha_partido || 0, pago_cancha_w: fc.pago_cancha_w || 0,
+      pago_arbitro_partido: fc.pago_arbitro_partido || 0, pago_arbitro_w: fc.pago_arbitro_w || 0,
+    })
+    setShowConfigFin(true)
+  }
+
+  async function handleGuardarConfigFin() {
+    setGuardandoFin(true)
+    const fc = { ...(torneo?.finanzas_config || {}), llevar_cuentas: true }
+    Object.keys(formFin).forEach(k => { fc[k] = parseFloat(formFin[k]) || 0 })
+    const { error } = await supabase.from('tournaments').update({ finanzas_config: fc }).eq('id', id)
+    setGuardandoFin(false)
+    if (error) return showMsg('Error al guardar precios: ' + error.message, 'error')
+    setTorneo(p => ({ ...p, finanzas_config: fc }))
+    setShowConfigFin(false)
+    showMsg('Precios actualizados ✓ — todas las cuentas se recalcularon')
+  }
+
   // Equipos con tarjetas sin pagar (para bloquear eliminatorias)
   async function getDeudoresTarjetas(teamIds) {
     const fc = torneo?.finanzas_config || {}
@@ -1732,7 +1760,10 @@ export default function AdminTorneoDetallePage() {
 
   const fcTorneo           = torneo.finanzas_config || {}
   // La pestaña de cuentas es del admin principal o de torneos Premium
-  const finanzasActivas    = (!!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0) && (esAdminRol || !!torneo.premium)
+  // El admin SIEMPRE ve la pestaña de finanzas (para poder configurar los
+  // precios por primera vez o cambiarlos cuando quiera). El organizador la ve
+  // solo si está configurada y su torneo es premium (igual que antes).
+  const finanzasActivas    = esAdminRol || ((!!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0) && !!torneo.premium)
   function toggleJornada(key) { setAbiertosJornada(prev => ({ ...prev, [key]: !prev[key] })) }
 
   function agruparPartidosPorJornada(lista) {
@@ -3330,6 +3361,60 @@ export default function AdminTorneoDetallePage() {
         const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos')
         return (
           <div>
+            {/* Configurar precios — editables en cualquier momento */}
+            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>⚙️ Precios del torneo</div>
+                  <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>Tarjetas, inscripción, arbitrajes, multas y gastos — al cambiarlos, todas las cuentas se recalculan solas</div>
+                </div>
+                <button onClick={() => showConfigFin ? setShowConfigFin(false) : abrirConfigFin()}
+                  style={{ padding: '8px 16px', background: showConfigFin ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: showConfigFin ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                  {showConfigFin ? 'Cerrar' : '✏️ Modificar precios'}
+                </button>
+              </div>
+              {showConfigFin && (
+                <div style={{ marginTop: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+                    {[
+                      { k: 'precio_amarilla',      l: '🟨 Tarjeta amarilla' },
+                      { k: 'precio_azul',          l: '🟦 Tarjeta azul' },
+                      { k: 'precio_roja',          l: '🟥 Tarjeta roja' },
+                      { k: 'inscripcion',          l: '📝 Inscripción por equipo' },
+                      { k: 'arbitraje_equipo',     l: '🧑‍⚖️ Arbitraje por equipo/partido' },
+                      { k: 'valor_w_presenta',     l: '🏆 Cobro al que gana por W' },
+                      { k: 'multa_no_presenta',    l: '⛔ Multa al que no se presenta' },
+                      { k: 'pago_cancha_partido',  l: '🏟️ Gasto cancha por partido' },
+                      { k: 'pago_cancha_w',        l: '🏟️ Gasto cancha por W' },
+                      { k: 'pago_arbitro_partido', l: '💸 Pago árbitro por partido' },
+                      { k: 'pago_arbitro_w',       l: '💸 Pago árbitro por W' },
+                    ].map(c => (
+                      <div key={c.k}>
+                        <label style={{ display: 'block', fontSize: '.7rem', fontWeight: '600', color: '#5f6368', marginBottom: '4px' }}>{c.l}</label>
+                        <input type="number" min="0" value={formFin[c.k] ?? 0}
+                          onChange={e => setFormFin(f => ({ ...f, [c.k]: e.target.value }))}
+                          onFocus={e => e.target.select()}
+                          style={{ width: '100%', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '9px 10px', fontSize: '.9rem', fontWeight: '700', color: '#202124', outline: 'none', boxSizing: 'border-box' }}/>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                    <button onClick={handleGuardarConfigFin} disabled={guardandoFin}
+                      style={{ padding: '10px 22px', background: guardandoFin ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoFin ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                      {guardandoFin ? 'Guardando...' : '✓ Guardar precios'}
+                    </button>
+                    <button onClick={() => setShowConfigFin(false)}
+                      style={{ padding: '10px 18px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>
+                      Cancelar
+                    </button>
+                  </div>
+                  <div style={{ fontSize: '.68rem', color: '#e8710a', marginTop: '10px' }}>
+                    ⚠️ Los precios aplican a TODO el torneo (también a las tarjetas y partidos ya jugados) — los pagos ya registrados no se tocan.
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Resumen */}
             {fin.fc.llevar_cuentas && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
