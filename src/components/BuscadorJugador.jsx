@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import { responderPregunta } from '../lib/motorPreguntas'
 
 // ── Buscador de datos históricos POR JUGADOR ────────────────────────────────
 // Igual que el buscador del equipo: escribe lo que quieres saber ("mi mejor
@@ -122,10 +123,31 @@ export default function BuscadorJugador({ playerId }) {
     try { return construirRespuestas() } catch (e) { console.error('Buscador jugador:', e); return [] }
   }, [datos])
 
+  // Filas crudas para el motor de preguntas (métrica + más/menos + torneo/rival)
+  const filasMotor = useMemo(() => {
+    if (!datos) return []
+    return datos.stats.map(s => {
+      const m = s.matches || {}
+      const esLocal = m.home?.id === s.team_id
+      return {
+        jugador: 'yo', rival: esLocal ? m.away?.name : m.home?.name, torneo: m.tournaments?.name || '',
+        goles: s.goals_scored || 0, gc: s.goals_conceded || 0, fueArquero: !!s.fue_arquero,
+        amarillas: s.yellow_cards || 0, azules: s.blue_cards || 0, rojas: s.red_cards || 0,
+        faltas: s.fouls || 0, resultado: s.team_result,
+      }
+    })
+  }, [datos])
+
   const resultados = useMemo(() => {
     const q = normalizar(busqueda).split(/\s+/).filter(t => t.length > 2)
     if (q.length === 0) return respuestas.slice(0, 4)
-    return respuestas
+    // 1) El motor responde la pregunta exacta con los datos crudos
+    const delMotor = responderPregunta(busqueda, {
+      modo: 'jugador', filas: filasMotor,
+      nombresTorneos: [...new Set(filasMotor.map(f => f.torneo).filter(Boolean))],
+    })
+    // 2) Más las respuestas del catálogo que coincidan
+    const delCatalogo = respuestas
       .map(r => {
         const texto = normalizar(`${r.kw} ${r.titulo} ${r.respuesta}`)
         // Coincide también en singular/plural ("goles" encuentra "gol" y viceversa)
@@ -133,7 +155,9 @@ export default function BuscadorJugador({ playerId }) {
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
-  }, [respuestas, busqueda])
+    const titulosMotor = new Set(delMotor.map(r => r.titulo))
+    return [...delMotor, ...delCatalogo.filter(r => !titulosMotor.has(r.titulo))].slice(0, 8)
+  }, [respuestas, busqueda, filasMotor])
 
   return (
     <div style={{ background: 'linear-gradient(165deg,#151a28,#0c0f18)', border: '1px solid #232b3d', borderRadius: '16px', padding: '18px' }}>

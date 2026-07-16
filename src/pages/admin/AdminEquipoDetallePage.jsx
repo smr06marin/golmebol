@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera } from 'lucide-react'
+import { responderPregunta } from '../../lib/motorPreguntas'
 
 const POSICIONES = {
   'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
@@ -119,7 +120,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   useEffect(() => {
     if (tabActiva === 'buscador' && !statsJugadores) {
       supabase.from('player_match_stats')
-        .select('player_id, goals_scored, goals_conceded, fue_arquero, players(name), matches(tournament_id, tournaments(name))')
+        .select('player_id, goals_scored, goals_conceded, fue_arquero, yellow_cards, blue_cards, red_cards, fouls, team_result, players(name), matches(tournament_id, tournaments(name))')
         .eq('team_id', id)
         .then(({ data }) => setStatsJugadores(data || []))
     }
@@ -288,10 +289,36 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     try { return construirRespuestas() } catch (e) { console.error('Buscador equipo:', e); return [] }
   }, [partidos, statsJugadores, logros])
 
+  // Datos crudos para el MOTOR de preguntas (responde cualquier combinación
+  // de métrica + más/menos + torneo sin programar cada pregunta)
+  const datosMotor = useMemo(() => ({
+    filas: (statsJugadores || []).map(s => ({
+      jugador: s.players?.name, torneo: s.matches?.tournaments?.name || '',
+      goles: s.goals_scored || 0, gc: s.goals_conceded || 0, fueArquero: !!s.fue_arquero,
+      amarillas: s.yellow_cards || 0, azules: s.blue_cards || 0, rojas: s.red_cards || 0,
+      faltas: s.fouls || 0, resultado: s.team_result,
+    })).filter(f => f.jugador),
+    partidosEquipo: partidos.map(p => {
+      const esLocal = p.home_team_id === id
+      return {
+        gf: (esLocal ? p.home_score : p.away_score) || 0,
+        gc: (esLocal ? p.away_score : p.home_score) || 0,
+        rival: esLocal ? p.away?.name : p.home?.name,
+        torneo: p.tournaments?.name || '',
+        fecha: p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+        marcador: esLocal ? `${p.home_score}-${p.away_score}` : `${p.away_score}-${p.home_score}`,
+      }
+    }),
+    nombresTorneos: [...new Set(partidos.map(p => p.tournaments?.name).filter(Boolean))],
+  }), [statsJugadores, partidos])
+
   const resultadosBusqueda = useMemo(() => {
     const q = normalizarTexto(busqueda).split(/\s+/).filter(t => t.length > 2)
     if (q.length === 0) return respuestasEquipo.slice(0, 4) // sin búsqueda: lo más general
-    return respuestasEquipo
+    // 1) El motor calcula la respuesta exacta a la pregunta
+    const delMotor = responderPregunta(busqueda, { modo: 'equipo', ...datosMotor })
+    // 2) Se complementa con las respuestas del catálogo que coincidan
+    const delCatalogo = respuestasEquipo
       .map(r => {
         const texto = normalizarTexto(`${r.kw} ${r.titulo} ${r.respuesta}`)
         // Coincide también en singular/plural ("goles" encuentra "gol" y viceversa)
@@ -300,8 +327,9 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
-  }, [respuestasEquipo, busqueda])
+    const titulosMotor = new Set(delMotor.map(r => r.titulo))
+    return [...delMotor, ...delCatalogo.filter(r => !titulosMotor.has(r.titulo))].slice(0, 8)
+  }, [respuestasEquipo, busqueda, datosMotor])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
