@@ -558,15 +558,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         const arqVises   = arqData.filter(a => a.team_id === partido.away_team_id)
         // prev || ...: si el snapshot de autoguardado ya restauró un arquero
         // (más reciente), no se pisa con lo que haya guardado en la BD.
+        // Los arqueros SIN registro se restauran con su nombre y número.
+        const mapArq = a => a.player_id
+          ? { id: a.player_id, orden: a.orden }
+          : { id: undefined, name: a.player_nombre || '', numero: a.numero || '', orden: a.orden }
         if (arqLocales.length > 0) {
           const ultimo = arqLocales[arqLocales.length-1]
-          setArqueroLocal(prev => prev || { id: ultimo.player_id, orden: ultimo.orden })
-          setHistArquerosLocal(prev => prev.length > 0 ? prev : arqLocales.map(a => ({ id: a.player_id, orden: a.orden })))
+          setArqueroLocal(prev => prev || mapArq(ultimo))
+          setHistArquerosLocal(prev => prev.length > 0 ? prev : arqLocales.map(mapArq))
         }
         if (arqVises.length > 0) {
           const ultimo = arqVises[arqVises.length-1]
-          setArqueroVis(prev => prev || { id: ultimo.player_id, orden: ultimo.orden })
-          setHistArquerosVis(prev => prev.length > 0 ? prev : arqVises.map(a => ({ id: a.player_id, orden: a.orden })))
+          setArqueroVis(prev => prev || mapArq(ultimo))
+          setHistArquerosVis(prev => prev.length > 0 ? prev : arqVises.map(mapArq))
         }
       }
       // Precargar árbitros asignados al partido SIEMPRE que el campo esté
@@ -695,6 +699,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         if (e.event_type === 'blue_card')   j.azul = true
         if (e.event_type === 'red_card')    j.roja = true
       })
+
+      // Restaurar el TIEMPO de cada tarjeta (guardado en el evento): antes al
+      // reabrir la planilla solo quedaba un chulo ✓ en vez del minuto.
+      const aplicarMinutos = (jugs, team_id) => jugs.map(j => {
+        const propios = evs.filter(e => e.team_id === team_id
+          && ['yellow_card', 'blue_card', 'red_card'].includes(e.event_type)
+          && (j.id ? e.player_id === j.id : (!e.player_id && (e.player_nombre || '') === (j.nombre || '').trim())))
+        if (propios.length === 0) return j
+        const minuto = t => propios.find(e => e.event_type === t)?.minute
+        return { ...j,
+          amarilla: j.amarilla ? (minuto('yellow_card') || j.amarilla) : j.amarilla,
+          azul:     j.azul     ? (minuto('blue_card')   || j.azul)     : j.azul,
+          roja:     j.roja     ? (minuto('red_card')    || j.roja)     : j.roja,
+        }
+      })
+      jugsLocalBase = aplicarMinutos(jugsLocalBase, partido.home_team_id)
+      jugsVisBase   = aplicarMinutos(jugsVisBase,   partido.away_team_id)
     }
     jugsLocalBase = conRellenoA12(jugsLocalBase)
     jugsVisBase   = conRellenoA12(jugsVisBase)
@@ -776,9 +797,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       // el nombre escrito en la planilla, para que las finanzas la cobren.
       if (!j.id && !(j.nombre || '').trim()) return
       const base = { match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id || null, player_nombre: j.id ? null : (j.nombre || '').trim() }
-      if (j.amarilla) eventosTarjetas.push({ ...base, event_type: 'yellow_card', periodo })
-      if (j.azul)    eventosTarjetas.push({ ...base, event_type: 'blue_card', periodo })
-      if (j.roja)    eventosTarjetas.push({ ...base, event_type: 'red_card', periodo })
+      // El minuto de la tarjeta (tiempo del cronómetro al marcarla) se guarda
+      // en el evento para poder mostrarlo siempre al reabrir la planilla
+      if (j.amarilla) eventosTarjetas.push({ ...base, event_type: 'yellow_card', periodo, minute: typeof j.amarilla === 'string' ? j.amarilla : null })
+      if (j.azul)    eventosTarjetas.push({ ...base, event_type: 'blue_card', periodo, minute: typeof j.azul === 'string' ? j.azul : null })
+      if (j.roja)    eventosTarjetas.push({ ...base, event_type: 'red_card', periodo, minute: typeof j.roja === 'string' ? j.roja : null })
     })
     procesarTarjetas(jugadoresLocal, partido.home_team_id)
     procesarTarjetas(jugadoresVisitante, partido.away_team_id)
@@ -831,14 +854,26 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
-    // Guardar arqueros del partido
+    // Guardar arqueros del partido — TAMBIÉN los sin registro (con su nombre
+    // y número escritos), para que al reabrir no vuelva a pedir arquero
     await supabase.from('partido_arqueros').delete().eq('match_id', partido.id)
     const arqRows = []
-    histArquerosLocal.forEach(a => { if (a.id) arqRows.push({ match_id: partido.id, team_id: partido.home_team_id, player_id: a.id, orden: a.orden }) })
-    histArquerosVis.forEach(a =>   { if (a.id) arqRows.push({ match_id: partido.id, team_id: partido.away_team_id, player_id: a.id, orden: a.orden }) })
-    if (arqueroLocal?.id && !histArquerosLocal.find(a=>a.id===arqueroLocal.id)) arqRows.push({ match_id: partido.id, team_id: partido.home_team_id, player_id: arqueroLocal.id, orden: 1 })
-    if (arqueroVis?.id  && !histArquerosVis.find(a=>a.id===arqueroVis.id))     arqRows.push({ match_id: partido.id, team_id: partido.away_team_id, player_id: arqueroVis.id,   orden: 1 })
-    if (arqRows.length > 0) await supabase.from('partido_arqueros').insert(arqRows)
+    const pushArq = (a, team_id) => {
+      if (a?.id) arqRows.push({ match_id: partido.id, team_id, player_id: a.id, orden: a.orden || 1 })
+      else if ((a?.name || '').trim()) arqRows.push({ match_id: partido.id, team_id, player_id: null, player_nombre: a.name.trim(), numero: a.numero != null ? String(a.numero) : null, orden: a.orden || 1 })
+    }
+    histArquerosLocal.forEach(a => pushArq(a, partido.home_team_id))
+    histArquerosVis.forEach(a =>   pushArq(a, partido.away_team_id))
+    const yaEnHist = (hist, a) => hist.some(h => (h.id && h.id === a.id) || (!h.id && !a.id && (h.name || '') === (a.name || '')))
+    if (arqueroLocal && !yaEnHist(histArquerosLocal, arqueroLocal)) pushArq({ ...arqueroLocal, orden: 1 }, partido.home_team_id)
+    if (arqueroVis   && !yaEnHist(histArquerosVis,   arqueroVis))   pushArq({ ...arqueroVis,   orden: 1 }, partido.away_team_id)
+    if (arqRows.length > 0) {
+      let { error: errArq } = await supabase.from('partido_arqueros').insert(arqRows)
+      if (errArq && ((errArq.message || '').includes('player_nombre') || (errArq.message || '').includes('null value'))) {
+        // BD sin migración: guardar al menos los arqueros registrados
+        ;({ error: errArq } = await supabase.from('partido_arqueros').insert(arqRows.filter(r => r.player_id).map(({ player_nombre, numero, ...r }) => r)))
+      }
+    }
 
     // Marcar si gol fue hecho siendo arquero (marcador_fue_arquero)
     // Arquero local que mete gol → es gol de jugador
@@ -1378,7 +1413,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             // identifica por su número y nombre escritos en la planilla.
             const esArqueroActual = !!arqueroActual && (
               (j.id && arqueroActual.id === j.id) ||
-              (!j.id && !arqueroActual.id && String(arqueroActual.numero) === String(j.numero) && (arqueroActual.name || '') === (j.nombre || ''))
+              (!j.id && !arqueroActual.id && (arqueroActual.name || '').trim() === (j.nombre || '').trim())
             )
             const hayArqueroEquipo = !!arqueroActual
             const sinRegistro = !j.id
