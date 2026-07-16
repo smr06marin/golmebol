@@ -194,6 +194,37 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       detalle: `${mejorDif.torneo} · ${mejorDif.fecha}`,
       kw: 'mayor goleada paliza victoria mas amplia diferencia' })
 
+    // Arcos en cero (valla invicta)
+    const arcosCero = finalizados.filter(m => m.gc === 0)
+    R.push({ icono: '🧱', titulo: 'Partidos con el arco en cero',
+      respuesta: `${arcosCero.length} de ${finalizados.length} partidos sin recibir gol`,
+      detalle: arcosCero.slice(0, 3).map(m => `${m.marcador} vs ${m.rival}`).join(' · ') || null,
+      kw: 'arco en cero valla invicta sin recibir menos goles en contra imbatida' })
+
+    // Forma reciente
+    const ult5  = finalizados.slice(0, 5)
+    const letra = m => m.gf > m.gc ? 'V' : m.gf === m.gc ? 'E' : 'D'
+    R.push({ icono: '📈', titulo: 'Forma reciente (últimos 5)',
+      respuesta: ult5.map(letra).join(' - '),
+      detalle: ult5.map(m => `${m.marcador} vs ${m.rival}`).join(' · '),
+      kw: 'forma reciente racha ultimos partidos como venimos actualidad momento' })
+
+    // Promedios del equipo
+    R.push({ icono: '🧮', titulo: 'Promedios del equipo',
+      respuesta: `${(gf / finalizados.length).toFixed(2)} goles a favor y ${(gc / finalizados.length).toFixed(2)} en contra por partido`,
+      detalle: null,
+      kw: 'promedio goles por partido efectividad media anotacion' })
+
+    // Resumen por cada torneo
+    nombresTorneos.forEach(t => {
+      const lt = finalizados.filter(m => m.torneo === t)
+      const vt = lt.filter(m => m.gf > m.gc).length, et = lt.filter(m => m.gf === m.gc).length, dt = lt.filter(m => m.gf < m.gc).length
+      R.push({ icono: '🏟️', titulo: `Resumen en ${t}`,
+        respuesta: `${lt.length} PJ · ${vt}V ${et}E ${dt}D`,
+        detalle: `${lt.reduce((s, m) => s + m.gf, 0)} goles a favor · ${lt.reduce((s, m) => s + m.gc, 0)} en contra`,
+        kw: `resumen record torneo campeonato como nos fue estadisticas ${normalizarTexto(t)}` })
+    })
+
     // Jugadores (si ya cargaron las stats individuales)
     if (statsJugadores && statsJugadores.length > 0) {
       const porJugador = {}
@@ -214,6 +245,24 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
         respuesta: `${topPJ[0][0]} — ${topPJ[0][1].pj} partidos`,
         detalle: topPJ.slice(1, 4).map(([n, d]) => `${n} (${d.pj})`).join(' · ') || null,
         kw: 'jugador con mas partidos jugados presencias veterano' })
+
+      // Jugador con MENOS goles (los que no han anotado, o el mínimo)
+      const conPJ   = Object.entries(porJugador).filter(([, d]) => d.pj > 0)
+      const sinGol  = conPJ.filter(([, d]) => d.goles === 0)
+      const menosG  = [...conPJ].sort((a, b) => a[1].goles - b[1].goles || b[1].pj - a[1].pj)
+      if (menosG.length > 0) R.push({ icono: '🥶', titulo: 'Jugador con menos goles',
+        respuesta: sinGol.length > 0
+          ? `${sinGol.length} jugador${sinGol.length > 1 ? 'es' : ''} sin anotar: ${sinGol.slice(0, 5).map(([n]) => n).join(', ')}${sinGol.length > 5 ? '…' : ''}`
+          : `${menosG[0][0]} — ${menosG[0][1].goles} goles en ${menosG[0][1].pj} PJ`,
+        detalle: sinGol.length > 0 ? 'Todos los demás ya anotaron al menos uno' : menosG.slice(1, 4).map(([n, d]) => `${n} (${d.goles})`).join(' · ') || null,
+        kw: 'jugador con menos goles sin anotar no ha marcado cero quien' })
+
+      // Jugador con MENOS partidos
+      const menosPJ = [...conPJ].sort((a, b) => a[1].pj - b[1].pj)
+      if (menosPJ.length > 0) R.push({ icono: '🪑', titulo: 'Jugador con menos partidos',
+        respuesta: `${menosPJ[0][0]} — ${menosPJ[0][1].pj} partido${menosPJ[0][1].pj !== 1 ? 's' : ''}`,
+        detalle: menosPJ.slice(1, 4).map(([n, d]) => `${n} (${d.pj})`).join(' · ') || null,
+        kw: 'jugador con menos partidos jugados presencias suplente quien' })
       const arqueros = Object.entries(porJugador).filter(([, d]) => d.pjArq > 0)
         .sort((a, b) => (a[1].gcArq / a[1].pjArq) - (b[1].gcArq / b[1].pjArq))
       if (arqueros.length > 0) R.push({ icono: '🧤', titulo: 'Mejor arquero del equipo (promedio)',
@@ -245,7 +294,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     return respuestasEquipo
       .map(r => {
         const texto = normalizarTexto(`${r.kw} ${r.titulo} ${r.respuesta}`)
-        const score = q.filter(t => texto.includes(t)).length
+        // Coincide también en singular/plural ("goles" encuentra "gol" y viceversa)
+        const score = q.filter(t => texto.includes(t) || (t.endsWith('s') && texto.includes(t.slice(0, -1)))).length
         return { ...r, score }
       })
       .filter(r => r.score > 0)

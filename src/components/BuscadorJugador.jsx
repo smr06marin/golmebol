@@ -126,7 +126,11 @@ export default function BuscadorJugador({ playerId }) {
     const q = normalizar(busqueda).split(/\s+/).filter(t => t.length > 2)
     if (q.length === 0) return respuestas.slice(0, 4)
     return respuestas
-      .map(r => ({ ...r, score: q.filter(t => normalizar(`${r.kw} ${r.titulo} ${r.respuesta}`).includes(t)).length }))
+      .map(r => {
+        const texto = normalizar(`${r.kw} ${r.titulo} ${r.respuesta}`)
+        // Coincide también en singular/plural ("goles" encuentra "gol" y viceversa)
+        return { ...r, score: q.filter(t => texto.includes(t) || (t.endsWith('s') && texto.includes(t.slice(0, -1)))).length }
+      })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
   }, [respuestas, busqueda])
