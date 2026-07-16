@@ -945,10 +945,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
 
   // Flujo: botón guardar → modal MVP → guardar todo
-  function handleClickGuardar() {
-    // Si el partido ya está terminado y ya tiene MVP, solo cerrar
+  async function handleClickGuardar() {
+    // Planilla YA cerrada que se está reeditando: antes este botón solo
+    // cerraba sin guardar NADA — los cambios del coordinador (tarjetas
+    // agregadas, correcciones) se perdían en silencio. Ahora pregunta y
+    // vuelve a guardar todo (queda registrado quién editó y cuándo).
     if (partido.status === 'finished' && mvpId) {
-      onClose()
+      const ok = window.confirm('Esta planilla ya estaba cerrada.\n\n¿Guardar los cambios que hiciste? Quedará registrado quién la editó.')
+      if (!ok) return
+      await guardarEnDB(null, mvpId)
       return
     }
     // Arquero obligatorio de ambos equipos antes de guardar
