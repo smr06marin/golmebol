@@ -678,6 +678,23 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const applyTarjetas = (jugs, statsArr) => jugs.map(j => { const s = statsArr.find(st => st.player_id === j.id); if (!s) return j; return { ...j, amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, faltasPeriodo: Array(s.fouls || 0).fill(1) } })
       jugsLocalBase = applyTarjetas(jugsLocalBase, stats.filter(s => s.team_id === partido.home_team_id))
       jugsVisBase   = applyTarjetas(jugsVisBase,   stats.filter(s => s.team_id === partido.away_team_id))
+
+      // Jugadores SIN registro con tarjetas: reconstruirlos desde los eventos.
+      // No tienen fila de estadísticas, así que al reabrir la planilla cerrada
+      // desaparecían — y al volver a guardar, sus tarjetas se borraban de la
+      // base de datos (el guardado reinserta los eventos desde lo visible).
+      evs.filter(e => !e.player_id && e.player_nombre && ['yellow_card', 'blue_card', 'red_card'].includes(e.event_type)).forEach(e => {
+        const lista = e.team_id === partido.home_team_id ? jugsLocalBase : e.team_id === partido.away_team_id ? jugsVisBase : null
+        if (!lista) return
+        let j = lista.find(x => !x.id && (x.nombre || '').trim() === e.player_nombre)
+        if (!j) {
+          j = { id: undefined, nombre: e.player_nombre, cedula: '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false }
+          lista.push(j)
+        }
+        if (e.event_type === 'yellow_card') j.amarilla = true
+        if (e.event_type === 'blue_card')   j.azul = true
+        if (e.event_type === 'red_card')    j.roja = true
+      })
     }
     jugsLocalBase = conRellenoA12(jugsLocalBase)
     jugsVisBase   = conRellenoA12(jugsVisBase)
