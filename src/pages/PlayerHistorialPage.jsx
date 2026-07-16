@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Filter, ChevronDown, Shield, X } from 'lucide-react'
+import BuscadorJugador from '../components/BuscadorJugador'
 
 const FILTROS = [
   { id: 'todos',     label: 'Todo' },
@@ -217,6 +218,13 @@ export default function PlayerHistorialPage() {
           )}
         </button>
       </div>
+
+      {/* Buscador de datos históricos del jugador */}
+      {player && (
+        <div style={{ padding: '14px 16px 0' }}>
+          <BuscadorJugador playerId={player.id}/>
+        </div>
+      )}
 
       {/* Panel filtros */}
       {showFiltros && (

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle } from 'lucide-react'
 import PlayerCard from '../../components/card/PlayerCard'
+import BuscadorJugador from '../../components/BuscadorJugador'
 
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
@@ -298,6 +299,7 @@ export default function AdminJugadorDetallePage() {
 
   const TABS = [
     { id: 'resumen',   label: 'Resumen'    },
+    { id: 'buscador',  label: '🔎 Buscador' },
     { id: 'editar',    label: '✏️ Editar'  },
     { id: 'stats',     label: 'Stats'      },
     { id: 'torneos',   label: 'Torneos'    },
@@ -529,6 +531,10 @@ export default function AdminJugadorDetallePage() {
       )}
 
       {/* ── EDITAR ── */}
+      {tab === 'buscador' && (
+        <BuscadorJugador playerId={id}/>
+      )}
+
       {tab === 'editar' && (
         <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
           <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '20px' }}>Datos del jugador</div>
