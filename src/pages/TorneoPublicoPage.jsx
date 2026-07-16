@@ -5,6 +5,7 @@ import { Trophy, MapPin, Calendar } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
+import { registrarVisita } from '../lib/visitas'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -106,6 +107,8 @@ export default function TorneoPublicoPage() {
   const [porteros,  setPorteros]  = useState([]) // { team_id, id, name, photo_url, photo_face_url }
   const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState('posiciones')
+
+  useEffect(() => { registrarVisita('torneo_publico', id) }, [id])
 
   useEffect(() => {
     async function fetchAll() {

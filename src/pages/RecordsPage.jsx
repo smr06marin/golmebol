@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import TablaPosiciones from '../components/TablaPosiciones'
+import { registrarVisita } from '../lib/visitas'
+
+// Icono de cada récord automático (los históricos traen el suyo o usan 🏆)
+const ICONOS_RECORD = {
+  max_goleador: '⚽', goles_partido: '💥', hat_tricks: '🎩', victorias: '🏅',
+  mas_partidos: '🎽', racha_vic: '🔥', racha_gol: '🔥', arcos_cero: '🧤',
+  fair_play: '🤝', partido_goles: '⚡', goleada: '🚀', eq_goles: '🛡️', eq_victorias: '👑',
+}
 
 const S = {
   bg:     '#07070e',
@@ -12,9 +21,9 @@ const S = {
   muted:  '#7a9ab5',
 }
 
-function RecordCard({ titulo, nombre, subtitulo, descripcion, color }) {
+function RecordCard({ titulo, nombre, subtitulo, descripcion, color, icono }) {
   return (
-    <div style={{
+    <div className="gm-fade" style={{
       width: '100%',
       background: '#0a0f1e',
       border: `2px solid ${color}`,
@@ -28,7 +37,8 @@ function RecordCard({ titulo, nombre, subtitulo, descripcion, color }) {
         </div>
       </div>
       {/* Cuerpo */}
-      <div style={{ padding: '20px 16px 18px', textAlign: 'center' }}>
+      <div style={{ padding: '14px 16px 18px', textAlign: 'center' }}>
+        <div className="gm-trofeo" style={{ fontSize: '1.8rem', marginBottom: '6px' }}>{icono || '🏆'}</div>
         <div style={{ fontWeight: '900', fontSize: '1.4rem', color: '#fff', letterSpacing: '.04em', lineHeight: 1.2, marginBottom: '10px', textTransform: 'uppercase' }}>
           {nombre}
         </div>
@@ -75,7 +85,7 @@ function Carrusel({ records }) {
         <style>{`div::-webkit-scrollbar{display:none}`}</style>
         {records.map((r, i) => (
           <div key={r.id || i} style={{ minWidth: '100%', scrollSnapAlign: 'start', padding: '0 20px', boxSizing: 'border-box' }}>
-            <RecordCard {...r}/>
+            <RecordCard {...r} icono={r.icono || ICONOS_RECORD[r.id] || '🏆'}/>
           </div>
         ))}
       </div>
@@ -163,11 +173,54 @@ export default function RecordsPage() {
   const navigate = useNavigate()
   const [loading,  setLoading]  = useState(true)
   const [records,  setRecords]  = useState([])
-  const [totales,  setTotales]  = useState({ partidos: 0, goles: 0, jugadores: 0, torneos: 0 })
   const [campeones,  setCampeones]  = useState([])
   const [showSplash, setShowSplash] = useState(false)
+  // Torneos activos (vitrina pública) y tabla de posiciones del torneo elegido
+  const [torneosActivos, setTorneosActivos] = useState([])
+  const [torneoTabla,    setTorneoTabla]    = useState(null) // { torneo, filas } | 'cargando'
 
-  useEffect(() => { fetchTodo(); fetchCampeonesRecientes() }, [])
+  useEffect(() => { fetchTodo(); fetchCampeonesRecientes(); fetchTorneosActivos(); registrarVisita('inicio') }, [])
+
+  // ── TORNEOS ACTIVOS ────────────────────────────────────────────────────────
+  async function fetchTorneosActivos() {
+    const [{ data: tors }, { data: tts }, { data: ms }] = await Promise.all([
+      supabase.from('tournaments').select('id, name, logo_url, modalidad, season, fase_actual').eq('status', 'active'),
+      supabase.from('tournament_teams').select('tournament_id'),
+      supabase.from('matches').select('tournament_id, matchday, fase, status'),
+    ])
+    const cuentaEq = {}
+    ;(tts || []).forEach(t => { cuentaEq[t.tournament_id] = (cuentaEq[t.tournament_id] || 0) + 1 })
+    const FASES = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: '¡Gran Final!' }
+    const PESO  = { octavos: 1, cuartos: 2, semifinal: 3, final: 4 }
+    setTorneosActivos((tors || []).map(t => {
+      const mts = (ms || []).filter(m => m.tournament_id === t.id)
+      const elim = mts.filter(m => m.fase && m.fase !== 'grupo').sort((a, b) => (PESO[b.fase] || 0) - (PESO[a.fase] || 0))[0]
+      const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
+      const estado = elim ? (FASES[elim.fase] || 'Eliminatorias') : maxFecha > 0 ? `Fecha ${maxFecha}` : 'Por comenzar'
+      return { ...t, equipos: cuentaEq[t.id] || 0, estado, enElim: !!elim }
+    }))
+  }
+
+  // Tabla de posiciones PÚBLICA del torneo (solo la clasificación)
+  async function abrirTablaTorneo(t) {
+    setTorneoTabla('cargando')
+    registrarVisita('tabla_torneo', t.id)
+    const [{ data: tts }, { data: ms }] = await Promise.all([
+      supabase.from('tournament_teams').select('*, teams(id, name, logo_url)').eq('tournament_id', t.id),
+      supabase.from('matches').select('home_team_id, away_team_id, home_score, away_score, status, fase').eq('tournament_id', t.id),
+    ])
+    const tabla = {}
+    ;(tts || []).forEach(r => { if (r.teams) tabla[r.teams.id] = { equipo: r.teams, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
+    ;(ms || []).filter(m => m.status === 'finished' && (!m.fase || m.fase === 'grupo')).forEach(m => {
+      const L = tabla[m.home_team_id], V = tabla[m.away_team_id]
+      if (L) { L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
+        if (m.home_score > m.away_score) { L.pg++; L.pts += 3 } else if (m.home_score === m.away_score) { L.pe++; L.pts++ } else L.pp++ }
+      if (V) { V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
+        if (m.away_score > m.home_score) { V.pg++; V.pts += 3 } else if (m.away_score === m.home_score) { V.pe++; V.pts++ } else V.pp++ }
+    })
+    const filas = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    setTorneoTabla({ torneo: t, filas })
+  }
 
   // Campeones coronados en los últimos 15 días (se muestran a todo el que entre)
   async function fetchCampeonesRecientes() {
@@ -224,11 +277,6 @@ export default function RecordsPage() {
       .from('matches')
       .select('*, home:home_team_id(name), away:away_team_id(name)')
       .eq('status', 'finished')
-
-    const { count: totalJugadores } = await supabase.from('players').select('id', { count: 'exact' }).eq('activo_membresia', true)
-    const { count: totalTorneos }   = await supabase.from('tournaments').select('id', { count: 'exact' })
-    const totalGoles = (cache || []).reduce((s, r) => s + (r.goles || 0), 0)
-    setTotales({ partidos: (matches || []).length, goles: totalGoles, jugadores: totalJugadores || 0, torneos: totalTorneos || 0 })
 
     const recs = []
 
@@ -412,25 +460,55 @@ export default function RecordsPage() {
 
       {/* Header */}
       <div style={{ background: 'linear-gradient(180deg, #0a0a14 0%, #07070e 100%)', padding: '36px 16px 24px', textAlign: 'center', borderBottom: `1px solid ${S.border}` }}>
-        <div style={{ fontSize: '.7rem', fontWeight: '800', color: S.cyan, letterSpacing: '5px', marginBottom: '12px' }}>GOLMEBOL</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '6px' }}>
-          <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.gold})` }}/>
-          <div style={{ fontWeight: '900', color: S.gold, fontSize: '1.3rem', letterSpacing: '.06em', textAlign: 'center', lineHeight: 1.3 }}>
-            RECORDS GUINNESS<br/>GOLMEBOL
-          </div>
-          <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.gold}, transparent)` }}/>
-        </div>
-        <div style={{ fontSize: '.65rem', color: S.muted, letterSpacing: '2px', fontWeight: '700', marginTop: '8px' }}>
-          {records.length} RÉCORDS REGISTRADOS
+        <div style={{ fontSize: '1.4rem', fontWeight: '800', color: S.cyan, letterSpacing: '6px', marginBottom: '6px' }}>GOLMEBOL</div>
+        <div style={{ fontSize: '.68rem', color: S.muted, letterSpacing: '3px', fontWeight: '700' }}>
+          LA CASA DEL MICROFÚTBOL
         </div>
       </div>
 
-      {/* Totales */}
-      <div style={{ padding: '16px', display: 'flex', gap: '8px' }}>
-        <StatBox valor={totales.partidos}  label="PARTIDOS"  color={S.cyan}/>
-        <StatBox valor={totales.goles}     label="GOLES"     color={S.gold}/>
-        <StatBox valor={totales.jugadores} label="JUGADORES" color='#9955ff'/>
-        <StatBox valor={totales.torneos}   label="TORNEOS"   color='#e8710a'/>
+      {/* ── TORNEOS ACTIVOS ── */}
+      {torneosActivos.length > 0 && (
+        <div style={{ padding: '22px 16px 6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.cyan})` }}/>
+            <div style={{ fontWeight: '900', color: S.cyan, fontSize: '.95rem', letterSpacing: '.14em' }}>🏆 TORNEOS ACTIVOS</div>
+            <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.cyan}, transparent)` }}/>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '12px', maxWidth: '760px', margin: '0 auto' }}>
+            {torneosActivos.map(t => (
+              <div key={t.id} onClick={() => abrirTablaTorneo(t)} className="gm-fade"
+                style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: '#0a0f1e', border: `1px solid ${S.border}`, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span style={{ fontSize: '1.5rem' }}>🏆</span>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '800', color: '#fff', fontSize: '.9rem', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '.62rem', fontWeight: '800', color: t.enElim ? '#000' : S.cyan, background: t.enElim ? S.gold : 'rgba(0,221,208,.12)', border: t.enElim ? 'none' : `1px solid ${S.cyan}44`, borderRadius: '20px', padding: '3px 10px', letterSpacing: '.06em' }}>{t.estado.toUpperCase()}</span>
+                    {t.equipos > 0 && <span style={{ fontSize: '.62rem', fontWeight: '700', color: S.muted, background: 'rgba(255,255,255,.05)', borderRadius: '20px', padding: '3px 10px' }}>{t.equipos} EQUIPOS</span>}
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, color: S.gold, fontWeight: '800', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  Ver tabla <span style={{ fontSize: '.9rem' }}>›</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── RÉCORDS GOLMEBOL ── */}
+      <div style={{ padding: '26px 16px 8px', textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
+          <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.gold})` }}/>
+          <div style={{ fontWeight: '900', color: S.gold, fontSize: '1.1rem', letterSpacing: '.1em', lineHeight: 1.3 }}>
+            🏆 SALÓN DE LOS RÉCORDS
+          </div>
+          <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.gold}, transparent)` }}/>
+        </div>
+        <div style={{ fontSize: '.62rem', color: S.muted, letterSpacing: '2px', fontWeight: '700' }}>
+          RÉCORDS GOLMEBOL · {records.length} REGISTRADOS
+        </div>
       </div>
 
       {/* Carrusel único */}
@@ -438,18 +516,67 @@ export default function RecordsPage() {
         <Carrusel records={records}/>
       </div>
 
-      {/* Footer login */}
-      <div style={{ padding: '24px 16px 48px', borderTop: `1px solid ${S.border}`, textAlign: 'center', background: 'rgba(0,0,0,.3)' }}>
-        <div style={{ fontSize: '.72rem', color: S.muted, marginBottom: '16px' }}>¿Eres jugador de Golmebol?</div>
-        <button onClick={() => navigate('/jugador/login')}
-          style={{ width: '100%', maxWidth: '300px', padding: '13px', background: `linear-gradient(90deg, ${S.cyan}, #1a73e8)`, border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '800', fontSize: '.95rem', letterSpacing: '.5px', display: 'block', margin: '0 auto 12px' }}>
-          🎯 Ingresar al portal
-        </button>
-        <button onClick={() => navigate('/login')}
-          style={{ padding: '9px 24px', background: 'none', border: `1px solid ${S.border}`, borderRadius: '10px', cursor: 'pointer', color: S.muted, fontSize: '.75rem' }}>
-          Acceso administrador →
-        </button>
+      {/* ── INICIA SESIÓN PARA DESBLOQUEAR ── */}
+      <div style={{ padding: '28px 16px 48px', borderTop: `1px solid ${S.border}`, background: 'rgba(0,0,0,.3)' }}>
+        <div style={{ maxWidth: '440px', margin: '0 auto', textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔓</div>
+          <div style={{ fontWeight: '900', color: '#fff', fontSize: '1.05rem', letterSpacing: '.04em', marginBottom: '6px' }}>
+            Inicia sesión para desbloquear todas las estadísticas y funciones de Golmebol
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center', margin: '16px 0 20px' }}>
+            {['👤 Perfil completo', '📊 Estadísticas personales', '📋 Historial de partidos', '⚽ Goles', '🏅 Logros', '🎁 Premios', '🎯 PREDIX', '🃏 Tu tarjeta de jugador'].map(b => (
+              <span key={b} style={{ fontSize: '.68rem', fontWeight: '700', color: S.text, background: S.card, border: `1px solid ${S.border}`, borderRadius: '20px', padding: '6px 12px' }}>{b}</span>
+            ))}
+          </div>
+          <button onClick={() => navigate('/jugador/login')}
+            style={{ width: '100%', maxWidth: '320px', padding: '15px', background: `linear-gradient(90deg, ${S.cyan}, #1a73e8)`, border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '900', fontSize: '1rem', letterSpacing: '.5px', display: 'block', margin: '0 auto 12px', boxShadow: `0 4px 20px ${S.cyan}44` }}>
+            🎯 Ingresar al portal
+          </button>
+          <button onClick={() => navigate('/login')}
+            style={{ padding: '9px 24px', background: 'none', border: `1px solid ${S.border}`, borderRadius: '10px', cursor: 'pointer', color: S.muted, fontSize: '.75rem' }}>
+            Acceso administrador →
+          </button>
+        </div>
       </div>
+
+      {/* ── TABLA PÚBLICA DEL TORNEO (solo posiciones) ── */}
+      {torneoTabla && (
+        <div style={{ position: 'fixed', inset: 0, background: S.bg, zIndex: 500, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <div style={{ maxWidth: '560px', margin: '0 auto', padding: '16px 14px 40px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <button onClick={() => setTorneoTabla(null)}
+                style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', color: S.text, fontSize: '.85rem', fontWeight: '700', flexShrink: 0 }}>
+                ← Volver
+              </button>
+              {torneoTabla !== 'cargando' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                  {torneoTabla.torneo.logo_url && <img src={torneoTabla.torneo.logo_url} style={{ width: '34px', height: '34px', objectFit: 'contain', flexShrink: 0 }}/>}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: '800', color: '#fff', fontSize: '.9rem', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{torneoTabla.torneo.name}</div>
+                    <div style={{ fontSize: '.62rem', color: S.cyan, fontWeight: '700', letterSpacing: '.08em' }}>{torneoTabla.torneo.estado?.toUpperCase()}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {torneoTabla === 'cargando' ? (
+              <div style={{ textAlign: 'center', padding: '60px 0', color: S.cyan, fontWeight: '700', fontSize: '.85rem' }}>Cargando tabla...</div>
+            ) : (
+              <>
+                <TablaPosiciones titulo="Tabla de posiciones" rows={torneoTabla.filas}/>
+                {/* CTA: lo demás se desbloquea con sesión */}
+                <div style={{ marginTop: '18px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '.82rem', color: S.text, fontWeight: '700', marginBottom: '4px' }}>🔒 ¿Goleadores, estadísticas y tu perfil?</div>
+                  <div style={{ fontSize: '.7rem', color: S.muted, marginBottom: '14px' }}>Inicia sesión para desbloquear toda la experiencia Golmebol</div>
+                  <button onClick={() => navigate('/jugador/login')}
+                    style={{ padding: '12px 32px', background: `linear-gradient(90deg, ${S.cyan}, #1a73e8)`, border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#000', fontWeight: '900', fontSize: '.85rem' }}>
+                    Iniciar sesión
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,93 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
+
+// Solo el administrador PRINCIPAL ve las analíticas del sitio
+const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
+const PAGINAS_LABEL = { inicio: 'Página de inicio', tabla_torneo: 'Tabla de torneo', torneo_publico: 'Página pública de torneo' }
+
+function AnaliticasSitio() {
+  const { user } = useAuthStore()
+  const [an, setAn] = useState(null)
+  const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
+
+  useEffect(() => { if (esPrincipal) cargar() }, [esPrincipal])
+
+  async function cargar() {
+    try {
+      const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0)
+      const hace7    = new Date(Date.now() - 7  * 864e5).toISOString()
+      const hace30   = new Date(Date.now() - 30 * 864e5).toISOString()
+      const hace5min = new Date(Date.now() - 5 * 60000).toISOString()
+      const [{ count: total }, { count: mes }, { count: semana }, { count: hoyC }, { data: rows }, { data: recientes }] = await Promise.all([
+        supabase.from('site_visitas').select('id', { count: 'exact', head: true }),
+        supabase.from('site_visitas').select('id', { count: 'exact', head: true }).gte('created_at', hace30),
+        supabase.from('site_visitas').select('id', { count: 'exact', head: true }).gte('created_at', hace7),
+        supabase.from('site_visitas').select('id', { count: 'exact', head: true }).gte('created_at', hoy0.toISOString()),
+        supabase.from('site_visitas').select('pagina, torneo_id, session_id, dispositivo, created_at').gte('created_at', hace30).limit(5000),
+        supabase.from('site_visitas').select('session_id').gte('created_at', hace5min),
+      ])
+      const disp = { movil: 0, pc: 0 }, pags = {}, tors = {}, ses = {}
+      ;(rows || []).forEach(r => {
+        disp[r.dispositivo === 'movil' ? 'movil' : 'pc']++
+        pags[r.pagina] = (pags[r.pagina] || 0) + 1
+        if (r.torneo_id) tors[r.torneo_id] = (tors[r.torneo_id] || 0) + 1
+        if (r.session_id) {
+          if (!ses[r.session_id]) ses[r.session_id] = { min: r.created_at, max: r.created_at }
+          else {
+            if (r.created_at < ses[r.session_id].min) ses[r.session_id].min = r.created_at
+            if (r.created_at > ses[r.session_id].max) ses[r.session_id].max = r.created_at
+          }
+        }
+      })
+      const topPag   = Object.entries(pags).sort((a, b) => b[1] - a[1])[0]
+      const topTorId = Object.entries(tors).sort((a, b) => b[1] - a[1])[0]?.[0]
+      let topTorNombre = null
+      if (topTorId) {
+        const { data: t } = await supabase.from('tournaments').select('name').eq('id', topTorId).maybeSingle()
+        topTorNombre = t?.name || null
+      }
+      const duraciones = Object.values(ses).map(s => (new Date(s.max) - new Date(s.min)) / 1000).filter(d => d > 5)
+      const promSeg = duraciones.length ? Math.round(duraciones.reduce((a, b) => a + b, 0) / duraciones.length) : 0
+      const conectados = new Set((recientes || []).map(c => c.session_id)).size
+      setAn({ total: total || 0, mes: mes || 0, semana: semana || 0, hoy: hoyC || 0, disp, topPag, topTorNombre, promSeg, conectados, visitantes30: Object.keys(ses).length })
+    } catch (e) { console.error('Analíticas:', e) }
+  }
+
+  if (!esPrincipal || !an) return null
+
+  const fmtDur = s => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`
+  const totalDisp = an.disp.movil + an.disp.pc
+
+  return (
+    <div style={{ marginTop: '24px' }}>
+      <div style={{ fontSize: '.95rem', fontWeight: '700', color: '#202124', marginBottom: '4px' }}>📊 Analíticas del sitio</div>
+      <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Visitas de la página pública — solo tú puedes ver esto</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+        {[
+          { l: '👁️ Visitas hoy',        v: an.hoy,            c: '#1a73e8' },
+          { l: '📅 Esta semana',        v: an.semana,         c: '#1e8e3e' },
+          { l: '🗓️ Este mes',           v: an.mes,            c: '#6c35de' },
+          { l: '∑ Totales',             v: an.total,          c: '#e8710a' },
+          { l: '🟢 Conectados ahora',   v: an.conectados,     c: '#00a896' },
+          { l: '👥 Visitantes (30 días)', v: an.visitantes30, c: '#d93025' },
+        ].map(c => (
+          <div key={c.l} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ fontSize: '.65rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>{c.l}</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: c.c }}>{c.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '22px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
+        <span>📱 Móvil: <b style={{ color: '#202124' }}>{totalDisp ? Math.round((an.disp.movil / totalDisp) * 100) : 0}%</b> · 💻 PC: <b style={{ color: '#202124' }}>{totalDisp ? Math.round((an.disp.pc / totalDisp) * 100) : 0}%</b></span>
+        {an.topTorNombre && <span>🏆 Torneo más consultado: <b style={{ color: '#202124' }}>{an.topTorNombre}</b></span>}
+        {an.topPag && <span>⭐ Página más visitada: <b style={{ color: '#202124' }}>{PAGINAS_LABEL[an.topPag[0]] || an.topPag[0]} ({an.topPag[1]})</b></span>}
+        {an.promSeg > 0 && <span>⏱️ Tiempo promedio: <b style={{ color: '#202124' }}>{fmtDur(an.promSeg)}</b></span>}
+      </div>
+    </div>
+  )
+}
 
 function StatCard({ icon, label, value, sub, color, onClick }) {
   return (
@@ -280,6 +367,9 @@ export default function AdminDashboard() {
           ))}
         </div>
       </div>
+
+      {/* Analíticas del sitio público — solo administrador principal */}
+      <AnaliticasSitio/>
     </div>
   )
 }
