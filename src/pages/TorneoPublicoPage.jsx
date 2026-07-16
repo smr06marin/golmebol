@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { Trophy, MapPin, Calendar } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
+import VallaEquipos from '../components/VallaEquipos'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -176,12 +177,13 @@ export default function TorneoPublicoPage() {
   })
   const tablaOrdenada = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
 
-  // Valla menos vencida: equipo con menos goles en contra (entre los que ya jugaron)
+  // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
+  // los arqueros registrados de cada equipo (fotos y nombres)
   const equiposJugados = tablaOrdenada.filter(r => r.pj > 0)
-  const vallaRow = equiposJugados.length > 0
-    ? [...equiposJugados].sort((a, b) => a.gc - b.gc || b.pj - a.pj)[0]
-    : null
-  const vallaArqueros = vallaRow ? porteros.filter(p => p.team_id === vallaRow.equipo.id) : []
+  const vallaEquipos = [...equiposJugados].sort((a, b) => a.gc - b.gc || b.pj - a.pj).map(r => ({
+    equipo: r.equipo, gc: r.gc, pj: r.pj,
+    arqueros: porteros.filter(p => p.team_id === r.equipo.id).map(p => ({ name: p.name, foto: p.photo_face_url || p.photo_url })),
+  }))
 
   const tabs = [
     { id: 'posiciones', label: 'Posiciones' },
@@ -348,7 +350,6 @@ export default function TorneoPublicoPage() {
         {/* GOLEADORES */}
         {tab === 'goleadores' && (
           <>
-          <TopGoleadoresBanner goleadores={goleadores} vallaRow={vallaRow} vallaArqueros={vallaArqueros}/>
           <RankingPoster
             titulo="⚽ Top goleadores"
             statLabel="goles" statColor="#ffd54a"
@@ -363,6 +364,9 @@ export default function TorneoPublicoPage() {
               sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
             }))}
           />
+          <div style={{ marginTop: '16px' }}>
+            <VallaEquipos rows={vallaEquipos}/>
+          </div>
           </>
         )}
 

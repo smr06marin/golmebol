@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { ArrowLeft, Shield, X } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
+import VallaEquipos from '../components/VallaEquipos'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -284,6 +285,7 @@ export default function PlayerTorneoPage() {
   const [modalPartido,   setModalPartido]   = useState(null)
   const [vallas,         setVallas]         = useState({ opcion1: [], opcion2: [] })
   const [modoValla,      setModoValla]      = useState('opcion1')
+  const [arquerosEquipos, setArquerosEquipos] = useState([]) // arqueros registrados por equipo
 
   useEffect(() => { fetchTodo() }, [id])
 
@@ -388,6 +390,18 @@ export default function PlayerTorneoPage() {
       .sort((a, b) => a.total_recibidos - b.total_recibidos)
 
     setVallas({ opcion1: op1, opcion2: op2 })
+
+    // Arqueros REGISTRADOS de cada equipo del torneo (para la valla por equipo)
+    const { data: tt } = await supabase.from('tournament_teams').select('team_id').eq('tournament_id', id)
+    const teamIds = (tt || []).map(t => t.team_id).filter(Boolean)
+    if (teamIds.length > 0) {
+      const { data: tp } = await supabase.from('team_players')
+        .select('team_id, players(name, photo_face_url, photo_url, posicion_futbol5, posicion_futbol7, posicion_futbol11)')
+        .in('team_id', teamIds)
+      setArquerosEquipos((tp || [])
+        .filter(x => x.players && (x.players.posicion_futbol5 === 'Portero' || x.players.posicion_futbol7 === 'Portero' || x.players.posicion_futbol11 === 'Portero'))
+        .map(x => ({ team_id: x.team_id, name: x.players.name, foto: x.players.photo_face_url || x.players.photo_url })))
+    }
   }
 
   if (loading) return (
@@ -418,10 +432,15 @@ export default function PlayerTorneoPage() {
   })
   const tablaOrdenada      = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
 
-  // Valla menos vencida destacada: arquero(s) con menos goles recibidos en total
-  // (si dos arqueros del mismo equipo empatan en el mínimo, se muestran ambos)
-  const vallaRecibidos   = vallas.opcion2.length > 0 ? vallas.opcion2[0].total_recibidos : null
-  const vallaDestacados  = vallaRecibidos !== null ? vallas.opcion2.filter(p => p.total_recibidos === vallaRecibidos) : []
+  // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
+  // los arqueros registrados de cada equipo (fotos y nombres)
+  const vallaEquiposRows = tablaOrdenada
+    .filter(r => r.pj > 0)
+    .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
+    .map(r => ({
+      equipo: r.equipo, gc: r.gc, pj: r.pj,
+      arqueros: arquerosEquipos.filter(a => a.team_id === r.equipo.id),
+    }))
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
   const idsPartidosTorneo  = new Set(partidos.map(p => p.id))
@@ -669,8 +688,6 @@ export default function PlayerTorneoPage() {
         {/* ── GOLEADORES ── */}
         {tab === 'goleadores' && (
           <div>
-            <TopGoleadoresBanner goleadores={goleadores} vallaDestacados={vallaDestacados} vallaRecibidos={vallaRecibidos}/>
-
             <RankingPoster
               titulo="⚽ Goleadores"
               statLabel="goles" statColor="#ffd54a"
@@ -686,40 +703,10 @@ export default function PlayerTorneoPage() {
               }))}
             />
 
-            {/* Valla menos vencida */}
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>🧤 Valla menos vencida</div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button onClick={() => setModoValla('opcion1')}
-                    style={{ padding: '5px 12px', borderRadius: '20px', border: `1px solid ${modoValla==='opcion1'?'#1a73e8':'#dadce0'}`, background: modoValla==='opcion1'?'#1a73e8':'#fff', color: modoValla==='opcion1'?'#fff':'#5f6368', fontSize: '.72rem', fontWeight: '600', cursor: 'pointer' }}>
-                    Promedio (PJ/GC)
-                  </button>
-                  <button onClick={() => setModoValla('opcion2')}
-                    style={{ padding: '5px 12px', borderRadius: '20px', border: `1px solid ${modoValla==='opcion2'?'#1a73e8':'#dadce0'}`, background: modoValla==='opcion2'?'#1a73e8':'#fff', color: modoValla==='opcion2'?'#fff':'#5f6368', fontSize: '.72rem', fontWeight: '600', cursor: 'pointer' }}>
-                    Menos recibidos
-                  </button>
-                </div>
-              </div>
-              <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginBottom: '8px' }}>
-                {modoValla === 'opcion1'
-                  ? '📊 Promedio de goles recibidos por partido — equipos clasificados a eliminatoria'
-                  : '🏆 Arqueros finalistas y tercer/cuarto puesto — total goles recibidos'}
-              </div>
-              <RankingPoster
-                titulo="🧤 Valla menos vencida"
-                statLabel={modoValla === 'opcion1' ? 'prom' : 'GC'} statColor="#00ddd0"
-                vacio="Sin datos de arqueros aún"
-                rows={(modoValla === 'opcion1' ? vallas.opcion1 : vallas.opcion2).map(p => ({
-                  id: p.player_id,
-                  nombre: p.nombre,
-                  foto: p.foto,
-                  teamName: p.team_name,
-                  teamLogo: p.team_logo,
-                  valor: modoValla === 'opcion1' ? p.promedio : p.total_recibidos,
-                  sub: `${p.pj} PJ`,
-                }))}
-              />
+            {/* Valla menos vencida GLOBAL por equipo, con los arqueros
+                registrados del equipo líder (fotos y nombres) */}
+            <div style={{ marginTop: '16px' }}>
+              <VallaEquipos rows={vallaEquiposRows}/>
             </div>
           </div>
         )}
