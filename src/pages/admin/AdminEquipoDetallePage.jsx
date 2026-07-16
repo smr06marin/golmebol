@@ -91,6 +91,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [torneos,               setTorneos]               = useState([])
   const [jugadoresPorTorneo,    setJugadoresPorTorneo]    = useState({})
   const [jugadoresEquipoGlobal, setJugadoresEquipoGlobal] = useState([])
+  const [regsEquipo,            setRegsEquipo]            = useState([]) // inscripciones por torneo (todas)
+  const [filtroJugadores,       setFiltroJugadores]       = useState('todos') // 'todos' | 'activos' | tournament_id
   const [jugadoresActivos, setJugadoresActivos] = useState([])
   const [partidos,              setPartidos]              = useState([])
   const [logros,                setLogros]                = useState([])
@@ -146,6 +148,13 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       .eq('team_id', id)
       .eq('activo', true)
     setJugadoresActivos((activos || []).map(a => a.player_id))
+    // TODAS las inscripciones del equipo (incluye inactivos) para poder
+    // filtrar la lista de jugadores por torneo
+    const { data: regsAll } = await supabase
+      .from('tournament_player_registrations')
+      .select('player_id, tournament_id')
+      .eq('team_id', id)
+    setRegsEquipo(regsAll || [])
   }
 
   async function fetchTorneos() {
@@ -582,13 +591,38 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   </div>
 )}
           <SectionTitle icon={<Users size={18} color="#8ec3ff"/>} title="Jugadores del equipo"/>
-          {jugadoresEquipoGlobal.length === 0 ? (
+
+          {/* Filtros: todos los que han pasado por el equipo / activos / por torneo */}
+          {jugadoresEquipoGlobal.length > 0 && (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
+              {[
+                { id: 'todos',   label: `👥 Todos los que han pasado (${jugadoresEquipoGlobal.length})` },
+                { id: 'activos', label: `● Activos (${jugadoresEquipoGlobal.filter(j => jugadoresActivos.includes(j.id)).length})` },
+                ...torneos.map(t => ({ id: t.tournament_id, label: `🏆 ${t.tournaments?.name || 'Torneo'}` })),
+              ].map(f => (
+                <button key={f.id} onClick={() => setFiltroJugadores(f.id)}
+                  style={{ ...glassBtn('#5b9dff', filtroJugadores === f.id), padding: '7px 14px', fontSize: '.75rem' }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {(() => {
+            const idsTorneo = filtroJugadores !== 'todos' && filtroJugadores !== 'activos'
+              ? new Set(regsEquipo.filter(r => r.tournament_id === filtroJugadores).map(r => r.player_id))
+              : null
+            const jugadoresFiltrados = filtroJugadores === 'todos' ? jugadoresEquipoGlobal
+              : filtroJugadores === 'activos' ? jugadoresEquipoGlobal.filter(j => jugadoresActivos.includes(j.id))
+              : jugadoresEquipoGlobal.filter(j => idsTorneo.has(j.id))
+            return jugadoresFiltrados.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px' }}>
-              <Users size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay jugadores en este equipo aún</div>
+              <Users size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
+              <div>{jugadoresEquipoGlobal.length === 0 ? 'No hay jugadores en este equipo aún' : 'Ningún jugador con este filtro'}</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {jugadoresEquipoGlobal.map((j, i) => (
+              {jugadoresFiltrados.map((j, i) => (
                 <div key={j.id} style={{ ...GLASS_SM, borderRadius: '18px', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px' }}>
                   <div style={{ width: '40px', height: '40px', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
@@ -611,7 +645,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 </div>
               ))}
             </div>
-          )}
+          )})()}
         </div>
       )}
 
