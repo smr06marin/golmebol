@@ -791,11 +791,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
     if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = penalesGanador }
     let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
-    if (errPartido && (errPartido.message || '').includes('firmas')) {
-      // La BD aún no tiene las columnas nuevas (falta correr la migración):
-      // reintentar sin ellas para no bloquear el resultado.
-      delete updatePartido.firmas; delete updatePartido.capitan_local; delete updatePartido.capitan_visitante
+    // Si la BD no tiene alguna columna opcional (falta una migración), se quita
+    // esa columna y se reintenta: el RESULTADO nunca se debe quedar sin subir
+    // por un dato secundario (nombres de árbitros, firmas, capitanes...).
+    const columnasOpcionales = ['firmas', 'capitan_local', 'capitan_visitante', 'arbitro1', 'arbitro2', 'arbitro3']
+    let reintentos = 0
+    while (errPartido && reintentos < 3) {
+      const msgErr = errPartido.message || ''
+      const faltantes = columnasOpcionales.filter(c => msgErr.includes(`'${c}'`))
+      if (faltantes.length === 0) break
+      faltantes.forEach(c => delete updatePartido[c])
       ;({ error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id))
+      reintentos++
     }
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
@@ -902,10 +909,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     onClose()
   }
 
-  // Árbitros del partido que aún no han firmado la planilla
+  // Árbitros del partido que aún no han firmado la planilla.
+  // La firma del árbitro PRINCIPAL es SIEMPRE obligatoria (aunque el nombre
+  // esté vacío); la del árbitro 2 lo es apenas tenga nombre asignado.
   function firmasFaltantes() {
     const faltan = []
-    if (arbitro1 && !firmas.arbitro1) faltan.push(arbitro1)
+    if (!firmas.arbitro1) faltan.push(arbitro1 || 'Árbitro principal')
     if (arbitro2 && !firmas.arbitro2) faltan.push(arbitro2)
     return faltan
   }
@@ -953,6 +962,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   async function handleConfirmarEspecial(info) {
     setShowEspecial(null)
+    // También aquí la firma de los árbitros es OBLIGATORIA (antes el guardado
+    // por W/Desierto se saltaba este control)
+    const faltanFirmas = firmasFaltantes()
+    if (faltanFirmas.length > 0) { setAvisoFirmas(faltanFirmas); return }
     // Partido terminado antes de tiempo / no jugado (W o desierto):
     // el informe de lo que pasó es OBLIGATORIO antes de guardar
     if (!informeGuardado) {
@@ -1537,9 +1550,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 9600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '380px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
             <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>✍</div>
-            <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '8px' }}>FIRMAR PRIMERO</div>
+            <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '8px' }}>⛔ NO SE PUEDE GUARDAR</div>
             <div style={{ fontSize: '.85rem', color: '#5f6368', marginBottom: '10px' }}>
-              La planilla no se puede cerrar sin la firma de los árbitros que pitaron el partido.
+              Falta <b>obligatoriamente</b> la firma de los árbitros que pitaron el partido. La planilla no se puede guardar sin ella.
             </div>
             <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', marginBottom: '18px' }}>
               <div style={{ fontSize: '.7rem', fontWeight: '700', color: '#d93025', marginBottom: '4px' }}>FALTA LA FIRMA DE:</div>
