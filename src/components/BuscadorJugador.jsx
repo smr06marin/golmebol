@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
 // ── Buscador de datos históricos POR JUGADOR ────────────────────────────────
@@ -116,17 +116,20 @@ export default function BuscadorJugador({ playerId }) {
     return R
   }
 
-  function buscar() {
-    const todas = construirRespuestas()
+  // Memorizado: solo se recalcula cuando llegan los datos, no en cada tecla.
+  // El try/catch evita que un dato inesperado rompa la pantalla.
+  const respuestas = useMemo(() => {
+    try { return construirRespuestas() } catch (e) { console.error('Buscador jugador:', e); return [] }
+  }, [datos])
+
+  const resultados = useMemo(() => {
     const q = normalizar(busqueda).split(/\s+/).filter(t => t.length > 2)
-    if (q.length === 0) return todas.slice(0, 4)
-    return todas
+    if (q.length === 0) return respuestas.slice(0, 4)
+    return respuestas
       .map(r => ({ ...r, score: q.filter(t => normalizar(`${r.kw} ${r.titulo} ${r.respuesta}`).includes(t)).length }))
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
-  }
-
-  const resultados = buscar()
+  }, [respuestas, busqueda])
 
   return (
     <div style={{ background: 'linear-gradient(165deg,#151a28,#0c0f18)', border: '1px solid #232b3d', borderRadius: '16px', padding: '18px' }}>
@@ -134,9 +137,15 @@ export default function BuscadorJugador({ playerId }) {
       <div style={{ fontSize: '.72rem', color: '#8b93a5', marginBottom: '12px' }}>
         Goles, rivales, tarjetas, arco, equipos, títulos... todo lo guardado del jugador.
       </div>
-      <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-        placeholder="Ej: mejor partido · a quién le hace más goles · tarjetas..."
-        style={{ width: '100%', background: 'rgba(255,255,255,.06)', border: '1px solid #2a3446', borderRadius: '12px', padding: '12px 14px', color: '#fff', fontSize: '.95rem', outline: 'none', boxSizing: 'border-box' }}/>
+      <div style={{ position: 'relative' }}>
+        <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          placeholder="Ej: mejor partido · a quién le hace más goles · tarjetas..."
+          style={{ width: '100%', background: 'rgba(255,255,255,.06)', border: '1px solid #2a3446', borderRadius: '12px', padding: '12px 40px 12px 14px', color: '#fff', fontSize: '.95rem', outline: 'none', boxSizing: 'border-box' }}/>
+        {busqueda && (
+          <button onClick={() => setBusqueda('')}
+            style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', color: '#aeb6c6', fontSize: '.75rem', fontWeight: 700 }}>✕</button>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '10px 0 14px' }}>
         {['Mejor partido', '¿A quién le hace más goles?', 'Tarjetas', 'Como arquero', 'Equipos', 'Palmarés'].map(s => (
           <button key={s} onClick={() => setBusqueda(s)}
@@ -147,20 +156,25 @@ export default function BuscadorJugador({ playerId }) {
       </div>
 
       {!datos ? (
-        <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>Cargando datos del jugador...</div>
-      ) : construirRespuestas().length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>⏳ Cargando datos del jugador...</div>
+      ) : respuestas.length === 0 ? (
         <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>Este jugador aún no tiene partidos guardados</div>
       ) : resultados.length === 0 ? (
         <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>Sin resultados — prueba con: goles, rival, tarjetas, arquero, equipos o títulos</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {resultados.map((r, i) => (
-            <div key={i} className="gm-logro" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '12px', padding: '13px 15px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <div style={{ fontSize: '.66rem', color: '#8b93a5', fontWeight: 600, padding: '0 2px' }}>
+            {busqueda.trim()
+              ? `${resultados.length} resultado${resultados.length !== 1 ? 's' : ''} para "${busqueda.trim()}"`
+              : 'Datos generales — escribe o toca una pregunta para buscar algo puntual'}
+          </div>
+          {resultados.map(r => (
+            <div key={r.titulo} className="gm-logro" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '12px', padding: '13px 15px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
               <div style={{ fontSize: '1.4rem', flexShrink: 0 }}>{r.icono}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '.66rem', color: '#8b93a5', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{r.titulo}</div>
-                <div style={{ fontSize: '.9rem', color: '#fff', fontWeight: 800, marginTop: '3px' }}>{r.respuesta}</div>
-                {r.detalle && <div style={{ fontSize: '.72rem', color: '#aeb6c6', marginTop: '3px' }}>{r.detalle}</div>}
+                <div style={{ fontSize: '.9rem', color: '#fff', fontWeight: 800, marginTop: '3px', lineHeight: 1.35, overflowWrap: 'break-word' }}>{r.respuesta}</div>
+                {r.detalle && <div style={{ fontSize: '.72rem', color: '#aeb6c6', marginTop: '3px', lineHeight: 1.4, overflowWrap: 'break-word' }}>{r.detalle}</div>}
               </div>
             </div>
           ))}

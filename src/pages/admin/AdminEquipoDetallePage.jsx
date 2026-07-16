@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera } from 'lucide-react'
@@ -167,12 +167,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       if (nosGanan.length > 0) R.push({ icono: '😤', titulo: `Rival que más nos ha ganado${sufijo}`,
         respuesta: `${nosGanan[0][0]} — ${nosGanan[0][1]} victoria${nosGanan[0][1] > 1 ? 's' : ''} sobre nosotros`,
         detalle: nosGanan.slice(1, 4).map(([n, v]) => `${n} (${v})`).join(' · ') || null,
-        kw: `rival equipo mas nos ha ganado vencido perdido contra verdugo ${kwTorneo}` })
+        kw: `quien rival equipo mas nos ha ganado vencido perdido contra verdugo ${kwTorneo}` })
       const lesGanamos = contarRivales(lista, m => m.gf > m.gc)
       if (lesGanamos.length > 0) R.push({ icono: '💪', titulo: `Rival al que más le hemos ganado${sufijo}`,
         respuesta: `${lesGanamos[0][0]} — le ganamos ${lesGanamos[0][1]} vez${lesGanamos[0][1] > 1 ? 'es' : ''}`,
         detalle: lesGanamos.slice(1, 4).map(([n, v]) => `${n} (${v})`).join(' · ') || null,
-        kw: `rival equipo al que mas le hemos ganado victima favorito victorias ${kwTorneo}` })
+        kw: `quien rival equipo al que mas le hemos ganado victima favorito victorias ${kwTorneo}` })
     }
     agregarFactRival(finalizados, '', '')
     nombresTorneos.forEach(t => agregarFactRival(finalizados.filter(m => m.torneo === t), ` en ${t}`, normalizarTexto(t)))
@@ -232,11 +232,17 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     return R
   }
 
-  function buscarRespuestas() {
-    const todas = construirRespuestas()
+  // Memorizado: las respuestas solo se recalculan cuando cambian los DATOS,
+  // no en cada tecla (antes se recalculaba todo dos veces por letra escrita).
+  // El try/catch evita que un dato inesperado tumbe la pestaña completa.
+  const respuestasEquipo = useMemo(() => {
+    try { return construirRespuestas() } catch (e) { console.error('Buscador equipo:', e); return [] }
+  }, [partidos, statsJugadores, logros])
+
+  const resultadosBusqueda = useMemo(() => {
     const q = normalizarTexto(busqueda).split(/\s+/).filter(t => t.length > 2)
-    if (q.length === 0) return todas.slice(0, 4) // sin búsqueda: las más generales
-    return todas
+    if (q.length === 0) return respuestasEquipo.slice(0, 4) // sin búsqueda: lo más general
+    return respuestasEquipo
       .map(r => {
         const texto = normalizarTexto(`${r.kw} ${r.titulo} ${r.respuesta}`)
         const score = q.filter(t => texto.includes(t)).length
@@ -245,7 +251,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
-  }
+  }, [respuestasEquipo, busqueda])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -819,9 +825,15 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
             <div style={{ fontSize: '.75rem', color: TXT_MUTED, marginBottom: '14px' }}>
               Busca cualquier dato guardado: rivales, goleadas, goleadores, arqueros, títulos... por torneo o histórico.
             </div>
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              placeholder="Ej: quién nos ha ganado más · partido con más goles · goleador..."
-              style={{ ...inputStyle, fontSize: '1rem', padding: '13px 16px' }} autoFocus/>
+            <div style={{ position: 'relative' }}>
+              <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                placeholder="Ej: quién nos ha ganado más · partido con más goles · goleador..."
+                style={{ ...inputStyle, fontSize: '1rem', padding: '13px 44px 13px 16px' }}/>
+              {busqueda && (
+                <button onClick={() => setBusqueda('')}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', color: TXT_SOFT, fontSize: '.8rem', fontWeight: '700' }}>✕</button>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
               {['¿Quién nos ha ganado más?', 'Partido con más goles', 'Goleador histórico', 'Peor derrota', 'Mejor arquero', 'Títulos'].map(s => (
                 <button key={s} onClick={() => setBusqueda(s)}
@@ -838,23 +850,28 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {buscarRespuestas().length === 0 && (
+              <div style={{ fontSize: '.7rem', color: TXT_MUTED, fontWeight: '600', padding: '0 4px' }}>
+                {busqueda.trim()
+                  ? `${resultadosBusqueda.length} resultado${resultadosBusqueda.length !== 1 ? 's' : ''} para "${busqueda.trim()}"`
+                  : 'Datos generales — escribe o toca una pregunta para buscar algo puntual'}
+              </div>
+              {resultadosBusqueda.length === 0 && (
                 <div style={{ padding: '32px', textAlign: 'center', color: TXT_MUTED, ...GLASS_SM, borderRadius: '20px', fontSize: '.85rem' }}>
-                  No encontré datos para esa búsqueda — prueba con otras palabras (rival, goles, goleador, arquero, derrota, títulos o el nombre de un torneo)
+                  No encontré datos para esa búsqueda — prueba con otras palabras: rival, goles, goleador, arquero, derrota, títulos o el nombre de un torneo
                 </div>
               )}
-              {buscarRespuestas().map((r, i) => (
-                <div key={i} className="gm-logro" style={{ ...GLASS_SM, borderRadius: '18px', padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+              {resultadosBusqueda.map(r => (
+                <div key={r.titulo} className="gm-logro" style={{ ...GLASS_SM, borderRadius: '18px', padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
                   <div style={{ fontSize: '1.6rem', flexShrink: 0 }}>{r.icono}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '.72rem', color: TXT_MUTED, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.06em' }}>{r.titulo}</div>
-                    <div style={{ fontSize: '.98rem', color: TXT, fontWeight: '800', marginTop: '3px' }}>{r.respuesta}</div>
-                    {r.detalle && <div style={{ fontSize: '.75rem', color: TXT_SOFT, marginTop: '4px' }}>{r.detalle}</div>}
+                    <div style={{ fontSize: '.98rem', color: TXT, fontWeight: '800', marginTop: '3px', lineHeight: 1.35, overflowWrap: 'break-word' }}>{r.respuesta}</div>
+                    {r.detalle && <div style={{ fontSize: '.75rem', color: TXT_SOFT, marginTop: '4px', lineHeight: 1.4, overflowWrap: 'break-word' }}>{r.detalle}</div>}
                   </div>
                 </div>
               ))}
               {!statsJugadores && (
-                <div style={{ textAlign: 'center', color: TXT_MUTED, fontSize: '.72rem', padding: '8px' }}>Cargando datos de jugadores...</div>
+                <div style={{ textAlign: 'center', color: TXT_MUTED, fontSize: '.72rem', padding: '8px' }}>⏳ Cargando datos de jugadores (goleador, arquero)...</div>
               )}
             </div>
           )}
