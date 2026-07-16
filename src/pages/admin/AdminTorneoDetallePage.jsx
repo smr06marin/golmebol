@@ -1123,7 +1123,7 @@ export default function AdminTorneoDetallePage() {
 
     const porEquipo = {}
     equipos.forEach(e => {
-      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0 }
+      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0 }
     })
 
     jugados.forEach(m => {
@@ -1161,10 +1161,11 @@ export default function AdminTorneoDetallePage() {
       if (!porEquipo[mv.team_id]) return
       if (mv.tipo === 'pago_tarjetas') porEquipo[mv.team_id].pagosTarjetas += mv.monto || 0
       if (mv.tipo === 'pago_cargos')   porEquipo[mv.team_id].pagosOtros   += mv.monto || 0
+      if (mv.tipo === 'cargo_manual')  porEquipo[mv.team_id].deudas       += mv.monto || 0 // deuda anotada a mano
     })
 
     const filas = Object.values(porEquipo).map(r => {
-      const cargos = r.inscripcion + r.arbitrajes + r.w + r.multas + r.tarjetas
+      const cargos = r.inscripcion + r.arbitrajes + r.w + r.multas + r.deudas + r.tarjetas
       // El arbitraje se paga en efectivo directo en la cancha el día del partido:
       // en cuanto el partido queda "jugado" se da por pagado automáticamente, no
       // hace falta registrar ese pago a mano. Lo único manual sigue siendo
@@ -1184,15 +1185,16 @@ export default function AdminTorneoDetallePage() {
 
   async function handleRegistrarPago() {
     const monto = parseFloat(pagoForm.monto)
-    if (!monto || monto <= 0) return showMsg('Ingresa el monto del pago', 'error')
+    const esDeuda = pagoForm.tipo === 'cargo_manual'
+    if (!monto || monto <= 0) return showMsg(esDeuda ? 'Ingresa el monto de la deuda' : 'Ingresa el monto del pago', 'error')
     setGuardandoPago(true)
     const { error } = await supabase.from('torneo_finanzas').insert({
       tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
-      concepto: pagoForm.concepto || (pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos'),
+      concepto: pagoForm.concepto || (esDeuda ? 'Deuda anotada' : pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos'),
     })
     setGuardandoPago(false)
-    if (error) return showMsg('Error al registrar el pago (¿ejecutaste migracion_finanzas.sql?)', 'error')
-    showMsg('Pago registrado ✓')
+    if (error) return showMsg('Error al registrar (¿ejecutaste migracion_finanzas.sql?)', 'error')
+    showMsg(esDeuda ? 'Deuda anotada ✓ — sumada al saldo del equipo' : 'Pago registrado ✓')
     setPagoModal(null); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
     fetchFinanzas()
   }
@@ -3374,7 +3376,7 @@ export default function AdminTorneoDetallePage() {
       {/* ── TAB FINANZAS ── */}
       {tab === 'finanzas' && finanzasActivas && (() => {
         const fin = calcFinanzas()
-        const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos')
+        const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos' || m.tipo === 'cargo_manual')
         return (
           <div>
             {/* Configurar precios — editables en cualquier momento */}
@@ -3483,14 +3485,19 @@ export default function AdminTorneoDetallePage() {
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.inscripcion) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }} title="Se paga en efectivo en la cancha — se da por pagado automáticamente al jugarse el partido">{fin.fc.llevar_cuentas ? (r.arbitrajes > 0 ? <>{fmt(r.arbitrajes)} <span style={{ color: '#1e8e3e' }}>✓</span></> : fmt(r.arbitrajes)) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: r.multas > 0 ? '#d93025' : '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: (r.multas + r.deudas) > 0 ? '#d93025' : '#5f6368' }} title={r.deudas > 0 ? `Incluye ${fmt(r.deudas)} en deudas anotadas a mano` : ''}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas + r.deudas) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                       <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setPagoModal(r.equipo) }}
-                        style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '600' }}>
+                        style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '600' }}>
                         💵 Pago
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'cargo_manual', monto: '', concepto: '' }); setPagoModal(r.equipo) }}
+                        title="Anotar una deuda del equipo (ej: quedó debiendo arbitraje)"
+                        style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.7rem', fontWeight: '700' }}>
+                        ➖ Deuda
                       </button>
                     </div>
                   </div>
@@ -3514,17 +3521,17 @@ export default function AdminTorneoDetallePage() {
              </div>
             </div>
 
-            {/* Pagos registrados */}
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Pagos registrados</div>
+            {/* Movimientos registrados (pagos y deudas) */}
+            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Movimientos registrados</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
               {pagosRegistrados.length === 0 ? (
-                <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay pagos registrados — usa el botón 💵 Pago de cada equipo</div>
+                <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay movimientos — usa los botones 💵 Pago o ➖ Deuda de cada equipo</div>
               ) : pagosRegistrados.map((mv, i) => (
                 <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
                   <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
-                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos')}</span>
-                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'pago_tarjetas' ? '#e8710a' : '#1a73e8', background: mv.tipo === 'pago_tarjetas' ? '#fff4e5' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : 'Cargos'}</span>
-                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: '#1e8e3e' }}>{fmt(mv.monto)}</span>
+                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos')}</span>
+                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : '#1a73e8', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : 'Cargos'}</span>
+                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: mv.tipo === 'cargo_manual' ? '#d93025' : '#1e8e3e' }}>{mv.tipo === 'cargo_manual' ? '−' : ''}{fmt(mv.monto)}</span>
                   <button onClick={() => handleEliminarPago(mv)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#d93025', display: 'flex' }}><X size={12}/></button>
                 </div>
               ))}
@@ -3539,10 +3546,17 @@ export default function AdminTorneoDetallePage() {
           onClick={e => e.target === e.currentTarget && setPagoModal(null)}>
           <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>💵 Registrar pago — {pagoModal.name}</div>
+              <div style={{ fontWeight: '700', color: pagoForm.tipo === 'cargo_manual' ? '#d93025' : '#202124', fontSize: '.9rem' }}>
+                {pagoForm.tipo === 'cargo_manual' ? `➖ Anotar deuda — ${pagoModal.name}` : `💵 Registrar pago — ${pagoModal.name}`}
+              </div>
               <button onClick={() => setPagoModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
             </div>
             <div style={{ padding: '18px 20px' }}>
+              {pagoForm.tipo === 'cargo_manual' ? (
+                <div style={{ marginBottom: '12px', background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#c5221f', lineHeight: 1.5 }}>
+                  Se sumará como <b>cargo pendiente</b> al equipo (sube su saldo en rojo). Ej.: quedó debiendo $10.000 del arbitraje, daño en la cancha, etc.
+                </div>
+              ) : (
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>¿Qué paga?</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -3556,19 +3570,20 @@ export default function AdminTorneoDetallePage() {
                   </button>
                 </div>
               </div>
+              )}
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Monto ($) *</label>
                 <input type="number" min="0" value={pagoForm.monto} onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Concepto (opcional)</label>
-                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder="Ej: pago tarjetas jornada 3"/>
+                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : 'Ej: pago tarjetas jornada 3'}/>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
                 <button onClick={handleRegistrarPago} disabled={guardandoPago}
-                  style={{ flex: 1, padding: '10px', background: guardandoPago ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPago ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
-                  {guardandoPago ? 'Guardando...' : 'Registrar pago'}
+                  style={{ flex: 1, padding: '10px', background: guardandoPago ? '#dadce0' : pagoForm.tipo === 'cargo_manual' ? '#d93025' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPago ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                  {guardandoPago ? 'Guardando...' : pagoForm.tipo === 'cargo_manual' ? '➖ Anotar deuda' : 'Registrar pago'}
                 </button>
               </div>
             </div>
