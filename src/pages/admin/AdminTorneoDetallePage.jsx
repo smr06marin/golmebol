@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
+import VallaEquipos from '../../components/VallaEquipos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
@@ -406,6 +407,7 @@ export default function AdminTorneoDetallePage() {
   const [goleadores,   setGoleadores]   = useState([])
   const [vallas,        setVallas]        = useState({ opcion1: [], opcion2: [] })
   const [modoValla,     setModoValla]     = useState('opcion1')
+  const [arquerosEquipos, setArquerosEquipos] = useState([]) // arqueros registrados por equipo
   const [loadingStats, setLoadingStats] = useState(false)
 
   const [editandoPartido, setEditandoPartido] = useState(null)
@@ -651,6 +653,18 @@ export default function AdminTorneoDetallePage() {
       .sort((a, b) => a.total_recibidos - b.total_recibidos)
 
     setVallas({ opcion1: op1, opcion2: op2 })
+
+    // Arqueros REGISTRADOS de cada equipo del torneo (para la valla por equipo)
+    const { data: tt } = await supabase.from('tournament_teams').select('team_id').eq('tournament_id', id)
+    const teamIds = (tt || []).map(t => t.team_id).filter(Boolean)
+    if (teamIds.length > 0) {
+      const { data: tp } = await supabase.from('team_players')
+        .select('team_id, players(name, photo_face_url, photo_url, posicion_futbol5, posicion_futbol7, posicion_futbol11)')
+        .in('team_id', teamIds)
+      setArquerosEquipos((tp || [])
+        .filter(x => x.players && (x.players.posicion_futbol5 === 'Portero' || x.players.posicion_futbol7 === 'Portero' || x.players.posicion_futbol11 === 'Portero'))
+        .map(x => ({ team_id: x.team_id, name: x.players.name, foto: x.players.photo_face_url || x.players.photo_url })))
+    }
     setLoadingStats(false)
   }
 
@@ -2890,37 +2904,14 @@ export default function AdminTorneoDetallePage() {
             )}
           </div>
 
-          {/* Valla menos vencida */}
+          {/* Valla menos vencida GLOBAL por equipo (igual que en jugadores y
+              pública), con botones para medir por menos goles o por promedio */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>🧤 Valla menos vencida</div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => setModoValla('opcion1')}
-                  style={{ padding: '5px 12px', borderRadius: '20px', border: `1px solid ${modoValla==='opcion1'?'#1a73e8':'#dadce0'}`, background: modoValla==='opcion1'?'#1a73e8':'#fff', color: modoValla==='opcion1'?'#fff':'#5f6368', fontSize: '.72rem', fontWeight: '600', cursor: 'pointer' }}>
-                  Promedio (PJ/GC)
-                </button>
-                <button onClick={() => setModoValla('opcion2')}
-                  style={{ padding: '5px 12px', borderRadius: '20px', border: `1px solid ${modoValla==='opcion2'?'#1a73e8':'#dadce0'}`, background: modoValla==='opcion2'?'#1a73e8':'#fff', color: modoValla==='opcion2'?'#fff':'#5f6368', fontSize: '.72rem', fontWeight: '600', cursor: 'pointer' }}>
-                  Menos recibidos
-                </button>
-              </div>
-            </div>
-            <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginBottom: '8px' }}>
-              {modoValla === 'opcion1'
-                ? '📊 Promedio de goles recibidos por partido — equipos clasificados a eliminatoria'
-                : '🏆 Arqueros finalistas y tercer/cuarto puesto — total goles recibidos'}
-            </div>
-            <RankingPoster
-              statLabel={modoValla === 'opcion1' ? 'prom' : 'GC'} statColor="#00ddd0"
-              vacio="Sin datos de arqueros aún"
-              rows={(modoValla === 'opcion1' ? vallas.opcion1 : vallas.opcion2).map(p => ({
-                id: p.player_id,
-                nombre: p.nombre,
-                foto: p.foto,
-                teamName: p.team_name,
-                teamLogo: p.team_logo,
-                valor: modoValla === 'opcion1' ? p.promedio : p.total_recibidos,
-                sub: `${p.pj} PJ`,
+            <VallaEquipos
+              vacio="Sin resultados aún"
+              rows={tablaOrdenada.filter(r => r.pj > 0).map(r => ({
+                equipo: r.equipo, gc: r.gc, pj: r.pj,
+                arqueros: arquerosEquipos.filter(a => a.team_id === r.equipo.id),
               }))}
             />
           </div>
