@@ -836,7 +836,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       jugadores.forEach(j => {
         if (!j.id || !j.numero) return
         const esArqueroEnEstePartido = arqueroIds.has(j.id)
-        const jugoPartido = jugaronNumeros.has(String(j.numero)) || esArqueroEnEstePartido
+        // Un jugador con gol, tarjeta o falta OBVIAMENTE jugó, aunque el
+        // árbitro haya olvidado marcarlo en iniciales/ingresos. Antes su fila
+        // de estadísticas se perdía y las tarjetas no sumaban en contabilidad.
+        const anoto      = goles.some(g => g && String(g.numero) === String(j.numero))
+        const tuvoAccion = j.amarilla || j.azul || j.roja || (j.faltasPeriodo || []).length > 0 || anoto
+        const jugoPartido = jugaronNumeros.has(String(j.numero)) || esArqueroEnEstePartido || tuvoAccion
         if (!jugoPartido) return
         const esArqueroActual        = j.id === arqueroActualId
         const golesAnotados          = goles.filter(g => g && String(g.numero) === String(j.numero)).length

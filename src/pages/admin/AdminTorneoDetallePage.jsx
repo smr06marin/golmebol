@@ -1072,7 +1072,12 @@ export default function AdminTorneoDetallePage() {
   async function fetchFinanzas() {
     const [{ data: movs }, { data: st }] = await Promise.all([
       supabase.from('torneo_finanzas').select('*, teams(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
-      supabase.from('player_match_stats').select('player_id, team_id, yellow_cards, blue_cards, red_cards, players(name)').eq('tournament_id', id),
+      // Tarjetas desde los EVENTOS del partido (no desde player_match_stats):
+      // los eventos siempre se guardan, mientras que las stats solo se guardan
+      // si el jugador quedó marcado en iniciales/ingresos — por eso había
+      // amarillas que no se sumaban en la contabilidad.
+      supabase.from('match_events').select('player_id, team_id, event_type, players(name)')
+        .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']),
     ])
     setMovimientos(movs || [])
     setStatsTarjetas(st || [])
@@ -1101,17 +1106,21 @@ export default function AdminTorneoDetallePage() {
       if (porEquipo[ausenteId])  porEquipo[ausenteId].multas += fc.multa_no_presenta || 0
     })
 
-    // Tarjetas por jugador
+    // Tarjetas por jugador (un evento = una tarjeta). Ya no se omite al
+    // jugador cuando el precio está en $0: la tarjeta se muestra igual en el
+    // detalle aunque no genere cobro.
     const porJugador = {}
     statsTarjetas.forEach(s => {
-      const valor = (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR
-      if (valor === 0) return
+      const am = s.event_type === 'yellow_card' ? 1 : 0
+      const az = s.event_type === 'blue_card'   ? 1 : 0
+      const rj = s.event_type === 'red_card'    ? 1 : 0
+      if (am + az + rj === 0) return
       const key = `${s.team_id}|${s.player_id}`
       if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre: s.players?.name, am: 0, az: 0, rj: 0, valor: 0 }
-      porJugador[key].am += s.yellow_cards || 0
-      porJugador[key].az += s.blue_cards || 0
-      porJugador[key].rj += s.red_cards || 0
-      porJugador[key].valor += valor
+      porJugador[key].am += am
+      porJugador[key].az += az
+      porJugador[key].rj += rj
+      porJugador[key].valor += am * pA + az * pZ + rj * pR
     })
     Object.values(porJugador).forEach(j => {
       if (porEquipo[j.team_id]) {
