@@ -30,7 +30,7 @@ export default function PantallaColores({ nombreLocal, nombreVis, colorLocal, co
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', padding: '20px 16px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, overflowY: 'auto', background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', padding: '20px 16px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '18px' }}>
       <div style={{ textAlign: 'center', marginBottom: '4px' }}>
         <div style={{ fontSize: '.7rem', color: TEXTO_TENUE, letterSpacing: '.08em' }}>PLANILLA RÁPIDA</div>
         <div style={{ fontSize: '1rem', fontWeight: '800' }}>Elige el color de cada uniforme</div>

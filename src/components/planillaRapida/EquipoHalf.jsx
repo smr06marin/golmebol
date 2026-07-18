@@ -8,11 +8,11 @@ const BOTONES_EVENTO = [
   { tipo: 'falta_acum',  emoji: '🟠', label: 'Falta',    color: '#e8710a' },
 ]
 
-// Una mitad de la pantalla de partido: header con el arquero (y botón para
-// cambiarlo rápido) + contador de faltas del equipo en el tiempo (solo
-// Fútbol 5), un input de número de camiseta + botones de evento, y el
-// registro de lo anotado en este equipo (con scroll SOLO acá adentro, para
-// que la pantalla completa nunca necesite scroll).
+// Una mitad de la pantalla de partido: nombre del equipo + faltas arriba, el
+// ARQUERO bien grande debajo (para identificarlo de un vistazo), un input de
+// número de camiseta + botones de evento, y el registro de lo anotado en
+// este equipo (con scroll SOLO acá adentro, para que la pantalla completa
+// nunca necesite scroll).
 export default function EquipoHalf({
   equipoNombre, color, colorTexto, jugadores, arquero, eventos, mostrarFaltas, faltasEquipo,
   onSeleccionarArquero, onRegistrarEvento, onQuitarEvento, arriba,
@@ -31,32 +31,42 @@ export default function EquipoHalf({
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: color, borderTop: arriba ? 'none' : '2px solid #07070e' }}>
-      {/* Arquero + faltas */}
-      <div style={{ padding: '4px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexShrink: 0, background: 'rgba(0,0,0,.18)' }}>
-        <span style={{ fontSize: '.68rem', fontWeight: '800', color: colorTexto, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
+      {/* Equipo + faltas */}
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexShrink: 0 }}>
+        <span style={{ fontSize: '.66rem', fontWeight: '800', color: colorTexto, opacity: .85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           {equipoNombre}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-          {mostrarFaltas && (
-            <span title="Faltas acumuladas del equipo en este tiempo"
-              style={{ background: faltasEquipo >= 5 ? '#e8710a' : 'rgba(0,0,0,.25)', color: faltasEquipo >= 5 ? '#1a1a1a' : colorTexto, borderRadius: '6px', padding: '3px 7px', fontSize: '.65rem', fontWeight: '800' }}>
-              🟠 {faltasEquipo}
-            </span>
-          )}
-          <button onClick={() => setMostrarPicker(v => !v)}
-            style={{ background: 'rgba(0,0,0,.25)', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: colorTexto, fontSize: '.65rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '140px' }}>
-            🧤 {arquero ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{arquero.nombre}</span> : 'Elegir arquero'} · {arquero ? 'Cambiar' : ''}
-          </button>
-        </div>
+        {mostrarFaltas && (
+          <span title="Faltas acumuladas del equipo en este tiempo"
+            style={{ background: faltasEquipo >= 5 ? '#e8710a' : 'rgba(0,0,0,.25)', color: faltasEquipo >= 5 ? '#1a1a1a' : colorTexto, borderRadius: '6px', padding: '3px 7px', fontSize: '.65rem', fontWeight: '800', flexShrink: 0 }}>
+            🟠 {faltasEquipo}
+          </span>
+        )}
       </div>
 
+      {/* Arquero — grande, para identificarlo bien */}
+      <button onClick={() => setMostrarPicker(v => !v)}
+        style={{ margin: '0 8px 6px', padding: '8px 12px', background: 'rgba(0,0,0,.28)', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+        <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>🧤</span>
+        {arquero ? (
+          <span style={{ flex: 1, textAlign: 'left', fontSize: '1.15rem', fontWeight: '900', color: colorTexto, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.15 }}>
+            {arquero.nombre}{arquero.numero ? ` · #${arquero.numero}` : ''}
+          </span>
+        ) : (
+          <span style={{ flex: 1, textAlign: 'left', fontSize: '.95rem', fontWeight: '800', color: colorTexto }}>Elegir arquero</span>
+        )}
+        <span style={{ fontSize: '.65rem', fontWeight: '700', color: colorTexto, opacity: .85, background: 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '3px 7px', flexShrink: 0 }}>
+          {arquero ? 'Cambiar' : 'Elegir'}
+        </span>
+      </button>
+
       {mostrarPicker && (
-        <div style={{ maxHeight: '110px', overflowY: 'auto', background: 'rgba(0,0,0,.35)', flexShrink: 0 }}>
+        <div style={{ maxHeight: '130px', overflowY: 'auto', background: 'rgba(0,0,0,.35)', flexShrink: 0, margin: '0 8px 6px', borderRadius: '8px' }}>
           {numerados.length === 0 ? (
-            <div style={{ padding: '8px 12px', fontSize: '.68rem', color: colorTexto, opacity: .8 }}>Primero asigna números en "Jugadores"</div>
+            <div style={{ padding: '8px 12px', fontSize: '.7rem', color: colorTexto, opacity: .8 }}>Primero asigna números en "Jugadores"</div>
           ) : numerados.map((j, i) => (
             <button key={j.id || j.nombre + i} onClick={() => { onSeleccionarArquero(j); setMostrarPicker(false) }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,.08)', cursor: 'pointer', color: colorTexto, fontSize: '.75rem' }}>
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', borderTop: '1px solid rgba(255,255,255,.08)', cursor: 'pointer', color: colorTexto, fontSize: '.82rem', fontWeight: '600' }}>
               #{j.numero} · {j.nombre || 'Sin nombre'}
             </button>
           ))}
@@ -64,7 +74,7 @@ export default function EquipoHalf({
       )}
 
       {/* Entrada rápida: número + evento */}
-      <div style={{ display: 'flex', gap: '6px', padding: '6px 10px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '6px', padding: '0 10px 6px', flexShrink: 0 }}>
         <input value={numero} onChange={e => setNumero(e.target.value.replace(/\D/g, '').slice(0, 2))}
           inputMode="numeric" placeholder="N°" maxLength={2}
           style={{ width: '52px', padding: '8px 6px', borderRadius: '8px', border: 'none', fontSize: '1.1rem', fontWeight: '900', textAlign: 'center', outline: 'none', flexShrink: 0 }}/>

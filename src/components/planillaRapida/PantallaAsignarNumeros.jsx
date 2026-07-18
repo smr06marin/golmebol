@@ -42,21 +42,23 @@ export default function PantallaAsignarNumeros({
   onAbrirJugador, onAgregarSinRegistro, onContinuar, onVolverColores, volviendoDesdePartido,
 }) {
   return (
-    <div style={{ minHeight: '100dvh', background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', paddingBottom: '90px' }}>
-      <div style={{ position: 'sticky', top: 0, background: '#0d1117', borderBottom: `1px solid ${BORDE}`, padding: '12px 16px', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flexShrink: 0, background: '#0d1117', borderBottom: `1px solid ${BORDE}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button onClick={onVolverColores} style={{ background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.78rem', cursor: 'pointer' }}>‹ Colores</button>
         <div style={{ fontSize: '.85rem', fontWeight: '800' }}>Asignar camisetas</div>
         <div style={{ width: '54px' }}/>
       </div>
 
-      <div style={{ maxWidth: '480px', margin: '0 auto', padding: '14px 12px' }}>
-        <BloqueEquipo titulo={`🏠 ${nombreLocal}`} color={colorLocal} jugadores={jugadoresLocal}
-          onAbrir={i => onAbrirJugador('local', i)} onAgregarSinRegistro={() => onAgregarSinRegistro('local')}/>
-        <BloqueEquipo titulo={`🚩 ${nombreVis}`} color={colorVis} jugadores={jugadoresVisitante}
-          onAbrir={i => onAbrirJugador('visitante', i)} onAgregarSinRegistro={() => onAgregarSinRegistro('visitante')}/>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <div style={{ maxWidth: '480px', margin: '0 auto', padding: '14px 12px' }}>
+          <BloqueEquipo titulo={`🏠 ${nombreLocal}`} color={colorLocal} jugadores={jugadoresLocal}
+            onAbrir={i => onAbrirJugador('local', i)} onAgregarSinRegistro={() => onAgregarSinRegistro('local')}/>
+          <BloqueEquipo titulo={`🚩 ${nombreVis}`} color={colorVis} jugadores={jugadoresVisitante}
+            onAbrir={i => onAbrirJugador('visitante', i)} onAgregarSinRegistro={() => onAgregarSinRegistro('visitante')}/>
+        </div>
       </div>
 
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 16px', background: '#0d1117', borderTop: `1px solid ${BORDE}` }}>
+      <div style={{ flexShrink: 0, padding: '12px 16px', background: '#0d1117', borderTop: `1px solid ${BORDE}` }}>
         <button onClick={onContinuar} style={btnPrimario}>
           {volviendoDesdePartido ? '✓ Volver al partido' : '⚽ Iniciar partido →'}
         </button>

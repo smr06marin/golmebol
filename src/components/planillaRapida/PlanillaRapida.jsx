@@ -61,6 +61,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => { fetchTodo() }, [])
 
+  // Pantalla completa real (oculta también la barra del navegador móvil),
+  // igual que la planilla completa — se sale sola al desmontar el componente.
+  useEffect(() => {
+    document.documentElement.requestFullscreen?.().catch(() => {})
+    return () => { document.exitFullscreen?.().catch(() => {}) }
+  }, [])
+
   async function fetchTodo() {
     setLoading(true)
     const [jugsL, jugsV, torn, liveDB] = await Promise.all([
