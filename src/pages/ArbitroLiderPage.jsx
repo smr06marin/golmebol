@@ -444,9 +444,14 @@ export default function ArbitroLiderPage() {
 
   function abrirPlanilla(p) {
     setPlanillaPartido(p)
+    // Copia liviana del partido para poder reabrir la planilla DE INMEDIATO
+    // si el celular recarga la página, sin esperar la red — la planilla misma
+    // ya trae su propio borrador guardado.
+    try { localStorage.setItem(`planilla_partido_shell_${p.id}`, JSON.stringify(p)) } catch (e) {}
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
   }
   function cerrarPlanilla() {
+    if (planillaPartido) { try { localStorage.removeItem(`planilla_partido_shell_${planillaPartido.id}`) } catch (e) {} }
     setPlanillaPartido(null)
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
     fetchTodo()
@@ -455,10 +460,22 @@ export default function ArbitroLiderPage() {
   useEffect(() => {
     const matchId = searchParams.get('planilla')
     if (matchId) {
+      // Restauro instantáneo desde la copia local; la consulta de abajo solo
+      // reconfirma en 2do plano.
+      try {
+        const cached = localStorage.getItem(`planilla_partido_shell_${matchId}`)
+        if (cached) setPlanillaPartido(JSON.parse(cached))
+      } catch (e) {}
+
       supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
         .eq('id', matchId).single()
-        .then(({ data }) => { if (data) setPlanillaPartido(data) })
+        .then(({ data }) => {
+          if (data) {
+            setPlanillaPartido(data)
+            try { localStorage.setItem(`planilla_partido_shell_${matchId}`, JSON.stringify(data)) } catch (e) {}
+          }
+        })
     }
     fetchTodo()
     function onPageShow(e) { if (e.persisted) fetchTodo() }

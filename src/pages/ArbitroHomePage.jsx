@@ -125,9 +125,15 @@ export default function ArbitroHomePage() {
 
   function abrirPlanilla(p) {
     setPlanillaPartido(p)
+    // Se guarda una copia liviana del partido (nombres, ids, modalidad) para
+    // poder reabrir la planilla DE INMEDIATO si el celular recarga la página
+    // (se apagó, se cerró la app, etc.) sin tener que esperar esta consulta
+    // de nuevo — la planilla misma ya trae su propio borrador guardado.
+    try { localStorage.setItem(`planilla_partido_shell_${p.id}`, JSON.stringify(p)) } catch (e) {}
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
   }
   function cerrarPlanilla() {
+    if (planillaPartido) { try { localStorage.removeItem(`planilla_partido_shell_${planillaPartido.id}`) } catch (e) {} }
     setPlanillaPartido(null)
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
     fetchTodo()
@@ -138,14 +144,29 @@ export default function ArbitroHomePage() {
     // primero — así nunca se pierde aunque el navegador recargue la página.
     const matchId = searchParams.get('planilla')
     if (matchId) {
+      // Restauro INSTANTÁNEO desde la copia liviana guardada localmente, sin
+      // esperar la red — la planilla se abre ya mismo con su propio borrador.
+      // La consulta de abajo solo reconfirma en 2do plano (por si el partido
+      // ya se cerró desde otro lado, o cambiaron nombres/logos de equipos).
+      try {
+        const cached = localStorage.getItem(`planilla_partido_shell_${matchId}`)
+        if (cached) setPlanillaPartido(JSON.parse(cached))
+      } catch (e) {}
+
       supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
         .eq('id', matchId).single()
         .then(({ data }) => {
           // Un árbitro no puede editar una planilla ya cerrada (solo admin/coordinador),
           // ni siquiera armando el link a mano.
-          if (data && data.status !== 'finished') setPlanillaPartido(data)
-          else if (data) setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace:true })
+          if (data && data.status !== 'finished') {
+            setPlanillaPartido(data)
+            try { localStorage.setItem(`planilla_partido_shell_${matchId}`, JSON.stringify(data)) } catch (e) {}
+          } else if (data) {
+            try { localStorage.removeItem(`planilla_partido_shell_${matchId}`) } catch (e) {}
+            setPlanillaPartido(null)
+            setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace:true })
+          }
         })
     }
     fetchTodo()
