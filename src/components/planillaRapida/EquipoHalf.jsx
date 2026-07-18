@@ -94,13 +94,15 @@ export default function EquipoHalf({
         {eventos.length === 0 ? (
           <div style={{ fontSize: '.65rem', color: colorTexto, opacity: .7, padding: '6px 4px' }}>Sin eventos aún</div>
         ) : [...eventos].reverse().map(e => (
-          <div key={e.id} onClick={() => onQuitarEvento(e.id)} title="Toca para quitar"
+          // Doble toque para quitar (no un solo toque) — para que no se borre
+          // un gol o tarjeta por error al rozar la pantalla durante el partido.
+          <div key={e.id} onDoubleClick={() => onQuitarEvento(e.id)} title="Doble toque para quitar"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 4px', fontSize: '.7rem', color: colorTexto, cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
             <span>{BOTONES_EVENTO.find(b => b.tipo === e.tipo)?.emoji}</span>
             <span style={{ fontWeight: '700' }}>#{e.numero}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{e.jugadorNombre || ''}</span>
             <span style={{ opacity: .75 }}>{e.minuto}</span>
-            <span style={{ opacity: .6 }}>✕</span>
+            <span style={{ opacity: .55, fontSize: '.6rem' }}>✕✕</span>
           </div>
         ))}
       </div>

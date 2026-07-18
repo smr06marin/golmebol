@@ -572,6 +572,9 @@ export default function RegistroEquipoPage() {
                   <FotoUpload label="Cédula Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
                   <FotoUpload label="Cédula Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
                 </div>
+                <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
+                  ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real de tu cédula</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu cédula real.
+                </div>
               </div>
             )}
 
@@ -679,6 +682,9 @@ export default function RegistroEquipoPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
                   <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                </div>
+                <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
+                  ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real de tu cédula</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu cédula real.
                 </div>
               </div>
 

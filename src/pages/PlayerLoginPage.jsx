@@ -14,42 +14,8 @@ const inp = {
 const WA_LINK = (texto) =>
   `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
 
-function ErrorBox({ error, waTexto }) {
+function ErrorBox({ error }) {
   if (!error) return null
-  if (error === 'pendiente_verificacion') {
-    return (
-      <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '12px', padding: '14px 16px' }}>
-        <div style={{ fontWeight: '700', color: '#e8710a', fontSize: '.85rem', marginBottom: '6px' }}>
-          ⏳ Tu cuenta está pendiente de verificación
-        </div>
-        <div style={{ fontSize: '.78rem', color: '#8a5a00', marginBottom: '12px', lineHeight: 1.5 }}>
-          Para activarla, envíanos por WhatsApp tu nombre completo, cédula y el equipo en el que juegas. Apenas te verifiquemos podrás entrar.
-        </div>
-        <a href={WA_LINK(waTexto || 'Hola! Quiero verificar mi cuenta de Golmebol ✅')}
-          target="_blank" rel="noopener noreferrer"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '11px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
-          📲 Enviar mensaje de verificación
-        </a>
-      </div>
-    )
-  }
-  if (error === 'membresia_inactiva' || error === 'membresia_vencida') {
-    return (
-      <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '12px', padding: '14px 16px' }}>
-        <div style={{ fontWeight: '700', color: '#d93025', fontSize: '.85rem', marginBottom: '6px' }}>
-          ⛔ {error === 'membresia_vencida' ? 'Tu membresía venció' : 'Tu membresía no está activa'}
-        </div>
-        <div style={{ fontSize: '.78rem', color: '#c5221f', marginBottom: '12px' }}>
-          Escríbenos por WhatsApp y te reactivamos rápido 👇
-        </div>
-        <a href={WA_LINK('Hola! Quiero reactivar mi membresía de PREDIX Golmebol 🎯')}
-          target="_blank" rel="noopener noreferrer"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '11px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
-          📲 Escribir a Golmebol por WhatsApp
-        </a>
-      </div>
-    )
-  }
   return (
     <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.82rem', color: '#d93025' }}>
       {error}
@@ -176,15 +142,10 @@ export default function PlayerLoginPage() {
   const [cedula,          setCedula]          = useState('')
   const [pass,            setPass]            = useState('')
   const [pass2,           setPass2]           = useState('')
-  const [nombre,          setNombre]          = useState('')
-  const [whatsapp,        setWhatsapp]        = useState('')
-  const [equipo,          setEquipo]          = useState('')
   const [nombreVerif,     setNombreVerif]     = useState('') // nombre + primer apellido para verificar identidad
-  const [duenoDe,         setDuenoDe]         = useState(null) // equipo del que esta cédula es dueña
   const [player,          setPlayer]          = useState(null)
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
-  const [showPromo,       setShowPromo]       = useState(false)
   const [showRecuperar,   setShowRecuperar]   = useState(false)
   const [showCambiarPass, setShowCambiarPass] = useState(false)
   const [splash,          setSplash]          = useState(null)
@@ -208,7 +169,7 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { data: p } = await supabase
       .from('players')
-      .select('id, name, activo_membresia, fecha_vencimiento, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, equipo_deseado')
+      .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, equipo_deseado')
       .eq('numero_cedula', cedula.trim())
       .single()
     setLoading(false)
@@ -217,20 +178,10 @@ export default function PlayerLoginPage() {
     // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).
     if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('verificar_nombre') }
     else {
-      // ¿Esta cédula es DUEÑA de algún equipo? Sus datos ya están guardados:
-      // se precargan para que no los vuelva a escribir.
-      try {
-        const { data: eq } = await supabase.from('teams')
-          .select('name, representante_nombre, representante_telefono, created_at')
-          .eq('representante_cedula', cedula.trim()).limit(1).maybeSingle()
-        if (eq) {
-          setDuenoDe(eq)
-          if (eq.representante_nombre)  setNombre(eq.representante_nombre)
-          if (eq.representante_telefono) setWhatsapp(eq.representante_telefono)
-          setEquipo(eq.name)
-        } else setDuenoDe(null)
-      } catch (e) { setDuenoDe(null) }
-      setShowPromo(true)
+      // Golmebol es gratis y no pide autorización — pero solo puede entrar
+      // quien YA está registrado como jugador (por su equipo o por Golmebol).
+      // Si la cédula no existe en players, no se deja crear cuenta desde acá.
+      setStep('no_registrado')
     }
   }
 
@@ -253,11 +204,10 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Contraseña incorrecta'); setLoading(false); return }
-    const { data: pActual } = await supabase.from('players').select('activo_membresia, fecha_vencimiento, primer_ingreso, rol, es_arbitro, es_arbitro_lider, verificado').eq('id', player.id).single()
-    if (pActual?.verificado === false) { await supabase.auth.signOut(); setError('pendiente_verificacion'); setLoading(false); return }
-    if (!pActual?.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
-    if (pActual.fecha_vencimiento && new Date(pActual.fecha_vencimiento) < new Date()) { await supabase.auth.signOut(); setError('membresia_vencida'); setLoading(false); return }
-    if (pActual.primer_ingreso !== false) {
+    // Golmebol es gratis: ya no se revisa membresía activa ni verificación
+    // manual — con contraseña correcta y cédula ya registrada, entra directo.
+    const { data: pActual } = await supabase.from('players').select('primer_ingreso').eq('id', player.id).single()
+    if (pActual?.primer_ingreso !== false) {
       setLoading(false)
       setShowCambiarPass(true)
       return
@@ -275,47 +225,15 @@ export default function PlayerLoginPage() {
     const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
     await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
-    if (!player.activo_membresia) { await supabase.auth.signOut(); setError('membresia_inactiva'); setLoading(false); return }
     const splashData = await fetchSplashData(player.id)
     setLoading(false)
     setSplash(splashData)
   }
 
-  async function handleRegistro(e) {
-    e.preventDefault()
-    if (!nombre.trim())                    { setError('Ingresa tu nombre'); return }
-    if (!whatsapp.trim())                  { setError('Ingresa tu WhatsApp'); return }
-    if (!pass.trim() || pass.length < 6)  { setError('Mínimo 6 caracteres'); return }
-    // Verificar que el WhatsApp no esté registrado
-    const { data: yaExiste } = await supabase.from('players').select('id').eq('whatsapp', whatsapp.trim()).single()
-    if (yaExiste) { setError('Este número de WhatsApp ya está registrado en otro jugador'); setLoading(false); return }
-    if (pass !== pass2)                    { setError('Las contraseñas no coinciden'); return }
-    setLoading(true); setError('')
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
-    if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
-    // Los registros nuevos quedan PENDIENTES de verificación por WhatsApp:
-    // el jugador debe enviarnos nombre, cédula y equipo, y el admin lo aprueba
-    // manualmente en Admin > Jugadores. Hasta entonces no puede entrar.
-    const { data: nuevoPlayer, error: playerError } = await supabase.from('players').insert({
-      user_id: authData.user?.id, name: nombre.trim(), numero_cedula: cedula.trim(),
-      whatsapp: whatsapp.trim(), equipo_deseado: equipo.trim() || null, verificado: false,
-      activo_membresia: true, primer_ingreso: false, fecha_registro: new Date().toISOString(),
-    }).select().single()
-    if (playerError) { setError('Error al crear perfil: ' + playerError.message); setLoading(false); return }
-    await supabase.auth.signOut() // no entra hasta que el admin lo verifique
-    setPlayer(nuevoPlayer)
-    setLoading(false)
-    setStep('verificar')
-  }
-
   const volver = () => {
     setStep('cedula'); setPass(''); setPass2(''); setError('')
-    setNombre(''); setWhatsapp(''); setEquipo(''); setNombreVerif(''); setPlayer(null); setShowPromo(false); setDuenoDe(null)
+    setNombreVerif(''); setPlayer(null)
   }
-
-  // Mensaje de WhatsApp con los datos que el admin necesita para verificar
-  const textoVerificacion = (nom, ced, eq) =>
-    `Hola! Quiero verificar mi cuenta de Golmebol ✅\nNombre: ${nom}\nCédula: ${ced}\nEquipo: ${eq || 'Ninguno — solo quiero PREDIX'}`
 
   // Mostrar splash
   if (splash) return (
@@ -354,45 +272,6 @@ export default function PlayerLoginPage() {
           <div style={{ fontSize: '.85rem', color: '#5f6368', marginTop: '4px' }}>Portal del Jugador</div>
         </div>
 
-        {showPromo && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div style={{ width: '100%', maxWidth: '400px', borderRadius: '20px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
-              <div style={{ background: '#07070e', padding: '28px 24px 20px', textAlign: 'center' }}>
-                <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#00ddd0', letterSpacing: '3px', marginBottom: '8px' }}>PREDIX · GOLMEBOL</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'rgba(255,255,255,.7)' }}>Predice · Compite · Gana</div>
-              </div>
-              <div style={{ background: 'linear-gradient(135deg, #1a73e8, #6c35de)', padding: '20px 24px', textAlign: 'center' }}>
-                <div style={{ fontSize: '.75rem', fontWeight: '700', color: 'rgba(255,255,255,.7)', letterSpacing: '2px', marginBottom: '4px' }}>🎯 PRIMER MES GRATIS</div>
-                <div style={{ fontSize: '3.2rem', fontWeight: '900', color: '#fff', lineHeight: 1, marginBottom: '4px' }}>$50.000</div>
-                <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.8)' }}>para el 1er puesto del ranking mensual</div>
-              </div>
-              <div style={{ background: 'linear-gradient(135deg, #e8710a, #f9a825)', padding: '20px 24px', textAlign: 'center' }}>
-                <div style={{ fontSize: '.75rem', fontWeight: '700', color: 'rgba(255,255,255,.85)', letterSpacing: '2px', marginBottom: '4px' }}>🏆 PLAN MENSUAL · $10.000</div>
-                <div style={{ fontSize: '3.2rem', fontWeight: '900', color: '#fff', lineHeight: 1, marginBottom: '4px' }}>$500.000</div>
-                <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.9)', fontWeight: '600' }}>3 ganadores cada mes</div>
-                <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', marginTop: '2px' }}>$500K · $300K · $200K</div>
-              </div>
-              <div style={{ background: '#07070e', padding: '20px 24px' }}>
-                <div style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '12px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '1.3rem' }}>🎁</span>
-                  <div>
-                    <div style={{ fontSize: '.82rem', fontWeight: '700', color: '#00ddd0' }}>¡Tu primer mes es GRATIS!</div>
-                    <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.5)', marginTop: '2px' }}>Regístrate y compite por $50.000 sin pagar nada</div>
-                  </div>
-                </div>
-                <button onClick={() => { setShowPromo(false); setStep('registro') }}
-                  style={{ width: '100%', padding: '14px', background: 'linear-gradient(90deg, #00ddd0, #1a73e8)', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '800', fontSize: '1rem', letterSpacing: '.5px', marginBottom: '10px' }}>
-                  QUIERO MI MES GRATIS →
-                </button>
-                <button onClick={volver}
-                  style={{ width: '100%', padding: '10px', background: 'none', border: '1px solid rgba(255,255,255,.15)', borderRadius: '10px', cursor: 'pointer', color: 'rgba(255,255,255,.4)', fontSize: '.78rem' }}>
-                  Ya tengo cuenta
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', boxShadow: '0 1px 3px rgba(0,0,0,.1), 0 4px 16px rgba(0,0,0,.06)' }}>
 
           {step === 'cedula' && (
@@ -429,7 +308,7 @@ export default function PlayerLoginPage() {
                   <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Tu contraseña" type="password" style={inp}
                     onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'} autoFocus/>
                 </div>
-                <ErrorBox error={error} waTexto={textoVerificacion(player?.name || '', cedula.trim(), player?.equipo_deseado || '')}/>
+                <ErrorBox error={error}/>
                 <button type="submit" disabled={loading}
                   style={{ marginTop: '4px', padding: '12px', background: loading ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.95rem' }}>
                   {loading ? 'Ingresando...' : 'Ingresar'}
@@ -518,88 +397,23 @@ export default function PlayerLoginPage() {
             </>
           )}
 
-          {step === 'verificar' && (
+          {step === 'no_registrado' && (
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>📲</div>
-              <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem', marginBottom: '8px' }}>¡Último paso, {nombre.split(' ')[0]}!</div>
+              <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>🔍</div>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem', marginBottom: '8px' }}>Cédula no registrada</div>
               <div style={{ fontSize: '.82rem', color: '#5f6368', lineHeight: 1.6, marginBottom: '16px' }}>
-                Tu cuenta quedó creada pero <b>pendiente de verificación</b>. Envíanos el mensaje de WhatsApp con tus datos y te activamos la cuenta.
+                La cédula <b>{cedula}</b> no está registrada como jugador en Golmebol. Golmebol es gratis y no pide autorización, pero solo puede entrar quien ya esté inscrito por su equipo o por Golmebol.
               </div>
-              {!equipo.trim() && (
-                <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#8a5a00', marginBottom: '16px', lineHeight: 1.5, textAlign: 'left' }}>
-                  ⚠️ Como no estás registrado como jugador en ningún equipo, al verificarte solo podrás ingresar a <b>PREDIX</b> (predicciones y ranking).
-                </div>
-              )}
-              <a href={WA_LINK(textoVerificacion(nombre.trim(), cedula.trim(), equipo.trim()))}
+              <div style={{ background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '12px 14px', fontSize: '.78rem', color: '#5f6368', marginBottom: '16px', lineHeight: 1.5, textAlign: 'left' }}>
+                📋 Pídele a tu equipo que te inscriba con el link de registro, o escríbenos por WhatsApp para que te ayudemos.
+              </div>
+              <a href={WA_LINK(`Hola! Mi cédula ${cedula} no aparece registrada en Golmebol. ¿Me ayudan a quedar inscrito? 🙏`)}
                 target="_blank" rel="noopener noreferrer"
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25d366', borderRadius: '12px', color: '#fff', fontWeight: '800', fontSize: '.95rem', textDecoration: 'none', marginBottom: '10px' }}>
-                📲 Enviar mensaje de verificación
+                📲 Escribir a Golmebol por WhatsApp
               </a>
-              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '14px' }}>
-                El mensaje ya lleva tu nombre, cédula y equipo — solo dale enviar.
-              </div>
-              <button onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Volver al inicio</button>
+              <button onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Usar otra cédula</button>
             </div>
-          )}
-
-          {step === 'registro' && (
-            <>
-              <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '4px' }}>Crear cuenta gratis</div>
-              {duenoDe && (
-                <div style={{ background: '#fff8e1', border: '1px solid #f9a825', borderRadius: '10px', padding: '10px 14px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#e8710a' }}>👑 Eres el dueño del equipo {duenoDe.name}</div>
-                  <div style={{ fontSize: '.7rem', color: '#8a5a00', marginTop: '2px', lineHeight: 1.5 }}>
-                    {duenoDe.created_at && `Equipo creado el ${new Date(duenoDe.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}. `}
-                    Tus datos ya quedaron precargados — solo revisa y crea tu contraseña.
-                  </div>
-                </div>
-              )}
-              <div style={{ background: 'linear-gradient(90deg, #1a73e8, #6c35de)', borderRadius: '10px', padding: '10px 14px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1.2rem' }}>🎁</span>
-                <div>
-                  <div style={{ fontSize: '.82rem', fontWeight: '800', color: '#fff' }}>¡1 mes GRATIS!</div>
-                  <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.8)' }}>Compite por $50.000 sin pagar nada</div>
-                </div>
-              </div>
-              <form onSubmit={handleRegistro} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Nombre completo</label>
-                  <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Tu nombre" type="text" style={inp}
-                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'} autoFocus/>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>WhatsApp</label>
-                  <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="Ej: 3001234567" type="tel" style={inp}
-                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>¿En qué equipo vas a jugar?</label>
-                  <input value={equipo} onChange={e => setEquipo(e.target.value)} placeholder="Nombre del equipo (vacío si solo quieres PREDIX)" type="text" style={inp}
-                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
-                  {!equipo.trim() && (
-                    <div style={{ fontSize: '.7rem', color: '#e8710a', marginTop: '5px', lineHeight: 1.4 }}>
-                      ⚠️ Si no estás registrado como jugador en ningún equipo, solo podrás ingresar a PREDIX.
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Contraseña</label>
-                  <input value={pass} onChange={e => setPass(e.target.value)} placeholder="Mínimo 6 caracteres" type="password" style={inp}
-                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '500', color: '#5f6368', marginBottom: '6px' }}>Confirmar contraseña</label>
-                  <input value={pass2} onChange={e => setPass2(e.target.value)} placeholder="Repite la contraseña" type="password" style={inp}
-                    onFocus={e => e.target.style.borderColor = '#1a73e8'} onBlur={e => e.target.style.borderColor = '#dadce0'}/>
-                </div>
-                <ErrorBox error={error}/>
-                <button type="submit" disabled={loading}
-                  style={{ marginTop: '4px', padding: '12px', background: loading ? '#dadce0' : 'linear-gradient(90deg, #00ddd0, #1a73e8)', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: loading ? '#9aa0a6' : '#000', fontWeight: '800', fontSize: '.95rem' }}>
-                  {loading ? 'Creando cuenta...' : '🎯 ENTRAR GRATIS →'}
-                </button>
-                <button type="button" onClick={volver} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>← Volver</button>
-              </form>
-            </>
           )}
 
         </div>
