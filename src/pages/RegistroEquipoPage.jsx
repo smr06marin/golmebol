@@ -330,6 +330,28 @@ export default function RegistroEquipoPage() {
     if (!fotoFrontal) return showMsg('La foto frontal de la cédula es obligatoria')
     if (!fotoTrasera) return showMsg('La foto trasera de la cédula es obligatoria')
 
+    // Un mismo número de WhatsApp no puede quedar repetido en dos jugadores
+    // distintos — por ese número es que se hace la verificación de identidad,
+    // así que si dos jugadores comparten número no sirve para confirmar a
+    // ninguno de los dos.
+    const digitos = formNuevo.telefono.replace(/\D/g, '').slice(-10)
+    if (digitos.length === 10) {
+      setBuscando(true)
+      const { data: repetidos } = await supabase
+        .from('players')
+        .select('id, name, numero_cedula, telefono, whatsapp')
+        .or(`telefono.ilike.%${digitos}%,whatsapp.ilike.%${digitos}%`)
+      setBuscando(false)
+      const choque = (repetidos || []).find(p => {
+        const t = (p.telefono  || '').replace(/\D/g, '').slice(-10)
+        const w = (p.whatsapp  || '').replace(/\D/g, '').slice(-10)
+        return t === digitos || w === digitos
+      })
+      if (choque) {
+        return showMsg(`⚠️ Ese número de WhatsApp ya está registrado con otro jugador (${choque.name}). Cada jugador debe tener su propio WhatsApp para poder verificarse. Si es un error, escríbenos.`, 'warning')
+      }
+    }
+
     // Confirmación por WhatsApp al número que registró
     if (iniciarVerificacion('nuevo')) return
     crearYRegistrarReal()
@@ -634,6 +656,9 @@ export default function RegistroEquipoPage() {
                 <div>
                   <label style={labelStyle}>Teléfono *</label>
                   <input value={formNuevo.telefono} onChange={e => setFormNuevo(f => ({ ...f, telefono: e.target.value }))} style={inputStyle} placeholder="300 000 0000" type="tel"/>
+                  <div style={{ fontSize: '.68rem', color: '#5f6368', marginTop: '4px', lineHeight: 1.4 }}>
+                    📲 Debe ser tu WhatsApp real y activo: por ahí te enviamos el código para verificar tu registro.
+                  </div>
                 </div>
                 <div>
                   <label style={labelStyle}>Ciudad *</label>

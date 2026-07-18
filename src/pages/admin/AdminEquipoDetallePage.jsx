@@ -472,6 +472,24 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
     if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
       return showMsg('Selecciona al menos una posición', 'error')
+
+    // Un mismo WhatsApp no puede quedar en dos jugadores distintos: por ahí
+    // se verifica la identidad, así que un número repetido no sirve para
+    // confirmar a ninguno de los dos.
+    const digitos = formNuevo.telefono.replace(/\D/g, '').slice(-10)
+    if (digitos.length === 10) {
+      const { data: repetidos } = await supabase
+        .from('players')
+        .select('id, name, telefono, whatsapp')
+        .or(`telefono.ilike.%${digitos}%,whatsapp.ilike.%${digitos}%`)
+      const choque = (repetidos || []).find(p => {
+        const t = (p.telefono || '').replace(/\D/g, '').slice(-10)
+        const w = (p.whatsapp || '').replace(/\D/g, '').slice(-10)
+        return t === digitos || w === digitos
+      })
+      if (choque) return showMsg(`⚠️ Ese número ya está registrado con otro jugador (${choque.name})`, 'error')
+    }
+
     setGuardando(true)
     const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString() }).select().single()
     if (error) { showMsg('Error al crear jugador', 'error'); setGuardando(false); return }
@@ -741,7 +759,11 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div><label style={labelStyle}>Nombre completo *</label><input value={formNuevo.name} onChange={e => setFormNuevo(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="Nombre completo"/></div>
-                      <div><label style={labelStyle}>Teléfono *</label><input value={formNuevo.telefono} onChange={e => setFormNuevo(f=>({...f,telefono:e.target.value}))} style={inputStyle} placeholder="300 000 0000"/></div>
+                      <div>
+                        <label style={labelStyle}>Teléfono *</label>
+                        <input value={formNuevo.telefono} onChange={e => setFormNuevo(f=>({...f,telefono:e.target.value}))} style={inputStyle} placeholder="300 000 0000"/>
+                        <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>📲 Debe ser un WhatsApp real: por ahí se verifica al jugador.</div>
+                      </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                       <div><label style={labelStyle}>Ciudad *</label><input value={formNuevo.city} onChange={e => setFormNuevo(f=>({...f,city:e.target.value}))} style={inputStyle} placeholder="Ciudad"/></div>
