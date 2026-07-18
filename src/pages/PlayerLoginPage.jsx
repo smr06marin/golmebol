@@ -180,6 +180,7 @@ export default function PlayerLoginPage() {
   const [whatsapp,        setWhatsapp]        = useState('')
   const [equipo,          setEquipo]          = useState('')
   const [nombreVerif,     setNombreVerif]     = useState('') // nombre + primer apellido para verificar identidad
+  const [duenoDe,         setDuenoDe]         = useState(null) // equipo del que esta cédula es dueña
   const [player,          setPlayer]          = useState(null)
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
@@ -215,7 +216,22 @@ export default function PlayerLoginPage() {
     // una vez: primero debe demostrar que es él escribiendo nombre y primer
     // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).
     if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('verificar_nombre') }
-    else setShowPromo(true)
+    else {
+      // ¿Esta cédula es DUEÑA de algún equipo? Sus datos ya están guardados:
+      // se precargan para que no los vuelva a escribir.
+      try {
+        const { data: eq } = await supabase.from('teams')
+          .select('name, representante_nombre, representante_telefono, created_at')
+          .eq('representante_cedula', cedula.trim()).limit(1).maybeSingle()
+        if (eq) {
+          setDuenoDe(eq)
+          if (eq.representante_nombre)  setNombre(eq.representante_nombre)
+          if (eq.representante_telefono) setWhatsapp(eq.representante_telefono)
+          setEquipo(eq.name)
+        } else setDuenoDe(null)
+      } catch (e) { setDuenoDe(null) }
+      setShowPromo(true)
+    }
   }
 
   // Compara lo que escribió contra el nombre guardado (sin tildes ni mayúsculas)
@@ -294,7 +310,7 @@ export default function PlayerLoginPage() {
 
   const volver = () => {
     setStep('cedula'); setPass(''); setPass2(''); setError('')
-    setNombre(''); setWhatsapp(''); setEquipo(''); setNombreVerif(''); setPlayer(null); setShowPromo(false)
+    setNombre(''); setWhatsapp(''); setEquipo(''); setNombreVerif(''); setPlayer(null); setShowPromo(false); setDuenoDe(null)
   }
 
   // Mensaje de WhatsApp con los datos que el admin necesita para verificar
@@ -529,6 +545,15 @@ export default function PlayerLoginPage() {
           {step === 'registro' && (
             <>
               <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '4px' }}>Crear cuenta gratis</div>
+              {duenoDe && (
+                <div style={{ background: '#fff8e1', border: '1px solid #f9a825', borderRadius: '10px', padding: '10px 14px', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#e8710a' }}>👑 Eres el dueño del equipo {duenoDe.name}</div>
+                  <div style={{ fontSize: '.7rem', color: '#8a5a00', marginTop: '2px', lineHeight: 1.5 }}>
+                    {duenoDe.created_at && `Equipo creado el ${new Date(duenoDe.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}. `}
+                    Tus datos ya quedaron precargados — solo revisa y crea tu contraseña.
+                  </div>
+                </div>
+              )}
               <div style={{ background: 'linear-gradient(90deg, #1a73e8, #6c35de)', borderRadius: '10px', padding: '10px 14px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '1.2rem' }}>🎁</span>
                 <div>

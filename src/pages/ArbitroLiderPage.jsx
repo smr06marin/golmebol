@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
+import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 
 const inp = { width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
@@ -176,7 +177,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   )
 }
 
-function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }) {
+function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla, onToggleSinPlanillador }) {
   const [abierto, setAbierto] = useState(false)
   // Selector propio en vez de <select> nativo: en algunos celulares (Oppo/
   // ColorOS) abrir el select del sistema sobre esta página oscura dejaba la
@@ -234,6 +235,9 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }
           {tieneArbitro && !esJugado && (
             <span style={{ fontSize:'.68rem', color:'#1e8e3e', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>✅ {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
           )}
+          {p.sin_planillador && !esJugado && (
+            <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700' }}>⚡ Sin planillador</span>
+          )}
           {!tieneArbitro && !esJugado && <span style={{ fontSize:'.68rem', color:'#e8710a', fontWeight:'600' }}>⚠️ Sin árbitro asignado</span>}
         </div>
 
@@ -264,6 +268,19 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla }
       {abierto && !esJugado && (
         <div style={{ borderTop:'1px solid #1c2937', padding:'14px', background:'#0d1117' }}>
           <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em' }}>🟡 Asignar árbitros</div>
+
+          {onToggleSinPlanillador && (
+            <button onClick={()=>onToggleSinPlanillador(p.id, !p.sin_planillador)}
+              style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 10px', marginBottom:'12px',
+                background: p.sin_planillador ? 'rgba(249,168,37,.12)' : '#1c2937', border:`1px solid ${p.sin_planillador?'#f9a825':'#2a3a4a'}`, borderRadius:'9px', cursor:'pointer' }}>
+              <span style={{ fontSize:'1.1rem' }}>{p.sin_planillador ? '☑️' : '⬜'}</span>
+              <span style={{ flex:1 }}>
+                <div style={{ fontSize:'.75rem', fontWeight:'700', color: p.sin_planillador?'#f9a825':'#e8f4fd' }}>Sin planillador</div>
+                <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>Los árbitros llevan la planilla rápida (sin un planillador dedicado)</div>
+              </span>
+            </button>
+          )}
+
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
             {[
               { campo:'arbitro1_id', label:'Principal', val:p.arbitro1_id },
@@ -498,6 +515,11 @@ export default function ArbitroLiderPage() {
     fetchPartidos()
   }
 
+  async function handleToggleSinPlanillador(matchId, valor) {
+    await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId)
+    fetchPartidos()
+  }
+
   async function handleActivar(arb) {
     // Los árbitros son gratis: sin membresía ni fecha de vencimiento. Si ya
     // tiene cuenta creada, basta con marcarlo activo; si no, se le crea con
@@ -588,11 +610,19 @@ export default function ArbitroLiderPage() {
       {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado ✓'); fetchArbitros() }}/>}
 
       {planillaPartido && (
-        <PlanillaPartido
-          partido={planillaPartido}
-          onClose={cerrarPlanilla}
-          onGuardarResultado={() => {}}
-        />
+        planillaPartido.sin_planillador ? (
+          <PlanillaRapida
+            partido={planillaPartido}
+            onClose={cerrarPlanilla}
+            onGuardarResultado={() => {}}
+          />
+        ) : (
+          <PlanillaPartido
+            partido={planillaPartido}
+            onClose={cerrarPlanilla}
+            onGuardarResultado={() => {}}
+          />
+        )
       )}
 
       {/* Header */}
@@ -658,7 +688,7 @@ export default function ArbitroLiderPage() {
                 <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🎉</div>
                 <div style={{ fontWeight:'700' }}>Todos los partidos tienen árbitro</div>
               </div>
-            ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar}/>)}
+            ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
           </div>
         )}
 
@@ -670,7 +700,7 @@ export default function ArbitroLiderPage() {
                 <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
                 <div>Sin partidos asignados</div>
               </div>
-            ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar}/>)}
+            ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
           </div>
         )}
 

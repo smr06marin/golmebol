@@ -96,6 +96,7 @@ export default function PlayerHomePage() {
   // tarjeta la lista de logros sale AL INSTANTE (antes eran 3 consultas por toque)
   const [logrosData,        setLogrosData]        = useState(null)
   const [previewLogrosListo, setPreviewLogrosListo] = useState(false) // ya terminó de buscar (aunque no haya logros)
+  const [equiposDueno,      setEquiposDueno]      = useState([]) // equipos de los que este jugador es dueño
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -181,6 +182,12 @@ export default function PlayerHomePage() {
     // en la plantilla de ningún equipo), su portal se limita a PREDIX.
     const { data: tps } = await supabase.from('team_players').select('id').eq('player_id', p.id).limit(1)
     setSinEquipo((regs || []).length === 0 && (tps || []).length === 0)
+
+    // ¿Es DUEÑO de algún equipo? (insignia 👑 con la fecha de creación)
+    if (p.numero_cedula) {
+      supabase.from('teams').select('name, created_at').eq('representante_cedula', String(p.numero_cedula))
+        .then(({ data }) => setEquiposDueno(data || []), () => {})
+    }
 
     // Precargar TODOS los logros + progreso + stats en paralelo (sin bloquear
     // la pantalla): cuando el jugador toque una tarjeta, el show sale de una.
@@ -911,6 +918,18 @@ export default function PlayerHomePage() {
       </div>
 
       <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>
+
+      {/* Insignia de dueño de equipo */}
+      {equiposDueno.length > 0 && (
+        <div style={{ background: 'linear-gradient(90deg, #fff8e1, #fff)', borderBottom: '1px solid #ffe082', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '1rem' }}>👑</span>
+          {equiposDueno.map(eq => (
+            <span key={eq.name} style={{ fontSize: '.75rem', color: '#8a5a00', fontWeight: '700' }}>
+              Dueño de {eq.name}{eq.created_at ? ` · equipo creado el ${new Date(eq.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px', overflowX: 'auto' }}>

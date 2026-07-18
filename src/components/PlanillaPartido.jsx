@@ -350,6 +350,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [guardandoInforme, setGuardandoInforme] = useState(false)
   const [dictando,         setDictando]         = useState(false)
   const recVozRef = useRef(null)
+  // Modo árbitro solo: interfaz simplificada de celular (botones grandes para
+  // gol/tarjetas/faltas) para cuando NO hay planillador. Usa los mismos datos
+  // y reglas que la planilla completa.
+  const [modoRapido, setModoRapido] = useState(false)
   const [avisoFirmas,    setAvisoFirmas]    = useState(null) // árbitros que faltan por firmar
   const [avisoAcumulado, setAvisoAcumulado] = useState(null) // jugador que completó sus faltas
 
@@ -393,7 +397,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante,
       periodo, segundos, corriendo, tiempoAgotado, tiempoExtra,
       arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis,
-      firmas, capitanes, informeTexto, informeTipo, informeGuardado,
+      firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido,
       savedAt: new Date().toISOString(), pendienteSync: true,
     }
   }
@@ -432,6 +436,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (snap.informeTexto) setInformeTexto(snap.informeTexto)
     if (snap.informeTipo) setInformeTipo(snap.informeTipo)
     if (snap.informeGuardado) setInformeGuardado(true)
+    if (snap.modoRapido) setModoRapido(true)
     setAnotador(snap.anotador || ''); setCronometroNombre(snap.cronometroNombre || ''); setObservaciones(snap.observaciones || '')
     setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
     setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
@@ -536,7 +541,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const snap = construirSnap()
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
     sincronizarRemoto(snap)
-  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado])
+  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido])
 
   useEffect(() => { fetchTodo() }, [])
   useEffect(() => {

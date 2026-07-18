@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import { useAuthStore } from '../../store/authStore'
+
+// Solo el ADMIN PRINCIPAL puede cambiar el dueño de un equipo ya creado
+const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 import { Plus, Shield, Upload, X, Search, MoreVertical, Users, Trophy, FileText, Shirt, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-const EMPTY = { name: '', city: '', genero: '', modalidad: '', descripcion: '', logros: '', representante_nombre: '', representante_telefono: '' }
+const EMPTY = { name: '', city: '', genero: '', modalidad: '', descripcion: '', logros: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }
 const MODALIDADES = ['Fútbol 5', 'Fútbol 7', 'Fútbol 11']
 const GENEROS = ['Masculino', 'Femenino', 'Mixto']
 
@@ -252,6 +257,8 @@ Responde SOLO con el HTML, sin explicaciones ni markdown.`
 
 export default function AdminEquiposPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
   const [equipos,   setEquipos]   = useState([])
   const [form,      setForm]      = useState(EMPTY)
   const [editId,    setEditId]    = useState(null)
@@ -289,17 +296,45 @@ export default function AdminEquiposPage() {
 
   async function handleSave() {
     if (!form.name) return showMsgFn('El nombre es obligatorio', 'error')
-    setLoading(true)
-    const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_telefono: form.representante_telefono || null }
-    if (editId) {
-      const { error } = await supabase.from('teams').update(payload).eq('id', editId)
-      if (error) showMsgFn('Error al guardar', 'error')
-      else { showMsgFn('Equipo actualizado ✓'); setEditId(null) }
-    } else {
-      const { error } = await supabase.from('teams').insert(payload)
-      if (error) showMsgFn('Error al crear', 'error')
-      else showMsgFn('Equipo creado ✓')
+    // Todo equipo debe tener un DUEÑO identificado con cédula y teléfono
+    if (!editId) {
+      if (!(form.representante_nombre || '').trim())   return showMsgFn('El dueño/representante es obligatorio', 'error')
+      if (!(form.representante_cedula || '').trim())   return showMsgFn('La cédula del dueño es obligatoria', 'error')
+      if (!(form.representante_telefono || '').trim()) return showMsgFn('El teléfono del dueño es obligatorio', 'error')
     }
+    // Al CREAR (no al editar): avisar si ya existe un equipo con nombre
+    // parecido — duplicarlo hace que la historia quede huérfana en el viejo
+    if (!editId) {
+      const parecidos = await buscarEquiposParecidos(form.name)
+      if (parecidos.length > 0) {
+        const ok = window.confirm(
+          `⚠️ YA EXISTE un equipo con nombre parecido:\n\n${parecidos.map(p => `• ${p.name}${p.city ? ` (${p.city})` : ''} — Dueño: ${p.representante_nombre || 'sin registrar'}`).join('\n')}\n\n` +
+          `Si es el MISMO equipo, NO lo crees de nuevo: usa el existente para conservar su historia (partidos, palmarés, jugadores).\n\n` +
+          `¿Es un equipo DISTINTO y quieres crearlo de todas formas?`
+        )
+        if (!ok) return
+      }
+    }
+    setLoading(true)
+    const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_cedula: form.representante_cedula || null, representante_telefono: form.representante_telefono || null }
+    // El DUEÑO solo lo puede modificar el admin principal: al editar, los
+    // demás no envían esos campos (quedan como estaban)
+    if (editId && !esPrincipal) {
+      delete payload.representante_nombre
+      delete payload.representante_cedula
+      delete payload.representante_telefono
+    }
+    const guardar = async pl => editId
+      ? supabase.from('teams').update(pl).eq('id', editId)
+      : supabase.from('teams').insert(pl)
+    let { error } = await guardar(payload)
+    if (error && (error.message || '').includes('representante_cedula')) {
+      // BD sin la migración de la cédula: guardar sin ella
+      const { representante_cedula, ...sinCedula } = payload
+      ;({ error } = await guardar(sinCedula))
+    }
+    if (error) showMsgFn(editId ? 'Error al guardar' : 'Error al crear', 'error')
+    else { showMsgFn(editId ? 'Equipo actualizado ✓' : 'Equipo creado ✓'); setEditId(null) }
     setShowForm(false); setForm(EMPTY); setLoading(false); fetchEquipos()
   }
 
@@ -353,8 +388,13 @@ export default function AdminEquiposPage() {
             <div><label style={labelStyle}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inputStyle} placeholder="Ciudad"/></div>
             <div><label style={labelStyle}>Modalidad</label><select value={form.modalidad} onChange={e => setForm(f=>({...f,modalidad:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{MODALIDADES.map(m=><option key={m}>{m}</option>)}</select></div>
             <div><label style={labelStyle}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{GENEROS.map(g=><option key={g}>{g}</option>)}</select></div>
-            <div><label style={labelStyle}>Representante / dueño</label><input value={form.representante_nombre} onChange={e => setForm(f=>({...f,representante_nombre:e.target.value}))} style={inputStyle} placeholder="Nombre completo"/></div>
-            <div><label style={labelStyle}>Teléfono del representante</label><input value={form.representante_telefono} onChange={e => setForm(f=>({...f,representante_telefono:e.target.value}))} style={inputStyle} placeholder="300 000 0000"/></div>
+            <div>
+              <label style={labelStyle}>Dueño / representante *</label>
+              <input value={form.representante_nombre} onChange={e => setForm(f=>({...f,representante_nombre:e.target.value}))} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Nombre completo" disabled={editId && !esPrincipal}/>
+              {editId && !esPrincipal && <div style={{ fontSize: '.65rem', color: '#e8710a', marginTop: '3px' }}>🔒 Solo el admin principal puede cambiar el dueño</div>}
+            </div>
+            <div><label style={labelStyle}>Cédula del dueño *</label><input value={form.representante_cedula || ''} onChange={e => setForm(f=>({...f,representante_cedula:e.target.value}))} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Número de cédula" type="number" disabled={editId && !esPrincipal}/></div>
+            <div><label style={labelStyle}>Teléfono del dueño *</label><input value={form.representante_telefono} onChange={e => setForm(f=>({...f,representante_telefono:e.target.value}))} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="300 000 0000" type="tel" disabled={editId && !esPrincipal}/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Descripción del equipo</label><textarea value={form.descripcion} onChange={e => setForm(f=>({...f,descripcion:e.target.value}))} style={{...inputStyle,height:'70px',resize:'vertical'}} placeholder="Historia, estilo de juego, descripción..."/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Logros y palmarés</label><textarea value={form.logros} onChange={e => setForm(f=>({...f,logros:e.target.value}))} style={{...inputStyle,height:'60px',resize:'vertical'}} placeholder="Campeonatos, títulos, participaciones destacadas..."/></div>
           </div>
@@ -414,8 +454,9 @@ export default function AdminEquiposPage() {
                 </span>
                 {equipo.logros    && <span style={{ color:'#f9a825' }}>🏆 {equipo.logros.substring(0,40)}{equipo.logros.length>40?'...':''}</span>}
               </div>
-              <div style={{ fontSize:'.72rem', marginTop:'3px', color: equipo.representante_nombre ? '#5f6368' : '#d93025' }}>
-                {equipo.representante_nombre ? `👤 ${equipo.representante_nombre}` : '⚠️ Sin representante registrado'}
+              <div style={{ fontSize:'.72rem', marginTop:'3px', fontWeight: '600', color: equipo.representante_nombre ? '#1a73e8' : '#d93025' }}>
+                {equipo.representante_nombre ? `👤 Dueño: ${equipo.representante_nombre}` : '⚠️ Sin dueño registrado'}
+                {equipo.created_at && <span style={{ color: '#9aa0a6', fontWeight: '400' }}> · 🗓️ Creado el {new Date(equipo.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
               </div>
             </div>
 

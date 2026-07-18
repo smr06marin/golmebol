@@ -5,6 +5,7 @@ import PlanillaPartido from '../../components/PlanillaPartido'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
 import VallaEquipos from '../../components/VallaEquipos'
+import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
@@ -440,7 +441,8 @@ export default function AdminTorneoDetallePage() {
   const [equiposDisponibles, setEquiposDisponibles] = useState([])
   const [loadingEquipos,     setLoadingEquipos]     = useState(false)
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
-  const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+  const [parecidosCrear,     setParecidosCrear]     = useState([]) // equipos ya existentes con nombre parecido
+  const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
@@ -1738,16 +1740,43 @@ export default function AdminTorneoDetallePage() {
   }
 
   // Crea el equipo (con su representante y escudo) y lo inscribe en el torneo en el mismo paso
-  async function handleCrearEquipoYAgregar() {
-    if (!nuevoEquipoForm.name.trim())                  return showMsg('El nombre del equipo es obligatorio', 'error')
-    if (!nuevoEquipoForm.representante_nombre.trim())  return showMsg('El representante del equipo es obligatorio', 'error')
+  // Inscribir al torneo un equipo que YA existe (evita duplicarlo y conserva su historia)
+  async function usarEquipoExistente(e) {
+    const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: e.id })
+    if (error) return showMsg('No se pudo inscribir (¿ya está en el torneo?)', 'error')
+    showMsg(`${e.name} inscrito en el torneo ✓ — se conserva toda su historia`)
+    setParecidosCrear([]); cerrarModalEquipo(); fetchEquipos()
+  }
+
+  async function handleCrearEquipoYAgregar(forzar = false) {
+    if (!nuevoEquipoForm.name.trim())                   return showMsg('El nombre del equipo es obligatorio', 'error')
+    if (!nuevoEquipoForm.representante_nombre.trim())   return showMsg('El dueño/representante del equipo es obligatorio', 'error')
+    if (!nuevoEquipoForm.representante_cedula.trim())   return showMsg('La cédula del dueño es obligatoria', 'error')
+    if (!nuevoEquipoForm.representante_telefono.trim()) return showMsg('El teléfono del dueño es obligatorio', 'error')
+    // Antes de crear: ¿ya existe un equipo con nombre igual o parecido?
+    // Crear un duplicado hace que la historia anterior (partidos, palmarés,
+    // jugadores) quede huérfana en el equipo viejo.
+    if (!forzar) {
+      const parecidos = await buscarEquiposParecidos(nuevoEquipoForm.name)
+      if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
+    }
+    setParecidosCrear([])
     setCreandoEquipo(true)
-    const { data: nuevo, error } = await supabase.from('teams').insert({
+    let { data: nuevo, error } = await supabase.from('teams').insert({
       name: nuevoEquipoForm.name.trim(),
       city: nuevoEquipoForm.city.trim() || null,
       representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+      representante_cedula: nuevoEquipoForm.representante_cedula.trim(),
       representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
     }).select().single()
+    if (error && (error.message || '').includes('representante_cedula')) {
+      // BD sin la migración de la cédula: crear sin ella para no bloquear
+      ;({ data: nuevo, error } = await supabase.from('teams').insert({
+        name: nuevoEquipoForm.name.trim(), city: nuevoEquipoForm.city.trim() || null,
+        representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+        representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+      }).select().single())
+    }
     if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
     if (nuevoEquipoLogo) {
       const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
@@ -2146,19 +2175,54 @@ export default function AdminTorneoDetallePage() {
                     <input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={inputStyle}/>
                   </div>
                   <div>
-                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Representante / dueño del equipo *</label>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Dueño / representante del equipo *</label>
                     <input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={inputStyle}/>
                   </div>
                   <div>
-                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Teléfono del representante</label>
-                    <input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" style={inputStyle}/>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Cédula del dueño *</label>
+                    <input value={nuevoEquipoForm.representante_cedula} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value }))} placeholder="Número de cédula" type="number" style={inputStyle}/>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Teléfono del dueño *</label>
+                    <input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" type="tel" style={inputStyle}/>
                   </div>
                 </div>
+                {/* Aviso: ya existen equipos con nombre parecido — no duplicar */}
+                {parecidosCrear.length > 0 && (
+                  <div style={{ marginTop: '14px', background: '#fff8e1', border: '2px solid #f9a825', borderRadius: '12px', padding: '14px' }}>
+                    <div style={{ fontWeight: '800', color: '#e8710a', fontSize: '.85rem', marginBottom: '4px' }}>⚠️ ¡Ojo! Ya existe un equipo con nombre parecido</div>
+                    <div style={{ fontSize: '.72rem', color: '#8a5a00', marginBottom: '12px', lineHeight: 1.5 }}>
+                      Si es el <b>mismo equipo</b>, úsalo — así conserva toda su historia (partidos, palmarés, jugadores). Si creas uno nuevo, la información anterior queda en el equipo viejo.
+                    </div>
+                    {parecidosCrear.map(e => (
+                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', border: '1px solid #f1e3b0', borderRadius: '10px', padding: '10px 12px', marginBottom: '8px' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {e.logo_url ? <img src={e.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={16} color="#9aa0a6"/>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '700', color: '#202124', fontSize: '.85rem' }}>{e.name}</div>
+                          {e.city && <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>📍 {e.city}</div>}
+                          <div style={{ fontSize: '.7rem', color: '#1a73e8', fontWeight: '700', marginTop: '2px' }}>
+                            👤 El dueño de este equipo es {e.representante_nombre || 'sin registrar'}
+                          </div>
+                        </div>
+                        <button onClick={() => usarEquipoExistente(e)}
+                          style={{ padding: '7px 12px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '700', flexShrink: 0 }}>
+                          ✓ Usar este equipo
+                        </button>
+                      </div>
+                    ))}
+                    <button onClick={() => handleCrearEquipoYAgregar(true)}
+                      style={{ width: '100%', padding: '9px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem' }}>
+                      Es otro equipo distinto — crear nuevo de todas formas
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
-                  <button onClick={handleCrearEquipoYAgregar} disabled={creandoEquipo} style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: creandoEquipo ? .7 : 1 }}>
+                  <button onClick={() => handleCrearEquipoYAgregar()} disabled={creandoEquipo} style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: creandoEquipo ? .7 : 1 }}>
                     {creandoEquipo ? 'Creando...' : '+ Crear e inscribir en el torneo'}
                   </button>
-                  <button onClick={() => setMostrarCrearEquipo(false)} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
+                  <button onClick={() => { setMostrarCrearEquipo(false); setParecidosCrear([]) }} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
                 </div>
               </div>
             )}

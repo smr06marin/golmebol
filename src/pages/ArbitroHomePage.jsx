@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
+import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -220,11 +221,19 @@ export default function ArbitroHomePage() {
       {showPass  && <ModalCambiarContrasena onClose={()=>setShowPass(false)}/>}
       {showFlyer && <FlyerPartidos arbitro={arbitro} partidos={partidos} onClose={()=>setShowFlyer(false)}/>}
       {planillaPartido && (
-        <PlanillaPartido
-          partido={planillaPartido}
-          onClose={cerrarPlanilla}
-          onGuardarResultado={() => {}}
-        />
+        planillaPartido.sin_planillador ? (
+          <PlanillaRapida
+            partido={planillaPartido}
+            onClose={cerrarPlanilla}
+            onGuardarResultado={() => {}}
+          />
+        ) : (
+          <PlanillaPartido
+            partido={planillaPartido}
+            onClose={cerrarPlanilla}
+            onGuardarResultado={() => {}}
+          />
+        )
       )}
 
       {/* Header */}
@@ -342,8 +351,8 @@ export default function ArbitroHomePage() {
                 </div>
               ) : (
                 <button onClick={()=>abrirPlanilla(p)}
-                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background:'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
-                  <Check size={14}/> Llenar planilla
+                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background: p.sin_planillador ? 'linear-gradient(135deg,#f9a825,#e8710a)' : 'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
+                  {p.sin_planillador ? <>⚡ Planilla rápida (sin planillador)</> : <><Check size={14}/> Llenar planilla</>}
                 </button>
               )}
             </div>
