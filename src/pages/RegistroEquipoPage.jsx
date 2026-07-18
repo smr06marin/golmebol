@@ -138,6 +138,16 @@ export default function RegistroEquipoPage() {
       return
     }
 
+    // Solo el DUEÑO/representante registrado del equipo puede desactivar
+    // jugadores — así, si este mismo link se lo pasan a otros jugadores del
+    // equipo, ellos no pueden desactivar a nadie, solo el dueño.
+    if (equipo.representante_cedula && String(equipo.representante_cedula).trim() !== authCedula.trim()) {
+      await supabaseVerify.auth.signOut()
+      setErrorDesactivar('Solo el dueño/representante del equipo puede desactivar jugadores. Si necesitas hacer este cambio, pídeselo a él.')
+      setDesactivando(false)
+      return
+    }
+
     // Nombre de quien desactiva, para dejar el rastro
     let quien = `CC ${authCedula.trim()}`
     const { data: pQuien } = await supabaseVerify.from('players').select('name').eq('user_id', auth.user.id).maybeSingle()
@@ -711,8 +721,11 @@ export default function RegistroEquipoPage() {
               ) : (
                 <>
                   <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem', marginBottom: '4px' }}>🚫 Desactivar jugador</div>
-                  <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '16px', lineHeight: 1.5 }}>
+                  <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '10px', lineHeight: 1.5 }}>
                     Equipo <b>{equipo.name}</b> · {torneo.name}. Para hacerlo debes identificarte con tu cuenta de Golmebol: <b>quedará registrado quién desactivó al jugador</b>.
+                  </div>
+                  <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px', fontSize: '.75rem', color: '#f57f17', lineHeight: 1.5 }}>
+                    🔒 Solo <b>{equipo.representante_nombre || 'el dueño/representante del equipo'}</b> puede desactivar jugadores, aunque este link se lo compartan a todo el equipo.
                   </div>
 
                   <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '6px' }}>1. ¿A quién desactivas?</div>
@@ -731,8 +744,8 @@ export default function RegistroEquipoPage() {
                   </div>
 
                   <form onSubmit={handleDesactivarJugador} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368' }}>2. Identifícate (tu cuenta de Golmebol)</div>
-                    <input value={authCedula} onChange={e => setAuthCedula(e.target.value)} placeholder="Tu número de cédula" type="number" style={inputStyle}/>
+                    <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368' }}>2. Identifícate (cuenta de Golmebol del dueño del equipo)</div>
+                    <input value={authCedula} onChange={e => setAuthCedula(e.target.value)} placeholder="Cédula del dueño del equipo" type="number" style={inputStyle}/>
                     <input value={authPass} onChange={e => setAuthPass(e.target.value)} placeholder="Tu contraseña" type="password" style={inputStyle}/>
                     {errorDesactivar && (
                       <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.78rem', color: '#d93025' }}>{errorDesactivar}</div>
