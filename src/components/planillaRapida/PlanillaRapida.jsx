@@ -17,6 +17,19 @@ function filaVacia() {
   return { id: undefined, nombre: '', cedula: '', numero: '', photo_face_url: null, photo_url: null }
 }
 
+// Mezcla la lista fresca de la BD con la que ya tiene el árbitro en pantalla:
+// conserva los números ya asignados y las filas "sin registro" que agregó a
+// mano, y solo suma jugadores nuevos (recién registrados) o fotos nuevas.
+function fusionarJugadores(actual, fresco) {
+  const porId = new Map(actual.filter(j => j.id).map(j => [j.id, j]))
+  const actualizados = fresco.map(b => {
+    const existente = porId.get(b.id)
+    return existente ? { ...b, numero: existente.numero } : b
+  })
+  const sinRegistro = actual.filter(j => !j.id)
+  return [...actualizados, ...sinRegistro]
+}
+
 // Planilla RÁPIDA — independiente de PlanillaPartido.jsx (esa no se toca).
 // Pensada para cuando NO hay planillador dedicado: los mismos árbitros la
 // llevan desde el celular. Mismo destino final de datos (match_events,
@@ -54,6 +67,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   const remoteTimer = useRef(null)
   const alarmaRef = useRef(null)
+  const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
 
   const nombreLocal = partido.home?.name || 'Local'
   const nombreVis = partido.away?.name || 'Visitante'
@@ -69,7 +83,28 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   }, [])
 
   async function fetchTodo() {
-    setLoading(true)
+    // 1) Restauro INSTANTÁNEO desde el borrador local, sin esperar la red —
+    // clave para que abrir la planilla sea inmediato (el árbitro solo tiene
+    // el celular en la mano unos segundos). Si hay borrador, ya se puede ver
+    // y usar la planilla mientras la sincronización real pasa en 2do plano.
+    let localSnap = null
+    try {
+      const local = localStorage.getItem(localKey)
+      localSnap = local ? JSON.parse(local) : null
+    } catch (e) {}
+
+    const hayBorradorUsable = localSnap && partido.status !== 'finished'
+    if (hayBorradorUsable) {
+      aplicarSnap(localSnap, localSnap.duracionMinutos || 20)
+      setListo(true)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
+    // 2) En 2do plano, sincronizo con la base de datos: jugadores nuevos,
+    // fotos, modalidad del torneo, y reviso si hay un borrador remoto más
+    // nuevo (por ejemplo si otro árbitro guardó desde otro celular).
     const [jugsL, jugsV, torn, liveDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
@@ -93,28 +128,35 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       return
     }
 
-    let restaurado = false
-    try {
-      const local = localStorage.getItem(localKey)
-      const localSnap = local ? JSON.parse(local) : null
-      const remoteSnap = liveDB?.data?.live_state_rapida || null
-      const localTime = localSnap ? new Date(localSnap.savedAt || 0).getTime() : -1
-      const remoteTime = remoteSnap ? new Date(liveDB?.data?.live_state_rapida_updated_at || remoteSnap.savedAt || 0).getTime() : -1
-      if (localTime >= 0 || remoteTime >= 0) {
-        const ganador = remoteTime > localTime ? remoteSnap : localSnap
-        aplicarSnap(ganador, dur)
-        if (ganador === remoteSnap) { try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {} }
-        restaurado = true
-      }
-    } catch (e) {}
+    const remoteSnap = liveDB?.data?.live_state_rapida || null
+    const localTime = localSnap ? new Date(localSnap.savedAt || 0).getTime() : -1
+    const remoteTime = remoteSnap ? new Date(liveDB?.data?.live_state_rapida_updated_at || remoteSnap.savedAt || 0).getTime() : -1
 
-    if (!restaurado) {
-      setJugadoresLocal(baseLocal)
-      setJugadoresVisitante(baseVis)
-      setDuracionMinutos(dur)
+    if (!hayBorradorUsable) {
+      // No había nada que mostrar de una: si hay borrador remoto lo aplico,
+      // si no, arranco con el roster fresco de la BD.
+      if (remoteTime >= 0) {
+        aplicarSnap(remoteSnap, dur)
+        try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
+      } else {
+        setJugadoresLocal(baseLocal)
+        setJugadoresVisitante(baseVis)
+        setDuracionMinutos(dur)
+      }
+      setListo(true)
+      setLoading(false)
+    } else if (remoteTime > localTime) {
+      // Ya se mostró el borrador local, pero el remoto resultó más nuevo
+      // (otro árbitro guardó desde otro celular) — lo aplico encima.
+      aplicarSnap(remoteSnap, dur)
+      try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
+    } else {
+      // El borrador local sigue siendo el más nuevo: solo sumo jugadores
+      // nuevos que se hayan registrado después de armarlo, sin tocar nada
+      // de lo que el árbitro ya tiene anotado.
+      setJugadoresLocal(prev => fusionarJugadores(prev, baseLocal))
+      setJugadoresVisitante(prev => fusionarJugadores(prev, baseVis))
     }
-    setListo(true)
-    setLoading(false)
   }
 
   function aplicarSnap(snap, dur) {
@@ -131,6 +173,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setPeriodo(snap.periodo || 1)
     setSegundos(snap.segundos || 0)
     setCorriendo(false) // nunca reanuda solo al recargar — más seguro
+    inicioEpochRef.current = null
     setTiempoAgotado(!!snap.tiempoAgotado)
     setDuracionMinutos(snap.duracionMinutos || dur)
     setStep(snap.step || 'colores')
@@ -212,17 +255,32 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   }, [segundos])
 
   // ── Cronómetro ─────────────────────────────────────────────────────────
+  // Se ancla a la hora real (Date.now), no a "ir sumando 1 cada segundo": así,
+  // si el celular se bloquea o el árbitro cambia de app y el navegador frena
+  // el setInterval, al volver se recalcula el tiempo real transcurrido en vez
+  // de quedar atrasado o directamente detenido.
   useEffect(() => {
     if (!corriendo) return
-    const id = setInterval(() => {
-      setSegundos(s => {
-        const next = s + 1
-        const limite = duracionMinutos * 60
-        if (next >= limite && !tiempoAgotado) { setTiempoAgotado(true); setCorriendo(false); iniciarAlarma() }
-        return next
-      })
-    }, 1000)
-    return () => clearInterval(id)
+    if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundos * 1000
+
+    function recalcular() {
+      const limite = duracionMinutos * 60
+      const elapsed = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
+      setSegundos(elapsed >= limite ? limite : elapsed)
+      if (elapsed >= limite && !tiempoAgotado) { setTiempoAgotado(true); setCorriendo(false); iniciarAlarma() }
+    }
+
+    const id = setInterval(recalcular, 1000)
+    document.addEventListener('visibilitychange', recalcular)
+    window.addEventListener('focus', recalcular)
+    window.addEventListener('pageshow', recalcular)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', recalcular)
+      window.removeEventListener('focus', recalcular)
+      window.removeEventListener('pageshow', recalcular)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [corriendo, duracionMinutos, tiempoAgotado])
 
   function sonarBeep() {
@@ -251,11 +309,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   function toggleCronometro() {
     pararAlarma()
+    if (corriendo) inicioEpochRef.current = null // se pausa: al reanudar se recalcula el ancla desde el segundo actual
     setCorriendo(c => !c)
   }
   function cambiarPeriodo() {
     if (periodo === 2) return
     pararAlarma()
+    inicioEpochRef.current = null
     setPeriodo(2); setSegundos(0); setTiempoAgotado(false); setCorriendo(false)
   }
 
