@@ -171,12 +171,31 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setHistArquerosVis(snap.histArquerosVis || [])
     setEventos(snap.eventos || [])
     setPeriodo(snap.periodo || 1)
-    setSegundos(snap.segundos || 0)
-    setCorriendo(false) // nunca reanuda solo al recargar — más seguro
-    inicioEpochRef.current = null
-    setTiempoAgotado(!!snap.tiempoAgotado)
-    setDuracionMinutos(snap.duracionMinutos || dur)
+    const durFinal = snap.duracionMinutos || dur
+    setDuracionMinutos(durFinal)
     setStep(snap.step || 'colores')
+
+    // Si el cronómetro seguía corriendo cuando se guardó este borrador, se le
+    // suma el tiempo real transcurrido desde entonces — así, al reabrir (el
+    // mismo celular después de un rato, o desde otro celular) el reloj
+    // muestra lo que realmente debería marcar y sigue corriendo solo, en vez
+    // de quedar pausado y atrasado en lo último que se alcanzó a guardar.
+    let segs = typeof snap.segundos === 'number' ? snap.segundos : 0
+    if (snap.corriendo && snap.savedAt) {
+      const transcurrido = Math.floor((Date.now() - new Date(snap.savedAt).getTime()) / 1000)
+      if (transcurrido > 0) segs += transcurrido
+    }
+    const limite = durFinal * 60
+    inicioEpochRef.current = null
+    if (segs >= limite) {
+      setSegundos(limite)
+      setCorriendo(false)
+      setTiempoAgotado(true)
+    } else {
+      setSegundos(segs)
+      setCorriendo(!!snap.corriendo)
+      setTiempoAgotado(!!snap.tiempoAgotado)
+    }
   }
 
   // Reconstruye una planilla rápida ya cerrada (para que el árbitro líder / admin pueda reeditarla)

@@ -319,6 +319,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   const timerRef  = useRef(null)
   const syncTimerRef = useRef(null) // debounce de la sincronización con el servidor
+  const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el árbitro cambia de app y el navegador frena el setInterval, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const [cronoPos, setCronoPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 200, y: 20 })
   const dragStart = useRef(null)
 
@@ -500,30 +501,50 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     return () => { try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) } catch (e) {} }
   }, [])
 
+  // Si el cronómetro se pausa por cualquier vía (botón pausa, reset, cambio de
+  // periodo, tiempo agotado, etc.) se limpia el ancla de hora real para que al
+  // reanudar se recalcule desde el segundo actual, no desde un punto viejo.
+  useEffect(() => { if (!corriendo) inicioEpochRef.current = null }, [corriendo])
+
+  // El cronómetro se ancla a la hora real (Date.now), no a "ir sumando 1 cada
+  // segundo": así, si el celular se bloquea o el árbitro cambia de app y el
+  // navegador frena el setInterval, al volver (visibilitychange/focus) se
+  // recalcula el tiempo real transcurrido en vez de quedar atrasado o parado.
   useEffect(() => {
-    if (corriendo) {
-      timerRef.current = setInterval(() => {
-        setSegundos(s => {
-          const next = s + 1
-          if (next >= limiteSegundos && !tiempoAgotado) {
-            setTiempoAgotado(true); setCorriendo(false)
-            // Alarma insistente: pita y vibra SIN PARAR hasta que le den "Parar
-            // alarma" — así nadie se pasa del tiempo sin darse cuenta.
-            iniciarAlarma()
-          }
-          // Cada ~8s con el reloj corriendo, se guarda también en el servidor
-          // para que si este celular se apaga, otro pueda retomar el cronómetro
-          // calculando cuánto tiempo real pasó desde el último guardado.
-          if (!loading && next % 8 === 0) {
-            const snap = construirSnap()
-            try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
-            sincronizarRemoto(snap)
-          }
-          return next
-        })
-      }, 1000)
-    } else clearInterval(timerRef.current)
-    return () => clearInterval(timerRef.current)
+    if (!corriendo) return
+    if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundos * 1000
+
+    function recalcular() {
+      const elapsed = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
+      const next = elapsed >= limiteSegundos ? limiteSegundos : elapsed
+      setSegundos(next)
+      if (next >= limiteSegundos && !tiempoAgotado) {
+        setTiempoAgotado(true); setCorriendo(false)
+        // Alarma insistente: pita y vibra SIN PARAR hasta que le den "Parar
+        // alarma" — así nadie se pasa del tiempo sin darse cuenta.
+        iniciarAlarma()
+      }
+      // Cada ~8s con el reloj corriendo, se guarda también en el servidor
+      // para que si este celular se apaga, otro pueda retomar el cronómetro
+      // calculando cuánto tiempo real pasó desde el último guardado.
+      if (!loading && next % 8 === 0) {
+        const snap = construirSnap()
+        try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
+        sincronizarRemoto(snap)
+      }
+    }
+
+    timerRef.current = setInterval(recalcular, 1000)
+    document.addEventListener('visibilitychange', recalcular)
+    window.addEventListener('focus', recalcular)
+    window.addEventListener('pageshow', recalcular)
+    return () => {
+      clearInterval(timerRef.current)
+      document.removeEventListener('visibilitychange', recalcular)
+      window.removeEventListener('focus', recalcular)
+      window.removeEventListener('pageshow', recalcular)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [corriendo, limiteSegundos, tiempoAgotado])
 
   // Al arrancar o pausar el cronómetro, guardar de inmediato (sin esperar el
@@ -609,7 +630,25 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
 
   async function fetchTodo() {
-    setLoading(true)
+    // Restauro INSTANTÁNEO desde el borrador de este celular, sin esperar la
+    // red — para que abrir la planilla sea inmediato (el árbitro solo tiene el
+    // celular en la mano unos segundos). El snapshot guardado ya trae todo lo
+    // necesario (jugadores, goles, cronómetro, etc.), así que se puede mostrar
+    // de una. La sincronización con la base de datos (jugadores nuevos,
+    // eventos guardados desde otro celular, etc.) sigue pasando exactamente
+    // igual que antes, solo que ahora en 2do plano sin bloquear la pantalla.
+    let localSnapInstant = null
+    try {
+      const local = localStorage.getItem(localKey)
+      localSnapInstant = local ? JSON.parse(local) : null
+    } catch (e) {}
+    if (localSnapInstant && localSnapInstant.pendienteSync) {
+      aplicarSnap(localSnapInstant, 20)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
     if (!navigator.onLine) {
       try {
         const snap = localStorage.getItem(localKey)
