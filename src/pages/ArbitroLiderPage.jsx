@@ -177,13 +177,23 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   )
 }
 
-function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla, onToggleSinPlanillador }) {
+function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditarPlanilla, onToggleSinPlanillador }) {
   const [abierto, setAbierto] = useState(false)
   // Selector propio en vez de <select> nativo: en algunos celulares (Oppo/
   // ColorOS) abrir el select del sistema sobre esta página oscura dejaba la
   // pantalla en negro. campo actualmente desplegado: 'arbitro1_id' | ... | null
   const [pickerCampo, setPickerCampo] = useState(null)
+  // Selección local: los árbitros elegidos NO se guardan de inmediato — solo
+  // al presionar "Listo". Antes cada click guardaba en la BD al instante y el
+  // partido se pasaba a "Asignados" con un solo árbitro elegido, sin dar
+  // tiempo a completar los otros dos.
+  const [seleccion, setSeleccion] = useState({ arbitro1_id: partido.arbitro1_id, arbitro2_id: partido.arbitro2_id, arbitro3_id: partido.arbitro3_id })
+  const [guardando, setGuardando] = useState(false)
   const p = partido
+
+  useEffect(() => {
+    if (abierto) setSeleccion({ arbitro1_id: p.arbitro1_id, arbitro2_id: p.arbitro2_id, arbitro3_id: p.arbitro3_id })
+  }, [abierto])
   const esJugado = p.status === 'finished'
   const arb1 = arbitros.find(a=>a.id===p.arbitro1_id)
   const arb2 = arbitros.find(a=>a.id===p.arbitro2_id)
@@ -283,10 +293,11 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla, 
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
             {[
-              { campo:'arbitro1_id', label:'Principal', val:p.arbitro1_id },
-              { campo:'arbitro2_id', label:'Asistente 1', val:p.arbitro2_id },
-              { campo:'arbitro3_id', label:'Asistente 2', val:p.arbitro3_id },
-            ].map(({campo,label,val})=>{
+              { campo:'arbitro1_id', label:'Principal' },
+              { campo:'arbitro2_id', label:'Asistente 1' },
+              { campo:'arbitro3_id', label:'Asistente 2' },
+            ].map(({campo,label})=>{
+              const val = seleccion[campo]
               const seleccionado = arbitros.find(a=>a.id===val)
               const desplegado   = pickerCampo === campo
               return (
@@ -306,14 +317,14 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla, 
               de la página. */}
           {pickerCampo && (
             <div style={{ marginTop:'10px', background:'#131e2e', border:'1px solid #2a3a4a', borderRadius:'10px' }}>
-              <button type="button" onClick={()=>{ onAsignar(p.id, pickerCampo, null); setPickerCampo(null) }}
+              <button type="button" onClick={()=>{ setSeleccion(s=>({...s,[pickerCampo]:null})); setPickerCampo(null) }}
                 style={{ display:'block', width:'100%', textAlign:'left', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color:'#7a9ab5', fontSize:'.78rem' }}>
                 — Sin asignar
               </button>
               {arbitros.map(a=>{
-                const actual = (pickerCampo==='arbitro1_id'?p.arbitro1_id:pickerCampo==='arbitro2_id'?p.arbitro2_id:p.arbitro3_id) === a.id
+                const actual = seleccion[pickerCampo] === a.id
                 return (
-                <button key={a.id} type="button" onClick={()=>{ onAsignar(p.id, pickerCampo, a.id); setPickerCampo(null) }}
+                <button key={a.id} type="button" onClick={()=>{ setSeleccion(s=>({...s,[pickerCampo]:a.id})); setPickerCampo(null) }}
                   style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 12px', background: actual?'rgba(0,221,208,.08)':'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color: actual?'#00ddd0':'#e8f4fd', fontSize:'.78rem', fontWeight: actual?'700':'500' }}>
                   <div style={{ width:'24px', height:'24px', borderRadius:'50%', overflow:'hidden', background:'#1c2937', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.7rem' }}>
                     {(a.photo_face_url||a.photo_url) ? <img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : '🟡'}
@@ -325,8 +336,9 @@ function CardPartido({ partido, arbitros, onAsignar, modoVer, onEditarPlanilla, 
               })}
             </div>
           )}
-          <button onClick={()=>{ setAbierto(false); setPickerCampo(null) }} style={{ marginTop:'12px', width:'100%', padding:'9px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}>
-            <Check size={13}/> Listo
+          <button onClick={async()=>{ setGuardando(true); await onGuardarAsignacion(p.id, seleccion); setGuardando(false); setAbierto(false); setPickerCampo(null) }} disabled={guardando}
+            style={{ marginTop:'12px', width:'100%', padding:'9px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', opacity:guardando?.7:1 }}>
+            <Check size={13}/> {guardando ? 'Guardando...' : 'Listo'}
           </button>
         </div>
       )}
@@ -527,8 +539,8 @@ export default function ArbitroLiderPage() {
     setArbitros((data||[]).map(a=>({...a, stats:countMap[a.id]||{total:0,jugados:0}})))
   }
 
-  async function handleAsignar(matchId, campo, arbitroId) {
-    await supabase.from('matches').update({[campo]:arbitroId||null}).eq('id',matchId)
+  async function handleGuardarAsignacion(matchId, seleccion) {
+    await supabase.from('matches').update(seleccion).eq('id',matchId)
     fetchPartidos()
   }
 
@@ -705,7 +717,7 @@ export default function ArbitroLiderPage() {
                 <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🎉</div>
                 <div style={{ fontWeight:'700' }}>Todos los partidos tienen árbitro</div>
               </div>
-            ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
+            ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
           </div>
         )}
 
@@ -717,7 +729,7 @@ export default function ArbitroLiderPage() {
                 <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
                 <div>Sin partidos asignados</div>
               </div>
-            ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onAsignar={handleAsignar} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
+            ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
           </div>
         )}
 
@@ -735,7 +747,7 @@ export default function ArbitroLiderPage() {
               const tieneArbitro = p.arbitro1_id||p.arbitro2_id||p.arbitro3_id
               return (
                 <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#1e2d3d'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
-                  <CardPartido partido={p} arbitros={arbitros} onAsignar={handleAsignar} onEditarPlanilla={abrirPlanilla}/>
+                  <CardPartido partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onEditarPlanilla={abrirPlanilla}/>
                   <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
                       <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
                         {(reclamosMap[p.id]||[]).map((r,i)=>{
