@@ -21,6 +21,51 @@ const FASE_LABEL = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de fi
 
 const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 
+// Modal con foto grande + nombre de cada jugador REGISTRADO de un equipo en
+// este torneo — para que cualquiera pueda verificar en cancha quién sí está
+// inscrito.
+function RosterModal({ rosterModal, onClose, torneoNombre }) {
+  if (!rosterModal) return null
+  const { team, jugadores, loading } = rosterModal
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '9px', overflow: 'hidden', flexShrink: 0 }}>
+              <TeamLogo logo_url={team.logo_url} name={team.name} size={36}/>
+            </div>
+            <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem' }}>{team.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', fontSize: '1rem', fontWeight: '700' }}>✕</button>
+        </div>
+        <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '18px', lineHeight: 1.5 }}>
+          Jugadores registrados de <b>{team.name}</b> en <b>{torneoNombre}</b>.
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Cargando jugadores...</div>
+        ) : jugadores.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Este equipo aún no tiene jugadores registrados en este torneo</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '16px' }}>
+            {jugadores.map(j => (
+              <div key={j.id} style={{ textAlign: 'center' }}>
+                <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto', overflow: 'hidden', background: '#f1f3f4', border: '2px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {(j.photo_face_url || j.photo_url)
+                    ? <img src={j.photo_face_url || j.photo_url} alt={j.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                    : <span style={{ fontSize: '2rem' }}>👤</span>}
+                </div>
+                <div style={{ marginTop: '8px', fontWeight: '700', color: '#202124', fontSize: '.82rem', lineHeight: 1.25 }}>{j.name}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Banner estilo "poster" con el podio de goleadores y la valla menos vencida del torneo
 function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
   const top3 = goleadores.slice(0, 3)
@@ -108,7 +153,26 @@ export default function TorneoPublicoPage() {
   const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState('posiciones')
 
+  // Planilla de jugadores registrados de un equipo (foto + nombre grande) —
+  // se abre al tocar un equipo en la programación, para que el rival pueda
+  // verificar en cancha quién sí está inscrito y reportar si alguien juega
+  // sin aparecer en esta lista.
+  const [rosterModal, setRosterModal] = useState(null) // { team, jugadores, loading }
+
   useEffect(() => { registrarVisita('torneo_publico', id) }, [id])
+
+  async function abrirRoster(team) {
+    if (!team?.id) return
+    setRosterModal({ team, jugadores: [], loading: true })
+    const { data } = await supabase
+      .from('tournament_player_registrations')
+      .select('players(id, name, photo_url, photo_face_url)')
+      .eq('tournament_id', id)
+      .eq('team_id', team.id)
+      .eq('activo', true)
+    const jugadores = (data || []).map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    setRosterModal({ team, jugadores, loading: false })
+  }
 
   useEffect(() => {
     async function fetchAll() {
@@ -285,7 +349,8 @@ export default function TorneoPublicoPage() {
                     {p.location && <span style={{ fontSize: '.72rem', color: '#9aa0a6', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10}/>{p.location}</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                    <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', cursor: 'pointer' }}>
                       <span style={{ fontWeight: homeWin ? '800' : '500', color: homeWin ? '#202124' : '#5f6368', fontSize: '.9rem', textAlign: 'right' }}>{p.home?.name}</span>
                       <div style={{ width: '28px', height: '28px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
                         <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={28}/>
@@ -296,7 +361,8 @@ export default function TorneoPublicoPage() {
                       <span style={{ color: '#9aa0a6', fontSize: '.85rem', fontWeight: '400' }}>-</span>
                       <span style={{ fontWeight: '800', fontSize: '1.15rem', color: awayWin ? '#1a73e8' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.away_score}</span>
                     </div>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                       <div style={{ width: '28px', height: '28px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
                         <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={28}/>
                       </div>
@@ -331,19 +397,24 @@ export default function TorneoPublicoPage() {
                   {p.location && <span style={{ fontSize: '.72rem', color: '#9aa0a6', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10}/>{p.location}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                  <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', cursor: 'pointer' }}>
                     <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', textAlign: 'right' }}>{p.home?.name}</span>
                     <div style={{ width: '30px', height: '30px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
                       <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={30}/>
                     </div>
                   </div>
                   <span style={{ fontWeight: '700', color: '#9aa0a6', fontSize: '.9rem', flexShrink: 0, background: '#f1f3f4', padding: '4px 12px', borderRadius: '8px' }}>VS</span>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                     <div style={{ width: '30px', height: '30px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
                       <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={30}/>
                     </div>
                     <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{p.away?.name}</span>
                   </div>
+                </div>
+                <div style={{ textAlign: 'center', marginTop: '6px' }}>
+                  <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>👆 Toca un equipo para ver sus jugadores registrados</span>
                 </div>
               </div>
             ))}
@@ -377,6 +448,8 @@ export default function TorneoPublicoPage() {
           golmebol.app
         </div>
       </div>
+
+      <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name}/>
     </div>
   )
 }
