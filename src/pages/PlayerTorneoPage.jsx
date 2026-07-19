@@ -268,6 +268,50 @@ function ModalPartido({ partido, onClose }) {
   )
 }
 
+// Modal con foto grande + nombre de cada jugador REGISTRADO de un equipo en
+// este torneo — para verificar en cancha quién sí está inscrito.
+function RosterModal({ rosterModal, onClose, torneoNombre }) {
+  if (!rosterModal) return null
+  const { team, jugadores, loading } = rosterModal
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {team.logo_url ? <img src={team.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={16} color="#9aa0a6"/>}
+            </div>
+            <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem' }}>{team.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', fontSize: '1rem', fontWeight: '700' }}>✕</button>
+        </div>
+        <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '18px', lineHeight: 1.5 }}>
+          Jugadores registrados de <b>{team.name}</b> en <b>{torneoNombre}</b>.
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Cargando jugadores...</div>
+        ) : jugadores.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Este equipo aún no tiene jugadores registrados en este torneo</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '16px' }}>
+            {jugadores.map(j => (
+              <div key={j.id} style={{ textAlign: 'center' }}>
+                <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto', overflow: 'hidden', background: '#f1f3f4', border: '2px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {(j.photo_face_url || j.photo_url)
+                    ? <img src={j.photo_face_url || j.photo_url} alt={j.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                    : <span style={{ fontSize: '2rem' }}>👤</span>}
+                </div>
+                <div style={{ marginTop: '8px', fontWeight: '700', color: '#202124', fontSize: '.82rem', lineHeight: 1.25 }}>{j.name}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function PlayerTorneoPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
@@ -286,8 +330,22 @@ export default function PlayerTorneoPage() {
   const [vallas,         setVallas]         = useState({ opcion1: [], opcion2: [] })
   const [modoValla,      setModoValla]      = useState('opcion1')
   const [arquerosEquipos, setArquerosEquipos] = useState([]) // arqueros registrados por equipo
+  const [rosterModal, setRosterModal] = useState(null) // { team, jugadores, loading } — ficha de fotos del equipo
 
   useEffect(() => { fetchTodo() }, [id])
+
+  async function abrirRoster(team) {
+    if (!team?.id) return
+    setRosterModal({ team, jugadores: [], loading: true })
+    const { data } = await supabase
+      .from('tournament_player_registrations')
+      .select('players(id, name, photo_url, photo_face_url)')
+      .eq('tournament_id', id)
+      .eq('team_id', team.id)
+      .eq('activo', true)
+    const jugadores = (data || []).map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    setRosterModal({ team, jugadores, loading: false })
+  }
 
   async function fetchTodo() {
     setLoading(true)
@@ -450,6 +508,7 @@ export default function PlayerTorneoPage() {
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
 
       {modalPartido && <ModalPartido partido={modalPartido} onClose={() => setModalPartido(null)}/>}
+      <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo?.name}/>
 
       {/* Header */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', position: 'sticky', top: 0, zIndex: 50 }}>
@@ -528,19 +587,24 @@ export default function PlayerTorneoPage() {
                               </div>
                             )}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                              <div onClick={() => abrirRoster(p.home)}
+                                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', cursor: 'pointer' }}>
                                 <span style={{ fontSize: '.85rem', fontWeight: p.home?.id === miEquipoId ? '700' : '500', color: '#202124', textAlign: 'right' }}>{p.home?.name}</span>
                                 <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                   {p.home?.logo_url ? <img src={p.home.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={13} color="#9aa0a6"/>}
                                 </div>
                               </div>
                               <div style={{ fontSize: '.72rem', fontWeight: '600', color: '#5f6368', padding: '4px 10px', background: '#f1f3f4', borderRadius: '6px', flexShrink: 0 }}>VS</div>
-                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div onClick={() => abrirRoster(p.away)}
+                                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                                 <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                   {p.away?.logo_url ? <img src={p.away.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={13} color="#9aa0a6"/>}
                                 </div>
                                 <span style={{ fontSize: '.85rem', fontWeight: p.away?.id === miEquipoId ? '700' : '500', color: '#202124' }}>{p.away?.name}</span>
                               </div>
+                            </div>
+                            <div style={{ textAlign: 'center', marginTop: '6px' }}>
+                              <span style={{ fontSize: '.62rem', color: '#9aa0a6' }}>👆 Toca un equipo para ver sus jugadores registrados</span>
                             </div>
                           </div>
                         )
@@ -578,7 +642,8 @@ export default function PlayerTorneoPage() {
                               <span style={{ marginLeft: 'auto', fontSize: '.6rem', color: '#9aa0a6' }}>Ver detalles →</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                              <div onClick={e => { e.stopPropagation(); abrirRoster(p.home) }}
+                                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
                                 <span style={{ fontSize: '.85rem', fontWeight: p.home?.id === miEquipoId ? '700' : '500', color: '#202124', textAlign: 'right' }}>{p.home?.name}</span>
                                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                   {p.home?.logo_url ? <img src={p.home.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={12} color="#9aa0a6"/>}
@@ -587,7 +652,8 @@ export default function PlayerTorneoPage() {
                               <div style={{ fontWeight: '700', fontSize: '1rem', color: '#202124', padding: '4px 12px', background: '#f1f3f4', borderRadius: '8px', flexShrink: 0, minWidth: '56px', textAlign: 'center' }}>
                                 {p.home_score} - {p.away_score}
                               </div>
-                              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div onClick={e => { e.stopPropagation(); abrirRoster(p.away) }}
+                                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                   {p.away?.logo_url ? <img src={p.away.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={12} color="#9aa0a6"/>}
                                 </div>
