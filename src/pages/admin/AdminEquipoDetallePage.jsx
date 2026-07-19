@@ -110,6 +110,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [formNuevo,         setFormNuevo]         = useState(EMPTY_NUEVO)
   const [guardando,         setGuardando]         = useState(false)
   const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
+  const [mostrarInscribir, setMostrarInscribir] = useState(null) // tournament_id del torneo con el picker abierto
 
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tabActiva === 'jugadores') fetchJugadoresGlobal() }, [tabActiva])
@@ -461,7 +462,37 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     const { error } = await supabase.from('team_players').insert({ team_id: id, player_id: jugadorEncontrado.id })
     if (error && error.code === '23505') return showMsg('El jugador ya está en este equipo', 'error')
     if (error) return showMsg('Error al agregar jugador', 'error')
-    showMsg('Jugador agregado ✓'); setJugadorEncontrado(null); setCedulaBuscar(''); fetchJugadoresGlobal()
+
+    // Agregar al equipo (team_players) NO lo inscribe automáticamente en un
+    // torneo — eso es lo que hace que luego no aparezca en "jugadores
+    // registrados" de la programación pública. Si el equipo está en un solo
+    // torneo activo lo inscribimos de una vez ahí; si está en varios, queda
+    // pendiente de inscribir manualmente en la pestaña "Torneos".
+    if (torneos.length === 1) {
+      await supabase.from('tournament_player_registrations').insert({ tournament_id: torneos[0].tournament_id, team_id: id, player_id: jugadorEncontrado.id, activo: true })
+      showMsg(`Jugador agregado e inscrito en ${torneos[0].tournaments?.name || 'el torneo'} ✓`)
+    } else if (torneos.length > 1) {
+      showMsg('Jugador agregado al equipo — falta inscribirlo en el torneo correspondiente (pestaña Torneos)', 'ok')
+    } else {
+      showMsg('Jugador agregado ✓')
+    }
+    setJugadorEncontrado(null); setCedulaBuscar(''); fetchJugadoresGlobal()
+  }
+
+  async function handleInscribirEnTorneo(tournamentId, tournamentName, playerId) {
+    // Revisa si ya existe una inscripción (activa o no) para no duplicar fila;
+    // si existe pero estaba inactiva, la reactiva en vez de insertar de nuevo.
+    const { data: existente } = await supabase.from('tournament_player_registrations')
+      .select('id, activo').eq('tournament_id', tournamentId).eq('team_id', id).eq('player_id', playerId).maybeSingle()
+    let error
+    if (existente) {
+      ;({ error } = await supabase.from('tournament_player_registrations').update({ activo: true }).eq('id', existente.id))
+    } else {
+      ;({ error } = await supabase.from('tournament_player_registrations').insert({ tournament_id: tournamentId, team_id: id, player_id: playerId, activo: true }))
+    }
+    if (error) { showMsg('Error al inscribir en el torneo', 'error'); return }
+    showMsg(`Inscrito en ${tournamentName} ✓`)
+    fetchTorneos()
   }
 
   async function handleCrearYAgregar() {
@@ -661,6 +692,37 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     </span>
                   ))}
                 </div>
+
+                {/* Jugadores que ya están en el equipo pero NO tienen inscripción
+                    activa en ESTE torneo — pasa cuando se agregaron con "Agregar
+                    al equipo" en vez del link de registro. Sin esto no aparecen
+                    ni en la tabla de posiciones ni en la ficha pública del equipo. */}
+                {!modoLectura && (() => {
+                  const idsInscritos = new Set(jugs.map(j => j.player_id))
+                  const pendientes = jugadoresEquipoGlobal.filter(jp => !idsInscritos.has(jp.id))
+                  if (pendientes.length === 0) return null
+                  return (
+                    <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,.1)' }}>
+                      <button onClick={() => setMostrarInscribir(v => v === t.tournament_id ? null : t.tournament_id)}
+                        style={{ ...glassBtn('#5b9dff', false), padding: '7px 14px', fontSize: '.75rem', color: '#8ec3ff' }}>
+                        {mostrarInscribir === t.tournament_id ? 'Cerrar' : `+ Inscribir jugador del equipo (${pendientes.length} sin inscribir)`}
+                      </button>
+                      {mostrarInscribir === t.tournament_id && (
+                        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {pendientes.map(jp => (
+                            <div key={jp.id} style={{ ...GLASS_INSET, borderRadius: '12px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <span style={{ fontSize: '.8rem', color: TXT }}>{jp.name} <span style={{ color: TXT_MUTED }}>· CC {jp.numero_cedula}</span></span>
+                              <button onClick={() => handleInscribirEnTorneo(t.tournament_id, t.tournaments?.name, jp.id)}
+                                style={{ ...glassBtn('#51cf66'), padding: '5px 12px', fontSize: '.72rem', flexShrink: 0 }}>
+                                Inscribir
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
