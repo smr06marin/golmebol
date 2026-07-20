@@ -43,6 +43,12 @@ const EscuelaHomePage         = lazy(() => import('./pages/EscuelaHomePage'))
 const EscuelaJugadoresPage    = lazy(() => import('./pages/EscuelaJugadoresPage'))
 const EscuelaProfesoresPage   = lazy(() => import('./pages/EscuelaProfesoresPage'))
 const EscuelaPartidoPage      = lazy(() => import('./pages/EscuelaPartidoPage'))
+const EscuelaJugadorDetallePage = lazy(() => import('./pages/EscuelaJugadorDetallePage'))
+const RegistroEscuelaPage     = lazy(() => import('./pages/RegistroEscuelaPage'))
+const AcudientePage           = lazy(() => import('./pages/AcudientePage'))
+const MiTarjetaEscuelaPage    = lazy(() => import('./pages/MiTarjetaEscuelaPage'))
+const EscuelaTorneosPage        = lazy(() => import('./pages/EscuelaTorneosPage'))
+const EscuelaTorneoDetallePage  = lazy(() => import('./pages/EscuelaTorneoDetallePage'))
 
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -195,6 +201,36 @@ function EscuelaRoute({ children }) {
   return children
 }
 
+// Portal del acudiente (padre/madre de un jugador de escuela): solo deja
+// pasar cuentas marcadas con es_acudiente.
+function AcudienteRoute({ children }) {
+  const { user, loading } = useAuthStore()
+  const [estado, setEstado] = useState('cargando') // cargando | ok | no_acudiente | sin_perfil
+
+  useEffect(() => {
+    if (loading) return
+    if (!user) { setEstado('sin_perfil'); return }
+    let cancelado = false
+    supabase.from('players').select('es_acudiente').eq('user_id', user.id).maybeSingle()
+      .then(({ data: p }) => {
+        if (cancelado) return
+        if (!p) setEstado('sin_perfil')
+        else if (p.es_acudiente) setEstado('ok')
+        else setEstado('no_acudiente')
+      })
+    return () => { cancelado = true }
+  }, [loading, user])
+
+  if (loading || estado === 'cargando') return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
+      CARGANDO...
+    </div>
+  )
+  if (estado === 'sin_perfil')    return <Navigate to="/jugador/login" replace/>
+  if (estado === 'no_acudiente')  return <Navigate to="/jugador" replace/>
+  return children
+}
+
 // Pregunta confirmación antes de salir de Golmebol con el botón "atrás" del
 // celular/navegador, para evitar salidas accidentales que obligan a volver a
 // iniciar sesión. Solo interrumpe cuando ese "atrás" realmente sacaría de la
@@ -301,6 +337,8 @@ export default function App() {
           <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
           {/* Registro público de jugadores por equipo */}
           <Route path="/registro/equipo/:token/:tournamentId" element={<RegistroEquipoPage/>}/>
+          {/* Registro público de jugadores de escuela (acudiente) */}
+          <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
 
           {/* Equipo detalle — accesible por admin Y jugador */}
           <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage modoLectura={true}/></PlayerRoute>}/>
@@ -325,6 +363,14 @@ export default function App() {
           <Route path="/escuela/jugadores"   element={<EscuelaRoute><EscuelaJugadoresPage/></EscuelaRoute>}/>
           <Route path="/escuela/profesores"  element={<EscuelaRoute><EscuelaProfesoresPage/></EscuelaRoute>}/>
           <Route path="/escuela/partido"     element={<EscuelaRoute><EscuelaPartidoPage/></EscuelaRoute>}/>
+          <Route path="/escuela/jugador/:id" element={<EscuelaRoute><EscuelaJugadorDetallePage/></EscuelaRoute>}/>
+          <Route path="/escuela/torneos"     element={<EscuelaRoute><EscuelaTorneosPage/></EscuelaRoute>}/>
+          <Route path="/escuela/torneos/:id" element={<EscuelaRoute><EscuelaTorneoDetallePage/></EscuelaRoute>}/>
+
+          {/* Portal acudiente */}
+          <Route path="/acudiente"           element={<AcudienteRoute><AcudientePage/></AcudienteRoute>}/>
+          {/* Tarjeta propia de un jugador de escuela (niño/a) */}
+          <Route path="/mi-tarjeta"          element={<PlayerRoute><MiTarjetaEscuelaPage/></PlayerRoute>}/>
 
         </Routes>
       </Suspense>

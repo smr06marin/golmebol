@@ -109,6 +109,8 @@ export default function EscuelaPartidoPage() {
   const [profesor, setProfesor] = useState(null)
   const [escuela, setEscuela] = useState(null)
   const [roster, setRoster] = useState([])
+  const [torneosEscuela, setTorneosEscuela] = useState([])
+  const [torneoId, setTorneoId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -130,6 +132,7 @@ export default function EscuelaPartidoPage() {
   const [timerRunning, setTimerRunning] = useState(false)
   const [showFinish, setShowFinish] = useState(false)
   const [mvp, setMvp] = useState({ first:'', second:'', third:'' })
+  const [jugaron, setJugaron] = useState([]) // ids de todos los que estuvieron en cancha en algún momento
   const [matchObs, setMatchObs] = useState('')
   const [dragOverFieldId, setDragOverFieldId] = useState(null)
   const [touchDrag, setTouchDrag] = useState(null) // { id, fromBench, clientX, clientY } — drag activo por dedo
@@ -161,6 +164,9 @@ export default function EscuelaPartidoPage() {
     const { data: tp } = await supabase.from('team_players').select('*, players(*)').eq('team_id', p.escuela_id)
     const lista = (tp || []).map(t => t.players).filter(Boolean).sort((a,b) => a.name.localeCompare(b.name))
     setRoster(lista)
+
+    const { data: torneos } = await supabase.from('escuela_torneos').select('*').eq('escuela_id', p.escuela_id).order('created_at', { ascending:false })
+    setTorneosEscuela(torneos || [])
 
     const { data: activo } = await supabase.from('escuela_partidos').select('*')
       .eq('escuela_id', p.escuela_id).neq('estado', 'finalizado')
@@ -194,7 +200,23 @@ export default function EscuelaPartidoPage() {
     setTimerSec(row.timer_sec || 0)
     setMvp(row.mvp || { first:'', second:'', third:'' })
     setMatchObs(row.observaciones || '')
+    setJugaron(row.jugaron || [])
+    setTorneoId(row.torneo_id || null)
   }
+
+  // Cada vez que cambia la alineación, se van sumando (sin repetir) todos los
+  // que estuvieron en cancha — así "partidos jugados" cuenta también a los
+  // que salieron en un cambio, no solo a los que terminan el partido.
+  useEffect(() => {
+    if (lineup.length === 0) return
+    setJugaron(prev => {
+      const ids = lineup.map(p => p.id)
+      const next = Array.from(new Set([...prev, ...ids]))
+      if (next.length === prev.length) return prev
+      persist({ jugaron: next })
+      return next
+    })
+  }, [lineup])
 
   function persist(fields) {
     pendingRef.current = { ...pendingRef.current, ...fields }
@@ -438,13 +460,51 @@ export default function EscuelaPartidoPage() {
   }
 
   // ── Finalizar ──
+  // Suma las estadísticas del partido (goles, asistencias, tarjetas, MVP,
+  // partidos jugados) a la ficha de cada jugador de la escuela. El coordinador
+  // puede después ajustarlas a mano desde el buscador de jugadores.
+  async function actualizarStatsJugadores() {
+    const golesPor = {}, asistPor = {}, amarillasPor = {}, rojasPor = {}
+    events.forEach(ev => {
+      if (ev.type === 'goal')   golesPor[ev.playerId]     = (golesPor[ev.playerId]||0) + 1
+      if (ev.type === 'assist') asistPor[ev.playerId]     = (asistPor[ev.playerId]||0) + 1
+      if (ev.type === 'yellow') amarillasPor[ev.playerId] = (amarillasPor[ev.playerId]||0) + 1
+      if (ev.type === 'red')    rojasPor[ev.playerId]     = (rojasPor[ev.playerId]||0) + 1
+    })
+    const mvpId = mvp.first || null
+
+    const ids = Array.from(new Set([
+      ...jugaron, ...Object.keys(golesPor), ...Object.keys(asistPor), ...Object.keys(amarillasPor), ...Object.keys(rojasPor),
+      ...(mvpId ? [mvpId] : []),
+    ].filter(Boolean)))
+    if (ids.length === 0) return
+
+    const { data: actuales } = await supabase.from('players')
+      .select('id, goles_escuela, asistencias_escuela, amarillas_escuela, rojas_escuela, partidos_escuela, mvp_escuela')
+      .in('id', ids)
+    const porId = Object.fromEntries((actuales||[]).map(p => [p.id, p]))
+
+    await Promise.all(ids.map(pid => {
+      const a = porId[pid] || {}
+      return supabase.from('players').update({
+        goles_escuela:       (a.goles_escuela||0)       + (golesPor[pid]||0),
+        asistencias_escuela: (a.asistencias_escuela||0) + (asistPor[pid]||0),
+        amarillas_escuela:   (a.amarillas_escuela||0)   + (amarillasPor[pid]||0),
+        rojas_escuela:       (a.rojas_escuela||0)       + (rojasPor[pid]||0),
+        partidos_escuela:    (a.partidos_escuela||0)    + (jugaron.includes(pid) ? 1 : 0),
+        mvp_escuela:         (a.mvp_escuela||0)          + (pid === mvpId ? 1 : 0),
+      }).eq('id', pid)
+    }))
+  }
+
   async function guardarHistorial() {
     setGuardandoFinal(true)
     await supabase.from('escuela_partidos').update({
       estado:'finalizado', vista:'match', mvp, observaciones: matchObs, timer_sec: timerSec,
       eventos: events, score_home: score.home, score_away: score.away,
-      lineup, bench, positions, updated_at: new Date().toISOString(),
+      lineup, bench, positions, jugaron, torneo_id: torneoId, updated_at: new Date().toISOString(),
     }).eq('id', partidoId)
+    try { await actualizarStatsJugadores() } catch {}
     setGuardandoFinal(false)
     setShowFinish(false)
     alert('✅ Partido guardado en el historial de la escuela.')
@@ -518,6 +578,22 @@ export default function EscuelaPartidoPage() {
                 <input value={matchInfo.torneo} onChange={e => guardarMatchInfo('torneo', e.target.value)} placeholder="Ej: Amistoso, Liga infantil..."
                   style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
               </div>
+              {torneosEscuela.length > 0 && (
+                <div style={{ gridColumn:'1/-1' }}>
+                  <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>¿Es parte de uno de los torneos de la escuela?</label>
+                  <select value={torneoId || ''} onChange={e => {
+                      const val = e.target.value || null
+                      setTorneoId(val)
+                      persist({ torneo_id: val })
+                      const t = torneosEscuela.find(x => x.id === val)
+                      if (t) guardarMatchInfo('torneo', t.nombre)
+                    }}
+                    style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}>
+                    <option value="">No — es amistoso u otro</option>
+                    {torneosEscuela.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.temporada ? ` (${t.temporada})` : ''}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             <div style={{ marginBottom:'20px' }}>
               <div style={{ fontSize:11, color:S.muted, textTransform:'uppercase', marginBottom:8 }}>Estilo de cancha</div>

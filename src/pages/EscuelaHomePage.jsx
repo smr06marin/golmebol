@@ -173,6 +173,26 @@ export default function EscuelaHomePage() {
                 </div>
                 <span style={{ color:S.muted }}>→</span>
               </button>
+
+              <button onClick={() => navigate('/escuela/torneos')}
+                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                <span style={{ fontSize:'1.4rem' }}>🏆</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Torneos</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Fase, resultado y premios de los torneos donde juega la escuela</div>
+                </div>
+                <span style={{ color:S.muted }}>→</span>
+              </button>
+
+              <button onClick={() => navigate('/jugador')}
+              style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                <span style={{ fontSize:'1.4rem' }}>🎮</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Ver mis torneos</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Si también juegas en algún torneo de Golmebol, entra aquí</div>
+                </div>
+                <span style={{ color:S.muted }}>→</span>
+              </button>
             </div>
           </div>
         )}

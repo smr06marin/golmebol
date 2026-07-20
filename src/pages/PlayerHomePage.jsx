@@ -109,8 +109,13 @@ export default function PlayerHomePage() {
     if (!p) { navigate('/jugador/login'); return }
     // Árbitro puro (no es también jugador): este portal no es para él, va directo a su portal
     if (p.rol === 'arbitro') { navigate(p.es_arbitro_lider ? '/arbitro/lider' : '/arbitro'); return }
-    // Profesor de escuela: tampoco es este portal, va al suyo
-    if (p.rol === 'profesor' || p.es_profesor || p.es_profesor_coordinador) { navigate('/escuela'); return }
+    // Acudiente puro (no es también jugador): este portal no es para él, va directo al suyo
+    if (p.es_acudiente && p.rol !== 'profesor' && !p.es_profesor && !p.es_profesor_coordinador) { navigate('/acudiente'); return }
+    // Jugador de escuela (niño/a): tiene su propia tarjeta, no este portal
+    if (p.es_jugador_escuela) { navigate('/mi-tarjeta'); return }
+    // Nota: un profesor de escuela que también es jugador de torneo SÍ puede entrar
+    // aquí (ej. desde el botón "Ver mis torneos" en su portal de escuela) — por eso
+    // ya no se le saca automáticamente de este portal.
 
     if (!p.activo_membresia || (p.fecha_vencimiento && new Date(p.fecha_vencimiento) < new Date())) {
       await supabase.auth.signOut(); navigate('/jugador/login'); return
