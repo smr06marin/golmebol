@@ -28,7 +28,6 @@ const AdminUsuariosPage       = lazy(() => import('./pages/admin/AdminUsuariosPa
 const AdminPredixPage         = lazy(() => import('./pages/admin/AdminPredixPage'))
 const PlayerTorneoPage        = lazy(() => import('./pages/PlayerTorneoPage'))
 const PlayerApuestasPage      = lazy(() => import('./pages/PlayerApuestasPage'))
-const PredixApuestasPage      = lazy(() => import('./pages/PredixApuestasPage'))
 const PlayerNoticiasPage      = lazy(() => import('./pages/PlayerNoticiasPage'))
 const PlayerHistorialPage     = lazy(() => import('./pages/PlayerHistorialPage'))
 const TorneoPublicoPage       = lazy(() => import('./pages/TorneoPublicoPage'))
@@ -276,10 +275,6 @@ export default function App() {
           <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
           <Route path="/jugador/historial"  element={<PlayerRoute><PlayerHistorialPage/></PlayerRoute>}/>
           <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
-
-          {/* Predix — Apuestas 1x1 (puntos, sin dinero real), abierto a cualquier
-              usuario logueado sin importar su rol */}
-          <Route path="/predix" element={<PlayerRoute><PredixApuestasPage/></PlayerRoute>}/>
 
           {/* Portal árbitros */}
           <Route path="/arbitro"             element={<ArbitroRoute><ArbitroHomePage/></ArbitroRoute>}/>

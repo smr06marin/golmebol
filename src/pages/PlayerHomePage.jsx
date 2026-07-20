@@ -1114,15 +1114,6 @@ export default function PlayerHomePage() {
             style={{ padding: '14px 32px', background: '#07070e', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#00ddd0', fontWeight: '800', fontSize: '1rem', letterSpacing: '1px' }}>
             ENTRAR A PREDIX →
           </button>
-          <button onClick={() => navigate('/predix')}
-            style={{ width: '100%', maxWidth: '300px', padding: '12px 16px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <span style={{ fontSize: '1.2rem' }}>🎲</span>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>Apuestas 1x1</div>
-              <div style={{ fontSize: '.72rem', color: '#5f6368' }}>Cruza puntos con otros por un equipo</div>
-            </div>
-            <span style={{ marginLeft: 'auto', color: '#9aa0a6' }}>→</span>
-          </button>
         </div>
       )}
 

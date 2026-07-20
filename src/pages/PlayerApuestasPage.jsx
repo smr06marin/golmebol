@@ -158,15 +158,93 @@ function comprometidoEnPosturas(playerId, posturas, partidos) {
   }).reduce((s, p) => s + p.monto, 0)
 }
 
-// Saldo disponible para arriesgar en duelos/apuestas: puntos por
-// predicciones + neto de duelos y posturas ya resueltos - lo que ya
-// tiene comprometido en duelos/posturas pendientes o sin resolver.
-function saldoDisponible(playerId, allPreds, duelos, partidos, posturas, cruces) {
-  return saldoPredicciones(playerId, allPreds)
-    + netoDuelosResueltos(playerId, duelos, partidos)
-    + netoPosturasJugador(playerId, posturas, cruces, partidos)
-    - comprometidoEnDuelos(playerId, duelos, partidos)
-    - comprometidoEnPosturas(playerId, posturas, partidos)
+// ── Predix con suscripción: modo "demo" (gratis, sin premio) vs "pago"
+// (con suscripción — por torneo o completa — activa ahora mismo, sí
+// compite por el ranking de premios). Son dos economías separadas: los
+// puntos de una no cuentan ni se pueden usar en la otra.
+const HOY = () => new Date().toISOString().slice(0, 10)
+
+function tieneSuscActiva(playerId, tournamentId, suscripciones) {
+  return (suscripciones || []).some(s =>
+    s.player_id === playerId && s.estado === 'activa' && s.fecha_fin >= HOY() &&
+    (s.tournament_id === tournamentId || s.tournament_id === null))
+}
+
+function modoPara(playerId, tournamentId, suscripciones) {
+  return tieneSuscActiva(playerId, tournamentId, suscripciones) ? 'pago' : 'demo'
+}
+
+function filtrarPorModo(modo, allPreds, duelos, posturas, cruces) {
+  const predsM    = (allPreds || []).filter(pr => pr.modo === modo)
+  const duelosM   = (duelos   || []).filter(d  => d.modo  === modo)
+  const posturasM = (posturas || []).filter(p  => p.modo  === modo)
+  const idsM      = new Set(posturasM.map(p => p.id))
+  const crucesM   = (cruces   || []).filter(c => idsM.has(c.postura_a_id) && idsM.has(c.postura_b_id))
+  return { predsM, duelosM, posturasM, crucesM }
+}
+
+function puntosPorModo(playerId, modo, allPreds, duelos, partidos, posturas, cruces) {
+  const { predsM, duelosM, posturasM, crucesM } = filtrarPorModo(modo, allPreds, duelos, posturas, cruces)
+  return saldoPredicciones(playerId, predsM)
+    + netoDuelosResueltos(playerId, duelosM, partidos)
+    + netoPosturasJugador(playerId, posturasM, crucesM, partidos)
+}
+
+function saldoDisponiblePorModo(playerId, modo, allPreds, duelos, partidos, posturas, cruces) {
+  const { duelosM, posturasM } = filtrarPorModo(modo, allPreds, duelos, posturas, cruces)
+  return puntosPorModo(playerId, modo, allPreds, duelos, partidos, posturas, cruces)
+    - comprometidoEnDuelos(playerId, duelosM, partidos)
+    - comprometidoEnPosturas(playerId, posturasM, partidos)
+}
+
+const WA_PREDIX = (texto) => `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
+
+// Ficha de planes disponibles + mis suscripciones, con botón directo a
+// WhatsApp para pagar (el cobro es manual, lo activa un admin después).
+function ModalPlanesPredix({ planes, misSuscripciones, jugadorNombre, onClose }) {
+  function fmtMoney(n) { return `$${Number(n || 0).toLocaleString('es-CO')}` }
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.88)', zIndex:400, display:'flex', alignItems:'flex-end', justifyContent:'center' }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:S.surface, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:'480px', maxHeight:'90vh', overflowY:'auto', border:`0.5px solid ${S.border}` }}>
+        <div style={{ padding:'16px 20px', borderBottom:`0.5px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, background:S.surface }}>
+          <div style={{ fontWeight:'700', fontSize:'.95rem', color:S.text }}>💰 Suscripción Predix</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'1.2rem' }}>✕</button>
+        </div>
+        <div style={{ padding:'18px 20px 32px' }}>
+
+          {misSuscripciones.length > 0 && (
+            <div style={{ marginBottom:'20px' }}>
+              <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.gold, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'8px' }}>Tus suscripciones</div>
+              {misSuscripciones.map(s => (
+                <div key={s.id} style={{ background:S.card, borderRadius:'10px', padding:'10px 14px', marginBottom:'6px', border:`0.5px solid ${S.border}` }}>
+                  <div style={{ fontSize:'.8rem', fontWeight:'700', color:S.text }}>{s.predix_planes?.nombre || (s.tournament_id ? 'Por torneo' : 'Completa')}</div>
+                  <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Pagaste {fmtMoney(s.monto_pagado)} · vence {new Date(s.fecha_fin).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' })}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.cyan, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:'8px' }}>Planes disponibles</div>
+          {planes.length === 0 ? (
+            <div style={{ color:S.muted, fontSize:'.8rem', textAlign:'center', padding:'20px' }}>Aún no hay planes publicados</div>
+          ) : planes.map(p => (
+            <div key={p.id} style={{ background:S.card, borderRadius:'12px', padding:'14px 16px', marginBottom:'10px', border:`0.5px solid ${S.border}` }}>
+              <div style={{ fontWeight:'700', fontSize:'.85rem', color:S.text }}>{p.nombre}</div>
+              <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'4px' }}>
+                {fmtMoney(p.precio_min)} – {fmtMoney(p.precio_max)} · tú eliges cuánto pagar en ese rango
+              </div>
+              <div style={{ fontSize:'.72rem', color:S.gold, marginTop:'2px' }}>Si quedas 1° del ranking, ganas {p.multiplicador_premio}x lo que pagaste</div>
+              <a href={WA_PREDIX(`Hola! Soy ${jugadorNombre} y quiero suscribirme a "${p.nombre}" en Predix Golmebol (rango ${fmtMoney(p.precio_min)}–${fmtMoney(p.precio_max)}). ¿Cómo pago?`)}
+                target="_blank" rel="noreferrer"
+                style={{ display:'block', textAlign:'center', marginTop:'10px', padding:'9px', background:S.cyan, borderRadius:'8px', color:'#000', fontWeight:'800', fontSize:'.78rem', textDecoration:'none' }}>
+                📲 Escribir por WhatsApp
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, onClose }) {
@@ -301,8 +379,11 @@ export default function PlayerApuestasPage() {
   const [form,         setForm]         = useState({ ganador:null, golesHome:0, golesAway:0, goleadorId:null })
   const [guardando,    setGuardando]    = useState(false)
   const [successAnim,  setSuccessAnim]  = useState(false)
-  const [ranking,      setRanking]      = useState([])
-  const [misPuntos,    setMisPuntos]    = useState(0)
+  const [rankingDemo,  setRankingDemo]  = useState([])
+  const [rankingPago,  setRankingPago]  = useState([])
+  const [rankingModo,  setRankingModo]  = useState('pago')
+  const [misPuntosDemo,setMisPuntosDemo]= useState(0)
+  const [misPuntosPago,setMisPuntosPago]= useState(0)
   const [jugadores,    setJugadores]    = useState([])
   const [teamSheet,    setTeamSheet]    = useState(null)
   const [torneoFiltro, setTorneoFiltro] = useState(null)
@@ -326,6 +407,11 @@ export default function PlayerApuestasPage() {
   const [msgPostura,      setMsgPostura]      = useState(null)
   const [subTabDuelos,    setSubTabDuelos]    = useState('retos')
 
+  // Suscripciones Predix (modo demo vs pago)
+  const [suscripciones,   setSuscripciones]   = useState([])
+  const [planesPredix,    setPlanesPredix]    = useState([])
+  const [modalPlanes,     setModalPlanes]     = useState(false)
+
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
@@ -337,7 +423,7 @@ export default function PlayerApuestasPage() {
     if (!p || !p.activo_membresia) { navigate('/jugador'); return }
     setPlayer(p)
 
-    const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }, { data: duelosData }, { data: activos }, { data: posturasData }, { data: crucesData }] = await Promise.all([
+    const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }, { data: duelosData }, { data: activos }, { data: posturasData }, { data: crucesData }, { data: suscData }, { data: planesData }] = await Promise.all([
       supabase.from('matches')
         .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url), tournaments(id,name,modalidad)')
         .order('played_at', { ascending: true })
@@ -348,17 +434,21 @@ export default function PlayerApuestasPage() {
       supabase.from('tournament_player_registrations')
         .select('tournament_id, team_id, players(id,name,photo_url)')
         .eq('activo', true),
-      supabase.from('predicciones').select('player_id, puntos_ganados'),
+      supabase.from('predicciones').select('player_id, puntos_ganados, modo'),
       supabase.from('predix_duelos').select('*').order('created_at', { ascending: false }),
       supabase.from('players').select('id, name, photo_face_url, photo_url, user_id, es_arbitro, rol').eq('activo_membresia', true).order('name'),
       supabase.from('predix_posturas').select('*').order('created_at', { ascending: true }),
       supabase.from('predix_posturas_cruces').select('*'),
+      supabase.from('predix_suscripciones').select('*, predix_planes(nombre, tipo)'),
+      supabase.from('predix_planes').select('*').eq('activo', true).order('created_at', { ascending: false }),
     ])
     setDuelos(duelosData || [])
     setJugadoresTodos((activos || []).filter(pl => pl.id !== p.id && !pl.es_arbitro && pl.rol !== 'arbitro'))
     setTodasPredicciones(allPreds || [])
     setPosturas(posturasData || [])
     setCruces(crucesData || [])
+    setSuscripciones(suscData || [])
+    setPlanesPredix(planesData || [])
 
     // Traer MVPs de todos los partidos terminados
     const partidosData = pts || []
@@ -382,48 +472,57 @@ export default function PlayerApuestasPage() {
     const predMap = {}
     ;(preds || []).forEach(pr => { predMap[pr.match_id] = pr })
     setMiscPreds(predMap)
-    const netoDuelosPropios   = netoDuelosResueltos(p.id, duelosData || [], partidosData)
-    const netoPosturasPropias = netoPosturasJugador(p.id, posturasData || [], crucesData || [], partidosData)
-    setMisPuntos((preds || []).reduce((s, pr) => s + (pr.puntos_ganados || 0), 0) + netoDuelosPropios + netoPosturasPropias)
+    setMisPuntosDemo(puntosPorModo(p.id, 'demo', allPreds || [], duelosData || [], partidosData, posturasData || [], crucesData || []))
+    setMisPuntosPago(puntosPorModo(p.id, 'pago', allPreds || [], duelosData || [], partidosData, posturasData || [], crucesData || []))
     setJugadores(jugs || [])
 
-    // Ranking combinado: puntos por predicciones + neto de duelos y posturas 1v1 ya resueltos
-    const rankMap = {}
-    ;(allPreds || []).forEach(pr => {
-      if (!rankMap[pr.player_id]) rankMap[pr.player_id] = { id: pr.player_id, puntos: 0, nombre: null, foto: null }
-      rankMap[pr.player_id].puntos += pr.puntos_ganados || 0
-    })
-    ;(duelosData || []).filter(d => d.estado === 'aceptado').forEach(d => {
-      const partido = partidosData.find(pp => pp.id === d.match_id)
-      if (!partido || partido.status !== 'finished') return
-      const r = calcularDuelo(d, partidosData, duelosData || [])
-      if (r.estado === 'pendiente') return
-      if (!rankMap[d.retador_id]) rankMap[d.retador_id] = { id: d.retador_id, puntos: 0, nombre: d.retador_nombre, foto: null }
-      if (!rankMap[d.retado_id])  rankMap[d.retado_id]  = { id: d.retado_id,  puntos: 0, nombre: d.retado_nombre,  foto: null }
-      rankMap[d.retador_id].puntos += r.retador
-      rankMap[d.retado_id].puntos  += r.retado
-    })
-    ;(crucesData || []).forEach(c => {
-      const partido = partidosData.find(pp => pp.id === c.match_id)
-      if (!partido || partido.status !== 'finished') return
-      const r = calcularCrucePostura(c, posturasData || [], crucesData || [], partidosData)
-      if (r.estado === 'pendiente') return
-      const posturaA = (posturasData || []).find(p => p.id === c.postura_a_id)
-      const posturaB = (posturasData || []).find(p => p.id === c.postura_b_id)
-      if (!posturaA || !posturaB) return
-      if (!rankMap[posturaA.player_id]) rankMap[posturaA.player_id] = { id: posturaA.player_id, puntos: 0, nombre: posturaA.nombre, foto: null }
-      if (!rankMap[posturaB.player_id]) rankMap[posturaB.player_id] = { id: posturaB.player_id, puntos: 0, nombre: posturaB.nombre, foto: null }
-      rankMap[posturaA.player_id].puntos += r.a
-      rankMap[posturaB.player_id].puntos += r.b
-    })
-    const playerIds = Object.keys(rankMap)
+    // Ranking separado por modo: demo (gratis, sin premio) y pago (con
+    // suscripción activa, sí compite por premio) son economías distintas.
+    function construirRanking(modo) {
+      const rankMap = {}
+      ;(allPreds || []).filter(pr => pr.modo === modo).forEach(pr => {
+        if (!rankMap[pr.player_id]) rankMap[pr.player_id] = { id: pr.player_id, puntos: 0, nombre: null, foto: null }
+        rankMap[pr.player_id].puntos += pr.puntos_ganados || 0
+      })
+      ;(duelosData || []).filter(d => d.estado === 'aceptado' && d.modo === modo).forEach(d => {
+        const partido = partidosData.find(pp => pp.id === d.match_id)
+        if (!partido || partido.status !== 'finished') return
+        const r = calcularDuelo(d, partidosData, duelosData || [])
+        if (r.estado === 'pendiente') return
+        if (!rankMap[d.retador_id]) rankMap[d.retador_id] = { id: d.retador_id, puntos: 0, nombre: d.retador_nombre, foto: null }
+        if (!rankMap[d.retado_id])  rankMap[d.retado_id]  = { id: d.retado_id,  puntos: 0, nombre: d.retado_nombre,  foto: null }
+        rankMap[d.retador_id].puntos += r.retador
+        rankMap[d.retado_id].puntos  += r.retado
+      })
+      const posturasModo = (posturasData || []).filter(p2 => p2.modo === modo)
+      const idsModo = new Set(posturasModo.map(p2 => p2.id))
+      ;(crucesData || []).filter(c => idsModo.has(c.postura_a_id) && idsModo.has(c.postura_b_id)).forEach(c => {
+        const partido = partidosData.find(pp => pp.id === c.match_id)
+        if (!partido || partido.status !== 'finished') return
+        const r = calcularCrucePostura(c, posturasModo, crucesData || [], partidosData)
+        if (r.estado === 'pendiente') return
+        const posturaA = posturasModo.find(p2 => p2.id === c.postura_a_id)
+        const posturaB = posturasModo.find(p2 => p2.id === c.postura_b_id)
+        if (!posturaA || !posturaB) return
+        if (!rankMap[posturaA.player_id]) rankMap[posturaA.player_id] = { id: posturaA.player_id, puntos: 0, nombre: posturaA.nombre, foto: null }
+        if (!rankMap[posturaB.player_id]) rankMap[posturaB.player_id] = { id: posturaB.player_id, puntos: 0, nombre: posturaB.nombre, foto: null }
+        rankMap[posturaA.player_id].puntos += r.a
+        rankMap[posturaB.player_id].puntos += r.b
+      })
+      return rankMap
+    }
+    const rankMapDemo = construirRanking('demo')
+    const rankMapPago = construirRanking('pago')
+    const playerIds = [...new Set([...Object.keys(rankMapDemo), ...Object.keys(rankMapPago)])]
     if (playerIds.length > 0) {
       const { data: playersData } = await supabase.from('players').select('id, name, photo_face_url, photo_url').in('id', playerIds)
       ;(playersData || []).forEach(pl => {
-        if (rankMap[pl.id]) { rankMap[pl.id].nombre = pl.name; rankMap[pl.id].foto = pl.photo_face_url || pl.photo_url }
+        if (rankMapDemo[pl.id]) { rankMapDemo[pl.id].nombre = pl.name; rankMapDemo[pl.id].foto = pl.photo_face_url || pl.photo_url }
+        if (rankMapPago[pl.id]) { rankMapPago[pl.id].nombre = pl.name; rankMapPago[pl.id].foto = pl.photo_face_url || pl.photo_url }
       })
     }
-    setRanking(Object.values(rankMap).sort((a,b) => b.puntos - a.puntos))
+    setRankingDemo(Object.values(rankMapDemo).sort((a,b) => b.puntos - a.puntos))
+    setRankingPago(Object.values(rankMapPago).sort((a,b) => b.puntos - a.puntos))
     setLoading(false)
   }
 
@@ -447,7 +546,8 @@ export default function PlayerApuestasPage() {
     if (!form.ganador) return
     setGuardando(true)
     const pred = miscPreds[modal.id]
-    const data = { player_id: player.id, match_id: modal.id, ganador: form.ganador, goles_home: form.golesHome, goles_away: form.golesAway, goleador_id: form.goleadorId || null }
+    const modo = modoPara(player.id, modal.tournament_id, suscripciones)
+    const data = { player_id: player.id, match_id: modal.id, ganador: form.ganador, goles_home: form.golesHome, goles_away: form.golesAway, goleador_id: form.goleadorId || null, modo }
     if (pred) await supabase.from('predicciones').update(data).eq('id', pred.id)
     else       await supabase.from('predicciones').insert(data)
     setGuardando(false)
@@ -460,9 +560,13 @@ export default function PlayerApuestasPage() {
     if (!modalReto?.rival || !modalReto?.partido || !modalReto?.equipo) return
     const monto = parseFloat(modalReto.monto)
     if (!monto || monto <= 0) { setMsgReto({ tipo:'error', texto:'Pon un número válido' }); return }
-    const disponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+    const modo = modoPara(player.id, modalReto.partido.tournament_id, suscripciones)
+    if (modoPara(modalReto.rival.id, modalReto.partido.tournament_id, suscripciones) !== modo) {
+      setMsgReto({ tipo:'error', texto:'Tú y tu rival deben estar en el mismo modo (demo o pago) en este torneo' }); return
+    }
+    const disponible = saldoDisponiblePorModo(player.id, modo, todasPredicciones, duelos, partidos, posturas, cruces)
     const tope = disponible * 0.25
-    if (monto > tope) { setMsgReto({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible: ${Math.round(disponible)})` }); return }
+    if (monto > tope) { setMsgReto({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible en modo ${modo}: ${Math.round(disponible)})` }); return }
     setGuardandoReto(true)
     const { error } = await supabase.from('predix_duelos').insert({
       match_id: modalReto.partido.id,
@@ -470,7 +574,7 @@ export default function PlayerApuestasPage() {
       retador_id: player.id, retador_user_id: player.user_id, retador_nombre: player.name,
       retador_equipo: modalReto.equipo,
       retado_id: modalReto.rival.id, retado_user_id: modalReto.rival.user_id, retado_nombre: modalReto.rival.name,
-      monto, estado: 'pendiente',
+      monto, estado: 'pendiente', modo,
     })
     setGuardandoReto(false)
     if (error) { setMsgReto({ tipo:'error', texto:'No se pudo crear el reto' }); return }
@@ -481,7 +585,7 @@ export default function PlayerApuestasPage() {
   async function responderReto(duelo, nuevoEstado) {
     setProcesandoDuelo(duelo.id)
     if (nuevoEstado === 'aceptado') {
-      const disponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+      const disponible = saldoDisponiblePorModo(player.id, duelo.modo || 'demo', todasPredicciones, duelos, partidos, posturas, cruces)
       const tope = disponible * 0.25
       if (duelo.monto > tope) {
         alert(`No tienes saldo suficiente para aceptar este duelo (máximo permitido ahora mismo: ${Math.floor(tope)} pts).`)
@@ -498,18 +602,19 @@ export default function PlayerApuestasPage() {
     if (!modalPostura?.partido || !modalPostura?.equipo) return
     const monto = parseFloat(modalPostura.monto)
     if (!monto || monto <= 0) { setMsgPostura({ tipo:'error', texto:'Pon un número válido' }); return }
-    const disponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+    const modo = modoPara(player.id, modalPostura.partido.tournament_id, suscripciones)
+    const disponible = saldoDisponiblePorModo(player.id, modo, todasPredicciones, duelos, partidos, posturas, cruces)
     const tope = disponible * 0.25
-    if (monto > tope) { setMsgPostura({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible: ${Math.round(disponible)})` }); return }
+    if (monto > tope) { setMsgPostura({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible en modo ${modo}: ${Math.round(disponible)})` }); return }
     setGuardandoPostura(true)
     const equipoRival = modalPostura.equipo === 'local' ? 'visitante' : 'local'
 
     const { data: rivales } = await supabase.from('predix_posturas')
-      .select('*').eq('match_id', modalPostura.partido.id).eq('equipo', equipoRival).eq('estado', 'abierta')
+      .select('*').eq('match_id', modalPostura.partido.id).eq('equipo', equipoRival).eq('estado', 'abierta').eq('modo', modo)
       .order('created_at', { ascending: true })
 
     const { data: nueva, error } = await supabase.from('predix_posturas')
-      .insert({ match_id: modalPostura.partido.id, tournament_id: modalPostura.partido.tournament_id, player_id: player.id, user_id: player.user_id, nombre: player.name, equipo: modalPostura.equipo, monto, monto_emparejado: 0, estado: 'abierta' })
+      .insert({ match_id: modalPostura.partido.id, tournament_id: modalPostura.partido.tournament_id, player_id: player.id, user_id: player.user_id, nombre: player.name, equipo: modalPostura.equipo, monto, monto_emparejado: 0, estado: 'abierta', modo })
       .select().single()
     if (error || !nueva) { setMsgPostura({ tipo:'error', texto:'No se pudo registrar la apuesta' }); setGuardandoPostura(false); return }
 
@@ -538,10 +643,11 @@ export default function PlayerApuestasPage() {
 
   const pendientes = partidos.filter(p => p.status !== 'finished')
   const terminados = partidos.filter(p => p.status === 'finished')
-  const miRanking  = ranking.findIndex(r => r.id === player.id) + 1
+  const rankingActual = rankingModo === 'pago' ? rankingPago : rankingDemo
+  const miRankingActual = rankingActual.findIndex(r => r.id === player.id) + 1
+  const misSuscripciones = suscripciones.filter(s => s.player_id === player.id && s.estado === 'activa' && s.fecha_fin >= HOY())
 
   const jugsModal = modal ? jugadores
-    .filter(j => j.tournament_id === modal.tournament_id && (j.team_id === modal.home_team_id || j.team_id === modal.away_team_id))
     .map(j => j.players).filter(Boolean) : []
 
   function groupByTournament(lista) {
@@ -559,8 +665,13 @@ export default function PlayerApuestasPage() {
 
   function toggleCollapse(tid) { setCollapsed(prev => ({ ...prev, [tid]: !prev[tid] })) }
 
-  // Duelos 1v1 — datos derivados
-  const miSaldoDisponible = saldoDisponible(player.id, todasPredicciones, duelos, partidos, posturas, cruces)
+  // Duelos 1v1 — datos derivados (saldo separado por modo demo/pago)
+  const miSaldoDemo = saldoDisponiblePorModo(player.id, 'demo', todasPredicciones, duelos, partidos, posturas, cruces)
+  const miSaldoPago = saldoDisponiblePorModo(player.id, 'pago', todasPredicciones, duelos, partidos, posturas, cruces)
+  const modoRetoActual = modalReto?.partido ? modoPara(player.id, modalReto.partido.tournament_id, suscripciones) : null
+  const saldoRetoActual = modoRetoActual ? (modoRetoActual === 'pago' ? miSaldoPago : miSaldoDemo) : 0
+  const modoPosturaActual = modalPostura?.partido ? modoPara(player.id, modalPostura.partido.tournament_id, suscripciones) : null
+  const saldoPosturaActual = modoPosturaActual ? (modoPosturaActual === 'pago' ? miSaldoPago : miSaldoDemo) : 0
   const misDuelos          = duelos.filter(d => d.retador_id === player.id || d.retado_id === player.id)
   const retosRecibidos     = misDuelos.filter(d => d.retado_id === player.id && d.estado === 'pendiente')
   const retosEnviados      = misDuelos.filter(d => d.retador_id === player.id && d.estado === 'pendiente')
@@ -578,7 +689,8 @@ export default function PlayerApuestasPage() {
 
   const jugadoresFiltrados = jugadoresTodos.filter(j => j.name.toLowerCase().includes(busquedaRival.toLowerCase()))
   const partidosElegibles = modalReto?.rival
-    ? pendientes.filter(p => !jugadorJuegaEnPartido(player.id, p, jugadores) && !jugadorJuegaEnPartido(modalReto.rival.id, p, jugadores))
+    ? pendientes.filter(p => !jugadorJuegaEnPartido(player.id, p, jugadores) && !jugadorJuegaEnPartido(modalReto.rival.id, p, jugadores)
+        && modoPara(player.id, p.tournament_id, suscripciones) === modoPara(modalReto.rival.id, p.tournament_id, suscripciones))
     : []
 
   // Apuestas abiertas — datos derivados
@@ -662,6 +774,7 @@ export default function PlayerApuestasPage() {
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
 
       {teamSheet && <TeamSheet {...teamSheet} onClose={() => setTeamSheet(null)}/>}
+      {modalPlanes && <ModalPlanesPredix planes={planesPredix} misSuscripciones={misSuscripciones} jugadorNombre={player.name} onClose={() => setModalPlanes(false)}/>}
 
       {/* Modal: retar a alguien (Duelos 1v1) */}
       {modalReto && (
@@ -734,8 +847,13 @@ export default function PlayerApuestasPage() {
                   <div style={{ fontSize:'.8rem', fontWeight:'600', color:S.text, marginBottom:'8px' }}>¿Cuántos puntos apuestas?</div>
                   <input type="number" inputMode="numeric" value={modalReto.monto} onChange={e => setModalReto(m => ({ ...m, monto:e.target.value }))} placeholder="Ej: 20"
                     style={{ width:'100%', padding:'14px 16px', borderRadius:'12px', border:`1px solid ${S.border}`, background:S.card, color:S.text, fontSize:'1.3rem', fontWeight:'700', textAlign:'center', marginBottom:'8px', boxSizing:'border-box' }}/>
+                  <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'8px' }}>
+                    <span style={{ fontSize:'.7rem', fontWeight:'800', color: modoRetoActual==='pago'?S.gold:S.muted, background: modoRetoActual==='pago'?S.goldDim:'rgba(154,160,166,.1)', borderRadius:'10px', padding:'2px 9px' }}>
+                      {modoRetoActual==='pago' ? '💰 Modo Pago' : '🎓 Modo Demo — sin premio'}
+                    </span>
+                  </div>
                   <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'16px' }}>
-                    Tu saldo disponible: {Math.round(miSaldoDisponible*10)/10} pts · máximo por duelo: {Math.max(0, Math.floor(miSaldoDisponible*0.25))} pts.
+                    Tu saldo disponible en este modo: {Math.round(saldoRetoActual*10)/10} pts · máximo por duelo: {Math.max(0, Math.floor(saldoRetoActual*0.25))} pts.
                     Si tu rival acepta y ganas, te quedas con parte de su apuesta (menos si ya se han enfrentado antes); si pierdes, pierdes toda tu apuesta.
                   </div>
 
@@ -799,9 +917,14 @@ export default function PlayerApuestasPage() {
                   <div style={{ fontSize:'.8rem', fontWeight:'600', color:S.text, marginBottom:'8px' }}>¿Cuántos puntos apuestas?</div>
                   <input type="number" inputMode="numeric" value={modalPostura.monto} onChange={e => setModalPostura(m => ({ ...m, monto:e.target.value }))} placeholder="Ej: 50"
                     style={{ width:'100%', padding:'14px 16px', borderRadius:'12px', border:`1px solid ${S.border}`, background:S.card, color:S.text, fontSize:'1.3rem', fontWeight:'700', textAlign:'center', marginBottom:'8px', boxSizing:'border-box' }}/>
+                  <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'8px' }}>
+                    <span style={{ fontSize:'.7rem', fontWeight:'800', color: modoPosturaActual==='pago'?S.gold:S.muted, background: modoPosturaActual==='pago'?S.goldDim:'rgba(154,160,166,.1)', borderRadius:'10px', padding:'2px 9px' }}>
+                      {modoPosturaActual==='pago' ? '💰 Modo Pago' : '🎓 Modo Demo — sin premio'}
+                    </span>
+                  </div>
                   <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'16px' }}>
-                    Tu saldo disponible: {Math.round(miSaldoDisponible*10)/10} pts · máximo por apuesta: {Math.max(0, Math.floor(miSaldoDisponible*0.25))} pts.
-                    Se cruza automáticamente contra lo que otros pongan al equipo contrario. Lo que no se cruce con nadie no gana ni pierde.
+                    Tu saldo disponible en este modo: {Math.round(saldoPosturaActual*10)/10} pts · máximo por apuesta: {Math.max(0, Math.floor(saldoPosturaActual*0.25))} pts.
+                    Se cruza automáticamente contra lo que otros pongan al equipo contrario, siempre dentro del mismo modo. Lo que no se cruce con nadie no gana ni pierde.
                   </div>
 
                   {msgPostura && <div style={{ fontSize:'.75rem', color: msgPostura.tipo==='error'?S.loss:S.win, marginBottom:'10px' }}>{msgPostura.texto}</div>}
@@ -968,14 +1091,35 @@ export default function PlayerApuestasPage() {
             <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>Predix</div>
             <div style={{ fontWeight:'800', fontSize:'1.1rem', color:S.text }}>{player.name}</div>
           </div>
-          <div style={{ textAlign:'right' }}>
-            <div style={{ fontSize:'1.8rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{misPuntos}</div>
-            <div style={{ fontSize:'.65rem', color:S.muted }}>pts totales · #{miRanking || '—'}</div>
+          <div style={{ display:'flex', gap:'14px' }}>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:'1.3rem', fontWeight:'900', color:S.muted, lineHeight:1 }}>{Math.round(misPuntosDemo*10)/10}</div>
+              <div style={{ fontSize:'.6rem', color:S.muted }}>🎓 Demo</div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:'1.3rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{Math.round(misPuntosPago*10)/10}</div>
+              <div style={{ fontSize:'.6rem', color:S.muted }}>💰 Pago</div>
+            </div>
           </div>
         </div>
       </div>
 
       <div style={{ maxWidth:'600px', margin:'0 auto', padding:'0 16px' }}>
+
+        {/* Suscripción Predix */}
+        <div onClick={() => setModalPlanes(true)}
+          style={{ cursor:'pointer', marginTop:'12px', background: misSuscripciones.length>0 ? 'rgba(249,168,37,.08)' : S.card, border:`1px solid ${misSuscripciones.length>0 ? 'rgba(249,168,37,.35)' : S.border}`, borderRadius:'12px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'10px' }}>
+          <span style={{ fontSize:'1.3rem' }}>{misSuscripciones.length>0 ? '💰' : '🎓'}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:'.8rem', fontWeight:'700', color:S.text }}>
+              {misSuscripciones.length>0 ? `Suscrito · ${misSuscripciones.length} plan${misSuscripciones.length>1?'es':''} activo${misSuscripciones.length>1?'s':''}` : 'Estás en modo Demo — sin premio'}
+            </div>
+            <div style={{ fontSize:'.68rem', color:S.muted }}>
+              {misSuscripciones.length>0 ? 'Toca para ver el detalle o sumar otro plan' : 'Suscríbete para competir por premios reales'}
+            </div>
+          </div>
+          <span style={{ color:S.muted }}>→</span>
+        </div>
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:'4px', padding:'12px 0', position:'sticky', top:0, background:S.navy, zIndex:10 }}>
@@ -1152,13 +1296,17 @@ export default function PlayerApuestasPage() {
         {tab === 'duelos' && (
           <div>
             <div style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'14px', border:`0.5px solid ${S.border}` }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'20px', marginBottom:'10px' }}>
                 <div>
-                  <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.08em' }}>Saldo disponible para duelos</div>
-                  <div style={{ fontSize:'1.4rem', fontWeight:'900', color: miSaldoDisponible >= 0 ? S.gold : S.loss }}>{Math.round(miSaldoDisponible*10)/10} pts</div>
+                  <div style={{ fontSize:'.62rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.08em' }}>🎓 Saldo Demo</div>
+                  <div style={{ fontSize:'1.15rem', fontWeight:'900', color: miSaldoDemo >= 0 ? S.muted : S.loss }}>{Math.round(miSaldoDemo*10)/10} pts</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:'.62rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.08em' }}>💰 Saldo Pago</div>
+                  <div style={{ fontSize:'1.15rem', fontWeight:'900', color: miSaldoPago >= 0 ? S.gold : S.loss }}>{Math.round(miSaldoPago*10)/10} pts</div>
                 </div>
               </div>
-              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'10px' }}>Puedes apostar hasta el 25% de tu saldo por duelo/apuesta. No puedes participar en un partido donde tú (o a quien retes) estén jugando.</div>
+              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'10px' }}>Puedes apostar hasta el 25% de tu saldo por duelo/apuesta, y solo contra alguien en tu mismo modo (demo con demo, pago con pago). No puedes participar en un partido donde tú (o a quien retes) estén jugando.</div>
               <div style={{ display:'flex', gap:'8px' }}>
                 <button onClick={() => { setModalReto({ rival:null, partido:null, equipo:null, monto:'' }); setBusquedaRival(''); setMsgReto(null) }}
                   style={{ flex:1, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.82rem' }}>
@@ -1258,9 +1406,20 @@ export default function PlayerApuestasPage() {
         {/* TAB: Ranking */}
         {tab === 'ranking' && (
           <div>
-            {ranking.length === 0 ? (
+            <div style={{ display:'flex', gap:'4px', marginBottom:'14px' }}>
+              {[{ id:'pago', label:'💰 Pago (premios)' },{ id:'demo', label:'🎓 Demo' }].map(t => (
+                <button key={t.id} onClick={() => setRankingModo(t.id)}
+                  style={{ flex:1, padding:'8px 4px', borderRadius:'8px', cursor:'pointer', fontSize:'.74rem', fontWeight:'700', background: rankingModo===t.id ? S.card2 : 'transparent', color: rankingModo===t.id ? (t.id==='pago'?S.gold:S.text) : S.muted, border: rankingModo===t.id ? `1px solid ${t.id==='pago'?S.gold:S.border}` : `1px solid ${S.border}` }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {rankingModo === 'pago' && (
+              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'12px' }}>Este es el ranking que compite por los premios mensuales. #{miRankingActual || '—'} es tu posición.</div>
+            )}
+            {rankingActual.length === 0 ? (
               <div style={{ textAlign:'center', padding:'60px 20px', color:S.muted }}><div style={{ fontSize:'2rem', marginBottom:'12px' }}>🏆</div><div>Sin datos de ranking aún</div></div>
-            ) : ranking.map((r, i) => {
+            ) : rankingActual.map((r, i) => {
               const esYo = r.id === player.id
               return (
                 <div key={r.id} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px', background: esYo ? S.cyanDim : S.card, borderRadius:'12px', marginBottom:'8px', border: `0.5px solid ${esYo ? S.cyan : S.border}` }}>
