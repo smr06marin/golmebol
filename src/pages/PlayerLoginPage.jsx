@@ -167,12 +167,25 @@ export default function PlayerLoginPage() {
     e.preventDefault()
     if (!cedula.trim()) { setError('Ingresa tu número de cédula'); return }
     setLoading(true); setError('')
-    const { data: p } = await supabase
+    // OJO: no usamos .single() acá — si por algún motivo quedaron dos filas con
+    // la misma cédula (bug conocido, ver migracion_fusionar_cedulas_duplicadas.sql),
+    // .single() revienta con 0 resultados y la persona ve "cédula no registrada"
+    // aunque sí exista. Con una lista simple tomamos la fila correcta a mano:
+    // la que ya tenga cuenta de acceso creada manda; si ninguna la tiene, la más
+    // completa (más roles marcados).
+    const { data: filas } = await supabase
       .from('players')
       .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_acudiente, es_jugador_escuela, equipo_deseado')
       .eq('numero_cedula', cedula.trim())
-      .single()
     setLoading(false)
+    const candidatas = filas || []
+    let p = null
+    if (candidatas.length === 1) {
+      p = candidatas[0]
+    } else if (candidatas.length > 1) {
+      const puntaje = (x) => (x.user_id ? 100 : 0) + Number(!!x.es_arbitro) + Number(!!x.es_arbitro_lider) + Number(!!x.es_profesor) + Number(!!x.es_profesor_coordinador) + Number(!!x.es_acudiente) + Number(!!x.es_jugador_escuela)
+      p = [...candidatas].sort((a, b) => puntaje(b) - puntaje(a))[0]
+    }
     // Si el jugador existe pero aún no tiene cuenta, NO se muestra su nombre de
     // una vez: primero debe demostrar que es él escribiendo nombre y primer
     // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).

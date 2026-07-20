@@ -941,6 +941,12 @@ export default function PlayerHomePage() {
               {player?.es_arbitro_lider ? (player?.genero === 'Femenino' ? '👑 Coordinadora' : '👑 Coordinador') : '🟡 Árbitro'}
             </button>
           )}
+          {(player?.es_profesor || player?.es_profesor_coordinador || player?.rol === 'profesor') && (
+            <button onClick={() => navigate('/escuela')}
+              style={{ background: 'rgba(0,221,208,.15)', border: '1px solid rgba(0,221,208,.4)', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#00ddd0', fontSize: '.75rem', fontWeight: '700' }}>
+              {player?.es_profesor_coordinador ? '👑 Coordinador/a' : '🧑‍🏫 Profesor/a'}
+            </button>
+          )}
           <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem', fontWeight: '500' }}>Salir</button>
         </div>
       </div>
