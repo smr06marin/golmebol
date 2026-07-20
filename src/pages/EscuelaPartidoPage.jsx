@@ -1,0 +1,718 @@
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+
+const S = {
+  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
+  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+}
+
+const MAX_FIELD = 11
+
+const FORMATIONS = {
+  'Fútbol 11': {
+    '4-4-2': [{pos:'POR',x:50,y:90},{pos:'LD',x:12,y:72},{pos:'DFC',x:33,y:72},{pos:'DFC',x:67,y:72},{pos:'LI',x:88,y:72},{pos:'MD',x:12,y:50},{pos:'MC',x:37,y:50},{pos:'MC',x:63,y:50},{pos:'MI',x:88,y:50},{pos:'DC',x:35,y:22},{pos:'DC',x:65,y:22}],
+    '4-3-3': [{pos:'POR',x:50,y:90},{pos:'LD',x:12,y:72},{pos:'DFC',x:33,y:72},{pos:'DFC',x:67,y:72},{pos:'LI',x:88,y:72},{pos:'MC',x:25,y:50},{pos:'MC',x:50,y:50},{pos:'MC',x:75,y:50},{pos:'EX',x:12,y:22},{pos:'DC',x:50,y:18},{pos:'EX',x:88,y:22}],
+    '4-2-3-1': [{pos:'POR',x:50,y:90},{pos:'LD',x:12,y:74},{pos:'DFC',x:33,y:74},{pos:'DFC',x:67,y:74},{pos:'LI',x:88,y:74},{pos:'MCD',x:33,y:55},{pos:'MCD',x:67,y:55},{pos:'EX',x:12,y:35},{pos:'CAM',x:50,y:35},{pos:'EX',x:88,y:35},{pos:'DC',x:50,y:14}],
+    '3-5-2': [{pos:'POR',x:50,y:90},{pos:'DFC',x:22,y:74},{pos:'DFC',x:50,y:74},{pos:'DFC',x:78,y:74},{pos:'MI',x:8,y:52},{pos:'MC',x:28,y:52},{pos:'MC',x:50,y:52},{pos:'MC',x:72,y:52},{pos:'MD',x:92,y:52},{pos:'DC',x:33,y:20},{pos:'DC',x:67,y:20}],
+  },
+  'Fútbol 8': {
+    '3-3-1': [{pos:'POR',x:50,y:90},{pos:'DFC',x:22,y:70},{pos:'DFC',x:50,y:70},{pos:'DFC',x:78,y:70},{pos:'MC',x:22,y:46},{pos:'MC',x:50,y:46},{pos:'MC',x:78,y:46},{pos:'DC',x:50,y:18}],
+    '3-2-2': [{pos:'POR',x:50,y:90},{pos:'DFC',x:22,y:70},{pos:'DFC',x:50,y:70},{pos:'DFC',x:78,y:70},{pos:'MC',x:33,y:48},{pos:'MC',x:67,y:48},{pos:'DC',x:33,y:20},{pos:'DC',x:67,y:20}],
+  },
+  'Fútbol 7': {
+    '2-3-1': [{pos:'POR',x:50,y:90},{pos:'DFC',x:28,y:70},{pos:'DFC',x:72,y:70},{pos:'MC',x:18,y:48},{pos:'MC',x:50,y:48},{pos:'MC',x:82,y:48},{pos:'DC',x:50,y:18}],
+    '3-2-1': [{pos:'POR',x:50,y:90},{pos:'DFC',x:20,y:72},{pos:'DFC',x:50,y:72},{pos:'DFC',x:80,y:72},{pos:'MC',x:33,y:48},{pos:'MC',x:67,y:48},{pos:'DC',x:50,y:18}],
+  },
+  'Microfútbol': {
+    '1-2-1': [{pos:'POR',x:50,y:90},{pos:'DFC',x:30,y:62},{pos:'DFC',x:70,y:62},{pos:'DC',x:50,y:22}],
+    '2-1-1': [{pos:'POR',x:50,y:90},{pos:'DFC',x:28,y:68},{pos:'DFC',x:72,y:68},{pos:'MC',x:50,y:48},{pos:'DC',x:50,y:20}],
+  },
+}
+
+const STYLES = {
+  'Clásico': { bg:'#2a6030', lines:'rgba(255,255,255,.65)', alt:'#265528' },
+  'UEFA': { bg:'#14401a', lines:'rgba(255,255,255,.75)', alt:'#103514' },
+  'Futurista': { bg:'#070f20', lines:'rgba(0,200,255,.55)', alt:'#0a162c' },
+  'Oscuro': { bg:'#111', lines:'rgba(255,255,255,.28)', alt:'#191919' },
+  'Táctico': { bg:'#0a1a2e', lines:'rgba(80,140,255,.6)', alt:'#0d2040' },
+}
+
+const POS_COL = { POR:'#f59e0b', DFC:'#3b82f6', LD:'#3b82f6', LI:'#3b82f6', MC:'#10b981', MCD:'#10b981', CAM:'#10b981', MI:'#10b981', MD:'#10b981', DC:'#ef4444', EX:'#a855f7' }
+const EV_ICONS = { goal:'⚽', assist:'🎯', yellow:'🟨', blue:'🟦', red:'🟥', sub:'🔄', highlight:'⭐', injury:'🩹', mvp:'👑', note:'📝' }
+const EV_ITEMS = [
+  { t:'goal', l:'⚽ Gol' }, { t:'assist', l:'🎯 Asist.' }, { t:'yellow', l:'🟨 Amarilla' },
+  { t:'blue', l:'🟦 Azul' }, { t:'red', l:'🟥 Roja' }, { t:'mvp', l:'👑 Destacado' },
+  { t:'injury', l:'🩹 Lesión' }, { t:'highlight', l:'⭐ Buena jugada' }, { t:'note', l:'📝 Nota' },
+]
+
+const evBtn = { background:'rgba(255,255,255,.07)', border:'1px solid rgba(255,255,255,.15)', color:'#fff', borderRadius:6, padding:'7px 3px', fontSize:10, fontWeight:700, cursor:'pointer' }
+const navBtn = (active) => ({ border:`1px solid ${active?S.cyan:S.border}`, background:active?S.cyanDim:'transparent', color:active?S.cyan:S.muted, borderRadius:8, padding:'6px 10px', fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' })
+
+function fmtTime(sec) {
+  const m = String(Math.floor(sec/60)).padStart(2,'0'), s = String(sec%60).padStart(2,'0')
+  return `${m}:${s}`
+}
+
+function PlayerCard({ p, size='sm', selected, dropTarget }) {
+  const w = size==='sm' ? 58 : 76, h = size==='sm' ? 80 : 102
+  const posColor = POS_COL[p.slotPos] || S.cyan
+  const border = selected ? `2px solid ${S.cyan}` : dropTarget ? '2px solid #ff6b00' : '1px solid rgba(255,255,255,.25)'
+  const shadow = selected ? '0 0 14px rgba(0,221,208,.55)' : dropTarget ? '0 0 18px rgba(255,107,0,.7)' : '0 2px 8px rgba(0,0,0,.5)'
+  const nm = (p.name || '?').split(' ')[0].toUpperCase()
+  const foto = p.photo_face_url || p.photo_url
+  return (
+    <div style={{ width:w, height:h, borderRadius:8, background:'linear-gradient(160deg,#1a2234,#0a0e18)', border, boxShadow:shadow, display:'flex', flexDirection:'column', alignItems:'center', overflow:'hidden', flexShrink:0, userSelect:'none', pointerEvents:'none' }}>
+      <div style={{ width:'100%', height:5, background:posColor, flexShrink:0 }}/>
+      <div style={{ flex:1, width:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:size==='sm'?18:24, overflow:'hidden' }}>
+        {foto ? <img src={foto} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : '👤'}
+      </div>
+      <div style={{ fontSize:size==='sm'?8.5:10, fontWeight:800, padding:'2px 3px 0', maxWidth:w-4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'#fff' }}>{nm}</div>
+      <div style={{ display:'flex', gap:2, fontSize:7.5, paddingBottom:2, minHeight:9 }}>
+        {p._goals > 0 && <span>⚽{p._goals}</span>}
+        {p._yellows > 0 && <span>🟨</span>}
+        {p._reds > 0 && <span>🟥</span>}
+      </div>
+    </div>
+  )
+}
+
+function PitchSVG({ style }) {
+  const c = STYLES[style] || STYLES['Clásico']
+  const strips = Array.from({ length:7 }, (_, i) => <rect key={i} x="0" y={i*86} width="600" height="43" fill={c.alt} opacity="0.35"/>)
+  return (
+    <svg viewBox="0 0 600 860" style={{ position:'absolute', inset:0, width:'100%', height:'100%' }}>
+      <rect width="600" height="860" fill={c.bg}/>
+      {strips}
+      <rect x="14" y="14" width="572" height="832" fill="none" stroke={c.lines} strokeWidth="2.5" rx="6"/>
+      <line x1="14" y1="430" x2="586" y2="430" stroke={c.lines} strokeWidth="2"/>
+      <circle cx="300" cy="430" r="72" fill="none" stroke={c.lines} strokeWidth="2"/>
+      <circle cx="300" cy="430" r="4" fill={c.lines}/>
+      <rect x="175" y="14" width="250" height="80" fill="none" stroke={c.lines} strokeWidth="2"/>
+      <rect x="230" y="14" width="140" height="40" fill="none" stroke={c.lines} strokeWidth="2"/>
+      <circle cx="300" cy="100" r="4" fill={c.lines}/>
+      <rect x="175" y="766" width="250" height="80" fill="none" stroke={c.lines} strokeWidth="2"/>
+      <rect x="230" y="806" width="140" height="40" fill="none" stroke={c.lines} strokeWidth="2"/>
+      <circle cx="300" cy="760" r="4" fill={c.lines}/>
+      <rect x="230" y="14" width="140" height="7" fill={c.lines} opacity="0.7" rx="3"/>
+      <rect x="230" y="839" width="140" height="7" fill={c.lines} opacity="0.7" rx="3"/>
+    </svg>
+  )
+}
+
+const todayISO = () => new Date().toISOString().split('T')[0]
+const EMPTY_MATCHINFO = { rival:'', fecha: todayISO(), hora:'15:00', torneo:'Amistoso' }
+
+export default function EscuelaPartidoPage() {
+  const navigate = useNavigate()
+  const [profesor, setProfesor] = useState(null)
+  const [escuela, setEscuela] = useState(null)
+  const [roster, setRoster] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const [partidoId, setPartidoId] = useState(null)
+  const [view, setView] = useState('setup')
+  const [matchInfo, setMatchInfo] = useState(EMPTY_MATCHINFO)
+  const [estado, setEstado] = useState('pendiente')
+  const [pitchStyle, setPitchStyle] = useState('Clásico')
+  const [formType, setFormType] = useState('Fútbol 11')
+  const [formation, setFormation] = useState('4-3-3')
+  const [convocados, setConvocados] = useState([])
+  const [lineup, setLineup] = useState([])
+  const [bench, setBench] = useState([])
+  const [positions, setPositions] = useState({})
+  const [events, setEvents] = useState([])
+  const [score, setScore] = useState({ home:0, away:0 })
+  const [activePlayer, setActivePlayer] = useState(null)
+  const [timerSec, setTimerSec] = useState(0)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [showFinish, setShowFinish] = useState(false)
+  const [mvp, setMvp] = useState({ first:'', second:'', third:'' })
+  const [matchObs, setMatchObs] = useState('')
+  const [dragOverFieldId, setDragOverFieldId] = useState(null)
+  const [toast, setToast] = useState(null)
+  const [historial, setHistorial] = useState(null)
+  const [verDetalle, setVerDetalle] = useState(null)
+  const [guardandoFinal, setGuardandoFinal] = useState(false)
+
+  const dragRef = useRef({ id:null, fromBench:false })
+  const pitchRef = useRef(null)
+  const pendingRef = useRef({})
+  const saveTimeoutRef = useRef(null)
+  const toastTimeoutRef = useRef(null)
+
+  useEffect(() => { fetchTodo() }, [])
+
+  async function fetchTodo() {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { navigate('/jugador/login'); return }
+    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
+    if (!p || !(p.rol === 'profesor' || p.es_profesor || p.es_profesor_coordinador)) { navigate('/jugador'); return }
+    if (!p.escuela_id) { navigate('/escuela'); return }
+    setProfesor(p)
+
+    const { data: esc } = await supabase.from('teams').select('*').eq('id', p.escuela_id).single()
+    setEscuela(esc || null)
+
+    const { data: tp } = await supabase.from('team_players').select('*, players(*)').eq('team_id', p.escuela_id)
+    const lista = (tp || []).map(t => t.players).filter(Boolean).sort((a,b) => a.name.localeCompare(b.name))
+    setRoster(lista)
+
+    const { data: activo } = await supabase.from('escuela_partidos').select('*')
+      .eq('escuela_id', p.escuela_id).neq('estado', 'finalizado')
+      .order('created_at', { ascending:false }).limit(1).maybeSingle()
+
+    if (activo) {
+      hidratar(activo)
+    } else {
+      const { data: nuevo } = await supabase.from('escuela_partidos')
+        .insert({ escuela_id: p.escuela_id, ...EMPTY_MATCHINFO, creado_por: p.id })
+        .select().single()
+      if (nuevo) hidratar(nuevo)
+    }
+    setLoading(false)
+  }
+
+  function hidratar(row) {
+    setPartidoId(row.id)
+    setView(row.vista || 'setup')
+    setMatchInfo({ rival: row.rival || '', fecha: row.fecha || todayISO(), hora: row.hora || '15:00', torneo: row.torneo || 'Amistoso' })
+    setEstado(row.estado || 'pendiente')
+    setPitchStyle(row.pitch_style || 'Clásico')
+    setFormType(row.formacion_tipo || 'Fútbol 11')
+    setFormation(row.formacion || '4-3-3')
+    setConvocados(row.convocados || [])
+    setLineup(row.lineup || [])
+    setBench(row.bench || [])
+    setPositions(row.positions || {})
+    setEvents(row.eventos || [])
+    setScore({ home: row.score_home || 0, away: row.score_away || 0 })
+    setTimerSec(row.timer_sec || 0)
+    setMvp(row.mvp || { first:'', second:'', third:'' })
+    setMatchObs(row.observaciones || '')
+  }
+
+  function persist(fields) {
+    pendingRef.current = { ...pendingRef.current, ...fields }
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(async () => {
+      const toSave = pendingRef.current
+      pendingRef.current = {}
+      if (partidoId) await supabase.from('escuela_partidos').update({ ...toSave, updated_at: new Date().toISOString() }).eq('id', partidoId)
+    }, 600)
+  }
+
+  function showToast(msg, color) {
+    setToast({ msg, color: color || '#ef4444' })
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current)
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 2200)
+  }
+
+  // ── Timer ──
+  useEffect(() => {
+    if (!timerRunning) return
+    const id = setInterval(() => setTimerSec(s => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [timerRunning])
+
+  function startTimer() {
+    setTimerRunning(true)
+    if (estado !== 'en_curso') { setEstado('en_curso'); persist({ estado:'en_curso' }) }
+  }
+  function pauseTimer() {
+    setTimerRunning(false)
+    persist({ timer_sec: timerSec })
+  }
+  function endMatch() {
+    setTimerRunning(false)
+    setShowFinish(true)
+    persist({ timer_sec: timerSec })
+  }
+
+  // ── Navegación entre vistas ──
+  function irA(v) {
+    setView(v)
+    if (v !== 'historial') persist({ vista: v })
+    if (v === 'historial') cargarHistorial()
+  }
+
+  function guardarMatchInfo(campo, valor) {
+    setMatchInfo(mi => ({ ...mi, [campo]: valor }))
+    const dbField = { rival:'rival', fecha:'fecha', hora:'hora', torneo:'torneo' }[campo]
+    persist({ [dbField]: valor })
+  }
+
+  function toggleConvocado(id) {
+    setConvocados(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      persist({ convocados: next })
+      return next
+    })
+  }
+
+  function elegirFormType(ft) {
+    const primeraFormacion = Object.keys(FORMATIONS[ft])[0]
+    setFormType(ft); setFormation(primeraFormacion)
+    persist({ formacion_tipo: ft, formacion: primeraFormacion })
+  }
+  function elegirFormation(f) {
+    setFormation(f)
+    persist({ formacion: f })
+  }
+  function elegirEstilo(s) {
+    setPitchStyle(s)
+    persist({ pitch_style: s })
+  }
+
+  function aplicarFormacion() {
+    const fmt = FORMATIONS[formType]?.[formation]
+    if (!fmt) return
+    const convList = roster.filter(p => convocados.includes(p.id))
+    const starters = convList.slice(0, fmt.length)
+    const pos = {}
+    starters.forEach((p, i) => { pos[p.id] = { x: fmt[i].x, y: fmt[i].y } })
+    const nuevoLineup = starters.map((p, i) => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, slotPos:fmt[i].pos, _goals:0, _yellows:0, _reds:0 }))
+    const nuevoBench = convList.slice(fmt.length).map(p => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, _goals:0, _yellows:0, _reds:0 }))
+    setLineup(nuevoLineup); setBench(nuevoBench); setPositions(pos)
+    setView('match')
+    persist({ lineup: nuevoLineup, bench: nuevoBench, positions: pos, vista:'match', formacion_tipo: formType, formacion: formation })
+  }
+
+  // ── Eventos ──
+  function addEvent(type, player) {
+    const ev = { id: Date.now(), type, player: player.name, playerId: player.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+    const nuevosEventos = [ev, ...events]
+    let nuevoScore = score
+    let nuevoLineup = lineup
+    if (type === 'goal') { nuevoScore = { ...score, home: score.home + 1 }; setScore(nuevoScore) }
+    if (type === 'yellow') { nuevoLineup = lineup.map(p => p.id === player.id ? { ...p, _yellows:(p._yellows||0)+1 } : p); setLineup(nuevoLineup) }
+    if (type === 'red') { nuevoLineup = lineup.map(p => p.id === player.id ? { ...p, _reds:(p._reds||0)+1 } : p); setLineup(nuevoLineup) }
+    if (type === 'goal') { nuevoLineup = lineup.map(p => p.id === player.id ? { ...p, _goals:(p._goals||0)+1 } : p); setLineup(nuevoLineup) }
+    setEvents(nuevosEventos)
+    setActivePlayer(null)
+    persist({ eventos: nuevosEventos, score_home: nuevoScore.home, score_away: nuevoScore.away, lineup: nuevoLineup })
+  }
+
+  // ── Drag & drop ──
+  function findFieldPlayerUnder(clientX, clientY) {
+    const pitch = pitchRef.current
+    if (!pitch) return null
+    const rect = pitch.getBoundingClientRect()
+    const cx = clientX - rect.left, cy = clientY - rect.top
+    const pw = rect.width, ph = rect.height
+    let closest = null, minDist = Infinity
+    const RADIUS = 40
+    lineup.forEach(p => {
+      const pos = positions[p.id]; if (!pos) return
+      const px = (pos.x/100)*pw, py = (pos.y/100)*ph
+      const dist = Math.sqrt((cx-px)**2 + (cy-py)**2)
+      if (dist < RADIUS && dist < minDist) { minDist = dist; closest = p }
+    })
+    return closest
+  }
+
+  function onDragStartField(e, id) {
+    dragRef.current = { id, fromBench:false }
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text', String(id))
+  }
+  function onDragStartBench(e, id) {
+    dragRef.current = { id, fromBench:true }
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text', String(id))
+  }
+  function onDragOverPitch(e) {
+    e.preventDefault()
+    if (!dragRef.current.fromBench) return
+    const under = findFieldPlayerUnder(e.clientX, e.clientY)
+    const newId = under ? under.id : null
+    if (newId !== dragOverFieldId) setDragOverFieldId(newId)
+  }
+  function onDragLeavePitch(e) {
+    const pitch = pitchRef.current
+    if (pitch && !pitch.contains(e.relatedTarget)) setDragOverFieldId(null)
+  }
+  function onDropPitch(e) {
+    e.preventDefault()
+    const drag = dragRef.current
+    if (!drag.id) return
+    const pitch = pitchRef.current
+    if (!pitch) { dragRef.current = { id:null, fromBench:false }; return }
+    const rect = pitch.getBoundingClientRect()
+    const x = Math.max(4, Math.min(96, ((e.clientX-rect.left)/rect.width)*100))
+    const y = Math.max(4, Math.min(96, ((e.clientY-rect.top)/rect.height)*100))
+
+    let nuevoLineup = lineup, nuevoBench = bench, nuevaPos = positions, nuevosEventos = events
+
+    if (drag.fromBench) {
+      const target = findFieldPlayerUnder(e.clientX, e.clientY)
+      if (target) {
+        const incoming = bench.find(p => p.id === drag.id)
+        if (!incoming) { dragRef.current = { id:null, fromBench:false }; setDragOverFieldId(null); return }
+        const targetPos = positions[target.id]
+        nuevoLineup = lineup.filter(p => p.id !== target.id)
+        nuevoBench = [...bench.filter(p => p.id !== drag.id), { ...target, slotPos:undefined }]
+        nuevoLineup = [...nuevoLineup, { ...incoming, slotPos: target.slotPos || incoming.slotPos }]
+        nuevaPos = { ...positions, [incoming.id]: targetPos }
+        delete nuevaPos[target.id]
+        const ev = { id: Date.now(), type:'sub', player:`${incoming.name} ↔ ${target.name}`, playerId: incoming.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+        nuevosEventos = [ev, ...events]
+        showToast(`🔄 Cambio: ${incoming.name.split(' ')[0]} por ${target.name.split(' ')[0]}`, '#10b981')
+      } else {
+        if (lineup.length >= MAX_FIELD) {
+          showToast(`⚠️ Máximo ${MAX_FIELD} jugadores en campo. Arrastra sobre un titular para hacer el cambio.`, '#ef4444')
+          dragRef.current = { id:null, fromBench:false }; setDragOverFieldId(null); return
+        }
+        const incoming = bench.find(p => p.id === drag.id)
+        if (incoming) {
+          nuevoLineup = [...lineup, { ...incoming, slotPos: incoming.slotPos }]
+          nuevoBench = bench.filter(p => p.id !== drag.id)
+          nuevaPos = { ...positions, [incoming.id]: { x, y } }
+          showToast(`✅ ${incoming.name.split(' ')[0]} entra al campo`, '#0f4c75')
+        }
+      }
+    } else {
+      nuevaPos = { ...positions, [drag.id]: { x, y } }
+    }
+
+    setLineup(nuevoLineup); setBench(nuevoBench); setPositions(nuevaPos); setEvents(nuevosEventos)
+    dragRef.current = { id:null, fromBench:false }; setDragOverFieldId(null)
+    persist({ lineup: nuevoLineup, bench: nuevoBench, positions: nuevaPos, eventos: nuevosEventos })
+  }
+
+  function selectPlayer(id) {
+    setActivePlayer(ap => (ap && ap.id === id) ? null : (lineup.find(p => p.id === id) || null))
+  }
+
+  // ── Finalizar ──
+  async function guardarHistorial() {
+    setGuardandoFinal(true)
+    await supabase.from('escuela_partidos').update({
+      estado:'finalizado', vista:'match', mvp, observaciones: matchObs, timer_sec: timerSec,
+      eventos: events, score_home: score.home, score_away: score.away,
+      lineup, bench, positions, updated_at: new Date().toISOString(),
+    }).eq('id', partidoId)
+    setGuardandoFinal(false)
+    setShowFinish(false)
+    alert('✅ Partido guardado en el historial de la escuela.')
+    fetchTodo()
+  }
+
+  async function cargarHistorial() {
+    if (!escuela) return
+    setHistorial('cargando')
+    const { data } = await supabase.from('escuela_partidos').select('*')
+      .eq('escuela_id', escuela.id).eq('estado', 'finalizado')
+      .order('fecha', { ascending:false }).order('created_at', { ascending:false })
+    setHistorial(data || [])
+  }
+
+  if (loading) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+  )
+  if (!profesor) return null
+
+  const NAV = [
+    { v:'setup', l:'Info' }, { v:'convocatoria', l:'Convocatoria' }, { v:'formacion', l:'Formación' },
+    { v:'match', l:'Partido' }, { v:'historial', l:'Historial' },
+  ]
+
+  return (
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'30px' }}>
+      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'12px 14px' }}>
+        <div style={{ maxWidth:'620px', margin:'0 auto' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
+            <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem' }}>← Escuela</button>
+            <div style={{ fontSize:'.72rem', color:S.muted, fontWeight:600 }}>⚽ {escuela?.name}</div>
+          </div>
+          <div style={{ display:'flex', gap:'6px', overflowX:'auto' }}>
+            {NAV.map(n => <button key={n.v} onClick={() => irA(n.v)} style={navBtn(view === n.v)}>{n.l}</button>)}
+          </div>
+        </div>
+      </div>
+
+      {view === 'match' && (
+        <div style={{ background:'rgba(0,0,0,.35)', padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:`0.5px solid ${S.border}` }}>
+          <div style={{ flex:1 }}><div style={{ fontSize:10, color:S.muted }}>Mi equipo</div><div style={{ fontSize:28, fontWeight:900 }}>{score.home}</div></div>
+          <div style={{ fontSize:20, color:S.muted }}>–</div>
+          <div style={{ flex:1, textAlign:'right' }}><div style={{ fontSize:10, color:S.muted }}>{matchInfo.rival || 'Rival'}</div><div style={{ fontSize:28, fontWeight:900 }}>{score.away}</div></div>
+        </div>
+      )}
+
+      <div style={{ maxWidth:'620px', margin:'0 auto', padding:'16px 14px' }}>
+
+        {view === 'setup' && (
+          <div>
+            <div style={{ fontWeight:800, fontSize:'1rem', color:S.cyan, marginBottom:'14px' }}>Información del partido</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
+              <div style={{ gridColumn:'1/-1' }}>
+                <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Rival</label>
+                <input value={matchInfo.rival} onChange={e => guardarMatchInfo('rival', e.target.value)} placeholder="Nombre del equipo rival"
+                  style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
+              </div>
+              <div>
+                <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Fecha</label>
+                <input type="date" value={matchInfo.fecha} onChange={e => guardarMatchInfo('fecha', e.target.value)}
+                  style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
+              </div>
+              <div>
+                <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Hora</label>
+                <input type="time" value={matchInfo.hora} onChange={e => guardarMatchInfo('hora', e.target.value)}
+                  style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
+              </div>
+              <div style={{ gridColumn:'1/-1' }}>
+                <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Torneo / tipo</label>
+                <input value={matchInfo.torneo} onChange={e => guardarMatchInfo('torneo', e.target.value)} placeholder="Ej: Amistoso, Liga infantil..."
+                  style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
+              </div>
+            </div>
+            <div style={{ marginBottom:'20px' }}>
+              <div style={{ fontSize:11, color:S.muted, textTransform:'uppercase', marginBottom:8 }}>Estilo de cancha</div>
+              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                {Object.keys(STYLES).map(s => (
+                  <button key={s} onClick={() => elegirEstilo(s)} style={navBtn(pitchStyle === s)}>{s}</button>
+                ))}
+              </div>
+            </div>
+            <button onClick={() => irA('convocatoria')} style={{ width:'100%', background:'linear-gradient(135deg,#0f4c75,#4a1b8c)', border:`1px solid ${S.cyan}55`, color:'#fff', borderRadius:12, padding:'13px 0', fontWeight:800, fontSize:'.9rem', cursor:'pointer' }}>Siguiente → Convocatoria</button>
+          </div>
+        )}
+
+        {view === 'convocatoria' && (
+          <div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
+              <div style={{ fontWeight:800, fontSize:'1rem', color:S.cyan }}>Convocatoria</div>
+              <div style={{ fontSize:11, color:S.muted }}>{convocados.length} seleccionados</div>
+            </div>
+            {roster.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted, fontSize:'.85rem' }}>Todavía no hay jugadores en la escuela.</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                {roster.map(p => {
+                  const isIn = convocados.includes(p.id)
+                  return (
+                    <div key={p.id} onClick={() => toggleConvocado(p.id)} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'10px 12px', borderRadius:12, cursor:'pointer', background:isIn?S.cyanDim:S.card, border:`1px solid ${isIn?S.cyan+'55':S.border}` }}>
+                      <div style={{ width:38, height:38, borderRadius:'50%', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {(p.photo_face_url||p.photo_url) ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : '👤'}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:700, fontSize:'.85rem' }}>{p.name}</div>
+                        <div style={{ fontSize:'.72rem', fontWeight:700, color:isIn?S.cyan:S.muted, marginTop:2 }}>{isIn ? '✅ Convocado' : '○ No convocado'}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <button onClick={() => irA('formacion')} disabled={convocados.length === 0} style={{ width:'100%', marginTop:'16px', background:'linear-gradient(135deg,#0f4c75,#4a1b8c)', border:`1px solid ${S.cyan}55`, color:'#fff', borderRadius:12, padding:'13px 0', fontWeight:800, fontSize:'.9rem', cursor:'pointer', opacity: convocados.length===0?.5:1 }}>Siguiente → Formación</button>
+          </div>
+        )}
+
+        {view === 'formacion' && (
+          <div>
+            <div style={{ fontWeight:800, fontSize:'1rem', color:S.cyan, marginBottom:'12px' }}>Seleccionar formación</div>
+            <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'8px' }}>
+              {Object.keys(FORMATIONS).map(ft => <button key={ft} onClick={() => elegirFormType(ft)} style={navBtn(formType === ft)}>{ft}</button>)}
+            </div>
+            <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'18px' }}>
+              {Object.keys(FORMATIONS[formType] || {}).map(f => <button key={f} onClick={() => elegirFormation(f)} style={navBtn(formation === f)}>{f}</button>)}
+            </div>
+            <div style={{ position:'relative', width:'min(220px,60vw)', aspectRatio:'600/860', margin:'0 auto 16px', borderRadius:8, overflow:'hidden' }}>
+              <PitchSVG style={pitchStyle}/>
+              {(FORMATIONS[formType]?.[formation] || []).map((s, i) => (
+                <div key={i} style={{ position:'absolute', left:`${s.x}%`, top:`${s.y}%`, transform:'translate(-50%,-50%)', background:POS_COL[s.pos]||'#666', borderRadius:4, padding:'2px 5px', fontSize:8, fontWeight:900, color:'#fff' }}>{s.pos}</div>
+              ))}
+            </div>
+            <div style={{ textAlign:'center', fontSize:12, color:S.muted, marginBottom:'16px' }}>{(FORMATIONS[formType]?.[formation]||[]).length} posiciones · {convocados.length} convocados</div>
+            <button onClick={aplicarFormacion} style={{ width:'100%', background:'linear-gradient(135deg,#10b981,#0f4c75)', border:'none', color:'#fff', borderRadius:12, padding:'14px 0', fontWeight:900, fontSize:'.95rem', cursor:'pointer' }}>⚽ INICIAR PARTIDO</button>
+          </div>
+        )}
+
+        {view === 'match' && (
+          <div>
+            <div style={{ background:'rgba(0,0,0,.3)', borderRadius:12, padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', marginBottom:'10px' }}>
+              <div style={{ fontSize:28, fontWeight:900, color: timerRunning?'#00ff88':S.text, minWidth:70 }}>{fmtTime(timerSec)}</div>
+              {!timerRunning && <button onClick={startTimer} style={{ background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontWeight:700, fontSize:11, cursor:'pointer' }}>▶ {timerSec>0?'Reanudar':'Iniciar'}</button>}
+              {timerRunning && <>
+                <button onClick={pauseTimer} style={{ background:'#f59e0b', color:'#000', border:'none', borderRadius:8, padding:'7px 12px', fontWeight:700, fontSize:11, cursor:'pointer' }}>⏸ Pausar</button>
+                <button onClick={endMatch} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontWeight:700, fontSize:11, cursor:'pointer' }}>⏹ Fin</button>
+              </>}
+              <div style={{ flex:1 }}/>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ fontSize:10, color:S.muted }}>Rival</span>
+                <button onClick={() => { const ns={...score,away:Math.max(0,score.away-1)}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:S.card2, border:'none', color:'#fff', borderRadius:4, width:24, height:24, fontSize:13, cursor:'pointer' }}>−</button>
+                <span style={{ fontSize:16, fontWeight:900, minWidth:16, textAlign:'center' }}>{score.away}</span>
+                <button onClick={() => { const ns={...score,away:score.away+1}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:S.card2, border:'none', color:'#fff', borderRadius:4, width:24, height:24, fontSize:13, cursor:'pointer' }}>+</button>
+              </div>
+            </div>
+
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <div style={{ fontSize:11, color: lineup.length>=MAX_FIELD ? '#f59e0b' : S.muted }}>
+                {lineup.length>=MAX_FIELD ? '⚠️' : '👥'} {lineup.length}/{MAX_FIELD} en campo
+              </div>
+              <button onClick={() => irA('formacion')} style={{ marginLeft:'auto', background:'rgba(255,255,255,.06)', border:`1px solid ${S.border}`, color:S.muted, borderRadius:8, padding:'4px 10px', fontSize:10, cursor:'pointer' }}>Cambiar formación</button>
+            </div>
+
+            <div ref={pitchRef} onDragOver={onDragOverPitch} onDragLeave={onDragLeavePitch} onDrop={onDropPitch}
+              style={{ position:'relative', width:'100%', aspectRatio:'600/860', maxWidth:360, margin:'0 auto', borderRadius:12, overflow:'hidden' }}>
+              <PitchSVG style={pitchStyle}/>
+              <div style={{ position:'absolute', inset:0 }}>
+                {lineup.map(p => {
+                  const pos = positions[p.id] || { x:50, y:50 }
+                  const isSel = activePlayer && activePlayer.id === p.id
+                  const isTarget = dragOverFieldId === p.id
+                  return (
+                    <div key={p.id} draggable onDragStart={e => onDragStartField(e, p.id)} onClick={() => selectPlayer(p.id)}
+                      style={{ position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`, transform:'translate(-50%,-50%)', cursor:'grab', zIndex: isSel?20:10 }}>
+                      <PlayerCard p={p} selected={isSel} dropTarget={isTarget}/>
+                    </div>
+                  )
+                })}
+              </div>
+              {activePlayer && (() => {
+                const pos = positions[activePlayer.id] || { x:50, y:50 }
+                const left = pos.x > 75 ? pos.x-30 : pos.x < 25 ? pos.x+5 : pos.x
+                const top = Math.min(pos.y+10, 78)
+                return (
+                  <div style={{ position:'absolute', left:`${left}%`, top:`${top}%`, transform:'translateX(-50%)', background:'rgba(7,11,22,.98)', border:`1px solid ${S.cyan}66`, borderRadius:10, padding:8, zIndex:50, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, minWidth:168 }}>
+                    <div style={{ gridColumn:'span 3', fontSize:10, color:'rgba(255,255,255,.5)', textAlign:'center', paddingBottom:4, borderBottom:'1px solid rgba(255,255,255,.1)', marginBottom:2 }}>{activePlayer.name}</div>
+                    {EV_ITEMS.map(({ t, l }) => <button key={t} onClick={() => addEvent(t, activePlayer)} style={evBtn}>{l}</button>)}
+                    <button onClick={() => setActivePlayer(null)} style={{ gridColumn:'span 3', background:'rgba(239,68,68,.18)', border:'1px solid rgba(239,68,68,.4)', color:'#ef4444', borderRadius:6, padding:4, fontSize:10, fontWeight:700, cursor:'pointer' }}>✕ Cerrar</button>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div style={{ marginTop:12 }}>
+              <div style={{ fontSize:10, color:S.muted, textTransform:'uppercase', marginBottom:6 }}>
+                Banco de suplentes ({bench.length}) {bench.length>0 && <span style={{ opacity:.7 }}>· arrastra sobre un titular para cambiar</span>}
+              </div>
+              {bench.length > 0 ? (
+                <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'2px 0 6px' }}>
+                  {bench.map(p => (
+                    <div key={p.id} draggable onDragStart={e => onDragStartBench(e, p.id)} style={{ cursor:'grab', flexShrink:0 }} title="Arrastra sobre un titular para hacer el cambio">
+                      <PlayerCard p={p}/>
+                    </div>
+                  ))}
+                </div>
+              ) : <div style={{ fontSize:11, color:S.muted, padding:'10px 0' }}>Sin suplentes disponibles</div>}
+            </div>
+
+            <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'12px', marginTop:14 }}>
+              <div style={{ fontSize:10, color:S.muted, textTransform:'uppercase', marginBottom:6 }}>Resumen</div>
+              {[['⚽ Goles', events.filter(e=>e.type==='goal').length], ['🎯 Asistencias', events.filter(e=>e.type==='assist').length], ['🔄 Cambios', events.filter(e=>e.type==='sub').length], ['🟨 Amarillas', events.filter(e=>e.type==='yellow').length], ['🟥 Rojas', events.filter(e=>e.type==='red').length]].map(([l,v]) => (
+                <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}><span style={{ color:S.text2 }}>{l}</span><span style={{ fontWeight:700 }}>{v}</span></div>
+              ))}
+            </div>
+
+            <div style={{ marginTop:14 }}>
+              <div style={{ fontSize:10, color:S.muted, textTransform:'uppercase', marginBottom:6 }}>Línea de tiempo</div>
+              {events.length === 0 ? (
+                <div style={{ fontSize:11, color:S.muted, textAlign:'center', padding:'14px 0' }}>Sin eventos</div>
+              ) : events.slice(0, 30).map(ev => (
+                <div key={ev.id} style={{ display:'flex', alignItems:'flex-start', gap:6, padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,.06)', fontSize:12 }}>
+                  <span style={{ color:S.cyan, fontFamily:'monospace', minWidth:28 }}>{ev.min}'</span>
+                  <span>{EV_ICONS[ev.type] || ''}</span>
+                  <span style={{ color:S.text2 }}>{ev.player}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setShowFinish(true)} style={{ width:'100%', marginTop:16, background:'linear-gradient(135deg,#ef4444,#991b1b)', border:'none', color:'#fff', borderRadius:12, padding:'13px 0', fontWeight:900, fontSize:'.85rem', letterSpacing:1, cursor:'pointer' }}>FINALIZAR PARTIDO</button>
+          </div>
+        )}
+
+        {view === 'historial' && (
+          <div>
+            <div style={{ fontWeight:800, fontSize:'1rem', color:S.cyan, marginBottom:'14px' }}>Historial de partidos</div>
+            {historial === 'cargando' || historial === null ? (
+              <div style={{ textAlign:'center', padding:'30px', color:S.muted, fontSize:'.85rem' }}>Cargando...</div>
+            ) : historial.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted, fontSize:'.85rem' }}>Todavía no hay partidos guardados.</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                {historial.map(h => (
+                  <div key={h.id} onClick={() => setVerDetalle(verDetalle?.id === h.id ? null : h)} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'12px 14px', cursor:'pointer' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:'.85rem' }}>vs {h.rival || 'Rival'}</div>
+                        <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2 }}>{h.fecha} · {h.torneo}</div>
+                      </div>
+                      <div style={{ fontSize:'1.1rem', fontWeight:900, color:S.cyan }}>{h.score_home} – {h.score_away}</div>
+                    </div>
+                    {verDetalle?.id === h.id && (
+                      <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${S.border}` }}>
+                        <div style={{ fontSize:11, color:S.muted, marginBottom:6 }}>Duración: {fmtTime(h.timer_sec||0)}</div>
+                        {h.mvp?.first && (
+                          <div style={{ fontSize:12, marginBottom:8 }}>
+                            🥇 MVP: {(h.lineup||[]).find(p => String(p.id) === String(h.mvp.first))?.name || '—'}
+                          </div>
+                        )}
+                        {h.observaciones && <div style={{ fontSize:11.5, color:S.text2, marginBottom:8, fontStyle:'italic' }}>"{h.observaciones}"</div>}
+                        <div style={{ fontSize:10, color:S.muted, textTransform:'uppercase', marginBottom:4 }}>Eventos</div>
+                        {(h.eventos||[]).slice(0,20).map(ev => (
+                          <div key={ev.id} style={{ display:'flex', gap:6, fontSize:11.5, padding:'3px 0' }}>
+                            <span style={{ color:S.cyan, fontFamily:'monospace', minWidth:26 }}>{ev.min}'</span>
+                            <span>{EV_ICONS[ev.type]||''}</span>
+                            <span style={{ color:S.text2 }}>{ev.player}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {toast && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:toast.color, color:'#fff', padding:'10px 22px', borderRadius:10, fontWeight:700, fontSize:13, zIndex:999, boxShadow:'0 4px 20px rgba(0,0,0,.5)' }}>{toast.msg}</div>
+      )}
+
+      {showFinish && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.87)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
+          <div style={{ background:'linear-gradient(135deg,#090f1e,#131f35)', border:`2px solid ${S.cyan}55`, borderRadius:16, padding:22, width:'min(440px,100%)', maxHeight:'88vh', overflowY:'auto' }}>
+            <div style={{ fontSize:18, fontWeight:900, color:S.cyan, marginBottom:18, textAlign:'center' }}>🏆 RESUMEN DEL PARTIDO</div>
+            <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:18, marginBottom:20, background:'rgba(0,0,0,.3)', borderRadius:12, padding:14 }}>
+              <div style={{ textAlign:'center' }}><div style={{ fontSize:10, color:S.muted }}>Mi equipo</div><div style={{ fontSize:44, fontWeight:900 }}>{score.home}</div></div>
+              <div style={{ fontSize:18, color:S.muted }}>–</div>
+              <div style={{ textAlign:'center' }}><div style={{ fontSize:10, color:S.muted }}>{matchInfo.rival||'Rival'}</div><div style={{ fontSize:44, fontWeight:900 }}>{score.away}</div></div>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Mejores jugadores</div>
+              {[{ k:'first', l:'🥇 MVP' }, { k:'second', l:'🥈 Segundo' }, { k:'third', l:'🥉 Tercero' }].map(({ k, l }) => (
+                <div key={k} style={{ marginBottom:6 }}>
+                  <label style={{ fontSize:10, color:S.muted, display:'block', marginBottom:3 }}>{l}</label>
+                  <select value={mvp[k]||''} onChange={e => setMvp(m => ({ ...m, [k]: e.target.value }))} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:8, padding:'7px 9px', color:S.text, fontSize:12 }}>
+                    <option value="">Seleccionar...</option>
+                    {lineup.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div style={{ background:'rgba(0,0,0,.26)', borderRadius:10, padding:12, marginBottom:16 }}>
+              <div style={{ fontSize:9, color:S.muted, marginBottom:7, textTransform:'uppercase' }}>Estadísticas</div>
+              {[['Duración', fmtTime(timerSec)], ['Goles marcados', events.filter(e=>e.type==='goal').length], ['Cambios', events.filter(e=>e.type==='sub').length], ['Amarillas', events.filter(e=>e.type==='yellow').length], ['Rojas', events.filter(e=>e.type==='red').length]].map(([l,v]) => (
+                <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid rgba(255,255,255,.07)' }}><span style={{ color:S.text2 }}>{l}</span><span style={{ fontWeight:700, color:S.cyan }}>{v}</span></div>
+              ))}
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label style={{ fontSize:10, color:S.muted, display:'block', marginBottom:3, textTransform:'uppercase' }}>Observaciones</label>
+              <textarea value={matchObs} onChange={e => setMatchObs(e.target.value)} placeholder="Incidentes, resumen, comentarios..."
+                style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:8, padding:8, color:S.text, fontSize:12, minHeight:65, resize:'vertical', boxSizing:'border-box' }}/>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setShowFinish(false)} style={{ flex:1, background:'rgba(255,255,255,.07)', border:`1px solid ${S.border}`, color:'#fff', borderRadius:8, padding:'10px 0', fontSize:12, cursor:'pointer' }}>Volver</button>
+              <button onClick={guardarHistorial} disabled={guardandoFinal} style={{ flex:2, background:'linear-gradient(135deg,#10b981,#0f4c75)', border:'none', color:'#fff', borderRadius:8, padding:'10px 0', fontWeight:900, fontSize:12, cursor:'pointer', opacity:guardandoFinal?.7:1 }}>{guardandoFinal ? 'Guardando...' : '💾 GUARDAR EN HISTORIAL'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

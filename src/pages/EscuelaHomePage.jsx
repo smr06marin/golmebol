@@ -164,13 +164,15 @@ export default function EscuelaHomePage() {
                 </button>
               )}
 
-              <div style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:'rgba(255,255,255,.02)', border:`1px dashed ${S.border}`, borderRadius:'14px', color:S.muted }}>
-                <span style={{ fontSize:'1.4rem', opacity:.5 }}>⚽</span>
+              <button onClick={() => navigate('/escuela/partido')}
+                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                <span style={{ fontSize:'1.4rem' }}>⚽</span>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Día de partido</div>
-                  <div style={{ fontSize:'.72rem' }}>Convocatoria, formación y partido en vivo — próximamente</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Convocatoria, formación y partido en vivo</div>
                 </div>
-              </div>
+                <span style={{ color:S.muted }}>→</span>
+              </button>
             </div>
           </div>
         )}
