@@ -25,6 +25,7 @@ const AdminNoticiasPage       = lazy(() => import('./pages/admin/AdminNoticiasPa
 const AdminRecordsPage        = lazy(() => import('./pages/admin/AdminRecordsPage'))
 const AdminArbitrosPage       = lazy(() => import('./pages/admin/AdminArbitrosPage'))
 const AdminUsuariosPage       = lazy(() => import('./pages/admin/AdminUsuariosPage'))
+const AdminPredixPage         = lazy(() => import('./pages/admin/AdminPredixPage'))
 const PlayerTorneoPage        = lazy(() => import('./pages/PlayerTorneoPage'))
 const PlayerApuestasPage      = lazy(() => import('./pages/PlayerApuestasPage'))
 const PredixApuestasPage      = lazy(() => import('./pages/PredixApuestasPage'))
@@ -257,6 +258,7 @@ export default function App() {
             <Route path="records"       element={<AdminRecordsPage/>}/>
             <Route path="arbitros"      element={<AdminArbitrosPage/>}/>
             <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
+            <Route path="predix"        element={<AdminPredixPage/>}/>
           </Route>
 
           {/* Página pública de torneo — sin login */}

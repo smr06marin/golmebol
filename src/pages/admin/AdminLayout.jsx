@@ -1,5 +1,5 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog } from 'lucide-react'
+import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, Ticket } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -13,6 +13,7 @@ const MENU_COMPLETO = [
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias' },
+  { icon: <Ticket size={22}/>,       label: 'PREDIX',      ruta: '/admin/predix',    soloAdmin: true },
   { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records',   soloAdmin: true },
   { icon: <UserCheck size={22}/>,    label: 'ÁRBITROS',   ruta: '/admin/arbitros',  soloAdmin: true },
   { icon: <UserCog size={22}/>,      label: 'USUARIOS',   ruta: '/admin/usuarios',  soloAdmin: true },
