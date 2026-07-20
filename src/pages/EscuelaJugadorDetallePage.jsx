@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
+import FichaEvolucion from '../components/FichaEvolucion'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -12,6 +13,7 @@ const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, 
 const lbl = { fontSize:'.7rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'.05em' }
 
 const TIPOS_SANGRE = ['O+','O-','A+','A-','B+','B-','AB+','AB-']
+const POSICIONES = ['Portero','Defensa','Mediocampista','Delantero','Cierre','Ala','Pívot']
 const STAT_KEYS = ['goles_escuela','asistencias_escuela','amarillas_escuela','rojas_escuela','partidos_escuela','mvp_escuela']
 const STAT_LABELS = { goles_escuela:'Goles', asistencias_escuela:'Asistencias', amarillas_escuela:'Amarillas', rojas_escuela:'Rojas', partidos_escuela:'Partidos', mvp_escuela:'MVP' }
 
@@ -160,11 +162,37 @@ export default function EscuelaJugadorDetallePage() {
             </div>
 
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:14, padding:16, marginBottom:14 }}>
-              <div style={{ fontWeight:700, fontSize:'.88rem', marginBottom:12 }}>Tipo de sangre</div>
-              <select value={jugador.tipo_sangre || ''} onChange={e => handleGuardarCampo('tipo_sangre', e.target.value)} style={inp}>
-                <option value="">Sin definir</option>
-                {TIPOS_SANGRE.map(t => <option key={t}>{t}</option>)}
-              </select>
+              <div style={{ fontWeight:700, fontSize:'.88rem', marginBottom:12 }}>Datos básicos</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div>
+                  <label style={lbl}>Tipo de sangre</label>
+                  <select value={jugador.tipo_sangre || ''} onChange={e => handleGuardarCampo('tipo_sangre', e.target.value)} style={inp}>
+                    <option value="">Sin definir</option>
+                    {TIPOS_SANGRE.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Posición</label>
+                  <select value={jugador.posicion || ''} onChange={e => handleGuardarCampo('posicion', e.target.value)} style={inp}>
+                    <option value="">Sin definir</option>
+                    {POSICIONES.map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Pie dominante</label>
+                  <select value={jugador.pie_dominante || ''} onChange={e => handleGuardarCampo('pie_dominante', e.target.value)} style={inp}>
+                    <option value="">Sin definir</option>
+                    <option value="derecho">Derecho</option><option value="izquierdo">Izquierdo</option><option value="ambidiestro">Ambidiestro</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Años jugando fútbol</label>
+                  <input type="number" min="0" step="0.5" value={jugador.anios_jugando ?? ''}
+                    onChange={e => setJugador(j => ({ ...j, anios_jugando:e.target.value }))}
+                    onBlur={e => handleGuardarCampo('anios_jugando', e.target.value === '' ? null : Number(e.target.value))}
+                    style={inp}/>
+                </div>
+              </div>
             </div>
 
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:14, padding:16, marginBottom:14 }}>
@@ -219,6 +247,8 @@ export default function EscuelaJugadorDetallePage() {
                 </div>
               ))}
             </div>
+
+            <FichaEvolucion jugadorId={id} editable/>
           </div>
         )}
       </div>

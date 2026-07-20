@@ -11,8 +11,9 @@ const S = {
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'.05em' }
 
-const EMPTY = { name:'', fecha_nacimiento:'', numero_cedula:'', tipo_sangre:'', genero:'', telefono:'', acudiente_nombre:'', acudiente_telefono:'' }
+const EMPTY = { name:'', fecha_nacimiento:'', numero_cedula:'', tipo_sangre:'', genero:'', telefono:'', acudiente_nombre:'', acudiente_telefono:'', posicion:'', pie_dominante:'', anios_jugando:'' }
 const TIPOS_SANGRE = ['O+','O-','A+','A-','B+','B-','AB+','AB-']
+const POSICIONES = ['Portero','Defensa','Mediocampista','Delantero','Cierre','Ala','Pívot']
 
 function calcularEdad(fecha) {
   if (!fecha) return null
@@ -70,6 +71,7 @@ export default function EscuelaJugadoresPage() {
       name: j.name || '', fecha_nacimiento: j.fecha_nacimiento || '', numero_cedula: j.numero_cedula || '',
       tipo_sangre: j.tipo_sangre || '', genero: j.genero || '', telefono: j.telefono || '',
       acudiente_nombre: j.acudiente_nombre || '', acudiente_telefono: j.acudiente_telefono || '',
+      posicion: j.posicion || '', pie_dominante: j.pie_dominante || '', anios_jugando: j.anios_jugando ?? '',
     })
     setEditId(j.id); setShowForm(true)
   }
@@ -99,8 +101,10 @@ export default function EscuelaJugadoresPage() {
     if (!form.fecha_nacimiento)        return setError('La fecha de nacimiento es obligatoria')
     setGuardando(true)
 
+    const payload = { ...form, anios_jugando: form.anios_jugando === '' ? null : Number(form.anios_jugando), pie_dominante: form.pie_dominante || null, posicion: form.posicion || null }
+
     if (editId) {
-      const { error: errUpd } = await supabase.from('players').update(form).eq('id', editId)
+      const { error: errUpd } = await supabase.from('players').update(payload).eq('id', editId)
       if (errUpd) { setError('Error al guardar: ' + errUpd.message); setGuardando(false); return }
       await subirFotos(editId)
       setGuardando(false); cerrarForm(); fetchTodo()
@@ -114,7 +118,7 @@ export default function EscuelaJugadoresPage() {
     }
 
     const { data: nuevo, error: errIns } = await supabase.from('players')
-      .insert({ ...form, es_jugador_escuela: !!tiJugador, activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false, fecha_registro: new Date().toISOString() })
+      .insert({ ...payload, es_jugador_escuela: !!tiJugador, activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false, fecha_registro: new Date().toISOString() })
       .select().single()
     if (errIns || !nuevo) { setError('Error al crear: ' + (errIns?.message || '')); setGuardando(false); return }
 
@@ -193,6 +197,9 @@ export default function EscuelaJugadoresPage() {
               <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Opcional"/></div>
               <div><label style={lbl}>Nombre del acudiente</label><input value={form.acudiente_nombre} onChange={e => setForm(f=>({...f,acudiente_nombre:e.target.value}))} style={inp} placeholder="Papá, mamá o acudiente"/></div>
               <div><label style={lbl}>Teléfono del acudiente</label><input value={form.acudiente_telefono} onChange={e => setForm(f=>({...f,acudiente_telefono:e.target.value}))} style={inp} placeholder="Teléfono de contacto"/></div>
+              <div><label style={lbl}>Posición</label><select value={form.posicion} onChange={e => setForm(f=>({...f,posicion:e.target.value}))} style={inp}><option value="">Seleccionar...</option>{POSICIONES.map(p => <option key={p}>{p}</option>)}</select></div>
+              <div><label style={lbl}>Pie dominante</label><select value={form.pie_dominante} onChange={e => setForm(f=>({...f,pie_dominante:e.target.value}))} style={inp}><option value="">Seleccionar...</option><option value="derecho">Derecho</option><option value="izquierdo">Izquierdo</option><option value="ambidiestro">Ambidiestro</option></select></div>
+              <div><label style={lbl}>Años jugando fútbol</label><input type="number" min="0" step="0.5" value={form.anios_jugando} onChange={e => setForm(f=>({...f,anios_jugando:e.target.value}))} style={inp} placeholder="Ej: 2"/></div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'16px' }}>
               <div>
@@ -233,6 +240,7 @@ export default function EscuelaJugadoresPage() {
                 <div style={{ fontWeight:'700', fontSize:'.88rem' }}>{j.name}</div>
                 <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px', display:'flex', gap:'8px', flexWrap:'wrap' }}>
                   {edad !== null && <span>{edad} años{edad < 18 ? ' · menor' : ''}</span>}
+                  {j.posicion && <span>⚽ {j.posicion}</span>}
                   {j.numero_cedula && <span>🪪 {j.numero_cedula}</span>}
                   {j.acudiente_nombre && <span>👪 {j.acudiente_nombre}</span>}
                 </div>

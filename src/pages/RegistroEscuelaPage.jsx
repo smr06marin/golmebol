@@ -11,6 +11,7 @@ const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, 
 const lbl = { fontSize:'.72rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
 
 const TIPOS_SANGRE = ['O+','O-','A+','A-','B+','B-','AB+','AB-']
+const POSICIONES = ['Portero','Defensa','Mediocampista','Delantero','Cierre','Ala','Pívot']
 
 function calcularEdad(fecha) {
   if (!fecha) return null
@@ -22,7 +23,7 @@ function calcularEdad(fecha) {
 }
 
 const EMPTY_ACUDIENTE = { nombre:'', cedula:'', telefono:'' }
-const EMPTY_JUGADOR = { name:'', fecha_nacimiento:'', numero_cedula:'', tipo_sangre:'', genero:'', telefono:'' }
+const EMPTY_JUGADOR = { name:'', fecha_nacimiento:'', numero_cedula:'', tipo_sangre:'', genero:'', telefono:'', posicion:'', pie_dominante:'', anios_jugando:'' }
 
 export default function RegistroEscuelaPage() {
   const { escuelaId } = useParams()
@@ -116,6 +117,8 @@ export default function RegistroEscuelaPage() {
         .insert({
           name: jugador.name.trim(), fecha_nacimiento: jugador.fecha_nacimiento, numero_cedula: tiJugador,
           tipo_sangre: jugador.tipo_sangre || null, genero: jugador.genero || null, telefono: jugador.telefono.trim() || null,
+          posicion: jugador.posicion || null, pie_dominante: jugador.pie_dominante || null,
+          anios_jugando: jugador.anios_jugando === '' ? null : Number(jugador.anios_jugando),
           acudiente_nombre: acudiente.nombre.trim(), acudiente_telefono: acudiente.telefono.trim(),
           es_jugador_escuela: true, activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
           fecha_registro: new Date().toISOString(),
@@ -231,6 +234,24 @@ export default function RegistroEscuelaPage() {
                 <option value="">Seleccionar...</option>
                 {TIPOS_SANGRE.map(t => <option key={t}>{t}</option>)}
               </select>
+            </div>
+            <div>
+              <label style={lbl}>Posición</label>
+              <select value={jugador.posicion} onChange={e => setJugador(j => ({ ...j, posicion:e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                {POSICIONES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Pie dominante</label>
+              <select value={jugador.pie_dominante} onChange={e => setJugador(j => ({ ...j, pie_dominante:e.target.value }))} style={inp}>
+                <option value="">Seleccionar...</option>
+                <option value="derecho">Derecho</option><option value="izquierdo">Izquierdo</option><option value="ambidiestro">Ambidiestro</option>
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Años jugando fútbol</label>
+              <input type="number" min="0" step="0.5" value={jugador.anios_jugando} onChange={e => setJugador(j => ({ ...j, anios_jugando:e.target.value }))} style={inp} placeholder="Opcional"/>
             </div>
           </div>
 

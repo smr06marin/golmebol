@@ -42,8 +42,16 @@ export default function TarjetaEscuelaJugador({ jugador, premios = [], premiosTo
           <div style={{ fontWeight:900, fontSize:'1.05rem', color:S.text }}>{jugador.name}</div>
           <div style={{ fontSize:'.72rem', color:S.muted, marginTop:2 }}>
             {edad !== null && <span>{edad} años</span>}
+            {jugador.posicion && <span> · ⚽ {jugador.posicion}</span>}
             {jugador.tipo_sangre && <span> · 🩸 {jugador.tipo_sangre}</span>}
           </div>
+          {(jugador.pie_dominante || jugador.anios_jugando) && (
+            <div style={{ fontSize:'.68rem', color:S.muted, marginTop:1 }}>
+              {jugador.pie_dominante && <span>🦶 {jugador.pie_dominante}</span>}
+              {jugador.pie_dominante && jugador.anios_jugando ? ' · ' : ''}
+              {jugador.anios_jugando ? <span>{jugador.anios_jugando} años jugando</span> : ''}
+            </div>
+          )}
         </div>
       </div>
 

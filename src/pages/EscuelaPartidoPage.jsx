@@ -133,6 +133,7 @@ export default function EscuelaPartidoPage() {
   const [showFinish, setShowFinish] = useState(false)
   const [mvp, setMvp] = useState({ first:'', second:'', third:'' })
   const [jugaron, setJugaron] = useState([]) // ids de todos los que estuvieron en cancha en algún momento
+  const [statsExtra, setStatsExtra] = useState({}) // { [jugadorId]: { minutos, recuperaciones, pases_acertados, calificacion } } — se llena al finalizar
   const [matchObs, setMatchObs] = useState('')
   const [dragOverFieldId, setDragOverFieldId] = useState(null)
   const [touchDrag, setTouchDrag] = useState(null) // { id, fromBench, clientX, clientY } — drag activo por dedo
@@ -497,6 +498,18 @@ export default function EscuelaPartidoPage() {
     }))
   }
 
+  // Guarda minutos/recuperaciones/pases/calificación cargados a mano en el
+  // resumen final, uno por jugador que estuvo en cancha (tabla escuela_partido_stats).
+  async function guardarStatsPartido() {
+    const filas = jugaron
+      .map(pid => ({ jugador_id: pid, ...statsExtra[pid] }))
+      .filter(f => f.minutos != null || f.recuperaciones != null || f.pases_acertados != null || f.calificacion != null)
+    if (filas.length === 0) return
+    await Promise.all(filas.map(f => supabase.from('escuela_partido_stats')
+      .upsert({ partido_id: partidoId, jugador_id: f.jugador_id, minutos: f.minutos ?? null, recuperaciones: f.recuperaciones ?? null, pases_acertados: f.pases_acertados ?? null, calificacion: f.calificacion ?? null }, { onConflict:'partido_id,jugador_id' })
+    ))
+  }
+
   async function guardarHistorial() {
     setGuardandoFinal(true)
     await supabase.from('escuela_partidos').update({
@@ -505,6 +518,7 @@ export default function EscuelaPartidoPage() {
       lineup, bench, positions, jugaron, torneo_id: torneoId, updated_at: new Date().toISOString(),
     }).eq('id', partidoId)
     try { await actualizarStatsJugadores() } catch {}
+    try { await guardarStatsPartido() } catch {}
     setGuardandoFinal(false)
     setShowFinish(false)
     alert('✅ Partido guardado en el historial de la escuela.')
@@ -848,6 +862,33 @@ export default function EscuelaPartidoPage() {
                 <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid rgba(255,255,255,.07)' }}><span style={{ color:S.text2 }}>{l}</span><span style={{ fontWeight:700, color:S.cyan }}>{v}</span></div>
               ))}
             </div>
+            {jugaron.length > 0 && (
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Estadísticas detalladas por jugador (opcional)</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:220, overflowY:'auto' }}>
+                  {jugaron.map(pid => {
+                    const nombre = roster.find(r => r.id === pid)?.name || '—'
+                    const st = statsExtra[pid] || {}
+                    const upd = (campo, val) => setStatsExtra(s => ({ ...s, [pid]: { ...s[pid], [campo]: val === '' ? null : Number(val) } }))
+                    return (
+                      <div key={pid} style={{ background:'rgba(0,0,0,.26)', borderRadius:8, padding:8 }}>
+                        <div style={{ fontSize:11.5, fontWeight:700, color:S.text, marginBottom:6 }}>{nombre}</div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:5 }}>
+                          <input type="number" min="0" placeholder="Min" value={st.minutos ?? ''} onChange={e => upd('minutos', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Minutos jugados"/>
+                          <input type="number" min="0" placeholder="Rec" value={st.recuperaciones ?? ''} onChange={e => upd('recuperaciones', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Recuperaciones"/>
+                          <input type="number" min="0" placeholder="Pases" value={st.pases_acertados ?? ''} onChange={e => upd('pases_acertados', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Pases acertados"/>
+                          <input type="number" min="1" max="10" step="0.5" placeholder="Nota" value={st.calificacion ?? ''} onChange={e => upd('calificacion', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Calificación del entrenador (1-10)"/>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-around', fontSize:8.5, color:S.muted, marginTop:3 }}>
+                          <span>Minutos</span><span>Recup.</span><span>Pases</span><span>Nota</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom:16 }}>
               <label style={{ fontSize:10, color:S.muted, display:'block', marginBottom:3, textTransform:'uppercase' }}>Observaciones</label>
               <textarea value={matchObs} onChange={e => setMatchObs(e.target.value)} placeholder="Incidentes, resumen, comentarios..."

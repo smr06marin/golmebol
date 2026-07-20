@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
+import FichaEvolucion from '../components/FichaEvolucion'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -78,6 +79,7 @@ export default function AcudientePage() {
               <div key={jugador.id}>
                 {escuelaNombre && <div style={{ fontSize:'.72rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8, textAlign:'center' }}>{escuelaNombre}</div>}
                 <TarjetaEscuelaJugador jugador={jugador} premios={premios} premiosTorneo={premiosTorneo}/>
+                <FichaEvolucion jugadorId={jugador.id}/>
               </div>
             ))}
           </div>
