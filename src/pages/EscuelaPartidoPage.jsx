@@ -132,6 +132,7 @@ export default function EscuelaPartidoPage() {
   const [mvp, setMvp] = useState({ first:'', second:'', third:'' })
   const [matchObs, setMatchObs] = useState('')
   const [dragOverFieldId, setDragOverFieldId] = useState(null)
+  const [touchDrag, setTouchDrag] = useState(null) // { id, fromBench, clientX, clientY } — drag activo por dedo
   const [toast, setToast] = useState(null)
   const [historial, setHistorial] = useState(null)
   const [verDetalle, setVerDetalle] = useState(null)
@@ -335,20 +336,20 @@ export default function EscuelaPartidoPage() {
     const pitch = pitchRef.current
     if (pitch && !pitch.contains(e.relatedTarget)) setDragOverFieldId(null)
   }
-  function onDropPitch(e) {
-    e.preventDefault()
+  // Lógica compartida de soltar (mouse HTML5 DnD y touch en celular llegan aquí)
+  function performDrop(clientX, clientY) {
     const drag = dragRef.current
     if (!drag.id) return
     const pitch = pitchRef.current
     if (!pitch) { dragRef.current = { id:null, fromBench:false }; return }
     const rect = pitch.getBoundingClientRect()
-    const x = Math.max(4, Math.min(96, ((e.clientX-rect.left)/rect.width)*100))
-    const y = Math.max(4, Math.min(96, ((e.clientY-rect.top)/rect.height)*100))
+    const x = Math.max(4, Math.min(96, ((clientX-rect.left)/rect.width)*100))
+    const y = Math.max(4, Math.min(96, ((clientY-rect.top)/rect.height)*100))
 
     let nuevoLineup = lineup, nuevoBench = bench, nuevaPos = positions, nuevosEventos = events
 
     if (drag.fromBench) {
-      const target = findFieldPlayerUnder(e.clientX, e.clientY)
+      const target = findFieldPlayerUnder(clientX, clientY)
       if (target) {
         const incoming = bench.find(p => p.id === drag.id)
         if (!incoming) { dragRef.current = { id:null, fromBench:false }; setDragOverFieldId(null); return }
@@ -383,8 +384,57 @@ export default function EscuelaPartidoPage() {
     persist({ lineup: nuevoLineup, bench: nuevoBench, positions: nuevaPos, eventos: nuevosEventos })
   }
 
+  function onDropPitch(e) {
+    e.preventDefault()
+    performDrop(e.clientX, e.clientY)
+  }
+
   function selectPlayer(id) {
     setActivePlayer(ap => (ap && ap.id === id) ? null : (lineup.find(p => p.id === id) || null))
+  }
+
+  // ── Touch (celular): HTML5 drag-and-drop no funciona con el dedo, así que
+  // se replica la misma lógica a mano con touchstart/touchmove/touchend. Un
+  // toque corto (sin arrastrar) no dispara el drop — así el tap normal para
+  // abrir el menú de eventos sigue funcionando igual que con mouse.
+  function handleTouchStart(e, id, fromBench) {
+    const t = e.touches[0]
+    dragRef.current = { id, fromBench }
+    const startX = t.clientX, startY = t.clientY
+    let moved = false
+    setTouchDrag({ id, fromBench, clientX: t.clientX, clientY: t.clientY })
+
+    function onMove(ev) {
+      const mt = ev.touches[0]
+      if (!mt) return
+      if (Math.hypot(mt.clientX - startX, mt.clientY - startY) > 8) moved = true
+      if (moved) ev.preventDefault()
+      setTouchDrag({ id, fromBench, clientX: mt.clientX, clientY: mt.clientY })
+      if (fromBench) {
+        const under = findFieldPlayerUnder(mt.clientX, mt.clientY)
+        const newId = under ? under.id : null
+        setDragOverFieldId(prev => prev === newId ? prev : newId)
+      }
+    }
+    function onEnd(ev) {
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', onCancel)
+      const ct = ev.changedTouches[0]
+      setTouchDrag(null)
+      if (moved && ct) performDrop(ct.clientX, ct.clientY)
+      else { dragRef.current = { id:null, fromBench:false }; setDragOverFieldId(null) }
+    }
+    function onCancel() {
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', onCancel)
+      setTouchDrag(null)
+      dragRef.current = { id:null, fromBench:false }; setDragOverFieldId(null)
+    }
+    document.addEventListener('touchmove', onMove, { passive:false })
+    document.addEventListener('touchend', onEnd)
+    document.addEventListener('touchcancel', onCancel)
   }
 
   // ── Finalizar ──
@@ -561,12 +611,21 @@ export default function EscuelaPartidoPage() {
               <PitchSVG style={pitchStyle}/>
               <div style={{ position:'absolute', inset:0 }}>
                 {lineup.map(p => {
-                  const pos = positions[p.id] || { x:50, y:50 }
+                  const isDraggingThis = touchDrag && touchDrag.id === p.id && !touchDrag.fromBench
+                  const pos = isDraggingThis && pitchRef.current
+                    ? (() => {
+                        const rect = pitchRef.current.getBoundingClientRect()
+                        return {
+                          x: Math.max(4, Math.min(96, ((touchDrag.clientX-rect.left)/rect.width)*100)),
+                          y: Math.max(4, Math.min(96, ((touchDrag.clientY-rect.top)/rect.height)*100)),
+                        }
+                      })()
+                    : (positions[p.id] || { x:50, y:50 })
                   const isSel = activePlayer && activePlayer.id === p.id
                   const isTarget = dragOverFieldId === p.id
                   return (
-                    <div key={p.id} draggable onDragStart={e => onDragStartField(e, p.id)} onClick={() => selectPlayer(p.id)}
-                      style={{ position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`, transform:'translate(-50%,-50%)', cursor:'grab', zIndex: isSel?20:10 }}>
+                    <div key={p.id} draggable onDragStart={e => onDragStartField(e, p.id)} onTouchStart={e => handleTouchStart(e, p.id, false)} onClick={() => selectPlayer(p.id)}
+                      style={{ position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`, transform:'translate(-50%,-50%)', cursor:'grab', touchAction:'none', zIndex: isSel||isDraggingThis?20:10 }}>
                       <PlayerCard p={p} selected={isSel} dropTarget={isTarget}/>
                     </div>
                   )
@@ -593,7 +652,8 @@ export default function EscuelaPartidoPage() {
               {bench.length > 0 ? (
                 <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'2px 0 6px' }}>
                   {bench.map(p => (
-                    <div key={p.id} draggable onDragStart={e => onDragStartBench(e, p.id)} style={{ cursor:'grab', flexShrink:0 }} title="Arrastra sobre un titular para hacer el cambio">
+                    <div key={p.id} draggable onDragStart={e => onDragStartBench(e, p.id)} onTouchStart={e => handleTouchStart(e, p.id, true)}
+                      style={{ cursor:'grab', flexShrink:0, touchAction:'none', opacity: touchDrag?.id === p.id ? 0.35 : 1 }} title="Arrastra sobre un titular para hacer el cambio">
                       <PlayerCard p={p}/>
                     </div>
                   ))}
@@ -673,6 +733,17 @@ export default function EscuelaPartidoPage() {
       {toast && (
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:toast.color, color:'#fff', padding:'10px 22px', borderRadius:10, fontWeight:700, fontSize:13, zIndex:999, boxShadow:'0 4px 20px rgba(0,0,0,.5)' }}>{toast.msg}</div>
       )}
+
+      {/* Fantasma que sigue al dedo mientras se arrastra un suplente en celular */}
+      {touchDrag && touchDrag.fromBench && (() => {
+        const p = bench.find(b => b.id === touchDrag.id)
+        if (!p) return null
+        return (
+          <div style={{ position:'fixed', left:touchDrag.clientX, top:touchDrag.clientY, transform:'translate(-50%,-50%)', zIndex:999, pointerEvents:'none' }}>
+            <PlayerCard p={p} selected/>
+          </div>
+        )
+      })()}
 
       {showFinish && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.87)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
