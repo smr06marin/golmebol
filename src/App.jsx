@@ -24,6 +24,7 @@ const AdminTarjetasPage       = lazy(() => import('./pages/admin/AdminTarjetasPa
 const AdminNoticiasPage       = lazy(() => import('./pages/admin/AdminNoticiasPage'))
 const AdminRecordsPage        = lazy(() => import('./pages/admin/AdminRecordsPage'))
 const AdminArbitrosPage       = lazy(() => import('./pages/admin/AdminArbitrosPage'))
+const AdminEscuelasPage       = lazy(() => import('./pages/admin/AdminEscuelasPage'))
 const AdminUsuariosPage       = lazy(() => import('./pages/admin/AdminUsuariosPage'))
 const AdminPredixPage         = lazy(() => import('./pages/admin/AdminPredixPage'))
 const PlayerTorneoPage        = lazy(() => import('./pages/PlayerTorneoPage'))
@@ -38,6 +39,9 @@ const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
 const ArbitroPerfilPage       = lazy(() => import('./pages/ArbitroPerfilPage'))
 const ArbitroRankingPage      = lazy(() => import('./pages/ArbitroRankingPage'))
 const EncuestaArbitrosPage    = lazy(() => import('./pages/EncuestaArbitrosPage'))
+const EscuelaHomePage         = lazy(() => import('./pages/EscuelaHomePage'))
+const EscuelaJugadoresPage    = lazy(() => import('./pages/EscuelaJugadoresPage'))
+const EscuelaProfesoresPage   = lazy(() => import('./pages/EscuelaProfesoresPage'))
 
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -159,6 +163,37 @@ function ArbitroRoute({ children }) {
   return children
 }
 
+// Igual que ArbitroRoute pero para el portal de escuelas: solo deja pasar
+// cuentas marcadas como profesor (rol='profesor', es_profesor o
+// es_profesor_coordinador).
+function EscuelaRoute({ children }) {
+  const { user, loading } = useAuthStore()
+  const [estado, setEstado] = useState('cargando') // cargando | ok | no_profesor | sin_perfil
+
+  useEffect(() => {
+    if (loading) return
+    if (!user) { setEstado('sin_perfil'); return }
+    let cancelado = false
+    supabase.from('players').select('rol, es_profesor, es_profesor_coordinador').eq('user_id', user.id).maybeSingle()
+      .then(({ data: p }) => {
+        if (cancelado) return
+        if (!p) setEstado('sin_perfil')
+        else if (p.rol === 'profesor' || p.es_profesor || p.es_profesor_coordinador) setEstado('ok')
+        else setEstado('no_profesor')
+      })
+    return () => { cancelado = true }
+  }, [loading, user])
+
+  if (loading || estado === 'cargando') return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
+      CARGANDO...
+    </div>
+  )
+  if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
+  if (estado === 'no_profesor') return <Navigate to="/jugador" replace/>
+  return children
+}
+
 // Pregunta confirmación antes de salir de Golmebol con el botón "atrás" del
 // celular/navegador, para evitar salidas accidentales que obligan a volver a
 // iniciar sesión. Solo interrumpe cuando ese "atrás" realmente sacaría de la
@@ -256,6 +291,7 @@ export default function App() {
             <Route path="noticias"      element={<AdminNoticiasPage/>}/>
             <Route path="records"       element={<AdminRecordsPage/>}/>
             <Route path="arbitros"      element={<AdminArbitrosPage/>}/>
+            <Route path="escuelas"      element={<AdminEscuelasPage/>}/>
             <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
             <Route path="predix"        element={<AdminPredixPage/>}/>
           </Route>
@@ -282,6 +318,11 @@ export default function App() {
           <Route path="/arbitro/perfil/:id"  element={<ArbitroRoute><ArbitroPerfilPage/></ArbitroRoute>}/>
           <Route path="/arbitro/ranking"     element={<ArbitroRoute><ArbitroRankingPage/></ArbitroRoute>}/>
           <Route path="/arbitro/encuestas"   element={<ArbitroRoute><EncuestaArbitrosPage/></ArbitroRoute>}/>
+
+          {/* Portal escuelas deportivas */}
+          <Route path="/escuela"             element={<EscuelaRoute><EscuelaHomePage/></EscuelaRoute>}/>
+          <Route path="/escuela/jugadores"   element={<EscuelaRoute><EscuelaJugadoresPage/></EscuelaRoute>}/>
+          <Route path="/escuela/profesores"  element={<EscuelaRoute><EscuelaProfesoresPage/></EscuelaRoute>}/>
 
         </Routes>
       </Suspense>

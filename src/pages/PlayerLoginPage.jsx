@@ -169,7 +169,7 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     const { data: p } = await supabase
       .from('players')
-      .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, equipo_deseado')
+      .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, equipo_deseado')
       .eq('numero_cedula', cedula.trim())
       .single()
     setLoading(false)
@@ -245,6 +245,7 @@ export default function PlayerLoginPage() {
       onDone={() => {
         if (player?.es_arbitro_lider) navigate('/arbitro/lider')
         else if (player?.rol === 'arbitro' && !player?.es_arbitro) navigate('/arbitro')
+        else if (player?.rol === 'profesor' || player?.es_profesor || player?.es_profesor_coordinador) navigate('/escuela')
         else navigate('/jugador')
       }}
     />
