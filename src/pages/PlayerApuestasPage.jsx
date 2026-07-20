@@ -199,6 +199,29 @@ function saldoDisponiblePorModo(playerId, modo, allPreds, duelos, partidos, post
 
 const WA_PREDIX = (texto) => `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
 
+// ── Rondas (fechas de apertura/cierre/fin por torneo, las pone el admin) ──
+// Mismo criterio que en el panel de admin: el estado se calcula de las 3
+// fechas, no se confía en un campo guardado que se pueda desactualizar.
+function estadoRonda(r) {
+  const ahora = new Date()
+  if (r.fecha_fin && ahora >= new Date(r.fecha_fin)) return 'finalizada'
+  if (r.fecha_cierre && ahora >= new Date(r.fecha_cierre)) return 'cerrada'
+  if (r.fecha_apertura && ahora >= new Date(r.fecha_apertura)) return 'abierta'
+  return 'proxima'
+}
+
+// La ronda más relevante para mostrarle al jugador ahora mismo: la que está
+// abierta si hay una, si no la próxima a abrir (la de fecha_apertura más
+// cercana), ignorando las ya finalizadas.
+function proximaRondaRelevante(rondas) {
+  const vivas = (rondas || []).filter(r => estadoRonda(r) !== 'finalizada')
+  const abierta = vivas.find(r => estadoRonda(r) === 'abierta')
+  if (abierta) return abierta
+  const futuras = vivas.filter(r => estadoRonda(r) === 'proxima' || estadoRonda(r) === 'cerrada')
+    .sort((a, b) => new Date(a.fecha_apertura) - new Date(b.fecha_apertura))
+  return futuras[0] || null
+}
+
 // Ficha de planes disponibles + mis suscripciones, con botón directo a
 // WhatsApp para pagar (el cobro es manual, lo activa un admin después).
 function ModalPlanesPredix({ planes, misSuscripciones, jugadorNombre, onClose }) {
@@ -412,6 +435,9 @@ export default function PlayerApuestasPage() {
   const [planesPredix,    setPlanesPredix]    = useState([])
   const [modalPlanes,     setModalPlanes]     = useState(false)
 
+  // Rondas (fechas de apertura/cierre por torneo, las pone el admin)
+  const [rondas,          setRondas]          = useState([])
+
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
@@ -423,7 +449,7 @@ export default function PlayerApuestasPage() {
     if (!p || !p.activo_membresia) { navigate('/jugador'); return }
     setPlayer(p)
 
-    const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }, { data: duelosData }, { data: activos }, { data: posturasData }, { data: crucesData }, { data: suscData }, { data: planesData }] = await Promise.all([
+    const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }, { data: duelosData }, { data: activos }, { data: posturasData }, { data: crucesData }, { data: suscData }, { data: planesData }, { data: rondasData }] = await Promise.all([
       supabase.from('matches')
         .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url), tournaments(id,name,modalidad)')
         .order('played_at', { ascending: true })
@@ -441,6 +467,7 @@ export default function PlayerApuestasPage() {
       supabase.from('predix_posturas_cruces').select('*'),
       supabase.from('predix_suscripciones').select('*, predix_planes(nombre, tipo)'),
       supabase.from('predix_planes').select('*').eq('activo', true).order('created_at', { ascending: false }),
+      supabase.from('predix_rondas').select('*, tournaments(name)').order('fecha_apertura', { ascending: true }),
     ])
     setDuelos(duelosData || [])
     setJugadoresTodos((activos || []).filter(pl => pl.id !== p.id && !pl.es_arbitro && pl.rol !== 'arbitro'))
@@ -449,6 +476,7 @@ export default function PlayerApuestasPage() {
     setCruces(crucesData || [])
     setSuscripciones(suscData || [])
     setPlanesPredix(planesData || [])
+    setRondas(rondasData || [])
 
     // Traer MVPs de todos los partidos terminados
     const partidosData = pts || []
@@ -646,6 +674,8 @@ export default function PlayerApuestasPage() {
   const rankingActual = rankingModo === 'pago' ? rankingPago : rankingDemo
   const miRankingActual = rankingActual.findIndex(r => r.id === player.id) + 1
   const misSuscripciones = suscripciones.filter(s => s.player_id === player.id && s.estado === 'activa' && s.fecha_fin >= HOY())
+  const rondaActual = proximaRondaRelevante(rondas)
+  const rondaActualEstado = rondaActual ? estadoRonda(rondaActual) : null
 
   const jugsModal = modal ? jugadores
     .map(j => j.players).filter(Boolean) : []
@@ -1120,6 +1150,24 @@ export default function PlayerApuestasPage() {
           </div>
           <span style={{ color:S.muted }}>→</span>
         </div>
+
+        {/* Próxima ronda (fechas fijadas por el admin) */}
+        {rondaActual && rondaActualEstado !== 'abierta' && (
+          <div style={{ marginTop:'8px', background:'rgba(0,221,208,.06)', border:`1px solid rgba(0,221,208,.25)`, borderRadius:'12px', padding:'10px 14px', display:'flex', alignItems:'center', gap:'10px' }}>
+            <span style={{ fontSize:'1.1rem' }}>🕐</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:'.76rem', fontWeight:'700', color:S.cyan }}>
+                {rondaActualEstado === 'cerrada' ? 'Inscripciones cerradas' : 'Próxima ronda'} · {rondaActual.nombre}
+              </div>
+              <div style={{ fontSize:'.66rem', color:S.muted, marginTop:'1px' }}>
+                {rondaActual.tournaments?.name}
+                {rondaActualEstado === 'proxima'
+                  ? ` · abre el ${new Date(rondaActual.fecha_apertura).toLocaleDateString('es-CO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}`
+                  : ` · vuelve a abrir cuando el admin habilite la siguiente ronda`}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:'4px', padding:'12px 0', position:'sticky', top:0, background:S.navy, zIndex:10 }}>

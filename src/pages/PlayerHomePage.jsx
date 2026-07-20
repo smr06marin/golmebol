@@ -300,6 +300,27 @@ export default function PlayerHomePage() {
       })
     }
 
+    // Notificaciones de aperturas de rondas de Predix (avisadas por el admin
+    // desde el panel — ver AdminPredixPage.jsx / pestaña Rondas)
+    const { data: rondaNotifs } = await supabase
+      .from('player_notifications')
+      .select('*')
+      .eq('player_id', p.id)
+      .eq('tipo', 'predix_ronda')
+      .eq('leida', false)
+    ;(rondaNotifs || []).forEach(n => {
+      const nid = `predix_ronda_${n.id}`
+      if (!dismissed.includes(nid)) {
+        notifsList.push({
+          id: nid, icon: '🎯',
+          titulo: n.titulo,
+          texto: n.mensaje,
+          color: '#00a896', bg: '#f0faf9',
+          accion: { label: 'Ir a Predix', fn: () => navigate('/jugador/apuestas') },
+        })
+      }
+    })
+
     // Aviso informativo: acceso gratis por ahora, suscripción futura
     const nidGratis = 'acceso_gratis_v1'
     if (!dismissed.includes(nidGratis)) {

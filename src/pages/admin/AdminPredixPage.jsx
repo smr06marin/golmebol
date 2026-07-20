@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, Ticket, Users, Search } from 'lucide-react'
+import { Plus, X, Ticket, Users, Search, Calendar, Send } from 'lucide-react'
 
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
@@ -19,6 +19,34 @@ const ESTADO_STYLE = {
   activa:    { bg: '#e6f4ea', color: '#1e8e3e', label: '✅ Activa' },
   vencida:   { bg: '#f1f3f4', color: '#5f6368', label: '⏳ Vencida' },
   cancelada: { bg: '#fce8e6', color: '#d93025', label: '✕ Cancelada' },
+}
+
+// ── Rondas: estado calculado en base a las 3 fechas, no al campo
+// `estado` guardado (mismo criterio que las suscripciones) ─────────────
+function estadoRonda(r) {
+  const ahora = new Date()
+  if (r.fecha_fin && ahora >= new Date(r.fecha_fin)) return 'finalizada'
+  if (r.fecha_cierre && ahora >= new Date(r.fecha_cierre)) return 'cerrada'
+  if (r.fecha_apertura && ahora >= new Date(r.fecha_apertura)) return 'abierta'
+  return 'proxima'
+}
+
+const RONDA_ESTADO_STYLE = {
+  proxima:    { bg: '#f1f3f4', color: '#5f6368', label: '🕐 Próxima' },
+  abierta:    { bg: '#e6f4ea', color: '#1e8e3e', label: '✅ Abierta' },
+  cerrada:    { bg: '#fce8d9', color: '#e8710a', label: '⏳ Cerrada' },
+  finalizada: { bg: '#e8f0fe', color: '#1a73e8', label: '🏁 Finalizada' },
+}
+
+function fmtFechaHora(f) {
+  if (!f) return '—'
+  return new Date(f).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// Días que faltan para que abra una ronda que todavía no abrió; null si no aplica.
+function diasParaApertura(r) {
+  if (!r.fecha_apertura || estadoRonda(r) !== 'proxima') return null
+  return Math.ceil((new Date(r.fecha_apertura) - new Date()) / 86400000)
 }
 
 // ── Modal: crear/editar plan ────────────────────────────────────────────
@@ -295,15 +323,102 @@ function ModalSuscripcion({ jugadores, planes, suscripciones, presetPlayer, onCl
   )
 }
 
+// ── Modal: crear/editar ronda ───────────────────────────────────────────
+function ModalRonda({ ronda, torneos, onClose, onGuardado }) {
+  function toLocalInput(f) { return f ? new Date(f).toISOString().slice(0, 16) : '' }
+  const [form, setForm] = useState(ronda?.id ? {
+    tournament_id: ronda.tournament_id, nombre: ronda.nombre,
+    fecha_apertura: toLocalInput(ronda.fecha_apertura),
+    fecha_cierre: toLocalInput(ronda.fecha_cierre),
+    fecha_fin: toLocalInput(ronda.fecha_fin),
+  } : { tournament_id: '', nombre: '', fecha_apertura: '', fecha_cierre: '', fecha_fin: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  async function handleGuardar() {
+    setError('')
+    if (!form.tournament_id) return setError('Elige el torneo')
+    if (!form.nombre.trim()) return setError('Ponle un nombre a la ronda')
+    if (!form.fecha_apertura || !form.fecha_cierre || !form.fecha_fin) return setError('Completa las 3 fechas')
+    if (new Date(form.fecha_cierre) < new Date(form.fecha_apertura)) return setError('El cierre no puede ser antes de la apertura')
+    if (new Date(form.fecha_fin) < new Date(form.fecha_cierre)) return setError('El fin no puede ser antes del cierre')
+
+    setSaving(true)
+    const data = {
+      tournament_id: form.tournament_id,
+      nombre: form.nombre.trim(),
+      fecha_apertura: new Date(form.fecha_apertura).toISOString(),
+      fecha_cierre: new Date(form.fecha_cierre).toISOString(),
+      fecha_fin: new Date(form.fecha_fin).toISOString(),
+    }
+    const { error: err } = ronda?.id
+      ? await supabase.from('predix_rondas').update(data).eq('id', ronda.id)
+      : await supabase.from('predix_rondas').insert(data)
+    setSaving(false)
+    if (err) return setError('Error al guardar: ' + err.message)
+    onGuardado()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '26px', width: '440px', maxWidth: '100%', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>{ronda?.id ? 'Editar ronda' : 'Nueva ronda de Predix'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label style={lbl}>Torneo</label>
+            <select value={form.tournament_id} onChange={e => setForm(f => ({ ...f, tournament_id: e.target.value }))} style={inp}>
+              <option value="">Selecciona un torneo...</option>
+              {torneos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={lbl}>Nombre de la ronda</label>
+            <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} style={inp} placeholder="Ej: Jornada 5 — Copa Armenia"/>
+          </div>
+
+          <div>
+            <label style={lbl}>Apertura de inscripción</label>
+            <input type="datetime-local" value={form.fecha_apertura} onChange={e => setForm(f => ({ ...f, fecha_apertura: e.target.value }))} style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Cierre de inscripción</label>
+            <input type="datetime-local" value={form.fecha_cierre} onChange={e => setForm(f => ({ ...f, fecha_cierre: e.target.value }))} style={inp}/>
+          </div>
+          <div>
+            <label style={lbl}>Finalización de la ronda</label>
+            <input type="datetime-local" value={form.fecha_fin} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} style={inp}/>
+          </div>
+          <div style={{ fontSize: '.72rem', color: '#5f6368' }}>Entre apertura y cierre los jugadores pueden inscribirse/predecir; entre cierre y fin la ronda sigue corriendo pero ya no se aceptan nuevas predicciones.</div>
+
+          {error && <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{error}</div>}
+
+          <button onClick={handleGuardar} disabled={saving}
+            style={{ padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: saving ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: saving ? .7 : 1 }}>
+            {saving ? 'Guardando...' : ronda?.id ? 'Guardar cambios' : 'Crear ronda'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminPredixPage() {
   const [tab, setTab]                 = useState('planes')
   const [planes, setPlanes]           = useState([])
   const [suscripciones, setSuscripciones] = useState([])
+  const [rondas, setRondas]           = useState([])
   const [jugadores, setJugadores]     = useState([])
   const [torneos, setTorneos]         = useState([])
   const [loading, setLoading]         = useState(true)
   const [modalPlan, setModalPlan]     = useState(null) // null | {} (nuevo) | plan (editar)
   const [modalSusc, setModalSusc]     = useState(null) // null | { presetPlayer }
+  const [modalRonda, setModalRonda]   = useState(null) // null | {} (nueva) | ronda (editar)
+  const [notificando, setNotificando] = useState(null) // id de la ronda que se está notificando
   const [busqSusc, setBusqSusc]       = useState('')
   const [msg, setMsg]                 = useState(null)
 
@@ -311,14 +426,16 @@ export default function AdminPredixPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const [{ data: p }, { data: s }, { data: j }, { data: t }] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: r }, { data: j }, { data: t }] = await Promise.all([
       supabase.from('predix_planes').select('*, tournaments(name)').order('created_at', { ascending: false }),
       supabase.from('predix_suscripciones').select('*, players(name, numero_cedula, photo_url, photo_face_url), predix_planes(nombre, tipo), tournaments(name)').order('created_at', { ascending: false }),
-      supabase.from('players').select('id, name, numero_cedula, photo_url, photo_face_url').order('name'),
+      supabase.from('predix_rondas').select('*, tournaments(name)').order('fecha_apertura', { ascending: true }),
+      supabase.from('players').select('id, name, numero_cedula, photo_url, photo_face_url, activo_membresia').order('name'),
       supabase.from('tournaments').select('id, name').order('created_at', { ascending: false }),
     ])
     setPlanes(p || [])
     setSuscripciones(s || [])
+    setRondas(r || [])
     setJugadores(j || [])
     setTorneos(t || [])
     setLoading(false)
@@ -330,6 +447,34 @@ export default function AdminPredixPage() {
     if (!confirm(`¿Cancelar la suscripción de ${s.players?.name}?`)) return
     await supabase.from('predix_suscripciones').update({ estado: 'cancelada' }).eq('id', s.id)
     showMsg('Suscripción cancelada')
+    fetchTodo()
+  }
+
+  // Manda un aviso (tabla player_notifications, la misma que usan las
+  // notificaciones de "nueva tarjeta") a TODOS los jugadores activos,
+  // avisando que las predicciones de esta ronda ya se pueden hacer.
+  async function handleNotificarApertura(ronda) {
+    const yaNotificada = !!ronda.notificado_at
+    if (!confirm(yaNotificada
+      ? `Ya se notificó esta ronda el ${fmtFechaHora(ronda.notificado_at)}. ¿Reenviar el aviso a todos los jugadores?`
+      : `¿Avisar a todos los jugadores activos que "${ronda.nombre}" se habilita?`)) return
+
+    setNotificando(ronda.id)
+    const activos = jugadores.filter(j => j.activo_membresia)
+    const torneoNombre = ronda.tournaments?.name || 'Golmebol'
+    const mensaje = `Las predicciones de "${ronda.nombre}" (${torneoNombre}) se habilitan el ${fmtFechaHora(ronda.fecha_apertura)} — adelanta tu suscripción para competir por premios.`
+    const filas = activos.map(j => ({
+      player_id: j.id, tipo: 'predix_ronda', titulo: '🎯 Nueva ronda de Predix', mensaje,
+    }))
+    let err = null
+    if (filas.length > 0) {
+      const { error: insErr } = await supabase.from('player_notifications').insert(filas)
+      err = insErr
+    }
+    if (!err) await supabase.from('predix_rondas').update({ notificado_at: new Date().toISOString() }).eq('id', ronda.id)
+    setNotificando(null)
+    if (err) return showMsg('Error al notificar: ' + err.message, 'error')
+    showMsg(`✅ Notificados ${filas.length} jugadores`)
     fetchTodo()
   }
 
@@ -356,6 +501,11 @@ export default function AdminPredixPage() {
           onClose={() => setModalSusc(null)}
           onGuardado={() => { setModalSusc(null); showMsg('Suscripción activada ✓'); fetchTodo() }}/>
       )}
+      {modalRonda !== null && (
+        <ModalRonda ronda={modalRonda.id ? modalRonda : null} torneos={torneos}
+          onClose={() => setModalRonda(null)}
+          onGuardado={() => { setModalRonda(null); showMsg(modalRonda.id ? 'Ronda actualizada ✓' : 'Ronda creada ✓'); fetchTodo() }}/>
+      )}
 
       <div style={{ marginBottom: '20px' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -365,7 +515,7 @@ export default function AdminPredixPage() {
       </div>
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '18px', borderBottom: '1px solid #e8eaed' }}>
-        {[{ id: 'planes', label: 'Planes' }, { id: 'suscripciones', label: 'Suscripciones' }].map(t => (
+        {[{ id: 'planes', label: 'Planes' }, { id: 'suscripciones', label: 'Suscripciones' }, { id: 'rondas', label: 'Rondas' }].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.85rem', fontWeight: tab === t.id ? '700' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent' }}>
             {t.label}
@@ -413,7 +563,7 @@ export default function AdminPredixPage() {
             </div>
           )}
         </div>
-      ) : (
+      ) : tab === 'suscripciones' ? (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ position: 'relative', flex: 1, minWidth: '200px', maxWidth: '280px' }}>
@@ -466,6 +616,63 @@ export default function AdminPredixPage() {
                           Cancelar
                         </button>
                       )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
+            <button onClick={() => setModalRonda({})}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+              <Plus size={14}/> Nueva ronda
+            </button>
+          </div>
+
+          {rondas.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', color: '#9aa0a6' }}>
+              <Calendar size={28} style={{ marginBottom: '8px' }}/>
+              <div>Aún no hay rondas creadas</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {rondas.map(r => {
+                const estado = estadoRonda(r)
+                const es = RONDA_ESTADO_STYLE[estado]
+                const dias = diasParaApertura(r)
+                const porNotificar = estado === 'proxima' && dias !== null && dias <= 7 && !r.notificado_at
+                return (
+                  <div key={r.id} style={{ background: '#fff', border: `1px solid ${porNotificar ? '#f9a825' : '#e8eaed'}`, borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>{r.nombre}</span>
+                          <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 8px' }}>{r.tournaments?.name || 'Torneo'}</span>
+                          <span style={{ fontSize: '.68rem', fontWeight: '700', color: es.color, background: es.bg, borderRadius: '20px', padding: '2px 8px' }}>{es.label}</span>
+                        </div>
+                        <div style={{ fontSize: '.78rem', color: '#5f6368' }}>
+                          Abre {fmtFechaHora(r.fecha_apertura)} · Cierra {fmtFechaHora(r.fecha_cierre)} · Termina {fmtFechaHora(r.fecha_fin)}
+                        </div>
+                        {r.notificado_at && (
+                          <div style={{ fontSize: '.7rem', color: '#1e8e3e', marginTop: '4px' }}>✅ Jugadores notificados el {fmtFechaHora(r.notificado_at)}</div>
+                        )}
+                        {porNotificar && (
+                          <div style={{ fontSize: '.7rem', color: '#e8710a', marginTop: '4px', fontWeight: '600' }}>⚠️ Abre en {dias} día{dias !== 1 ? 's' : ''} — aún no se avisó a los jugadores</div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                        <button onClick={() => setModalRonda(r)}
+                          style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '7px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
+                          Editar
+                        </button>
+                        <button onClick={() => handleNotificarApertura(r)} disabled={notificando === r.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: '5px', background: r.notificado_at ? '#fff' : '#1a73e8', border: r.notificado_at ? '1px solid #1a73e8' : 'none', borderRadius: '8px', padding: '7px 14px', cursor: notificando === r.id ? 'not-allowed' : 'pointer', color: r.notificado_at ? '#1a73e8' : '#fff', fontSize: '.78rem', fontWeight: '700', opacity: notificando === r.id ? .6 : 1 }}>
+                          <Send size={12}/> {notificando === r.id ? 'Enviando...' : r.notificado_at ? 'Reenviar aviso' : 'Notificar apertura'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
