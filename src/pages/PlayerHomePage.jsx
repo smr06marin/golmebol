@@ -118,10 +118,7 @@ export default function PlayerHomePage() {
     // aquí (ej. desde el botón "Ver mis torneos" en su portal de escuela) — por eso
     // ya no se le saca automáticamente de este portal.
 
-    if (!p.activo_membresia || (p.fecha_vencimiento && new Date(p.fecha_vencimiento) < new Date())) {
-      await supabase.auth.signOut(); navigate('/jugador/login'); return
-    }
-
+    // Golmebol es gratis — ya no se saca al jugador por membresía vencida/inactiva.
     setPlayer(p)
     if (p.card_type) setCardType(p.card_type)
 

@@ -191,7 +191,7 @@ export default function ArbitroHomePage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).or('rol.eq.arbitro,es_arbitro.eq.true').single()
     if (!p) { navigate('/jugador/login'); return }
-    if (!p.activo_membresia) { navigate('/jugador/login'); return }
+    // Golmebol es gratis — ya no se saca al árbitro por membresía inactiva.
     setArbitro(p)
 
     const selectCols = '*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'

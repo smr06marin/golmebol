@@ -665,7 +665,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       setLoading(false); return
     }
 
-    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB] = await Promise.all([
+    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB, sancionesDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
@@ -676,8 +676,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       supabase.from('matches').select('live_state, live_state_updated_at, firmas, capitan_local, capitan_visitante').eq('id', partido.id).maybeSingle(),
       // Historial de ediciones hechas DESPUÉS de que la planilla ya estaba cerrada
       supabase.from('match_edit_log').select('*').eq('match_id', partido.id).order('edited_at', { ascending: false }),
+      // Jugadores sancionados: no se les deja aparecer en la planilla de este torneo
+      supabase.from('sanciones').select('player_id, fecha_fin').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
     ])
     setLogEdicion(editLogDB?.data || [])
+
+    // Filtrar jugadores sancionados (sanción de este torneo, o global) — no
+    // pueden salir como opción en la planilla mientras dure la sanción.
+    const hoyIso = new Date().toISOString()
+    const idsSancionados = new Set((sancionesDB?.data || []).filter(s => !s.fecha_fin || s.fecha_fin > hoyIso).map(s => s.player_id))
+    if (idsSancionados.size > 0) {
+      if (jugsL.data) jugsL.data = jugsL.data.filter(r => !idsSancionados.has(r.players?.id))
+      if (jugsV.data) jugsV.data = jugsV.data.filter(r => !idsSancionados.has(r.players?.id))
+    }
 
     // Firmas y capitanes guardados en la BD (de un guardado anterior). Se
     // aplican primero: si el borrador (snapshot) trae unos más recientes,
@@ -2111,7 +2122,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                     {(!anotador||!arbitrosReg.find(a=>a.name===anotador))&&<input value={anotador} onChange={e=>setAnotador(e.target.value)} style={{...inpL,width:'80px',display:'inline',borderBottom:'1px solid #000',marginLeft:'2px'}} placeholder="Nombre..."/>}
                     <div style={{ display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}>
                       <span style={{ fontSize:'8px', color:'#111' }}>FIRMA:</span>
-                      <FirmaSlot label="Anotador" firma={firmas.anotador} onFirmar={() => setFirmaModal('principal-anotador')}/>
+                      <FirmaSlot label="Anonotador" firma={firmas.anotador} onFirmar={() => setFirmaModal('principal-anotador')}/>
                     </div>
                   </td>
                   <td style={cellL}>
@@ -2126,5 +2137,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         </div>
       </div>
     </>
+  )
+}
+  </>
   )
 }

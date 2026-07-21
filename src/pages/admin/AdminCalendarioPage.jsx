@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
 import PlanillaPartido from '../../components/PlanillaPartido'
@@ -50,6 +51,8 @@ function agruparPorJornada(partidos) {
 
 export default function AdminCalendarioPage() {
   const navigate = useNavigate()
+  const { user, rol } = useAuthStore()
+  const esOrganizador = rol?.rol === 'organizador'
   const [searchParams, setSearchParams] = useSearchParams()
   const [partidos,        setPartidos]        = useState([])
   const [loading,         setLoading]         = useState(true)
@@ -60,7 +63,7 @@ export default function AdminCalendarioPage() {
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [abiertos,        setAbiertos]        = useState({})
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => { fetchTodo() }, [rol])
   // La planilla abierta queda marcada en la URL (?planilla=<id>): así, sin
   // importar qué haga el navegador al volver (recargar, matar la pestaña,
   // etc.), se reabre exactamente la misma planilla. Solo el botón "Salir"
@@ -89,6 +92,24 @@ export default function AdminCalendarioPage() {
 
   async function fetchTodo() {
     setLoading(true)
+
+    // El organizador solo ve el calendario de sus propios torneos
+    if (esOrganizador) {
+      const { data: misTorneos } = await supabase.from('tournaments').select('id,name').eq('organizador_id', user?.id)
+      const torneoIds = (misTorneos || []).map(t => t.id)
+      if (torneoIds.length === 0) {
+        setPartidos([]); setTorneos([]); setLoading(false); return
+      }
+      const { data: pts } = await supabase.from('matches')
+        .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+        .in('tournament_id', torneoIds)
+        .order('played_at', { ascending: true })
+      setPartidos(pts || [])
+      setTorneos(misTorneos || [])
+      setLoading(false)
+      return
+    }
+
     const [{ data: pts }, { data: trs }] = await Promise.all([
       supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
@@ -116,8 +137,8 @@ export default function AdminCalendarioPage() {
       {planillaPartido && <PlanillaPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
 
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Calendario Global</h1>
-        <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>Todos los partidos de todos los torneos</p>
+        <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>{esOrganizador ? 'Mi calendario' : 'Calendario Global'}</h1>
+        <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{esOrganizador ? 'Partidos de mis torneos' : 'Todos los partidos de todos los torneos'}</p>
       </div>
 
       {/* Filtros */}
@@ -255,6 +276,9 @@ export default function AdminCalendarioPage() {
           })}
         </div>
       )}
+    </div>
+  )
+}
     </div>
   )
 }

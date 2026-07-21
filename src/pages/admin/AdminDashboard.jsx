@@ -127,16 +127,63 @@ function Section({ title, action, onAction, children }) {
 
 export default function AdminDashboard() {
   const navigate  = useNavigate()
+  const { user, rol } = useAuthStore()
+  const esOrganizador = rol?.rol === 'organizador'
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => { fetchTodo() }, [rol])
 
   async function fetchTodo() {
     try {
     const hoy   = new Date()
     const hoyStr = hoy.toISOString().split('T')[0]
     const en7   = new Date(hoy.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    // ── Organizador: solo ve lo que pasa dentro de SUS propios torneos ──
+    if (esOrganizador) {
+      const { data: misTorneos } = await supabase.from('tournaments')
+        .select('id, name, logo_url, modalidad, season, created_at')
+        .eq('organizador_id', user?.id)
+        .order('created_at', { ascending: false })
+      const torneoIds = (misTorneos || []).map(t => t.id)
+
+      if (torneoIds.length === 0) {
+        setData({ esOrganizador: true, misTorneos: [], totalEquipos: 0, partidosHoy: 0, partidosJugados: 0, ultimosPartidos: [], finalizados: new Set() })
+        setLoading(false)
+        return
+      }
+
+      const [
+        { count: totalEquipos },
+        { count: partidosHoy },
+        { count: partidosJugados },
+        { data: ultimosPartidos },
+        { data: logrosCampeon },
+      ] = await Promise.all([
+        supabase.from('tournament_teams').select('id', { count: 'exact', head: true }).in('tournament_id', torneoIds),
+        supabase.from('matches').select('id', { count: 'exact', head: true }).in('tournament_id', torneoIds)
+          .gte('played_at', hoyStr + 'T00:00:00').lte('played_at', hoyStr + 'T23:59:59'),
+        supabase.from('matches').select('id', { count: 'exact', head: true }).in('tournament_id', torneoIds).eq('status', 'finished'),
+        supabase.from('matches')
+          .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
+          .in('tournament_id', torneoIds).eq('status', 'finished')
+          .order('played_at', { ascending: false }).limit(5),
+        supabase.from('tournament_logros').select('tournament_id').in('tournament_id', torneoIds).eq('tipo', 'campeon'),
+      ])
+
+      setData({
+        esOrganizador: true,
+        misTorneos: misTorneos || [],
+        totalEquipos: totalEquipos || 0,
+        partidosHoy: partidosHoy || 0,
+        partidosJugados: partidosJugados || 0,
+        ultimosPartidos: ultimosPartidos || [],
+        finalizados: new Set((logrosCampeon || []).map(l => l.tournament_id)),
+      })
+      setLoading(false)
+      return
+    }
 
     const [
       { count: totalJugadores },
@@ -183,7 +230,13 @@ export default function AdminDashboard() {
         .limit(3),
     ])
 
+    const torneoIdsRecientes = (torneosActivos || []).map(t => t.id)
+    const { data: logrosCampeon } = torneoIdsRecientes.length
+      ? await supabase.from('tournament_logros').select('tournament_id').in('tournament_id', torneoIdsRecientes).eq('tipo', 'campeon')
+      : { data: [] }
+
     setData({
+      esOrganizador: false,
       totalJugadores:    totalJugadores    || 0,
       jugadoresActivos:  jugadoresActivos  || 0,
       jugadoresSinCuenta: jugadoresSinCuenta || 0,
@@ -195,11 +248,12 @@ export default function AdminDashboard() {
       ultimosPartidos:   ultimosPartidos   || [],
       torneosActivos:    torneosActivos    || [],
       membresiasVencidas: membresiasVencidas || [],
+      finalizados: new Set((logrosCampeon || []).map(l => l.tournament_id)),
     })
     setLoading(false)
     } catch(e) {
       console.error('Dashboard error:', e)
-      setData({ totalJugadores: 0, jugadoresActivos: 0, jugadoresSinCuenta: 0, totalTorneos: 0, totalEquipos: 0, partidosHoy: 0, partidosJugados: 0, porVencer: [], ultimosPartidos: [], torneosActivos: [], membresiasVencidas: [] })
+      setData({ esOrganizador, totalJugadores: 0, jugadoresActivos: 0, jugadoresSinCuenta: 0, totalTorneos: 0, totalEquipos: 0, partidosHoy: 0, partidosJugados: 0, porVencer: [], ultimosPartidos: [], torneosActivos: [], misTorneos: [], membresiasVencidas: [], finalizados: new Set() })
       setLoading(false)
     }
   }
@@ -221,7 +275,107 @@ export default function AdminDashboard() {
 
   if (loading || !data) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
 
-  const { totalJugadores, jugadoresActivos, jugadoresSinCuenta, totalTorneos, totalEquipos, partidosHoy, partidosJugados, porVencer, ultimosPartidos, torneosActivos, membresiasVencidas } = data
+  // ── Vista del organizador: solo su(s) torneo(s) ──
+  if (data.esOrganizador) {
+    const { misTorneos, totalEquipos, partidosHoy, partidosJugados, ultimosPartidos, finalizados } = data
+    return (
+      <div>
+        <div style={{ marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#202124', margin: '0 0 4px' }}>Mi torneo</h1>
+          <p style={{ color: '#5f6368', margin: 0, fontSize: '.85rem' }}>
+            {new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+
+        {misTorneos.length === 0 ? (
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '40px 20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.9rem' }}>
+            Todavía no tienes un torneo creado. <button onClick={() => navigate('/admin/torneos')} style={{ background: 'none', border: 'none', color: '#1a73e8', cursor: 'pointer', fontWeight: '600', fontSize: '.9rem' }}>Crear mi primer torneo →</button>
+          </div>
+        ) : (
+          <>
+            <div className="gm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+              <StatCard icon="🏆" label="Mis torneos"      value={misTorneos.length} sub={`${misTorneos.filter(t => !finalizados.has(t.id)).length} activos`} color="#6c35de" onClick={() => navigate('/admin/torneos')}/>
+              <StatCard icon="⚽" label="Equipos"          value={totalEquipos}     sub="Inscritos en mis torneos"                    color="#1a73e8" onClick={() => navigate('/admin/torneos')}/>
+              <StatCard icon="📅" label="Partidos hoy"     value={partidosHoy}      sub="Programados hoy"                              color="#e8710a" onClick={() => navigate('/admin/calendario')}/>
+              <StatCard icon="✅" label="Partidos jugados" value={partidosJugados}  sub="Finalizados"                                   color="#1e8e3e" onClick={() => navigate('/admin/calendario')}/>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              <Section title="⚽ Últimos partidos" action="Ver calendario" onAction={() => navigate('/admin/calendario')}>
+                {ultimosPartidos.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Sin partidos jugados aún</div>
+                ) : ultimosPartidos.map((p, i) => (
+                  <div key={p.id} style={{ padding: '10px 16px', borderBottom: i < ultimosPartidos.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontSize: '.8rem', color: '#202124', fontWeight: '500', flex: 1, textAlign: 'right', paddingRight: '8px' }}>{p.home?.name}</div>
+                      <div style={{ fontWeight: '700', color: '#202124', background: '#f1f3f4', borderRadius: '6px', padding: '2px 10px', fontSize: '.85rem', flexShrink: 0 }}>
+                        {p.home_score} - {p.away_score}
+                      </div>
+                      <div style={{ fontSize: '.8rem', color: '#202124', fontWeight: '500', flex: 1, paddingLeft: '8px' }}>{p.away?.name}</div>
+                    </div>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center', marginTop: '2px' }}>
+                      {p.tournaments?.name} · {p.played_at && new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                    </div>
+                  </div>
+                ))}
+              </Section>
+
+              <Section title="🏆 Mis torneos" action="Ver todos" onAction={() => navigate('/admin/torneos')}>
+                {misTorneos.map((t, i) => {
+                  const fin = finalizados.has(t.id)
+                  return (
+                    <div key={t.id}
+                      onClick={() => navigate(`/admin/torneos/${t.id}`)}
+                      style={{ padding: '12px 16px', borderBottom: i < misTorneos.length - 1 ? '1px solid #f1f3f4' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#f1f3f4', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                        <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{[t.modalidad, t.season].filter(Boolean).join(' · ')}</div>
+                      </div>
+                      <span style={{ fontSize: '.7rem', color: fin ? '#5f6368' : '#1e8e3e', background: fin ? '#f1f3f4' : '#e6f4ea', borderRadius: '20px', padding: '2px 8px', flexShrink: 0 }}>{fin ? 'Finalizado' : 'Activo'}</span>
+                    </div>
+                  )
+                })}
+              </Section>
+            </div>
+          </>
+        )}
+
+        <div>
+          <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '12px' }}>Acciones rápidas</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+            {[
+              { label: 'Mi torneo',   icon: '🏆', ruta: '/admin/torneos' },
+              { label: 'Calendario',  icon: '📅', ruta: '/admin/calendario' },
+              { label: 'Noticias',    icon: '📰', ruta: '/admin/noticias' },
+            ].map(a => (
+              <button key={a.label} onClick={() => navigate(a.ruta)}
+                style={{
+                  background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px',
+                  padding: '12px', cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', gap: '8px', fontSize: '.8rem',
+                  color: '#202124', fontWeight: '500', transition: 'all .15s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,.06)',
+                }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.1)'}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.06)'}
+              >
+                <span style={{ fontSize: '1.1rem' }}>{a.icon}</span>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Vista del admin principal: todo Golmebol ──
+  const { totalJugadores, jugadoresActivos, jugadoresSinCuenta, totalTorneos, totalEquipos, partidosHoy, partidosJugados, porVencer, ultimosPartidos, torneosActivos, membresiasVencidas, finalizados } = data
 
   return (
     <div>
@@ -320,22 +474,25 @@ export default function AdminDashboard() {
         <Section title="🏆 Torneos" action="Ver todos" onAction={() => navigate('/admin/torneos')}>
           {torneosActivos.length === 0 ? (
             <div style={{ padding: '24px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Sin torneos aún</div>
-          ) : torneosActivos.map((t, i) => (
-            <div key={t.id}
-              onClick={() => navigate(`/admin/torneos/${t.id}`)}
-              style={{ padding: '12px 16px', borderBottom: i < torneosActivos.length - 1 ? '1px solid #f1f3f4' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
-              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#f1f3f4', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
+          ) : torneosActivos.map((t, i) => {
+            const fin = finalizados?.has(t.id)
+            return (
+              <div key={t.id}
+                onClick={() => navigate(`/admin/torneos/${t.id}`)}
+                style={{ padding: '12px 16px', borderBottom: i < torneosActivos.length - 1 ? '1px solid #f1f3f4' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
+                onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#f1f3f4', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                  <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{[t.modalidad, t.season].filter(Boolean).join(' · ')}</div>
+                </div>
+                <span style={{ fontSize: '.7rem', color: fin ? '#5f6368' : '#1e8e3e', background: fin ? '#f1f3f4' : '#e6f4ea', borderRadius: '20px', padding: '2px 8px', flexShrink: 0 }}>{fin ? 'Finalizado' : 'Activo'}</span>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{[t.modalidad, t.season].filter(Boolean).join(' · ')}</div>
-              </div>
-              <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 8px', flexShrink: 0 }}>Activo</span>
-            </div>
-          ))}
+            )
+          })}
         </Section>
       </div>
 
@@ -344,7 +501,7 @@ export default function AdminDashboard() {
         <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '12px' }}>Acciones rápidas</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
           {[
-            { label: 'Nuevo Torneo',  icon: '🏆', ruta: '/admin/crear' },
+            { label: 'Nuevo Torneo',  icon: '🏆', ruta: '/admin/torneos' },
             { label: 'Nuevo Equipo',  icon: '⚽', ruta: '/admin/equipos' },
             { label: 'Nuevo Jugador', icon: '👤', ruta: '/admin/jugadores' },
             { label: 'Tarjetas',      icon: '🃏', ruta: '/admin/tarjetas' },

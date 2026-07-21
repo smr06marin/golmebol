@@ -137,7 +137,6 @@ FASES ELIM ${partido.away?.name}: ${datos.fasesAwayStr}`
 export default function AdminNoticiasPage() {
   const { user, rol } = useAuthStore()
   const esOrganizador = rol?.rol === 'organizador'
-  const [tienePremium, setTienePremium] = useState(true)
   const isMobile = useIsMobile()
 
   const [torneos,   setTorneos]   = useState([])
@@ -178,12 +177,6 @@ export default function AdminNoticiasPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidos])
-  useEffect(() => {
-    if (!esOrganizador) { setTienePremium(true); return }
-    supabase.from('tournaments').select('id').eq('organizador_id', user?.id).eq('premium', true).limit(1)
-      .then(({ data }) => setTienePremium((data || []).length > 0))
-  }, [esOrganizador, user?.id])
-
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3500) }
 
   // Evita gastar otra llamada a la IA por accidente sobre algo que ya se generó.
@@ -201,17 +194,6 @@ export default function AdminNoticiasPage() {
     setTorneos(lista)
     if (lista?.length) setTorneoId(lista[0].id)
   }
-
-  if (esOrganizador && !tienePremium) return (
-    <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px 24px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-      <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>💎</div>
-      <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.05rem', marginBottom: '6px' }}>Las noticias son una función Premium</div>
-      <div style={{ fontSize: '.85rem', color: '#5f6368', maxWidth: '420px', margin: '0 auto' }}>
-        Con el plan Premium de tu torneo puedes generar noticias con IA de tus partidos, llevar las cuentas de dinero y crear nuevas ediciones.
-        Contacta a Golmebol para activarlo.
-      </div>
-    </div>
-  )
 
   async function fetchPartidos() {
     const { data } = await supabase.from('matches')

@@ -105,15 +105,28 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // 2) En 2do plano, sincronizo con la base de datos: jugadores nuevos,
     // fotos, modalidad del torneo, y reviso si hay un borrador remoto más
     // nuevo (por ejemplo si otro árbitro guardó desde otro celular).
-    const [jugsL, jugsV, torn, liveDB] = await Promise.all([
+    const [jugsL, jugsV, torn, liveDB, sancionesDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('modalidad').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
+      // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
+      supabase.from('sanciones').select('player_id, fecha_fin').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
     ])
     const modalidadDB = torn.data?.modalidad
     const dur = modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
     setModalidad(modalidadDB)
+
+    // Un partido ya jugado conserva su alineación histórica tal cual —
+    // la sanción solo bloquea que aparezca como opción hacia adelante.
+    if (partido.status !== 'finished') {
+      const hoyIso = new Date().toISOString()
+      const idsSancionados = new Set((sancionesDB?.data || []).filter(s => !s.fecha_fin || s.fecha_fin > hoyIso).map(s => s.player_id))
+      if (idsSancionados.size > 0) {
+        if (jugsL.data) jugsL.data = jugsL.data.filter(r => !idsSancionados.has(r.players?.id))
+        if (jugsV.data) jugsV.data = jugsV.data.filter(r => !idsSancionados.has(r.players?.id))
+      }
+    }
 
     const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null }))
     let baseLocal = mapJug(jugsL.data)

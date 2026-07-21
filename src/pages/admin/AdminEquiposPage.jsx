@@ -257,7 +257,7 @@ Responde SOLO con el HTML, sin explicaciones ni markdown.`
 
 export default function AdminEquiposPage() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const { user, rol } = useAuthStore()
   const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
   const [equipos,   setEquipos]   = useState([])
   const [form,      setForm]      = useState(EMPTY)
@@ -279,6 +279,12 @@ export default function AdminEquiposPage() {
       formRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [showForm])
+
+  // Los equipos de la plataforma completa son solo del admin principal — el
+  // organizador ve y agrega los equipos de su torneo desde el detalle de su
+  // propio torneo, no desde este listado global.
+  useEffect(() => { if (rol?.rol === 'organizador') navigate('/admin', { replace: true }) }, [rol])
+  if (rol?.rol === 'organizador') return null
 
   async function fetchEquipos() {
     const { data } = await supabase.from('teams').select('*, tournament_player_registrations(id)').order('name')
@@ -479,5 +485,8 @@ export default function AdminEquiposPage() {
         ))}
       </div>
     </div>
+  )
+}
+v>
   )
 }

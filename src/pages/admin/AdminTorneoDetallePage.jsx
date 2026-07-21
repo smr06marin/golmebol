@@ -378,6 +378,7 @@ export default function AdminTorneoDetallePage() {
   const { id } = useParams()
   const { rol } = useAuthStore()
   const esAdminRol = rol?.rol ? rol.rol === 'admin' : true // sin sistema de roles cargado, el admin ve todo
+  const esOrganizador = rol?.rol === 'organizador'
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -395,6 +396,10 @@ export default function AdminTorneoDetallePage() {
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
   const [jugadores, setJugadores] = useState([])
+  const [sanciones,        setSanciones]        = useState([]) // sanciones activas de este torneo (o globales) sobre jugadores del torneo
+  const [modalSuspender,   setModalSuspender]    = useState(null) // registro (j) del jugador a suspender
+  const [formSancion,      setFormSancion]       = useState({ motivo: '', meses: '1' })
+  const [suspendiendo,     setSuspendiendo]      = useState(false)
   const [canchas,   setCanchas]   = useState([])
   const [fechas,    setFechas]    = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -404,6 +409,9 @@ export default function AdminTorneoDetallePage() {
   const [modalPartidoAdmin, setModalPartidoAdmin] = useState(null)
   const [partidoAEliminar, setPartidoAEliminar] = useState(null)
   const [eliminandoPartido, setEliminandoPartido] = useState(false)
+  // Torneo finalizado = ya tiene campeón definido (tournament_logros tipo='campeon').
+  // El organizador deja de ver equipos/jugadores de un torneo una vez finalizado.
+  const [torneoFinalizado, setTorneoFinalizado] = useState(false)
 
   const [goleadores,   setGoleadores]   = useState([])
   const [vallas,        setVallas]        = useState({ opcion1: [], opcion2: [] })
@@ -556,12 +564,12 @@ export default function AdminTorneoDetallePage() {
     setLoading(true)
     // Pintar la página apenas llega el torneo; equipos y partidos llegan
     // en paralelo y van llenando las secciones (clave en celular).
-    const pResto = Promise.all([fetchEquipos(), fetchPartidos()])
+    const pResto = Promise.all([fetchEquipos(), fetchPartidos(), fetchFinalizado()])
     await fetchTorneo()
     setLoading(false)
     await pResto
 
-    Promise.all([fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos()]).catch(() => {})
+    Promise.all([fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos(), fetchSanciones()]).catch(() => {})
 
     ;(async () => {
       try {
@@ -592,6 +600,11 @@ export default function AdminTorneoDetallePage() {
     setEquipos((data || []).map(d => ({ ...d.teams, tournament_team_id: d.id })))
   }
 
+  async function fetchFinalizado() {
+    const { data } = await supabase.from('tournament_logros').select('id').eq('tournament_id', id).eq('tipo', 'campeon').limit(1)
+    setTorneoFinalizado((data || []).length > 0)
+  }
+
   async function fetchPartidos() {
     const { data } = await supabase
       .from('matches')
@@ -604,6 +617,46 @@ export default function AdminTorneoDetallePage() {
   async function fetchJugadores() {
     const { data } = await supabase.from('tournament_player_registrations').select('*, players(*), teams(name)').eq('tournament_id', id)
     setJugadores(data || [])
+  }
+
+  // Sanciones vigentes que aplican a este torneo: las creadas específicamente
+  // para este torneo, o globales (tournament_id null, las pone solo el admin
+  // principal desde la ficha del jugador).
+  async function fetchSanciones() {
+    const { data } = await supabase.from('sanciones').select('*').eq('activa', true).or(`tournament_id.eq.${id},tournament_id.is.null`)
+    const hoy = new Date().toISOString()
+    setSanciones((data || []).filter(s => !s.fecha_fin || s.fecha_fin > hoy))
+  }
+
+  function sancionDeJugador(playerId) {
+    return sanciones.find(s => s.player_id === playerId) || null
+  }
+
+  async function handleSuspenderJugador() {
+    if (!modalSuspender) return
+    if (!formSancion.motivo.trim()) return showMsg('Escribe el motivo de la sanción', 'error')
+    const meses = parseInt(formSancion.meses) || 0
+    setSuspendiendo(true)
+    const fecha_fin = meses > 0 ? new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toISOString() : null
+    const { error } = await supabase.from('sanciones').insert({
+      player_id: modalSuspender.player_id,
+      tournament_id: id,
+      motivo: formSancion.motivo.trim(),
+      fecha_fin,
+      activa: true,
+    })
+    setSuspendiendo(false)
+    if (error) return showMsg('Error al suspender', 'error')
+    showMsg(`${modalSuspender.players?.name || 'Jugador'} suspendido de este torneo ✓`)
+    setModalSuspender(null); setFormSancion({ motivo: '', meses: '1' })
+    fetchSanciones()
+  }
+
+  async function handleLevantarSancion(sancionId) {
+    if (!confirm('¿Levantar esta sanción?')) return
+    await supabase.from('sanciones').update({ activa: false }).eq('id', sancionId)
+    showMsg('Sanción levantada ✓')
+    fetchSanciones()
   }
 
   async function fetchCanchas() {
@@ -1715,7 +1768,19 @@ export default function AdminTorneoDetallePage() {
     setLoadingEquipos(false)
   }
 
+  // El organizador necesita que Golmebol le habilite cupo de equipos por
+  // WhatsApp para este torneo específico (el admin lo sube desde "Editar
+  // torneo"). El admin principal nunca tiene este límite.
+  function cupoEquiposAlcanzado() {
+    if (!esOrganizador) return false
+    return equipos.length >= (torneo?.equipos_permitidos || 0)
+  }
+  function avisarCupoEquipos() {
+    showMsg(`Alcanzaste el cupo de equipos habilitado para este torneo (${torneo?.equipos_permitidos || 0}). Escríbenos por WhatsApp para que Golmebol te habilite más.`, 'error')
+  }
+
   async function handleAgregarEquipo(equipo) {
+    if (cupoEquiposAlcanzado()) return avisarCupoEquipos()
     const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: equipo.id })
     if (error) return showMsg('Error al agregar equipo', 'error')
     showMsg(`${equipo.name} agregado al torneo ✓`); cerrarModalEquipo(); fetchEquipos()
@@ -1742,6 +1807,7 @@ export default function AdminTorneoDetallePage() {
   // Crea el equipo (con su representante y escudo) y lo inscribe en el torneo en el mismo paso
   // Inscribir al torneo un equipo que YA existe (evita duplicarlo y conserva su historia)
   async function usarEquipoExistente(e) {
+    if (cupoEquiposAlcanzado()) return avisarCupoEquipos()
     const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: e.id })
     if (error) return showMsg('No se pudo inscribir (¿ya está en el torneo?)', 'error')
     showMsg(`${e.name} inscrito en el torneo ✓ — se conserva toda su historia`)
@@ -1749,6 +1815,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleCrearEquipoYAgregar(forzar = false) {
+    if (cupoEquiposAlcanzado()) return avisarCupoEquipos()
     if (!nuevoEquipoForm.name.trim())                   return showMsg('El nombre del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_nombre.trim())   return showMsg('El dueño/representante del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_cedula.trim())   return showMsg('La cédula del dueño es obligatoria', 'error')
@@ -2069,6 +2136,13 @@ export default function AdminTorneoDetallePage() {
               ))}
               <div><label style={labelStyle}>Modalidad</label><select value={formTorneo.modalidad || ''} onChange={e => setFormTorneo(p => ({ ...p, modalidad: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option><option>Fútbol 5</option><option>Fútbol 7</option><option>Fútbol 11</option></select></div>
               <div><label style={labelStyle}>Género</label><select value={formTorneo.genero || ''} onChange={e => setFormTorneo(p => ({ ...p, genero: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option><option>Masculino</option><option>Femenino</option><option>Mixto</option></select></div>
+              {esAdminRol && torneo.organizador_id && (
+                <div>
+                  <label style={labelStyle}>Cupo de equipos habilitados (organizador)</label>
+                  <input type="number" min="0" value={formTorneo.equipos_permitidos ?? 0} onChange={e => setFormTorneo(p => ({ ...p, equipos_permitidos: parseInt(e.target.value) || 0 }))} style={inputStyle}/>
+                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Cuántos equipos puede crear/agregar el organizador en este torneo. Sube este número cuando pida más por WhatsApp.</div>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleGuardarTorneo} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar</button>
@@ -2266,7 +2340,7 @@ export default function AdminTorneoDetallePage() {
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
             </div>
           </div>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0 }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>
@@ -2276,7 +2350,7 @@ export default function AdminTorneoDetallePage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', flexWrap: 'wrap' }}>
-        {TABS.filter(t => t.id !== 'finanzas' || finanzasActivas).map(t => (
+        {TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado)).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
             {t.icon} {t.label}
@@ -2834,15 +2908,29 @@ export default function AdminTorneoDetallePage() {
       )}
 
       {/* ── TAB EQUIPOS ── */}
-      {tab === 'equipos' && (
+      {tab === 'equipos' && (esOrganizador && torneoFinalizado ? (
+        <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
+          <Trophy size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
+          <div>Este torneo ya finalizó — los equipos y jugadores ya no están disponibles.</div>
+        </div>
+      ) : (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ fontSize: '.8rem', color: '#9aa0a6' }}>{equipos.length} equipo{equipos.length!==1?'s':''} activos</div>
+            <div style={{ fontSize: '.8rem', color: '#9aa0a6' }}>
+              {equipos.length} equipo{equipos.length!==1?'s':''} activos
+              {esOrganizador && (
+                <span style={{ marginLeft: '8px', fontWeight: '600', color: cupoEquiposAlcanzado() ? '#d93025' : '#5f6368' }}>
+                  · Cupo {equipos.length}/{torneo?.equipos_permitidos || 0}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => setVerDesact(!verDesact)}
-                style={{ padding: '6px 14px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
-                {verDesact ? 'Ocultar desactivados' : 'Ver desactivados'}
-              </button>
+              {!esOrganizador && (
+                <button onClick={() => setVerDesact(!verDesact)}
+                  style={{ padding: '6px 14px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
+                  {verDesact ? 'Ocultar desactivados' : 'Ver desactivados'}
+                </button>
+              )}
               <button onClick={() => setShowAgregarEquipo(true)}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
                 <Plus size={16}/> Agregar equipo
@@ -2897,7 +2985,7 @@ export default function AdminTorneoDetallePage() {
                               } },
                             { label: 'Poster bienvenida', icon: '🖼️', action: () => { setPosterEquipo(e); setMenuEquipoId(null) } },
                             { label: 'Uniforme',          icon: '👕', action: () => { setUniformeEquipo(e); setMenuEquipoId(null) } },
-                            { label: 'Desactivar equipo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' },
+                            ...(esOrganizador ? [] : [{ label: 'Desactivar equipo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' }]),
                           ].map((op, idx) => (
                             <button key={idx} onClick={op.action}
                               style={{ width: '100%', padding: '9px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.875rem', color: op.color||'#202124', textAlign: 'left' }}
@@ -2927,8 +3015,9 @@ export default function AdminTorneoDetallePage() {
                           <div style={{ display:'flex', flexDirection:'column', gap:'5px', marginBottom:'10px' }}>
                             {jugsActivos.map(j => {
                               const p = j.players || {}
+                              const sancion = sancionDeJugador(j.player_id)
                               return (
-                                <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border:'1px solid #e8eaed' }}>
+                                <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border: sancion ? '1px solid #fad2cf' : '1px solid #e8eaed' }}>
                                   <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
                                     {p.photo_face_url || p.photo_url
                                       ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
@@ -2937,20 +3026,40 @@ export default function AdminTorneoDetallePage() {
                                   <div style={{ flex:1, minWidth:0 }}>
                                     <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
                                     <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
+                                    {sancion && (
+                                      <div style={{ fontSize:'.65rem', color:'#d93025', fontWeight:'600', marginTop:'2px' }}>
+                                        🚫 Sancionado{sancion.fecha_fin ? ` hasta ${new Date(sancion.fecha_fin).toLocaleDateString('es-CO')}` : ' (indefinido)'} — {sancion.motivo}
+                                      </div>
+                                    )}
                                   </div>
-                                  <button onClick={async () => {
-                                    if (!confirm('¿Desactivar a ' + p.name + ' del equipo en este torneo? Sus estadísticas se conservan.')) return
-                                    await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
-                                    fetchJugadores()
-                                  }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
-                                    Desactivar
-                                  </button>
+                                  {sancion ? (
+                                    esAdminRol && (
+                                      <button onClick={() => handleLevantarSancion(sancion.id)}
+                                        style={{ background:'#e6f4ea', border:'1px solid #ceead6', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1e8e3e', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                        Levantar sanción
+                                      </button>
+                                    )
+                                  ) : (
+                                    <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
+                                      style={{ background:'#fff3e0', border:'1px solid #ffcc80', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#e8710a', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                      Suspender
+                                    </button>
+                                  )}
+                                  {!esOrganizador && (
+                                    <button onClick={async () => {
+                                      if (!confirm('¿Desactivar a ' + p.name + ' del equipo en este torneo? Sus estadísticas se conservan.')) return
+                                      await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
+                                      fetchJugadores()
+                                    }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
+                                      Desactivar
+                                    </button>
+                                  )}
                                 </div>
                               )
                             })}
                           </div>
                         )}
-                        {jugsDesact.length > 0 && (
+                        {jugsDesact.length > 0 && !esOrganizador && (
                           <div>
                             <div style={{ fontSize:'.68rem', fontWeight:'700', color:'#9aa0a6', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }}>🚫 Desactivados</div>
                             <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>
@@ -2989,7 +3098,7 @@ export default function AdminTorneoDetallePage() {
           )}
 
           {/* Equipos desactivados */}
-          {verDesact && (
+          {verDesact && !esOrganizador && (
             <div>
               <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#9aa0a6', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 🚫 Equipos desactivados
@@ -3001,8 +3110,40 @@ export default function AdminTorneoDetallePage() {
           {/* Modales poster y uniforme */}
           {posterEquipo   && <ModalPosterEquipo   equipo={posterEquipo}   onClose={() => setPosterEquipo(null)}/>}
           {uniformeEquipo && <ModalUniformeEquipo equipo={uniformeEquipo} onClose={() => setUniformeEquipo(null)}/>}
+
+          {/* Modal suspender jugador — la sanción queda solo para este torneo */}
+          {modalSuspender && (
+            <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
+              onClick={e => e.target === e.currentTarget && setModalSuspender(null)}>
+              <div style={{ background:'#fff', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'380px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
+                <div style={{ fontWeight:'700', fontSize:'.95rem', color:'#202124', marginBottom:'4px' }}>🚫 Suspender jugador</div>
+                <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'18px' }}>{modalSuspender.players?.name} — solo queda sancionado en este torneo. Para levantar la sanción hay que escribirle a Golmebol.</div>
+                <div style={{ marginBottom:'12px' }}>
+                  <label style={labelStyle}>Motivo</label>
+                  <textarea value={formSancion.motivo} onChange={e => setFormSancion(f => ({ ...f, motivo: e.target.value }))} rows={3} style={{ ...inputStyle, resize:'vertical', fontFamily:'inherit' }} placeholder="Ej: agresión a un árbitro en la jornada 5"/>
+                </div>
+                <div style={{ marginBottom:'18px' }}>
+                  <label style={labelStyle}>Duración</label>
+                  <select value={formSancion.meses} onChange={e => setFormSancion(f => ({ ...f, meses: e.target.value }))} style={inputStyle}>
+                    <option value="1">1 mes</option>
+                    <option value="2">2 meses</option>
+                    <option value="3">3 meses</option>
+                    <option value="6">6 meses</option>
+                    <option value="12">12 meses</option>
+                    <option value="0">Indefinida</option>
+                  </select>
+                </div>
+                <div style={{ display:'flex', gap:'8px' }}>
+                  <button onClick={() => setModalSuspender(null)} style={{ flex:1, padding:'10px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.85rem' }}>Cancelar</button>
+                  <button onClick={handleSuspenderJugador} disabled={suspendiendo} style={{ flex:1, padding:'10px', background: suspendiendo ? '#dadce0' : '#d93025', border:'none', borderRadius:'8px', cursor: suspendiendo?'not-allowed':'pointer', color:'#fff', fontSize:'.85rem', fontWeight:'700' }}>
+                    {suspendiendo ? 'Suspendiendo...' : 'Suspender'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      ))}
 
       {/* ── TAB ESTADÍSTICAS ── */}
       {tab === 'estadisticas' && (
@@ -3588,7 +3729,7 @@ export default function AdminTorneoDetallePage() {
             {/* Movimientos registrados (pagos y deudas) */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Movimientos registrados</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-              {pagosRegistrados.length === 0 ? (
+                         {pagosRegistrados.length === 0 ? (
                 <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay movimientos — usa los botones 💵 Pago o ➖ Deuda de cada equipo</div>
               ) : pagosRegistrados.map((mv, i) => (
                 <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none' }}>

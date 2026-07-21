@@ -1,19 +1,18 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { PlusCircle, Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, Ticket, GraduationCap } from 'lucide-react'
+import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, Ticket, GraduationCap } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 const MENU_COMPLETO = [
-  { icon: <PlusCircle size={22}/>,   label: 'CREAR',      ruta: '/admin/crear' },
   { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos' },
-  { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos' },
-  { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores' },
+  { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true },
+  { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true },
   { icon: <CalendarDays size={22}/>, label: 'CALENDARIO', ruta: '/admin/calendario' },
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias' },
-  { icon: <Ticket size={22}/>,       label: 'PREDIX',      ruta: '/admin/predix',    soloAdmin: true },
+  { icon: <Ticket size={22}/>,       label: 'PREDIX',      ruta: '/admin/predix' },
   { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records',   soloAdmin: true },
   { icon: <UserCheck size={22}/>,    label: 'ÁRBITROS',   ruta: '/admin/arbitros',  soloAdmin: true },
   { icon: <GraduationCap size={22}/>,label: 'ESCUELAS',   ruta: '/admin/escuelas',  soloAdmin: true },
@@ -27,7 +26,8 @@ export default function AdminLayout() {
   const isMobile = useIsMobile()
   // Sin sistema de roles cargado (tabla no creada), todo usuario del admin es admin
   const esAdmin = rol?.rol ? rol.rol === 'admin' : true
-  const MENU = MENU_COMPLETO.filter(m => esAdmin || !m.soloAdmin)
+  const esOrganizador = rol?.rol === 'organizador'
+  const MENU = MENU_COMPLETO.filter(m => (esAdmin || !m.soloAdmin) && !(esOrganizador && m.ocultoOrganizador))
 
   async function handleLogout() {
     await supabase.auth.signOut()

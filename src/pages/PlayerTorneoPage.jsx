@@ -503,6 +503,16 @@ export default function PlayerTorneoPage() {
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
   const idsPartidosTorneo  = new Set(partidos.map(p => p.id))
   const miHistorialTorneo  = miHistorial.filter(h => h.matches?.id && idsPartidosTorneo.has(h.matches.id))
+  // Mis stats de ESTE torneo únicamente — separado del acumulado global que
+  // se ve en el historial general del jugador.
+  const misStatsTorneo = miHistorialTorneo.reduce((acc, h) => ({
+    pj:        acc.pj + 1,
+    goles:     acc.goles     + (h.goals_scored   || 0),
+    amarillas: acc.amarillas + (h.yellow_cards   || 0),
+    azules:    acc.azules    + (h.blue_cards     || 0),
+    rojas:     acc.rojas     + (h.red_cards      || 0),
+    recibidos: acc.recibidos + (h.goals_conceded || 0),
+  }), { pj: 0, goles: 0, amarillas: 0, azules: 0, rojas: 0, recibidos: 0 })
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
@@ -684,6 +694,23 @@ export default function PlayerTorneoPage() {
             {/* Mis partidos */}
             {subTabPart === 'mios' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {miHistorialTorneo.length > 0 && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    {[
+                      { label: 'PJ',        valor: misStatsTorneo.pj,        color: '#5f6368', bg: '#f1f3f4' },
+                      { label: '⚽ Goles',   valor: misStatsTorneo.goles,     color: '#1e8e3e', bg: '#e6f4ea' },
+                      { label: '🟨',         valor: misStatsTorneo.amarillas, color: '#e8710a', bg: '#fce8d9' },
+                      { label: '🟦',         valor: misStatsTorneo.azules,    color: '#1a73e8', bg: '#e8f0fe' },
+                      { label: '🟥',         valor: misStatsTorneo.rojas,     color: '#d93025', bg: '#fce8e6' },
+                    ].filter(s => s.label === 'PJ' || s.valor > 0).map(s => (
+                      <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: s.bg, border: '1px solid #e8eaed', borderRadius: '10px', padding: '6px 12px' }}>
+                        <span style={{ fontSize: '.72rem', color: s.color, fontWeight: '600' }}>{s.label}</span>
+                        <span style={{ fontSize: '.9rem', color: s.color, fontWeight: '800' }}>{s.valor}</span>
+                      </div>
+                    ))}
+                    <div style={{ fontSize: '.65rem', color: '#9aa0a6', alignSelf: 'center' }}>Solo de este torneo</div>
+                  </div>
+                )}
                 {miHistorialTorneo.length === 0 ? (
                   <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
                     <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📋</div>

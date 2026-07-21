@@ -11,7 +11,6 @@ const RecordsPage             = lazy(() => import('./pages/RecordsPage'))
 const PlayerHomePage          = lazy(() => import('./pages/PlayerHomePage'))
 const AdminLayout             = lazy(() => import('./pages/admin/AdminLayout'))
 const AdminDashboard          = lazy(() => import('./pages/admin/AdminDashboard'))
-const AdminCrearPage          = lazy(() => import('./pages/admin/AdminCrearPage'))
 const AdminTorneosPage        = lazy(() => import('./pages/admin/AdminTorneosPage'))
 const AdminEquiposPage        = lazy(() => import('./pages/admin/AdminEquiposPage'))
 const AdminJugadoresPage      = lazy(() => import('./pages/admin/AdminJugadoresPage'))
@@ -315,7 +314,6 @@ export default function App() {
           {/* Panel Admin */}
           <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>
             <Route index                element={<AdminDashboard/>}/>
-            <Route path="crear"         element={<AdminCrearPage/>}/>
             <Route path="torneos"       element={<AdminTorneosPage/>}/>
             <Route path="torneos/:id"   element={<AdminTorneoDetallePage/>}/>
             <Route path="equipos"       element={<AdminEquiposPage/>}/>

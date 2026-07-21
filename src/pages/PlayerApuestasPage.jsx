@@ -446,7 +446,7 @@ export default function PlayerApuestasPage() {
     if (!user) { navigate('/jugador/login'); return }
 
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.activo_membresia) { navigate('/jugador'); return }
+    if (!p) { navigate('/jugador'); return }
     setPlayer(p)
 
     const [{ data: pts }, { data: preds }, { data: jugs }, { data: allPreds }, { data: duelosData }, { data: activos }, { data: posturasData }, { data: crucesData }, { data: suscData }, { data: planesData }, { data: rondasData }] = await Promise.all([

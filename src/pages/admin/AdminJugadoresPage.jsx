@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
 
 const POSICIONES = {
@@ -91,6 +92,7 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
 
 export default function AdminJugadoresPage() {
   const navigate = useNavigate()
+  const { rol } = useAuthStore()
   const [jugadores,       setJugadores]       = useState([])
   const [form,            setForm]            = useState(EMPTY)
   const [editId,          setEditId]          = useState(null)
@@ -124,6 +126,12 @@ export default function AdminJugadoresPage() {
     Promise.all(vencidos.map(j => supabase.from('players').update({ activo_membresia: false }).eq('id', j.id)))
       .then(() => setJugadores(prev => prev.map(j => vencidos.some(v => v.id === j.id) ? { ...j, activo_membresia: false } : j)))
   }, [jugadores])
+
+  // Los jugadores de toda la plataforma son solo del admin principal — el
+  // organizador ve los jugadores de su torneo desde el detalle de su propio
+  // torneo, no desde este listado global.
+  useEffect(() => { if (rol?.rol === 'organizador') navigate('/admin', { replace: true }) }, [rol])
+  if (rol?.rol === 'organizador') return null
 
   async function fetchJugadores() {
     const { data } = await supabase.from('players').select('*').order('name')
@@ -783,5 +791,8 @@ export default function AdminJugadoresPage() {
         })}
       </div>
     </div>
+  )
+}
+>
   )
 }
