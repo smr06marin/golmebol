@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
-import PortalesMenu from '../components/PortalesMenu'
+import PortalBanner from '../components/PortalBanner'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -258,18 +258,13 @@ export default function ArbitroHomePage() {
         )
       )}
 
-      {/* Header */}
-      <div style={{ background:'#0d1117', borderBottom:'0.5px solid #1e2d3d', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:50 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          <div style={{ width:'36px', height:'36px', borderRadius:'50%', background:'#1e2d3d', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            {arbitro?.photo_face_url||arbitro?.photo_url ? <img src={arbitro.photo_face_url||arbitro.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.9rem' }}>👤</span>}
-          </div>
-          <div>
-            <div style={{ fontWeight:'700', fontSize:'.9rem', color:'#e8f4fd' }}>{arbitro?.name?.split(' ')[0]}</div>
-            <div style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'600' }}>🟡 Árbitro · {dias===null?'Activo (gratis)':dias>0?`${dias}d activo`:'Vencido'}</div>
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:'6px' }}>
+      <PortalBanner theme="dark" sticky
+        avatarUrl={arbitro?.photo_face_url||arbitro?.photo_url} avatarEmoji="👤"
+        kicker="🟡 Árbitro" title={arbitro?.name?.split(' ')[0]}
+        subtitle={dias===null?'Activo (gratis)':dias>0?`${dias}d activo`:'Vencido'}
+        usuario={arbitro} actual="arbitro"
+        onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
+        extraButtons={<>
           {notifs.length>0 && (
             <button onClick={async()=>{
               await supabase.from('notificaciones').update({leida:true}).eq('player_id',arbitro.id).eq('leida',false)
@@ -278,16 +273,11 @@ export default function ArbitroHomePage() {
               ⚠️ {notifs.length} reclamo{notifs.length>1?'s':''}
             </button>
           )}
-          <PortalesMenu usuario={arbitro} actual="arbitro" theme="dark"/>
           <button onClick={()=>setShowFlyer(true)} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem' }}>📋 Mis partidos</button>
           <button onClick={()=>navigate('/arbitro/encuestas')} style={{ background:'none', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.72rem', fontWeight:'700' }}>📝</button>
           <button onClick={()=>setShowPass(true)}  style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', fontSize:'.72rem' }}>🔑</button>
-          <button onClick={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
-            style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 8px', cursor:'pointer', color:'#7a9ab5', display:'flex', alignItems:'center' }}>
-            <LogOut size={14}/>
-          </button>
-        </div>
-      </div>
+        </>}
+      />
 
       <div style={{ maxWidth:'500px', margin:'0 auto', padding:'16px' }}>
         {/* Stats */}

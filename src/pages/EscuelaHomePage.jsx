@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import PortalesMenu from '../components/PortalesMenu'
+import PortalBanner from '../components/PortalBanner'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -92,39 +92,14 @@ export default function EscuelaHomePage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      {/* Banner del club */}
-      <div style={{ background:`linear-gradient(160deg, ${S.surface}, ${S.navy})`, borderBottom:`1px solid ${S.border}` }}>
-        <div style={{ maxWidth:'600px', margin:'0 auto', padding:'14px 20px 20px' }}>
-
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', marginBottom:'18px' }}>
-            <PortalesMenu usuario={profesor} actual="profesor" theme="dark"/>
-            <button onClick={handleLogout} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 13px', cursor:'pointer', color:S.muted, fontSize:'.75rem', fontWeight:'600', flexShrink:0 }}>Salir</button>
-          </div>
-
-          <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
-            <div style={{ position:'relative', width:'64px', height:'64px', flexShrink:0 }}>
-              <div style={{ width:'64px', height:'64px', borderRadius:'16px', background:S.card2, border:`2px solid ${S.cyan}55`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(0,0,0,.35)' }}>
-                {escuela?.logo_url ? <img src={escuela.logo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.6rem' }}>🛡️</span>}
-              </div>
-              {esCoordinador && escuela && (
-                <label style={{ position:'absolute', bottom:'-4px', right:'-4px', width:'24px', height:'24px', borderRadius:'50%', background:S.cyan, display:'flex', alignItems:'center', justifyContent:'center', cursor: subiendoLogo?'default':'pointer', border:`2px solid ${S.navy}`, opacity:subiendoLogo?.6:1 }}
-                  title="Cambiar foto/escudo del club">
-                  <span style={{ fontSize:'.65rem' }}>📷</span>
-                  <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoLogo} onChange={e => handleLogo(e.target.files[0] || null)}/>
-                </label>
-              )}
-            </div>
-            <div style={{ minWidth:0 }}>
-              <div style={{ fontSize:'.66rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.12em' }}>🏟️ Club</div>
-              <div style={{ fontWeight:'900', fontSize:'1.35rem', color:S.text, lineHeight:1.15, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{escuela?.name || 'Sin club todavía'}</div>
-              <div style={{ fontSize:'.74rem', color: esCoordinador ? S.gold : S.muted, fontWeight:'700', marginTop:'4px' }}>
-                {esCoordinador ? '👑 Coordinador' : '🧑‍🏫 Profesor'} · {profesor.name?.split(' ')[0]}
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
+      <PortalBanner theme="dark" sticky
+        avatarUrl={escuela?.logo_url} avatarEmoji="🛡️" avatarShape="rounded"
+        onAvatarUpload={esCoordinador && escuela ? handleLogo : undefined} uploadingAvatar={subiendoLogo}
+        kicker="🏟️ Club" title={escuela?.name || 'Sin club todavía'}
+        subtitle={`${esCoordinador ? '👑 Coordinador' : '🧑‍🏫 Profesor'} · ${profesor.name?.split(' ')[0]}`}
+        subtitleColor={esCoordinador ? S.gold : S.muted}
+        usuario={profesor} actual="profesor" onLogout={handleLogout}
+      />
 
       <div style={{ maxWidth:'600px', margin:'0 auto', padding:'20px 16px' }}>
 

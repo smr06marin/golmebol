@@ -7,7 +7,7 @@ import html2canvas from 'html2canvas'
 import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
-import PortalesMenu from '../components/PortalesMenu'
+import PortalBanner from '../components/PortalBanner'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
@@ -923,23 +923,12 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#e8f0fe', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {player.photo_face_url ? <img src={player.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.1rem' }}>👤</span>}
-          </div>
-          <div>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', lineHeight: 1.2 }}>{player.name?.split(' ')[0]}</div>
-            <div style={{ fontSize: '.72rem', color: nivelColor, fontWeight: '500' }}>{nivelTexto} · {stats?.pj || 0} PJ</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '20px', padding: '3px 10px' }}>GOLMEBOL</div>
-          <PortalesMenu usuario={player} actual="jugador" theme="light"/>
-          <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.75rem', fontWeight: '500' }}>Salir</button>
-        </div>
-      </div>
+      <PortalBanner theme="light" sticky
+        avatarUrl={player.photo_face_url} avatarEmoji="👤"
+        kicker="⚽ Golmebol" title={player.name?.split(' ')[0]}
+        subtitle={`${nivelTexto} · ${stats?.pj || 0} PJ`} subtitleColor={nivelColor}
+        usuario={player} actual="jugador" onLogout={handleLogout}
+      />
 
       <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>
 
