@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
+import PortalesMenu from '../components/PortalesMenu'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -277,14 +278,7 @@ export default function ArbitroHomePage() {
               ⚠️ {notifs.length} reclamo{notifs.length>1?'s':''}
             </button>
           )}
-          {arbitro?.rol !== 'arbitro' && (
-            <button onClick={()=>navigate('/jugador')} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#00ddd0', fontSize:'.72rem' }}>👤 Mi perfil</button>
-          )}
-          {arbitro?.es_arbitro_lider && (
-            <button onClick={()=>navigate('/arbitro/lider')} style={{ background:'rgba(249,168,37,.15)', border:'1px solid rgba(249,168,37,.4)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem', fontWeight:'700' }}>
-              👑 {arbitro?.genero === 'Femenino' ? 'Coordinadora' : 'Coordinador'}
-            </button>
-          )}
+          <PortalesMenu usuario={arbitro} actual="arbitro" theme="dark"/>
           <button onClick={()=>setShowFlyer(true)} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem' }}>📋 Mis partidos</button>
           <button onClick={()=>navigate('/arbitro/encuestas')} style={{ background:'none', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.72rem', fontWeight:'700' }}>📝</button>
           <button onClick={()=>setShowPass(true)}  style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', fontSize:'.72rem' }}>🔑</button>

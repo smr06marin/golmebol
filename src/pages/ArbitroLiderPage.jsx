@@ -4,8 +4,9 @@ import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
+import PortalesMenu from '../components/PortalesMenu'
 
-const inp = { width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
+const inp ={ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
 
 const TABS = [
@@ -666,8 +667,7 @@ export default function ArbitroLiderPage() {
           </div>
         </div>
         <div style={{ display:'flex', gap:'6px' }}>
-          {lider?.rol!=='arbitro' && <button onClick={()=>navigate('/jugador')} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#00ddd0', fontSize:'.72rem' }}>👤 Jugador</button>}
-          {(lider?.es_arbitro||lider?.rol==='arbitro') && <button onClick={()=>navigate('/arbitro')} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem' }}>🟡 Árbitro</button>}
+          <PortalesMenu usuario={lider} actual="arbitro_lider" theme="dark"/>
           <button onClick={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 8px', cursor:'pointer', color:'#7a9ab5', display:'flex', alignItems:'center' }}><LogOut size={14}/></button>
         </div>
       </div>

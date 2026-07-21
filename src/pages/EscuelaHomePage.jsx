@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import PortalesMenu from '../components/PortalesMenu'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -86,7 +87,10 @@ export default function EscuelaHomePage() {
               {esCoordinador ? '👑 Profesor coordinador' : '🧑‍🏫 Profesor'}
             </div>
           </div>
-          <button onClick={handleLogout} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 14px', cursor:'pointer', color:S.muted, fontSize:'.78rem', fontWeight:'600' }}>Salir</button>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+            <PortalesMenu usuario={profesor} actual="profesor" theme="dark"/>
+            <button onClick={handleLogout} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 14px', cursor:'pointer', color:S.muted, fontSize:'.78rem', fontWeight:'600' }}>Salir</button>
+          </div>
         </div>
       </div>
 
