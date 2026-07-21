@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
 import FichaEvolucion from '../components/FichaEvolucion'
+import PlayerCard from '../components/card/PlayerCard'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -15,11 +16,16 @@ const S = {
 export default function MiTarjetaEscuelaPage() {
   const navigate = useNavigate()
   const [jugador, setJugador] = useState(null)
+  const [escuelaId, setEscuelaId] = useState(null)
   const [escuelaNombre, setEscuelaNombre] = useState('')
+  const [escuelaLogo, setEscuelaLogo] = useState(null)
   const [premios, setPremios] = useState([])
   const [premiosTorneo, setPremiosTorneo] = useState([])
+  const [promTecnico, setPromTecnico] = useState(null)
+  const [estatura, setEstatura] = useState(null)
   const [loading, setLoading] = useState(true)
   const [errorCuenta, setErrorCuenta] = useState(false)
+  const [vistaCard, setVistaCard] = useState('fifa') // 'fifa' | 'clasica'
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -35,15 +41,29 @@ export default function MiTarjetaEscuelaPage() {
     if (!p.es_jugador_escuela) { navigate('/jugador'); return }
     setJugador(p)
 
-    const { data: tp } = await supabase.from('team_players').select('team_id, teams(name, categoria)').eq('player_id', p.id).maybeSingle()
+    const { data: tp } = await supabase.from('team_players').select('team_id, teams(name, categoria, logo_url)').eq('player_id', p.id).maybeSingle()
     setEscuelaNombre(tp?.teams?.name || '')
-    const escuelaId = tp?.team_id
-    if (escuelaId) {
-      const { data: prem } = await supabase.from('escuela_premios').select('*').eq('escuela_id', escuelaId).order('umbral', { ascending:true })
+    setEscuelaLogo(tp?.teams?.logo_url || null)
+    const escId = tp?.team_id || null
+    setEscuelaId(escId)
+    if (escId) {
+      const { data: prem } = await supabase.from('escuela_premios').select('*').eq('escuela_id', escId).order('umbral', { ascending:true })
       setPremios(prem || [])
     }
     const { data: premTorneo } = await supabase.from('escuela_torneo_premios').select('*, torneo:torneo_id(nombre)').eq('jugador_id', p.id).order('created_at', { ascending:false })
     setPremiosTorneo(premTorneo || [])
+
+    // Datos para la tarjeta FIFA: promedio de la última evaluación técnica y
+    // la última estatura registrada en la ficha de evolución.
+    const { data: tec } = await supabase.from('escuela_tecnica').select('*').eq('jugador_id', p.id).order('created_at', { ascending:false }).limit(1).maybeSingle()
+    if (tec) {
+      const campos = ['control','pase_corto','pase_largo','conduccion','regate','remate','cabeceo','ambas_piernas']
+      const valores = campos.map(c => tec[c]).filter(v => v !== null && v !== undefined)
+      if (valores.length > 0) setPromTecnico((valores.reduce((a,b) => a+b, 0) / valores.length).toFixed(1))
+    }
+    const { data: med } = await supabase.from('escuela_medidas').select('estatura_cm').eq('jugador_id', p.id).order('created_at', { ascending:false }).limit(1).maybeSingle()
+    if (med?.estatura_cm) setEstatura(med.estatura_cm)
+
     setLoading(false)
   }
 
@@ -85,7 +105,42 @@ export default function MiTarjetaEscuelaPage() {
 
       <div style={{ maxWidth:'500px', margin:'0 auto', padding:'24px 16px' }}>
         {escuelaNombre && <div style={{ fontSize:'.72rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:10, textAlign:'center' }}>{escuelaNombre}</div>}
-        <TarjetaEscuelaJugador jugador={jugador} premios={premios} premiosTorneo={premiosTorneo}/>
+
+        <div style={{ display:'flex', justifyContent:'center', gap:'8px', marginBottom:'18px' }}>
+          <button onClick={() => setVistaCard('fifa')}
+            style={{ padding:'7px 16px', borderRadius:'20px', border:`1px solid ${vistaCard==='fifa'?S.cyan:S.border}`, background: vistaCard==='fifa'?S.cyanDim:'transparent', color: vistaCard==='fifa'?S.cyan:S.muted, fontSize:'.78rem', fontWeight:'700', cursor:'pointer' }}>
+            🎴 Tarjeta FIFA
+          </button>
+          <button onClick={() => setVistaCard('clasica')}
+            style={{ padding:'7px 16px', borderRadius:'20px', border:`1px solid ${vistaCard==='clasica'?S.cyan:S.border}`, background: vistaCard==='clasica'?S.cyanDim:'transparent', color: vistaCard==='clasica'?S.cyan:S.muted, fontSize:'.78rem', fontWeight:'700', cursor:'pointer' }}>
+            📋 Tarjeta clásica
+          </button>
+        </div>
+
+        {vistaCard === 'fifa' ? (
+          <div style={{ marginBottom:'20px' }}>
+            <PlayerCard
+              playerName={(jugador.name || '').toUpperCase()}
+              photoUrlExterno={jugador.photo_face_url || jugador.photo_url || null}
+              cardType={jugador.card_type || 'normal_teal'}
+              modoEscuela
+              esPortero={jugador.posicion === 'Portero'}
+              equiposData={escuelaId ? [{ id: escuelaId, nombre: escuelaNombre, logo_url: escuelaLogo }] : null}
+              stats={{
+                pj: jugador.partidos_escuela || 0,
+                golesEscuela: jugador.goles_escuela || 0,
+                asistencias: jugador.asistencias_escuela || 0,
+                promTecnico: promTecnico ?? '—',
+                estatura,
+              }}
+              onStatClick={(id) => { if (escuelaId && id === escuelaId) navigate(`/escuela/historia/${escuelaId}`) }}
+            />
+            <div style={{ textAlign:'center', fontSize:'.68rem', color:S.muted, marginTop:'8px' }}>Toca el escudo para ver el recorrido de tu escuela</div>
+          </div>
+        ) : (
+          <TarjetaEscuelaJugador jugador={jugador} premios={premios} premiosTorneo={premiosTorneo}/>
+        )}
+
         <FichaEvolucion jugadorId={jugador.id}/>
       </div>
     </div>

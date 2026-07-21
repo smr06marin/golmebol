@@ -86,6 +86,10 @@ export default function PlayerCard({
   esDefensa       = false,
   torneosData     = null,
   equiposData     = null,
+  // Modo escuela: no hay torneo de club que mostrar (solo el escudo del
+  // equipo/escuela), y las stats son las de la ficha de evolución del niño
+  // en vez de las de un jugador de club (P.G/P.E/P.P no aplican).
+  modoEscuela     = false,
 }) {
   const [tI, setTI] = useState(0)
   const [eI, setEI] = useState(0)
@@ -115,7 +119,19 @@ export default function PlayerCard({
     reader.readAsDataURL(file)
   }
 
-  const statsIzquierda = esPortero
+  const statsIzquierda = modoEscuela
+    ? (esPortero
+        ? [
+            { label: 'ALT', value: stats.estatura ? `${stats.estatura}cm` : '—', key: 'alt',    dot: false },
+            { label: 'TÉC', value: stats.promTecnico ?? '—',                     key: 'tec',    dot: true  },
+            { label: 'AST', value: stats.asistencias || 0,                       key: 'ast_gk', dot: false },
+          ]
+        : [
+            { label: 'GOLES', value: stats.golesEscuela ?? 0,  key: 'goles_esc', dot: true  },
+            { label: 'TÉC',   value: stats.promTecnico ?? '—', key: 'tec',       dot: false },
+            { label: 'AST',   value: stats.asistencias || 0,   key: 'ast',       dot: false },
+          ])
+    : esPortero
     ? [
         { label: 'GC',    value: stats.golesContra,    key: 'gc',   dot: true  },
         { label: 'VC',    value: stats.vallasCero||0,  key: 'vc',   dot: true  },
@@ -250,28 +266,32 @@ export default function PlayerCard({
                  daña en varios Android — se reemplaza por fondo más opaco */
               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '25%', zIndex: 12, display: 'flex', flexDirection: 'column', padding: '4% 0 2% 8%', gap: '5px', background: 'rgba(0,0,0,.45)', borderRight: '1px solid rgba(255,255,255,.08)' }}>
 
-                {/* TORNEO */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)} style={{ cursor: 'pointer' }}>
-                      <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={60}/>
+                {/* TORNEO — no aplica en modo escuela, solo se ve el escudo del equipo/escuela */}
+                {!modoEscuela && (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)} style={{ cursor: 'pointer' }}>
+                          <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={60}/>
+                        </div>
+                        {TORNEOS.length > 1 && (
+                          <FlechasVerticales
+                            onPrev={() => setTI(i => (i - 1 + TORNEOS.length) % TORNEOS.length)}
+                            onNext={() => setTI(i => (i + 1) % TORNEOS.length)}
+                            color={color} isPremium={isPremium}
+                          />
+                        )}
+                      </div>
                     </div>
-                    {TORNEOS.length > 1 && (
-                      <FlechasVerticales
-                        onPrev={() => setTI(i => (i - 1 + TORNEOS.length) % TORNEOS.length)}
-                        onNext={() => setTI(i => (i + 1) % TORNEOS.length)}
-                        color={color} isPremium={isPremium}
-                      />
-                    )}
-                  </div>
-                </div>
 
-                <div style={{ height: '1px', background: `linear-gradient(90deg,rgba(255,255,255,.06),${isPremium ? '#D6B65D44' : `${color}44`},rgba(255,255,255,.06))`, marginRight: '6px' }}/>
+                    <div style={{ height: '1px', background: `linear-gradient(90deg,rgba(255,255,255,.06),${isPremium ? '#D6B65D44' : `${color}44`},rgba(255,255,255,.06))`, marginRight: '6px' }}/>
+                  </>
+                )}
 
-                {/* EQUIPO */}
+                {/* EQUIPO (o ESCUELA en modo escuela) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>EQUIPO</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>{modoEscuela ? 'ESCUELA' : 'EQUIPO'}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                     <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)} style={{ cursor: 'pointer' }}>
                       <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={60}/>
@@ -347,22 +367,26 @@ export default function PlayerCard({
                   </div>
                 ))}
               </div>
-              <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }}/>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {[
-                  { label: 'P.G', value: stats.pg, key: 'pg' },
-                  { label: 'P.E', value: stats.pe, key: 'pe' },
-                  { label: 'P.P', value: stats.pp, key: 'pp' },
-                ].map(({ label, value, key }) => (
-                  <div key={key} onClick={() => onStatClick?.(key)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
+              {!modoEscuela && (
+                <>
+                  <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }}/>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {[
+                      { label: 'P.G', value: stats.pg, key: 'pg' },
+                      { label: 'P.E', value: stats.pe, key: 'pe' },
+                      { label: 'P.P', value: stats.pp, key: 'pp' },
+                    ].map(({ label, value, key }) => (
+                      <div key={key} onClick={() => onStatClick?.(key)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </div>
           </div>
 

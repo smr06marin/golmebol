@@ -46,6 +46,7 @@ const EscuelaJugadorDetallePage = lazy(() => import('./pages/EscuelaJugadorDetal
 const RegistroEscuelaPage     = lazy(() => import('./pages/RegistroEscuelaPage'))
 const AcudientePage           = lazy(() => import('./pages/AcudientePage'))
 const MiTarjetaEscuelaPage    = lazy(() => import('./pages/MiTarjetaEscuelaPage'))
+const EscuelaHistoriaPage     = lazy(() => import('./pages/EscuelaHistoriaPage'))
 const EscuelaTorneosPage        = lazy(() => import('./pages/EscuelaTorneosPage'))
 const EscuelaTorneoDetallePage  = lazy(() => import('./pages/EscuelaTorneoDetallePage'))
 
@@ -369,6 +370,7 @@ export default function App() {
           <Route path="/acudiente"           element={<AcudienteRoute><AcudientePage/></AcudienteRoute>}/>
           {/* Tarjeta propia de un jugador de escuela (niño/a) */}
           <Route path="/mi-tarjeta"          element={<PlayerRoute><MiTarjetaEscuelaPage/></PlayerRoute>}/>
+          <Route path="/escuela/historia/:id" element={<PlayerRoute><EscuelaHistoriaPage/></PlayerRoute>}/>
 
         </Routes>
       </Suspense>
