@@ -406,13 +406,23 @@ export default function EscuelaPartidoPage() {
       try { recognitionRef.current?.stop() } catch {}
       return
     }
+    // Texto que ya había antes de darle a grabar — se conserva y se le va
+    // pegando lo que se dicta EN VIVO (resultados parciales), sin esperar a
+    // que la persona termine de hablar toda la frase.
+    const base = descText.trim()
     const rec = new SR()
     rec.lang = 'es-CO'
-    rec.continuous = false
-    rec.interimResults = false
+    rec.continuous = true
+    rec.interimResults = true
     rec.onresult = (e) => {
-      const texto = Array.from(e.results).map(r => r[0].transcript).join(' ')
-      setDescText(prev => (prev ? prev.trim() + ' ' : '') + texto)
+      let final = '', interim = ''
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) final += r[0].transcript
+        else interim += r[0].transcript
+      }
+      const junto = [base, final.trim(), interim.trim()].filter(Boolean).join(' ')
+      setDescText(junto)
     }
     rec.onend = () => setGrabando(false)
     rec.onerror = () => setGrabando(false)
