@@ -2139,6 +2139,3 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     </>
   )
 }
-  </>
-  )
-}

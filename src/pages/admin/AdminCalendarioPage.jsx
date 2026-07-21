@@ -279,6 +279,3 @@ export default function AdminCalendarioPage() {
     </div>
   )
 }
-    </div>
-  )
-}

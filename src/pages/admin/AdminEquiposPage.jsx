@@ -487,6 +487,3 @@ export default function AdminEquiposPage() {
     </div>
   )
 }
-v>
-  )
-}

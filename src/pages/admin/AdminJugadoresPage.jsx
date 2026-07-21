@@ -793,6 +793,3 @@ export default function AdminJugadoresPage() {
     </div>
   )
 }
->
-  )
-}
