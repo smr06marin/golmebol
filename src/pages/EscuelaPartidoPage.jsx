@@ -40,7 +40,7 @@ const STYLES = {
 }
 
 const POS_COL = { POR:'#f59e0b', DFC:'#3b82f6', LD:'#3b82f6', LI:'#3b82f6', MC:'#10b981', MCD:'#10b981', CAM:'#10b981', MI:'#10b981', MD:'#10b981', DC:'#ef4444', EX:'#a855f7' }
-const EV_ICONS = { goal:'⚽', assist:'🎯', yellow:'🟨', blue:'🟦', red:'🟥', sub:'🔄', highlight:'⭐', injury:'🩹', mvp:'👑', note:'📝' }
+const EV_ICONS = { goal:'⚽', assist:'🎯', yellow:'🟨', blue:'🟦', red:'🟥', sub:'🔄', highlight:'⭐', injury:'🩹', mvp:'👑', note:'📝', save:'🧤', goal_against:'🥅' }
 const EV_ITEMS = [
   { t:'goal', l:'⚽ Gol' }, { t:'assist', l:'🎯 Asist.' }, { t:'yellow', l:'🟨 Amarilla' },
   { t:'blue', l:'🟦 Azul' }, { t:'red', l:'🟥 Roja' }, { t:'mvp', l:'👑 Destacado' },
@@ -71,6 +71,7 @@ function PlayerCard({ p, size='sm', selected, dropTarget }) {
       <div style={{ fontSize:size==='sm'?8.5:10, fontWeight:800, padding:'2px 3px 0', maxWidth:w-4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color:'#fff' }}>{nm}</div>
       <div style={{ display:'flex', gap:2, fontSize:7.5, paddingBottom:2, minHeight:9 }}>
         {p._goals > 0 && <span>⚽{p._goals}</span>}
+        {p._saves > 0 && <span>🧤{p._saves}</span>}
         {p._yellows > 0 && <span>🟨</span>}
         {p._reds > 0 && <span>🟥</span>}
       </div>
@@ -144,8 +145,13 @@ export default function EscuelaPartidoPage() {
   // Reloj flotante: se puede arrastrar con el dedo (o el mouse) por toda la pantalla
   const [cronoPos, setCronoPos] = useState(() => ({
     x: typeof window !== 'undefined' ? Math.max(12, window.innerWidth - 168) : 200,
-    y: 96,
+    y: 150,
   }))
+  // Menú de acciones del jugador: cambio de titular y nota/buena jugada hablada
+  const [mostrarCambio, setMostrarCambio] = useState(false)
+  const [descModal, setDescModal] = useState(null) // { type: 'highlight' | 'note' }
+  const [descText, setDescText] = useState('')
+  const [grabando, setGrabando] = useState(false)
 
   const dragRef = useRef({ id:null, fromBench:false })
   const pitchRef = useRef(null)
@@ -153,6 +159,7 @@ export default function EscuelaPartidoPage() {
   const saveTimeoutRef = useRef(null)
   const toastTimeoutRef = useRef(null)
   const cronoDragRef = useRef(null) // { offX, offY } mientras se arrastra el reloj
+  const recognitionRef = useRef(null)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -323,16 +330,16 @@ export default function EscuelaPartidoPage() {
     const starters = convList.slice(0, fmt.length)
     const pos = {}
     starters.forEach((p, i) => { pos[p.id] = { x: fmt[i].x, y: fmt[i].y } })
-    const nuevoLineup = starters.map((p, i) => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, slotPos:fmt[i].pos, _goals:0, _yellows:0, _reds:0 }))
-    const nuevoBench = convList.slice(fmt.length).map(p => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, _goals:0, _yellows:0, _reds:0 }))
+    const nuevoLineup = starters.map((p, i) => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, slotPos:fmt[i].pos, _goals:0, _yellows:0, _reds:0, _saves:0, _goalsAgainst:0 }))
+    const nuevoBench = convList.slice(fmt.length).map(p => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, _goals:0, _yellows:0, _reds:0, _saves:0, _goalsAgainst:0 }))
     setLineup(nuevoLineup); setBench(nuevoBench); setPositions(pos)
     setView('match')
     persist({ lineup: nuevoLineup, bench: nuevoBench, positions: pos, vista:'match', formacion_tipo: formType, formacion: formation })
   }
 
   // ── Eventos ──
-  function addEvent(type, player) {
-    const ev = { id: Date.now(), type, player: player.name, playerId: player.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+  function addEvent(type, player, desc) {
+    const ev = { id: Date.now(), type, player: player.name, playerId: player.id, min: Math.floor(timerSec/60), sec: timerSec%60, ...(desc ? { desc } : {}) }
     const nuevosEventos = [ev, ...events]
     let nuevoScore = score
     let nuevoLineup = lineup
@@ -342,7 +349,89 @@ export default function EscuelaPartidoPage() {
     if (type === 'goal') { nuevoLineup = lineup.map(p => p.id === player.id ? { ...p, _goals:(p._goals||0)+1 } : p); setLineup(nuevoLineup) }
     setEvents(nuevosEventos)
     setActivePlayer(null)
+    setMostrarCambio(false)
     persist({ eventos: nuevosEventos, score_home: nuevoScore.home, score_away: nuevoScore.away, lineup: nuevoLineup })
+  }
+
+  // Botones rápidos exclusivos del arquero: atajadas y goles recibidos, para
+  // poder anotar una tapada en el momento sin buscar entre todos los eventos.
+  function registrarAtajada(player) {
+    const nuevoLineup = lineup.map(p => p.id === player.id ? { ...p, _saves:(p._saves||0)+1 } : p)
+    const ev = { id: Date.now(), type:'save', player: player.name, playerId: player.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+    const nuevosEventos = [ev, ...events]
+    setLineup(nuevoLineup)
+    setEvents(nuevosEventos)
+    setActivePlayer(null)
+    persist({ lineup: nuevoLineup, eventos: nuevosEventos })
+    showToast(`🧤 Atajada de ${player.name.split(' ')[0]}`, '#0ea5e9')
+  }
+  function registrarGolRecibido(player) {
+    const nuevoLineup = lineup.map(p => p.id === player.id ? { ...p, _goalsAgainst:(p._goalsAgainst||0)+1 } : p)
+    const nuevoScore = { ...score, away: score.away + 1 }
+    const ev = { id: Date.now(), type:'goal_against', player: player.name, playerId: player.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+    const nuevosEventos = [ev, ...events]
+    setLineup(nuevoLineup)
+    setScore(nuevoScore)
+    setEvents(nuevosEventos)
+    setActivePlayer(null)
+    persist({ lineup: nuevoLineup, score_away: nuevoScore.away, eventos: nuevosEventos })
+    showToast(`🥅 Gol recibido — ${player.name.split(' ')[0]}`, '#ef4444')
+  }
+
+  // Sustitución directa desde el menú del jugador (sin necesidad de arrastrar)
+  function sustituirDesdeMenu(benchId) {
+    const target = activePlayer
+    if (!target) return
+    const incoming = bench.find(p => p.id === benchId)
+    if (!incoming) return
+    const targetPos = positions[target.id]
+    let nuevoLineup = lineup.filter(p => p.id !== target.id)
+    nuevoLineup = [...nuevoLineup, { ...incoming, slotPos: target.slotPos || incoming.slotPos }]
+    const nuevoBench = [...bench.filter(p => p.id !== benchId), { ...target, slotPos:undefined }]
+    const nuevaPos = { ...positions, [incoming.id]: targetPos }
+    delete nuevaPos[target.id]
+    const ev = { id: Date.now(), type:'sub', player:`${incoming.name} ↔ ${target.name}`, playerId: incoming.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+    const nuevosEventos = [ev, ...events]
+    setLineup(nuevoLineup); setBench(nuevoBench); setPositions(nuevaPos); setEvents(nuevosEventos)
+    setActivePlayer(null); setMostrarCambio(false)
+    persist({ lineup: nuevoLineup, bench: nuevoBench, positions: nuevaPos, eventos: nuevosEventos })
+    showToast(`🔄 Cambio: ${incoming.name.split(' ')[0]} por ${target.name.split(' ')[0]}`, '#10b981')
+  }
+
+  // ── Nota / buena jugada dictada por voz (Web Speech API, con respaldo de texto) ──
+  function toggleMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { showToast('🎤 Este navegador no permite dictado por voz. Escribe la nota.', '#ef4444'); return }
+    if (grabando) {
+      try { recognitionRef.current?.stop() } catch {}
+      return
+    }
+    const rec = new SR()
+    rec.lang = 'es-CO'
+    rec.continuous = false
+    rec.interimResults = false
+    rec.onresult = (e) => {
+      const texto = Array.from(e.results).map(r => r[0].transcript).join(' ')
+      setDescText(prev => (prev ? prev.trim() + ' ' : '') + texto)
+    }
+    rec.onend = () => setGrabando(false)
+    rec.onerror = () => setGrabando(false)
+    recognitionRef.current = rec
+    try { rec.start(); setGrabando(true) } catch { setGrabando(false) }
+  }
+  function guardarDesc() {
+    if (!descModal || !activePlayer || !descText.trim()) return
+    addEvent(descModal.type, activePlayer, descText.trim())
+    if (recognitionRef.current) { try { recognitionRef.current.stop() } catch {} }
+    setGrabando(false)
+    setDescModal(null)
+    setDescText('')
+  }
+  function cancelarDesc() {
+    if (recognitionRef.current) { try { recognitionRef.current.stop() } catch {} }
+    setGrabando(false)
+    setDescModal(null)
+    setDescText('')
   }
 
   // ── Drag & drop ──
@@ -438,6 +527,7 @@ export default function EscuelaPartidoPage() {
   }
 
   function selectPlayer(id) {
+    setMostrarCambio(false)
     setActivePlayer(ap => (ap && ap.id === id) ? null : (lineup.find(p => p.id === id) || null))
   }
 
@@ -583,11 +673,104 @@ export default function EscuelaPartidoPage() {
         </div>
       </div>
 
+      {/* Cancha a todo el ancho de la pantalla, con el marcador flotando encima */}
       {view === 'match' && (
-        <div style={{ background:'rgba(0,0,0,.35)', padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', borderBottom:`0.5px solid ${S.border}` }}>
-          <div style={{ flex:1 }}><div style={{ fontSize:10, color:S.muted }}>Mi equipo</div><div style={{ fontSize:28, fontWeight:900 }}>{score.home}</div></div>
-          <div style={{ fontSize:20, color:S.muted }}>–</div>
-          <div style={{ flex:1, textAlign:'right' }}><div style={{ fontSize:10, color:S.muted }}>{matchInfo.rival || 'Rival'}</div><div style={{ fontSize:28, fontWeight:900 }}>{score.away}</div></div>
+        <div style={{ position:'relative', width:'100%' }}>
+          <div style={{ position:'absolute', top:0, left:0, right:0, zIndex:60, background:'linear-gradient(180deg, rgba(0,0,0,.62), rgba(0,0,0,0))', padding:'10px 16px 34px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.7)' }}>Mi equipo</div>
+              <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{score.home}</div>
+            </div>
+            <div style={{ fontSize:16, color:'rgba(255,255,255,.5)' }}>–</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <button onClick={() => { const ns={...score,away:Math.max(0,score.away-1)}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:'rgba(255,255,255,.15)', border:'none', color:'#fff', borderRadius:6, width:26, height:26, fontSize:14, cursor:'pointer' }}>−</button>
+              <div style={{ textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.7)' }}>{matchInfo.rival || 'Rival'}</div>
+                <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{score.away}</div>
+              </div>
+              <button onClick={() => { const ns={...score,away:score.away+1}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:'rgba(255,255,255,.15)', border:'none', color:'#fff', borderRadius:6, width:26, height:26, fontSize:14, cursor:'pointer' }}>+</button>
+            </div>
+          </div>
+
+          <div ref={pitchRef} onDragOver={onDragOverPitch} onDragLeave={onDragLeavePitch} onDrop={onDropPitch}
+            style={{ position:'relative', width:'100%', aspectRatio:'600/860', overflow:'hidden' }}>
+            <PitchSVG style={pitchStyle}/>
+            <div style={{ position:'absolute', inset:0 }}>
+              {lineup.map(p => {
+                const isDraggingThis = touchDrag && touchDrag.id === p.id && !touchDrag.fromBench
+                const pos = isDraggingThis && pitchRef.current
+                  ? (() => {
+                      const rect = pitchRef.current.getBoundingClientRect()
+                      return {
+                        x: Math.max(4, Math.min(96, ((touchDrag.clientX-rect.left)/rect.width)*100)),
+                        y: Math.max(4, Math.min(96, ((touchDrag.clientY-rect.top)/rect.height)*100)),
+                      }
+                    })()
+                  : (positions[p.id] || { x:50, y:50 })
+                const isSel = activePlayer && activePlayer.id === p.id
+                const isTarget = dragOverFieldId === p.id
+                return (
+                  <div key={p.id} draggable onDragStart={e => onDragStartField(e, p.id)} onTouchStart={e => handleTouchStart(e, p.id, false)} onClick={() => selectPlayer(p.id)}
+                    style={{ position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`, transform:'translate(-50%,-50%)', cursor:'grab', touchAction:'none', zIndex: isSel||isDraggingThis?20:10 }}>
+                    <PlayerCard p={p} selected={isSel} dropTarget={isTarget}/>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Menú de acciones del jugador — siempre centrado en la cancha, sin importar
+                en qué lateral esté parado el jugador, para que nunca quede cortado. */}
+            {activePlayer && !mostrarCambio && (
+              <div style={{ position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', background:'rgba(7,11,22,.98)', border:`1px solid ${S.cyan}66`, borderRadius:12, padding:10, zIndex:50, width:'min(260px,84%)', maxHeight:'82%', overflowY:'auto' }}>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,.6)', textAlign:'center', paddingBottom:6, borderBottom:'1px solid rgba(255,255,255,.1)', marginBottom:8, fontWeight:700 }}>
+                  {activePlayer.name}{activePlayer.slotPos === 'POR' ? ' · 🧤 Portero' : ''}
+                </div>
+                <button onClick={() => setMostrarCambio(true)} style={{ width:'100%', background:'rgba(59,130,246,.2)', border:'1px solid rgba(59,130,246,.5)', color:'#60a5fa', borderRadius:8, padding:'8px 0', fontSize:11, fontWeight:800, cursor:'pointer', marginBottom:8 }}>🔄 Cambio</button>
+                {activePlayer.slotPos === 'POR' && (
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:8 }}>
+                    <button onClick={() => registrarAtajada(activePlayer)} style={{ background:'rgba(14,165,233,.22)', border:'1px solid rgba(14,165,233,.5)', color:'#38bdf8', borderRadius:8, padding:'9px 4px', fontSize:10.5, fontWeight:800, cursor:'pointer' }}>🧤 Atajada</button>
+                    <button onClick={() => registrarGolRecibido(activePlayer)} style={{ background:'rgba(239,68,68,.22)', border:'1px solid rgba(239,68,68,.5)', color:'#f87171', borderRadius:8, padding:'9px 4px', fontSize:10.5, fontWeight:800, cursor:'pointer' }}>🥅 Recibido</button>
+                  </div>
+                )}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4 }}>
+                  {EV_ITEMS.map(({ t, l }) => (
+                    <button key={t} onClick={() => (t === 'highlight' || t === 'note') ? setDescModal({ type:t }) : addEvent(t, activePlayer)} style={evBtn}>{l}</button>
+                  ))}
+                </div>
+                <button onClick={() => { setActivePlayer(null); setMostrarCambio(false) }} style={{ width:'100%', marginTop:8, background:'rgba(239,68,68,.18)', border:'1px solid rgba(239,68,68,.4)', color:'#ef4444', borderRadius:6, padding:6, fontSize:10, fontWeight:700, cursor:'pointer' }}>✕ Cerrar</button>
+              </div>
+            )}
+
+            {activePlayer && mostrarCambio && (
+              <div style={{ position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)', background:'rgba(7,11,22,.98)', border:`1px solid ${S.cyan}66`, borderRadius:12, padding:10, zIndex:50, width:'min(260px,84%)', maxHeight:'82%', overflowY:'auto' }}>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,.6)', textAlign:'center', paddingBottom:6, borderBottom:'1px solid rgba(255,255,255,.1)', marginBottom:8, fontWeight:700 }}>
+                  Cambiar a {activePlayer.name.split(' ')[0]}
+                </div>
+                {bench.length === 0 ? (
+                  <div style={{ fontSize:11, color:S.muted, textAlign:'center', padding:'10px 0' }}>Sin suplentes disponibles</div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                    {bench.map(p => (
+                      <button key={p.id} onClick={() => sustituirDesdeMenu(p.id)} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,.06)', border:`1px solid ${S.border}`, borderRadius:8, padding:'7px 9px', color:'#fff', fontSize:11.5, fontWeight:700, cursor:'pointer', textAlign:'left' }}>
+                        <span style={{ width:22, height:22, borderRadius:'50%', overflow:'hidden', flexShrink:0, background:S.card2, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11 }}>
+                          {(p.photo_face_url||p.photo_url) ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : '👤'}
+                        </span>
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => setMostrarCambio(false)} style={{ width:'100%', marginTop:8, background:'rgba(255,255,255,.07)', border:`1px solid ${S.border}`, color:S.muted, borderRadius:6, padding:6, fontSize:10, fontWeight:700, cursor:'pointer' }}>← Volver</button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 16px' }}>
+            <div style={{ fontSize:11, color: lineup.length>=MAX_FIELD ? '#f59e0b' : S.muted }}>
+              {lineup.length>=MAX_FIELD ? '⚠️' : '👥'} {lineup.length}/{MAX_FIELD} en campo
+            </div>
+            <button onClick={() => irA('formacion')} style={{ marginLeft:'auto', background:'rgba(255,255,255,.06)', border:`1px solid ${S.border}`, color:S.muted, borderRadius:8, padding:'4px 10px', fontSize:10, cursor:'pointer' }}>Cambiar formación</button>
+          </div>
         </div>
       )}
 
@@ -698,68 +881,9 @@ export default function EscuelaPartidoPage() {
 
         {view === 'match' && (
           <div>
-            <div style={{ background:'rgba(0,0,0,.3)', borderRadius:12, padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', marginBottom:'10px' }}>
-              <div style={{ fontSize:11, color:S.muted }}>
-                {estado==='en_curso' ? (timerRunning ? '🟢 Cronómetro corriendo arriba' : '⏸ Cronómetro en pausa') : '⏱ Cronómetro sin iniciar'} — arrástralo con el dedo a donde quieras
-              </div>
-              <div style={{ flex:1 }}/>
-              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <span style={{ fontSize:10, color:S.muted }}>Rival</span>
-                <button onClick={() => { const ns={...score,away:Math.max(0,score.away-1)}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:S.card2, border:'none', color:'#fff', borderRadius:4, width:24, height:24, fontSize:13, cursor:'pointer' }}>−</button>
-                <span style={{ fontSize:16, fontWeight:900, minWidth:16, textAlign:'center' }}>{score.away}</span>
-                <button onClick={() => { const ns={...score,away:score.away+1}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:S.card2, border:'none', color:'#fff', borderRadius:4, width:24, height:24, fontSize:13, cursor:'pointer' }}>+</button>
-              </div>
-            </div>
-
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-              <div style={{ fontSize:11, color: lineup.length>=MAX_FIELD ? '#f59e0b' : S.muted }}>
-                {lineup.length>=MAX_FIELD ? '⚠️' : '👥'} {lineup.length}/{MAX_FIELD} en campo
-              </div>
-              <button onClick={() => irA('formacion')} style={{ marginLeft:'auto', background:'rgba(255,255,255,.06)', border:`1px solid ${S.border}`, color:S.muted, borderRadius:8, padding:'4px 10px', fontSize:10, cursor:'pointer' }}>Cambiar formación</button>
-            </div>
-
-            <div ref={pitchRef} onDragOver={onDragOverPitch} onDragLeave={onDragLeavePitch} onDrop={onDropPitch}
-              style={{ position:'relative', width:'100%', aspectRatio:'600/860', maxWidth:360, margin:'0 auto', borderRadius:12, overflow:'hidden' }}>
-              <PitchSVG style={pitchStyle}/>
-              <div style={{ position:'absolute', inset:0 }}>
-                {lineup.map(p => {
-                  const isDraggingThis = touchDrag && touchDrag.id === p.id && !touchDrag.fromBench
-                  const pos = isDraggingThis && pitchRef.current
-                    ? (() => {
-                        const rect = pitchRef.current.getBoundingClientRect()
-                        return {
-                          x: Math.max(4, Math.min(96, ((touchDrag.clientX-rect.left)/rect.width)*100)),
-                          y: Math.max(4, Math.min(96, ((touchDrag.clientY-rect.top)/rect.height)*100)),
-                        }
-                      })()
-                    : (positions[p.id] || { x:50, y:50 })
-                  const isSel = activePlayer && activePlayer.id === p.id
-                  const isTarget = dragOverFieldId === p.id
-                  return (
-                    <div key={p.id} draggable onDragStart={e => onDragStartField(e, p.id)} onTouchStart={e => handleTouchStart(e, p.id, false)} onClick={() => selectPlayer(p.id)}
-                      style={{ position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`, transform:'translate(-50%,-50%)', cursor:'grab', touchAction:'none', zIndex: isSel||isDraggingThis?20:10 }}>
-                      <PlayerCard p={p} selected={isSel} dropTarget={isTarget}/>
-                    </div>
-                  )
-                })}
-              </div>
-              {activePlayer && (() => {
-                const pos = positions[activePlayer.id] || { x:50, y:50 }
-                const left = pos.x > 75 ? pos.x-30 : pos.x < 25 ? pos.x+5 : pos.x
-                const top = Math.min(pos.y+10, 78)
-                return (
-                  <div style={{ position:'absolute', left:`${left}%`, top:`${top}%`, transform:'translateX(-50%)', background:'rgba(7,11,22,.98)', border:`1px solid ${S.cyan}66`, borderRadius:10, padding:8, zIndex:50, display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, minWidth:168 }}>
-                    <div style={{ gridColumn:'span 3', fontSize:10, color:'rgba(255,255,255,.5)', textAlign:'center', paddingBottom:4, borderBottom:'1px solid rgba(255,255,255,.1)', marginBottom:2 }}>{activePlayer.name}</div>
-                    {EV_ITEMS.map(({ t, l }) => <button key={t} onClick={() => addEvent(t, activePlayer)} style={evBtn}>{l}</button>)}
-                    <button onClick={() => setActivePlayer(null)} style={{ gridColumn:'span 3', background:'rgba(239,68,68,.18)', border:'1px solid rgba(239,68,68,.4)', color:'#ef4444', borderRadius:6, padding:4, fontSize:10, fontWeight:700, cursor:'pointer' }}>✕ Cerrar</button>
-                  </div>
-                )
-              })()}
-            </div>
-
-            <div style={{ marginTop:12 }}>
+            <div style={{ marginTop:4 }}>
               <div style={{ fontSize:10, color:S.muted, textTransform:'uppercase', marginBottom:6 }}>
-                Banco de suplentes ({bench.length}) {bench.length>0 && <span style={{ opacity:.7 }}>· arrastra sobre un titular para cambiar</span>}
+                Banco de suplentes ({bench.length}) {bench.length>0 && <span style={{ opacity:.7 }}>· arrastra sobre un titular, o tócalo y elige "Cambio"</span>}
               </div>
               {bench.length > 0 ? (
                 <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'2px 0 6px' }}>
@@ -775,9 +899,29 @@ export default function EscuelaPartidoPage() {
 
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'12px', marginTop:14 }}>
               <div style={{ fontSize:10, color:S.muted, textTransform:'uppercase', marginBottom:6 }}>Resumen</div>
-              {[['⚽ Goles', events.filter(e=>e.type==='goal').length], ['🎯 Asistencias', events.filter(e=>e.type==='assist').length], ['🔄 Cambios', events.filter(e=>e.type==='sub').length], ['🟨 Amarillas', events.filter(e=>e.type==='yellow').length], ['🟥 Rojas', events.filter(e=>e.type==='red').length]].map(([l,v]) => (
+              {[
+                ['⚽ Goles', events.filter(e=>e.type==='goal').length],
+                ['🎯 Asistencias', events.filter(e=>e.type==='assist').length],
+                ['🔄 Cambios', events.filter(e=>e.type==='sub').length],
+                ['🟨 Amarillas', events.filter(e=>e.type==='yellow').length],
+                ['🟥 Rojas', events.filter(e=>e.type==='red').length],
+                ['🧤 Atajadas', events.filter(e=>e.type==='save').length],
+                ['🥅 Recibidos', events.filter(e=>e.type==='goal_against').length],
+              ].map(([l,v]) => (
                 <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid rgba(255,255,255,.05)' }}><span style={{ color:S.text2 }}>{l}</span><span style={{ fontWeight:700 }}>{v}</span></div>
               ))}
+              {(() => {
+                const at = events.filter(e=>e.type==='save').length
+                const rc = events.filter(e=>e.type==='goal_against').length
+                if (at + rc === 0) return null
+                const efect = Math.round((at/(at+rc))*100)
+                return (
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'7px 0 0' }}>
+                    <span style={{ color:S.cyan, fontWeight:700 }}>🧤 Efectividad del portero</span>
+                    <span style={{ fontWeight:900, color:S.cyan }}>{efect}%</span>
+                  </div>
+                )
+              })()}
             </div>
 
             <div style={{ marginTop:14 }}>
@@ -785,10 +929,13 @@ export default function EscuelaPartidoPage() {
               {events.length === 0 ? (
                 <div style={{ fontSize:11, color:S.muted, textAlign:'center', padding:'14px 0' }}>Sin eventos</div>
               ) : events.slice(0, 30).map(ev => (
-                <div key={ev.id} style={{ display:'flex', alignItems:'flex-start', gap:6, padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,.06)', fontSize:12 }}>
-                  <span style={{ color:S.cyan, fontFamily:'monospace', minWidth:28 }}>{ev.min}'</span>
-                  <span>{EV_ICONS[ev.type] || ''}</span>
-                  <span style={{ color:S.text2 }}>{ev.player}</span>
+                <div key={ev.id} style={{ padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', gap:6, fontSize:12 }}>
+                    <span style={{ color:S.cyan, fontFamily:'monospace', minWidth:28 }}>{ev.min}'</span>
+                    <span>{EV_ICONS[ev.type] || ''}</span>
+                    <span style={{ color:S.text2 }}>{ev.player}</span>
+                  </div>
+                  {ev.desc && <div style={{ fontSize:11, color:S.muted, fontStyle:'italic', marginLeft:34, marginTop:2 }}>"{ev.desc}"</div>}
                 </div>
               ))}
             </div>
@@ -867,6 +1014,25 @@ export default function EscuelaPartidoPage() {
             <button onClick={pauseTimer} style={{ background:'#f59e0b', color:'#000', border:'none', borderRadius:8, padding:'6px 8px', fontWeight:700, fontSize:13, cursor:'pointer', touchAction:'manipulation' }}>⏸</button>
             <button onClick={endMatch} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:8, padding:'6px 8px', fontWeight:700, fontSize:13, cursor:'pointer', touchAction:'manipulation' }}>⏹</button>
           </>}
+        </div>
+      )}
+
+      {/* Nota / buena jugada — se puede escribir o dictar por voz */}
+      {descModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.85)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'linear-gradient(135deg,#090f1e,#131f35)', border:`2px solid ${S.cyan}55`, borderRadius:16, padding:18, width:'min(360px,100%)' }}>
+            <div style={{ fontSize:14, fontWeight:900, color:S.cyan, marginBottom:4 }}>{descModal.type === 'highlight' ? '⭐ Buena jugada' : '📝 Nota'}</div>
+            <div style={{ fontSize:11, color:S.muted, marginBottom:10 }}>{activePlayer?.name} — cuenta cómo fue la jugada</div>
+            <textarea value={descText} onChange={e => setDescText(e.target.value)} placeholder="Escribe o dicta por voz cómo fue la jugada..."
+              style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:8, padding:10, color:S.text, fontSize:13, minHeight:90, resize:'vertical', boxSizing:'border-box', marginBottom:10 }}/>
+            <button onClick={toggleMic} style={{ width:'100%', background: grabando ? 'rgba(239,68,68,.25)' : 'rgba(0,221,208,.15)', border:`1px solid ${grabando ? '#ef4444' : S.cyan}66`, color: grabando ? '#ef4444' : S.cyan, borderRadius:8, padding:'9px 0', fontSize:12, fontWeight:800, cursor:'pointer', marginBottom:10 }}>
+              {grabando ? '⏺ Grabando... toca para parar' : '🎤 Hablar la jugada'}
+            </button>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={cancelarDesc} style={{ flex:1, background:'rgba(255,255,255,.07)', border:`1px solid ${S.border}`, color:'#fff', borderRadius:8, padding:'10px 0', fontSize:12, cursor:'pointer' }}>Cancelar</button>
+              <button onClick={guardarDesc} disabled={!descText.trim()} style={{ flex:2, background:'linear-gradient(135deg,#10b981,#0f4c75)', border:'none', color:'#fff', borderRadius:8, padding:'10px 0', fontWeight:900, fontSize:12, cursor:'pointer', opacity: descText.trim()?1:.6 }}>Guardar</button>
+            </div>
+          </div>
         </div>
       )}
 
