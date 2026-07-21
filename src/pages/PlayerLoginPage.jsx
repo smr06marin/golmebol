@@ -235,8 +235,33 @@ export default function PlayerLoginPage() {
     if (!pass.trim() || pass.length < 6) { setError('Mínimo 6 caracteres'); return }
     if (pass !== pass2) { setError('Las contraseñas no coinciden'); return }
     setLoading(true); setError('')
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email: `${cedula.trim()}@golmebol.com`, password: pass })
-    if (authError) { setError('Error: ' + authError.message); setLoading(false); return }
+    const email = `${cedula.trim()}@golmebol.com`
+    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass })
+    if (authError) {
+      // "User already registered" pasa cuando quedó una cuenta huérfana de un
+      // intento anterior (por ejemplo si algo falló justo después de crearla
+      // y nunca se vinculó a este jugador). En vez de dejar a la persona
+      // atascada pidiendo lo mismo una y otra vez, probamos iniciar sesión
+      // con la misma contraseña que acaba de escribir — si es la cuenta que
+      // ella misma creó antes, entra directo y queda vinculada.
+      const msg = (authError.message || '').toLowerCase()
+      if (msg.includes('already registered') || msg.includes('ya existe') || msg.includes('already exists')) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password: pass })
+        if (signInError || !signInData?.user) {
+          setError('Ya existe una cuenta con esta cédula pero no coincide con esta contraseña. Si ya la habías creado antes, usa esa contraseña, o escríbenos por WhatsApp para restablecerla.')
+          setLoading(false)
+          return
+        }
+        if (!player.user_id) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', player.id)
+        const splashData = await fetchSplashData(player.id)
+        setLoading(false)
+        setSplash(splashData)
+        return
+      }
+      setError('Error: ' + authError.message)
+      setLoading(false)
+      return
+    }
     await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
     const splashData = await fetchSplashData(player.id)
     setLoading(false)
