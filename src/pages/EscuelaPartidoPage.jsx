@@ -141,12 +141,18 @@ export default function EscuelaPartidoPage() {
   const [historial, setHistorial] = useState(null)
   const [verDetalle, setVerDetalle] = useState(null)
   const [guardandoFinal, setGuardandoFinal] = useState(false)
+  // Reloj flotante: se puede arrastrar con el dedo (o el mouse) por toda la pantalla
+  const [cronoPos, setCronoPos] = useState(() => ({
+    x: typeof window !== 'undefined' ? Math.max(12, window.innerWidth - 168) : 200,
+    y: 96,
+  }))
 
   const dragRef = useRef({ id:null, fromBench:false })
   const pitchRef = useRef(null)
   const pendingRef = useRef({})
   const saveTimeoutRef = useRef(null)
   const toastTimeoutRef = useRef(null)
+  const cronoDragRef = useRef(null) // { offX, offY } mientras se arrastra el reloj
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -254,6 +260,25 @@ export default function EscuelaPartidoPage() {
     setTimerRunning(false)
     setShowFinish(true)
     persist({ timer_sec: timerSec })
+  }
+
+  // ── Reloj flotante arrastrable (dedo o mouse, vía Pointer Events) ──
+  const CRONO_W = 156, CRONO_H = 48
+  function onCronoPointerDown(e) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    cronoDragRef.current = { offX: e.clientX - rect.left, offY: e.clientY - rect.top }
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+  }
+  function onCronoPointerMove(e) {
+    if (!cronoDragRef.current) return
+    const { offX, offY } = cronoDragRef.current
+    const x = Math.max(6, Math.min(window.innerWidth - CRONO_W - 6, e.clientX - offX))
+    const y = Math.max(6, Math.min(window.innerHeight - CRONO_H - 6, e.clientY - offY))
+    setCronoPos({ x, y })
+  }
+  function onCronoPointerUp(e) {
+    cronoDragRef.current = null
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
   }
 
   // ── Navegación entre vistas ──
@@ -674,12 +699,9 @@ export default function EscuelaPartidoPage() {
         {view === 'match' && (
           <div>
             <div style={{ background:'rgba(0,0,0,.3)', borderRadius:12, padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', marginBottom:'10px' }}>
-              <div style={{ fontSize:28, fontWeight:900, color: timerRunning?'#00ff88':S.text, minWidth:70 }}>{fmtTime(timerSec)}</div>
-              {!timerRunning && <button onClick={startTimer} style={{ background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontWeight:700, fontSize:11, cursor:'pointer' }}>▶ {timerSec>0?'Reanudar':'Iniciar'}</button>}
-              {timerRunning && <>
-                <button onClick={pauseTimer} style={{ background:'#f59e0b', color:'#000', border:'none', borderRadius:8, padding:'7px 12px', fontWeight:700, fontSize:11, cursor:'pointer' }}>⏸ Pausar</button>
-                <button onClick={endMatch} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:8, padding:'7px 12px', fontWeight:700, fontSize:11, cursor:'pointer' }}>⏹ Fin</button>
-              </>}
+              <div style={{ fontSize:11, color:S.muted }}>
+                {estado==='en_curso' ? (timerRunning ? '🟢 Cronómetro corriendo arriba' : '⏸ Cronómetro en pausa') : '⏱ Cronómetro sin iniciar'} — arrástralo con el dedo a donde quieras
+              </div>
               <div style={{ flex:1 }}/>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                 <span style={{ fontSize:10, color:S.muted }}>Rival</span>
@@ -822,6 +844,30 @@ export default function EscuelaPartidoPage() {
 
       {toast && (
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:toast.color, color:'#fff', padding:'10px 22px', borderRadius:10, fontWeight:700, fontSize:13, zIndex:999, boxShadow:'0 4px 20px rgba(0,0,0,.5)' }}>{toast.msg}</div>
+      )}
+
+      {/* Cronómetro flotante: siempre visible mientras se llenan los datos del partido, se arrastra con el dedo o el mouse */}
+      {view === 'match' && (
+        <div
+          onPointerDown={onCronoPointerDown}
+          onPointerMove={onCronoPointerMove}
+          onPointerUp={onCronoPointerUp}
+          onPointerCancel={onCronoPointerUp}
+          style={{
+            position:'fixed', left:cronoPos.x, top:cronoPos.y, zIndex:300,
+            background:'rgba(9,13,24,.95)', border:`1.5px solid ${timerRunning?'#00ff8877':S.cyan+'55'}`,
+            borderRadius:14, padding:'7px 9px', boxShadow:'0 8px 24px rgba(0,0,0,.55)',
+            display:'flex', alignItems:'center', gap:7, touchAction:'none', cursor:'grab',
+            userSelect:'none', backdropFilter:'blur(8px)', minWidth:CRONO_W,
+          }}>
+          <span style={{ fontSize:11, color:S.muted, lineHeight:1 }}>⠿⠿</span>
+          <div style={{ fontSize:19, fontWeight:900, color: timerRunning?'#00ff88':S.text, fontFamily:'monospace', minWidth:54, textAlign:'center' }}>{fmtTime(timerSec)}</div>
+          {!timerRunning && <button onClick={startTimer} style={{ background:'#10b981', color:'#fff', border:'none', borderRadius:8, padding:'6px 8px', fontWeight:700, fontSize:13, cursor:'pointer', touchAction:'manipulation' }}>▶</button>}
+          {timerRunning && <>
+            <button onClick={pauseTimer} style={{ background:'#f59e0b', color:'#000', border:'none', borderRadius:8, padding:'6px 8px', fontWeight:700, fontSize:13, cursor:'pointer', touchAction:'manipulation' }}>⏸</button>
+            <button onClick={endMatch} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:8, padding:'6px 8px', fontWeight:700, fontSize:13, cursor:'pointer', touchAction:'manipulation' }}>⏹</button>
+          </>}
+        </div>
       )}
 
       {/* Fantasma que sigue al dedo mientras se arrastra un suplente en celular */}
