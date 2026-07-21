@@ -104,6 +104,12 @@ export default function RegistroEscuelaPage() {
         })
         if (!errAuth && authData?.user) {
           await supabase.from('players').update({ user_id: authData.user.id }).eq('id', acudienteId)
+        } else if (errAuth) {
+          // Ya existe una cuenta de auth con este correo (de un intento anterior que
+          // no se alcanzó a vincular): entramos con esa cuenta para completar el link
+          // en vez de dejar al acudiente huérfano en silencio.
+          const { data: signInData } = await supabase.auth.signInWithPassword({ email, password: acudiente.cedula.trim() })
+          if (signInData?.user) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', acudienteId)
         }
       }
 
@@ -133,6 +139,10 @@ export default function RegistroEscuelaPage() {
       })
       if (!errAuthJugador && authJugador?.user) {
         await supabase.from('players').update({ user_id: authJugador.user.id }).eq('id', nuevoJugador.id)
+      } else if (errAuthJugador) {
+        // Mismo caso: cuenta de auth ya creada de un intento previo sin vincular.
+        const { data: signInJugador } = await supabase.auth.signInWithPassword({ email: emailJugador, password: tiJugador })
+        if (signInJugador?.user) await supabase.from('players').update({ user_id: signInJugador.user.id }).eq('id', nuevoJugador.id)
       }
 
       await subirFotos(nuevoJugador.id)

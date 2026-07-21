@@ -19,6 +19,7 @@ export default function MiTarjetaEscuelaPage() {
   const [premios, setPremios] = useState([])
   const [premiosTorneo, setPremiosTorneo] = useState([])
   const [loading, setLoading] = useState(true)
+  const [errorCuenta, setErrorCuenta] = useState(false)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -26,8 +27,11 @@ export default function MiTarjetaEscuelaPage() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/jugador/login'); return }
-    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p) { navigate('/jugador/login'); return }
+    // maybeSingle (no single): si por algún motivo hay más de una fila o
+    // ninguna con este user_id, no explota — se muestra un aviso en vez de
+    // devolver en silencio a la pantalla de la cédula.
+    const { data: p, error: errP } = await supabase.from('players').select('*').eq('user_id', user.id).maybeSingle()
+    if (errP || !p) { setLoading(false); setErrorCuenta(true); return }
     if (!p.es_jugador_escuela) { navigate('/jugador'); return }
     setJugador(p)
 
@@ -49,6 +53,21 @@ export default function MiTarjetaEscuelaPage() {
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+  )
+  if (errorCuenta) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }}>
+      <div style={{ maxWidth:'380px', textAlign:'center', color:S.text }}>
+        <div style={{ fontSize:'2.2rem', marginBottom:'10px' }}>⚠️</div>
+        <div style={{ fontWeight:'700', marginBottom:'8px' }}>No pudimos cargar tu tarjeta</div>
+        <div style={{ fontSize:'.85rem', color:S.text2, marginBottom:'20px', lineHeight:1.5 }}>
+          Tu cuenta no quedó bien vinculada. Escríbenos por WhatsApp con tu número de documento para arreglarlo.
+        </div>
+        <a href={`https://wa.me/573226490055?text=${encodeURIComponent('Hola, no puedo ver mi tarjeta de jugador de escuela')}`} target="_blank" rel="noreferrer"
+          style={{ display:'inline-block', padding:'10px 20px', background:S.cyan, color:'#07070e', borderRadius:'10px', textDecoration:'none', fontWeight:'700', fontSize:'.85rem' }}>
+          💬 Escribir por WhatsApp
+        </a>
+      </div>
+    </div>
   )
   if (!jugador) return null
 
