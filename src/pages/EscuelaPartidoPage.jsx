@@ -141,6 +141,8 @@ export default function EscuelaPartidoPage() {
   const [toast, setToast] = useState(null)
   const [historial, setHistorial] = useState(null)
   const [verDetalle, setVerDetalle] = useState(null)
+  const [borrarPartido, setBorrarPartido] = useState(null) // partido del historial que se va a confirmar borrar
+  const [borrandoPartido, setBorrandoPartido] = useState(false)
   const [guardandoFinal, setGuardandoFinal] = useState(false)
   // Reloj flotante: se puede arrastrar con el dedo (o el mouse) por toda la pantalla
   const [cronoPos, setCronoPos] = useState(() => ({
@@ -659,6 +661,17 @@ export default function EscuelaPartidoPage() {
     setHistorial(data || [])
   }
 
+  async function eliminarPartido() {
+    if (!borrarPartido) return
+    setBorrandoPartido(true)
+    await supabase.from('escuela_partidos').delete().eq('id', borrarPartido.id)
+    setBorrandoPartido(false)
+    setBorrarPartido(null)
+    if (verDetalle?.id === borrarPartido.id) setVerDetalle(null)
+    showToast('🗑️ Partido eliminado del historial', '#10b981')
+    cargarHistorial()
+  }
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
@@ -692,13 +705,10 @@ export default function EscuelaPartidoPage() {
               <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{score.home}</div>
             </div>
             <div style={{ fontSize:16, color:'rgba(255,255,255,.5)' }}>–</div>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <button onClick={() => { const ns={...score,away:Math.max(0,score.away-1)}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:'rgba(255,255,255,.15)', border:'none', color:'#fff', borderRadius:6, width:26, height:26, fontSize:14, cursor:'pointer' }}>−</button>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:10, color:'rgba(255,255,255,.7)' }}>{matchInfo.rival || 'Rival'}</div>
-                <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{score.away}</div>
-              </div>
-              <button onClick={() => { const ns={...score,away:score.away+1}; setScore(ns); persist({score_away:ns.away}) }} style={{ background:'rgba(255,255,255,.15)', border:'none', color:'#fff', borderRadius:6, width:26, height:26, fontSize:14, cursor:'pointer' }}>+</button>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.7)' }}>{matchInfo.rival || 'Rival'}</div>
+              <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{score.away}</div>
+              <div style={{ fontSize:8.5, color:'rgba(255,255,255,.5)', marginTop:2 }}>Se suma desde 🥅 Recibido del portero</div>
             </div>
           </div>
 
@@ -965,12 +975,16 @@ export default function EscuelaPartidoPage() {
               <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                 {historial.map(h => (
                   <div key={h.id} onClick={() => setVerDetalle(verDetalle?.id === h.id ? null : h)} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'12px 14px', cursor:'pointer' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
                       <div>
                         <div style={{ fontWeight:700, fontSize:'.85rem' }}>vs {h.rival || 'Rival'}</div>
                         <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2 }}>{h.fecha} · {h.torneo}</div>
                       </div>
-                      <div style={{ fontSize:'1.1rem', fontWeight:900, color:S.cyan }}>{h.score_home} – {h.score_away}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <div style={{ fontSize:'1.1rem', fontWeight:900, color:S.cyan }}>{h.score_home} – {h.score_away}</div>
+                        <button onClick={e => { e.stopPropagation(); setBorrarPartido(h) }} title="Eliminar partido"
+                          style={{ background:'rgba(239,68,68,.12)', border:'1px solid rgba(239,68,68,.35)', color:'#ef4444', borderRadius:8, width:30, height:30, fontSize:13, cursor:'pointer', flexShrink:0 }}>🗑️</button>
+                      </div>
                     </div>
                     {verDetalle?.id === h.id && (
                       <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${S.border}` }}>
@@ -1001,6 +1015,22 @@ export default function EscuelaPartidoPage() {
 
       {toast && (
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:toast.color, color:'#fff', padding:'10px 22px', borderRadius:10, fontWeight:700, fontSize:13, zIndex:999, boxShadow:'0 4px 20px rgba(0,0,0,.5)' }}>{toast.msg}</div>
+      )}
+
+      {/* Confirmación al eliminar un partido del historial — pide confirmar dos veces antes de borrar */}
+      {borrarPartido && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.85)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'linear-gradient(135deg,#090f1e,#131f35)', border:'2px solid rgba(239,68,68,.5)', borderRadius:16, padding:20, width:'min(340px,100%)', textAlign:'center' }}>
+            <div style={{ fontSize:30, marginBottom:8 }}>⚠️</div>
+            <div style={{ fontSize:15, fontWeight:900, color:'#fff', marginBottom:6 }}>¿Eliminar este partido?</div>
+            <div style={{ fontSize:12.5, color:S.muted, marginBottom:4 }}>vs {borrarPartido.rival || 'Rival'} · {borrarPartido.fecha}</div>
+            <div style={{ fontSize:12, color:S.muted, marginBottom:18 }}>Esta acción no se puede deshacer. ¿Estás seguro de que quieres borrarlo del historial?</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setBorrarPartido(null)} disabled={borrandoPartido} style={{ flex:1, background:'rgba(255,255,255,.07)', border:`1px solid ${S.border}`, color:'#fff', borderRadius:8, padding:'10px 0', fontSize:12, fontWeight:700, cursor:'pointer' }}>Cancelar</button>
+              <button onClick={eliminarPartido} disabled={borrandoPartido} style={{ flex:1, background:'linear-gradient(135deg,#ef4444,#991b1b)', border:'none', color:'#fff', borderRadius:8, padding:'10px 0', fontSize:12, fontWeight:900, cursor:'pointer', opacity:borrandoPartido?.7:1 }}>{borrandoPartido ? 'Borrando...' : 'Sí, borrar'}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Cronómetro flotante: siempre visible mientras se llenan los datos del partido, se arrastra con el dedo o el mouse */}
@@ -1096,6 +1126,7 @@ export default function EscuelaPartidoPage() {
                       <div key={pid} style={{ background:'rgba(0,0,0,.26)', borderRadius:8, padding:8 }}>
                         <div style={{ fontSize:11.5, fontWeight:700, color:S.text, marginBottom:6 }}>{nombre}</div>
                         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:5 }}>
+                          <input type="number" min="0" placeholder="Min" value={st.minutos ?? ''} onChange={e => upd('minutos', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Minutos jugados"/>
                           <input type="number" min="0" placeholder="Min" value={st.minutos ?? ''} onChange={e => upd('minutos', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Minutos jugados"/>
                           <input type="number" min="0" placeholder="Rec" value={st.recuperaciones ?? ''} onChange={e => upd('recuperaciones', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Recuperaciones"/>
                           <input type="number" min="0" placeholder="Pases" value={st.pases_acertados ?? ''} onChange={e => upd('pases_acertados', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Pases acertados"/>
