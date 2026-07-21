@@ -22,6 +22,7 @@ export default function EscuelaHomePage() {
   const [categoria,     setCategoria]     = useState('')
   const [guardando,     setGuardando]     = useState(false)
   const [error,         setError]         = useState('')
+  const [subiendoLogo,  setSubiendoLogo]  = useState(false)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -53,6 +54,20 @@ export default function EscuelaHomePage() {
     await supabase.auth.signOut(); navigate('/jugador/login')
   }
 
+  async function handleLogo(file) {
+    if (!file || !escuela) return
+    setSubiendoLogo(true)
+    const ext = file.name.split('.').pop()
+    const path = `logos/${escuela.id}.${ext}`
+    const { error: errUp } = await supabase.storage.from('teams').upload(path, file, { upsert: true })
+    if (!errUp) {
+      const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+      await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', escuela.id)
+      setEscuela(e => ({ ...e, logo_url: urlData.publicUrl }))
+    }
+    setSubiendoLogo(false)
+  }
+
   async function handleCrearEscuela() {
     setError('')
     if (!nombreEscuela.trim()) { setError('Ponle un nombre a tu escuela'); return }
@@ -77,20 +92,37 @@ export default function EscuelaHomePage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      {/* Header */}
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div>
-            <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>🎓 Escuela · Golmebol</div>
-            <div style={{ fontWeight:'800', fontSize:'1.1rem', color:S.text }}>{profesor.name}</div>
-            <div style={{ fontSize:'.72rem', color: esCoordinador ? S.gold : S.muted, fontWeight:'600', marginTop:'2px' }}>
-              {esCoordinador ? '👑 Profesor coordinador' : '🧑‍🏫 Profesor'}
+      {/* Banner del club */}
+      <div style={{ background:`linear-gradient(160deg, ${S.surface}, ${S.navy})`, borderBottom:`1px solid ${S.border}` }}>
+        <div style={{ maxWidth:'600px', margin:'0 auto', padding:'14px 20px 20px' }}>
+
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', marginBottom:'18px' }}>
+            <PortalesMenu usuario={profesor} actual="profesor" theme="dark"/>
+            <button onClick={handleLogout} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 13px', cursor:'pointer', color:S.muted, fontSize:'.75rem', fontWeight:'600', flexShrink:0 }}>Salir</button>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
+            <div style={{ position:'relative', width:'64px', height:'64px', flexShrink:0 }}>
+              <div style={{ width:'64px', height:'64px', borderRadius:'16px', background:S.card2, border:`2px solid ${S.cyan}55`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 14px rgba(0,0,0,.35)' }}>
+                {escuela?.logo_url ? <img src={escuela.logo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.6rem' }}>🛡️</span>}
+              </div>
+              {esCoordinador && escuela && (
+                <label style={{ position:'absolute', bottom:'-4px', right:'-4px', width:'24px', height:'24px', borderRadius:'50%', background:S.cyan, display:'flex', alignItems:'center', justifyContent:'center', cursor: subiendoLogo?'default':'pointer', border:`2px solid ${S.navy}`, opacity:subiendoLogo?.6:1 }}
+                  title="Cambiar foto/escudo del club">
+                  <span style={{ fontSize:'.65rem' }}>📷</span>
+                  <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoLogo} onChange={e => handleLogo(e.target.files[0] || null)}/>
+                </label>
+              )}
+            </div>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:'.66rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.12em' }}>🏟️ Club</div>
+              <div style={{ fontWeight:'900', fontSize:'1.35rem', color:S.text, lineHeight:1.15, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{escuela?.name || 'Sin club todavía'}</div>
+              <div style={{ fontSize:'.74rem', color: esCoordinador ? S.gold : S.muted, fontWeight:'700', marginTop:'4px' }}>
+                {esCoordinador ? '👑 Coordinador' : '🧑‍🏫 Profesor'} · {profesor.name?.split(' ')[0]}
+              </div>
             </div>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-            <PortalesMenu usuario={profesor} actual="profesor" theme="dark"/>
-            <button onClick={handleLogout} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 14px', cursor:'pointer', color:S.muted, fontSize:'.78rem', fontWeight:'600' }}>Salir</button>
-          </div>
+
         </div>
       </div>
 
@@ -101,11 +133,11 @@ export default function EscuelaHomePage() {
           esCoordinador ? (
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px' }}>
               <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🏫</div>
-              <div style={{ fontWeight:'800', fontSize:'1.05rem', marginBottom:'4px' }}>Crea tu escuela</div>
-              <div style={{ fontSize:'.8rem', color:S.muted, marginBottom:'18px' }}>Ponle el nombre y la categoría — después podrás agregar tus jugadores y a los demás profesores.</div>
+              <div style={{ fontWeight:'800', fontSize:'1.05rem', marginBottom:'4px' }}>Crea tu club</div>
+              <div style={{ fontSize:'.8rem', color:S.muted, marginBottom:'18px' }}>Ponle el nombre y la categoría — después podrás agregar tus jugadores, la foto del club y a los demás profesores.</div>
               <div style={{ marginBottom:'12px' }}>
-                <label style={lbl}>Nombre de la escuela *</label>
-                <input value={nombreEscuela} onChange={e => setNombreEscuela(e.target.value)} style={inp} placeholder="Ej: Escuela de Fútbol Golmebol"/>
+                <label style={lbl}>Nombre del club *</label>
+                <input value={nombreEscuela} onChange={e => setNombreEscuela(e.target.value)} style={inp} placeholder="Ej: Club Chapecó"/>
               </div>
               <div style={{ marginBottom:'16px' }}>
                 <label style={lbl}>Categoría</label>
@@ -114,7 +146,7 @@ export default function EscuelaHomePage() {
               {error && <div style={{ color:'#ff6b6b', fontSize:'.78rem', marginBottom:'12px' }}>{error}</div>}
               <button onClick={handleCrearEscuela} disabled={guardando}
                 style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.9rem', opacity:guardando?.7:1 }}>
-                {guardando ? 'Creando...' : 'CREAR ESCUELA →'}
+                {guardando ? 'Creando...' : 'CREAR CLUB →'}
               </button>
             </div>
           ) : (
@@ -128,12 +160,6 @@ export default function EscuelaHomePage() {
         {/* Ya tiene escuela */}
         {profesor.escuela_id && escuela && (
           <div>
-            <div style={{ background:'linear-gradient(135deg, rgba(0,221,208,.1), rgba(0,221,208,.02))', border:`1px solid rgba(0,221,208,.3)`, borderRadius:'16px', padding:'20px', marginBottom:'16px' }}>
-              <div style={{ fontSize:'.68rem', color:S.cyan, textTransform:'uppercase', letterSpacing:'.1em', marginBottom:'6px' }}>Tu escuela</div>
-              <div style={{ fontWeight:'900', fontSize:'1.3rem' }}>{escuela.name}</div>
-              {escuela.categoria && <div style={{ fontSize:'.8rem', color:S.text2, marginTop:'2px' }}>{escuela.categoria}</div>}
-            </div>
-
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
               <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
                 <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.cyan }}>{numJugadores}</div>
@@ -173,6 +199,7 @@ export default function EscuelaHomePage() {
                 <span style={{ fontSize:'1.4rem' }}>⚽</span>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Día de partido</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Convocatoria, formación y partido en vivo</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Convocatoria, formación y partido en vivo</div>
                 </div>
                 <span style={{ color:S.muted }}>→</span>
