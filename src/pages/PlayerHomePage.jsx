@@ -137,6 +137,7 @@ export default function PlayerHomePage() {
     // Stats adicionales
     const amarillas    = raw.reduce((s, r) => s + (r.yellow_cards || 0), 0)
     const rojas        = raw.reduce((s, r) => s + (r.red_cards    || 0), 0)
+    const azules       = raw.reduce((s, r) => s + (r.blue_cards   || 0), 0)
     const vallasCero   = esPort ? raw.filter(r => r.goals_conceded === 0).length : 0
     const golesComoJug = raw.filter(r=>!r.fue_arquero).reduce((s,r)=>s+(r.goals_scored||0),0)
     const golesComoArq = raw.filter(r=>r.fue_arquero).reduce((s,r)=>s+(r.goals_scored||0),0)
@@ -150,7 +151,7 @@ export default function PlayerHomePage() {
     const { data: logrosJug } = await supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon')
     const titulos = (logrosJug || []).length
 
-    const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort, esDefensa, amarillas, rojas, vallasCero, golesComoJug, golesComoArq }
+    const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort, esDefensa, amarillas, rojas, azules, vallasCero, golesComoJug, golesComoArq }
     setStats(statsCalc)
 
     const { data: histData } = await supabase
@@ -602,6 +603,7 @@ export default function PlayerHomePage() {
     pp:           stats?.pp           || 0,
     amarillas:    stats?.amarillas    || 0,
     rojas:        stats?.rojas        || 0,
+    azules:       stats?.azules       || 0,
     vallasCero:   stats?.vallasCero   || 0,
     golesComoJug: stats?.golesComoJug || 0,
     golesComoArq: stats?.golesComoArq || 0,

@@ -9,8 +9,15 @@ function FilaJugador({ j, color, onAbrir }) {
       <div style={{ width: '34px', height: '34px', borderRadius: '50%', overflow: 'hidden', background: '#1e2d3d', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {foto ? <img src={foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '.9rem' }}>👤</span>}
       </div>
-      <span style={{ flex: 1, fontSize: '.85rem', fontWeight: '600', color: TEXTO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {j.nombre || <em style={{ color: TEXTO_TENUE }}>Sin nombre — toca para escribirlo</em>}
+      <span style={{ flex: 1, minWidth: 0, fontSize: '.85rem', fontWeight: '600', color: TEXTO, overflow: 'hidden' }}>
+        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {j.nombre || <em style={{ color: TEXTO_TENUE }}>Sin nombre — toca para escribirlo</em>}
+        </span>
+        {j.debeTarjeta && (
+          <span style={{ display: 'inline-block', marginTop: '2px', fontSize: '.62rem', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '5px', padding: '2px 6px' }}>
+            ⚠️ DEBE TARJETA
+          </span>
+        )}
       </span>
       {asignado ? (
         <span style={{ background: VERDE, color: '#fff', fontWeight: '900', fontSize: '.8rem', borderRadius: '7px', padding: '4px 10px', flexShrink: 0 }}>#{j.numero}</span>

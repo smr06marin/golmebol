@@ -341,6 +341,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   // Alarma de fin de tiempo: pita y vibra SIN PARAR hasta que le den "Parar"
   const [alarmaActiva, setAlarmaActiva] = useState(false)
   const alarmaRef = useRef(null)
+  // true si el partido YA tenía estadísticas guardadas cuando se abrió esta
+  // planilla (o sea, esto es una edición, no el primer guardado) — se usa
+  // para no descontar dos veces el contador de sanciones automáticas.
+  const yaJugadoRef = useRef(false)
   // Aviso al tocar casillas del 1er tiempo estando en el 2do
   const [avisoPeriodo, setAvisoPeriodo] = useState(false)
   // Informe del partido (obligatorio con roja o partido terminado antes de tiempo)
@@ -665,7 +669,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       setLoading(false); return
     }
 
-    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB, sancionesDB] = await Promise.all([
+    const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB, sancionesDB, tarjetasDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
@@ -677,17 +681,33 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       // Historial de ediciones hechas DESPUÉS de que la planilla ya estaba cerrada
       supabase.from('match_edit_log').select('*').eq('match_id', partido.id).order('edited_at', { ascending: false }),
       // Jugadores sancionados: no se les deja aparecer en la planilla de este torneo
-      supabase.from('sanciones').select('player_id, fecha_fin').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
+      supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
+      // Tarjetas sin pagar (de este torneo): para avisarle al árbitro en la planilla
+      supabase.from('player_match_stats').select('player_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
     ])
     setLogEdicion(editLogDB?.data || [])
 
     // Filtrar jugadores sancionados (sanción de este torneo, o global) — no
     // pueden salir como opción en la planilla mientras dure la sanción.
+    // (Si tiene partidos_pendientes en 0, ya cumplió la sanción automática.)
     const hoyIso = new Date().toISOString()
-    const idsSancionados = new Set((sancionesDB?.data || []).filter(s => !s.fecha_fin || s.fecha_fin > hoyIso).map(s => s.player_id))
+    const idsSancionados = new Set((sancionesDB?.data || [])
+      .filter(s => (!s.fecha_fin || s.fecha_fin > hoyIso) && (s.partidos_pendientes === null || s.partidos_pendientes === undefined || s.partidos_pendientes > 0))
+      .map(s => s.player_id))
     if (idsSancionados.size > 0) {
       if (jugsL.data) jugsL.data = jugsL.data.filter(r => !idsSancionados.has(r.players?.id))
       if (jugsV.data) jugsV.data = jugsV.data.filter(r => !idsSancionados.has(r.players?.id))
+    }
+
+    // Jugadores que deben alguna tarjeta de este torneo (solo si el torneo
+    // cobra por tarjetas) — se les muestra un aviso chiquito en la planilla.
+    const fcTorneoDeuda = torn.data?.finanzas_config || {}
+    const cobraTarjetas = (fcTorneoDeuda.precio_amarilla || 0) + (fcTorneoDeuda.precio_azul || 0) + (fcTorneoDeuda.precio_roja || 0) > 0
+    const idsDebenTarjeta = new Set()
+    if (cobraTarjetas) {
+      (tarjetasDB?.data || []).forEach(s => {
+        if ((s.yellow_cards > 0 && !s.yellow_paid) || (s.blue_cards > 0 && !s.blue_paid) || (s.red_cards > 0 && !s.red_paid)) idsDebenTarjeta.add(s.player_id)
+      })
     }
 
     // Firmas y capitanes guardados en la BD (de un guardado anterior). Se
@@ -699,16 +719,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
 
     const evs = eventos.data || [], stats = statsDB.data || [], yaJugado = stats.length > 0, torneoData = torn.data
+    yaJugadoRef.current = yaJugado
     if (logrosDB.data?.player_id) setMvpId(logrosDB.data.player_id)
 
-    const mapJug = (data) => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '' }))
+    const mapJug = (data) => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(r.players?.id) }))
 
     let jugsLocalBase, jugsVisBase
     if (yaJugado) {
       const sL = stats.filter(s => s.team_id === partido.home_team_id)
       const sV = stats.filter(s => s.team_id === partido.away_team_id)
-      jugsLocalBase = sL.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '' }))
-      jugsVisBase   = sV.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '' }))
+      jugsLocalBase = sL.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(s.player_id) }))
+      jugsVisBase   = sV.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(s.player_id) }))
     } else { jugsLocalBase = mapJug(jugsL.data); jugsVisBase = mapJug(jugsV.data) }
 
     const golesLocRec = Array(24).fill(null), golesVisRec = Array(24).fill(null)
@@ -938,26 +959,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
     const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
     const statsRows = []
-    // Solo cuentan como "jugaron" los marcados en INICIALES o INGRESOS de su equipo
-    // (además del arquero, por si quedó marcado sin estar en esas listas). Tener un
-    // número de camiseta escrito ya NO alcanza por sí solo para contar en las estadísticas.
+    // Cuenta como "jugó" cualquier jugador al que se le haya anotado el
+    // número de camiseta en la planilla (esté o no marcado explícitamente en
+    // iniciales/ingresos) — así como el arquero, o cualquiera con gol,
+    // tarjeta o falta registrada.
     const procesarStats = (jugadores, goles, team_id, esLocal, iniciales, ingresos) => {
       const gF = esLocal ? golesLocalTotal : golesVisTotal
       const gC = esLocal ? golesVisTotal   : golesLocalTotal
       const arqueroIds = esLocal ? todosArquerosLocalIds : todosArquerosVisIds
       // El arquero actual (último) recibe todos los GC
       const arqueroActualId = esLocal ? arqueroLocal?.id : arqueroVis?.id
-      const jugaronNumeros = new Set([...iniciales, ...ingresos].filter(n => n !== '' && n !== null && n !== undefined).map(String))
       jugadores.forEach(j => {
         if (!j.id || !j.numero) return
         const esArqueroEnEstePartido = arqueroIds.has(j.id)
-        // Un jugador con gol, tarjeta o falta OBVIAMENTE jugó, aunque el
-        // árbitro haya olvidado marcarlo en iniciales/ingresos. Antes su fila
-        // de estadísticas se perdía y las tarjetas no sumaban en contabilidad.
-        const anoto      = goles.some(g => g && String(g.numero) === String(j.numero))
-        const tuvoAccion = j.amarilla || j.azul || j.roja || (j.faltasPeriodo || []).length > 0 || anoto
-        const jugoPartido = jugaronNumeros.has(String(j.numero)) || esArqueroEnEstePartido || tuvoAccion
-        if (!jugoPartido) return
         const esArqueroActual        = j.id === arqueroActualId
         const golesAnotados          = goles.filter(g => g && String(g.numero) === String(j.numero)).length
         // GC solo al arquero actual (o último que tapó)
@@ -980,6 +994,35 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const { error: errStats } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
       if (errStats) erroresGuardado.push('Estadísticas: ' + errStats.message)
     }
+
+    // Sanción automática por tarjeta roja: mínimo 1 fecha de suspensión, sin
+    // que el organizador tenga que hacer nada. Si quiere suspenderlo más
+    // tiempo, eso sí lo hace él a mano (como ya funcionaba).
+    try {
+      const equiposPartido = [partido.home_team_id, partido.away_team_id].filter(Boolean)
+      // Solo la primera vez que se guarda este partido como jugado se
+      // descuenta 1 fecha a las sanciones automáticas pendientes de estos
+      // equipos (evita descontar de más si se edita el partido después).
+      if (!yaJugadoRef.current && equiposPartido.length > 0) {
+        const { data: pendientes } = await supabase.from('sanciones').select('id, partidos_pendientes')
+          .eq('activa', true).not('partidos_pendientes', 'is', null).gt('partidos_pendientes', 0).in('team_id', equiposPartido)
+        for (const s of (pendientes || [])) {
+          const restante = (s.partidos_pendientes || 1) - 1
+          await supabase.from('sanciones').update({ partidos_pendientes: restante, activa: restante > 0 }).eq('id', s.id)
+        }
+      }
+      const conRoja = statsRows.filter(r => r.red_cards > 0)
+      if (conRoja.length > 0) {
+        const { data: yaExisten } = await supabase.from('sanciones').select('player_id').eq('match_id', partido.id).in('player_id', conRoja.map(r => r.player_id))
+        const idsConSancion = new Set((yaExisten || []).map(s => s.player_id))
+        const nuevasSanciones = conRoja.filter(r => !idsConSancion.has(r.player_id)).map(r => ({
+          player_id: r.player_id, team_id: r.team_id, tournament_id: partido.tournament_id, match_id: partido.id,
+          motivo: 'Tarjeta roja automática (mínimo 1 fecha) — el organizador puede extenderla desde el torneo',
+          activa: true, partidos_pendientes: 1, fecha_fin: null,
+        }))
+        if (nuevasSanciones.length > 0) await supabase.from('sanciones').insert(nuevasSanciones)
+      }
+    } catch (e) { console.error('sanción automática roja:', e) }
 
     // MVP
     const mvpFinal = mvpIdFinal || mvpId
@@ -1502,6 +1545,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   </span>
                   {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
+                  {j.debeTarjeta && <span title="Tiene una tarjeta de un partido anterior sin pagar" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '4px', padding: '1px 4px' }}>⚠️ DEBE TARJETA</span>}
                 </td>
                 {(hayArqueroEquipo || sinRegistro) ? (
                   <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>

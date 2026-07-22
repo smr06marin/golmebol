@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Shield, Check, Users, Upload } from 'lucide-react'
+import { useFormDraft, limpiarBorrador } from '../hooks/useFormDraft'
 
 // Cliente aparte SIN sesión persistente: se usa solo para verificar la cédula y
 // contraseña de quien desactiva un jugador, sin tocar la sesión del navegador.
@@ -74,6 +75,9 @@ export default function RegistroEquipoPage() {
   const [jugadorExiste, setJugadorExiste] = useState(null)
   const [mostrarNuevo,  setMostrarNuevo]  = useState(false)
   const [formNuevo,     setFormNuevo]     = useState(EMPTY_FORM)
+  // Si el celular mata la pestaña al salir a WhatsApp/otra app mientras se
+  // llena el registro del jugador, esto lo recupera solo al volver.
+  useFormDraft(`draft_registro_equipo_${token || 'x'}`, formNuevo, setFormNuevo)
   const [guardando,     setGuardando]     = useState(false)
   const [msg,           setMsg]           = useState(null)
   const [exito,         setExito]         = useState(false)
@@ -315,6 +319,7 @@ export default function RegistroEquipoPage() {
     // Subir fotos si las puso
     await subirFotosCedula(jugadorExiste.id)
 
+    limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
     setExito(true)
     setGuardando(false)
   }
@@ -386,6 +391,7 @@ export default function RegistroEquipoPage() {
     // Registrar en equipo base
     await supabase.from('team_players').insert({ team_id: equipo.id, player_id: nuevo.id, activo: true })
 
+    limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
     setExito(true)
     setGuardando(false)
   }

@@ -200,7 +200,7 @@ export default function AdminTarjetasPage() {
     setEnviando(false)
   }
 
-  const statsDemo = { pj: 99, golesContra: 45, promedio: 2.1, eficacia: 88, pg: 70, pe: 10, pp: 19 }
+  const statsDemo = { pj: 99, golesContra: 45, promedio: 2.1, eficacia: 88, pg: 70, pe: 10, pp: 19, amarillas: 12, azules: 3 }
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
 

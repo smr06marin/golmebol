@@ -105,13 +105,15 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // 2) En 2do plano, sincronizo con la base de datos: jugadores nuevos,
     // fotos, modalidad del torneo, y reviso si hay un borrador remoto más
     // nuevo (por ejemplo si otro árbitro guardó desde otro celular).
-    const [jugsL, jugsV, torn, liveDB, sancionesDB] = await Promise.all([
+    const [jugsL, jugsV, torn, liveDB, sancionesDB, tarjetasDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
-      supabase.from('tournaments').select('modalidad').eq('id', partido.tournament_id).maybeSingle(),
+      supabase.from('tournaments').select('modalidad, finanzas_config').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
-      supabase.from('sanciones').select('player_id, fecha_fin').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
+      supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
+      // Tarjetas sin pagar de este torneo: para avisarle al árbitro en la planilla
+      supabase.from('player_match_stats').select('player_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
     ])
     const modalidadDB = torn.data?.modalidad
     const dur = modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
@@ -121,14 +123,26 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // la sanción solo bloquea que aparezca como opción hacia adelante.
     if (partido.status !== 'finished') {
       const hoyIso = new Date().toISOString()
-      const idsSancionados = new Set((sancionesDB?.data || []).filter(s => !s.fecha_fin || s.fecha_fin > hoyIso).map(s => s.player_id))
+      const idsSancionados = new Set((sancionesDB?.data || [])
+        .filter(s => (!s.fecha_fin || s.fecha_fin > hoyIso) && (s.partidos_pendientes === null || s.partidos_pendientes === undefined || s.partidos_pendientes > 0))
+        .map(s => s.player_id))
       if (idsSancionados.size > 0) {
         if (jugsL.data) jugsL.data = jugsL.data.filter(r => !idsSancionados.has(r.players?.id))
         if (jugsV.data) jugsV.data = jugsV.data.filter(r => !idsSancionados.has(r.players?.id))
       }
     }
 
-    const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null }))
+    // Jugadores que deben alguna tarjeta de este torneo (solo si el torneo cobra por tarjetas)
+    const fcTorneoDeuda = torn.data?.finanzas_config || {}
+    const cobraTarjetas = (fcTorneoDeuda.precio_amarilla || 0) + (fcTorneoDeuda.precio_azul || 0) + (fcTorneoDeuda.precio_roja || 0) > 0
+    const idsDebenTarjeta = new Set()
+    if (cobraTarjetas) {
+      (tarjetasDB?.data || []).forEach(s => {
+        if ((s.yellow_cards > 0 && !s.yellow_paid) || (s.blue_cards > 0 && !s.blue_paid) || (s.red_cards > 0 && !s.red_paid)) idsDebenTarjeta.add(s.player_id)
+      })
+    }
+
+    const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id) }))
     let baseLocal = mapJug(jugsL.data)
     let baseVis = mapJug(jugsV.data)
 
@@ -150,6 +164,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       // si no, arranco con el roster fresco de la BD.
       if (remoteTime >= 0) {
         aplicarSnap(remoteSnap, dur)
+        aplicarDeudaTarjeta(idsDebenTarjeta)
         try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
       } else {
         setJugadoresLocal(baseLocal)
@@ -162,6 +177,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       // Ya se mostró el borrador local, pero el remoto resultó más nuevo
       // (otro árbitro guardó desde otro celular) — lo aplico encima.
       aplicarSnap(remoteSnap, dur)
+      aplicarDeudaTarjeta(idsDebenTarjeta)
       try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
     } else {
       // El borrador local sigue siendo el más nuevo: solo sumo jugadores
@@ -170,6 +186,14 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       setJugadoresLocal(prev => fusionarJugadores(prev, baseLocal))
       setJugadoresVisitante(prev => fusionarJugadores(prev, baseVis))
     }
+  }
+
+  // Un borrador (local o remoto) puede traer jugadores sin el flag de deuda
+  // recalculado — se le pega encima después de aplicar el snapshot.
+  function aplicarDeudaTarjeta(idsDebenTarjeta) {
+    if (!idsDebenTarjeta || idsDebenTarjeta.size === 0) return
+    setJugadoresLocal(prev => prev.map(j => j.id && idsDebenTarjeta.has(j.id) ? { ...j, debeTarjeta: true } : j))
+    setJugadoresVisitante(prev => prev.map(j => j.id && idsDebenTarjeta.has(j.id) ? { ...j, debeTarjeta: true } : j))
   }
 
   function aplicarSnap(snap, dur) {
@@ -518,6 +542,33 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       const { error } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
       if (error) erroresGuardado.push('Estadísticas: ' + error.message)
     }
+
+    // Sanción automática por tarjeta roja: mínimo 1 fecha, igual que en la
+    // planilla completa (ver PlanillaPartido.jsx para el mismo comentario).
+    try {
+      const equiposPartido = [partido.home_team_id, partido.away_team_id].filter(Boolean)
+      // partido.status ya era 'finished' cuando se abrió esta planilla = esto
+      // es una edición, no el primer guardado → no se descuenta de nuevo.
+      if (partido.status !== 'finished' && equiposPartido.length > 0) {
+        const { data: pendientes } = await supabase.from('sanciones').select('id, partidos_pendientes')
+          .eq('activa', true).not('partidos_pendientes', 'is', null).gt('partidos_pendientes', 0).in('team_id', equiposPartido)
+        for (const s of (pendientes || [])) {
+          const restante = (s.partidos_pendientes || 1) - 1
+          await supabase.from('sanciones').update({ partidos_pendientes: restante, activa: restante > 0 }).eq('id', s.id)
+        }
+      }
+      const conRoja = statsRows.filter(r => r.red_cards > 0)
+      if (conRoja.length > 0) {
+        const { data: yaExisten } = await supabase.from('sanciones').select('player_id').eq('match_id', partido.id).in('player_id', conRoja.map(r => r.player_id))
+        const idsConSancion = new Set((yaExisten || []).map(s => s.player_id))
+        const nuevasSanciones = conRoja.filter(r => !idsConSancion.has(r.player_id)).map(r => ({
+          player_id: r.player_id, team_id: r.team_id, tournament_id: partido.tournament_id, match_id: partido.id,
+          motivo: 'Tarjeta roja automática (mínimo 1 fecha) — el organizador puede extenderla desde el torneo',
+          activa: true, partidos_pendientes: 1, fecha_fin: null,
+        }))
+        if (nuevasSanciones.length > 0) await supabase.from('sanciones').insert(nuevasSanciones)
+      }
+    } catch (e) { console.error('sanción automática roja:', e) }
 
     if (informeTexto && informeTexto.trim().length >= 10) {
       let creadoPor = null

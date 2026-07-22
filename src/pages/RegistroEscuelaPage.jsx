@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useFormDraft, limpiarBorrador } from '../hooks/useFormDraft'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -33,6 +34,10 @@ export default function RegistroEscuelaPage() {
 
   const [acudiente, setAcudiente] = useState(EMPTY_ACUDIENTE)
   const [jugador, setJugador] = useState(EMPTY_JUGADOR)
+  // Si el celular mata la pestaña al salir a otra app (ej. WhatsApp) mientras
+  // se llena este registro, se recupera solo al volver.
+  useFormDraft(`draft_registro_escuela_acud_${escuelaId || 'x'}`, acudiente, setAcudiente)
+  useFormDraft(`draft_registro_escuela_jug_${escuelaId || 'x'}`, jugador, setJugador)
   const [fotoFrontal, setFotoFrontal] = useState(null)
   const [fotoTrasera, setFotoTrasera] = useState(null)
   const [guardando, setGuardando] = useState(false)
@@ -151,6 +156,8 @@ export default function RegistroEscuelaPage() {
       await supabase.from('team_players').insert({ team_id: escuela.id, player_id: nuevoJugador.id, activo:true })
       await supabase.from('escuela_acudientes').insert({ acudiente_id: acudienteId, jugador_id: nuevoJugador.id })
 
+      limpiarBorrador(`draft_registro_escuela_acud_${escuelaId || 'x'}`)
+      limpiarBorrador(`draft_registro_escuela_jug_${escuelaId || 'x'}`)
       setExito(true)
     } catch (e) {
       setError(e.message || 'Ocurrió un error, intenta de nuevo')

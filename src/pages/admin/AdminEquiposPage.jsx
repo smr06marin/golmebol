@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { useAuthStore } from '../../store/authStore'
+import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
 // Solo el ADMIN PRINCIPAL puede cambiar el dueño de un equipo ya creado
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -272,6 +273,11 @@ export default function AdminEquiposPage() {
   const [filtro,    setFiltro]    = useState('todos')
   const formRef = useRef(null)
 
+  // Si el celular mata la pestaña al salir a otra app (ej. WhatsApp) mientras
+  // se está llenando el formulario de un equipo NUEVO, esto guarda lo escrito
+  // y lo recupera solo — no aplica mientras se edita uno existente.
+  useFormDraft('draft_crear_equipo', form, setForm, { skip: !!editId })
+
   useEffect(() => { fetchEquipos() }, [])
 
   useEffect(() => {
@@ -340,7 +346,7 @@ export default function AdminEquiposPage() {
       ;({ error } = await guardar(sinCedula))
     }
     if (error) showMsgFn(editId ? 'Error al guardar' : 'Error al crear', 'error')
-    else { showMsgFn(editId ? 'Equipo actualizado ✓' : 'Equipo creado ✓'); setEditId(null) }
+    else { showMsgFn(editId ? 'Equipo actualizado ✓' : 'Equipo creado ✓'); setEditId(null); if (!editId) limpiarBorrador('draft_crear_equipo') }
     setShowForm(false); setForm(EMPTY); setLoading(false); fetchEquipos()
   }
 

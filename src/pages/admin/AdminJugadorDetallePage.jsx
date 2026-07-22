@@ -172,12 +172,14 @@ export default function AdminJugadorDetallePage() {
     const pe       = r.filter(x => x.team_result === 'draw').length
     const pp       = r.filter(x => x.team_result === 'loss').length
     const eficacia = pj > 0 ? Math.round((pg / pj) * 100) : 0
+    const amarillas = r.reduce((s, x) => s + (x.yellow_cards || 0), 0)
+    const azules    = r.reduce((s, x) => s + (x.blue_cards   || 0), 0)
     let racha = 0, maxRacha = 0
     for (const x of [...r].reverse()) {
       if (x.team_result === 'win') { racha++; maxRacha = Math.max(maxRacha, racha) }
       else racha = 0
     }
-    setStats({ pj, goles, recibidos, pg, pe, pp, eficacia, maxRacha })
+    setStats({ pj, goles, recibidos, pg, pe, pp, eficacia, maxRacha, amarillas, azules })
   }
 
   async function fetchTorneos() {
@@ -295,6 +297,8 @@ export default function AdminJugadorDetallePage() {
     pg:          stats?.pg       || 0,
     pe:          stats?.pe       || 0,
     pp:          stats?.pp       || 0,
+    amarillas:   stats?.amarillas || 0,
+    azules:      stats?.azules    || 0,
   }
 
   const TABS = [

@@ -22,7 +22,8 @@ const EQUIPOS_DEFAULT = [
 
 const STATS_DEFAULT = {
   pj: 12, golesContra: 28, promedio: 2.3,
-  eficacia: 76, pg: 9, pe: 1, pp: 2
+  eficacia: 76, pg: 9, pe: 1, pp: 2,
+  amarillas: 3, azules: 1,
 }
 
 function getBorderStyle(design) {
@@ -131,22 +132,10 @@ export default function PlayerCard({
             { label: 'TÉC',   value: stats.promTecnico ?? '—', key: 'tec',       dot: false },
             { label: 'AST',   value: stats.asistencias || 0,   key: 'ast',       dot: false },
           ])
-    : esPortero
-    ? [
-        { label: 'GC',    value: stats.golesContra,    key: 'gc',   dot: true  },
-        { label: 'VC',    value: stats.vallasCero||0,  key: 'vc',   dot: true  },
-        { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
-      ]
-    : esDefensa
-    ? [
-        { label: 'GOLES', value: stats.golesContra,    key: 'gc',   dot: true  },
-        { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
-        { label: '🟨',    value: stats.amarillas||0,   key: 'am',   dot: false },
-      ]
     : [
-        { label: 'GOLES', value: stats.golesContra,    key: 'gc',   dot: true  },
-        { label: 'G/PJ',  value: stats.promedio,       key: 'prom', dot: true  },
-        { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
+        { label: 'GOLES', value: stats.golesContra,  key: 'gc',      dot: true  },
+        { label: '🟨',    value: stats.amarillas||0, key: 'am_club', dot: false },
+        { label: '🟦',    value: stats.azules||0,    key: 'az_club', dot: false },
       ]
 
   // Columna derecha: en modo club es el récord P.G/P.E/P.P, en modo escuela

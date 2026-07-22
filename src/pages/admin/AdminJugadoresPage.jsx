@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
+import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
 
 const POSICIONES = {
@@ -96,6 +97,9 @@ export default function AdminJugadoresPage() {
   const [jugadores,       setJugadores]       = useState([])
   const [form,            setForm]            = useState(EMPTY)
   const [editId,          setEditId]          = useState(null)
+  // Si el celular mata la pestaña al salir a otra app mientras se llena este
+  // formulario de un jugador NUEVO, se recupera solo al volver.
+  useFormDraft('draft_crear_jugador', form, setForm, { skip: !!editId })
   const [showForm,        setShowForm]        = useState(false)
   const [loading,         setLoading]         = useState(false)
   const [uploading,       setUploading]       = useState({})
@@ -198,7 +202,7 @@ export default function AdminJugadoresPage() {
     } else {
       const { error } = await supabase.from('players').insert({ ...form, activo_membresia: true, fecha_registro: new Date().toISOString() })
       if (error) showMsg('Error al crear', 'error')
-      else showMsg('Jugador creado ✓')
+      else { showMsg('Jugador creado ✓'); limpiarBorrador('draft_crear_jugador') }
     }
     setForm(EMPTY); setShowForm(false); setLoading(false); fetchJugadores()
   }

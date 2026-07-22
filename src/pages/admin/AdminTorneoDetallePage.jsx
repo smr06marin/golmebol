@@ -9,6 +9,7 @@ import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
+import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
 function ModalPartidoAdmin({ partido, onClose }) {
   const [stats,   setStats]   = useState([])
@@ -451,6 +452,9 @@ export default function AdminTorneoDetallePage() {
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
   const [parecidosCrear,     setParecidosCrear]     = useState([]) // equipos ya existentes con nombre parecido
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
+  // Si el celular mata la pestaña al salir a otra app mientras se llena este
+  // formulario, se recupera solo al volver.
+  useFormDraft('draft_crear_equipo_torneo', nuevoEquipoForm, setNuevoEquipoForm)
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
@@ -491,6 +495,7 @@ export default function AdminTorneoDetallePage() {
   // ── FINANZAS ────────────────────────────────────────
   const [movimientos,      setMovimientos]      = useState([])
   const [statsTarjetas,    setStatsTarjetas]    = useState([])
+  const [pendientesTarjetas, setPendientesTarjetas] = useState({}) // { player_id: { am, az, rj } } tarjetas sin pagar
   const [showConfigFin,    setShowConfigFin]    = useState(false)
   const [formFin,          setFormFin]          = useState({})
   const [guardandoFin,     setGuardandoFin]     = useState(false)
@@ -1135,10 +1140,23 @@ export default function AdminTorneoDetallePage() {
       // 2. Estadísticas: respaldo para partidos viejos guardados sin eventos
       supabase.from('match_events').select('match_id, player_id, team_id, event_type, player_nombre, players(name)')
         .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']),
-      supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, blue_cards, red_cards, players(name)')
+      supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid, players(name)')
         .eq('tournament_id', id),
     ])
     setMovimientos(movs || [])
+
+    // Tarjetas de este jugador que todavía no se han marcado como pagadas
+    // (independiente del saldo del equipo) — para el botón "Pagar" y para
+    // que deje de salirle la advertencia en la planilla del próximo partido.
+    const pendientes = {}
+    ;(st || []).forEach(s => {
+      if (!s.player_id) return
+      if (!pendientes[s.player_id]) pendientes[s.player_id] = { am: 0, az: 0, rj: 0 }
+      if ((s.yellow_cards || 0) > 0 && !s.yellow_paid) pendientes[s.player_id].am += 1
+      if ((s.blue_cards   || 0) > 0 && !s.blue_paid)   pendientes[s.player_id].az += 1
+      if ((s.red_cards    || 0) > 0 && !s.red_paid)    pendientes[s.player_id].rj += 1
+    })
+    setPendientesTarjetas(pendientes)
 
     let eventos = evs
     if (!eventos) {
@@ -1257,6 +1275,20 @@ export default function AdminTorneoDetallePage() {
   async function handleEliminarPago(mv) {
     if (!confirm('¿Eliminar este pago?')) return
     await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    fetchFinanzas()
+  }
+
+  // Marca como pagadas TODAS las tarjetas pendientes de un color de un
+  // jugador en este torneo — así deja de salirle la advertencia "debe
+  // tarjeta" en la planilla del próximo partido. No toca el saldo del
+  // equipo (eso lo sigue manejando el botón "💵 Pago" de arriba).
+  async function handlePagarTarjetaJugador(playerId, color, nombre) {
+    const columnaPagado = color === 'am' ? 'yellow_paid' : color === 'az' ? 'blue_paid' : 'red_paid'
+    const columnaCantidad = color === 'am' ? 'yellow_cards' : color === 'az' ? 'blue_cards' : 'red_cards'
+    const { error } = await supabase.from('player_match_stats').update({ [columnaPagado]: true })
+      .eq('tournament_id', id).eq('player_id', playerId).gt(columnaCantidad, 0)
+    if (error) return showMsg('Error al marcar como pagada', 'error')
+    showMsg(`Tarjeta de ${nombre || 'jugador'} marcada como pagada ✓`)
     fetchFinanzas()
   }
 
@@ -1856,6 +1888,7 @@ export default function AdminTorneoDetallePage() {
     const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
     if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
     showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
+    limpiarBorrador('draft_crear_equipo_torneo')
     setCreandoEquipo(false); cerrarModalEquipo(); fetchEquipos()
   }
 
@@ -3709,15 +3742,39 @@ export default function AdminTorneoDetallePage() {
                   {equipoFinAbierto === r.equipo.id && r.tarjetasDetalle.length > 0 && (
                     <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa' }}>
                       <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>TARJETAS POR JUGADOR</div>
-                      {r.tarjetasDetalle.map(j => (
-                        <div key={j.player_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368', padding: '3px 0' }}>
-                          <span style={{ flex: 1, color: '#202124' }}>{j.nombre}</span>
+                      {r.tarjetasDetalle.map(j => {
+                        const pend = (j.player_id && pendientesTarjetas[j.player_id]) || { am: 0, az: 0, rj: 0 }
+                        return (
+                        <div key={j.player_id || j.nombre} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368', padding: '3px 0', flexWrap: 'wrap' }}>
+                          <span style={{ flex: 1, color: '#202124', minWidth: '90px' }}>{j.nombre}</span>
                           {j.am > 0 && <span>🟨 ×{j.am}</span>}
                           {j.az > 0 && <span>🟦 ×{j.az}</span>}
                           {j.rj > 0 && <span>🟥 ×{j.rj}</span>}
                           <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(j.valor)}</span>
+                          {j.player_id && pend.am > 0 && (
+                            <button onClick={() => handlePagarTarjetaJugador(j.player_id, 'am', j.nombre)} title="Marcar tarjetas amarillas como pagadas (quita la advertencia en la planilla)"
+                              style={{ background: '#fff8e1', border: '1px solid #f9d874', borderRadius: '6px', padding: '3px 7px', cursor: 'pointer', color: '#8a6d00', fontSize: '.68rem', fontWeight: '700' }}>
+                              ✓ Pagar 🟨
+                            </button>
+                          )}
+                          {j.player_id && pend.az > 0 && (
+                            <button onClick={() => handlePagarTarjetaJugador(j.player_id, 'az', j.nombre)} title="Marcar tarjetas azules como pagadas (quita la advertencia en la planilla)"
+                              style={{ background: '#e8f0fe', border: '1px solid #aac4f7', borderRadius: '6px', padding: '3px 7px', cursor: 'pointer', color: '#1a4fa0', fontSize: '.68rem', fontWeight: '700' }}>
+                              ✓ Pagar 🟦
+                            </button>
+                          )}
+                          {j.player_id && pend.rj > 0 && (
+                            <button onClick={() => handlePagarTarjetaJugador(j.player_id, 'rj', j.nombre)} title="Marcar tarjetas rojas como pagadas (quita la advertencia en la planilla)"
+                              style={{ background: '#fce8e6', border: '1px solid #f3aca4', borderRadius: '6px', padding: '3px 7px', cursor: 'pointer', color: '#a30000', fontSize: '.68rem', fontWeight: '700' }}>
+                              ✓ Pagar 🟥
+                            </button>
+                          )}
+                          {j.player_id && pend.am === 0 && pend.az === 0 && pend.rj === 0 && (j.am + j.az + j.rj) > 0 && (
+                            <span style={{ color: '#1e8e3e', fontSize: '.68rem', fontWeight: '700' }}>✓ Al día</span>
+                          )}
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
