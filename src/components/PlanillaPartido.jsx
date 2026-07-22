@@ -320,6 +320,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const timerRef  = useRef(null)
   const syncTimerRef = useRef(null) // debounce de la sincronización con el servidor
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el árbitro cambia de app y el navegador frena el setInterval, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
+  const ultimoGuardadoSegRef = useRef(0) // último "segundos" que se alcanzó a guardar (evita depender de un múltiplo exacto de 8, que se puede saltar si el navegador frena el timer en 2do plano)
   const [cronoPos, setCronoPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 200, y: 20 })
   const dragStart = useRef(null)
 
@@ -528,25 +529,48 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         // alarma" — así nadie se pasa del tiempo sin darse cuenta.
         iniciarAlarma()
       }
-      // Cada ~8s con el reloj corriendo, se guarda también en el servidor
+      // Cada ~8s con el reloj corriendo (o al toque si el navegador se saltó
+      // algún tick por estar en 2do plano) se guarda también en el servidor,
       // para que si este celular se apaga, otro pueda retomar el cronómetro
       // calculando cuánto tiempo real pasó desde el último guardado.
-      if (!loading && next % 8 === 0) {
-        const snap = construirSnap()
+      // OJO: se le pisa "segundos" con `next` a mano — construirSnap() viene
+      // de un closure de este mismo efecto que puede haber quedado con un
+      // valor de "segundos" viejo (el de cuando arrancó a correr), así que
+      // usarlo tal cual guardaba un tiempo atrasado en el snapshot.
+      if (!loading && next - ultimoGuardadoSegRef.current >= 8) {
+        ultimoGuardadoSegRef.current = next
+        const snap = { ...construirSnap(), segundos: next }
         try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
         sincronizarRemoto(snap)
+      }
+      return next
+    }
+
+    // Al pasar a 2do plano (por ejemplo al abrir WhatsApp) puede que el
+    // navegador mate la pestaña ahí mismo, sin darle tiempo al siguiente tick
+    // del intervalo — por eso, justo en ese momento, se fuerza un guardado YA
+    // (sin esperar el umbral de 8s) con el tiempo más fresco posible.
+    function alCambiarVisibilidad() {
+      const next = recalcular()
+      if (document.hidden && !loading) {
+        ultimoGuardadoSegRef.current = next
+        const snap = { ...construirSnap(), segundos: next }
+        try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
+        sincronizarRemoto(snap, { inmediato: true })
       }
     }
 
     timerRef.current = setInterval(recalcular, 1000)
-    document.addEventListener('visibilitychange', recalcular)
+    document.addEventListener('visibilitychange', alCambiarVisibilidad)
     window.addEventListener('focus', recalcular)
     window.addEventListener('pageshow', recalcular)
+    window.addEventListener('pagehide', alCambiarVisibilidad)
     return () => {
       clearInterval(timerRef.current)
-      document.removeEventListener('visibilitychange', recalcular)
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad)
       window.removeEventListener('focus', recalcular)
       window.removeEventListener('pageshow', recalcular)
+      window.removeEventListener('pagehide', alCambiarVisibilidad)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [corriendo, limiteSegundos, tiempoAgotado])
