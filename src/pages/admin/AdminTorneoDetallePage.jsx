@@ -5,9 +5,10 @@ import PlanillaPartido from '../../components/PlanillaPartido'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
 import VallaEquipos from '../../components/VallaEquipos'
+import FlyerTorneo from '../../components/FlyerTorneo'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
@@ -508,6 +509,7 @@ export default function AdminTorneoDetallePage() {
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
+  const [showFlyerTorneo,  setShowFlyerTorneo]  = useState(false)
   const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
   const [verDesact,        setVerDesact]        = useState(false)
   const [abiertosJornada,  setAbiertosJornada]  = useState({})
@@ -2973,6 +2975,12 @@ export default function AdminTorneoDetallePage() {
                   {verDesact ? 'Ocultar desactivados' : 'Ver desactivados'}
                 </button>
               )}
+              {equipos.length > 0 && (
+                <button onClick={() => setShowFlyerTorneo(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #1a73e8', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#1a73e8', fontSize: '.875rem', fontWeight: '500' }}>
+                  <ImageIcon size={16}/> Crear flyer
+                </button>
+              )}
               <button onClick={() => setShowAgregarEquipo(true)}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
                 <Plus size={16}/> Agregar equipo
@@ -3152,6 +3160,7 @@ export default function AdminTorneoDetallePage() {
           {/* Modales poster y uniforme */}
           {posterEquipo   && <ModalPosterEquipo   equipo={posterEquipo}   onClose={() => setPosterEquipo(null)}/>}
           {uniformeEquipo && <ModalUniformeEquipo equipo={uniformeEquipo} onClose={() => setUniformeEquipo(null)}/>}
+          {showFlyerTorneo && <FlyerTorneo torneo={torneo} equipos={equipos} onClose={() => setShowFlyerTorneo(false)}/>}
 
           {/* Modal suspender jugador — la sanción queda solo para este torneo */}
           {modalSuspender && (
