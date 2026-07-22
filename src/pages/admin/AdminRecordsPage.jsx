@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { calcularRecordsAutomaticos } from '../../lib/recordsAutomaticos'
 
 const COLORES = ['#f9a825','#00ddd0','#e8710a','#9955ff','#d93025','#00ee55','#1a73e8','#ff69b4','#4488ff','#a1887f']
 const ICONOS  = ['⭐','⚽','🏆','🔥','⚡','🎩','🧤','✅','💥','🎮','🥇','👑','🎯','💪','🛡️']
@@ -35,15 +36,29 @@ export default function AdminRecordsPage() {
   const [editando,  setEditando]  = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [autoOcultos, setAutoOcultos] = useState(new Set()) // ids de récords automáticos apagados
+  const [autoDatos,   setAutoDatos]   = useState({})        // id -> { titulo, nombre, subtitulo, descripcion } (lo que realmente se mostraría)
+  const [loadingAuto, setLoadingAuto] = useState(true)
 
   const formVacio = { titulo: '', nombre: '', subtitulo: '', descripcion: '', icono: '⭐', color: '#f9a825', orden: 0 }
   const [form, setForm] = useState(formVacio)
 
-  useEffect(() => { fetchRecords(); fetchAutoConfig() }, [])
+  useEffect(() => { fetchRecords(); fetchAutoConfig(); fetchAutoDatos() }, [])
 
   async function fetchAutoConfig() {
     const { data } = await supabase.from('records_config').select('id').eq('visible', false)
     setAutoOcultos(new Set((data || []).map(r => r.id)))
+  }
+
+  // Trae el dato REAL que se mostraría en cada récord automático (quién lo tiene,
+  // con qué cifra), para que el admin vea exactamente qué va a salir antes de
+  // decidir si lo oculta.
+  async function fetchAutoDatos() {
+    setLoadingAuto(true)
+    const recs = await calcularRecordsAutomaticos()
+    const map = {}
+    recs.forEach(r => { map[r.id] = r })
+    setAutoDatos(map)
+    setLoadingAuto(false)
   }
 
   async function handleToggleAuto(id) {
@@ -201,10 +216,23 @@ export default function AdminRecordsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {RECORDS_AUTOMATICOS.map(r => {
             const activo = !autoOcultos.has(r.id)
+            const dato = autoDatos[r.id]
             return (
               <div key={r.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px', opacity: activo ? 1 : .55 }}>
                 <div style={{ fontSize: '1.05rem', flexShrink: 0 }}>{r.icono}</div>
-                <div style={{ flex: 1, fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{r.nombre}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{r.nombre}</div>
+                  {loadingAuto ? (
+                    <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>Cargando dato...</div>
+                  ) : dato ? (
+                    <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>
+                      Se mostraría: <strong style={{ color: '#202124' }}>{dato.nombre}</strong> — {dato.titulo}
+                      {dato.subtitulo && <span> · {dato.subtitulo}</span>}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px', fontStyle: 'italic' }}>Sin datos todavía — no se mostraría nada</div>
+                  )}
+                </div>
                 <button onClick={() => handleToggleAuto(r.id)}
                   style={{ padding: '5px 10px', background: activo ? '#e6f4ea' : '#f1f3f4', border: 'none', borderRadius: '6px', cursor: 'pointer', color: activo ? '#1e8e3e' : '#9aa0a6', fontSize: '.72rem', fontWeight: '600', flexShrink: 0 }}>
                   {activo ? '✓ Visible' : 'Oculto'}
