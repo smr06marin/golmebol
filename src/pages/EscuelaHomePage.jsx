@@ -17,6 +17,7 @@ export default function EscuelaHomePage() {
   const [escuela,    setEscuela]    = useState(null)
   const [numJugadores, setNumJugadores] = useState(0)
   const [numProfesores, setNumProfesores] = useState(0)
+  const [cMensualidad, setCMensualidad] = useState(0)
   const [loading,    setLoading]    = useState(true)
   const [nombreEscuela, setNombreEscuela] = useState('')
   const [categoria,     setCategoria]     = useState('')
@@ -46,6 +47,19 @@ export default function EscuelaHomePage() {
       setNumJugadores(cJug || 0)
       const { count: cProf } = await supabase.from('players').select('id', { count: 'exact', head: true }).eq('escuela_id', p.escuela_id).or('rol.eq.profesor,es_profesor.eq.true')
       setNumProfesores(cProf || 0)
+
+      // Cuántos jugadores tienen la mensualidad por vencer (próximos 3 días) o vencida.
+      if (p.es_profesor_coordinador) {
+        const { data: tp } = await supabase.from('team_players').select('players(fecha_vencimiento)').eq('team_id', p.escuela_id)
+        const hoy = new Date(); hoy.setHours(0,0,0,0)
+        const pendientes = (tp || []).filter(t => {
+          const fv = t.players?.fecha_vencimiento
+          if (!fv) return false
+          const dias = Math.round((new Date(fv).setHours(0,0,0,0) - hoy) / (1000*60*60*24))
+          return dias <= 3
+        }).length
+        setCMensualidad(pendientes)
+      }
     }
     setLoading(false)
   }
@@ -164,6 +178,33 @@ export default function EscuelaHomePage() {
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Profesores</div>
                     <div style={{ fontSize:'.72rem', color:S.muted }}>Agrega a los demás profesores de tu escuela</div>
+                  </div>
+                  <span style={{ color:S.muted }}>→</span>
+                </button>
+              )}
+
+              <button onClick={() => navigate('/escuela/asistencia')}
+                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                <span style={{ fontSize:'1.4rem' }}>📋</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Asistencia</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Marca quién vino a entrenar cada día</div>
+                </div>
+                <span style={{ color:S.muted }}>→</span>
+              </button>
+
+              {esCoordinador && (
+                <button onClick={() => navigate('/escuela/mensualidades')}
+                  style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${cMensualidad > 0 ? S.warn : S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                  <span style={{ fontSize:'1.4rem' }}>💰</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:'700', fontSize:'.9rem', display:'flex', alignItems:'center', gap:'8px' }}>
+                      Mensualidades
+                      {cMensualidad > 0 && (
+                        <span style={{ fontSize:'.65rem', fontWeight:800, color:'#000', background:S.warn, borderRadius:'10px', padding:'1px 8px' }}>{cMensualidad}</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize:'.72rem', color:S.muted }}>{cMensualidad > 0 ? 'Hay pagos por vencer o vencidos' : 'Avisos y cobro por WhatsApp al acudiente'}</div>
                   </div>
                   <span style={{ color:S.muted }}>→</span>
                 </button>
