@@ -1,27 +1,35 @@
 import { useRef, useState } from 'react'
 import { Shield, Trophy, Download, X, Ticket } from 'lucide-react'
 
-const AREA = 460 // tamaño del área circular donde van los escudos
+const CENTER_TAM = 124 // diámetro del escudo del torneo, al centro
+const HEADER_H   = 122 // alto del bloque de título arriba
+const FOOTER_H   = 66  // alto del pie sin el badge de cupos
+const FOOTER_CUPOS_H = 40 // alto extra si se muestra el badge de cupos
 
-// Reparte los items (equipos + cupos libres) en 1, 2 o 3 aros concéntricos
-// según cuántos haya, para que no se encimen los escudos.
-function distribuirAros(total) {
-  if (total <= 0) return []
-  if (total <= 8)  return [{ radio: 150, tam: 84, n: total }]
-  if (total <= 16) {
-    const inner = Math.ceil(total / 2)
-    return [
-      { radio: 95,  tam: 58, n: inner },
-      { radio: 190, tam: 58, n: total - inner },
-    ]
+// Reparte los items (equipos + cupos libres) en aros concéntricos, calculando
+// para cada aro cuántos caben sin que se toquen los escudos ni se encimen los
+// nombres. Si no caben todos, agrega más aros hacia afuera (nunca aprieta).
+function calcularAros(total) {
+  if (total <= 0) return { aros: [], radioMax: CENTER_TAM / 2, tam: 0 }
+
+  const tam = total <= 6 ? 92 : total <= 10 ? 78 : total <= 16 ? 64 : total <= 24 ? 52 : 44
+  const espacioMin = tam + 42 // ancho que necesita cada escudo + su nombre para no chocar con el vecino
+
+  const aros = []
+  let restantes = total
+  let radio = CENTER_TAM / 2 + 36 + tam / 2 // separación clara respecto al escudo del centro
+
+  while (restantes > 0) {
+    const capacidad = Math.max(3, Math.floor((2 * Math.PI * radio) / espacioMin))
+    const n = Math.min(restantes, capacidad)
+    aros.push({ radio, tam, n })
+    restantes -= n
+    radio += tam + 48 // separación entre un aro y el siguiente (deja espacio para las etiquetas)
   }
-  const inner = Math.ceil(total / 3)
-  const mid   = Math.ceil((total - inner) / 2)
-  return [
-    { radio: 80,  tam: 42, n: inner },
-    { radio: 148, tam: 42, n: mid },
-    { radio: 205, tam: 40, n: total - inner - mid },
-  ]
+
+  const ultimo = aros[aros.length - 1]
+  const radioMax = ultimo.radio + ultimo.tam / 2 + 24 // + espacio para que quepa el nombre debajo
+  return { aros, radioMax, tam }
 }
 
 function posicion(i, n, radio, offset) {
@@ -102,15 +110,20 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
     ...equipos.map(e => ({ tipo: 'equipo', id: e.id, name: e.name, logo_url: e.logo_url })),
     ...(mostrarCupos ? Array.from({ length: cuposRestantes }, (_, i) => ({ tipo: 'cupo', id: `cupo-${i}` })) : []),
   ]
-  const aros = distribuirAros(items.length)
+  const { aros, radioMax } = calcularAros(items.length)
   let cursor = 0
+
+  const circleSize  = radioMax * 2
+  const footerH     = FOOTER_H + (mostrarCupos && cuposRestantes > 0 ? FOOTER_CUPOS_H : 0)
+  const flyerHeight = HEADER_H + circleSize + footerH
+  const flyerWidth  = Math.max(460, circleSize + 60)
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: '520px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: `${flyerWidth + 48}px`, width: '100%', maxHeight: '92vh', overflow: 'auto' }}>
 
         {/* Controles */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Vista previa del flyer</span>
           <div style={{ display: 'flex', gap: '8px' }}>
             {cuposRestantes > 0 && (
@@ -132,8 +145,8 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
 
         {/* FLYER */}
         <div ref={flyerRef} style={{
-          width: '460px',
-          height: '630px',
+          width: `${flyerWidth}px`,
+          height: `${flyerHeight}px`,
           position: 'relative',
           overflow: 'hidden',
           fontFamily: "'Arial Black', 'Impact', sans-serif",
@@ -152,10 +165,10 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
           </div>
 
           {/* Área circular de escudos */}
-          <div style={{ position: 'absolute', top: '104px', left: '50%', transform: 'translateX(-50%)', width: `${AREA}px`, height: `${AREA}px` }}>
+          <div style={{ position: 'absolute', top: `${HEADER_H}px`, left: '50%', transform: 'translateX(-50%)', width: `${circleSize}px`, height: `${circleSize}px` }}>
             {/* Escudo del torneo, al centro */}
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 6 }}>
-              <div style={{ width: '124px', height: '124px', borderRadius: '50%', background: '#fff', border: '5px solid #00ddd0', boxShadow: '0 0 28px rgba(0,221,208,.55), 0 6px 18px rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <div style={{ width: `${CENTER_TAM}px`, height: `${CENTER_TAM}px`, borderRadius: '50%', background: '#fff', border: '5px solid #00ddd0', boxShadow: '0 0 28px rgba(0,221,208,.55), 0 6px 18px rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                 {torneo?.logo_url
                   ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '86%', height: '86%', objectFit: 'contain' }}/>
                   : <Trophy size={52} color="#1a3a8a"/>}
@@ -164,15 +177,15 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
 
             {/* Escudos de equipos (y cupos libres) en aros */}
             {aros.map((aro, ai) => {
-              const offset = ai * 0.35
+              const offset = ai % 2 === 0 ? 0 : Math.PI / aro.n
               const slice = items.slice(cursor, cursor + aro.n)
               cursor += aro.n
               return slice.map((item, i) => {
                 const { x, y } = posicion(i, aro.n, aro.radio, offset)
                 return (
-                  <div key={item.id} style={{ position: 'absolute', top: `calc(50% + ${y}px)`, left: `calc(50% + ${x}px)`, transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: `${aro.tam + 34}px`, zIndex: 4 }}>
+                  <div key={item.id} style={{ position: 'absolute', top: `calc(50% + ${y}px)`, left: `calc(50% + ${x}px)`, transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', width: `${aro.tam + 36}px`, zIndex: 4 }}>
                     <CrestBadge item={item} tam={aro.tam}/>
-                    <span style={{ fontSize: '8.5px', fontWeight: '800', color: '#fff', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '.2px', lineHeight: 1.15, textShadow: '0 1px 3px rgba(0,0,0,.7)' }}>
+                    <span style={{ fontSize: '9px', fontWeight: '800', color: '#fff', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '.2px', lineHeight: 1.2, textShadow: '0 1px 3px rgba(0,0,0,.8), 0 0 4px rgba(0,0,0,.6)' }}>
                       {item.tipo === 'cupo' ? 'CUPO LIBRE' : item.name}
                     </span>
                   </div>
