@@ -52,6 +52,7 @@ const EscuelaTorneosPage        = lazy(() => import('./pages/EscuelaTorneosPage'
 const EscuelaTorneoDetallePage  = lazy(() => import('./pages/EscuelaTorneoDetallePage'))
 const EscuelaAsistenciaPage     = lazy(() => import('./pages/EscuelaAsistenciaPage'))
 const EscuelaMensualidadesPage  = lazy(() => import('./pages/EscuelaMensualidadesPage'))
+const EscuelaRankingsPage       = lazy(() => import('./pages/EscuelaRankingsPage'))
 
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -377,6 +378,7 @@ export default function App() {
           <Route path="/escuela/torneos/:id" element={<EscuelaRoute><EscuelaTorneoDetallePage/></EscuelaRoute>}/>
           <Route path="/escuela/asistencia"    element={<EscuelaRoute><EscuelaAsistenciaPage/></EscuelaRoute>}/>
           <Route path="/escuela/mensualidades" element={<EscuelaRoute><EscuelaMensualidadesPage/></EscuelaRoute>}/>
+          <Route path="/escuela/rankings"      element={<EscuelaRoute><EscuelaRankingsPage/></EscuelaRoute>}/>
 
           {/* Portal acudiente */}
           <Route path="/acudiente"           element={<AcudienteRoute><AcudientePage/></AcudienteRoute>}/>

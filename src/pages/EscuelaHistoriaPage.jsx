@@ -17,6 +17,49 @@ function iconoResultado(r) {
   return '🏆'
 }
 
+const EV_ICONS = { goal:'⚽', assist:'🎯', yellow:'🟨', blue:'🟦', red:'🟥', sub:'🔄', highlight:'⭐', injury:'🩹', mvp:'👑', note:'📝', save:'🧤', goal_against:'🥅' }
+
+function fmtFechaCorta(f) {
+  if (!f) return ''
+  const d = new Date(f + 'T00:00:00')
+  return d.toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' })
+}
+
+function FilaPartidoEquipo({ p }) {
+  const [abierto, setAbierto] = useState(false)
+  const resultado = p.score_home > p.score_away ? 'G' : p.score_home < p.score_away ? 'P' : 'E'
+  const color = resultado === 'G' ? '#1e8e3e' : resultado === 'P' ? '#d93025' : S.muted
+  return (
+    <div onClick={() => setAbierto(a => !a)} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px', marginBottom:'8px', cursor:'pointer' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
+          <span style={{ width:22, height:22, borderRadius:'50%', background:color, color:'#000', fontWeight:900, fontSize:'.68rem', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{resultado}</span>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontWeight:'700', fontSize:'.85rem', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>vs {p.rival || 'Rival'}</div>
+            <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2 }}>{fmtFechaCorta(p.fecha)}{p.torneo ? ` · ${p.torneo}` : ''}</div>
+          </div>
+        </div>
+        <div style={{ fontSize:'1.1rem', fontWeight:900, color:S.cyan, flexShrink:0 }}>{p.score_home} – {p.score_away}</div>
+      </div>
+      {abierto && (
+        <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${S.border}` }}>
+          {p.mvp?.first && <div style={{ fontSize:12, marginBottom:8 }}>👑 MVP: {(p.lineup||[]).find(x => String(x.id) === String(p.mvp.first))?.name || '—'}</div>}
+          {p.observaciones && <div style={{ fontSize:'.75rem', color:S.text2, marginBottom:8, fontStyle:'italic' }}>"{p.observaciones}"</div>}
+          {(p.eventos||[]).length === 0 ? (
+            <div style={{ fontSize:'.72rem', color:S.muted }}>Sin eventos registrados</div>
+          ) : (p.eventos||[]).slice(0,25).map(ev => (
+            <div key={ev.id} style={{ display:'flex', gap:6, fontSize:'.74rem', padding:'3px 0' }}>
+              <span style={{ color:S.cyan, fontFamily:'monospace', minWidth:26 }}>{ev.min}'</span>
+              <span>{EV_ICONS[ev.type]||''}</span>
+              <span style={{ color:S.text2 }}>{ev.player}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Vista pública (para cualquier jugador de la escuela) del recorrido
 // completo de su escuela: torneos externos jugados, resultado de cada uno,
 // y los premios individuales que se entregaron en cada uno.
@@ -26,6 +69,8 @@ export default function EscuelaHistoriaPage() {
   const [escuela, setEscuela] = useState(null)
   const [torneos, setTorneos] = useState([])
   const [premiosPorTorneo, setPremiosPorTorneo] = useState({})
+  const [partidos, setPartidos] = useState([])
+  const [tab, setTab] = useState('partidos') // 'partidos' | 'torneos'
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetchTodo() }, [id])
@@ -50,6 +95,12 @@ export default function EscuelaHistoriaPage() {
       })
       setPremiosPorTorneo(agrupado)
     }
+
+    const { data: parts } = await supabase.from('escuela_partidos').select('*')
+      .eq('escuela_id', id).eq('estado', 'finalizado')
+      .order('fecha', { ascending: false }).order('created_at', { ascending: false })
+    setPartidos(parts || [])
+
     setLoading(false)
   }
 
@@ -81,21 +132,42 @@ export default function EscuelaHistoriaPage() {
 
       <div style={{ maxWidth:'500px', margin:'0 auto', padding:'20px 16px' }}>
         {/* Resumen */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px', marginBottom:'22px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'8px', marginBottom:'18px' }}>
           {[
-            { label:'Torneos jugados', valor: torneos.length, icon:'📅' },
+            { label:'Partidos', valor: partidos.length, icon:'⚽' },
+            { label:'Ganados', valor: partidos.filter(p=>p.score_home>p.score_away).length, icon:'✅' },
+            { label:'Torneos', valor: torneos.length, icon:'📅' },
             { label:'Campeonatos', valor: campeonatos.length, icon:'🏆' },
-            { label:'En curso', valor: enCurso.length, icon:'⏳' },
           ].map(s => (
-            <div key={s.label} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'12px 8px', textAlign:'center' }}>
+            <div key={s.label} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'12px 6px', textAlign:'center' }}>
               <div style={{ fontSize:'1.1rem' }}>{s.icon}</div>
-              <div style={{ fontSize:'1.3rem', fontWeight:'900', color:S.cyan, marginTop:'2px' }}>{s.valor}</div>
-              <div style={{ fontSize:'.6rem', color:S.muted, marginTop:'2px' }}>{s.label}</div>
+              <div style={{ fontSize:'1.2rem', fontWeight:'900', color:S.cyan, marginTop:'2px' }}>{s.valor}</div>
+              <div style={{ fontSize:'.58rem', color:S.muted, marginTop:'2px' }}>{s.label}</div>
             </div>
           ))}
         </div>
 
-        {torneos.length === 0 ? (
+        <div style={{ display:'flex', gap:'6px', marginBottom:'16px' }}>
+          {[{ id:'partidos', label:`⚽ Partidos (${partidos.length})` }, { id:'torneos', label:`🏆 Torneos (${torneos.length})` }].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{ flex:1, padding:'9px', borderRadius:'10px', border:`1px solid ${tab===t.id?S.cyan:S.border}`, background:tab===t.id?S.cyanDim:'transparent', color:tab===t.id?S.cyan:S.muted, fontSize:'.78rem', fontWeight:700, cursor:'pointer' }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'partidos' && (
+          partidos.length === 0 ? (
+            <div style={{ textAlign:'center', color:S.muted, padding:'48px 16px' }}>
+              <div style={{ fontSize:'2rem', marginBottom:'8px' }}>⚽</div>
+              <div style={{ fontSize:'.85rem' }}>Esta escuela todavía no tiene partidos guardados</div>
+            </div>
+          ) : (
+            <div>{partidos.map(p => <FilaPartidoEquipo key={p.id} p={p}/>)}</div>
+          )
+        )}
+
+        {tab === 'torneos' && (torneos.length === 0 ? (
           <div style={{ textAlign:'center', color:S.muted, padding:'48px 16px' }}>
             <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
             <div style={{ fontSize:'.85rem' }}>Esta escuela todavía no tiene torneos registrados</div>
@@ -139,7 +211,7 @@ export default function EscuelaHistoriaPage() {
               )
             })}
           </div>
-        )}
+        ))}
       </div>
     </div>
   )

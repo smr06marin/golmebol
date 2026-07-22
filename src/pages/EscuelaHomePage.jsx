@@ -210,6 +210,16 @@ export default function EscuelaHomePage() {
                 </button>
               )}
 
+              <button onClick={() => navigate('/escuela/rankings')}
+                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                <span style={{ fontSize:'1.4rem' }}>🏅</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Rankings</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Tabla completa de goles, minutos, evaluaciones y más</div>
+                </div>
+                <span style={{ color:S.muted }}>→</span>
+              </button>
+
               <button onClick={() => navigate('/escuela/partido')}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
                 <span style={{ fontSize:'1.4rem' }}>⚽</span>

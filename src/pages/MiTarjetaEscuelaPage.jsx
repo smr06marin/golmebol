@@ -6,6 +6,9 @@ import FichaEvolucion from '../components/FichaEvolucion'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
+import MiVidaFutbolistica from '../components/MiVidaFutbolistica'
+import EscuelaRankingModal from '../components/EscuelaRankingModal'
+import { RANKING_SECCIONES, fetchRosterConRanking, posicionDe } from '../lib/escuelaRankings'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -29,6 +32,8 @@ export default function MiTarjetaEscuelaPage() {
   const [loading, setLoading] = useState(true)
   const [errorCuenta, setErrorCuenta] = useState(false)
   const [vistaCard, setVistaCard] = useState('fifa') // 'fifa' | 'clasica'
+  const [rankingRoster, setRankingRoster] = useState([])
+  const [rankingAbierto, setRankingAbierto] = useState(null)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -58,6 +63,7 @@ export default function MiTarjetaEscuelaPage() {
         .filter(pr => pr.card_type && (p[pr.tipo_stat] || 0) >= pr.umbral)
         .map(pr => pr.card_type)
       setTarjetasDesbloqueadas(Array.from(new Set(['normal_teal', ...desbloqueadas])))
+      fetchRosterConRanking(escId).then(setRankingRoster)
     }
     const { data: premTorneo } = await supabase.from('escuela_torneo_premios').select('*, torneo:torneo_id(nombre)').eq('jugador_id', p.id).order('created_at', { ascending:false })
     setPremiosTorneo(premTorneo || [])
@@ -205,8 +211,42 @@ export default function MiTarjetaEscuelaPage() {
           />
         </div>
 
+        <MiVidaFutbolistica jugador={jugador}/>
+
+        {rankingRoster.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <div style={{ fontWeight: 800, fontSize: '.95rem', color: S.cyan, marginBottom: 4 }}>🏅 Tus rankings</div>
+            <div style={{ fontSize: '.68rem', color: S.muted, marginBottom: 10 }}>Solo puedes ver el primer lugar y tu propia posición.</div>
+            {RANKING_SECCIONES.map(sec => (
+              <div key={sec.titulo} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: '.7rem', fontWeight: 700, color: S.text2, marginBottom: 6 }}>{sec.titulo}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {sec.items.map(item => {
+                    if (item.soloPortero && jugador.posicion !== 'Portero') return null
+                    const pos = posicionDe(rankingRoster, item, jugador.id)
+                    return (
+                      <button key={item.key} onClick={() => setRankingAbierto(item)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, background: S.card, border: `1px solid ${S.border}`, borderRadius: 10, padding: '10px 14px', cursor: 'pointer', textAlign: 'left' }}>
+                        <span style={{ fontSize: '1rem' }}>{item.icon}</span>
+                        <span style={{ flex: 1, fontSize: '.8rem', color: S.text, fontWeight: 600 }}>{item.label}</span>
+                        <span style={{ fontSize: '.76rem', fontWeight: 800, color: pos ? (pos.puesto === 1 ? S.gold : S.cyan) : S.muted }}>
+                          {pos ? `#${pos.puesto} de ${pos.total}` : 'Sin datos'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <FichaEvolucion jugadorId={jugador.id}/>
       </div>
+
+      {rankingAbierto && (
+        <EscuelaRankingModal item={rankingAbierto} roster={rankingRoster} playerId={jugador.id} modoCompleto={false} onClose={() => setRankingAbierto(null)}/>
+      )}
     </div>
   )
 }
