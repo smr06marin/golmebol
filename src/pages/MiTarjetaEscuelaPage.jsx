@@ -182,18 +182,25 @@ export default function MiTarjetaEscuelaPage() {
         )}
 
         <div style={{ marginTop: '18px', display: 'grid', gap: '10px' }}>
+          {(jugador.foto_cambiar_cedula_frontal || jugador.foto_cambiar_cedula_trasera) && (
+            <div style={{ background: 'rgba(217,48,37,.12)', border: '1px solid rgba(217,48,37,.4)', borderRadius: '10px', padding: '10px 14px', fontSize: '.76rem', color: '#ff6b5b', fontWeight: '600' }}>
+              ⚠️ Tu foto de cédula no sirvió — acércate con tu profesor para tomarte una nueva.
+            </div>
+          )}
           <SubidaFotoJugador
             playerId={jugador.id} campo="photo_face_url" url={jugador.photo_face_url || null}
+            flagged={!!jugador.foto_cambiar_perfil}
             titulo="Foto de perfil" recomendacion="Que se te vea del pecho para arriba, de frente y con buena luz."
             ejemplo={<EjemploFotoPerfil/>}
-            onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_face_url: nuevaUrl }))}
+            onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_face_url: nuevaUrl, foto_cambiar_perfil: false }))}
             colors={{ card: S.card, border: S.border, text: S.text, muted: S.muted, accent: S.cyan, accentBg: S.cyanDim }}
           />
           <SubidaFotoJugador
             playerId={jugador.id} campo="photo_url" url={jugador.photo_url || null}
+            flagged={!!jugador.foto_cambiar_tarjeta}
             titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
             ejemplo={<EjemploFotoTarjeta/>}
-            onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_url: nuevaUrl }))}
+            onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
             colors={{ card: S.card, border: S.border, text: S.text, muted: S.muted, accent: S.cyan, accentBg: S.cyanDim }}
           />
         </div>

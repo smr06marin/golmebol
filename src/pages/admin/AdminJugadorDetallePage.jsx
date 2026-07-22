@@ -196,11 +196,12 @@ export default function AdminJugadorDetallePage() {
     const ext   = file.name.split('.').pop()
     const path  = `fotos/${id}_${tipo}.${ext}`
     const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
+    const campoFlag = tipo === 'tarjeta' ? 'foto_cambiar_tarjeta' : 'foto_cambiar_perfil'
     const { error } = await supabase.storage.from('players').upload(path, file, { upsert: true })
     if (error) { showMsg('Error al subir foto', 'error'); setUploading(u => ({ ...u, [tipo]: false })); return }
     const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
-    await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', id)
-    setJugador(j => ({ ...j, [campo]: urlData.publicUrl }))
+    await supabase.from('players').update({ [campo]: urlData.publicUrl, [campoFlag]: false }).eq('id', id)
+    setJugador(j => ({ ...j, [campo]: urlData.publicUrl, [campoFlag]: false }))
     setUploading(u => ({ ...u, [tipo]: false }))
     showMsg('Foto actualizada ✓')
   }
@@ -223,10 +224,22 @@ export default function AdminJugadorDetallePage() {
     if (error) { showMsg('Error al subir cédula', 'error'); setUploading(u => ({ ...u, [cara]: false })); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
     const campo = cara === 'frontal' ? 'cedula_frontal_url' : 'cedula_trasera_url'
-    await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', id)
-    setJugador(j => ({ ...j, [campo]: urlData.publicUrl }))
+    const campoFlag = cara === 'frontal' ? 'foto_cambiar_cedula_frontal' : 'foto_cambiar_cedula_trasera'
+    await supabase.from('players').update({ [campo]: urlData.publicUrl, [campoFlag]: false }).eq('id', id)
+    setJugador(j => ({ ...j, [campo]: urlData.publicUrl, [campoFlag]: false }))
     setUploading(u => ({ ...u, [cara]: false }))
     showMsg('Cédula subida ✓')
+  }
+
+  // Marca o quita el aviso de "esta foto no sirve, debe subir otra". Se ve
+  // aquí, en el listado de jugadores, en el propio perfil del jugador y como
+  // advertencia en la planilla del próximo partido.
+  async function handleFlagFoto(campoFlag, marcar, etiqueta) {
+    if (marcar && !confirm(`¿Marcar "${etiqueta}" para que el jugador deba subir otra? Se le avisará en su perfil y en la próxima planilla.`)) return
+    const { error } = await supabase.from('players').update({ [campoFlag]: marcar }).eq('id', id)
+    if (error) { showMsg('Error al actualizar', 'error'); return }
+    setJugador(j => ({ ...j, [campoFlag]: marcar }))
+    showMsg(marcar ? 'Marcada — se le pedirá al jugador que la cambie' : 'Aviso quitado')
   }
 
   async function handleGuardarDatos() {
@@ -438,6 +451,9 @@ export default function AdminJugadorDetallePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
               <h1 style={{ fontSize: '1.3rem', fontWeight: '700', color: '#202124', margin: 0 }}>{jugador.name}</h1>
               <span style={{ fontSize: '.72rem', fontWeight: '700', color: estadoColor, background: estadoBg, borderRadius: '20px', padding: '3px 10px' }}>{estadoLabel}</span>
+              {(jugador.foto_cambiar_tarjeta || jugador.foto_cambiar_perfil || jugador.foto_cambiar_cedula_frontal || jugador.foto_cambiar_cedula_trasera) && (
+                <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '3px 10px' }}>⚠️ Foto por cambiar</span>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368', marginBottom: '8px' }}>
               {jugador.numero_cedula   && <span>🪪 {jugador.numero_cedula}</span>}
@@ -494,34 +510,51 @@ export default function AdminJugadorDetallePage() {
         )}
 
         {/* Fotos y documentos */}
-        <div style={{ marginTop: '14px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: '#1a73e8', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.photo_url ? '#1a73e8' : '#dadce0'}`, borderRadius: '8px', background: jugador.photo_url ? '#e8f0fe' : '#fff' }}>
-            <Camera size={13}/> {uploading.tarjeta ? 'Subiendo...' : jugador.photo_url ? '✓ Foto tarjeta' : 'Foto tarjeta'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'tarjeta')} disabled={uploading.tarjeta}/>
-          </label>
-          {jugador.photo_url && (
-            <button onClick={() => handleEliminarFoto('tarjeta')} title="Eliminar foto de tarjeta (el jugador podrá subir otra)"
-              style={{ display: 'flex', alignItems: 'center', fontSize: '.72rem', color: '#d93025', cursor: 'pointer', padding: '5px 10px', border: '1px solid #fad2cf', borderRadius: '8px', background: '#fff' }}>
-              🗑️
-            </button>
-          )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: '#1e8e3e', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.photo_face_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px', background: jugador.photo_face_url ? '#e6f4ea' : '#fff' }}>
-            <User size={13}/> {uploading.cara ? 'Subiendo...' : jugador.photo_face_url ? '✓ Foto perfil' : 'Foto perfil'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'cara')} disabled={uploading.cara}/>
-          </label>
-          {jugador.photo_face_url && (
-            <button onClick={() => handleEliminarFoto('cara')} title="Eliminar foto de perfil (el jugador podrá subir otra)"
-              style={{ display: 'flex', alignItems: 'center', fontSize: '.72rem', color: '#d93025', cursor: 'pointer', padding: '5px 10px', border: '1px solid #fad2cf', borderRadius: '8px', background: '#fff' }}>
-              🗑️
-            </button>
-          )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: jugador.cedula_frontal_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.cedula_frontal_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px' }}>
-            <Upload size={13}/> {uploading.frontal ? 'Subiendo...' : jugador.cedula_frontal_url ? '✓ Cédula frontal' : 'Cédula frontal'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(e.target.files[0], 'frontal')} disabled={uploading.frontal}/>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: jugador.cedula_trasera_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.cedula_trasera_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px' }}>
-            <Upload size={13}/> {uploading.trasera ? 'Subiendo...' : jugador.cedula_trasera_url ? '✓ Cédula trasera' : 'Cédula trasera'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(e.target.files[0], 'trasera')} disabled={uploading.trasera}/>
+        {(jugador.foto_cambiar_tarjeta || jugador.foto_cambiar_perfil || jugador.foto_cambiar_cedula_frontal || jugador.foto_cambiar_cedula_trasera) && (
+          <div style={{ marginTop: '14px', background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', fontSize: '.78rem', color: '#d93025', fontWeight: '600' }}>
+            ⚠️ Este jugador tiene fotos marcadas para cambiar — se le avisa en su perfil y en la planilla del próximo partido.
+          </div>
+        )}
+        <div style={{ marginTop: '14px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          {[
+            { tipo: 'tarjeta', label: 'Foto tarjeta', url: jugador.photo_url, campoFlag: 'foto_cambiar_tarjeta', uploadFn: (f) => handleFoto(f, 'tarjeta'), delFn: () => handleEliminarFoto('tarjeta'), objectPosition: 'top' },
+            { tipo: 'cara',    label: 'Foto perfil',  url: jugador.photo_face_url, campoFlag: 'foto_cambiar_perfil', uploadFn: (f) => handleFoto(f, 'cara'), delFn: () => handleEliminarFoto('cara'), objectPosition: 'center' },
+            { tipo: 'frontal', label: 'Cédula frontal', url: jugador.cedula_frontal_url, campoFlag: 'foto_cambiar_cedula_frontal', uploadFn: (f) => handleCedula(f, 'frontal'), delFn: null, objectPosition: 'center' },
+            { tipo: 'trasera', label: 'Cédula trasera', url: jugador.cedula_trasera_url, campoFlag: 'foto_cambiar_cedula_trasera', uploadFn: (f) => handleCedula(f, 'trasera'), delFn: null, objectPosition: 'center' },
+          ].map(f => {
+            const marcada = !!jugador[f.campoFlag]
+            return (
+              <div key={f.tipo} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '90px' }}>
+                <div style={{ position: 'relative', width: '80px', height: '80px' }}>
+                  <label style={{ display: 'block', width: '80px', height: '80px', borderRadius: '12px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : f.url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
+                    {f.url
+                      ? <img src={f.url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: f.objectPosition, opacity: uploading[f.tipo] ? .4 : 1 }}/>
+                      : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {f.tipo === 'tarjeta' || f.tipo === 'cara' ? <User size={26} color="#c1c7cd"/> : <Upload size={22} color="#c1c7cd"/>}
+                        </div>}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => f.uploadFn(e.target.files[0])} disabled={uploading[f.tipo]}/>
+                    {uploading[f.tipo] && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.65rem', color: '#5f6368', fontWeight: '700' }}>...</div>}
+                  </label>
+                  {f.url && (
+                    <button onClick={() => handleFlagFoto(f.campoFlag, !marcada, f.label)}
+                      title={marcada ? 'Quitar aviso' : 'Marcar: debe cambiar esta foto'}
+                      style={{ position: 'absolute', bottom: '-6px', right: f.delFn ? '18px' : '-6px', width: '22px', height: '22px', borderRadius: '50%', border: '2px solid #fff', background: marcada ? '#d93025' : '#fff', color: marcada ? '#fff' : '#d93025', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '.68rem', boxShadow: '0 1px 4px rgba(0,0,0,.25)', lineHeight: 1 }}>
+                      {marcada ? '✕' : '🚩'}
+                    </button>
+                  )}
+                  {f.url && f.delFn && (
+                    <button onClick={f.delFn} title="Eliminar (el jugador podrá subir otra)"
+                      style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '22px', height: '22px', borderRadius: '50%', border: '2px solid #fff', background: '#fff', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '.68rem', boxShadow: '0 1px 4px rgba(0,0,0,.25)', lineHeight: 1 }}>
+                      🗑️
+                    </button>
+                  )}
+                </div>
+                <div style={{ fontSize: '.66rem', color: marcada ? '#d93025' : '#5f6368', fontWeight: marcada ? '700' : '500', textAlign: 'center' }}>
+                  {marcada ? '⚠️ Debe cambiar' : f.label}
+                </div>
+              </div>
+            )
+          })}
           </label>
         </div>
       </div>

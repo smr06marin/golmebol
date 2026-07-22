@@ -338,11 +338,13 @@ export default function AdminJugadoresPage() {
     const ext   = file.name.split('.').pop()
     const path  = `fotos/${jugador.id}_${tipo}.${ext}`
     const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
+    const campoFlag = tipo === 'tarjeta' ? 'foto_cambiar_tarjeta' : 'foto_cambiar_perfil'
     const { error } = await supabase.storage.from('players').upload(path, file, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir foto', 'error'); return }
     const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
-    await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', jugador.id)
-    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campo]: urlData.publicUrl } : j))
+    // Al subir una nueva, se limpia el aviso de "debe cambiar" si estaba marcado.
+    await supabase.from('players').update({ [campo]: urlData.publicUrl, [campoFlag]: false }).eq('id', jugador.id)
+    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campo]: urlData.publicUrl, [campoFlag]: false } : j))
     setUploading(u => ({ ...u, [key]: false }))
     showMsg('Foto subida ✓')
   }
@@ -357,10 +359,70 @@ export default function AdminJugadoresPage() {
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir cédula', 'error'); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
     const campo = cara === 'frontal' ? 'cedula_frontal_url' : 'cedula_trasera_url'
-    await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', jugador.id)
-    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campo]: urlData.publicUrl } : j))
+    const campoFlag = cara === 'frontal' ? 'foto_cambiar_cedula_frontal' : 'foto_cambiar_cedula_trasera'
+    // Al subir una nueva, se limpia el aviso de "debe cambiar" si estaba marcado.
+    await supabase.from('players').update({ [campo]: urlData.publicUrl, [campoFlag]: false }).eq('id', jugador.id)
+    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campo]: urlData.publicUrl, [campoFlag]: false } : j))
     setUploading(u => ({ ...u, [key]: false }))
     showMsg('Cédula subida ✓')
+  }
+
+  // Marca o quita el aviso de "esta foto no sirve, debe subir otra" en una de
+  // las 4 fotos del jugador. El aviso se ve en este listado, en el perfil del
+  // jugador (admin y el propio jugador) y como advertencia en la planilla del
+  // próximo partido.
+  async function handleFlagFoto(jugador, campoFlag, marcar, etiqueta) {
+    if (marcar && !confirm(`¿Marcar "${etiqueta}" de ${jugador.name} para que deba subir otra? Se le avisará en su perfil y en la próxima planilla.`)) return
+    const { error } = await supabase.from('players').update({ [campoFlag]: marcar }).eq('id', jugador.id)
+    if (error) { showMsg('Error al actualizar', 'error'); return }
+    setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campoFlag]: marcar } : j))
+    showMsg(marcar ? 'Marcada — se le pedirá al jugador que la cambie' : 'Aviso quitado')
+  }
+
+  const FOTOS_CONFIG = [
+    { key: 'tarjeta',         urlField: 'photo_url',           flagField: 'foto_cambiar_tarjeta',          etiqueta: 'Foto tarjeta',    tipo: 'foto', cara: null,     objectPosition: 'top' },
+    { key: 'cara',            urlField: 'photo_face_url',      flagField: 'foto_cambiar_perfil',           etiqueta: 'Foto perfil',     tipo: 'foto', cara: null,     objectPosition: 'center' },
+    { key: 'cedula_frontal',  urlField: 'cedula_frontal_url',  flagField: 'foto_cambiar_cedula_frontal',   etiqueta: 'Cédula frontal',  tipo: 'cedula', cara: 'frontal', objectPosition: 'center' },
+    { key: 'cedula_trasera',  urlField: 'cedula_trasera_url',  flagField: 'foto_cambiar_cedula_trasera',   etiqueta: 'Cédula trasera',  tipo: 'cedula', cara: 'trasera', objectPosition: 'center' },
+  ]
+
+  function FotoMiniatura({ jugador, cfg }) {
+    const url      = jugador[cfg.urlField]
+    const marcada  = !!jugador[cfg.flagField]
+    const uploadKey = cfg.tipo === 'foto' ? (cfg.key === 'tarjeta' ? 'tarjeta' : 'cara') : cfg.cara
+    const subiendo = uploading[jugador.id + '_' + uploadKey]
+    const onFile = (file) => cfg.tipo === 'foto' ? handleFoto(jugador, file, uploadKey) : handleCedula(jugador, file, uploadKey)
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '64px' }}>
+        <div style={{ position: 'relative', width: '58px', height: '58px' }}>
+          <label style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
+            {url
+              ? <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
+              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
+                </div>}
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
+            {subiendo && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: '#5f6368', fontWeight: '700' }}>...</div>}
+          </label>
+          {url && (
+            <button
+              onClick={() => handleFlagFoto(jugador, cfg.flagField, !marcada, cfg.etiqueta)}
+              title={marcada ? 'Quitar aviso' : 'Marcar: debe cambiar esta foto'}
+              style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #fff', background: marcada ? '#d93025' : '#fff', color: marcada ? '#fff' : '#d93025', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '.62rem', boxShadow: '0 1px 4px rgba(0,0,0,.25)', lineHeight: 1 }}>
+              {marcada ? '✕' : '🚩'}
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize: '.6rem', color: marcada ? '#d93025' : '#9aa0a6', fontWeight: marcada ? '700' : '500', textAlign: 'center', lineHeight: 1.2 }}>
+          {marcada ? '⚠️ Cambiar' : cfg.etiqueta}
+        </div>
+      </div>
+    )
+  }
+
+  function tieneFotoPendiente(j) {
+    return !!(j.foto_cambiar_tarjeta || j.foto_cambiar_perfil || j.foto_cambiar_cedula_frontal || j.foto_cambiar_cedula_trasera)
   }
 
   const cActivos    = jugadores.filter(j => j.activo_membresia).length
@@ -368,6 +430,7 @@ export default function AdminJugadoresPage() {
   const cSinCuenta  = jugadores.filter(j => !j.user_id).length
   const cPorVencer  = jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length
   const cPendientes = jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length
+  const cFotos      = jugadores.filter(tieneFotoPendiente).length
 
   const filtered = jugadores.filter(j => {
     const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
@@ -376,6 +439,7 @@ export default function AdminJugadoresPage() {
     if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id && !j.whatsapp
     if (filtroMembresia === 'sin_cuenta') return !j.user_id
     if (filtroMembresia === 'pendientes') return j.user_id && j.whatsapp && !j.activo_membresia
+    if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
     return true
   })
 
@@ -474,13 +538,14 @@ export default function AdminJugadoresPage() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '20px' }}>
         {[
           { label: 'Activos',    value: cActivos,    color: '#1e8e3e', bg: '#e6f4ea', icon: <CheckCircle size={16} color="#1e8e3e"/>, id: 'activos' },
           { label: 'Pendientes', value: cPendientes, color: '#1a73e8', bg: '#e8f0fe', icon: <Clock size={16} color="#1a73e8"/>,      id: 'pendientes' },
           { label: 'Vencidos',   value: cVencidos,   color: '#d93025', bg: '#fce8e6', icon: <AlertTriangle size={16} color="#d93025"/>, id: 'vencidos' },
           { label: 'Sin cuenta', value: cSinCuenta,  color: '#9aa0a6', bg: '#f1f3f4', icon: <Users size={16} color="#9aa0a6"/>,      id: 'sin_cuenta' },
           { label: 'Por vencer', value: cPorVencer,  color: '#e8710a', bg: '#fce8d9', icon: <Clock size={16} color="#e8710a"/>,      id: 'por_vencer' },
+          { label: 'Fotos ⚠️',   value: cFotos,      color: '#d93025', bg: '#fce8e6', icon: <Camera size={16} color="#d93025"/>,     id: 'fotos' },
         ].map(({ label, value, color, bg, icon, id }) => (
           <div key={label} style={{ background: bg, borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
             onClick={() => setFiltroMembresia(id)}>
@@ -665,6 +730,7 @@ export default function AdminJugadoresPage() {
             { id: 'activos',    label: `Activos (${cActivos})` },
             { id: 'vencidos',   label: `Vencidos (${cVencidos})` },
             { id: 'sin_cuenta', label: `Sin cuenta (${cSinCuenta})` },
+            { id: 'fotos',      label: `Fotos ⚠️ (${cFotos})`, alert: cFotos > 0 },
           ].map(f => (
             <button key={f.id} onClick={() => setFiltroMembresia(f.id)}
               style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: '500', background: filtroMembresia === f.id ? '#1a73e8' : f.alert ? '#e8f0fe' : '#f1f3f4', color: filtroMembresia === f.id ? '#fff' : f.alert ? '#1a73e8' : '#5f6368', transition: 'all .15s' }}>
@@ -704,6 +770,7 @@ export default function AdminJugadoresPage() {
                       {vencida && j.user_id && !esPendiente && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✗ Vencido</span>}
                       {porVencer   && <span style={{ fontSize: '.65rem', color: '#e8710a', background: '#fce8d9', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⚠ {dias}d</span>}
                       {!j.user_id  && <span style={{ fontSize: '.65rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>Sin cuenta</span>}
+                      {tieneFotoPendiente(j) && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚠️ Foto por cambiar</span>}
                     </div>
                     <div style={{ color: '#9aa0a6', fontSize: '.72rem', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {j.numero_cedula && <span>🪪 {j.numero_cedula}</span>}
@@ -772,23 +839,8 @@ export default function AdminJugadoresPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: '#1a73e8', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.photo_url ? '#1a73e8' : '#dadce0'}`, borderRadius: '6px', background: j.photo_url ? '#e8f0fe' : 'transparent' }}>
-                  <Camera size={12}/> {uploading[j.id+'_tarjeta'] ? 'Subiendo...' : j.photo_url ? '✓ Foto tarjeta' : 'Foto tarjeta'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(j, e.target.files[0], 'tarjeta')} disabled={uploading[j.id+'_tarjeta']}/>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: '#1e8e3e', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.photo_face_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '6px', background: j.photo_face_url ? '#e6f4ea' : 'transparent' }}>
-                  <User size={12}/> {uploading[j.id+'_cara'] ? 'Subiendo...' : j.photo_face_url ? '✓ Foto perfil' : 'Foto perfil'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(j, e.target.files[0], 'cara')} disabled={uploading[j.id+'_cara']}/>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: j.cedula_frontal_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.cedula_frontal_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '6px' }}>
-                  <Upload size={12}/> {uploading[j.id+'_frontal'] ? 'Subiendo...' : j.cedula_frontal_url ? '✓ Cédula frontal' : 'Cédula frontal'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(j, e.target.files[0], 'frontal')} disabled={uploading[j.id+'_frontal']}/>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.68rem', color: j.cedula_trasera_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '3px 9px', border: `1px solid ${j.cedula_trasera_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '6px' }}>
-                  <Upload size={12}/> {uploading[j.id+'_trasera'] ? 'Subiendo...' : j.cedula_trasera_url ? '✓ Cédula trasera' : 'Cédula trasera'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(j, e.target.files[0], 'trasera')} disabled={uploading[j.id+'_trasera']}/>
-                </label>
+              <div style={{ display: 'flex', gap: '14px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f1f3f4' }}>
+                {FOTOS_CONFIG.map(cfg => <FotoMiniatura key={cfg.key} jugador={j} cfg={cfg}/>)}
               </div>
             </div>
           )

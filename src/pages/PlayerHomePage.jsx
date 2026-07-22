@@ -981,17 +981,24 @@ export default function PlayerHomePage() {
           </div>
 
           <div style={{ padding: '0 16px 8px', display: 'grid', gap: '10px' }}>
+            {(player.foto_cambiar_cedula_frontal || player.foto_cambiar_cedula_trasera) && (
+              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', fontSize: '.76rem', color: '#d93025', fontWeight: '600' }}>
+                ⚠️ Tu foto de cédula no sirvió — acércate con el administrador para tomarte una nueva.
+              </div>
+            )}
             <SubidaFotoJugador
               playerId={player.id} campo="photo_face_url" url={player.photo_face_url || null}
+              flagged={!!player.foto_cambiar_perfil}
               titulo="Foto de perfil" recomendacion="Que se te vea del pecho para arriba, de frente y con buena luz."
               ejemplo={<EjemploFotoPerfil/>}
-              onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_face_url: nuevaUrl }))}
+              onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_face_url: nuevaUrl, foto_cambiar_perfil: false }))}
             />
             <SubidaFotoJugador
               playerId={player.id} campo="photo_url" url={player.photo_url || null}
+              flagged={!!player.foto_cambiar_tarjeta}
               titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
               ejemplo={<EjemploFotoTarjeta/>}
-              onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl }))}
+              onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
             />
           </div>
 

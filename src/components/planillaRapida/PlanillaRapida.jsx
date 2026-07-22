@@ -106,8 +106,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // fotos, modalidad del torneo, y reviso si hay un borrador remoto más
     // nuevo (por ejemplo si otro árbitro guardó desde otro celular).
     const [jugsL, jugsV, torn, liveDB, sancionesDB, tarjetasDB] = await Promise.all([
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('modalidad, finanzas_config').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
@@ -142,9 +142,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       })
     }
 
-    const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id) }))
+    const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
+    const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players) }))
     let baseLocal = mapJug(jugsL.data)
     let baseVis = mapJug(jugsV.data)
+    const idsDebenFoto = new Set([...(jugsL.data||[]), ...(jugsV.data||[])].filter(r => tieneFotoPendiente(r.players)).map(r => r.players?.id))
 
     if (partido.status === 'finished') {
       await reconstruirPartidoCerrado(baseLocal, baseVis)
@@ -164,7 +166,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       // si no, arranco con el roster fresco de la BD.
       if (remoteTime >= 0) {
         aplicarSnap(remoteSnap, dur)
-        aplicarDeudaTarjeta(idsDebenTarjeta)
+        aplicarDeudaTarjeta(idsDebenTarjeta, idsDebenFoto)
         try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
       } else {
         setJugadoresLocal(baseLocal)
@@ -177,7 +179,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       // Ya se mostró el borrador local, pero el remoto resultó más nuevo
       // (otro árbitro guardó desde otro celular) — lo aplico encima.
       aplicarSnap(remoteSnap, dur)
-      aplicarDeudaTarjeta(idsDebenTarjeta)
+      aplicarDeudaTarjeta(idsDebenTarjeta, idsDebenFoto)
       try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
     } else {
       // El borrador local sigue siendo el más nuevo: solo sumo jugadores
@@ -190,10 +192,15 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // Un borrador (local o remoto) puede traer jugadores sin el flag de deuda
   // recalculado — se le pega encima después de aplicar el snapshot.
-  function aplicarDeudaTarjeta(idsDebenTarjeta) {
-    if (!idsDebenTarjeta || idsDebenTarjeta.size === 0) return
-    setJugadoresLocal(prev => prev.map(j => j.id && idsDebenTarjeta.has(j.id) ? { ...j, debeTarjeta: true } : j))
-    setJugadoresVisitante(prev => prev.map(j => j.id && idsDebenTarjeta.has(j.id) ? { ...j, debeTarjeta: true } : j))
+  function aplicarDeudaTarjeta(idsDebenTarjeta, idsDebenFoto) {
+    if (idsDebenTarjeta && idsDebenTarjeta.size > 0) {
+      setJugadoresLocal(prev => prev.map(j => j.id && idsDebenTarjeta.has(j.id) ? { ...j, debeTarjeta: true } : j))
+      setJugadoresVisitante(prev => prev.map(j => j.id && idsDebenTarjeta.has(j.id) ? { ...j, debeTarjeta: true } : j))
+    }
+    if (idsDebenFoto && idsDebenFoto.size > 0) {
+      setJugadoresLocal(prev => prev.map(j => j.id && idsDebenFoto.has(j.id) ? { ...j, debeFoto: true } : j))
+      setJugadoresVisitante(prev => prev.map(j => j.id && idsDebenFoto.has(j.id) ? { ...j, debeFoto: true } : j))
+    }
   }
 
   function aplicarSnap(snap, dur) {

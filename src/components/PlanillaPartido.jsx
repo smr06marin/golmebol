@@ -694,11 +694,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
 
     const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB, sancionesDB, tarjetasDB] = await Promise.all([
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
       supabase.from('match_events').select('*').eq('match_id', partido.id).order('created_at', { ascending: true }),
-      supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11)').eq('match_id', partido.id),
+      supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('match_id', partido.id),
       supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').maybeSingle(),
       // Snapshot que haya dejado guardado OTRO celular (árbitro/admin) llenando esta misma planilla
       supabase.from('matches').select('live_state, live_state_updated_at, firmas, capitan_local, capitan_visitante').eq('id', partido.id).maybeSingle(),
@@ -746,14 +746,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     yaJugadoRef.current = yaJugado
     if (logrosDB.data?.player_id) setMvpId(logrosDB.data.player_id)
 
-    const mapJug = (data) => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(r.players?.id) }))
+    // Aviso visible para el árbitro si el jugador tiene alguna foto marcada
+    // por el admin como "debe cambiarla" (tarjeta, perfil o cédula).
+    const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
+
+    const mapJug = (data) => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players) }))
 
     let jugsLocalBase, jugsVisBase
     if (yaJugado) {
       const sL = stats.filter(s => s.team_id === partido.home_team_id)
       const sV = stats.filter(s => s.team_id === partido.away_team_id)
-      jugsLocalBase = sL.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(s.player_id) }))
-      jugsVisBase   = sV.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(s.player_id) }))
+      jugsLocalBase = sL.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(s.player_id), debeFoto: tieneFotoPendiente(s.players) }))
+      jugsVisBase   = sV.map(s => ({ id: s.player_id, nombre: s.players?.name || '', cedula: s.players?.numero_cedula || '', numero: s.numero_camiseta || '', faltasPeriodo: [], amarilla: s.yellow_cards > 0, azul: s.blue_cards > 0, roja: s.red_cards > 0, posicion_futbol5: s.players?.posicion_futbol5 || '', posicion_futbol7: s.players?.posicion_futbol7 || '', posicion_futbol11: s.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(s.player_id), debeFoto: tieneFotoPendiente(s.players) }))
     } else { jugsLocalBase = mapJug(jugsL.data); jugsVisBase = mapJug(jugsV.data) }
 
     const golesLocRec = Array(24).fill(null), golesVisRec = Array(24).fill(null)
@@ -1570,6 +1574,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                   {j.debeTarjeta && <span title="Tiene una tarjeta de un partido anterior sin pagar" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '4px', padding: '1px 4px' }}>⚠️ DEBE TARJETA</span>}
+                  {j.debeFoto && <span title="El admin marcó una de sus fotos (tarjeta, perfil o cédula) para cambiar" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '4px', padding: '1px 4px' }}>📸 CAMBIAR FOTO</span>}
                 </td>
                 {(hayArqueroEquipo || sinRegistro) ? (
                   <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>

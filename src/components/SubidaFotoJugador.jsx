@@ -8,9 +8,11 @@ import { supabase } from '../lib/supabase'
 // admin/coordinador borre esa foto desde su panel (eso pone el campo en null
 // de nuevo) — normalmente porque la foto no cumplía la recomendación.
 const TIPO_POR_CAMPO = { photo_face_url: 'cara', photo_url: 'tarjeta' }
+const FLAG_POR_CAMPO = { photo_face_url: 'foto_cambiar_perfil', photo_url: 'foto_cambiar_tarjeta' }
 
 export default function SubidaFotoJugador({
   playerId, campo, url, titulo, recomendacion, ejemplo, onSubido,
+  flagged = false,
   colors = { card: '#fff', border: '#e8eaed', text: '#202124', muted: '#5f6368', accent: '#1a73e8', accentBg: '#e8f0fe' },
 }) {
   const [subiendo, setSubiendo] = useState(false)
@@ -28,7 +30,10 @@ export default function SubidaFotoJugador({
       if (errUp) throw errUp
       const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
       const nuevaUrl = `${urlData.publicUrl}?v=${Date.now()}`
-      const { error: errDb } = await supabase.from('players').update({ [campo]: nuevaUrl }).eq('id', playerId)
+      // Al subir, si el admin la había marcado para cambiar, el aviso se limpia solo.
+      const campoFlag = FLAG_POR_CAMPO[campo]
+      const updateObj = campoFlag ? { [campo]: nuevaUrl, [campoFlag]: false } : { [campo]: nuevaUrl }
+      const { error: errDb } = await supabase.from('players').update(updateObj).eq('id', playerId)
       if (errDb) throw errDb
       onSubido?.(nuevaUrl)
     } catch (err) {
@@ -39,7 +44,7 @@ export default function SubidaFotoJugador({
 
   const c = colors
 
-  if (url) {
+  if (url && !flagged) {
     return (
       <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: '12px', padding: '14px', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <img src={url} style={{ width: '54px', height: '54px', borderRadius: '10px', objectFit: 'cover', objectPosition: 'top', flexShrink: 0, border: `1px solid ${c.border}` }}/>
@@ -54,13 +59,23 @@ export default function SubidaFotoJugador({
   }
 
   return (
-    <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: '12px', padding: '14px' }}>
+    <div style={{ background: flagged ? '#fce8e6' : c.card, border: `1px solid ${flagged ? '#fad2cf' : c.border}`, borderRadius: '12px', padding: '14px' }}>
+      {flagged && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+          {url && <img src={url} style={{ width: '38px', height: '38px', borderRadius: '8px', objectFit: 'cover', objectPosition: 'top', flexShrink: 0, opacity: .6 }}/>}
+          <div style={{ fontSize: '.76rem', color: '#d93025', fontWeight: '700', lineHeight: 1.35 }}>
+            ⚠️ Debes subir de nuevo tu {titulo.toLowerCase()} — la que subiste no sirvió.
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: '.82rem', fontWeight: '700', color: c.text, marginBottom: '4px' }}>{titulo}</div>
       <div style={{ fontSize: '.72rem', color: c.muted, marginBottom: '10px', lineHeight: 1.4 }}>{recomendacion}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
         {ejemplo}
         <div style={{ fontSize: '.66rem', color: c.muted, lineHeight: 1.5 }}>
-          ⚠️ Solo puedes subirla una vez. Si no cumple con lo recomendado, el administrador puede eliminarla y tendrás que subir otra.
+          {flagged
+            ? '⚠️ Si la nueva foto tampoco cumple, el administrador puede volver a marcarla.'
+            : '⚠️ Solo puedes subirla una vez. Si no cumple con lo recomendado, el administrador puede pedirte que la cambies.'}
         </div>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', background: subiendo ? '#f1f3f4' : c.accentBg, border: `1px solid ${c.accent}`, borderRadius: '8px', cursor: subiendo ? 'default' : 'pointer', color: c.accent, fontSize: '.78rem', fontWeight: '700' }}>

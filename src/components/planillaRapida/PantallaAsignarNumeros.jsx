@@ -18,6 +18,11 @@ function FilaJugador({ j, color, onAbrir }) {
             ⚠️ DEBE TARJETA
           </span>
         )}
+        {j.debeFoto && (
+          <span style={{ display: 'inline-block', marginTop: '2px', marginLeft: '4px', fontSize: '.62rem', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '5px', padding: '2px 6px' }}>
+            📸 CAMBIAR FOTO
+          </span>
+        )}
       </span>
       {asignado ? (
         <span style={{ background: VERDE, color: '#fff', fontWeight: '900', fontSize: '.8rem', borderRadius: '7px', padding: '4px 10px', flexShrink: 0 }}>#{j.numero}</span>
