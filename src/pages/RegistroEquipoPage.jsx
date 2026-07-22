@@ -332,8 +332,11 @@ export default function RegistroEquipoPage() {
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria')
     if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
       return showMsg('Selecciona al menos una posición')
-    if (!fotoFrontal) return showMsg('La foto frontal de la cédula es obligatoria')
-    if (!fotoTrasera) return showMsg('La foto trasera de la cédula es obligatoria')
+    // El organizador puede desactivar la obligatoriedad de la cédula para su torneo.
+    if (torneo?.requiere_cedula !== false) {
+      if (!fotoFrontal) return showMsg('La foto frontal de la cédula es obligatoria')
+      if (!fotoTrasera) return showMsg('La foto trasera de la cédula es obligatoria')
+    }
 
     // Un mismo número de WhatsApp no puede quedar repetido en dos jugadores
     // distintos — por ese número es que se hace la verificación de identidad,
@@ -706,18 +709,20 @@ export default function RegistroEquipoPage() {
                 </div>
               </div>
 
-              {/* Fotos cédula — obligatorias para nuevos */}
-              <div>
-                <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '10px' }}>📸 Fotos de la cédula</div>
-                <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '12px' }}>Necesitamos ambas caras de tu cédula para verificar tu identidad</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
-                  <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+              {/* Fotos cédula — obligatorias para nuevos, salvo que el organizador las haya desactivado para este torneo */}
+              {torneo?.requiere_cedula !== false && (
+                <div>
+                  <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '10px' }}>📸 Fotos de la cédula</div>
+                  <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '12px' }}>Necesitamos ambas caras de tu cédula para verificar tu identidad</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
+                    <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                  </div>
+                  <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
+                    ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real de tu cédula</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu cédula real.
+                  </div>
                 </div>
-                <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
-                  ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real de tu cédula</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu cédula real.
-                </div>
-              </div>
+              )}
 
             </div>
 
