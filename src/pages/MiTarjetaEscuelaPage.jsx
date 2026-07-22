@@ -5,6 +5,7 @@ import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
 import FichaEvolucion from '../components/FichaEvolucion'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
+import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -179,6 +180,23 @@ export default function MiTarjetaEscuelaPage() {
         ) : (
           <TarjetaEscuelaJugador jugador={jugador} premios={premios} premiosTorneo={premiosTorneo}/>
         )}
+
+        <div style={{ marginTop: '18px', display: 'grid', gap: '10px' }}>
+          <SubidaFotoJugador
+            playerId={jugador.id} campo="photo_face_url" url={jugador.photo_face_url || null}
+            titulo="Foto de perfil" recomendacion="Que se te vea del pecho para arriba, de frente y con buena luz."
+            ejemplo={<EjemploFotoPerfil/>}
+            onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_face_url: nuevaUrl }))}
+            colors={{ card: S.card, border: S.border, text: S.text, muted: S.muted, accent: S.cyan, accentBg: S.cyanDim }}
+          />
+          <SubidaFotoJugador
+            playerId={jugador.id} campo="photo_url" url={jugador.photo_url || null}
+            titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
+            ejemplo={<EjemploFotoTarjeta/>}
+            onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_url: nuevaUrl }))}
+            colors={{ card: S.card, border: S.border, text: S.text, muted: S.muted, accent: S.cyan, accentBg: S.cyanDim }}
+          />
+        </div>
 
         <FichaEvolucion jugadorId={jugador.id}/>
       </div>

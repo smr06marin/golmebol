@@ -101,6 +101,14 @@ export default function EscuelaJugadorDetallePage() {
     showMsg('Foto actualizada')
   }
 
+  async function handleEliminarFoto(campo) {
+    if (!confirm('¿Eliminar esta foto? El jugador podrá subir una nueva.')) return
+    const { error } = await supabase.from('players').update({ [campo]: null }).eq('id', id)
+    if (error) { showMsg('Error al eliminar foto'); return }
+    setJugador(j => ({ ...j, [campo]: null }))
+    showMsg('Foto eliminada')
+  }
+
   async function handleCrearPremio() {
     if (!nuevoPremio.nombre.trim()) return
     const { data, error } = await supabase.from('escuela_premios')
@@ -157,9 +165,22 @@ export default function EscuelaJugadorDetallePage() {
             </div>
 
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:14, padding:16, marginBottom:14 }}>
-              <div style={{ fontWeight:700, fontSize:'.88rem', marginBottom:12 }}>Foto de perfil</div>
-              <input type="file" accept="image/*" disabled={subiendoFoto} onChange={e => handleFoto(e.target.files[0] || null)} style={{ ...inp, padding:'8px' }}/>
-              {subiendoFoto && <div style={{ fontSize:'.72rem', color:S.muted, marginTop:6 }}>Subiendo...</div>}
+              <div style={{ fontWeight:700, fontSize:'.88rem', marginBottom:4 }}>Fotos del jugador</div>
+              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:12 }}>El jugador las sube una sola vez desde su propia tarjeta. Si alguna no es adecuada, bórrala aquí para que pueda subir otra.</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, background:S.card2, borderRadius:8, padding:'8px 12px' }}>
+                  <span style={{ fontSize:'.76rem' }}>Foto de perfil {jugador.photo_face_url ? '✓' : '— sin subir'}</span>
+                  {jugador.photo_face_url && (
+                    <button onClick={() => handleEliminarFoto('photo_face_url')} style={{ background:'none', border:'1px solid #d93025', borderRadius:6, padding:'4px 8px', cursor:'pointer', color:'#d93025', fontSize:'.7rem' }}>🗑️ Eliminar</button>
+                  )}
+                </div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, background:S.card2, borderRadius:8, padding:'8px 12px' }}>
+                  <span style={{ fontSize:'.76rem' }}>Foto de tarjeta {jugador.photo_url ? '✓' : '— sin subir'}</span>
+                  {jugador.photo_url && (
+                    <button onClick={() => handleEliminarFoto('photo_url')} style={{ background:'none', border:'1px solid #d93025', borderRadius:6, padding:'4px 8px', cursor:'pointer', color:'#d93025', fontSize:'.7rem' }}>🗑️ Eliminar</button>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:14, padding:16, marginBottom:14 }}>

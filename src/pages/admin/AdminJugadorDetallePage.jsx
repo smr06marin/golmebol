@@ -205,6 +205,15 @@ export default function AdminJugadorDetallePage() {
     showMsg('Foto actualizada ✓')
   }
 
+  async function handleEliminarFoto(tipo) {
+    if (!confirm('¿Eliminar esta foto? El jugador podrá subir una nueva.')) return
+    const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
+    const { error } = await supabase.from('players').update({ [campo]: null }).eq('id', id)
+    if (error) { showMsg('Error al eliminar foto', 'error'); return }
+    setJugador(j => ({ ...j, [campo]: null }))
+    showMsg('Foto eliminada ✓')
+  }
+
   async function handleCedula(file, cara) {
     if (!file) return
     setUploading(u => ({ ...u, [cara]: true }))
@@ -490,10 +499,22 @@ export default function AdminJugadorDetallePage() {
             <Camera size={13}/> {uploading.tarjeta ? 'Subiendo...' : jugador.photo_url ? '✓ Foto tarjeta' : 'Foto tarjeta'}
             <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'tarjeta')} disabled={uploading.tarjeta}/>
           </label>
+          {jugador.photo_url && (
+            <button onClick={() => handleEliminarFoto('tarjeta')} title="Eliminar foto de tarjeta (el jugador podrá subir otra)"
+              style={{ display: 'flex', alignItems: 'center', fontSize: '.72rem', color: '#d93025', cursor: 'pointer', padding: '5px 10px', border: '1px solid #fad2cf', borderRadius: '8px', background: '#fff' }}>
+              🗑️
+            </button>
+          )}
           <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: '#1e8e3e', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.photo_face_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px', background: jugador.photo_face_url ? '#e6f4ea' : '#fff' }}>
             <User size={13}/> {uploading.cara ? 'Subiendo...' : jugador.photo_face_url ? '✓ Foto perfil' : 'Foto perfil'}
             <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFoto(e.target.files[0], 'cara')} disabled={uploading.cara}/>
           </label>
+          {jugador.photo_face_url && (
+            <button onClick={() => handleEliminarFoto('cara')} title="Eliminar foto de perfil (el jugador podrá subir otra)"
+              style={{ display: 'flex', alignItems: 'center', fontSize: '.72rem', color: '#d93025', cursor: 'pointer', padding: '5px 10px', border: '1px solid #fad2cf', borderRadius: '8px', background: '#fff' }}>
+              🗑️
+            </button>
+          )}
           <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.72rem', color: jugador.cedula_frontal_url ? '#1e8e3e' : '#5f6368', cursor: 'pointer', padding: '5px 12px', border: `1px solid ${jugador.cedula_frontal_url ? '#1e8e3e' : '#dadce0'}`, borderRadius: '8px' }}>
             <Upload size={13}/> {uploading.frontal ? 'Subiendo...' : jugador.cedula_frontal_url ? '✓ Cédula frontal' : 'Cédula frontal'}
             <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCedula(e.target.files[0], 'frontal')} disabled={uploading.frontal}/>

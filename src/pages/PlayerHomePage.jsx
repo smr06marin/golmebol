@@ -8,6 +8,7 @@ import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
 import PortalBanner from '../components/PortalBanner'
+import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
@@ -977,6 +978,21 @@ export default function PlayerHomePage() {
                 onStatClick={handleCardClick}
               />
             </div>
+          </div>
+
+          <div style={{ padding: '0 16px 8px', display: 'grid', gap: '10px' }}>
+            <SubidaFotoJugador
+              playerId={player.id} campo="photo_face_url" url={player.photo_face_url || null}
+              titulo="Foto de perfil" recomendacion="Que se te vea del pecho para arriba, de frente y con buena luz."
+              ejemplo={<EjemploFotoPerfil/>}
+              onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_face_url: nuevaUrl }))}
+            />
+            <SubidaFotoJugador
+              playerId={player.id} campo="photo_url" url={player.photo_url || null}
+              titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
+              ejemplo={<EjemploFotoTarjeta/>}
+              onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl }))}
+            />
           </div>
 
           <CardProgressSection
