@@ -3,6 +3,7 @@ import { useEffect, useState, lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
+import { useVersionCheck } from './hooks/useVersionCheck'
 
 // Carga diferida por página: el celular solo descarga el código de la página que visita
 const LoginPage               = lazy(() => import('./pages/LoginPage'))
@@ -259,6 +260,7 @@ function useConfirmarSalida() {
 export default function App() {
   const { setUser, setLoading, setRol, empezarCargaRol, user } = useAuthStore()
   useConfirmarSalida()
+  const hayVersionNueva = useVersionCheck()
 
   async function cargarRol(u) {
     if (!u?.email) { setRol(null); return }
@@ -300,6 +302,12 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    {hayVersionNueva && (
+      <div onClick={() => window.location.reload()}
+        style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#1a73e8', color: '#fff', textAlign: 'center', padding: '10px 16px', fontSize: '.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'system-ui, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
+        🔄 Hay una versión nueva de Golmebol — toca para actualizar
+      </div>
+    )}
     <BrowserRouter>
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>
