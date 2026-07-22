@@ -123,6 +123,7 @@ export default function ArbitroHomePage() {
   const [showFlyer, setShowFlyer] = useState(false)
   const [notifs,    setNotifs]    = useState([])
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  const arbitroRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
   function abrirPlanilla(p) {
     setPlanillaPartido(p)
@@ -174,9 +175,13 @@ export default function ArbitroHomePage() {
     // Si el celular restaura la página desde memoria (bfcache) al volver de otra
     // app/pestaña, o simplemente vuelve a quedar visible, refrescamos los datos
     // para que un partido recién asignado por el coordinador aparezca sin
-    // necesidad de recargar manualmente.
-    function onPageShow(e) { if (e.persisted) fetchTodo() }
-    function onVisibility() { if (document.visibilityState === 'visible') fetchTodo() }
+    // necesidad de recargar manualmente. IMPORTANTE: esto NO debe mostrar la
+    // pantalla de carga completa ni revalidar sesión por red (ver
+    // refrescarSilencioso) — si no, cada vez que el árbitro vuelve de WhatsApp
+    // se le borra lo que tenía abierto (p.ej. una planilla) o, peor, se le
+    // saca al login si esa llamada de red falla justo al reconectar.
+    function onPageShow(e) { if (e.persisted) refrescarSilencioso() }
+    function onVisibility() { if (document.visibilityState === 'visible') refrescarSilencioso() }
     window.addEventListener('pageshow', onPageShow)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
@@ -193,7 +198,12 @@ export default function ArbitroHomePage() {
     if (!p) { navigate('/jugador/login'); return }
     // Golmebol es gratis — ya no se saca al árbitro por membresía inactiva.
     setArbitro(p)
+    arbitroRef.current = p
+    await cargarPartidos(p)
+    setLoading(false)
+  }
 
+  async function cargarPartidos(p) {
     const selectCols = '*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
     // Se separan en consultas independientes (en vez de un solo .or() con el
     // nombre metido en el filtro) para que un nombre con caracteres raros no
@@ -217,7 +227,14 @@ export default function ArbitroHomePage() {
     // Notificaciones no leídas
     const { data: nots } = await supabase.from('notificaciones').select('*').eq('player_id', p.id).eq('leida', false).order('created_at',{ascending:false})
     setNotifs(nots||[])
-    setLoading(false)
+  }
+
+  // Refresco en segundo plano (al volver de otra app): sin pantalla de carga
+  // y sin revalidar sesión por red, para no borrar ni cerrar nada que el
+  // árbitro tuviera abierto por una falla transitoria de conexión.
+  async function refrescarSilencioso() {
+    if (!arbitroRef.current) return
+    await cargarPartidos(arbitroRef.current)
   }
 
   if (loading) return <div style={{ minHeight:'100vh', background:'#07070e', display:'flex', alignItems:'center', justifyContent:'center', color:'#00ddd0', fontSize:'.9rem' }}>Cargando...</div>

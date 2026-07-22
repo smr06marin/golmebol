@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check } from 'lucide-react'
@@ -454,6 +454,7 @@ export default function ArbitroLiderPage() {
   const [modalRec,     setModalRec]     = useState(null)
   const [reclamosMap,  setReclamosMap]  = useState({})
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  const liderRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
   function abrirPlanilla(p) {
     setPlanillaPartido(p)
@@ -491,8 +492,12 @@ export default function ArbitroLiderPage() {
         })
     }
     fetchTodo()
-    function onPageShow(e) { if (e.persisted) fetchTodo() }
-    function onVisibility() { if (document.visibilityState === 'visible') fetchTodo() }
+    // Al volver de otra app (WhatsApp, etc.) NO se debe mostrar la pantalla de
+    // carga completa ni revalidar sesión por red — eso puede fallar justo al
+    // reconectar y expulsar al líder al login sin motivo, borrando de paso lo
+    // que tuviera abierto (una planilla, un formulario). Ver refrescarSilencioso.
+    function onPageShow(e) { if (e.persisted) refrescarSilencioso() }
+    function onVisibility() { if (document.visibilityState === 'visible') refrescarSilencioso() }
     window.addEventListener('pageshow', onPageShow)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
@@ -508,8 +513,16 @@ export default function ArbitroLiderPage() {
     const { data:p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p||!p.es_arbitro_lider) { navigate('/jugador/login'); return }
     setLider(p)
+    liderRef.current = p
     await Promise.all([fetchPartidos(), fetchArbitros()])
     setLoading(false)
+  }
+
+  // Refresco en segundo plano (al volver de otra app): sin pantalla de carga
+  // y sin revalidar sesión por red.
+  async function refrescarSilencioso() {
+    if (!liderRef.current) return
+    await Promise.all([fetchPartidos(), fetchArbitros()])
   }
 
   async function fetchPartidos() {

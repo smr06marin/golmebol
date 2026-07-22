@@ -287,8 +287,18 @@ export default function App() {
   }
 
   useEffect(() => {
-    // Timeout de seguridad: si no resuelve, forzar loading=false
-    const timeout = setTimeout(() => setLoading(false), 2000)
+    // Si ya había una sesión guardada en este celular, NO asumimos "sin
+    // sesión" solo porque getSession() tarde en resolver — por ejemplo justo
+    // al volver de otra app (WhatsApp) con la red reconectando. Antes, un
+    // timeout fijo de 2s forzaba loading=false con user=null en ese momento,
+    // lo que hacía que las rutas protegidas expulsaran al usuario a
+    // login/dashboard y perdiera la página (y los datos) en la que estaba.
+    // Si nunca hubo sesión guardada, no hay nada que perder y sí conviene
+    // liberar la pantalla rápido.
+    let haySesionGuardada = false
+    try { haySesionGuardada = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('-auth-token')) } catch {}
+
+    const timeout = setTimeout(() => setLoading(false), haySesionGuardada ? 8000 : 2000)
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout)
       setUser(session?.user ?? null)
