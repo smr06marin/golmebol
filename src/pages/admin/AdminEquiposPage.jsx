@@ -277,6 +277,12 @@ export default function AdminEquiposPage() {
   // se está llenando el formulario de un equipo NUEVO, esto guarda lo escrito
   // y lo recupera solo — no aplica mientras se edita uno existente.
   useFormDraft('draft_crear_equipo', form, setForm, { skip: !!editId })
+  // Si había un borrador con nombre puesto (la pestaña se recargó a media
+  // creación), reabrimos el formulario solo para que se vea ahí mismo.
+  useEffect(() => {
+    if (!editId && form.name?.trim()) setShowForm(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.name])
 
   useEffect(() => { fetchEquipos() }, [])
 

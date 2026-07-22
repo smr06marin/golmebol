@@ -405,7 +405,16 @@ export default function AdminTorneoDetallePage() {
   const [canchas,   setCanchas]   = useState([])
   const [fechas,    setFechas]    = useState([])
   const [loading,   setLoading]   = useState(true)
-  const [tab,       setTab]       = useState(draftJornada ? 'partidos' : 'actividad')
+  // La pestaña activa se refleja en la URL (?tab=) para que si el celular
+  // recarga la página al volver de otra app (WhatsApp, etc.) — algo normal en
+  // iOS/Android cuando la pestaña se queda mucho tiempo en segundo plano —
+  // el admin/organizador vuelva exactamente donde estaba (p.ej. Equipos) en
+  // vez de caer siempre en "Actividad".
+  const [tab, setTabState] = useState(() => searchParams.get('tab') || (draftJornada ? 'partidos' : 'actividad'))
+  function setTab(id) {
+    setTabState(id)
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('tab', id); return n }, { replace: true })
+  }
   const [msg,       setMsg]       = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [modalPartidoAdmin, setModalPartidoAdmin] = useState(null)
@@ -456,6 +465,13 @@ export default function AdminTorneoDetallePage() {
   // Si el celular mata la pestaña al salir a otra app mientras se llena este
   // formulario, se recupera solo al volver.
   useFormDraft('draft_crear_equipo_torneo', nuevoEquipoForm, setNuevoEquipoForm)
+  // Y no solo se recupera el texto: si había un borrador con nombre puesto,
+  // reabrimos el panel de "Agregar equipo" automáticamente para que el admin
+  // lo vea ahí mismo en vez de tener que adivinar que sus datos siguen guardados.
+  useEffect(() => {
+    if (nuevoEquipoForm.name?.trim()) { setShowAgregarEquipo(true); setMostrarCrearEquipo(true) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nuevoEquipoForm.name])
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
