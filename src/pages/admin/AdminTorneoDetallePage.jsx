@@ -1618,7 +1618,7 @@ export default function AdminTorneoDetallePage() {
 
   async function handleGuardarTorneo() {
     const { error } = await supabase.from('tournaments').update(formTorneo).eq('id', id)
-    if (error) { showMsg('Error al actualizar torneo', 'error'); return }
+    if (error) { showMsg(`Error al actualizar torneo: ${error.message}`, 'error'); return }
     setTorneo(p => ({ ...p, ...formTorneo })); setEditandoTorneo(false); showMsg('Torneo actualizado ✓')
   }
 
