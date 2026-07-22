@@ -555,7 +555,6 @@ export default function AdminJugadorDetallePage() {
               </div>
             )
           })}
-          </label>
         </div>
       </div>
 
