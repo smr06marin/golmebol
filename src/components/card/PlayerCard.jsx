@@ -149,6 +149,20 @@ export default function PlayerCard({
         { label: 'EFIC%', value: `${stats.eficacia}%`, key: 'efic', dot: false },
       ]
 
+  // Columna derecha: en modo club es el récord P.G/P.E/P.P, en modo escuela
+  // no hay récord de equipo así que se usan MVP/amarillas/rojas del niño.
+  const statsDerecha = modoEscuela
+    ? [
+        { label: 'MVP', value: stats.mvp || 0,       key: 'mvp_esc' },
+        { label: '🟨',  value: stats.amarillas || 0, key: 'ama_esc' },
+        { label: '🟥',  value: stats.rojas || 0,      key: 'roja_esc' },
+      ]
+    : [
+        { label: 'P.G', value: stats.pg, key: 'pg' },
+        { label: 'P.E', value: stats.pe, key: 'pe' },
+        { label: 'P.P', value: stats.pp, key: 'pp' },
+      ]
+
   // Id de recorte ÚNICO por tarjeta: antes todas las tarjetas del documento
   // compartían el id "activeCardClip" (con escalas distintas por diseño) y el
   // navegador usaba la primera que encontrara — en Android eso dañaba el fondo
@@ -367,26 +381,18 @@ export default function PlayerCard({
                   </div>
                 ))}
               </div>
-              {!modoEscuela && (
-                <>
-                  <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }}/>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    {[
-                      { label: 'P.G', value: stats.pg, key: 'pg' },
-                      { label: 'P.E', value: stats.pe, key: 'pe' },
-                      { label: 'P.P', value: stats.pp, key: 'pp' },
-                    ].map(({ label, value, key }) => (
-                      <div key={key} onClick={() => onStatClick?.(key)}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                        <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
-                        <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
-                      </div>
-                    ))}
+              <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }}/>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                {statsDerecha.map(({ label, value, key }) => (
+                  <div key={key} onClick={() => onStatClick?.(key)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
                   </div>
-                </>
-              )}
+                ))}
+              </div>
             </div>
           </div>
 

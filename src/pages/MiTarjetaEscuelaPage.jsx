@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
 import FichaEvolucion from '../components/FichaEvolucion'
 import PlayerCard from '../components/card/PlayerCard'
+import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -23,6 +24,7 @@ export default function MiTarjetaEscuelaPage() {
   const [premiosTorneo, setPremiosTorneo] = useState([])
   const [promTecnico, setPromTecnico] = useState(null)
   const [estatura, setEstatura] = useState(null)
+  const [tarjetasDesbloqueadas, setTarjetasDesbloqueadas] = useState(['normal_teal'])
   const [loading, setLoading] = useState(true)
   const [errorCuenta, setErrorCuenta] = useState(false)
   const [vistaCard, setVistaCard] = useState('fifa') // 'fifa' | 'clasica'
@@ -49,6 +51,12 @@ export default function MiTarjetaEscuelaPage() {
     if (escId) {
       const { data: prem } = await supabase.from('escuela_premios').select('*').eq('escuela_id', escId).order('umbral', { ascending:true })
       setPremios(prem || [])
+      // Diseños de tarjeta que la escuela dejó atados a un premio (card_type):
+      // se desbloquean cuando el jugador alcanza el umbral de ese premio.
+      const desbloqueadas = (prem || [])
+        .filter(pr => pr.card_type && (p[pr.tipo_stat] || 0) >= pr.umbral)
+        .map(pr => pr.card_type)
+      setTarjetasDesbloqueadas(Array.from(new Set(['normal_teal', ...desbloqueadas])))
     }
     const { data: premTorneo } = await supabase.from('escuela_torneo_premios').select('*, torneo:torneo_id(nombre)').eq('jugador_id', p.id).order('created_at', { ascending:false })
     setPremiosTorneo(premTorneo || [])
@@ -65,6 +73,12 @@ export default function MiTarjetaEscuelaPage() {
     if (med?.estatura_cm) setEstatura(med.estatura_cm)
 
     setLoading(false)
+  }
+
+  async function handleCambiarDiseno(cardTypeId) {
+    if (!jugador) return
+    setJugador(j => ({ ...j, card_type: cardTypeId }))
+    await supabase.from('players').update({ card_type: cardTypeId }).eq('id', jugador.id)
   }
 
   async function handleLogout() {
@@ -132,10 +146,35 @@ export default function MiTarjetaEscuelaPage() {
                 asistencias: jugador.asistencias_escuela || 0,
                 promTecnico: promTecnico ?? '—',
                 estatura,
+                mvp: jugador.mvp_escuela || 0,
+                amarillas: jugador.amarillas_escuela || 0,
+                rojas: jugador.rojas_escuela || 0,
               }}
               onStatClick={(id) => { if (escuelaId && id === escuelaId) navigate(`/escuela/historia/${escuelaId}`) }}
             />
             <div style={{ textAlign:'center', fontSize:'.68rem', color:S.muted, marginTop:'8px' }}>Toca el escudo para ver el recorrido de tu escuela</div>
+
+            {tarjetasDesbloqueadas.length > 1 && (
+              <div style={{ marginTop:'18px' }}>
+                <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:'8px', textAlign:'center' }}>
+                  🔓 Diseños desbloqueados
+                </div>
+                <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'4px' }}>
+                  {tarjetasDesbloqueadas.map(id => {
+                    const d = CARD_DESIGNS.find(x => x.id === id)
+                    if (!d) return null
+                    const activo = (jugador.card_type || 'normal_teal') === id
+                    return (
+                      <button key={id} onClick={() => handleCambiarDiseno(id)}
+                        style={{ flexShrink:0, display:'flex', flexDirection:'column', alignItems:'center', gap:'5px', padding:'8px 10px', borderRadius:'10px', border:`1px solid ${activo ? d.color : S.border}`, background: activo ? `${d.color}22` : S.card, cursor:'pointer' }}>
+                        <div style={{ width:'22px', height:'22px', borderRadius:'50%', background:d.color, border:`1.5px solid ${d.colorSecundario||d.color}` }}/>
+                        <span style={{ fontSize:'.6rem', color: activo ? d.color : S.muted, fontWeight:'700', whiteSpace:'nowrap' }}>{d.nombre}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <TarjetaEscuelaJugador jugador={jugador} premios={premios} premiosTorneo={premiosTorneo}/>

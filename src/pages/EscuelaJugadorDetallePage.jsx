@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
 import FichaEvolucion from '../components/FichaEvolucion'
+import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -31,7 +32,7 @@ export default function EscuelaJugadorDetallePage() {
   const [msg, setMsg] = useState('')
 
   const [showPremioForm, setShowPremioForm] = useState(false)
-  const [nuevoPremio, setNuevoPremio] = useState({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'' })
+  const [nuevoPremio, setNuevoPremio] = useState({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'', card_type:'' })
 
   useEffect(() => { fetchTodo() }, [id])
 
@@ -103,11 +104,11 @@ export default function EscuelaJugadorDetallePage() {
   async function handleCrearPremio() {
     if (!nuevoPremio.nombre.trim()) return
     const { data, error } = await supabase.from('escuela_premios')
-      .insert({ escuela_id: escuela.id, ...nuevoPremio, umbral: Number(nuevoPremio.umbral) || 1 })
+      .insert({ escuela_id: escuela.id, ...nuevoPremio, umbral: Number(nuevoPremio.umbral) || 1, card_type: nuevoPremio.card_type || null })
       .select().single()
     if (!error && data) {
       setPremios(p => [...p, data].sort((a,b) => a.umbral - b.umbral))
-      setNuevoPremio({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'' })
+      setNuevoPremio({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'', card_type:'' })
       setShowPremioForm(false)
     }
   }
@@ -230,6 +231,11 @@ export default function EscuelaJugadorDetallePage() {
                     <input type="number" min="1" value={nuevoPremio.umbral} onChange={e => setNuevoPremio(p => ({ ...p, umbral:e.target.value }))} style={inp} placeholder="Meta"/>
                   </div>
                   <input value={nuevoPremio.descripcion} onChange={e => setNuevoPremio(p => ({ ...p, descripcion:e.target.value }))} style={{ ...inp, marginBottom:10 }} placeholder="Descripción (opcional)"/>
+                  <label style={lbl}>Desbloquea diseño de tarjeta (opcional)</label>
+                  <select value={nuevoPremio.card_type} onChange={e => setNuevoPremio(p => ({ ...p, card_type:e.target.value }))} style={{ ...inp, marginBottom:10 }}>
+                    <option value="">Ninguno — solo insignia</option>
+                    {CARD_DESIGNS.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                  </select>
                   <button onClick={handleCrearPremio} style={{ width:'100%', padding:'9px', background:S.cyan, border:'none', borderRadius:8, cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.8rem' }}>Crear premio</button>
                 </div>
               )}
@@ -241,7 +247,10 @@ export default function EscuelaJugadorDetallePage() {
                   <span>{p.emoji}</span>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:'.8rem', fontWeight:700 }}>{p.nombre}</div>
-                    <div style={{ fontSize:'.68rem', color:S.muted }}>{STAT_LABELS[p.tipo_stat]} ≥ {p.umbral}</div>
+                    <div style={{ fontSize:'.68rem', color:S.muted }}>
+                      {STAT_LABELS[p.tipo_stat]} ≥ {p.umbral}
+                      {p.card_type && <span> · 🎴 desbloquea {CARD_DESIGNS.find(d => d.id === p.card_type)?.nombre || p.card_type}</span>}
+                    </div>
                   </div>
                   <button onClick={() => handleEliminarPremio(p.id)} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'.85rem' }}>🗑️</button>
                 </div>
