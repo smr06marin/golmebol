@@ -248,9 +248,16 @@ export default function RecordsPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const [recsAuto, recsHist] = await Promise.all([fetchAutomaticos(), fetchHistoricos()])
-    setRecords([...(recsAuto || []), ...(recsHist || [])])
+    const [recsAuto, recsHist, ocultos] = await Promise.all([fetchAutomaticos(), fetchHistoricos(), fetchOcultos()])
+    const visibles = (recsAuto || []).filter(r => !ocultos.has(r.id))
+    setRecords([...visibles, ...(recsHist || [])])
     setLoading(false)
+  }
+
+  // Récords automáticos que el admin apagó manualmente (aunque haya datos, no se muestran)
+  async function fetchOcultos() {
+    const { data } = await supabase.from('records_config').select('id').eq('visible', false)
+    return new Set((data || []).map(r => r.id))
   }
 
   async function fetchHistoricos() {

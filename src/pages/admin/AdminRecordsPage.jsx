@@ -4,6 +4,23 @@ import { supabase } from '../../lib/supabase'
 const COLORES = ['#f9a825','#00ddd0','#e8710a','#9955ff','#d93025','#00ee55','#1a73e8','#ff69b4','#4488ff','#a1887f']
 const ICONOS  = ['⭐','⚽','🏆','🔥','⚡','🎩','🧤','✅','💥','🎮','🥇','👑','🎯','💪','🛡️']
 
+// Récords que se calculan solos (no se crean a mano) — el admin solo decide si se muestran o no
+const RECORDS_AUTOMATICOS = [
+  { id: 'max_goleador',  icono: '⚽', nombre: 'Máximo goleador histórico' },
+  { id: 'goles_partido', icono: '💥', nombre: 'Más goles en un partido' },
+  { id: 'hat_tricks',    icono: '🎩', nombre: 'Más hat-tricks' },
+  { id: 'victorias',     icono: '🏅', nombre: 'Más victorias' },
+  { id: 'mas_partidos',  icono: '🎽', nombre: 'Más partidos jugados' },
+  { id: 'racha_vic',     icono: '🔥', nombre: 'Racha de victorias' },
+  { id: 'racha_gol',     icono: '🔥', nombre: 'Racha goleadora' },
+  { id: 'arcos_cero',    icono: '🧤', nombre: 'Arcos en cero (arquero)' },
+  { id: 'fair_play',     icono: '🤝', nombre: 'Fair play' },
+  { id: 'partido_goles', icono: '⚡', nombre: 'Partido más goleador' },
+  { id: 'goleada',       icono: '🚀', nombre: 'Mayor goleada' },
+  { id: 'eq_goles',      icono: '🛡️', nombre: 'Equipo más goleador' },
+  { id: 'eq_victorias',  icono: '👑', nombre: 'Equipo más victorioso' },
+]
+
 const inp = {
   background: '#fff', border: '1px solid #dadce0', borderRadius: '8px',
   padding: '8px 12px', color: '#202124', fontSize: '.85rem', outline: 'none',
@@ -17,11 +34,27 @@ export default function AdminRecordsPage() {
   const [showForm,  setShowForm]  = useState(false)
   const [editando,  setEditando]  = useState(null)
   const [guardando, setGuardando] = useState(false)
+  const [autoOcultos, setAutoOcultos] = useState(new Set()) // ids de récords automáticos apagados
 
   const formVacio = { titulo: '', nombre: '', subtitulo: '', descripcion: '', icono: '⭐', color: '#f9a825', orden: 0 }
   const [form, setForm] = useState(formVacio)
 
-  useEffect(() => { fetchRecords() }, [])
+  useEffect(() => { fetchRecords(); fetchAutoConfig() }, [])
+
+  async function fetchAutoConfig() {
+    const { data } = await supabase.from('records_config').select('id').eq('visible', false)
+    setAutoOcultos(new Set((data || []).map(r => r.id)))
+  }
+
+  async function handleToggleAuto(id) {
+    const ocultoActual = autoOcultos.has(id)
+    await supabase.from('records_config').upsert({ id, visible: ocultoActual, updated_at: new Date().toISOString() })
+    setAutoOcultos(prev => {
+      const next = new Set(prev)
+      if (ocultoActual) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -160,6 +193,27 @@ export default function AdminRecordsPage() {
           </div>
         </div>
       )}
+
+      {/* Récords automáticos: se calculan solos, aquí solo se decide si se muestran */}
+      <div style={{ marginBottom: '28px' }}>
+        <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: '0 0 4px' }}>Récords automáticos</h1>
+        <p style={{ color: '#5f6368', margin: '0 0 14px', fontSize: '.875rem' }}>Se calculan solos con los datos de la liga. Apágalos si no quieres que salgan en la página pública (sin borrar nada).</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {RECORDS_AUTOMATICOS.map(r => {
+            const activo = !autoOcultos.has(r.id)
+            return (
+              <div key={r.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px', opacity: activo ? 1 : .55 }}>
+                <div style={{ fontSize: '1.05rem', flexShrink: 0 }}>{r.icono}</div>
+                <div style={{ flex: 1, fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{r.nombre}</div>
+                <button onClick={() => handleToggleAuto(r.id)}
+                  style={{ padding: '5px 10px', background: activo ? '#e6f4ea' : '#f1f3f4', border: 'none', borderRadius: '6px', cursor: 'pointer', color: activo ? '#1e8e3e' : '#9aa0a6', fontSize: '.72rem', fontWeight: '600', flexShrink: 0 }}>
+                  {activo ? '✓ Visible' : 'Oculto'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Header */}
       <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
