@@ -110,8 +110,27 @@ export default function AdminJugadorDetallePage() {
   const [sanciones,        setSanciones]        = useState([])
   const [formSancion,      setFormSancion]      = useState({ motivo: '', duracion: '8' })
   const [guardandoSancion, setGuardandoSancion] = useState(false)
+  const [cedulaThumbUrls,  setCedulaThumbUrls]  = useState({})
 
   useEffect(() => { fetchTodo() }, [id])
+
+  // El bucket "cedulas" es privado: la URL pública guardada en la BD no
+  // carga directo en un <img>, hace falta firmarla. Se firma una vez que
+  // carga el jugador, con vencimiento largo (1h) solo para esta vista.
+  useEffect(() => {
+    async function firmar() {
+      const getUrl = async (fullUrl) => {
+        if (!fullUrl) return null
+        const path = fullUrl.split('/cedulas/')[1]
+        if (!path) return null
+        const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 3600)
+        return data?.signedUrl || null
+      }
+      const [frontal, trasera] = await Promise.all([getUrl(jugador?.cedula_frontal_url), getUrl(jugador?.cedula_trasera_url)])
+      setCedulaThumbUrls({ frontal, trasera })
+    }
+    if (jugador?.cedula_frontal_url || jugador?.cedula_trasera_url) firmar()
+  }, [jugador?.cedula_frontal_url, jugador?.cedula_trasera_url])
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
@@ -565,16 +584,21 @@ export default function AdminJugadorDetallePage() {
             { tipo: 'trasera', label: 'Cédula trasera', url: jugador.cedula_trasera_url, campoFlag: 'foto_cambiar_cedula_trasera', uploadFn: (f) => handleCedula(f, 'trasera'), delFn: null, objectPosition: 'center' },
           ].map(f => {
             const marcada = !!jugador[f.campoFlag]
+            const esCedula = f.tipo === 'frontal' || f.tipo === 'trasera'
+            const srcMostrar = esCedula ? cedulaThumbUrls[f.tipo] : f.url
+            const cargandoFirma = esCedula && f.url && !cedulaThumbUrls[f.tipo] && !imgError[f.tipo]
             return (
               <div key={f.tipo} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '90px' }}>
                 <div style={{ position: 'relative', width: '80px', height: '80px' }}>
                   <label style={{ display: 'block', width: '80px', height: '80px', borderRadius: '12px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : f.url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
-                    {f.url && !imgError[f.tipo]
-                      ? <img src={f.url} onError={() => setImgError(e => ({ ...e, [f.tipo]: true }))} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: f.objectPosition, opacity: uploading[f.tipo] ? .4 : 1 }}/>
+                    {srcMostrar && !imgError[f.tipo]
+                      ? <img src={srcMostrar} onError={() => setImgError(e => ({ ...e, [f.tipo]: true }))} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: f.objectPosition, opacity: uploading[f.tipo] ? .4 : 1 }}/>
                       : f.url && imgError[f.tipo]
                       ? <div title="No se pudo cargar la imagen (revisa permisos del bucket)" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6' }}>
                           <span style={{ fontSize: '.6rem', color: '#d93025', fontWeight: '700', textAlign: 'center', lineHeight: 1.2, padding: '4px' }}>⚠️ no carga</span>
                         </div>
+                      : cargandoFirma
+                      ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.65rem', color: '#9aa0a6' }}>...</div>
                       : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {f.tipo === 'tarjeta' || f.tipo === 'cara' ? <User size={26} color="#c1c7cd"/> : <Upload size={22} color="#c1c7cd"/>}
                         </div>}

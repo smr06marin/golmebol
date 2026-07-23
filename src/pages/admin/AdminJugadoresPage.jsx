@@ -393,17 +393,38 @@ export default function AdminJugadoresPage() {
     const subiendo = uploading[jugador.id + '_' + uploadKey]
     const onFile = (file) => cfg.tipo === 'foto' ? handleFoto(jugador, file, uploadKey) : handleCedula(jugador, file, uploadKey)
     const [rota, setRota] = useState(false)
+    const [signedUrl, setSignedUrl] = useState(null)
+
+    // El bucket "cedulas" es privado: la URL pública guardada no carga
+    // directo en un <img>, hay que firmarla primero.
+    useEffect(() => {
+      if (cfg.tipo !== 'cedula' || !url) { setSignedUrl(null); return }
+      let cancelado = false
+      async function firmar() {
+        const path = url.split('/cedulas/')[1]
+        if (!path) return
+        const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 3600)
+        if (!cancelado) setSignedUrl(data?.signedUrl || null)
+      }
+      firmar()
+      return () => { cancelado = true }
+    }, [cfg.tipo, url])
+
+    const srcMostrar = cfg.tipo === 'cedula' ? signedUrl : url
+    const cargandoFirma = cfg.tipo === 'cedula' && url && !signedUrl && !rota
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '64px' }}>
         <div style={{ position: 'relative', width: '58px', height: '58px' }}>
           <label style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
-            {url && !rota
-              ? <img src={url} onError={() => setRota(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
+            {srcMostrar && !rota
+              ? <img src={srcMostrar} onError={() => setRota(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
               : url && rota
               ? <div title="No se pudo cargar la imagen (revisa permisos del bucket)" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6' }}>
                   <span style={{ fontSize: '.52rem', color: '#d93025', fontWeight: '700', textAlign: 'center', lineHeight: 1.1, padding: '2px' }}>⚠️ no carga</span>
                 </div>
+              : cargandoFirma
+              ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.55rem', color: '#9aa0a6' }}>...</div>
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
                 </div>}
