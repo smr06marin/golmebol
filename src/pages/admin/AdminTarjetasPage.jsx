@@ -184,6 +184,36 @@ export default function AdminTarjetasPage() {
     fetchTodo()
   }
 
+  // ── ELIMINAR TARJETA CUSTOM ────────────────────────────
+  // Borra la tarjeta y todo lo que depende de ella (niveles, logros, progreso
+  // guardado de jugadores, sponsor) y le quita esa tarjeta a quien la tuviera
+  // activa, para no dejar nada huérfano.
+  async function handleEliminarTarjetaCustom(card) {
+    if (!confirm(`¿Eliminar la tarjeta "${card.nombre}"? Esto no se puede deshacer.`)) return
+    const levelIds = (card.card_levels || []).map(l => l.id)
+    const designId = `custom_${card.id}`
+    try {
+      if (levelIds.length > 0) {
+        const { data: logros } = await supabase.from('achievements').select('id').in('card_level_id', levelIds)
+        const logroIds = (logros || []).map(l => l.id)
+        if (logroIds.length > 0) {
+          await supabase.from('player_achievement_progress').delete().in('achievement_id', logroIds)
+          await supabase.from('achievements').delete().in('id', logroIds)
+        }
+        await supabase.from('player_card_level_progress').delete().in('card_level_id', levelIds)
+        await supabase.from('card_levels').delete().in('id', levelIds)
+      }
+      await supabase.from('sponsors').delete().eq('card_id', designId)
+      await supabase.from('players').update({ card_type: null }).eq('card_type', designId)
+      const { error } = await supabase.from('cards').delete().eq('id', card.id)
+      if (error) throw error
+      showMsg(`Tarjeta "${card.nombre}" eliminada ✓`)
+      fetchTodo()
+    } catch (err) {
+      showMsg('Error al eliminar: ' + err.message, 'error')
+    }
+  }
+
   // ── NOTIFICACION MANUAL ───────────────────────────────
   async function handleEnviarNotif() {
     if (!notifMsg.trim()) { showMsg('Escribe un mensaje', 'error'); return }
@@ -287,6 +317,10 @@ export default function AdminTarjetasPage() {
                       <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>Tarjeta personalizada · {card.card_levels?.length || 0} nivel</div>
                     </div>
                     <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '20px', padding: '2px 10px' }}>Custom</span>
+                    <button onClick={() => handleEliminarTarjetaCustom(card)} title="Eliminar tarjeta"
+                      style={{ width: '28px', height: '28px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.85rem' }}>
+                      🗑
+                    </button>
                   </div>
                 ))}
               </div>
