@@ -392,13 +392,18 @@ export default function AdminJugadoresPage() {
     const uploadKey = cfg.tipo === 'foto' ? (cfg.key === 'tarjeta' ? 'tarjeta' : 'cara') : cfg.cara
     const subiendo = uploading[jugador.id + '_' + uploadKey]
     const onFile = (file) => cfg.tipo === 'foto' ? handleFoto(jugador, file, uploadKey) : handleCedula(jugador, file, uploadKey)
+    const [rota, setRota] = useState(false)
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '64px' }}>
         <div style={{ position: 'relative', width: '58px', height: '58px' }}>
           <label style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
-            {url
-              ? <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
+            {url && !rota
+              ? <img src={url} onError={() => setRota(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
+              : url && rota
+              ? <div title="No se pudo cargar la imagen (revisa permisos del bucket)" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6' }}>
+                  <span style={{ fontSize: '.52rem', color: '#d93025', fontWeight: '700', textAlign: 'center', lineHeight: 1.1, padding: '2px' }}>⚠️ no carga</span>
+                </div>
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
                 </div>}
