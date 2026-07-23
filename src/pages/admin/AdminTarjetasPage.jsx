@@ -198,15 +198,25 @@ export default function AdminTarjetasPage() {
         const logroIds = (logros || []).map(l => l.id)
         if (logroIds.length > 0) {
           await supabase.from('player_achievement_progress').delete().in('achievement_id', logroIds)
-          await supabase.from('achievements').delete().in('id', logroIds)
+          const { error: errLogros } = await supabase.from('achievements').delete().in('id', logroIds)
+          if (errLogros) throw errLogros
         }
         await supabase.from('player_card_level_progress').delete().in('card_level_id', levelIds)
-        await supabase.from('card_levels').delete().in('id', levelIds)
+        const { error: errNiveles } = await supabase.from('card_levels').delete().in('id', levelIds)
+        if (errNiveles) throw errNiveles
       }
       await supabase.from('sponsors').delete().eq('card_id', designId)
       await supabase.from('players').update({ card_type: null }).eq('card_type', designId)
-      const { error } = await supabase.from('cards').delete().eq('id', card.id)
+      // .select() para que Supabase devuelva las filas que SÍ se borraron de
+      // verdad — si RLS bloquea el delete, Postgrest no tira error, solo
+      // borra 0 filas en silencio, y sin este chequeo el mensaje decía
+      // "eliminada" aunque la tarjeta siguiera intacta.
+      const { data: borradas, error } = await supabase.from('cards').delete().eq('id', card.id).select('id')
       if (error) throw error
+      if (!borradas || borradas.length === 0) {
+        showMsg('No se pudo eliminar: la base de datos no dejó borrar esta tarjeta (revisa los permisos/RLS de la tabla "cards")', 'error')
+        return
+      }
       showMsg(`Tarjeta "${card.nombre}" eliminada ✓`)
       fetchTodo()
     } catch (err) {
