@@ -3418,8 +3418,8 @@ export default function AdminTorneoDetallePage() {
                   </div>
                   <div style={{ padding: '14px 22px', borderTop: '1px solid #e8eaed', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
                     <button onClick={() => setShowWizardElim(false)} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
-                    <button onClick={handleGenerarEliminatorias} disabled={generandoElim || !fechaElim || parejas.length < 1 || numClasifElim % 2 !== 0}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 22px', background: !fechaElim || generandoElim || parejas.length < 1 || numClasifElim % 2 !== 0 ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: !fechaElim || generandoElim || parejas.length < 1 || numClasifElim % 2 !== 0 ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                    <button onClick={handleGenerarEliminatorias} disabled={generandoElim}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 22px', background: generandoElim ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: generandoElim ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
                       <GitBranch size={15}/> {generandoElim ? 'Creando...' : 'Crear árbol de eliminatorias'}
                     </button>
                   </div>
