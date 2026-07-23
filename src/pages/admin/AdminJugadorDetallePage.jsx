@@ -14,19 +14,24 @@ function CedulasViewer({ jugadorId, frontalPath, traseraPath }) {
   const [urls,    setUrls]    = useState(null)
   const [loading, setLoading] = useState(false)
   const [visible, setVisible] = useState(false)
+  const [error,   setError]   = useState('')
 
   async function handleVer() {
-    if (visible) { setVisible(false); setUrls(null); return }
+    if (visible) { setVisible(false); setUrls(null); setError(''); return }
     setLoading(true)
+    setError('')
+    let huboError = ''
     const getUrl = async (fullUrl) => {
       if (!fullUrl) return null
       const path = fullUrl.split('/cedulas/')[1]
       if (!path) return null
-      const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 60)
+      const { data, error: err } = await supabase.storage.from('cedulas').createSignedUrl(path, 60)
+      if (err) { huboError = err.message; return null }
       return data?.signedUrl || null
     }
     const [frontal, trasera] = await Promise.all([getUrl(frontalPath), getUrl(traseraPath)])
     setUrls({ frontal, trasera })
+    if (huboError) setError(`No se pudieron cargar las cédulas: ${huboError} (probablemente falta una política de permisos en el bucket "cedulas")`)
     setVisible(true)
     setLoading(false)
   }
@@ -40,7 +45,12 @@ function CedulasViewer({ jugadorId, frontalPath, traseraPath }) {
           {loading ? 'Cargando...' : visible ? '🔒 Ocultar' : '🔓 Ver cédulas'}
         </button>
       </div>
-      {visible && urls && (
+      {visible && error && (
+        <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.78rem', color: '#d93025', fontWeight: '600' }}>
+          ⚠️ {error}
+        </div>
+      )}
+      {visible && urls && (urls.frontal || urls.trasera) && (
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           {urls.frontal && (
             <div>
@@ -89,6 +99,7 @@ export default function AdminJugadorDetallePage() {
   const [tab,           setTab]           = useState('resumen')
   const [msg,           setMsg]           = useState(null)
   const [uploading,     setUploading]     = useState({})
+  const [imgError,      setImgError]      = useState({})
   const [modalMem,      setModalMem]      = useState(false)
   const [meses,         setMeses]         = useState(1)
   const [contrasena,    setContrasena]    = useState('')
@@ -558,8 +569,12 @@ export default function AdminJugadorDetallePage() {
               <div key={f.tipo} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '90px' }}>
                 <div style={{ position: 'relative', width: '80px', height: '80px' }}>
                   <label style={{ display: 'block', width: '80px', height: '80px', borderRadius: '12px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : f.url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
-                    {f.url
-                      ? <img src={f.url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: f.objectPosition, opacity: uploading[f.tipo] ? .4 : 1 }}/>
+                    {f.url && !imgError[f.tipo]
+                      ? <img src={f.url} onError={() => setImgError(e => ({ ...e, [f.tipo]: true }))} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: f.objectPosition, opacity: uploading[f.tipo] ? .4 : 1 }}/>
+                      : f.url && imgError[f.tipo]
+                      ? <div title="No se pudo cargar la imagen (revisa permisos del bucket)" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6' }}>
+                          <span style={{ fontSize: '.6rem', color: '#d93025', fontWeight: '700', textAlign: 'center', lineHeight: 1.2, padding: '4px' }}>⚠️ no carga</span>
+                        </div>
                       : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {f.tipo === 'tarjeta' || f.tipo === 'cara' ? <User size={26} color="#c1c7cd"/> : <Upload size={22} color="#c1c7cd"/>}
                         </div>}
