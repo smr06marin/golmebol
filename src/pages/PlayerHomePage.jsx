@@ -976,6 +976,8 @@ export default function PlayerHomePage() {
                 playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero} esDefensa={esDefensa}
                 photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
                 onStatClick={handleCardClick}
+                playerId={player.id}
+                onFotoSubida={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
               />
             </div>
           </div>

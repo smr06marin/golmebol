@@ -142,7 +142,9 @@ export default function MiTarjetaEscuelaPage() {
           <div style={{ marginBottom:'20px' }}>
             <PlayerCard
               playerName={(jugador.name || '').toUpperCase()}
-              photoUrlExterno={jugador.photo_face_url || jugador.photo_url || null}
+              photoUrlExterno={jugador.photo_url || null}
+              playerId={jugador.id}
+              onFotoSubida={(nuevaUrl) => setJugador(j => ({ ...j, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
               cardType={jugador.card_type || 'normal_teal'}
               modoEscuela
               esPortero={jugador.posicion === 'Portero'}

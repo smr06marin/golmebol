@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import CardBackground from './CardBackground'
 import CardEffects from './designs/CardEffects'
 import CardDecorations from './designs/CardDecorations'
@@ -83,6 +84,8 @@ export default function PlayerCard({
   onStatClick,
   hideShields     = false,
   photoUrlExterno = null,
+  playerId        = null,   // si viene, "+ SUBIR FOTO" queda guardada de una vez como foto de tarjeta (players.photo_url)
+  onFotoSubida    = null,   // (nuevaUrl) => ... para sincronizar el estado del padre
   esPortero       = false,
   esDefensa       = false,
   torneosData     = null,
@@ -95,6 +98,8 @@ export default function PlayerCard({
   const [tI, setTI] = useState(0)
   const [eI, setEI] = useState(0)
   const [photoLocal, setPhotoLocal] = useState(null)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const [errorFoto, setErrorFoto] = useState('')
   const photoUrl = photoUrlExterno || photoLocal
 
   const TORNEOS = (torneosData && torneosData.length > 0) ? torneosData : TORNEOS_DEFAULT
@@ -112,12 +117,39 @@ export default function PlayerCard({
   const isNivel2  = design.nivel === 2
   const isNivel3  = design.nivel === 3
 
-  function handlePhoto(e) {
+  // Antes esto solo hacía un preview local (FileReader) y nunca se guardaba
+  // en ningún lado: al recargar la página desaparecía y la foto de "tarjeta"
+  // seguía pendiente en todos lados. Ahora, si hay playerId, sube de una vez
+  // a Storage y la guarda como players.photo_url (la foto de tarjeta) — igual
+  // que el formulario de abajo (SubidaFotoJugador con campo="photo_url") —
+  // así solo queda pendiente la foto de perfil.
+  async function handlePhoto(e) {
     const file = e.target.files[0]
     if (!file) return
+    setErrorFoto('')
+    // Preview instantáneo mientras se sube de verdad en segundo plano.
     const reader = new FileReader()
     reader.onload = ev => setPhotoLocal(ev.target.result)
     reader.readAsDataURL(file)
+
+    if (!playerId) return // sin playerId no hay dónde guardarla (p.ej. tarjetas de ejemplo/demo)
+
+    setSubiendoFoto(true)
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+      const path = `fotos/${playerId}_tarjeta.${ext}`
+      const { error: errUp } = await supabase.storage.from('players').upload(path, file, { upsert: true })
+      if (errUp) throw errUp
+      const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
+      const nuevaUrl = `${urlData.publicUrl}?v=${Date.now()}`
+      const { error: errDb } = await supabase.from('players').update({ photo_url: nuevaUrl, foto_cambiar_tarjeta: false }).eq('id', playerId)
+      if (errDb) throw errDb
+      onFotoSubida?.(nuevaUrl)
+    } catch (err) {
+      setErrorFoto('No se pudo guardar la foto. Intenta de nuevo.')
+      setPhotoLocal(null)
+    }
+    setSubiendoFoto(false)
   }
 
   const statsIzquierda = modoEscuela
@@ -252,12 +284,10 @@ export default function PlayerCard({
               </div>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.28em', color: isPremium ? '#D6B65Dcc' : `${color}cc`, marginTop: '2px' }}>PJ</div>
             </div>
-            {photoUrl && !hideShields && (
-              <label style={{ fontFamily: 'var(--font-display)', fontSize: '.3rem', color: isPremium ? '#D6B65D99' : `${color}99`, border: `1px dashed ${isPremium ? '#D6B65D55' : `${color}55`}`, padding: '3px 6px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.5)', marginTop: '4px' }}>
-                ✎
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto}/>
-              </label>
-            )}
+            {/* Nota: ya no hay lápiz para "cambiar" la foto acá — una vez subida
+                queda bloqueada (solo se puede subir una vez), igual que el
+                formulario de abajo. Si no sirve, un admin/coordinador debe
+                borrarla desde su panel para habilitar una nueva subida. */}
           </div>
 
           {/* Zona media */}
@@ -336,11 +366,14 @@ export default function PlayerCard({
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '36%', zIndex: 4, background: `linear-gradient(0deg,rgba(10,2,42,.99) 0%,rgba(10,2,42,.68) 48%,transparent 100%)`, pointerEvents: 'none' }}/>
 
             {!photoUrl && !hideShields && (
-              <div style={{ position: 'absolute', bottom: '42%', left: '30%', right: 0, zIndex: 8, display: 'flex', justifyContent: 'center' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '.36rem', letterSpacing: '.12em', color: isPremium ? '#D6B65D77' : `${color}77`, border: `1px dashed ${isPremium ? '#D6B65D44' : `${color}44`}`, padding: '3px 8px', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,.3)' }}>
-                  + SUBIR FOTO
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto}/>
+              <div style={{ position: 'absolute', bottom: '42%', left: '30%', right: 0, zIndex: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                <label style={{ fontFamily: 'var(--font-display)', fontSize: '.36rem', letterSpacing: '.12em', color: isPremium ? '#D6B65D77' : `${color}77`, border: `1px dashed ${isPremium ? '#D6B65D44' : `${color}44`}`, padding: '3px 8px', borderRadius: '3px', cursor: subiendoFoto ? 'default' : 'pointer', background: 'rgba(0,0,0,.3)' }}>
+                  {subiendoFoto ? 'SUBIENDO...' : '+ SUBIR FOTO'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} disabled={subiendoFoto}/>
                 </label>
+                {errorFoto && (
+                  <span style={{ fontFamily: 'system-ui, sans-serif', fontSize: '.32rem', color: '#ff6b6b', background: 'rgba(0,0,0,.5)', padding: '2px 6px', borderRadius: '3px' }}>{errorFoto}</span>
+                )}
               </div>
             )}
           </div>
