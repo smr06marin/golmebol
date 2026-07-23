@@ -228,15 +228,28 @@ function Categoria({ cat, historial, editable, onAgregar }) {
 
 function EstadisticasPartidos({ registros }) {
   if (registros.length === 0) return null
+  const totalMinutos = registros.reduce((s, r) => s + (r.minutos || 0), 0)
+  const totalTitular = registros.filter(r => r.titular).length
   return (
     <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:14, padding:16, marginBottom:12 }}>
       <div style={{ fontWeight:700, fontSize:'.86rem', marginBottom:2 }}>📊 Historial de partidos</div>
-      <div style={{ fontSize:'.66rem', color:S.muted, marginBottom:10 }}>Minutos, recuperaciones, pases y calificación — se registran al finalizar cada partido.</div>
+      <div style={{ fontSize:'.66rem', color:S.muted, marginBottom:10 }}>Titular/suplente y minutos se calculan solos al finalizar cada partido; recuperaciones, pases y calificación los carga el profesor.</div>
+      <div style={{ display:'flex', gap:16, marginBottom:12, padding:'8px 10px', background:S.card2, borderRadius:10 }}>
+        <div><div style={{ fontWeight:800, fontSize:'.95rem', color:S.cyan }}>⏱️ {totalMinutos}'</div><div style={{ fontSize:'.6rem', color:S.muted }}>minutos totales</div></div>
+        <div><div style={{ fontWeight:800, fontSize:'.95rem', color:S.gold }}>★ {totalTitular}/{registros.length}</div><div style={{ fontSize:'.6rem', color:S.muted }}>partidos de titular</div></div>
+      </div>
       <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
         {registros.map(r => (
           <div key={r.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', background:S.card2, borderRadius:10, fontSize:'.74rem' }}>
             <div>
-              <div style={{ fontWeight:700, color:S.text }}>{r.partido?.rival || 'Rival'}</div>
+              <div style={{ fontWeight:700, color:S.text, display:'flex', alignItems:'center', gap:6 }}>
+                {r.partido?.rival || 'Rival'}
+                {r.titular != null && (
+                  <span style={{ fontSize:'.58rem', fontWeight:800, color: r.titular ? S.gold : S.muted, background: r.titular ? 'rgba(249,168,37,.15)' : 'rgba(255,255,255,.06)', borderRadius:6, padding:'1px 5px' }}>
+                    {r.titular ? '★ Titular' : 'Suplente'}
+                  </span>
+                )}
+              </div>
               <div style={{ color:S.muted, fontSize:'.66rem' }}>{fmtFecha(r.partido?.fecha)}</div>
             </div>
             <div style={{ display:'flex', gap:12, color:S.text2, textAlign:'center' }}>

@@ -134,6 +134,7 @@ export default function EscuelaPartidoPage() {
   const [showFinish, setShowFinish] = useState(false)
   const [mvp, setMvp] = useState({ first:'', second:'', third:'' })
   const [jugaron, setJugaron] = useState([]) // ids de todos los que estuvieron en cancha en algún momento
+  const [titulares, setTitulares] = useState([]) // ids de quienes arrancaron de titular (se fija una sola vez al iniciar)
   const [statsExtra, setStatsExtra] = useState({}) // { [jugadorId]: { minutos, recuperaciones, pases_acertados, calificacion } } — se llena al finalizar
   const [matchObs, setMatchObs] = useState('')
   const [dragOverFieldId, setDragOverFieldId] = useState(null)
@@ -217,6 +218,7 @@ export default function EscuelaPartidoPage() {
     setMvp(row.mvp || { first:'', second:'', third:'' })
     setMatchObs(row.observaciones || '')
     setJugaron(row.jugaron || [])
+    setTitulares(row.titulares || [])
     setTorneoId(row.torneo_id || null)
   }
 
@@ -334,9 +336,14 @@ export default function EscuelaPartidoPage() {
     starters.forEach((p, i) => { pos[p.id] = { x: fmt[i].x, y: fmt[i].y } })
     const nuevoLineup = starters.map((p, i) => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, slotPos:fmt[i].pos, _goals:0, _yellows:0, _reds:0, _saves:0, _goalsAgainst:0 }))
     const nuevoBench = convList.slice(fmt.length).map(p => ({ id:p.id, name:p.name, photo_face_url:p.photo_face_url, photo_url:p.photo_url, _goals:0, _yellows:0, _reds:0, _saves:0, _goalsAgainst:0 }))
-    setLineup(nuevoLineup); setBench(nuevoBench); setPositions(pos)
+    // Quiénes arrancan de titular queda fijo desde este momento — se usa después
+    // para calcular minutos jugados y para sumar "veces titular" a la ficha.
+    // Si ya había titulares (se volvió a armar la formación a mitad de partido),
+    // no se pisan para no perder el dato de quién arrancó realmente.
+    const nuevosTitulares = titulares.length > 0 ? titulares : starters.map(p => p.id)
+    setLineup(nuevoLineup); setBench(nuevoBench); setPositions(pos); setTitulares(nuevosTitulares)
     setView('match')
-    persist({ lineup: nuevoLineup, bench: nuevoBench, positions: pos, vista:'match', formacion_tipo: formType, formacion: formation })
+    persist({ lineup: nuevoLineup, bench: nuevoBench, positions: pos, vista:'match', formacion_tipo: formType, formacion: formation, titulares: nuevosTitulares })
   }
 
   // ── Eventos ──
@@ -392,7 +399,7 @@ export default function EscuelaPartidoPage() {
     const nuevoBench = [...bench.filter(p => p.id !== benchId), { ...target, slotPos:undefined }]
     const nuevaPos = { ...positions, [incoming.id]: targetPos }
     delete nuevaPos[target.id]
-    const ev = { id: Date.now(), type:'sub', player:`${incoming.name} ↔ ${target.name}`, playerId: incoming.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+    const ev = { id: Date.now(), type:'sub', player:`${incoming.name} ↔ ${target.name}`, playerId: incoming.id, outPlayerId: target.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
     const nuevosEventos = [ev, ...events]
     setLineup(nuevoLineup); setBench(nuevoBench); setPositions(nuevaPos); setEvents(nuevosEventos)
     setActivePlayer(null); setMostrarCambio(false)
@@ -508,7 +515,7 @@ export default function EscuelaPartidoPage() {
         nuevoLineup = [...nuevoLineup, { ...incoming, slotPos: target.slotPos || incoming.slotPos }]
         nuevaPos = { ...positions, [incoming.id]: targetPos }
         delete nuevaPos[target.id]
-        const ev = { id: Date.now(), type:'sub', player:`${incoming.name} ↔ ${target.name}`, playerId: incoming.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
+        const ev = { id: Date.now(), type:'sub', player:`${incoming.name} ↔ ${target.name}`, playerId: incoming.id, outPlayerId: target.id, min: Math.floor(timerSec/60), sec: timerSec%60 }
         nuevosEventos = [ev, ...events]
         showToast(`🔄 Cambio: ${incoming.name.split(' ')[0]} por ${target.name.split(' ')[0]}`, '#10b981')
       } else {
@@ -588,52 +595,96 @@ export default function EscuelaPartidoPage() {
   }
 
   // ── Finalizar ──
-  // Suma las estadísticas del partido (goles, asistencias, tarjetas, MVP,
-  // partidos jugados) a la ficha de cada jugador de la escuela. El coordinador
-  // puede después ajustarlas a mano desde el buscador de jugadores.
+  // Reconstruye cuánto tiempo estuvo cada jugador en cancha: los titulares
+  // arrancan en el segundo 0, y cada cambio (evento "sub") cierra el tiempo
+  // del que sale y abre el del que entra. Al final, a quien seguía en cancha
+  // se le cierra con el tiempo del cronómetro al terminar el partido.
+  function calcularMinutosJugados() {
+    const cronologicos = [...events].reverse() // se guardan del más nuevo al más viejo
+    const entrada = {}
+    titulares.forEach(id => { entrada[id] = 0 })
+    const acumulado = {}
+    cronologicos.forEach(ev => {
+      if (ev.type !== 'sub') return
+      const seg = (ev.min || 0) * 60 + (ev.sec || 0)
+      if (ev.outPlayerId != null && entrada[ev.outPlayerId] !== undefined) {
+        acumulado[ev.outPlayerId] = (acumulado[ev.outPlayerId] || 0) + Math.max(0, seg - entrada[ev.outPlayerId])
+        delete entrada[ev.outPlayerId]
+      }
+      if (ev.playerId != null && entrada[ev.playerId] === undefined) {
+        entrada[ev.playerId] = seg
+      }
+    })
+    Object.keys(entrada).forEach(id => {
+      acumulado[id] = (acumulado[id] || 0) + Math.max(0, timerSec - entrada[id])
+    })
+    const minutos = {}
+    Object.entries(acumulado).forEach(([id, seg]) => { minutos[id] = Math.round(seg / 60) })
+    return minutos
+  }
+
+  // Suma las estadísticas del partido (goles, asistencias, tarjetas, atajadas,
+  // goles recibidos, MVP, partidos jugados, veces titular y minutos jugados)
+  // a la ficha de cada jugador de la escuela — su "vida futbolística". El
+  // coordinador puede después ajustarlas a mano desde el buscador de jugadores.
   async function actualizarStatsJugadores() {
-    const golesPor = {}, asistPor = {}, amarillasPor = {}, rojasPor = {}
+    const golesPor = {}, asistPor = {}, amarillasPor = {}, rojasPor = {}, atajadasPor = {}, recibidosPor = {}
     events.forEach(ev => {
-      if (ev.type === 'goal')   golesPor[ev.playerId]     = (golesPor[ev.playerId]||0) + 1
-      if (ev.type === 'assist') asistPor[ev.playerId]     = (asistPor[ev.playerId]||0) + 1
-      if (ev.type === 'yellow') amarillasPor[ev.playerId] = (amarillasPor[ev.playerId]||0) + 1
-      if (ev.type === 'red')    rojasPor[ev.playerId]     = (rojasPor[ev.playerId]||0) + 1
+      if (ev.type === 'goal')         golesPor[ev.playerId]     = (golesPor[ev.playerId]||0) + 1
+      if (ev.type === 'assist')       asistPor[ev.playerId]     = (asistPor[ev.playerId]||0) + 1
+      if (ev.type === 'yellow')       amarillasPor[ev.playerId] = (amarillasPor[ev.playerId]||0) + 1
+      if (ev.type === 'red')          rojasPor[ev.playerId]     = (rojasPor[ev.playerId]||0) + 1
+      if (ev.type === 'save')         atajadasPor[ev.playerId]  = (atajadasPor[ev.playerId]||0) + 1
+      if (ev.type === 'goal_against') recibidosPor[ev.playerId] = (recibidosPor[ev.playerId]||0) + 1
     })
     const mvpId = mvp.first || null
+    const minutosPor = calcularMinutosJugados()
 
     const ids = Array.from(new Set([
       ...jugaron, ...Object.keys(golesPor), ...Object.keys(asistPor), ...Object.keys(amarillasPor), ...Object.keys(rojasPor),
+      ...Object.keys(atajadasPor), ...Object.keys(recibidosPor), ...titulares,
       ...(mvpId ? [mvpId] : []),
     ].filter(Boolean)))
     if (ids.length === 0) return
 
     const { data: actuales } = await supabase.from('players')
-      .select('id, goles_escuela, asistencias_escuela, amarillas_escuela, rojas_escuela, partidos_escuela, mvp_escuela')
+      .select('id, goles_escuela, asistencias_escuela, amarillas_escuela, rojas_escuela, partidos_escuela, mvp_escuela, titular_escuela, minutos_escuela, atajadas_escuela, goles_recibidos_escuela')
       .in('id', ids)
     const porId = Object.fromEntries((actuales||[]).map(p => [p.id, p]))
 
     await Promise.all(ids.map(pid => {
       const a = porId[pid] || {}
       return supabase.from('players').update({
-        goles_escuela:       (a.goles_escuela||0)       + (golesPor[pid]||0),
-        asistencias_escuela: (a.asistencias_escuela||0) + (asistPor[pid]||0),
-        amarillas_escuela:   (a.amarillas_escuela||0)   + (amarillasPor[pid]||0),
-        rojas_escuela:       (a.rojas_escuela||0)       + (rojasPor[pid]||0),
-        partidos_escuela:    (a.partidos_escuela||0)    + (jugaron.includes(pid) ? 1 : 0),
-        mvp_escuela:         (a.mvp_escuela||0)          + (pid === mvpId ? 1 : 0),
+        goles_escuela:           (a.goles_escuela||0)           + (golesPor[pid]||0),
+        asistencias_escuela:     (a.asistencias_escuela||0)     + (asistPor[pid]||0),
+        amarillas_escuela:       (a.amarillas_escuela||0)       + (amarillasPor[pid]||0),
+        rojas_escuela:           (a.rojas_escuela||0)           + (rojasPor[pid]||0),
+        partidos_escuela:        (a.partidos_escuela||0)        + (jugaron.includes(pid) ? 1 : 0),
+        mvp_escuela:             (a.mvp_escuela||0)              + (pid === mvpId ? 1 : 0),
+        titular_escuela:         (a.titular_escuela||0)         + (titulares.includes(pid) ? 1 : 0),
+        minutos_escuela:         (a.minutos_escuela||0)         + (minutosPor[pid]||0),
+        atajadas_escuela:        (a.atajadas_escuela||0)        + (atajadasPor[pid]||0),
+        goles_recibidos_escuela: (a.goles_recibidos_escuela||0) + (recibidosPor[pid]||0),
       }).eq('id', pid)
     }))
   }
 
-  // Guarda minutos/recuperaciones/pases/calificación cargados a mano en el
-  // resumen final, uno por jugador que estuvo en cancha (tabla escuela_partido_stats).
+  // Guarda minutos (calculados solos, o corregidos a mano)/recuperaciones/
+  // pases/calificación/titular del resumen final, uno por jugador que estuvo
+  // en cancha (tabla escuela_partido_stats) — queda el detalle de ESE partido.
   async function guardarStatsPartido() {
-    const filas = jugaron
-      .map(pid => ({ jugador_id: pid, ...statsExtra[pid] }))
-      .filter(f => f.minutos != null || f.recuperaciones != null || f.pases_acertados != null || f.calificacion != null)
+    const minutosPor = calcularMinutosJugados()
+    const filas = jugaron.map(pid => ({
+      jugador_id: pid,
+      minutos: statsExtra[pid]?.minutos ?? minutosPor[pid] ?? null,
+      recuperaciones: statsExtra[pid]?.recuperaciones ?? null,
+      pases_acertados: statsExtra[pid]?.pases_acertados ?? null,
+      calificacion: statsExtra[pid]?.calificacion ?? null,
+      titular: titulares.includes(pid),
+    }))
     if (filas.length === 0) return
     await Promise.all(filas.map(f => supabase.from('escuela_partido_stats')
-      .upsert({ partido_id: partidoId, jugador_id: f.jugador_id, minutos: f.minutos ?? null, recuperaciones: f.recuperaciones ?? null, pases_acertados: f.pases_acertados ?? null, calificacion: f.calificacion ?? null }, { onConflict:'partido_id,jugador_id' })
+      .upsert({ partido_id: partidoId, jugador_id: f.jugador_id, minutos: f.minutos, recuperaciones: f.recuperaciones, pases_acertados: f.pases_acertados, calificacion: f.calificacion, titular: f.titular }, { onConflict:'partido_id,jugador_id' })
     ))
   }
 
@@ -642,7 +693,7 @@ export default function EscuelaPartidoPage() {
     await supabase.from('escuela_partidos').update({
       estado:'finalizado', vista:'match', mvp, observaciones: matchObs, timer_sec: timerSec,
       eventos: events, score_home: score.home, score_away: score.away,
-      lineup, bench, positions, jugaron, torneo_id: torneoId, updated_at: new Date().toISOString(),
+      lineup, bench, positions, jugaron, titulares, torneo_id: torneoId, updated_at: new Date().toISOString(),
     }).eq('id', partidoId)
     try { await actualizarStatsJugadores() } catch {}
     try { await guardarStatsPartido() } catch {}
@@ -1114,33 +1165,43 @@ export default function EscuelaPartidoPage() {
                 <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:12, padding:'3px 0', borderBottom:'1px solid rgba(255,255,255,.07)' }}><span style={{ color:S.text2 }}>{l}</span><span style={{ fontWeight:700, color:S.cyan }}>{v}</span></div>
               ))}
             </div>
-            {jugaron.length > 0 && (
-              <div style={{ marginBottom:16 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Estadísticas detalladas por jugador (opcional)</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:220, overflowY:'auto' }}>
-                  {jugaron.map(pid => {
-                    const nombre = roster.find(r => r.id === pid)?.name || '—'
-                    const st = statsExtra[pid] || {}
-                    const upd = (campo, val) => setStatsExtra(s => ({ ...s, [pid]: { ...s[pid], [campo]: val === '' ? null : Number(val) } }))
-                    return (
-                      <div key={pid} style={{ background:'rgba(0,0,0,.26)', borderRadius:8, padding:8 }}>
-                        <div style={{ fontSize:11.5, fontWeight:700, color:S.text, marginBottom:6 }}>{nombre}</div>
-                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:5 }}>
-                          <input type="number" min="0" placeholder="Min" value={st.minutos ?? ''} onChange={e => upd('minutos', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Minutos jugados"/>
-                          <input type="number" min="0" placeholder="Min" value={st.minutos ?? ''} onChange={e => upd('minutos', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Minutos jugados"/>
-                          <input type="number" min="0" placeholder="Rec" value={st.recuperaciones ?? ''} onChange={e => upd('recuperaciones', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Recuperaciones"/>
-                          <input type="number" min="0" placeholder="Pases" value={st.pases_acertados ?? ''} onChange={e => upd('pases_acertados', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Pases acertados"/>
-                          <input type="number" min="1" max="10" step="0.5" placeholder="Nota" value={st.calificacion ?? ''} onChange={e => upd('calificacion', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Calificación del entrenador (1-10)"/>
+            {jugaron.length > 0 && (() => {
+              const minutosCalc = calcularMinutosJugados()
+              return (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:S.muted, marginBottom:4, textTransform:'uppercase' }}>Estadísticas detalladas por jugador</div>
+                  <div style={{ fontSize:9.5, color:S.muted, marginBottom:8 }}>Los minutos se calculan solos desde que entró hasta que salió — corrígelos si hace falta.</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:260, overflowY:'auto' }}>
+                    {jugaron.map(pid => {
+                      const nombre = roster.find(r => r.id === pid)?.name || '—'
+                      const esTitular = titulares.includes(pid)
+                      const st = statsExtra[pid] || {}
+                      const minutosDefault = minutosCalc[pid] ?? 0
+                      const upd = (campo, val) => setStatsExtra(s => ({ ...s, [pid]: { ...s[pid], [campo]: val === '' ? null : Number(val) } }))
+                      return (
+                        <div key={pid} style={{ background:'rgba(0,0,0,.26)', borderRadius:8, padding:8 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
+                            <span style={{ fontSize:11.5, fontWeight:700, color:S.text }}>{nombre}</span>
+                            <span style={{ fontSize:8.5, fontWeight:800, color: esTitular ? S.gold : S.muted, background: esTitular ? 'rgba(249,168,37,.15)' : 'rgba(255,255,255,.06)', borderRadius:6, padding:'1px 6px' }}>
+                              {esTitular ? '★ Titular' : 'Suplente'}
+                            </span>
+                          </div>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:5 }}>
+                            <input type="number" min="0" placeholder="Min" value={st.minutos ?? minutosDefault} onChange={e => upd('minutos', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Minutos jugados (calculados automático, editable)"/>
+                            <input type="number" min="0" placeholder="Rec" value={st.recuperaciones ?? ''} onChange={e => upd('recuperaciones', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Recuperaciones"/>
+                            <input type="number" min="0" placeholder="Pases" value={st.pases_acertados ?? ''} onChange={e => upd('pases_acertados', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Pases acertados"/>
+                            <input type="number" min="1" max="10" step="0.5" placeholder="Nota" value={st.calificacion ?? ''} onChange={e => upd('calificacion', e.target.value)} style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:6, padding:'5px 4px', color:S.text, fontSize:11, textAlign:'center', boxSizing:'border-box' }} title="Calificación del entrenador (1-10)"/>
+                          </div>
+                          <div style={{ display:'flex', justifyContent:'space-around', fontSize:8.5, color:S.muted, marginTop:3 }}>
+                            <span>Minutos</span><span>Recup.</span><span>Pases</span><span>Nota</span>
+                          </div>
                         </div>
-                        <div style={{ display:'flex', justifyContent:'space-around', fontSize:8.5, color:S.muted, marginTop:3 }}>
-                          <span>Minutos</span><span>Recup.</span><span>Pases</span><span>Nota</span>
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             <div style={{ marginBottom:16 }}>
               <label style={{ fontSize:10, color:S.muted, display:'block', marginBottom:3, textTransform:'uppercase' }}>Observaciones</label>
