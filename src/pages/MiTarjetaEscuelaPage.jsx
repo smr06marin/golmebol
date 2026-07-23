@@ -92,6 +92,13 @@ export default function MiTarjetaEscuelaPage() {
     await supabase.auth.signOut(); navigate('/jugador/login')
   }
 
+  // El admin principal busca al jugador por cédula en Admin > Jugadores y
+  // descarga la tarjeta desde ahí para mandarla a imprimir.
+  function handleImprimirAcrilico() {
+    const texto = `Hola! Quiero imprimir mi tarjeta en acrílico 🖨️🃏. Soy ${jugador.name}${jugador.numero_cedula ? ` (cédula ${jugador.numero_cedula})` : ''}${escuelaNombre ? `, de la escuela ${escuelaNombre}` : ''}.`
+    window.open(`https://wa.me/573226490055?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
@@ -162,6 +169,11 @@ export default function MiTarjetaEscuelaPage() {
               onStatClick={(id) => { if (escuelaId && id === escuelaId) navigate(`/escuela/historia/${escuelaId}`) }}
             />
             <div style={{ textAlign:'center', fontSize:'.68rem', color:S.muted, marginTop:'8px' }}>Toca el escudo para ver el recorrido de tu escuela</div>
+
+            <button onClick={handleImprimirAcrilico}
+              style={{ width: '100%', marginTop: '14px', padding: '11px', background: '#25D366', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              🖨️ Imprimir en acrílico
+            </button>
 
             {tarjetasDesbloqueadas.length > 1 && (
               <div style={{ marginTop:'18px' }}>

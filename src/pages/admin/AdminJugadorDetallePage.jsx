@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle } from 'lucide-react'
+import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle, Download } from 'lucide-react'
 import PlayerCard from '../../components/card/PlayerCard'
 import BuscadorJugador from '../../components/BuscadorJugador'
+import { useAuthStore } from '../../store/authStore'
 
+const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
 
@@ -75,6 +77,10 @@ function diasRestantes(fechaVenc) {
 export default function AdminJugadorDetallePage() {
   const { id }   = useParams()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
+  const cardRef = useRef(null)
+  const [descargandoTarjeta, setDescargandoTarjeta] = useState(false)
 
   const [jugador,       setJugador]       = useState(null)
   const [stats,         setStats]         = useState(null)
@@ -240,6 +246,31 @@ export default function AdminJugadorDetallePage() {
     if (error) { showMsg('Error al actualizar', 'error'); return }
     setJugador(j => ({ ...j, [campoFlag]: marcar }))
     showMsg(marcar ? 'Marcada — se le pedirá al jugador que la cambie' : 'Aviso quitado')
+  }
+
+  // Solo admin principal: descarga la tarjeta tal cual (diseño + foto reales
+  // del jugador) para mandarla a imprimir en acrílico, después de buscarlo
+  // por nombre/cédula desde Admin > Jugadores.
+  async function handleDescargarTarjeta() {
+    if (!cardRef.current) return
+    setDescargandoTarjeta(true)
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      const canvas = await html2canvas(cardRef.current, {
+        backgroundColor: '#07070e', scale: 3, useCORS: true, allowTaint: true,
+        logging: false, foreignObjectRendering: false, imageTimeout: 15000,
+        onclone: (doc) => {
+          const style = doc.createElement('style')
+          style.innerHTML = `:root { --font-display: Impact, sans-serif; --font-body: Arial, sans-serif; --color-primary: #00ddd0; }`
+          doc.head.appendChild(style)
+        }
+      })
+      const url = canvas.toDataURL('image/png')
+      const a   = document.createElement('a')
+      a.href = url; a.download = `${(jugador?.name || 'jugador').replace(/\s+/g, '_')}_cedula_${jugador?.numero_cedula || 's-c'}_golmebol.png`
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    } catch (e) { showMsg('Error al generar la imagen de la tarjeta', 'error') }
+    setDescargandoTarjeta(false)
   }
 
   async function handleGuardarDatos() {
@@ -743,7 +774,7 @@ export default function AdminJugadorDetallePage() {
       {/* ── TARJETA ── */}
       {tab === 'tarjeta' && (
         <div style={{ maxWidth: '380px', margin: '0 auto' }}>
-          <div style={{ background: '#07070e', borderRadius: '16px', padding: '20px' }}>
+          <div ref={cardRef} style={{ background: '#07070e', borderRadius: '16px', padding: '20px' }}>
             <PlayerCard
               playerName={jugador.name?.toUpperCase().split(' ')[0] || 'JUGADOR'}
               stats={cardStats}
@@ -757,6 +788,12 @@ export default function AdminJugadorDetallePage() {
             <span>Tarjeta activa: <b style={{ color: '#202124' }}>{jugador.card_type || 'nivel1_verde'}</b></span>
             <span>Tarjetas vistas: <b style={{ color: '#1a73e8' }}>{(jugador.tarjetas_vistas || []).length}</b></span>
           </div>
+          {esPrincipal && (
+            <button onClick={handleDescargarTarjeta} disabled={descargandoTarjeta}
+              style={{ width: '100%', marginTop: '10px', padding: '11px', background: descargandoTarjeta ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: descargandoTarjeta ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <Download size={16}/> {descargandoTarjeta ? 'Generando imagen...' : 'Descargar tarjeta (para imprimir)'}
+            </button>
+          )}
         </div>
       )}
 

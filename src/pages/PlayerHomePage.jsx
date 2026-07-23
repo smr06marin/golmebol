@@ -1,9 +1,8 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
-import html2canvas from 'html2canvas'
 import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
@@ -70,7 +69,6 @@ function NotifBanner({ notifs, onDismiss }) {
 
 export default function PlayerHomePage() {
   const navigate   = useNavigate()
-  const cardRef    = useRef(null)
   const [player,            setPlayer]            = useState(null)
   const [stats,             setStats]             = useState(null)
   const [torneos,           setTorneos]           = useState([])
@@ -87,7 +85,6 @@ export default function PlayerHomePage() {
   const [previewLogros,     setPreviewLogros]     = useState([])
   const [nuevasTarjetas,    setNuevasTarjetas]    = useState([])
   const [notifIndex,        setNotifIndex]        = useState(0)
-  const [compartiendo,      setCompartiendo]      = useState(false)
   const [rankingModal,      setRankingModal]      = useState(null)
   const [notifs,            setNotifs]            = useState([])
   const [splashPreview,     setSplashPreview]     = useState(null)
@@ -375,25 +372,14 @@ export default function PlayerHomePage() {
     await supabase.auth.signOut(); navigate('/jugador/login')
   }
 
-  async function handleCompartir() {
-    if (!cardRef.current) return
-    setCompartiendo(true)
-    try {
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: '#07070e', scale: 3, useCORS: true, allowTaint: true,
-        logging: false, foreignObjectRendering: false, imageTimeout: 15000,
-        onclone: (doc) => {
-          const style = doc.createElement('style')
-          style.innerHTML = `:root { --font-display: Impact, sans-serif; --font-body: Arial, sans-serif; --color-primary: #00ddd0; }`
-          doc.head.appendChild(style)
-        }
-      })
-      const url = canvas.toDataURL('image/png')
-      const a   = document.createElement('a')
-      a.href = url; a.download = `${nombre}_golmebol.png`
-      document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    } catch (e) { console.error('Error al generar imagen:', e) }
-    setCompartiendo(false)
+  // Antes esto generaba la imagen y la descargaba en el celular del jugador.
+  // Ahora en vez de eso lo mandamos directo al WhatsApp de Golmebol pidiendo
+  // la impresión en acrílico — el admin principal es quien después busca al
+  // jugador por cédula (en Admin > Jugadores) y descarga la tarjeta desde ahí
+  // para mandarla a imprimir.
+  function handleImprimirAcrilico() {
+    const texto = `Hola! Quiero imprimir mi tarjeta en acrílico 🖨️🃏. Soy ${player.name} (cédula ${player.numero_cedula}).`
+    window.open(`https://wa.me/573226490055?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   function getPosicionTipo(p) {
@@ -971,7 +957,7 @@ export default function PlayerHomePage() {
                 🃏 {cardDesign?.nombre || 'Cambiar'} {guardandoCard ? '...' : ''}
               </button>
             </div>
-            <div ref={cardRef} style={{ position: 'relative', zIndex: 1, width: '100%' }}>
+            <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
               <PlayerCard
                 playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero} esDefensa={esDefensa}
                 photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
@@ -1024,9 +1010,9 @@ export default function PlayerHomePage() {
           )}
 
           <div style={{ padding: '0 16px 8px' }}>
-            <button onClick={handleCompartir} disabled={compartiendo}
-              style={{ width: '100%', padding: '11px', background: compartiendo ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: compartiendo ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              {compartiendo ? '⏳ Generando imagen...' : '📤 Descargar / Compartir tarjeta'}
+            <button onClick={handleImprimirAcrilico}
+              style={{ width: '100%', padding: '11px', background: '#25D366', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              🖨️ Imprimir en acrílico
             </button>
           </div>
 
