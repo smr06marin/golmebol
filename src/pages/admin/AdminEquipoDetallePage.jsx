@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera } from 'lucide-react'
+import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
+import { useAuthStore } from '../../store/authStore'
+
+const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
 
 const POSICIONES = {
   'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
@@ -87,6 +90,11 @@ function SectionTitle({ icon, title }) {
 export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const { id }     = useParams()
   const navigate   = useNavigate()
+  const { user, rol } = useAuthStore()
+
+  const [editandoNombre, setEditandoNombre] = useState(false)
+  const [nombreEditado,  setNombreEditado]  = useState('')
+  const [guardandoNombre, setGuardandoNombre] = useState(false)
 
   const [equipo,                setEquipo]                = useState(null)
   const [torneos,               setTorneos]               = useState([])
@@ -437,6 +445,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   async function handleLogoUpload(file) {
     if (!file) return
+    if (!puedeEditar) { showMsg('No podés editar este equipo (ver el aviso arriba)', 'error'); return }
     setSubiendoLogo(true)
     const ext  = file.name.split('.').pop()
     const path = `logos/${id}.${ext}`
@@ -447,6 +456,20 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     setEquipo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
     showMsg('Logo actualizado ✓')
     setSubiendoLogo(false)
+  }
+
+  async function handleGuardarNombre() {
+    if (!puedeEditar) { showMsg('No podés editar este equipo (ver el aviso arriba)', 'error'); return }
+    const nombre = nombreEditado.trim()
+    if (!nombre) return showMsg('El nombre no puede quedar vacío', 'error')
+    setGuardandoNombre(true)
+    const { data: actualizado, error } = await supabase.from('teams').update({ name: nombre }).eq('id', id).select('id')
+    if (error) { showMsg(`No se pudo guardar: ${error.message}`, 'error'); setGuardandoNombre(false); return }
+    if (!actualizado || actualizado.length === 0) { showMsg('No se pudo guardar: sin permisos para editar este equipo', 'error'); setGuardandoNombre(false); return }
+    setEquipo(prev => ({ ...prev, name: nombre }))
+    setEditandoNombre(false)
+    setGuardandoNombre(false)
+    showMsg('Nombre actualizado ✓')
   }
 
   async function handleBuscarCedula() {
@@ -544,6 +567,17 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   if (loading) return <div style={{ background: GLASS_BG, minHeight: '100vh', padding: '60px', textAlign: 'center', color: TXT_MUTED }}>Cargando...</div>
   if (!equipo) return <div style={{ background: GLASS_BG, minHeight: '100vh', padding: '40px', textAlign: 'center', color: TXT_MUTED }}>Equipo no encontrado</div>
 
+  // ── Permisos de edición: el admin edita siempre. El organizador solo puede
+  // editar (nombre/escudo) los equipos de SUS torneos, y solo mientras el
+  // equipo no haya jugado ya 3 fechas — de ahí en adelante queda bloqueado
+  // (para que no lo toque a mitad de torneo, solo corregir errores al inicio).
+  const esAdminRol    = rol?.rol ? rol.rol === 'admin' : true
+  const esOrganizador = rol?.rol === 'organizador'
+  const esDueño        = esOrganizador && !!user?.id && torneos.some(t => t.tournaments?.organizador_id === user.id)
+  const fechasJugadas  = new Set(partidos.map(p => p.matchday).filter(Boolean)).size
+  const bloqueadoPorFechas = esOrganizador && fechasJugadas >= FECHAS_LIMITE_EDICION
+  const puedeEditar = esAdminRol || (esOrganizador && esDueño && !bloqueadoPorFechas)
+
   const TABS = [
     { id: 'resumen',   label: 'Resumen'   },
     { id: 'torneos',   label: 'Torneos'   },
@@ -575,15 +609,48 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
                 : <Shield size={36} color="rgba(255,255,255,.5)"/>}
             </div>
-            {!modoLectura && (
+            {!modoLectura && puedeEditar && (
               <label style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #5b9dff, #1a73e8)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 3px 10px rgba(91,157,255,.6)' }}>
                 <Camera size={13} color="#fff"/>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
               </label>
             )}
+            {!modoLectura && !puedeEditar && esOrganizador && (
+              <div title="No podés editar el escudo de este equipo" style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Lock size={12} color="rgba(255,255,255,.8)"/>
+              </div>
+            )}
           </div>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: TXT, margin: '0 0 8px' }}>{equipo.name}</h1>
+            {editandoNombre ? (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <input autoFocus value={nombreEditado} onChange={e => setNombreEditado(e.target.value)}
+                  style={{ ...inputStyle, fontSize: '1.1rem', fontWeight: '700', width: 'auto', flex: '1 1 200px' }}/>
+                <button onClick={handleGuardarNombre} disabled={guardandoNombre}
+                  style={{ ...glassBtn('#51cf66'), padding: '8px 14px', fontSize: '.8rem' }}>
+                  {guardandoNombre ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button onClick={() => setEditandoNombre(false)}
+                  style={{ ...glassBtn('#868e96', false), padding: '8px 14px', fontSize: '.8rem' }}>
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: TXT, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {equipo.name}
+                {!modoLectura && puedeEditar && (
+                  <button onClick={() => { setNombreEditado(equipo.name); setEditandoNombre(true) }} title="Editar nombre"
+                    style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '8px', width: '26px', height: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <Pencil size={13} color={TXT_SOFT}/>
+                  </button>
+                )}
+              </h1>
+            )}
+            {!modoLectura && esOrganizador && esDueño && bloqueadoPorFechas && (
+              <div style={{ fontSize: '.72rem', color: '#ffd43b', fontWeight: '700', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Lock size={12}/> Ya jugaron {fechasJugadas} fechas — no podés editar nombre/escudo. Si hay un error, avisale al admin.
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {equipo.city      && <span style={{ fontSize: '.78rem', color: TXT_SOFT, ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>📍 {equipo.city}</span>}
               {equipo.modalidad && <span style={{ fontSize: '.78rem', color: '#8ec3ff', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.modalidad}</span>}
