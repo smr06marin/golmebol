@@ -981,49 +981,55 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleGenerarEliminatorias() {
-    if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
-    if (numClasifElim % 2 !== 0) return showMsg('El número de clasificados debe ser par', 'error')
-    const parejas = getParejasElim()
-    if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
-    setGenerandoElim(true)
+    try {
+      if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
+      if (numClasifElim % 2 !== 0) return showMsg('El número de clasificados debe ser par', 'error')
+      const parejas = getParejasElim()
+      if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
+      setGenerandoElim(true)
 
-    // Un equipo no avanza a eliminatorias con tarjetas sin pagar
-    const idsParticipantes = [...new Set(parejas.flatMap(([a, b]) => [a?.id, b?.id]).filter(Boolean))]
-    const deudores = await getDeudoresTarjetas(idsParticipantes)
-    if (deudores.length > 0) {
-      showMsg(`⛔ Tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
-      setGenerandoElim(false)
-      return
-    }
-
-    const total = parejas.length * 2
-    const fase  = getFaseValue(total)
-    const ronda = getRondaNombre(total)
-
-    // Eliminar eliminatorias anteriores
-    await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
-
-    const inserts = []
-    parejas.forEach(([local, visitante]) => {
-      inserts.push({
-        tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
-        played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda, matchday: null,
-      })
-      if (idaVuelta) {
-        inserts.push({
-          tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
-          played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
-        })
+      // Un equipo no avanza a eliminatorias con tarjetas sin pagar
+      const idsParticipantes = [...new Set(parejas.flatMap(([a, b]) => [a?.id, b?.id]).filter(Boolean))]
+      const deudores = await getDeudoresTarjetas(idsParticipantes)
+      if (deudores.length > 0) {
+        showMsg(`⛔ Tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
+        return
       }
-    })
 
-    const { error } = await supabase.from('matches').insert(inserts)
-    if (error) { showMsg('Error al crear el bracket', 'error'); setGenerandoElim(false); return }
-    await supabase.from('tournaments').update({ fase_actual: 'eliminatorias' }).eq('id', id)
-    showMsg(`${ronda} creada con ${parejas.length} llaves ✓`)
-    setShowWizardElim(false)
-    setGenerandoElim(false)
-    fetchPartidos(); fetchBracket(); fetchTorneo()
+      const total = parejas.length * 2
+      const fase  = getFaseValue(total)
+      const ronda = getRondaNombre(total)
+
+      // Eliminar eliminatorias anteriores
+      const { error: errDel } = await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
+      if (errDel) { showMsg(`No se pudo borrar el bracket anterior: ${errDel.message}`, 'error'); return }
+
+      const inserts = []
+      parejas.forEach(([local, visitante]) => {
+        inserts.push({
+          tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
+          played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda, matchday: null,
+        })
+        if (idaVuelta) {
+          inserts.push({
+            tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
+            played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
+          })
+        }
+      })
+
+      const { error } = await supabase.from('matches').insert(inserts)
+      if (error) { showMsg(`Error al crear el bracket: ${error.message}`, 'error'); return }
+      await supabase.from('tournaments').update({ fase_actual: 'eliminatorias' }).eq('id', id)
+      showMsg(`${ronda} creada con ${parejas.length} llaves ✓`)
+      setShowWizardElim(false)
+      fetchPartidos(); fetchBracket(); fetchTorneo()
+    } catch (e) {
+      console.error('Error al generar eliminatorias:', e)
+      showMsg(`Error inesperado: ${e?.message || e}`, 'error')
+    } finally {
+      setGenerandoElim(false)
+    }
   }
 
   // Agrupa los partidos del bracket en llaves por fase, con marcador global y ganador
