@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
@@ -412,11 +412,14 @@ export default function AdminJugadoresPage() {
 
     const srcMostrar = cfg.tipo === 'cedula' ? signedUrl : url
     const cargandoFirma = cfg.tipo === 'cedula' && url && !signedUrl && !rota
+    const fileRef = useRef(null)
+    const [menuAbierto, setMenuAbierto] = useState(false)
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '64px' }}>
         <div style={{ position: 'relative', width: '58px', height: '58px' }}>
-          <label style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
+          <div onClick={() => url ? setMenuAbierto(m => !m) : fileRef.current?.click()}
+            style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
             {srcMostrar && !rota
               ? <img src={srcMostrar} onError={() => setRota(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
               : url && rota
@@ -428,9 +431,9 @@ export default function AdminJugadoresPage() {
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
                 </div>}
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
             {subiendo && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: '#5f6368', fontWeight: '700' }}>...</div>}
-          </label>
+          </div>
           {url && (
             <button
               onClick={() => handleFlagFoto(jugador, cfg.flagField, !marcada, cfg.etiqueta)}
@@ -438,6 +441,21 @@ export default function AdminJugadoresPage() {
               style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #fff', background: marcada ? '#d93025' : '#fff', color: marcada ? '#fff' : '#d93025', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '.62rem', boxShadow: '0 1px 4px rgba(0,0,0,.25)', lineHeight: 1 }}>
               {marcada ? '✕' : '🚩'}
             </button>
+          )}
+          {menuAbierto && url && (
+            <>
+              <div onClick={() => setMenuAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }}/>
+              <div style={{ position: 'absolute', top: '64px', left: '50%', transform: 'translateX(-50%)', zIndex: 41, background: '#fff', borderRadius: '10px', boxShadow: '0 2px 10px rgba(0,0,0,.25)', border: '1px solid #e8eaed', overflow: 'hidden', width: '124px' }}>
+                <button onClick={() => { window.open(srcMostrar || url, '_blank'); setMenuAbierto(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '9px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: '.72rem', fontWeight: '600', color: '#202124', textAlign: 'left' }}>
+                  🔍 Ver en grande
+                </button>
+                <button onClick={() => { setMenuAbierto(false); fileRef.current?.click() }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '9px 12px', border: 'none', borderTop: '1px solid #f1f3f4', background: '#fff', cursor: 'pointer', fontSize: '.72rem', fontWeight: '600', color: '#202124', textAlign: 'left' }}>
+                  📤 Cambiar foto
+                </button>
+              </div>
+            </>
           )}
         </div>
         <div style={{ fontSize: '.6rem', color: marcada ? '#d93025' : '#9aa0a6', fontWeight: marcada ? '700' : '500', textAlign: 'center', lineHeight: 1.2 }}>
