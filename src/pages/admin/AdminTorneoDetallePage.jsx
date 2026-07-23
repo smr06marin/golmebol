@@ -830,7 +830,7 @@ export default function AdminTorneoDetallePage() {
             tournament_id: id,
             home_team_id:  eqGrupo[i].id,
             away_team_id:  eqGrupo[j].id,
-            played_at:     `${fechaGrupos}T${horaGrupos}:00`,
+            played_at:     `${fechaGrupos}T${horaGrupos}:00-05:00`,
             status:        'scheduled',
             fase:          'grupo',
             grupo:         grupo.nombre,
@@ -1008,12 +1008,12 @@ export default function AdminTorneoDetallePage() {
       parejas.forEach(([local, visitante]) => {
         inserts.push({
           tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
-          played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda, matchday: null,
+          played_at: `${fechaElim}T${horaElim}:00-05:00`, status: 'scheduled', fase, ronda, matchday: null,
         })
         if (idaVuelta) {
           inserts.push({
             tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
-            played_at: `${fechaElim}T${horaElim}:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
+            played_at: `${fechaElim}T${horaElim}:00-05:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
           })
         }
       })
@@ -1481,7 +1481,7 @@ export default function AdminTorneoDetallePage() {
     }
 
     const conVuelta = est.llaves.some(l => l.matches.length > 1)
-    const base = { tournament_id: id, played_at: `${fechaRonda}T${horaRonda}:00`, status: 'scheduled', matchday: null }
+    const base = { tournament_id: id, played_at: `${fechaRonda}T${horaRonda}:00-05:00`, status: 'scheduled', matchday: null }
     const inserts = []
 
     // Repechaje de la semifinal de 3: perdedor del 1v2 contra el 3°
@@ -1591,7 +1591,7 @@ export default function AdminTorneoDetallePage() {
     setLoadingPartido(true)
     const { error } = await supabase.from('matches').insert({
       tournament_id: id, home_team_id: formPartido.home_team_id, away_team_id: formPartido.away_team_id,
-      played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00:00'),
+      played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00') + ':00-05:00',
       location: formPartido.location || null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
       fase: formPartido.fase || 'grupo', status: 'scheduled',
       arbitro1_id: formPartido.arbitro1_id || null, arbitro2_id: formPartido.arbitro2_id || null, arbitro3_id: formPartido.arbitro3_id || null,
@@ -3572,7 +3572,7 @@ export default function AdminTorneoDetallePage() {
                             else if (ll.terminada && !ll.ganador) { setPenalesForm({ local: '', visitante: '' }); setPartidoPenales(ll.matches[ll.matches.length - 1]) }
                             else setModalPartidoAdmin(ll.matches[ll.matches.length - 1])
                           }}
-                            style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}>
+                            style={{ background: '#fff', border: '1.5px solid #c4c9d0', borderLeft: '4px solid #e8710a', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.12)', cursor: 'pointer' }}>
                             {(ll.matches[0].ronda || '').toLowerCase().includes('repechaje') && (
                               <div style={{ padding: '3px 12px', background: '#f3e8fd', fontSize: '.62rem', fontWeight: '800', color: '#9955ff', letterSpacing: '1px' }}>🔁 REPECHAJE</div>
                             )}
@@ -3583,7 +3583,7 @@ export default function AdminTorneoDetallePage() {
                               const esGanador  = ll.ganador?.id === team.id
                               const esPerdedor = ll.terminada && ll.ganador && !esGanador
                               return (
-                                <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: esGanador ? '#e6f4ea' : '#fff', opacity: esPerdedor ? .45 : 1, borderBottom: ti === 0 ? '1px solid #f1f3f4' : 'none' }}>
+                                <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: esGanador ? '#e6f4ea' : ti === 1 ? '#f8f9fa' : '#fff', opacity: esPerdedor ? .45 : 1, borderBottom: ti === 0 ? '2px solid #dadce0' : 'none' }}>
                                   <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={team.logo_url} name={team.name} size={24}/></div>
                                   <span style={{ flex: 1, fontWeight: esGanador ? '800' : '500', color: '#202124', fontSize: '.8rem', textDecoration: esPerdedor ? 'line-through' : 'none' }}>{team.name}</span>
                                   <span style={{ fontWeight: '900', fontSize: '1rem', color: esGanador ? '#1e8e3e' : '#9aa0a6' }}>
@@ -3619,7 +3619,7 @@ export default function AdminTorneoDetallePage() {
                             )}
                           </div>
                         ) : (
-                          <div key={i} style={{ border: '1px dashed #dadce0', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#bdbdbd', fontSize: '.72rem', background: '#fafafa' }}>
+                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
                             Por definir
                           </div>
                         ))}
