@@ -63,7 +63,15 @@ export default function AdminRecordsPage() {
 
   async function handleToggleAuto(id) {
     const ocultoActual = autoOcultos.has(id)
-    await supabase.from('records_config').upsert({ id, visible: ocultoActual, updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('records_config').upsert({ id, visible: ocultoActual, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) {
+      // Si no se guarda de verdad en la base de datos, el botón se ve como si
+      // hubiera cambiado pero al volver a entrar se "reactiva solo" — por eso
+      // es clave no tocar el estado local si esto falla, y avisar qué pasó
+      // (la causa más común es que falte correr la migración records_config).
+      showMsg(`No se pudo guardar: ${error.message}`, 'error')
+      return
+    }
     setAutoOcultos(prev => {
       const next = new Set(prev)
       if (ocultoActual) next.delete(id); else next.add(id)
