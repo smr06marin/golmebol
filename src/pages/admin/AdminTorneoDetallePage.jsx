@@ -3418,6 +3418,21 @@ export default function AdminTorneoDetallePage() {
               for (let i = 0; i < totalPreview - 1; i += 2) parejasPreview.push([participantesPreview[i], participantesPreview[i + 1]])
             }
             if (parejasPreview.length === 0) return null
+
+            // Arma las columnas del árbol igual que el bracket real: la ronda
+            // actual con los equipos que van clasificando, y las siguientes
+            // rondas como placeholders "Por definir" hasta llegar al campeón.
+            const columnasPreview = []
+            let llavesRonda = parejasPreview.map(([a, b]) => ({ a, b }))
+            let totalRonda = totalPreview
+            while (true) {
+              columnasPreview.push({ total: totalRonda, llaves: llavesRonda })
+              if (llavesRonda.length <= 1) break
+              const siguienteN = Math.max(Math.floor(llavesRonda.length / 2), 1)
+              llavesRonda = Array.from({ length: siguienteN }, () => null)
+              totalRonda = Math.max(Math.floor(totalRonda / 2), 2)
+            }
+
             return (
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
@@ -3430,21 +3445,41 @@ export default function AdminTorneoDetallePage() {
                 <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
                   Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px' }}>
-                  {parejasPreview.map(([a, b], i) => (
-                    <div key={i} style={{ background: '#fffaf3', border: '1.5px dashed #e8710a', borderRadius: '10px', overflow: 'hidden' }}>
-                      <div style={{ padding: '4px 10px', background: '#fff4e5', fontSize: '.6rem', fontWeight: '800', color: '#e8710a', letterSpacing: '.5px' }}>
-                        LLAVE {i + 1}{a?.grupo || b?.grupo ? ` · ${a?.grupo || ''}${a?.grupo && b?.grupo && a.grupo !== b.grupo ? ' vs ' + b.grupo : ''}` : ''}
+                <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
+                  {columnasPreview.map((col, ci) => (
+                    <div key={ci} style={{ minWidth: '220px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                        {getRondaNombre(col.total).toUpperCase()}
                       </div>
-                      {[a, b].map((eq, ti) => (
-                        <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderBottom: ti === 0 ? '1px solid #f1f3f4' : 'none' }}>
-                          <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq?.logo_url} name={eq?.name} size={20}/></div>
-                          <span style={{ flex: 1, fontSize: '.78rem', fontWeight: '600', color: '#202124' }}>{eq?.name || '— por definir —'}</span>
-                          {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700' }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
-                        </div>
-                      ))}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
+                        {col.llaves.map((ll, i) => ll ? (
+                          <div key={i} style={{ background: '#fffaf3', border: '1.5px dashed #e8710a', borderLeft: '4px dashed #e8710a', borderRadius: '10px', overflow: 'hidden' }}>
+                            {[ll.a, ll.b].map((eq, ti) => (
+                              <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderBottom: ti === 0 ? '1px solid #f1e0c8' : 'none' }}>
+                                <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq?.logo_url} name={eq?.name} size={20}/></div>
+                                <span style={{ flex: 1, fontSize: '.78rem', fontWeight: '600', color: '#202124' }}>{eq?.name || '— por definir —'}</span>
+                                {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700' }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
+                            Por definir
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
+                  <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
+                      🏆 CAMPEÓN
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                      <div style={{ width: '100%', border: '2px dashed #ffd66b', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#e8b93a', fontSize: '.72rem', fontWeight: '700', background: '#fffaf0' }}>
+                        Por definir
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )
