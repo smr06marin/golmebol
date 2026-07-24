@@ -237,6 +237,108 @@ function TeamLogo({ logo_url, name, size = 28 }) {
   )
 }
 
+// Sorteo físico: arrastrar un equipo y soltarlo encima de otro arma el
+// cruce. Funciona con mouse y con el dedo (pointer/touch events, sin
+// depender del drag-and-drop nativo de HTML5 que no anda bien en celular).
+function SorteoManualDrag({ pendientes, llaves, onFormarLlave, onDeshacerLlave }) {
+  const [drag, setDrag]     = useState(null) // { team, x, y }
+  const [sobreId, setSobreId] = useState(null)
+
+  useEffect(() => {
+    if (!drag) return
+    function pos(e) {
+      if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
+      return { x: e.clientX, y: e.clientY }
+    }
+    function onMove(e) {
+      if (e.cancelable) e.preventDefault()
+      const { x, y } = pos(e)
+      setDrag(d => d ? { ...d, x, y } : d)
+      const el = document.elementFromPoint(x, y)
+      const chip = el && el.closest ? el.closest('[data-chip-id]') : null
+      const chipId = chip ? chip.getAttribute('data-chip-id') : null
+      setSobreId(chipId && chipId !== String(drag.team.id) ? chipId : null)
+    }
+    function onUp(e) {
+      const { x, y } = pos(e)
+      const el = document.elementFromPoint(x, y)
+      const chip = el && el.closest ? el.closest('[data-chip-id]') : null
+      const chipId = chip ? chip.getAttribute('data-chip-id') : null
+      if (chipId && chipId !== String(drag.team.id)) {
+        const destino = pendientes.find(p => String(p.id) === chipId)
+        if (destino) onFormarLlave(drag.team, destino)
+      }
+      setDrag(null); setSobreId(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('touchend', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onUp)
+    }
+  }, [drag, pendientes, onFormarLlave])
+
+  function startDrag(e, team) {
+    e.preventDefault()
+    const p = e.touches ? e.touches[0] : e
+    setDrag({ team, x: p.clientX, y: p.clientY })
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>
+        SIN ASIGNAR — arrastrá un equipo y soltalo encima de otro para armar el cruce
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px', minHeight: '44px', padding: '10px', background: '#fafbfc', border: '1px dashed #dadce0', borderRadius: '10px' }}>
+        {pendientes.map(eq => (
+          <div key={eq.id} data-chip-id={eq.id}
+            onMouseDown={e => startDrag(e, eq)} onTouchStart={e => startDrag(e, eq)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '20px',
+              background: sobreId === String(eq.id) ? '#fff4e5' : '#fff',
+              border: sobreId === String(eq.id) ? '2px solid #e8710a' : '1px solid #dadce0',
+              cursor: 'grab', userSelect: 'none', touchAction: 'none',
+              opacity: drag?.team.id === eq.id ? .25 : 1,
+            }}>
+            <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={18}/></div>
+            <span style={{ fontSize: '.76rem', fontWeight: '600', color: '#202124' }}>{eq.name}</span>
+          </div>
+        ))}
+        {pendientes.length === 0 && <div style={{ fontSize: '.75rem', color: '#9aa0a6', padding: '4px' }}>Todos los equipos ya están emparejados ✓</div>}
+      </div>
+
+      {llaves.length > 0 && (
+        <>
+          <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>LLAVES ARMADAS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+            {llaves.map(([a, b], i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '7px 10px' }}>
+                <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', flexShrink: 0 }}>Llave {i + 1}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1, minWidth: 0 }}><TeamLogo logo_url={a.logo_url} name={a.name} size={16}/><span style={{ fontSize: '.75rem', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span></div>
+                <span style={{ fontSize: '.65rem', color: '#e8710a', fontWeight: '700', flexShrink: 0 }}>vs</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1, minWidth: 0 }}><TeamLogo logo_url={b.logo_url} name={b.name} size={16}/><span style={{ fontSize: '.75rem', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span></div>
+                <button onClick={() => onDeshacerLlave(i)} title="Deshacer" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d93025', fontSize: '.8rem', flexShrink: 0 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {drag && (
+        <div style={{ position: 'fixed', left: drag.x - 60, top: drag.y - 18, zIndex: 3000, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '20px', background: '#fff', border: '2px solid #e8710a', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }}>
+          <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden' }}><TeamLogo logo_url={drag.team.logo_url} name={drag.team.name} size={18}/></div>
+          <span style={{ fontSize: '.76rem', fontWeight: '700', color: '#202124' }}>{drag.team.name}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ModalPosterEquipo({ equipo, onClose }) {
   const [generando, setGenerando] = useState(false)
   const [posterHtml, setPosterHtml] = useState(null)
@@ -506,7 +608,8 @@ export default function AdminTorneoDetallePage() {
   const [showWizardElim,   setShowWizardElim]   = useState(false)
   const [numClasifElim,    setNumClasifElim]    = useState(8)   // 2 | 4 | 8 | 16
   const [estiloLlaves,     setEstiloLlaves]     = useState('consecutivo') // 'consecutivo' | 'cruzado' | 'manual'
-  const [ordenManual,      setOrdenManual]      = useState([]) // orden del sorteo físico
+  const [ordenManual,      setOrdenManual]      = useState([]) // participantes del sorteo físico (todavía por emparejar + ya emparejados)
+  const [llavesManuales,   setLlavesManuales]   = useState([]) // [[equipoA, equipoB], ...] armadas arrastrando
   const [fechaRonda,       setFechaRonda]       = useState('')
   const [horaRonda,        setHoraRonda]        = useState('08:00')
   const [generandoRonda,   setGenerandoRonda]   = useState(false)
@@ -994,27 +1097,29 @@ export default function AdminTorneoDetallePage() {
 
   function abrirWizardElim() {
     setOrdenManual(getParticipantesElim(numClasifElim))
+    setLlavesManuales([])
     setShowWizardElim(true)
   }
 
   function cambiarCuposElim(n) {
     setNumClasifElim(n)
     setOrdenManual(getParticipantesElim(n))
+    setLlavesManuales([])
   }
 
-  function moverOrdenManual(i, dir) {
-    setOrdenManual(prev => {
-      const j = i + dir
-      if (j < 0 || j >= prev.length) return prev
-      const nueva = [...prev]
-      ;[nueva[i], nueva[j]] = [nueva[j], nueva[i]]
-      return nueva
-    })
+  // Sorteo físico: arrastrar un equipo encima de otro arma esa llave.
+  function handleFormarLlaveManual(a, b) {
+    setLlavesManuales(prev => [...prev, [a, b]])
   }
+  function handleDeshacerLlaveManual(i) {
+    setLlavesManuales(prev => prev.filter((_, idx) => idx !== i))
+  }
+
 
   // Parejas según el estilo elegido (para vista previa y generación)
   function getParejasElim() {
-    const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesElim(numClasifElim)
+    if (estiloLlaves === 'manual') return llavesManuales
+    const participantes = getParticipantesElim(numClasifElim)
     const total = participantes.length
     const parejas = []
     if (estiloLlaves === 'cruzado') {
@@ -1029,6 +1134,11 @@ export default function AdminTorneoDetallePage() {
     try {
       if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
       if (numClasifElim % 2 !== 0) return showMsg('El número de clasificados debe ser par', 'error')
+      if (estiloLlaves === 'manual') {
+        const idsEnLlaves = new Set(llavesManuales.flatMap(([a, b]) => [a.id, b.id]))
+        const sinAsignar = ordenManual.filter(t => !idsEnLlaves.has(t.id))
+        if (sinAsignar.length > 0) return showMsg(`Faltan por emparejar: ${sinAsignar.map(t => t.name).join(', ')} — arrastralos encima de otro equipo`, 'error')
+      }
       const parejas = getParejasElim()
       if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
       if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length > 1 ? 's' : ''} programado${parejas.length > 1 ? 's' : ''} de verdad (no es la vista previa) para el ${fechaElim}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
@@ -3562,30 +3672,33 @@ export default function AdminTorneoDetallePage() {
                       </div>
                     </div>
 
-                    {/* 4. Participantes (ordenables si es sorteo físico) */}
+                    {/* 4. Participantes — en sorteo físico se arma arrastrando */}
                     <div style={{ marginBottom: '18px' }}>
                       <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>
-                        4. Participantes {estiloLlaves === 'manual' && <span style={{ fontWeight: '400', color: '#9aa0a6' }}>— usa las flechas para dejarlos como quedó el sorteo</span>}
+                        4. {estiloLlaves === 'manual' ? 'Armá las llaves arrastrando' : 'Participantes'}
                       </div>
-                      <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
-                        {participantes.map((eq, i) => (
-                          <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderBottom: i < participantes.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
-                            <span style={{ fontSize: '.7rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
-                            <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={20}/></div>
-                            <span style={{ flex: 1, fontSize: '.8rem', fontWeight: '500', color: '#202124' }}>{eq.name}</span>
-                            {eq.mejorPerdedor
-                              ? <span style={{ fontSize: '.62rem', color: '#e8710a', background: '#fff4e5', borderRadius: '10px', padding: '1px 7px', fontWeight: '600' }}>Mejor perdedor</span>
-                              : eq.grupo && <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{eq.grupo}</span>}
-                            {estiloLlaves === 'manual' && (
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <button onClick={() => moverOrdenManual(i, -1)} disabled={i === 0} style={{ background: '#f1f3f4', border: 'none', borderRadius: '5px', padding: '3px 8px', cursor: i === 0 ? 'not-allowed' : 'pointer', color: i === 0 ? '#dadce0' : '#5f6368', fontSize: '.75rem' }}>↑</button>
-                                <button onClick={() => moverOrdenManual(i, 1)} disabled={i === participantes.length - 1} style={{ background: '#f1f3f4', border: 'none', borderRadius: '5px', padding: '3px 8px', cursor: i === participantes.length - 1 ? 'not-allowed' : 'pointer', color: i === participantes.length - 1 ? '#dadce0' : '#5f6368', fontSize: '.75rem' }}>↓</button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {participantes.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Sin equipos con partidos aún</div>}
-                      </div>
+                      {estiloLlaves === 'manual' ? (
+                        <SorteoManualDrag
+                          pendientes={ordenManual.filter(t => !llavesManuales.some(([a, b]) => a.id === t.id || b.id === t.id))}
+                          llaves={llavesManuales}
+                          onFormarLlave={handleFormarLlaveManual}
+                          onDeshacerLlave={handleDeshacerLlaveManual}
+                        />
+                      ) : (
+                        <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
+                          {participantes.map((eq, i) => (
+                            <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderBottom: i < participantes.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
+                              <span style={{ fontSize: '.7rem', fontWeight: '700', color: '#fff', background: '#1a73e8', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
+                              <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq.logo_url} name={eq.name} size={20}/></div>
+                              <span style={{ flex: 1, fontSize: '.8rem', fontWeight: '500', color: '#202124' }}>{eq.name}</span>
+                              {eq.mejorPerdedor
+                                ? <span style={{ fontSize: '.62rem', color: '#e8710a', background: '#fff4e5', borderRadius: '10px', padding: '1px 7px', fontWeight: '600' }}>Mejor perdedor</span>
+                                : eq.grupo && <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{eq.grupo}</span>}
+                            </div>
+                          ))}
+                          {participantes.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Sin equipos con partidos aún</div>}
+                        </div>
+                      )}
                     </div>
 
                     {/* 5. Vista previa de llaves */}
