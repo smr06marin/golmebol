@@ -628,19 +628,24 @@ export default function AdminTorneoDetallePage() {
     }
   }, [grupos.length, clasificanPorGrupo, bracket.length])
 
-  // Vista previa en vivo: cruces forzados a mano arrastrando un equipo
-  // encima de otro directo en el árbol (independiente del wizard). Se
-  // recalcula: si un equipo deja de estar entre los que clasifican (cambió
-  // resultado, cambiaron cupos), esa pareja se suelta y vuelve al armado
-  // automático.
-  const [previewLlaves,    setPreviewLlaves]    = useState([]) // [[equipoA, equipoB], ...]
+  // Vista previa en vivo: arrastrar un equipo encima de otro intercambia
+  // sus puestos en el orden de siembra (el 5° se va al puesto del 2° y el
+  // 2° pasa al puesto del 5°), y las llaves se arman de nuevo con ese
+  // orden. Si cambia quién clasifica (nuevo resultado, cambian cupos), el
+  // orden a mano se descarta y vuelve al automático.
+  const [previewOrden,     setPreviewOrden]      = useState(null) // array de ids en el orden a mano, o null = orden por defecto
   const [dragPreview,      setDragPreview]      = useState(null) // { team, x, y }
   const [sobrePreviewId,   setSobrePreviewId]   = useState(null)
   const participantesPreviewLive = (bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2)) ? getParticipantesElim(numClasifElim) : []
 
   useEffect(() => {
-    const idsLive = new Set(participantesPreviewLive.map(p => p.id))
-    setPreviewLlaves(prev => prev.filter(([a, b]) => idsLive.has(a.id) && idsLive.has(b.id)))
+    setPreviewOrden(prev => {
+      if (!prev) return prev
+      const idsLive = participantesPreviewLive.map(p => String(p.id))
+      const idsPrev = prev.map(String)
+      const mismos = idsLive.length === idsPrev.length && idsLive.every(id => idsPrev.includes(id))
+      return mismos ? prev : null
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participantesPreviewLive.map(p => p.id).join(',')])
 
@@ -667,13 +672,15 @@ export default function AdminTorneoDetallePage() {
       const { x, y } = pos(e)
       const chipId = chipEnPunto(x, y)
       if (chipId && chipId !== String(dragPreview.team.id)) {
-        const destino = participantesPreviewLive.find(p => String(p.id) === chipId)
-        if (destino) {
-          setPreviewLlaves(prev => {
-            const limpio = prev.filter(([a, b]) => a.id !== dragPreview.team.id && b.id !== dragPreview.team.id && a.id !== destino.id && b.id !== destino.id)
-            return [...limpio, [dragPreview.team, destino]]
-          })
-        }
+        setPreviewOrden(prev => {
+          const base = (prev && prev.length === participantesPreviewLive.length ? prev : participantesPreviewLive.map(p => p.id)).map(String)
+          const idxA = base.indexOf(String(dragPreview.team.id))
+          const idxB = base.indexOf(chipId)
+          if (idxA === -1 || idxB === -1) return prev
+          const nuevo = [...base]
+          ;[nuevo[idxA], nuevo[idxB]] = [nuevo[idxB], nuevo[idxA]]
+          return nuevo
+        })
       }
       setDragPreview(null); setSobrePreviewId(null)
     }
@@ -3588,17 +3595,20 @@ export default function AdminTorneoDetallePage() {
           {/* Vista previa en vivo — se recalcula sola con cada resultado de grupos */}
           {bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2) && !showWizardElim && (() => {
             const participantesPreview = participantesPreviewLive
-            // Los cruces que ya arrastraste a mano se respetan; el resto se
-            // arma automático (por reclasificación) con los que quedan.
-            const pendientesPreview = participantesPreview.filter(t => !previewLlaves.some(([a, b]) => a.id === t.id || b.id === t.id))
-            const autoPares = []
-            const totalPend = pendientesPreview.length
+            // Si arrastraste equipos a mano, se usa ese orden de siembra;
+            // si no, el orden por posición/reclasificación de siempre.
+            const mapaPreview = new Map(participantesPreview.map(p => [String(p.id), p]))
+            const idsOrden = previewOrden && previewOrden.length === participantesPreview.length
+              ? previewOrden.map(String)
+              : participantesPreview.map(p => String(p.id))
+            const ordenPreview = idsOrden.map(id => mapaPreview.get(id)).filter(Boolean)
+            const parejasPreview = []
+            const totalOrden = ordenPreview.length
             if (estiloLlaves === 'cruzado') {
-              for (let i = 0; i < Math.floor(totalPend / 2); i++) autoPares.push([pendientesPreview[i], pendientesPreview[totalPend - 1 - i]])
+              for (let i = 0; i < Math.floor(totalOrden / 2); i++) parejasPreview.push([ordenPreview[i], ordenPreview[totalOrden - 1 - i]])
             } else {
-              for (let i = 0; i < totalPend - 1; i += 2) autoPares.push([pendientesPreview[i], pendientesPreview[i + 1]])
+              for (let i = 0; i < totalOrden - 1; i += 2) parejasPreview.push([ordenPreview[i], ordenPreview[i + 1]])
             }
-            const parejasPreview = [...previewLlaves, ...autoPares]
             const totalPreview = parejasPreview.length * 2
             if (parejasPreview.length === 0) return null
 
@@ -3621,9 +3631,9 @@ export default function AdminTorneoDetallePage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#d93025' }}/>
                   <span style={{ fontWeight: '700', fontSize: '.85rem', color: '#202124' }}>Vista previa en vivo</span>
-                  {previewLlaves.length > 0 && (
-                    <button onClick={() => setPreviewLlaves([])} style={{ fontSize: '.72rem', color: '#d93025', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
-                      ↺ Deshacer cruces movidos a mano
+                  {previewOrden && (
+                    <button onClick={() => setPreviewOrden(null)} style={{ fontSize: '.72rem', color: '#d93025', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
+                      ↺ Deshacer orden movido a mano
                     </button>
                   )}
                   <button onClick={abrirWizardElim} style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
@@ -3631,7 +3641,7 @@ export default function AdminTorneoDetallePage() {
                   </button>
                 </div>
                 <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
-                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para forzar ese cruce. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
+                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para intercambiar sus puestos en el orden. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
                 </div>
                 <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
                   {columnasPreview.map((col, ci) => (
