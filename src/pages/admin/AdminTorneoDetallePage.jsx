@@ -512,6 +512,18 @@ export default function AdminTorneoDetallePage() {
   const [generandoRonda,   setGenerandoRonda]   = useState(false)
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
+
+  // Cupos sugeridos para la vista previa en vivo del árbol: si hay grupos,
+  // "clasifican X por grupo" × cantidad de grupos; si aún no se creó el
+  // bracket real, se recalcula solo cuando cambia la config de grupos.
+  useEffect(() => {
+    if (bracket.length > 0) return
+    if (grupos.length > 0) {
+      let sugerido = clasificanPorGrupo * grupos.length
+      if (sugerido % 2 !== 0) sugerido += 1
+      if (sugerido >= 2) setNumClasifElim(sugerido)
+    }
+  }, [grupos.length, clasificanPorGrupo, bracket.length])
   const [partidoPenales,   setPartidoPenales]   = useState(null) // partido empatado al que se le registran penales
   const [penalesForm,      setPenalesForm]      = useState({ local: '', visitante: '' })
   const [guardandoPenales, setGuardandoPenales] = useState(false)
@@ -3367,6 +3379,49 @@ export default function AdminTorneoDetallePage() {
               </button>
             </div>
           )}
+
+          {/* Vista previa en vivo — se recalcula sola con cada resultado de grupos */}
+          {bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2) && !showWizardElim && (() => {
+            const participantesPreview = getParticipantesElim(numClasifElim)
+            const totalPreview = participantesPreview.length
+            const parejasPreview = []
+            if (estiloLlaves === 'cruzado') {
+              for (let i = 0; i < Math.floor(totalPreview / 2); i++) parejasPreview.push([participantesPreview[i], participantesPreview[totalPreview - 1 - i]])
+            } else {
+              for (let i = 0; i < totalPreview - 1; i += 2) parejasPreview.push([participantesPreview[i], participantesPreview[i + 1]])
+            }
+            if (parejasPreview.length === 0) return null
+            return (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#d93025' }}/>
+                  <span style={{ fontWeight: '700', fontSize: '.85rem', color: '#202124' }}>Vista previa en vivo</span>
+                  <button onClick={abrirWizardElim} style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
+                    ⚙️ Ajustar cupos/formato
+                  </button>
+                </div>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
+                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px' }}>
+                  {parejasPreview.map(([a, b], i) => (
+                    <div key={i} style={{ background: '#fffaf3', border: '1.5px dashed #e8710a', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ padding: '4px 10px', background: '#fff4e5', fontSize: '.6rem', fontWeight: '800', color: '#e8710a', letterSpacing: '.5px' }}>
+                        LLAVE {i + 1}{a?.grupo || b?.grupo ? ` · ${a?.grupo || ''}${a?.grupo && b?.grupo && a.grupo !== b.grupo ? ' vs ' + b.grupo : ''}` : ''}
+                      </div>
+                      {[a, b].map((eq, ti) => (
+                        <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderBottom: ti === 0 ? '1px solid #f1f3f4' : 'none' }}>
+                          <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq?.logo_url} name={eq?.name} size={20}/></div>
+                          <span style={{ flex: 1, fontSize: '.78rem', fontWeight: '600', color: '#202124' }}>{eq?.name || '— por definir —'}</span>
+                          {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700' }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Asistente de configuración */}
           {showWizardElim && (() => {
