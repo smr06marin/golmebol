@@ -1031,6 +1031,7 @@ export default function AdminTorneoDetallePage() {
       if (numClasifElim % 2 !== 0) return showMsg('El número de clasificados debe ser par', 'error')
       const parejas = getParejasElim()
       if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
+      if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length > 1 ? 's' : ''} programado${parejas.length > 1 ? 's' : ''} de verdad (no es la vista previa) para el ${fechaElim}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
       setGenerandoElim(true)
 
       // Un equipo no avanza a eliminatorias con tarjetas sin pagar
@@ -1071,6 +1072,26 @@ export default function AdminTorneoDetallePage() {
       fetchPartidos(); fetchBracket(); fetchTorneo()
     } catch (e) {
       console.error('Error al generar eliminatorias:', e)
+      showMsg(`Error inesperado: ${e?.message || e}`, 'error')
+    } finally {
+      setGenerandoElim(false)
+    }
+  }
+
+  // Deshace el árbol de eliminatorias creado: borra los partidos reales de
+  // eliminatorias (no toca los de grupos) y vuelve a dejar solo la vista
+  // previa en vivo, por si se creó por error.
+  async function handleQuitarBracket() {
+    if (!window.confirm('¿Quitar el árbol de eliminatorias? Se borran todos los partidos de eliminatorias que ya se crearon (los de grupos quedan intactos) y volvés a ver solo la vista previa en vivo.')) return
+    setGenerandoElim(true)
+    try {
+      const { error } = await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
+      if (error) { showMsg(`No se pudo quitar: ${error.message}`, 'error'); return }
+      await supabase.from('tournaments').update({ fase_actual: 'grupos' }).eq('id', id)
+      showMsg('Árbol de eliminatorias quitado — volviste a la vista previa ✓')
+      fetchPartidos(); fetchBracket(); fetchTorneo()
+    } catch (e) {
+      console.error('Error al quitar el bracket:', e)
       showMsg(`Error inesperado: ${e?.message || e}`, 'error')
     } finally {
       setGenerandoElim(false)
@@ -3372,7 +3393,13 @@ export default function AdminTorneoDetallePage() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              {!bracket.some(m => m.status === 'finished') && (
+                <button onClick={handleQuitarBracket}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}>
+                  🗑️ Quitar árbol (fue un error)
+                </button>
+              )}
               <button onClick={abrirWizardElim}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
                 <Shuffle size={13}/> Reconfigurar eliminatorias
