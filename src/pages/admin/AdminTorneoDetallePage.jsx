@@ -483,6 +483,7 @@ export default function AdminTorneoDetallePage() {
   const [clasificanPorGrupo, setClasificanPorGrupo] = useState(2)
   const [generandoGrupos,  setGenerandoGrupos]  = useState(false)
   const [fechaGrupos,      setFechaGrupos]      = useState('')
+  const [moviendoEquipoId, setMoviendoEquipoId] = useState(null) // team_id con el menú de "mover a otro grupo" abierto
   const [horaGrupos,       setHoraGrupos]       = useState('08:00')
 
   // ── ELIMINATORIAS ───────────────────────────────────
@@ -773,78 +774,99 @@ export default function AdminTorneoDetallePage() {
   async function handleCrearGrupos() {
     if (equipos.length < numGrupos) return showMsg('Menos equipos que grupos', 'error')
     setGenerandoGrupos(true)
+    try {
+      // Eliminar grupos anteriores
+      if (grupos.length > 0) {
+        const { error: errDelGE } = await supabase.from('grupo_equipos').delete().eq('tournament_id', id)
+        if (errDelGE) { showMsg(`No se pudieron borrar los grupos anteriores: ${errDelGE.message}`, 'error'); return }
+        const { error: errDelG } = await supabase.from('tournament_grupos').delete().eq('tournament_id', id)
+        if (errDelG) { showMsg(`No se pudieron borrar los grupos anteriores: ${errDelG.message}`, 'error'); return }
+      }
 
-    // Eliminar grupos anteriores
-    if (grupos.length > 0) {
-      await supabase.from('tournament_grupos').delete().eq('tournament_id', id)
+      // Crear nuevos grupos
+      const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+      const grpsInsert = Array.from({ length: numGrupos }, (_, i) => ({
+        tournament_id: id,
+        nombre: `Grupo ${letras[i]}`,
+        orden: i,
+      }))
+      const { data: nuevosGrupos, error: errIns } = await supabase.from('tournament_grupos').insert(grpsInsert).select()
+      if (errIns) { showMsg(`Error al crear los grupos: ${errIns.message}`, 'error'); return }
+      if (!nuevosGrupos || nuevosGrupos.length === 0) { showMsg('No se pudieron crear los grupos (revisa permisos)', 'error'); return }
+
+      // Distribuir equipos en grupos (serpentina)
+      const equiposAleatorios = [...equipos].sort(() => Math.random() - 0.5)
+      const geInsert = []
+      equiposAleatorios.forEach((eq, i) => {
+        const grupoIdx = i % numGrupos
+        geInsert.push({ grupo_id: nuevosGrupos[grupoIdx].id, team_id: eq.id, tournament_id: id })
+      })
+      const { error: errGE } = await supabase.from('grupo_equipos').insert(geInsert)
+      if (errGE) { showMsg(`Error al repartir los equipos: ${errGE.message}`, 'error'); return }
+
+      // Guardar config en torneo
+      await supabase.from('tournaments').update({ num_grupos: numGrupos, equipos_clasifican: clasificanPorGrupo, fase_actual: 'grupos' }).eq('id', id)
+
+      showMsg(`${numGrupos} grupos creados ✓`)
+      fetchGrupos()
+      fetchTorneo()
+    } catch (e) {
+      console.error('Error al crear grupos:', e)
+      showMsg(`Error inesperado: ${e?.message || e}`, 'error')
+    } finally {
+      setGenerandoGrupos(false)
     }
-
-    // Crear nuevos grupos
-    const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    const grpsInsert = Array.from({ length: numGrupos }, (_, i) => ({
-      tournament_id: id,
-      nombre: `Grupo ${letras[i]}`,
-      orden: i,
-    }))
-    const { data: nuevosGrupos } = await supabase.from('tournament_grupos').insert(grpsInsert).select()
-
-    // Distribuir equipos en grupos (serpentina)
-    const equiposAleatorios = [...equipos].sort(() => Math.random() - 0.5)
-    const geInsert = []
-    equiposAleatorios.forEach((eq, i) => {
-      const grupoIdx = i % numGrupos
-      geInsert.push({ grupo_id: nuevosGrupos[grupoIdx].id, team_id: eq.id, tournament_id: id })
-    })
-    await supabase.from('grupo_equipos').insert(geInsert)
-
-    // Guardar config en torneo
-    await supabase.from('tournaments').update({ num_grupos: numGrupos, equipos_clasifican: clasificanPorGrupo, fase_actual: 'grupos' }).eq('id', id)
-
-    showMsg(`${numGrupos} grupos creados ✓`)
-    setGenerandoGrupos(false)
-    fetchGrupos()
-    fetchTorneo()
   }
 
   async function handleMoverEquipoGrupo(teamId, grupoIdDestino) {
-    await supabase.from('grupo_equipos').update({ grupo_id: grupoIdDestino }).eq('team_id', teamId).eq('tournament_id', id)
+    const { data, error } = await supabase.from('grupo_equipos').update({ grupo_id: grupoIdDestino }).eq('team_id', teamId).eq('tournament_id', id).select('team_id')
+    if (error) { showMsg(`No se pudo mover el equipo: ${error.message}`, 'error'); return }
+    if (!data || data.length === 0) { showMsg('No se pudo mover el equipo (sin permisos)', 'error'); return }
+    showMsg('Equipo movido ✓')
     fetchGrupos()
   }
 
   async function handleGenerarPartidosGrupos() {
     if (!fechaGrupos) return showMsg('Selecciona una fecha', 'error')
     setGenerandoGrupos(true)
+    try {
+      // Eliminar partidos de grupos anteriores
+      const { error: errDel } = await supabase.from('matches').delete().eq('tournament_id', id).eq('fase', 'grupo')
+      if (errDel) { showMsg(`No se pudieron borrar los partidos anteriores: ${errDel.message}`, 'error'); return }
 
-    // Eliminar partidos de grupos anteriores
-    await supabase.from('matches').delete().eq('tournament_id', id).eq('fase', 'grupo')
+      const inserts = []
+      let jornada = 1
 
-    const inserts = []
-    let jornada = 1
-
-    for (const grupo of grupos) {
-      const eqGrupo = grupoEquipos.filter(ge => ge.grupo_id === grupo.id).map(ge => ge.teams)
-      // Todos contra todos dentro del grupo
-      for (let i = 0; i < eqGrupo.length; i++) {
-        for (let j = i + 1; j < eqGrupo.length; j++) {
-          inserts.push({
-            tournament_id: id,
-            home_team_id:  eqGrupo[i].id,
-            away_team_id:  eqGrupo[j].id,
-            played_at:     `${fechaGrupos}T${horaGrupos}:00-05:00`,
-            status:        'scheduled',
-            fase:          'grupo',
-            grupo:         grupo.nombre,
-            matchday:      jornada,
-          })
+      for (const grupo of grupos) {
+        const eqGrupo = grupoEquipos.filter(ge => ge.grupo_id === grupo.id).map(ge => ge.teams)
+        // Todos contra todos dentro del grupo
+        for (let i = 0; i < eqGrupo.length; i++) {
+          for (let j = i + 1; j < eqGrupo.length; j++) {
+            inserts.push({
+              tournament_id: id,
+              home_team_id:  eqGrupo[i].id,
+              away_team_id:  eqGrupo[j].id,
+              played_at:     `${fechaGrupos}T${horaGrupos}:00-05:00`,
+              status:        'scheduled',
+              fase:          'grupo',
+              grupo:         grupo.nombre,
+              matchday:      jornada,
+            })
+          }
         }
+        jornada++
       }
-      jornada++
-    }
 
-    await supabase.from('matches').insert(inserts)
-    showMsg(`${inserts.length} partidos de grupos generados ✓`)
-    setGenerandoGrupos(false)
-    fetchPartidos()
+      const { error: errIns } = await supabase.from('matches').insert(inserts)
+      if (errIns) { showMsg(`Error al generar los partidos: ${errIns.message}`, 'error'); return }
+      showMsg(`${inserts.length} partidos de grupos generados ✓`)
+      fetchPartidos()
+    } catch (e) {
+      console.error('Error al generar partidos de grupos:', e)
+      showMsg(`Error inesperado: ${e?.message || e}`, 'error')
+    } finally {
+      setGenerandoGrupos(false)
+    }
   }
 
   // Calcular tabla por grupo
@@ -2492,10 +2514,10 @@ export default function AdminTorneoDetallePage() {
                   <input type="time" value={horaGrupos} onChange={e => setHoraGrupos(e.target.value)} style={inputStyle}/>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button onClick={handleCrearGrupos} disabled={generandoGrupos}
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: generandoGrupos ? .7 : 1 }}>
-                  <Shuffle size={16}/> {generandoGrupos ? 'Creando...' : grupos.length > 0 ? 'Regenerar grupos' : 'Crear grupos y sortear equipos'}
+                  <Shuffle size={16}/> {generandoGrupos ? 'Creando...' : grupos.length > 0 ? 'Regenerar grupos (sortea de nuevo)' : 'Crear grupos y sortear equipos'}
                 </button>
                 {grupos.length > 0 && (
                   <button onClick={handleGenerarPartidosGrupos} disabled={generandoGrupos || !fechaGrupos}
@@ -2504,6 +2526,11 @@ export default function AdminTorneoDetallePage() {
                   </button>
                 )}
               </div>
+              {grupos.length > 0 && (
+                <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
+                  🔀 Tocá el ícono junto a cada equipo (en las tablas de abajo) para moverlo a otro grupo manualmente. "Regenerar grupos" vuelve a sortear todo desde cero — no lo uses si ya acomodaste los grupos a mano. Si movés equipos después de haber generado los partidos, volvé a tocar "Generar partidos todos vs todos" para que se actualicen.
+                </div>
+              )}
             </div>
           )}
 
@@ -2537,11 +2564,34 @@ export default function AdminTorneoDetallePage() {
                             const clasifica = i < clasificanPorGrupo
                             return (
                               <tr key={row.equipo?.id || i} style={{ borderTop: '1px solid #f1f3f4', background: clasifica ? `${color}08` : '#fff' }}>
-                                <td style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ fontSize: '.65rem', fontWeight: '700', color: clasifica ? color : '#9aa0a6', minWidth: '14px' }}>{i + 1}</span>
-                                  <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={row.equipo?.logo_url} name={row.equipo?.name} size={20}/></div>
-                                  <span style={{ fontWeight: clasifica ? '700' : '500', color: '#202124', whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.equipo?.name}</span>
-                                  {clasifica && <span style={{ fontSize: '.55rem', background: color, color: '#fff', borderRadius: '4px', padding: '1px 4px', fontWeight: '700' }}>✓</span>}
+                                <td style={{ padding: '8px 12px', position: 'relative' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '.65rem', fontWeight: '700', color: clasifica ? color : '#9aa0a6', minWidth: '14px' }}>{i + 1}</span>
+                                    <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={row.equipo?.logo_url} name={row.equipo?.name} size={20}/></div>
+                                    <span style={{ fontWeight: clasifica ? '700' : '500', color: '#202124', whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.equipo?.name}</span>
+                                    {clasifica && <span style={{ fontSize: '.55rem', background: color, color: '#fff', borderRadius: '4px', padding: '1px 4px', fontWeight: '700' }}>✓</span>}
+                                    {!gruposFinalizados && row.equipo && (
+                                      <button onClick={() => setMoviendoEquipoId(moviendoEquipoId === row.equipo.id ? null : row.equipo.id)}
+                                        title="Mover a otro grupo"
+                                        style={{ marginLeft: 'auto', flexShrink: 0, background: '#f1f3f4', border: 'none', borderRadius: '6px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5f6368' }}>
+                                        <Shuffle size={11}/>
+                                      </button>
+                                    )}
+                                  </div>
+                                  {moviendoEquipoId === row.equipo?.id && (
+                                    <>
+                                      <div onClick={() => setMoviendoEquipoId(null)} style={{ position: 'fixed', inset: 0, zIndex: 300 }}/>
+                                      <div style={{ position: 'absolute', top: '100%', left: '12px', zIndex: 301, background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', boxShadow: '0 4px 16px rgba(0,0,0,.18)', overflow: 'hidden', minWidth: '160px' }}>
+                                        <div style={{ padding: '7px 12px', fontSize: '.68rem', fontWeight: '700', color: '#9aa0a6', borderBottom: '1px solid #f1f3f4' }}>MOVER A...</div>
+                                        {grupos.filter(g => g.id !== grupo.id).map(g => (
+                                          <button key={g.id} onClick={() => { handleMoverEquipoGrupo(row.equipo.id, g.id); setMoviendoEquipoId(null) }}
+                                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>
+                                            {g.nombre}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
                                 </td>
                                 {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
                                   <td key={j} style={{ padding: '8px 6px', textAlign: 'center', color: '#5f6368' }}>{v}</td>
