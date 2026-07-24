@@ -2579,18 +2579,24 @@ export default function AdminTorneoDetallePage() {
                                     )}
                                   </div>
                                   {moviendoEquipoId === row.equipo?.id && (
-                                    <>
-                                      <div onClick={() => setMoviendoEquipoId(null)} style={{ position: 'fixed', inset: 0, zIndex: 300 }}/>
-                                      <div style={{ position: 'absolute', top: '100%', left: '12px', zIndex: 301, background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', boxShadow: '0 4px 16px rgba(0,0,0,.18)', overflow: 'hidden', minWidth: '160px' }}>
-                                        <div style={{ padding: '7px 12px', fontSize: '.68rem', fontWeight: '700', color: '#9aa0a6', borderBottom: '1px solid #f1f3f4' }}>MOVER A...</div>
-                                        {grupos.filter(g => g.id !== grupo.id).map(g => (
-                                          <button key={g.id} onClick={() => { handleMoverEquipoGrupo(row.equipo.id, g.id); setMoviendoEquipoId(null) }}
-                                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>
-                                            {g.nombre}
-                                          </button>
-                                        ))}
+                                    <div onClick={() => setMoviendoEquipoId(null)}
+                                      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                                      <div onClick={e => e.stopPropagation()}
+                                        style={{ background: '#fff', borderRadius: '14px', boxShadow: '0 8px 32px rgba(0,0,0,.3)', overflow: 'hidden', width: '100%', maxWidth: '280px' }}>
+                                        <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                          <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124' }}>Mover {row.equipo?.name}</div>
+                                          <button onClick={() => setMoviendoEquipoId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={18}/></button>
+                                        </div>
+                                        <div style={{ padding: '6px' }}>
+                                          {grupos.filter(g => g.id !== grupo.id).map(g => (
+                                            <button key={g.id} onClick={() => { handleMoverEquipoGrupo(row.equipo.id, g.id); setMoviendoEquipoId(null) }}
+                                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '.85rem', color: '#202124', fontWeight: '600' }}>
+                                              → {g.nombre}
+                                            </button>
+                                          ))}
+                                        </div>
                                       </div>
-                                    </>
+                                    </div>
                                   )}
                                 </td>
                                 {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
