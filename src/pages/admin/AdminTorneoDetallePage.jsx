@@ -627,6 +627,74 @@ export default function AdminTorneoDetallePage() {
       if (sugerido >= 2) setNumClasifElim(sugerido)
     }
   }, [grupos.length, clasificanPorGrupo, bracket.length])
+
+  // Vista previa en vivo: cruces forzados a mano arrastrando un equipo
+  // encima de otro directo en el árbol (independiente del wizard). Se
+  // recalcula: si un equipo deja de estar entre los que clasifican (cambió
+  // resultado, cambiaron cupos), esa pareja se suelta y vuelve al armado
+  // automático.
+  const [previewLlaves,    setPreviewLlaves]    = useState([]) // [[equipoA, equipoB], ...]
+  const [dragPreview,      setDragPreview]      = useState(null) // { team, x, y }
+  const [sobrePreviewId,   setSobrePreviewId]   = useState(null)
+  const participantesPreviewLive = (bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2)) ? getParticipantesElim(numClasifElim) : []
+
+  useEffect(() => {
+    const idsLive = new Set(participantesPreviewLive.map(p => p.id))
+    setPreviewLlaves(prev => prev.filter(([a, b]) => idsLive.has(a.id) && idsLive.has(b.id)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participantesPreviewLive.map(p => p.id).join(',')])
+
+  useEffect(() => {
+    if (!dragPreview) return
+    function pos(e) {
+      if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      if (e.changedTouches && e.changedTouches[0]) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
+      return { x: e.clientX, y: e.clientY }
+    }
+    function chipEnPunto(x, y) {
+      const el = document.elementFromPoint(x, y)
+      const chip = el && el.closest ? el.closest('[data-prevteam-id]') : null
+      return chip ? chip.getAttribute('data-prevteam-id') : null
+    }
+    function onMove(e) {
+      if (e.cancelable) e.preventDefault()
+      const { x, y } = pos(e)
+      setDragPreview(d => d ? { ...d, x, y } : d)
+      const chipId = chipEnPunto(x, y)
+      setSobrePreviewId(chipId && chipId !== String(dragPreview.team.id) ? chipId : null)
+    }
+    function onUp(e) {
+      const { x, y } = pos(e)
+      const chipId = chipEnPunto(x, y)
+      if (chipId && chipId !== String(dragPreview.team.id)) {
+        const destino = participantesPreviewLive.find(p => String(p.id) === chipId)
+        if (destino) {
+          setPreviewLlaves(prev => {
+            const limpio = prev.filter(([a, b]) => a.id !== dragPreview.team.id && b.id !== dragPreview.team.id && a.id !== destino.id && b.id !== destino.id)
+            return [...limpio, [dragPreview.team, destino]]
+          })
+        }
+      }
+      setDragPreview(null); setSobrePreviewId(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false })
+    window.addEventListener('touchend', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchmove', onMove)
+      window.removeEventListener('touchend', onUp)
+    }
+  }, [dragPreview, participantesPreviewLive])
+
+  function startDragPreview(e, team) {
+    e.preventDefault()
+    const p = e.touches ? e.touches[0] : e
+    setDragPreview({ team, x: p.clientX, y: p.clientY })
+  }
+
   const [partidoPenales,   setPartidoPenales]   = useState(null) // partido empatado al que se le registran penales
   const [penalesForm,      setPenalesForm]      = useState({ local: '', visitante: '' })
   const [guardandoPenales, setGuardandoPenales] = useState(false)
@@ -3519,14 +3587,19 @@ export default function AdminTorneoDetallePage() {
 
           {/* Vista previa en vivo — se recalcula sola con cada resultado de grupos */}
           {bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2) && !showWizardElim && (() => {
-            const participantesPreview = getParticipantesElim(numClasifElim)
-            const totalPreview = participantesPreview.length
-            const parejasPreview = []
+            const participantesPreview = participantesPreviewLive
+            // Los cruces que ya arrastraste a mano se respetan; el resto se
+            // arma automático (por reclasificación) con los que quedan.
+            const pendientesPreview = participantesPreview.filter(t => !previewLlaves.some(([a, b]) => a.id === t.id || b.id === t.id))
+            const autoPares = []
+            const totalPend = pendientesPreview.length
             if (estiloLlaves === 'cruzado') {
-              for (let i = 0; i < Math.floor(totalPreview / 2); i++) parejasPreview.push([participantesPreview[i], participantesPreview[totalPreview - 1 - i]])
+              for (let i = 0; i < Math.floor(totalPend / 2); i++) autoPares.push([pendientesPreview[i], pendientesPreview[totalPend - 1 - i]])
             } else {
-              for (let i = 0; i < totalPreview - 1; i += 2) parejasPreview.push([participantesPreview[i], participantesPreview[i + 1]])
+              for (let i = 0; i < totalPend - 1; i += 2) autoPares.push([pendientesPreview[i], pendientesPreview[i + 1]])
             }
+            const parejasPreview = [...previewLlaves, ...autoPares]
+            const totalPreview = parejasPreview.length * 2
             if (parejasPreview.length === 0) return null
 
             // Arma las columnas del árbol igual que el bracket real: la ronda
@@ -3548,12 +3621,17 @@ export default function AdminTorneoDetallePage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#d93025' }}/>
                   <span style={{ fontWeight: '700', fontSize: '.85rem', color: '#202124' }}>Vista previa en vivo</span>
+                  {previewLlaves.length > 0 && (
+                    <button onClick={() => setPreviewLlaves([])} style={{ fontSize: '.72rem', color: '#d93025', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
+                      ↺ Deshacer cruces movidos a mano
+                    </button>
+                  )}
                   <button onClick={abrirWizardElim} style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
                     ⚙️ Ajustar cupos/formato
                   </button>
                 </div>
                 <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
-                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
+                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para forzar ese cruce. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
                 </div>
                 <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
                   {columnasPreview.map((col, ci) => (
@@ -3565,10 +3643,20 @@ export default function AdminTorneoDetallePage() {
                         {col.llaves.map((ll, i) => ll ? (
                           <div key={i} style={{ background: '#fffaf3', border: '1.5px dashed #e8710a', borderLeft: '4px dashed #e8710a', borderRadius: '10px', overflow: 'hidden' }}>
                             {[ll.a, ll.b].map((eq, ti) => (
-                              <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderBottom: ti === 0 ? '1px solid #f1e0c8' : 'none' }}>
+                              <div key={ti} data-prevteam-id={eq?.id}
+                                onMouseDown={e => eq && startDragPreview(e, eq)} onTouchStart={e => eq && startDragPreview(e, eq)}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderBottom: ti === 0 ? '1px solid #f1e0c8' : 'none',
+                                  background: sobrePreviewId === String(eq?.id) ? '#ffe0b2' : 'transparent',
+                                  cursor: eq ? 'grab' : 'default', touchAction: 'none',
+                                  opacity: dragPreview?.team.id === eq?.id ? .25 : 1,
+                                }}>
                                 <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={eq?.logo_url} name={eq?.name} size={20}/></div>
-                                <span style={{ flex: 1, fontSize: '.78rem', fontWeight: '600', color: '#202124' }}>{eq?.name || '— por definir —'}</span>
-                                {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700' }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eq?.name || '— por definir —'}</div>
+                                  {eq?.grupo && <div style={{ fontSize: '.6rem', color: '#9aa0a6' }}>{eq.grupo}</div>}
+                                </div>
+                                {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700', flexShrink: 0 }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
                               </div>
                             ))}
                           </div>
@@ -3591,6 +3679,19 @@ export default function AdminTorneoDetallePage() {
                     </div>
                   </div>
                 </div>
+                {dragPreview && (
+                  <div style={{
+                    position: 'fixed', left: dragPreview.x - 90, top: dragPreview.y - 20, width: '180px',
+                    display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px',
+                    background: '#fff', border: '2px solid #e8710a', borderRadius: '10px',
+                    boxShadow: '0 6px 18px rgba(0,0,0,.25)', pointerEvents: 'none', zIndex: 3000,
+                  }}>
+                    <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
+                      <TeamLogo logo_url={dragPreview.team.logo_url} name={dragPreview.team.name} size={20}/>
+                    </div>
+                    <span style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dragPreview.team.name}</span>
+                  </div>
+                )}
               </div>
             )
           })()}
