@@ -216,6 +216,17 @@ function getFaseValue(total) {
   return 'final'
 }
 
+// played_at llega de Supabase en UTC (ej: "2026-07-25T01:00:00+00:00").
+// Colombia es UTC-5 todo el año — se resta ese offset para sacar la fecha/hora
+// que realmente se ve en el reloj acá, y no la que sale de cortar el string tal cual.
+function playedAtToLocal(playedAt) {
+  if (!playedAt) return { fecha: '', hora: '' }
+  const d = new Date(playedAt)
+  if (isNaN(d.getTime())) return { fecha: '', hora: '' }
+  const local = new Date(d.getTime() - 5 * 60 * 60 * 1000)
+  return { fecha: local.toISOString().slice(0, 10), hora: local.toISOString().slice(11, 16) }
+}
+
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
   if (logo_url) return <img src={logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
@@ -1671,12 +1682,12 @@ export default function AdminTorneoDetallePage() {
   async function handleGuardarEditPartido() {
     if (!formEditPartido.played_at || !formEditPartido.hora) return showMsg('Fecha y hora son obligatorias', 'error')
     const { error } = await supabase.from('matches').update({
-      played_at: new Date(formEditPartido.played_at + 'T' + formEditPartido.hora + ':00').toISOString(),
+      played_at: `${formEditPartido.played_at}T${formEditPartido.hora}:00-05:00`,
       location: formEditPartido.location || null, matchday: formEditPartido.matchday ? parseInt(formEditPartido.matchday) : null,
       fase: formEditPartido.fase || 'grupo',
     }).eq('id', editandoPartidoForm.id)
-    if (error) showMsg('Error al guardar', 'error')
-    else { showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos() }
+    if (error) { showMsg(`Error al guardar: ${error.message}`, 'error'); return }
+    showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos()
   }
 
   function generarJornada() {
@@ -1961,26 +1972,37 @@ export default function AdminTorneoDetallePage() {
 
   function agruparPartidosPorJornada(lista) {
     const FASE_L = { grupo:'Fase de Grupos', octavos:'Octavos de Final', cuartos:'Cuartos de Final', semifinal:'Semifinales', tercero:'Tercer Puesto', final:'Final' }
+    const FASE_ORDEN = { octavos:1, cuartos:2, semifinal:3, tercero:4, final:5 }
     const grupos = {}
     lista.forEach(p => {
-      let key, label, orden
+      let key, label, esFase = false, faseOrden = 0
       if (p.fase && p.fase !== 'grupo') {
         key = `fase_${p.fase}`; label = FASE_L[p.fase]||p.fase
-        orden = { final:99, tercero:98, semifinal:97, cuartos:96, octavos:95 }[p.fase]||94
+        esFase = true; faseOrden = FASE_ORDEN[p.fase] || 0
       } else if (p.matchday) {
-        key = `jornada_${p.matchday}`; label = `Jornada ${p.matchday}`; orden = p.matchday
+        key = `jornada_${p.matchday}`; label = `Jornada ${p.matchday}`
       } else {
         const f = p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}) : 'Sin fecha'
-        key = `fecha_${f}`; label = f; orden = p.played_at ? new Date(p.played_at).getTime()/1000000 : 0
+        key = `fecha_${f}`; label = f
       }
-      if (!grupos[key]) grupos[key] = { key, label, orden, partidos:[], fechas:[] }
+      if (!grupos[key]) grupos[key] = { key, label, esFase, faseOrden, partidos:[], fechas:[], minTime: Infinity }
       grupos[key].partidos.push(p)
       if (p.played_at) {
+        const t = new Date(p.played_at).getTime()
+        if (t < grupos[key].minTime) grupos[key].minTime = t
         const fd = new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})
         if (!grupos[key].fechas.includes(fd)) grupos[key].fechas.push(fd)
       }
     })
-    return Object.values(grupos).sort((a,b) => a.orden - b.orden)
+    // Las jornadas se acomodan por fecha y hora real del partido más
+    // temprano de cada una (no por el número de jornada) — así si una
+    // jornada se reprograma antes que otra, el orden que se ve refleja
+    // cuándo se juega de verdad. Las eliminatorias siempre van al final.
+    return Object.values(grupos).sort((a,b) => {
+      if (a.esFase !== b.esFase) return a.esFase ? 1 : -1
+      if (a.esFase && b.esFase) return a.faseOrden - b.faseOrden
+      return a.minTime - b.minTime
+    })
   }
   const tablaOrdenada      = calcTablaGeneral()
 
@@ -2887,7 +2909,7 @@ export default function AdminTorneoDetallePage() {
                                 </div>
                               </div>
                               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {!esJugado && <button onClick={() => { const fecha = p.played_at?p.played_at.substring(0,10):''; const hora = p.played_at?p.played_at.substring(11,16):''; setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️ Editar</button>}
+                                {!esJugado && <button onClick={() => { const { fecha, hora } = playedAtToLocal(p.played_at); setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️ Editar</button>}
                                 <button onClick={() => abrirPlanilla(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', fontWeight: '600', display:'flex', alignItems:'center', gap:'4px' }}>
                                   {esJugado ? '✏️ Resultado' : <><Check size={12}/> Resultado</>}
                                 </button>
@@ -3660,7 +3682,7 @@ export default function AdminTorneoDetallePage() {
                               <div style={{ padding: '5px 10px', background: '#f8f9fa', borderTop: '1px solid #f1f3f4', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                                 {ll.matches.map((m, mi) => m.status !== 'finished' && (
                                   <button key={m.id}
-                                    onClick={e => { e.stopPropagation(); const fecha = m.played_at ? m.played_at.substring(0, 10) : ''; const hora = m.played_at ? m.played_at.substring(11, 16) : ''; setFormEditPartido({ played_at: fecha, hora, location: m.location || '', matchday: m.matchday || '', fase: m.fase || 'grupo' }); setEditandoPartidoForm(m) }}
+                                    onClick={e => { e.stopPropagation(); const { fecha, hora } = playedAtToLocal(m.played_at); setFormEditPartido({ played_at: fecha, hora, location: m.location || '', matchday: m.matchday || '', fase: m.fase || 'grupo' }); setEditandoPartidoForm(m) }}
                                     style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 9px', cursor: 'pointer', color: '#5f6368', fontSize: '.65rem' }}>
                                     ✏️ {ll.matches.length > 1 ? (mi === 0 ? 'Ida' : 'Vuelta') : 'Fecha/cancha'}
                                   </button>
