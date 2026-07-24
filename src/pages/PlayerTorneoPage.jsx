@@ -758,7 +758,17 @@ export default function PlayerTorneoPage() {
       arqueros: arquerosEquipos.filter(a => a.team_id === r.equipo.id),
     }))
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
+  // "partidos" viene ordenado del más reciente al más antiguo (para que
+  // Resultados muestre el último jugado primero). Los próximos necesitan el
+  // orden inverso: el que se juega más pronto arriba. Los que aún no tienen
+  // fecha definida van al final.
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
+    .sort((a, b) => {
+      if (!a.played_at && !b.played_at) return 0
+      if (!a.played_at) return 1
+      if (!b.played_at) return -1
+      return new Date(a.played_at) - new Date(b.played_at)
+    })
   const misPartidosProximos = miEquipoId ? partidosPendientes.filter(p => p.home?.id === miEquipoId || p.away?.id === miEquipoId) : []
   const idsPartidosTorneo  = new Set(partidos.map(p => p.id))
   const miHistorialTorneo  = miHistorial.filter(h => h.matches?.id && idsPartidosTorneo.has(h.matches.id))

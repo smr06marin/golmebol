@@ -239,7 +239,16 @@ export default function ArbitroHomePage() {
 
   if (loading) return <div style={{ minHeight:'100vh', background:'#07070e', display:'flex', alignItems:'center', justifyContent:'center', color:'#00ddd0', fontSize:'.9rem' }}>Cargando...</div>
 
+  // "partidos" viene del más reciente al más antiguo (para que jugados
+  // muestre el último resultado primero). Próximos necesita el orden
+  // inverso: el que se juega más pronto, arriba.
   const proximos = partidos.filter(p => p.status !== 'finished')
+    .sort((a, b) => {
+      if (!a.played_at && !b.played_at) return 0
+      if (!a.played_at) return 1
+      if (!b.played_at) return -1
+      return new Date(a.played_at) - new Date(b.played_at)
+    })
   const jugados  = partidos.filter(p => p.status === 'finished')
   const lista    = tab === 'proximos' ? proximos : jugados
   const dias     = arbitro?.fecha_vencimiento ? Math.ceil((new Date(arbitro.fecha_vencimiento)-new Date())/86400000) : null
