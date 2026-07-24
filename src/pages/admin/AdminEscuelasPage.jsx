@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Upload, X, GraduationCap } from 'lucide-react'
 
@@ -57,7 +58,16 @@ function ModalMembresia({ profesor, onClose, onActivar }) {
 }
 
 export default function AdminEscuelasPage() {
+  const navigate = useNavigate()
   const [profesores, setProfesores] = useState([])
+  // Crear escuela directo desde acá (sin pasar por el flujo del profesor):
+  // queda como un equipo con tipo:'escuela' y de ahí se abre su ficha para
+  // ir llenando el resto (logo, ciudad, representante, etc.)
+  const [showCrearEscuela,   setShowCrearEscuela]   = useState(false)
+  const [nombreEscuelaNueva, setNombreEscuelaNueva] = useState('')
+  const [categoriaEscuelaNueva, setCategoriaEscuelaNueva] = useState('')
+  const [guardandoEscuela,   setGuardandoEscuela]   = useState(false)
+  const [errorEscuela,       setErrorEscuela]       = useState('')
   const [form,        setForm]        = useState(EMPTY)
   const [editId,      setEditId]      = useState(null)
   const [showForm,    setShowForm]    = useState(false)
@@ -222,6 +232,20 @@ export default function AdminEscuelasPage() {
     } catch(e) { return 'Error: ' + e.message }
   }
 
+  async function handleCrearEscuela() {
+    setErrorEscuela('')
+    if (!nombreEscuelaNueva.trim()) { setErrorEscuela('Ponle un nombre a la escuela'); return }
+    setGuardandoEscuela(true)
+    const { data: nuevoEquipo, error } = await supabase.from('teams')
+      .insert({ name: nombreEscuelaNueva.trim(), tipo: 'escuela', categoria: categoriaEscuelaNueva.trim() || null })
+      .select().single()
+    setGuardandoEscuela(false)
+    if (error || !nuevoEquipo) { setErrorEscuela('No se pudo crear la escuela: ' + (error?.message || '')); return }
+    setShowCrearEscuela(false); setNombreEscuelaNueva(''); setCategoriaEscuelaNueva('')
+    // Va directo a la ficha del equipo/escuela para seguir llenando los datos.
+    navigate(`/admin/equipos/${nuevoEquipo.id}`)
+  }
+
   async function handleDesactivar(profesor) {
     if (!confirm(`¿Desactivar acceso de ${profesor.name}?`)) return
     await supabase.from('players').update({ activo_membresia: false }).eq('id', profesor.id)
@@ -246,7 +270,11 @@ export default function AdminEscuelasPage() {
           <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:0 }}>Escuelas</h1>
           <p style={{ color:'#5f6368', margin:'4px 0 0', fontSize:'.875rem' }}>{profesores.length} profesores registrados</p>
         </div>
-        <div style={{ display:'flex', gap:'8px' }}>
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+          <button onClick={() => { setShowCrearEscuela(!showCrearEscuela); setErrorEscuela(''); setNombreEscuelaNueva(''); setCategoriaEscuelaNueva('') }}
+            style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1e8e3e', border:'none', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600' }}>
+            <GraduationCap size={16}/> Crear escuela
+          </button>
           <button onClick={() => { setBuscarJugador(!buscarJugador) }}
             style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:'1px solid #1a73e8', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#1a73e8', fontSize:'.875rem', fontWeight:'600' }}>
             👤 Jugador existente
@@ -258,8 +286,28 @@ export default function AdminEscuelasPage() {
         </div>
       </div>
 
+      {/* Crear escuela directo desde admin */}
+      {showCrearEscuela && (
+        <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+          <div style={{ fontWeight:'600', color:'#202124', marginBottom:'6px' }}>Crear escuela</div>
+          <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'14px' }}>Ponle el nombre y la categoría — te lleva directo a su ficha para seguir llenando logo, ciudad, representante, etc. Después le asignás un profesor/coordinador desde acá.</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px', marginBottom:'14px' }}>
+            <div><label style={lbl}>Nombre de la escuela *</label><input value={nombreEscuelaNueva} onChange={e => setNombreEscuelaNueva(e.target.value)} style={inp} placeholder="Ej: Escuela Golmebol Sub-10" autoFocus/></div>
+            <div><label style={lbl}>Categoría</label><input value={categoriaEscuelaNueva} onChange={e => setCategoriaEscuelaNueva(e.target.value)} style={inp} placeholder="Ej: Sub-10"/></div>
+          </div>
+          {errorEscuela && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'12px' }}>{errorEscuela}</div>}
+          <div style={{ display:'flex', gap:'8px' }}>
+            <button onClick={handleCrearEscuela} disabled={guardandoEscuela}
+              style={{ padding:'8px 20px', background:'#1e8e3e', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:guardandoEscuela?.7:1 }}>
+              {guardandoEscuela ? 'Creando...' : 'Crear y continuar →'}
+            </button>
+            <button onClick={() => setShowCrearEscuela(false)} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
       <div style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'10px', padding:'14px 16px', marginBottom:'20px', fontSize:'.8rem', color:'#1a4a8c' }}>
-        💡 Acá solo se le da acceso al primer profesor de una escuela (marcándolo con 👑 queda como <b>coordinador</b>). El coordinador entra con su cédula en <b>/jugador/login</b>, crea el nombre y la categoría de su escuela, y desde ahí agrega a los jugadores y a los demás profesores.
+        💡 Acá solo se le da acceso al primer profesor de una escuela (marcándolo con 👑 queda como <b>coordinador</b>). El coordinador entra con su cédula en <b>/jugador/login</b>, crea el nombre y la categoría de su escuela, y desde ahí agrega a los jugadores y a los demás profesores. Si preferís, ahora también podés crear la escuela vos mismo con el botón <b>Crear escuela</b> de arriba y después asignarle un profesor.
       </div>
 
       {/* Form: editar profesor existente */}
