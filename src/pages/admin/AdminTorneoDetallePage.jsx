@@ -614,7 +614,15 @@ export default function AdminTorneoDetallePage() {
   const [horaRonda,        setHoraRonda]        = useState('08:00')
   const [generandoRonda,   setGenerandoRonda]   = useState(false)
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
+  const [equipoByeId,      setEquipoByeId]      = useState(null) // a quién se le da el pase directo cuando modoImpar==='bye' (null = el último de la reclasificación)
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
+  // Fecha/hora planeada por ronda para la vista previa en vivo (ej. "la final
+  // es el 5 de abril") — se guarda en la BD para que el jugador vea lo mismo.
+  const [previewCalendario, setPreviewCalendario] = useState({})
+  // Se pone en true recién cuando ya se cargó la config guardada en la BD —
+  // hasta entonces no hay que guardar nada, para no pisar lo guardado con los
+  // valores por defecto de arranque.
+  const [previewConfigCargado, setPreviewConfigCargado] = useState(false)
 
   // Cupos sugeridos para la vista previa en vivo del árbol: si hay grupos,
   // "clasifican X por grupo" × cantidad de grupos; si aún no se creó el
@@ -622,8 +630,11 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => {
     if (bracket.length > 0) return
     if (grupos.length > 0) {
-      let sugerido = clasificanPorGrupo * grupos.length
-      if (sugerido % 2 !== 0) sugerido += 1
+      // Si el total natural (clasifican X por grupo × cantidad de grupos)
+      // queda impar, ya no se infla a mano: se deja tal cual y el admin
+      // elige en el wizard si entra un mejor perdedor más o si alguien
+      // pasa directo (modoImpar).
+      const sugerido = clasificanPorGrupo * grupos.length
       if (sugerido >= 2) setNumClasifElim(sugerido)
     }
   }, [grupos.length, clasificanPorGrupo, bracket.length])
@@ -632,22 +643,93 @@ export default function AdminTorneoDetallePage() {
   // sus puestos en el orden de siembra (el 5° se va al puesto del 2° y el
   // 2° pasa al puesto del 5°), y las llaves se arman de nuevo con ese
   // orden. Si cambia quién clasifica (nuevo resultado, cambian cupos), el
-  // orden a mano se descarta y vuelve al automático.
-  const [previewOrden,     setPreviewOrden]      = useState(null) // array de ids en el orden a mano, o null = orden por defecto
+  // orden a mano se descarta y vuelve al automático. Se guarda en
+  // localStorage para que sobreviva a un refresh de página.
+  const previewOrdenKey = `preview_orden_${id}`
+  const [previewOrden,     setPreviewOrden]      = useState(() => { // eslint-disable-line react-hooks/rules-of-hooks
+    try { return JSON.parse(localStorage.getItem(previewOrdenKey)) || null } catch { return null }
+  })
   const [dragPreview,      setDragPreview]      = useState(null) // { team, x, y }
   const [sobrePreviewId,   setSobrePreviewId]   = useState(null)
-  const participantesPreviewLive = (bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2)) ? getParticipantesElim(numClasifElim) : []
+  // Se pone en true recién cuando terminó de cargar TODO lo que afecta la
+  // clasificación (equipos, partidos, grupos) — hasta entonces no se debe
+  // tocar previewOrden, porque con datos a medias parece que "cambiaron
+  // los clasificados" y se borraría el orden guardado sin haber cambiado nada.
+  const [datosPreviewListos, setDatosPreviewListos] = useState(false)
+  // Si el número de clasificados queda impar, getParticipantesConImpar ya
+  // resuelve qué pasa con el que sobra (mejor perdedor extra o bye) según
+  // modoImpar/equipoByeId — así la vista previa nunca "pierde" en silencio
+  // al equipo que no entra en una pareja par.
+  const impareableLive = (bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2) && estiloLlaves !== 'manual') ? getParticipantesConImpar() : null
+  const participantesPreviewLive = impareableLive ? impareableLive.participantes : []
+  const byeInicialPreviewLive = impareableLive ? impareableLive.byeTeam : null
 
   useEffect(() => {
+    if (previewOrden) localStorage.setItem(previewOrdenKey, JSON.stringify(previewOrden))
+    else localStorage.removeItem(previewOrdenKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewOrden])
+
+  // Guarda en la BD (no solo en este navegador) cómo quedó armada la vista
+  // previa en vivo: cupos, estilo de llaves, qué pasa con el impar, y el
+  // orden movido a mano — así el jugador ve EXACTAMENTE lo mismo que vos.
+  // Debounce corto para no escribir en cada tecla/arrastre.
+  const previewConfigTimer = useRef(null)
+  useEffect(() => {
+    if (!previewConfigCargado) return
+    if (bracket.length > 0) return // ya hay árbol real, la config de preview no aplica
+    clearTimeout(previewConfigTimer.current)
+    previewConfigTimer.current = setTimeout(() => {
+      supabase.from('tournaments').update({
+        preview_config: { numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden },
+      }).eq('id', id).then(() => {})
+    }, 700)
+    return () => clearTimeout(previewConfigTimer.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewConfigCargado, bracket.length, numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden])
+
+  // Calendario planeado por ronda (fecha/hora) — también en la BD.
+  const previewCalendarioTimer = useRef(null)
+  useEffect(() => {
+    if (!previewConfigCargado) return
+    clearTimeout(previewCalendarioTimer.current)
+    previewCalendarioTimer.current = setTimeout(() => {
+      supabase.from('tournaments').update({ preview_calendario: previewCalendario }).eq('id', id).then(() => {})
+    }, 700)
+    return () => clearTimeout(previewCalendarioTimer.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewConfigCargado, previewCalendario])
+
+  useEffect(() => {
+    // No reconciliar hasta que los datos reales (grupos incluidos) hayan
+    // terminado de cargar — si no, con datos a medias se borraría el orden
+    // guardado creyendo que cambiaron los clasificados.
+    if (!datosPreviewListos) return
+    if (participantesPreviewLive.length === 0) return
     setPreviewOrden(prev => {
       if (!prev) return prev
       const idsLive = participantesPreviewLive.map(p => String(p.id))
       const idsPrev = prev.map(String)
       const mismos = idsLive.length === idsPrev.length && idsLive.every(id => idsPrev.includes(id))
-      return mismos ? prev : null
+      if (mismos) return prev
+      // Antes, si cambiaba UN solo cupo (típicamente el "mejor perdedor" al
+      // entrar otro resultado en otro grupo) se borraba TODO el orden armado
+      // a mano, aunque el resto de los equipos no se hubiera movido. Ahora
+      // solo se reemplaza, en su mismo puesto, al equipo que salió por el
+      // que entró — el resto del orden que armaste queda intacto.
+      if (idsLive.length !== idsPrev.length) return null // cambió la cantidad total: ya no aplica
+      const salieron = idsPrev.filter(idp => !idsLive.includes(idp))
+      const entraron = idsLive.filter(idl => !idsPrev.includes(idl))
+      if (salieron.length === 0 || salieron.length !== entraron.length) return null // caso raro, mejor reiniciar limpio
+      const nuevo = [...idsPrev]
+      salieron.forEach((idSale, i) => {
+        const idx = nuevo.indexOf(idSale)
+        if (idx !== -1) nuevo[idx] = entraron[i]
+      })
+      return nuevo
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [participantesPreviewLive.map(p => p.id).join(',')])
+  }, [datosPreviewListos, participantesPreviewLive.map(p => p.id).join(',')])
 
   useEffect(() => {
     if (!dragPreview) return
@@ -794,7 +876,9 @@ export default function AdminTorneoDetallePage() {
     setLoading(false)
     await pResto
 
-    Promise.all([fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos(), fetchSanciones()]).catch(() => {})
+    Promise.all([fetchJugadores(), fetchCanchas(), fetchFechas(), fetchGrupos(), fetchSanciones()])
+      .catch(() => {})
+      .finally(() => setDatosPreviewListos(true))
 
     ;(async () => {
       try {
@@ -818,6 +902,18 @@ export default function AdminTorneoDetallePage() {
     setTorneo(data)
     if (data?.num_grupos)           setNumGrupos(data.num_grupos)
     if (data?.equipos_clasifican)   setClasificanPorGrupo(data.equipos_clasifican)
+    // Config de la vista previa en vivo guardada en la BD (para que el
+    // jugador vea exactamente lo mismo) — se carga UNA vez al entrar.
+    if (data?.preview_config) {
+      const pc = data.preview_config
+      if (pc.numClasifElim)          setNumClasifElim(pc.numClasifElim)
+      if (pc.estiloLlaves)           setEstiloLlaves(pc.estiloLlaves)
+      if (pc.modoImpar)              setModoImpar(pc.modoImpar)
+      if (pc.equipoByeId !== undefined) setEquipoByeId(pc.equipoByeId)
+      if (pc.previewOrden)           setPreviewOrden(pc.previewOrden)
+    }
+    if (data?.preview_calendario) setPreviewCalendario(data.preview_calendario)
+    setPreviewConfigCargado(true)
   }
 
   async function fetchEquipos() {
@@ -1180,6 +1276,7 @@ export default function AdminTorneoDetallePage() {
     setNumClasifElim(n)
     setOrdenManual(getParticipantesElim(n))
     setLlavesManuales([])
+    setEquipoByeId(null) // vuelve a elegir por defecto al último de la reclasificación
   }
 
   // Sorteo físico: arrastrar un equipo encima de otro arma esa llave.
@@ -1191,10 +1288,41 @@ export default function AdminTorneoDetallePage() {
   }
 
 
-  // Parejas según el estilo elegido (para vista previa y generación)
+  // Si la cantidad de clasificados es impar, hay que decidir qué pasa con el
+  // que sobra: (a) 🎟️ entra un mejor perdedor más de la reclasificación para
+  // completar número par, o (b) ese equipo pasa directo a la siguiente ronda
+  // sin jugar esta ("bye"), y el admin elige cuál con equipoByeId.
+  function getParticipantesConImpar() {
+    const base = getParticipantesElim(numClasifElim)
+    if (base.length < 2 || base.length % 2 === 0) return { participantes: base, byeTeam: null }
+    if (modoImpar === 'mejor_perdedor') {
+      return { participantes: getParticipantesElim(numClasifElim + 1), byeTeam: null }
+    }
+    const idBye = equipoByeId && base.some(t => String(t.id) === String(equipoByeId)) ? equipoByeId : base[base.length - 1].id
+    const byeTeam = base.find(t => String(t.id) === String(idBye))
+    return { participantes: base.filter(t => String(t.id) !== String(idBye)), byeTeam }
+  }
+
+  // El equipo que pasa directo a la siguiente ronda sin jugar (o null si no aplica)
+  function getByeInicial() {
+    if (estiloLlaves === 'manual') return null // en sorteo físico el bye se maneja aparte (ver handleGenerarEliminatorias)
+    return getParticipantesConImpar().byeTeam
+  }
+
+  // Parejas según el estilo elegido (para vista previa y generación).
+  // Si en la vista previa en vivo se arrastraron equipos a mano (previewOrden),
+  // se respeta ese mismo orden acá para que el árbol real que se cree quede
+  // exactamente como se armó en la vista previa.
   function getParejasElim() {
     if (estiloLlaves === 'manual') return llavesManuales
-    const participantes = getParticipantesElim(numClasifElim)
+    let { participantes } = getParticipantesConImpar()
+    if (previewOrden && previewOrden.length === participantes.length) {
+      const mapa = new Map(participantes.map(p => [String(p.id), p]))
+      const idsOrden = previewOrden.map(String)
+      if (idsOrden.every(idOrden => mapa.has(idOrden))) {
+        participantes = idsOrden.map(idOrden => mapa.get(idOrden))
+      }
+    }
     const total = participantes.length
     const parejas = []
     if (estiloLlaves === 'cruzado') {
@@ -1208,26 +1336,32 @@ export default function AdminTorneoDetallePage() {
   async function handleGenerarEliminatorias() {
     try {
       if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
-      if (numClasifElim % 2 !== 0) return showMsg('El número de clasificados debe ser par', 'error')
+      let byeManual = null
       if (estiloLlaves === 'manual') {
         const idsEnLlaves = new Set(llavesManuales.flatMap(([a, b]) => [a.id, b.id]))
         const sinAsignar = ordenManual.filter(t => !idsEnLlaves.has(t.id))
-        if (sinAsignar.length > 0) return showMsg(`Faltan por emparejar: ${sinAsignar.map(t => t.name).join(', ')} — arrastralos encima de otro equipo`, 'error')
+        if (sinAsignar.length === 1) {
+          byeManual = sinAsignar[0] // el único que sobra pasa directo automáticamente
+        } else if (sinAsignar.length > 1) {
+          return showMsg(`Faltan por emparejar: ${sinAsignar.map(t => t.name).join(', ')} — arrastralos encima de otro equipo`, 'error')
+        }
       }
       const parejas = getParejasElim()
-      if (parejas.length < 1) return showMsg('Necesitas al menos 2 clasificados', 'error')
-      if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length > 1 ? 's' : ''} programado${parejas.length > 1 ? 's' : ''} de verdad (no es la vista previa) para el ${fechaElim}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
+      const byeTeam = byeManual || getByeInicial()
+      if (parejas.length < 1 && !byeTeam) return showMsg('Necesitas al menos 2 clasificados', 'error')
+      const avisoBye = byeTeam ? ` — ${byeTeam.name} pasa directo a la siguiente ronda sin jugar` : ''
+      if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length !== 1 ? 's' : ''} programado${parejas.length !== 1 ? 's' : ''} de verdad (no es la vista previa) para el ${fechaElim}${avisoBye}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
       setGenerandoElim(true)
 
       // Un equipo no avanza a eliminatorias con tarjetas sin pagar
-      const idsParticipantes = [...new Set(parejas.flatMap(([a, b]) => [a?.id, b?.id]).filter(Boolean))]
+      const idsParticipantes = [...new Set([...parejas.flatMap(([a, b]) => [a?.id, b?.id]), byeTeam?.id].filter(Boolean))]
       const deudores = await getDeudoresTarjetas(idsParticipantes)
       if (deudores.length > 0) {
         showMsg(`⛔ Tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
         return
       }
 
-      const total = parejas.length * 2
+      const total = parejas.length * 2 + (byeTeam ? 1 : 0)
       const fase  = getFaseValue(total)
       const ronda = getRondaNombre(total)
 
@@ -1251,8 +1385,8 @@ export default function AdminTorneoDetallePage() {
 
       const { error } = await supabase.from('matches').insert(inserts)
       if (error) { showMsg(`Error al crear el bracket: ${error.message}`, 'error'); return }
-      await supabase.from('tournaments').update({ fase_actual: 'eliminatorias' }).eq('id', id)
-      showMsg(`${ronda} creada con ${parejas.length} llaves ✓`)
+      await supabase.from('tournaments').update({ fase_actual: 'eliminatorias', bye_inicial_team_id: byeTeam?.id || null }).eq('id', id)
+      showMsg(`${ronda} creada con ${parejas.length} llave${parejas.length !== 1 ? 's' : ''}${byeTeam ? ` — 🎟️ ${byeTeam.name} pasa directo` : ''} ✓`)
       setShowWizardElim(false)
       fetchPartidos(); fetchBracket(); fetchTorneo()
     } catch (e) {
@@ -1272,7 +1406,7 @@ export default function AdminTorneoDetallePage() {
     try {
       const { error } = await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
       if (error) { showMsg(`No se pudo quitar: ${error.message}`, 'error'); return }
-      await supabase.from('tournaments').update({ fase_actual: 'grupos' }).eq('id', id)
+      await supabase.from('tournaments').update({ fase_actual: 'grupos', bye_inicial_team_id: null }).eq('id', id)
       showMsg('Árbol de eliminatorias quitado — volviste a la vista previa ✓')
       fetchPartidos(); fetchBracket(); fetchTorneo()
     } catch (e) {
@@ -1338,12 +1472,20 @@ export default function AdminTorneoDetallePage() {
     const porFase = getLlavesPorFase()
     const fasesExist = FASE_ORDEN.filter(f => porFase[f])
     if (fasesExist.length === 0) return null
+    // Si el torneo arrancó las eliminatorias con número impar de clasificados
+    // y a un equipo le tocó pasar directo (bye_inicial_team_id), ese equipo
+    // nunca jugó un partido en la primera fase — hay que sumarlo a mano como
+    // "vivo" desde esa primera fase para que cuente igual que los demás byes.
+    const byeInicial = torneo?.bye_inicial_team_id ? equipos.find(e => e.id === torneo.bye_inicial_team_id) : null
     let vivos = null
-    fasesExist.forEach(f => {
+    fasesExist.forEach((f, idx) => {
       const llavesF = porFase[f]
       const enFase = new Set(llavesF.flatMap(l => [l.teamA.id, l.teamB.id]))
       const ganadoresF = llavesF.map(l => l.ganador).filter(Boolean)
-      const byes = vivos ? vivos.filter(v => !enFase.has(v.id)) : []
+      let byes = vivos ? vivos.filter(v => !enFase.has(v.id)) : []
+      if (idx === 0 && byeInicial && !enFase.has(byeInicial.id) && !byes.some(v => v.id === byeInicial.id)) {
+        byes = [...byes, byeInicial]
+      }
       vivos = [...ganadoresF, ...byes]
     })
     const actual = fasesExist[fasesExist.length - 1]
@@ -3609,8 +3751,8 @@ export default function AdminTorneoDetallePage() {
             } else {
               for (let i = 0; i < totalOrden - 1; i += 2) parejasPreview.push([ordenPreview[i], ordenPreview[i + 1]])
             }
-            const totalPreview = parejasPreview.length * 2
-            if (parejasPreview.length === 0) return null
+            const totalPreview = parejasPreview.length * 2 + (byeInicialPreviewLive ? 1 : 0)
+            if (parejasPreview.length === 0 && !byeInicialPreviewLive) return null
 
             // Arma las columnas del árbol igual que el bracket real: la ronda
             // actual con los equipos que van clasificando, y las siguientes
@@ -3619,11 +3761,21 @@ export default function AdminTorneoDetallePage() {
             let llavesRonda = parejasPreview.map(([a, b]) => ({ a, b }))
             let totalRonda = totalPreview
             while (true) {
-              columnasPreview.push({ total: totalRonda, llaves: llavesRonda })
+              columnasPreview.push({ total: totalRonda, fase: getFaseValue(totalRonda), llaves: llavesRonda })
               if (llavesRonda.length <= 1) break
               const siguienteN = Math.max(Math.floor(llavesRonda.length / 2), 1)
               llavesRonda = Array.from({ length: siguienteN }, () => null)
               totalRonda = Math.max(Math.floor(totalRonda / 2), 2)
+            }
+
+            // Cada partido (llave) tiene su propio horario — se guarda por
+            // posición dentro de la ronda, no uno solo para toda la ronda.
+            function actualizarCalendarioLlave(fase, idx, campo, valor) {
+              setPreviewCalendario(prev => {
+                const arr = Array.isArray(prev?.[fase]) ? [...prev[fase]] : []
+                arr[idx] = { ...(arr[idx] || {}), [campo]: valor }
+                return { ...prev, [fase]: arr }
+              })
             }
 
             return (
@@ -3643,6 +3795,13 @@ export default function AdminTorneoDetallePage() {
                 <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
                   Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para intercambiar sus puestos en el orden. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
                 </div>
+                {byeInicialPreviewLive && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', padding: '8px 12px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px' }}>
+                    <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={byeInicialPreviewLive.logo_url} name={byeInicialPreviewLive.name} size={20}/></div>
+                    <span style={{ fontSize: '.76rem', fontWeight: '700', color: '#1e8e3e' }}>⏭️ {byeInicialPreviewLive.name} pasa directo a la siguiente ronda sin jugar (número impar de clasificados)</span>
+                    <button onClick={abrirWizardElim} style={{ marginLeft: 'auto', fontSize: '.68rem', color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>cambiar</button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
                   {columnasPreview.map((col, ci) => (
                     <div key={ci} style={{ minWidth: '220px', flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -3669,10 +3828,26 @@ export default function AdminTorneoDetallePage() {
                                 {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700', flexShrink: 0 }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
                               </div>
                             ))}
+                            <div style={{ display: 'flex', gap: '4px', padding: '6px 8px', background: '#f8f9fa' }}>
+                              <input type="date" value={previewCalendario?.[col.fase]?.[i]?.fecha || ''}
+                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'fecha', e.target.value)}
+                                style={{ flex: 1, minWidth: 0, fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368' }}/>
+                              <input type="time" value={previewCalendario?.[col.fase]?.[i]?.hora || ''}
+                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'hora', e.target.value)}
+                                style={{ width: '62px', fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368' }}/>
+                            </div>
                           </div>
                         ) : (
-                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
+                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '10px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
                             Por definir
+                            <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+                              <input type="date" value={previewCalendario?.[col.fase]?.[i]?.fecha || ''}
+                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'fecha', e.target.value)}
+                                style={{ flex: 1, minWidth: 0, fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
+                              <input type="time" value={previewCalendario?.[col.fase]?.[i]?.hora || ''}
+                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'hora', e.target.value)}
+                                style={{ width: '62px', fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -3708,7 +3883,10 @@ export default function AdminTorneoDetallePage() {
 
           {/* Asistente de configuración */}
           {showWizardElim && (() => {
-            const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesElim(numClasifElim)
+            const participantesBase = getParticipantesElim(numClasifElim)
+            const esImparInicial = estiloLlaves !== 'manual' && participantesBase.length >= 3 && participantesBase.length % 2 !== 0
+            const byeTeam = estiloLlaves !== 'manual' ? getParticipantesConImpar().byeTeam : null
+            const participantes = estiloLlaves === 'manual' ? ordenManual : getParticipantesConImpar().participantes
             const mejores = participantes.filter(p => p.mejorPerdedor)
             const parejas = getParejasElim()
             return (
@@ -3731,21 +3909,41 @@ export default function AdminTorneoDetallePage() {
                             {n}
                           </button>
                         ))}
-                        <input type="number" min="2" max="16" step="2" value={numClasifElim}
+                        <input type="number" min="2" max="16" step="1" value={numClasifElim}
                           onChange={e => { const v = parseInt(e.target.value); if (v >= 2 && v <= 16) cambiarCuposElim(v) }}
                           style={{ ...inputStyle, width: '76px', textAlign: 'center', fontWeight: '700', border: ![2,4,8,16].includes(numClasifElim) ? '2px solid #e8710a' : '1px solid #dadce0' }}/>
                       </div>
                       <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>
-                        Puede ser cualquier número par (ej: 6, 10, 12). Si en una ronda quedan impares, podrás meter un mejor perdedor o dar pase directo al 1° de la reclasificación.
+                        Puede ser cualquier número, par o impar (ej: 5, 6, 7, 10). Si en una ronda quedan impares, elegís abajo cómo se resuelve.
                       </div>
-                      {numClasifElim % 2 !== 0 && (
-                        <div style={{ marginTop: '6px', fontSize: '.72rem', color: '#d93025', fontWeight: '600' }}>
-                          ⚠️ El número de clasificados debe ser par para armar las llaves iniciales
-                        </div>
-                      )}
                       {mejores.length > 0 && (
                         <div style={{ marginTop: '8px', fontSize: '.72rem', color: '#e8710a', background: '#fff4e5', border: '1px solid #ffd8a8', borderRadius: '8px', padding: '8px 12px' }}>
                           🎟️ Los cupos se completan con los mejores de la reclasificación (mejor perdedor): {mejores.map(m => m.name).join(', ')}
+                        </div>
+                      )}
+                      {esImparInicial && (
+                        <div style={{ marginTop: '10px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 12px' }}>
+                          <div style={{ fontSize: '.74rem', fontWeight: '700', color: '#202124', marginBottom: '6px' }}>
+                            Número impar de clasificados ({participantesBase.length}) — ¿qué hacemos con el que sobra?
+                          </div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '.76rem', color: '#5f6368', marginBottom: '6px', cursor: 'pointer' }}>
+                            <input type="radio" checked={modoImpar === 'mejor_perdedor'} onChange={() => setModoImpar('mejor_perdedor')} style={{ cursor: 'pointer' }}/>
+                            🎟️ Entra un mejor perdedor más y quedan {participantesBase.length + 1}
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '.76rem', color: '#5f6368', cursor: 'pointer' }}>
+                            <input type="radio" checked={modoImpar === 'bye'} onChange={() => setModoImpar('bye')} style={{ cursor: 'pointer' }}/>
+                            ⏭️ Un equipo pasa directo a la siguiente ronda y juegan {participantesBase.length - 1}
+                          </label>
+                          {modoImpar === 'bye' && (
+                            <div style={{ marginTop: '8px' }}>
+                              <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginBottom: '4px' }}>¿Quién pasa directo?</div>
+                              <select value={equipoByeId || byeTeam?.id || ''} onChange={e => setEquipoByeId(e.target.value)} style={{ ...inputStyle, fontSize: '.8rem' }}>
+                                {participantesBase.map(eq => (
+                                  <option key={eq.id} value={eq.id}>{eq.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3788,14 +3986,24 @@ export default function AdminTorneoDetallePage() {
                       <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>
                         4. {estiloLlaves === 'manual' ? 'Armá las llaves arrastrando' : 'Participantes'}
                       </div>
-                      {estiloLlaves === 'manual' ? (
-                        <SorteoManualDrag
-                          pendientes={ordenManual.filter(t => !llavesManuales.some(([a, b]) => a.id === t.id || b.id === t.id))}
-                          llaves={llavesManuales}
-                          onFormarLlave={handleFormarLlaveManual}
-                          onDeshacerLlave={handleDeshacerLlaveManual}
-                        />
-                      ) : (
+                      {estiloLlaves === 'manual' ? (() => {
+                        const sinAsignarManual = ordenManual.filter(t => !llavesManuales.some(([a, b]) => a.id === t.id || b.id === t.id))
+                        return (
+                          <>
+                            <SorteoManualDrag
+                              pendientes={sinAsignarManual}
+                              llaves={llavesManuales}
+                              onFormarLlave={handleFormarLlaveManual}
+                              onDeshacerLlave={handleDeshacerLlaveManual}
+                            />
+                            {sinAsignarManual.length === 1 && (
+                              <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px' }}>
+                                <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#1e8e3e' }}>⏭️ {sinAsignarManual[0].name} queda solo — pasa directo a la siguiente ronda sin jugar</span>
+                              </div>
+                            )}
+                          </>
+                        )
+                      })() : (
                         <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
                           {participantes.map((eq, i) => (
                             <div key={eq.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderBottom: i < participantes.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
@@ -3808,14 +4016,21 @@ export default function AdminTorneoDetallePage() {
                             </div>
                           ))}
                           {participantes.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Sin equipos con partidos aún</div>}
+                          {byeTeam && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', background: '#e6f4ea', borderTop: '1px solid #f1f3f4' }}>
+                              <span style={{ fontSize: '.62rem', color: '#1e8e3e', background: '#fff', borderRadius: '10px', padding: '1px 7px', fontWeight: '700', flexShrink: 0 }}>⏭️ Pasa directo</span>
+                              <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={byeTeam.logo_url} name={byeTeam.name} size={20}/></div>
+                              <span style={{ flex: 1, fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>{byeTeam.name}</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
 
                     {/* 5. Vista previa de llaves */}
-                    {parejas.length > 0 && (
+                    {(parejas.length > 0 || byeTeam) && (
                       <div style={{ marginBottom: '18px' }}>
-                        <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>5. Así quedan las llaves — {getRondaNombre(parejas.length * 2)}</div>
+                        <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>5. Así quedan las llaves — {getRondaNombre(parejas.length * 2 + (byeTeam ? 1 : 0))}</div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '8px' }}>
                           {parejas.map(([a, b], i) => (
                             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '8px 12px' }}>
@@ -3825,6 +4040,13 @@ export default function AdminTorneoDetallePage() {
                               <span style={{ flex: 1, fontSize: '.75rem', fontWeight: '600', color: '#202124' }}>{b?.name}</span>
                             </div>
                           ))}
+                          {byeTeam && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px', padding: '8px 12px' }}>
+                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#1e8e3e', flexShrink: 0 }}>⏭️</span>
+                              <span style={{ flex: 1, fontSize: '.75rem', fontWeight: '600', color: '#202124' }}>{byeTeam.name}</span>
+                              <span style={{ fontSize: '.68rem', fontWeight: '700', color: '#1e8e3e' }}>pasa directo</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

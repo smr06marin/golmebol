@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
@@ -94,8 +95,9 @@ function ModalUniforme({ equipo, onClose, onSaved }) {
     if (!file) return
     setUploading(true)
     setPreview(URL.createObjectURL(file))
-    const path = `uniformes/${equipo.id}_${Date.now()}.${file.name.split('.').pop()}`
-    const { error } = await supabase.storage.from('teams').upload(path, file, { upsert: true })
+    const archivo = await comprimirImagen(file)
+    const path = `uniformes/${equipo.id}_${Date.now()}.${archivo.name.split('.').pop()}`
+    const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true })
     if (!error) {
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
       await supabase.from('teams').update({ uniforme_url: urlData.publicUrl }).eq('id', equipo.id)
@@ -359,8 +361,9 @@ export default function AdminEquiposPage() {
   async function handleLogo(equipo, file) {
     if (!file) return
     setUploading(equipo.id)
-    const path = `logos/${equipo.id}.${file.name.split('.').pop()}`
-    const { error } = await supabase.storage.from('teams').upload(path, file, { upsert: true })
+    const archivo = await comprimirImagen(file, { maxSize: 500 })
+    const path = `logos/${equipo.id}.${archivo.name.split('.').pop()}`
+    const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true })
     if (!error) {
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
       await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', equipo.id)

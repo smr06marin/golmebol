@@ -9,6 +9,11 @@
     <meta name="google" content="notranslate" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Adelanta la conexión (DNS + TLS) a Supabase antes de que la app la
+         necesite, para que la primera consulta de cada página no pierda esos
+         milisegundos de handshake — se nota sobre todo en celular/datos móviles. -->
+    <link rel="preconnect" href="https://obvlyexpbbdhxwijjqyd.supabase.co" crossorigin/>
+    <link rel="dns-prefetch" href="https://obvlyexpbbdhxwijjqyd.supabase.co"/>
     <title>Golmebol</title>
   </head>
   <body>

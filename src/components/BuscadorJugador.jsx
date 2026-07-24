@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
+import { Search, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { responderPregunta } from '../lib/motorPreguntas'
 
@@ -12,6 +13,7 @@ const normalizar = s => (s || '').toLowerCase().normalize('NFD').replace(new Reg
 export default function BuscadorJugador({ playerId }) {
   const [datos,    setDatos]    = useState(null)
   const [busqueda, setBusqueda] = useState('')
+  const [focus,    setFocus]    = useState(false)
 
   useEffect(() => {
     if (!playerId) return
@@ -160,54 +162,50 @@ export default function BuscadorJugador({ playerId }) {
   }, [respuestas, busqueda, filasMotor])
 
   return (
-    <div style={{ background: 'linear-gradient(165deg,#151a28,#0c0f18)', border: '1px solid #232b3d', borderRadius: '16px', padding: '18px' }}>
-      <div style={{ fontWeight: 800, color: '#fff', fontSize: '.92rem', marginBottom: '4px' }}>🔎 Buscar en su historia</div>
-      <div style={{ fontSize: '.72rem', color: '#8b93a5', marginBottom: '12px' }}>
-        Goles, rivales, tarjetas, arco, equipos, títulos... todo lo guardado del jugador.
-      </div>
+    <div style={{ background: '#0d1117', border: '1px solid #1c232f', borderRadius: '14px', padding: '14px' }}>
       <div style={{ position: 'relative' }}>
+        <Search size={14} color={focus ? '#00ddd0' : '#5b6478'} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', transition: 'color .15s' }}/>
         <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-          placeholder="Ej: mejor partido · a quién le hace más goles · tarjetas..."
-          style={{ width: '100%', background: 'rgba(255,255,255,.06)', border: '1px solid #2a3446', borderRadius: '12px', padding: '12px 40px 12px 14px', color: '#fff', fontSize: '.95rem', outline: 'none', boxSizing: 'border-box' }}/>
+          onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+          placeholder="Buscar en su historia..."
+          style={{ width: '100%', background: 'transparent', border: `1px solid ${focus ? '#00ddd0' : '#1c232f'}`, borderRadius: '10px', padding: '9px 34px', color: '#e8f4fd', fontSize: '.85rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color .15s' }}/>
         {busqueda && (
           <button onClick={() => setBusqueda('')}
-            style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', color: '#aeb6c6', fontSize: '.75rem', fontWeight: 700 }}>✕</button>
+            style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', color: '#5b6478' }}>
+            <X size={12}/>
+          </button>
         )}
       </div>
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '10px 0 14px' }}>
-        {['Mejor partido', '¿A quién le hace más goles?', 'Tarjetas', 'Como arquero', 'Equipos', 'Palmarés'].map(s => (
-          <button key={s} onClick={() => setBusqueda(s)}
-            style={{ padding: '6px 12px', borderRadius: '20px', border: `1px solid ${normalizar(busqueda) === normalizar(s) ? '#1a73e8' : '#2a3446'}`, background: normalizar(busqueda) === normalizar(s) ? 'rgba(26,115,232,.2)' : 'transparent', color: normalizar(busqueda) === normalizar(s) ? '#7fb3ff' : '#8b93a5', fontSize: '.7rem', fontWeight: 700, cursor: 'pointer' }}>
-            {s}
-          </button>
-        ))}
-      </div>
 
-      {!datos ? (
-        <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>⏳ Cargando datos del jugador...</div>
-      ) : respuestas.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>Este jugador aún no tiene partidos guardados</div>
-      ) : resultados.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#8b93a5', fontSize: '.78rem', padding: '16px' }}>Sin resultados — prueba con: goles, rival, tarjetas, arquero, equipos o títulos</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '.66rem', color: '#8b93a5', fontWeight: 600, padding: '0 2px' }}>
-            {busqueda.trim()
-              ? `${resultados.length} resultado${resultados.length !== 1 ? 's' : ''} para "${busqueda.trim()}"`
-              : 'Datos generales — escribe o toca una pregunta para buscar algo puntual'}
-          </div>
-          {resultados.map(r => (
-            <div key={r.titulo} className="gm-logro" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: '12px', padding: '13px 15px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <div style={{ fontSize: '1.4rem', flexShrink: 0 }}>{r.icono}</div>
+      {!busqueda && (
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '9px' }}>
+          {['Mejor partido', 'Tarjetas', 'Como arquero', 'Palmarés'].map(s => (
+            <button key={s} onClick={() => setBusqueda(s)}
+              style={{ padding: '4px 10px', borderRadius: '20px', border: 'none', background: '#161d29', color: '#7a8aa3', fontSize: '.66rem', fontWeight: 600, cursor: 'pointer' }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!datos ? null : respuestas.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#5b6478', fontSize: '.74rem', padding: '14px 0 2px' }}>Este jugador aún no tiene partidos guardados</div>
+      ) : busqueda.trim() && resultados.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#5b6478', fontSize: '.74rem', padding: '14px 0 2px' }}>Sin resultados — probá con goles, rival, tarjetas o arquero</div>
+      ) : busqueda.trim() ? (
+        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column' }}>
+          {resultados.slice(0, 5).map((r, i) => (
+            <div key={r.titulo} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '9px 2px', borderTop: i > 0 ? '1px solid #161d29' : 'none' }}>
+              <div style={{ fontSize: '1.05rem', flexShrink: 0, opacity: .85 }}>{r.icono}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '.66rem', color: '#8b93a5', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{r.titulo}</div>
-                <div style={{ fontSize: '.9rem', color: '#fff', fontWeight: 800, marginTop: '3px', lineHeight: 1.35, overflowWrap: 'break-word' }}>{r.respuesta}</div>
-                {r.detalle && <div style={{ fontSize: '.72rem', color: '#aeb6c6', marginTop: '3px', lineHeight: 1.4, overflowWrap: 'break-word' }}>{r.detalle}</div>}
+                <div style={{ fontSize: '.62rem', color: '#5b6478', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>{r.titulo}</div>
+                <div style={{ fontSize: '.84rem', color: '#e8f4fd', fontWeight: 700, marginTop: '2px', lineHeight: 1.35, overflowWrap: 'break-word' }}>{r.respuesta}</div>
+                {r.detalle && <div style={{ fontSize: '.68rem', color: '#7a8aa3', marginTop: '2px', lineHeight: 1.4, overflowWrap: 'break-word' }}>{r.detalle}</div>}
               </div>
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

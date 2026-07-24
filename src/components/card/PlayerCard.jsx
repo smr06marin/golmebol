@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { comprimirImagen } from '../../lib/imageCompress'
 import CardBackground from './CardBackground'
 import CardEffects from './designs/CardEffects'
 import CardDecorations from './designs/CardDecorations'
@@ -136,9 +137,10 @@ export default function PlayerCard({
 
     setSubiendoFoto(true)
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+      const archivo = await comprimirImagen(file)
+      const ext = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
       const path = `fotos/${playerId}_tarjeta.${ext}`
-      const { error: errUp } = await supabase.storage.from('players').upload(path, file, { upsert: true })
+      const { error: errUp } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
       if (errUp) throw errUp
       const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
       const nuevaUrl = `${urlData.publicUrl}?v=${Date.now()}`

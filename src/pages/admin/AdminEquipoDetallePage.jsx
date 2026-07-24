@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { comprimirImagen } from '../../lib/imageCompress'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
 import { useAuthStore } from '../../store/authStore'
@@ -447,9 +448,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!file) return
     if (!puedeEditar) { showMsg('No podés editar este equipo (ver el aviso arriba)', 'error'); return }
     setSubiendoLogo(true)
-    const ext  = file.name.split('.').pop()
+    const archivo = await comprimirImagen(file, { maxSize: 500 })
+    const ext  = archivo.name.split('.').pop()
     const path = `logos/${id}.${ext}`
-    const { error } = await supabase.storage.from('teams').upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true })
     if (error) { showMsg('Error al subir logo', 'error'); setSubiendoLogo(false); return }
     const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
     await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', id)

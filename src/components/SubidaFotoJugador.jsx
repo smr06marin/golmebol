@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { comprimirImagen } from '../lib/imageCompress'
 
 // Cada jugador puede subir su propia foto de perfil y su propia foto de
 // tarjeta, pero solo UNA VEZ: en cuanto queda guardada en players.photo_url /
@@ -23,10 +24,11 @@ export default function SubidaFotoJugador({
     if (!file) return
     setSubiendo(true); setError('')
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+      const archivo = await comprimirImagen(file)
+      const ext = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
       const tipo = TIPO_POR_CAMPO[campo] || 'foto'
       const path = `fotos/${playerId}_${tipo}.${ext}`
-      const { error: errUp } = await supabase.storage.from('players').upload(path, file, { upsert: true })
+      const { error: errUp } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
       if (errUp) throw errUp
       const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
       const nuevaUrl = `${urlData.publicUrl}?v=${Date.now()}`

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../store/authStore'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import StatRankingModal from '../components/card/StatRankingModal'
@@ -69,6 +70,7 @@ function NotifBanner({ notifs, onDismiss }) {
 
 export default function PlayerHomePage() {
   const navigate   = useNavigate()
+  const { user }   = useAuthStore() // ya validado por PlayerRoute — evita otra ida y vuelta al login
   const [player,            setPlayer]            = useState(null)
   const [stats,             setStats]             = useState(null)
   const [torneos,           setTorneos]           = useState([])
@@ -101,7 +103,10 @@ export default function PlayerHomePage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+
+    // PlayerRoute ya garantiza que hay usuario logueado antes de mostrar esta
+    // página, así que usamos el user del store en vez de volver a pedirlo a
+    // Supabase (era una ida y vuelta extra en cada entrada).
     if (!user) { navigate('/jugador/login'); return }
 
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
@@ -120,7 +125,44 @@ export default function PlayerHomePage() {
     setPlayer(p)
     if (p.card_type) setCardType(p.card_type)
 
-    const { data: rawStats } = await supabase.from('player_match_stats').select('*').eq('player_id', p.id)
+    // Todas estas consultas solo dependen de p.id (o de nada), así que salen
+    // todas juntas en vez de una detrás de otra — antes era una cadena de 10
+    // idas y vueltas secuenciales a la base de datos, la razón principal de
+    // que esta pantalla tardara tanto en entrar.
+    const [
+      { data: rawStats },
+      { data: logrosJug },
+      { data: histData },
+      { data: spons },
+      { data: clp },
+      { data: customCards },
+      { data: regs },
+      { data: tps },
+      { data: predsResueltas },
+      { data: rondaNotifs },
+    ] = await Promise.all([
+      supabase.from('player_match_stats').select('*').eq('player_id', p.id),
+      supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon'),
+      supabase
+        .from('player_match_stats')
+        .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
+        .eq('player_id', p.id)
+        .order('created_at', { ascending: false }),
+      supabase.from('sponsors').select('*').eq('activo', true),
+      supabase
+        .from('player_card_level_progress')
+        .select('*, card_levels(card_design_id, card_id, logros_requeridos)')
+        .eq('player_id', p.id),
+      supabase.from('cards').select('*, card_levels(*)').gt('orden', 4).order('orden'),
+      supabase
+        .from('tournament_player_registrations')
+        .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
+        .eq('player_id', p.id).eq('activo', true),
+      supabase.from('team_players').select('id').eq('player_id', p.id).limit(1),
+      supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', p.id).eq('resuelta', true).gt('puntos_ganados', 0),
+      supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'predix_ronda').eq('leida', false),
+    ])
+
     const raw       = rawStats || []
     const pj        = raw.length
     const goles     = raw.reduce((s, r) => s + (r.goals_scored   || 0), 0)
@@ -146,45 +188,19 @@ export default function PlayerHomePage() {
       else break
     }
 
-    const { data: logrosJug } = await supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon')
     const titulos = (logrosJug || []).length
 
     const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort, esDefensa, amarillas, rojas, azules, vallasCero, golesComoJug, golesComoArq }
     setStats(statsCalc)
 
-    const { data: histData } = await supabase
-      .from('player_match_stats')
-      .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
-      .eq('player_id', p.id)
-      .order('created_at', { ascending: false })
     setHistorial(histData || [])
-
-    const { data: spons } = await supabase.from('sponsors').select('*').eq('activo', true)
     setSponsors(spons || [])
-
-    const { data: clp } = await supabase
-      .from('player_card_level_progress')
-      .select('*, card_levels(card_design_id, card_id, logros_requeridos)')
-      .eq('player_id', p.id)
     setCardLevelProgress(clp || [])
-
-    // Tarjetas custom de BD (orden > 4)
-    const { data: customCards } = await supabase
-      .from('cards')
-      .select('*, card_levels(*)')
-      .gt('orden', 4)
-      .order('orden')
     setTarjetasCustom(customCards || [])
-
-    const { data: regs } = await supabase
-      .from('tournament_player_registrations')
-      .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
-      .eq('player_id', p.id).eq('activo', true)
     setTorneos(regs || [])
 
     // ¿Está registrado como jugador en algún equipo? Si no (ni en torneos ni
     // en la plantilla de ningún equipo), su portal se limita a PREDIX.
-    const { data: tps } = await supabase.from('team_players').select('id').eq('player_id', p.id).limit(1)
     setSinEquipo((regs || []).length === 0 && (tps || []).length === 0)
 
     // ¿Es DUEÑO de algún equipo? (insignia 👑 con la fecha de creación)
@@ -210,20 +226,27 @@ export default function PlayerHomePage() {
     const notifsList = []
     const dismissed  = JSON.parse(localStorage.getItem('golmebol_notifs_dismissed') || '[]')
 
-    if (regs && regs.length > 0) {
-      const teamIds = regs.map(r => r.team_id).filter(Boolean)
-      const ahora   = new Date()
-      const en24h   = new Date(ahora.getTime() + 24 * 60 * 60 * 1000)
-      const { data: proximosPartidos } = await supabase
-        .from('matches')
-        .select('*, home:home_team_id(name), away:away_team_id(name)')
-        .in('home_team_id', teamIds)
-        .gte('played_at', ahora.toISOString())
-        .lte('played_at', en24h.toISOString())
-        .eq('status', 'scheduled')
-        .order('played_at', { ascending: true })
-        .limit(1)
+    // Las dos consultas de acá abajo dependen de datos que ya llegaron (regs y
+    // customCards), así que salen juntas en vez de una atrás de la otra.
+    const ahora = new Date()
+    const [{ data: proximosPartidos }, { data: playerNotifs }] = await Promise.all([
+      (regs && regs.length > 0)
+        ? supabase
+            .from('matches')
+            .select('*, home:home_team_id(name), away:away_team_id(name)')
+            .in('home_team_id', regs.map(r => r.team_id).filter(Boolean))
+            .gte('played_at', ahora.toISOString())
+            .lte('played_at', new Date(ahora.getTime() + 24 * 60 * 60 * 1000).toISOString())
+            .eq('status', 'scheduled')
+            .order('played_at', { ascending: true })
+            .limit(1)
+        : Promise.resolve({ data: null }),
+      (customCards && customCards.length > 0)
+        ? supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'nueva_tarjeta').eq('leida', false)
+        : Promise.resolve({ data: null }),
+    ])
 
+    if (regs && regs.length > 0) {
       if (proximosPartidos && proximosPartidos.length > 0) {
         const partido   = proximosPartidos[0]
         const fecha     = new Date(partido.played_at)
@@ -244,10 +267,6 @@ export default function PlayerHomePage() {
         }
       }
     }
-
-    const { data: predsResueltas } = await supabase
-      .from('predicciones').select('puntos_ganados, match_id')
-      .eq('player_id', p.id).eq('resuelta', true).gt('puntos_ganados', 0)
 
     if (predsResueltas && predsResueltas.length > 0) {
       const nid = `predix_puntos_${predsResueltas.length}`
@@ -284,12 +303,6 @@ export default function PlayerHomePage() {
 
     // Notificaciones de nuevas tarjetas custom
     if (customCards && customCards.length > 0) {
-      const { data: playerNotifs } = await supabase
-        .from('player_notifications')
-        .select('*')
-        .eq('player_id', p.id)
-        .eq('tipo', 'nueva_tarjeta')
-        .eq('leida', false)
       ;(playerNotifs || []).forEach(n => {
         const nid = `nueva_tarjeta_${n.id}`
         if (!dismissed.includes(nid)) {
@@ -306,12 +319,6 @@ export default function PlayerHomePage() {
 
     // Notificaciones de aperturas de rondas de Predix (avisadas por el admin
     // desde el panel — ver AdminPredixPage.jsx / pestaña Rondas)
-    const { data: rondaNotifs } = await supabase
-      .from('player_notifications')
-      .select('*')
-      .eq('player_id', p.id)
-      .eq('tipo', 'predix_ronda')
-      .eq('leida', false)
     ;(rondaNotifs || []).forEach(n => {
       const nid = `predix_ronda_${n.id}`
       if (!dismissed.includes(nid)) {
@@ -1062,38 +1069,38 @@ export default function PlayerHomePage() {
                 const resLabel  = resultado === 'win' ? 'G'        : resultado === 'draw' ? 'E'        : 'P'
                 return (
                   <div key={i} onClick={() => navigate('/jugador/historial')}
-                    style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background='#f8f9fa'}
-                    onMouseLeave={e => e.currentTarget.style.background='#fff'}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '.65rem', fontWeight: '700', color: resColor, background: resBg, borderRadius: '4px', padding: '2px 7px' }}>{resLabel}</span>
-                        {match.matchday && <span style={{ fontSize: '.68rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '1px 7px' }}>J{match.matchday}</span>}
-                      </div>
-                      {match.played_at && (
-                        <span style={{ fontSize: '.68rem', color: '#9aa0a6' }}>
-                          📅 {new Date(match.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                      )}
+                    style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.06)', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 14px 0' }}>
+                      <span style={{ fontSize: '.65rem', fontWeight: '700', color: resColor, background: resBg, borderRadius: '4px', padding: '2px 7px' }}>{resLabel}</span>
+                      {match.matchday && <span style={{ fontSize: '.62rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 8px', fontWeight: '700' }}>Fecha {match.matchday}</span>}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-                        <span style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124', textAlign: 'right' }}>{match.home?.name}</span>
-                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#fff', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,.15)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {match.home?.logo_url ? <img src={match.home.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <span style={{ fontSize: '.7rem' }}>⚽</span>}
                         </div>
+                        <div style={{ flex: 1, minWidth: 0, background: '#f8f9fa', borderRadius: '9px', padding: '7px 9px' }}>
+                          <div style={{ fontSize: '.72rem', fontWeight: '800', color: '#202124', textTransform: 'uppercase', letterSpacing: '.2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.home?.name}</div>
+                        </div>
                       </div>
-                      <div style={{ fontWeight: '700', fontSize: '1rem', color: '#202124', padding: '4px 12px', background: '#f1f3f4', borderRadius: '8px', flexShrink: 0 }}>
+                      <div style={{ fontWeight: '900', fontSize: '1rem', color: '#202124', background: '#fff', border: '1.5px solid #e8eaed', padding: '6px 12px', borderRadius: '10px', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,.08)' }}>
                         {match.home_score} - {match.away_score}
                       </div>
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexDirection: 'row-reverse' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#fff', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,.15)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {match.away?.logo_url ? <img src={match.away.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <span style={{ fontSize: '.7rem' }}>⚽</span>}
                         </div>
-                        <span style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{match.away?.name}</span>
+                        <div style={{ flex: 1, minWidth: 0, background: '#f8f9fa', borderRadius: '9px', padding: '7px 9px', textAlign: 'right' }}>
+                          <div style={{ fontSize: '.72rem', fontWeight: '800', color: '#202124', textTransform: 'uppercase', letterSpacing: '.2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{match.away?.name}</div>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center', paddingBottom: '8px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '.64rem', fontWeight: '800', color: '#5f6368', letterSpacing: '.4px', textTransform: 'uppercase', background: '#f1f3f4', padding: '4px 12px', borderRadius: '20px' }}>
+                        📅 {match.played_at ? new Date(match.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long' }) : 'Fecha por definir'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', padding: '0 14px 12px', justifyContent: 'center' }}>
                       {(h.goals_scored || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>⚽ {h.goals_scored} gol{h.goals_scored > 1 ? 'es' : ''}</span>}
                       {(h.yellow_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fce8d9', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟨 Amarilla</span>}
                       {(h.blue_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟦 Azul</span>}

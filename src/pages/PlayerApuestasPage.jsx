@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trophy, Calendar, BarChart3, User, Swords, Flame, Award, MapPin, Clock } from 'lucide-react'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -13,6 +13,10 @@ const S = {
 }
 
 const PUNTOS = { ganador: 3, empate: 5, golesExactosCada: 3, bonusExacto: 10, goleador: 2 }
+// Máximo de puntos que se pueden ganar en un solo partido (resultado + marcador exacto + goleador) — se muestra como "en juego" en cada tarjeta.
+const MAX_PTS_PARTIDO = Math.max(PUNTOS.ganador, PUNTOS.empate) + PUNTOS.golesExactosCada * 2 + PUNTOS.bonusExacto + PUNTOS.goleador
+// Colores del borde de cada tarjeta de partido, en ciclo — solo estético, para que la lista se vea viva como en el mockup.
+const BORDER_COLORS = ['#4caf50', '#f9a825', '#ff7043', '#e53935']
 
 // ── Duelos 1v1 (retar a un jugador puntual apostando puntos de Predix) ──
 // Quema creciente en revanchas: entre el mismo par de jugadores, el primer
@@ -460,7 +464,7 @@ export default function PlayerApuestasPage() {
       supabase.from('tournament_player_registrations')
         .select('tournament_id, team_id, players(id,name,photo_url)')
         .eq('activo', true),
-      supabase.from('predicciones').select('player_id, puntos_ganados, modo'),
+      supabase.from('predicciones').select('player_id, match_id, puntos_ganados, modo'),
       supabase.from('predix_duelos').select('*').order('created_at', { ascending: false }),
       supabase.from('players').select('id, name, photo_face_url, photo_url, user_id, es_arbitro, rol').eq('activo_membresia', true).order('name'),
       supabase.from('predix_posturas').select('*').order('created_at', { ascending: true }),
@@ -693,6 +697,10 @@ export default function PlayerApuestasPage() {
   const gruposPendientes = groupByTournament(torneoFiltro ? pendientes.filter(p => p.tournament_id === torneoFiltro) : pendientes)
   const torneosUnicos    = [...new Map(pendientes.map(p => [p.tournament_id, p.tournaments])).values()]
 
+  // Cuántos jugadores ya predijeron cada partido (para el "🔥 X ya predijeron" de cada tarjeta)
+  const prediccionesPorPartido = {}
+  todasPredicciones.forEach(pr => { if (pr.match_id) prediccionesPorPartido[pr.match_id] = (prediccionesPorPartido[pr.match_id] || 0) + 1 })
+
   function toggleCollapse(tid) { setCollapsed(prev => ({ ...prev, [tid]: !prev[tid] })) }
 
   // Duelos 1v1 — datos derivados (saldo separado por modo demo/pago)
@@ -801,7 +809,7 @@ export default function PlayerApuestasPage() {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'86px' }}>
 
       {teamSheet && <TeamSheet {...teamSheet} onClose={() => setTeamSheet(null)}/>}
       {modalPlanes && <ModalPlanesPredix planes={planesPredix} misSuscripciones={misSuscripciones} jugadorNombre={player.name} onClose={() => setModalPlanes(false)}/>}
@@ -1115,19 +1123,27 @@ export default function PlayerApuestasPage() {
 
       {/* Header */}
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-            <button onClick={() => navigate('/jugador')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', display:'flex', alignItems:'center', gap:'5px', width:'fit-content' }}>← Inicio</button>
-            <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>Predix</div>
-            <div style={{ fontWeight:'800', fontSize:'1.1rem', color:S.text }}>{player.name}</div>
+        <div style={{ maxWidth:'600px', margin:'0 auto' }}>
+          <button onClick={() => navigate('/jugador')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', display:'flex', alignItems:'center', gap:'5px', width:'fit-content', marginBottom:'12px' }}>← Inicio</button>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
+            <div>
+              <div style={{ fontWeight:'900', fontSize:'1.4rem', color:S.text, lineHeight:1.15 }}>
+                {tab==='pendientes' ? 'Próximos partidos' : tab==='mias' ? 'Mis predicciones' : tab==='duelos' ? 'Duelos 1v1' : 'Ranking'}
+              </div>
+              <div style={{ fontSize:'.8rem', color:S.muted, marginTop:'2px' }}>Predice y gana <span style={{ color:S.cyan, fontWeight:'700' }}>puntos</span> 🏆</div>
+            </div>
+            <button onClick={() => setTab('mias')}
+              style={{ display:'flex', alignItems:'center', gap:'6px', background: tab==='mias' ? S.cyan : 'rgba(0,221,208,.08)', border:`1px solid ${S.cyan}`, borderRadius:'20px', padding:'8px 14px', cursor:'pointer', color: tab==='mias' ? '#000' : S.cyan, fontWeight:'700', fontSize:'.76rem', flexShrink:0 }}>
+              <Trophy size={14}/> Mis predicciones
+            </button>
           </div>
-          <div style={{ display:'flex', gap:'14px' }}>
-            <div style={{ textAlign:'right' }}>
-              <div style={{ fontSize:'1.3rem', fontWeight:'900', color:S.muted, lineHeight:1 }}>{Math.round(misPuntosDemo*10)/10}</div>
+          <div style={{ display:'flex', gap:'18px', marginTop:'14px' }}>
+            <div>
+              <div style={{ fontSize:'1.1rem', fontWeight:'900', color:S.muted, lineHeight:1 }}>{Math.round(misPuntosDemo*10)/10}</div>
               <div style={{ fontSize:'.6rem', color:S.muted }}>🎓 Demo</div>
             </div>
-            <div style={{ textAlign:'right' }}>
-              <div style={{ fontSize:'1.3rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{Math.round(misPuntosPago*10)/10}</div>
+            <div>
+              <div style={{ fontSize:'1.1rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{Math.round(misPuntosPago*10)/10}</div>
               <div style={{ fontSize:'.6rem', color:S.muted }}>💰 Pago</div>
             </div>
           </div>
@@ -1170,15 +1186,24 @@ export default function PlayerApuestasPage() {
         )}
 
         {/* Tabs */}
-        <div style={{ display:'flex', gap:'4px', padding:'12px 0', position:'sticky', top:0, background:S.navy, zIndex:10 }}>
-          {[{ id:'pendientes', label:'Próximos' },{ id:'mias', label:'Mis predicciones' },{ id:'duelos', label:'Duelos 1v1' },{ id:'ranking', label:'Ranking' }].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex:1, padding:'9px 4px', borderRadius:'10px', border:'none', cursor:'pointer', fontSize:'.78rem', fontWeight:'700', transition:'all .15s', background: tab===t.id ? S.cyan : S.card, color: tab===t.id ? '#000' : S.muted, position:'relative' }}>
-              {t.label}
-              {t.id === 'duelos' && retosRecibidos.length > 0 && (
-                <span style={{ position:'absolute', top:'-4px', right:'-4px', background:S.loss, color:'#fff', borderRadius:'50%', width:'16px', height:'16px', fontSize:'.6rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center' }}>{retosRecibidos.length}</span>
-              )}
-            </button>
-          ))}
+        <div style={{ display:'flex', gap:'6px', padding:'12px 0', position:'sticky', top:0, background:S.navy, zIndex:10 }}>
+          {[
+            { id:'pendientes', label:'Próximos',  icon:Calendar },
+            { id:'duelos',     label:'Duelo 1v1', icon:Swords },
+            { id:'ranking',    label:'Ranking',   icon:BarChart3 },
+          ].map(t => {
+            const Icon = t.icon
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px 4px', borderRadius:'12px', border:'none', cursor:'pointer', fontSize:'.78rem', fontWeight:'700', transition:'all .15s', background: tab===t.id ? S.cyan : S.card, color: tab===t.id ? '#000' : S.muted, position:'relative' }}>
+                <Icon size={15}/>
+                {t.label}
+                {t.id === 'duelos' && retosRecibidos.length > 0 && (
+                  <span style={{ position:'absolute', top:'-4px', right:'-4px', background:S.loss, color:'#fff', borderRadius:'50%', width:'16px', height:'16px', fontSize:'.6rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center' }}>{retosRecibidos.length}</span>
+                )}
+              </button>
+            )
+          })}
         </div>
 
         {/* TAB: Próximos */}
@@ -1202,7 +1227,7 @@ export default function PlayerApuestasPage() {
               return (
                 <div key={tid} style={{ marginBottom:'16px', background:S.card, borderRadius:'16px', overflow:'hidden', border:`0.5px solid ${S.border}` }}>
                   <div onClick={() => toggleCollapse(tid)} style={{ padding:'14px 16px', display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', background:S.card2, borderBottom: isCollapsed ? 'none' : `0.5px solid ${S.border}` }}>
-                    <div style={{ width:'32px', height:'32px', borderRadius:'8px', background:'rgba(0,221,208,.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Trophy size={16} color={S.cyan}/></div>
+                    <div style={{ width:'32px', height:'32px', borderRadius:'8px', background:'rgba(0,221,208,.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'1rem' }}>⚽</div>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontWeight:'700', fontSize:'.9rem', color:S.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{grupo.torneo?.name || 'Torneo'}</div>
                       <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'1px' }}>
@@ -1214,39 +1239,58 @@ export default function PlayerApuestasPage() {
                   </div>
                   {!isCollapsed && grupo.partidos.map((p, i) => {
                     const pred = miscPreds[p.id], pasado = p.played_at && new Date(p.played_at) <= new Date(), clickable = !pasado || !!pred
+                    const borderColor = BORDER_COLORS[i % BORDER_COLORS.length]
+                    const cuentaPredicciones = prediccionesPorPartido[p.id] || 0
                     return (
-                      <div key={p.id} style={{ borderTop: i>0 ? `0.5px solid ${S.border}` : 'none' }}>
-                        <div style={{ padding:'10px 16px 0', display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
-                          {p.matchday && <span style={{ fontSize:'.65rem', background:'rgba(0,221,208,.1)', color:S.cyan, borderRadius:'10px', padding:'1px 7px', fontWeight:'600' }}>J{p.matchday}</span>}
-                          {p.played_at && <span style={{ fontSize:'.68rem', color:S.muted }}>📅 {new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})} {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>}
-                          {p.location && <span style={{ fontSize:'.68rem', color:S.muted }}>📍 {p.location}</span>}
-                          {pred && <span style={{ fontSize:'.65rem', color:S.gold, background:S.goldDim, borderRadius:'10px', padding:'1px 7px' }}>✓ Predicho</span>}
-                          {pasado && !pred && <span style={{ fontSize:'.65rem', color:S.loss, background:S.lossDim, borderRadius:'10px', padding:'1px 7px' }}>Sin predicción</span>}
-                        </div>
-                        <div onClick={() => clickable && abrirModal(p)} style={{ padding:'10px 16px 12px', display:'flex', alignItems:'center', gap:'8px', cursor: clickable?'pointer':'default', opacity: pasado&&!pred ? 0.5 : 1 }}>
-                          <div style={{ flex:1, display:'flex', alignItems:'center', gap:'8px', justifyContent:'flex-end' }}>
-                            <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.home_team_id, teamName:p.home?.name, teamLogo:p.home?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', padding:'4px 6px', borderRadius:'8px' }}>
-                              <span style={{ fontWeight:'700', fontSize:'.88rem', color:S.text, textAlign:'right', textDecoration:'underline', textDecorationColor:'rgba(255,255,255,.15)', textUnderlineOffset:'3px' }}>{p.home?.name}</span>
-                              <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                {p.home?.logo_url ? <img src={p.home.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <span style={{ fontSize:'.6rem', fontWeight:'800', color:'#fff' }}>{(p.home?.name||'?').substring(0,2).toUpperCase()}</span>}
-                              </div>
+                      <div key={p.id} style={{ borderTop: i>0 ? `0.5px solid ${S.border}` : 'none', padding:'12px', opacity: pasado&&!pred ? 0.5 : 1 }}>
+                        <div style={{ display:'flex', borderLeft:`4px solid ${borderColor}`, borderRadius:'12px', overflow:'hidden', background:S.card2 }}>
+                          <div onClick={() => clickable && abrirModal(p)} style={{ flex:1, minWidth:0, padding:'12px 14px', cursor: clickable?'pointer':'default' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'10px' }}>
+                              {p.matchday && <span style={{ fontSize:'.65rem', background:'rgba(0,221,208,.12)', color:S.cyan, borderRadius:'6px', padding:'2px 7px', fontWeight:'700' }}>J{p.matchday}</span>}
+                              {p.played_at && (
+                                <>
+                                  <span style={{ display:'flex', alignItems:'center', gap:'3px', fontSize:'.68rem', color:S.muted }}><Calendar size={11}/> {new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</span>
+                                  <span style={{ display:'flex', alignItems:'center', gap:'3px', fontSize:'.68rem', color:S.muted }}><Clock size={11}/> {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+                                </>
+                              )}
+                              {pred && <span style={{ fontSize:'.62rem', color:S.gold, background:S.goldDim, borderRadius:'6px', padding:'2px 7px', fontWeight:'700' }}>✓ Predicho</span>}
+                              {pasado && !pred && <span style={{ fontSize:'.62rem', color:S.loss, background:S.lossDim, borderRadius:'6px', padding:'2px 7px', fontWeight:'700' }}>Sin predicción</span>}
+                            </div>
+                            <div style={{ display:'flex', alignItems:'flex-start', gap:'10px' }}>
+                              <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.home_team_id, teamName:p.home?.name, teamLogo:p.home?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
+                                style={{ flex:1, minWidth:0, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'6px' }}>
+                                <div style={{ width:'38px', height:'38px', borderRadius:'50%', background:S.card, border:`1px solid ${S.border}`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                  {p.home?.logo_url ? <img src={p.home.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <span style={{ fontSize:'.7rem', fontWeight:'800', color:'#fff' }}>{(p.home?.name||'?').substring(0,2).toUpperCase()}</span>}
+                                </div>
+                                <span style={{ fontSize:'.72rem', fontWeight:'700', color:S.text, textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{p.home?.name}</span>
+                              </button>
+                              <span style={{ fontSize:'.78rem', fontWeight:'900', color:S.cyan, flexShrink:0, marginTop:'10px' }}>
+                                {pred ? `${pred.goles_home}–${pred.goles_away}` : 'VS'}
+                              </span>
+                              <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.away_team_id, teamName:p.away?.name, teamLogo:p.away?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }}
+                                style={{ flex:1, minWidth:0, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'6px' }}>
+                                <div style={{ width:'38px', height:'38px', borderRadius:'50%', background:S.card, border:`1px solid ${S.border}`, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                  {p.away?.logo_url ? <img src={p.away.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <span style={{ fontSize:'.7rem', fontWeight:'800', color:'#fff' }}>{(p.away?.name||'?').substring(0,2).toUpperCase()}</span>}
+                                </div>
+                                <span style={{ fontSize:'.72rem', fontWeight:'700', color:S.text, textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{p.away?.name}</span>
+                              </button>
+                            </div>
+                            {p.location && <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', marginTop:'8px', fontSize:'.66rem', color:S.muted }}><MapPin size={10}/> {p.location}</div>}
+                          </div>
+                          <div style={{ width:'96px', flexShrink:0, borderLeft:`0.5px solid ${S.border}`, padding:'12px 8px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'8px', textAlign:'center' }}>
+                            <div>
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'3px', fontSize:'.8rem', fontWeight:'800', color:S.text }}><Flame size={12} color="#ff7043"/> {cuentaPredicciones}</div>
+                              <div style={{ fontSize:'.56rem', color:S.muted, marginTop:'1px' }}>ya predijeron</div>
+                            </div>
+                            <div>
+                              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'3px', fontSize:'.74rem', fontWeight:'800', color:S.gold }}><Award size={12}/> +{MAX_PTS_PARTIDO}</div>
+                              <div style={{ fontSize:'.56rem', color:S.muted, marginTop:'1px' }}>en juego</div>
+                            </div>
+                            <button onClick={() => clickable && abrirModal(p)} disabled={!clickable}
+                              style={{ width:'100%', padding:'7px 4px', background: pred ? 'rgba(0,221,208,.12)' : S.cyan, border: pred ? `1px solid ${S.cyan}` : 'none', borderRadius:'8px', cursor: clickable?'pointer':'not-allowed', color: pred ? S.cyan : '#000', fontWeight:'800', fontSize:'.7rem', opacity: clickable?1:.5 }}>
+                              {pred ? 'Editar' : 'Predecir'}
                             </button>
                           </div>
-                          <div style={{ flexShrink:0, background:S.card2, borderRadius:'8px', padding:'6px 10px', textAlign:'center', minWidth:'44px' }}>
-                            {pred ? <div style={{ fontSize:'.8rem', fontWeight:'800', color:S.cyan }}>{pred.goles_home}–{pred.goles_away}</div> : <div style={{ fontSize:'.7rem', fontWeight:'700', color:S.muted }}>VS</div>}
-                          </div>
-                          <div style={{ flex:1, display:'flex', alignItems:'center', gap:'8px' }}>
-                            <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.away_team_id, teamName:p.away?.name, teamLogo:p.away?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }} style={{ background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', padding:'4px 6px', borderRadius:'8px' }}>
-                              <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                {p.away?.logo_url ? <img src={p.away.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <span style={{ fontSize:'.6rem', fontWeight:'800', color:'#fff' }}>{(p.away?.name||'?').substring(0,2).toUpperCase()}</span>}
-                              </div>
-                              <span style={{ fontWeight:'700', fontSize:'.88rem', color:S.text, textDecoration:'underline', textDecorationColor:'rgba(255,255,255,.15)', textUnderlineOffset:'3px' }}>{p.away?.name}</span>
-                            </button>
-                          </div>
-                        </div>
-                        <div style={{ padding:'0 16px 10px', display:'flex', gap:'6px' }}>
-                          <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.home_team_id, teamName:p.home?.name, teamLogo:p.home?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }} style={{ fontSize:'.62rem', color:S.cyan, background:'rgba(0,221,208,.06)', border:`0.5px solid rgba(0,221,208,.2)`, borderRadius:'6px', padding:'2px 8px', cursor:'pointer' }}>📊 Stats {p.home?.name}</button>
-                          <button onClick={e => { e.stopPropagation(); setTeamSheet({ teamId:p.away_team_id, teamName:p.away?.name, teamLogo:p.away?.logo_url, tournamentId:p.tournament_id, tournamentName:p.tournaments?.name }) }} style={{ fontSize:'.62rem', color:S.cyan, background:'rgba(0,221,208,.06)', border:`0.5px solid rgba(0,221,208,.2)`, borderRadius:'6px', padding:'2px 8px', cursor:'pointer' }}>📊 Stats {p.away?.name}</button>
                         </div>
                       </div>
                     )
@@ -1487,6 +1531,28 @@ export default function PlayerApuestasPage() {
             })}
           </div>
         )}
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{ position:'fixed', left:0, right:0, bottom:0, background:S.surface, borderTop:`0.5px solid ${S.border}`, padding:'8px 10px calc(8px + env(safe-area-inset-bottom))', zIndex:20 }}>
+        <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-around' }}>
+          {[
+            { id:'pendientes', label:'Partidos',     icon:Calendar,   onClick:() => setTab('pendientes') },
+            { id:'mias',       label:'Predicciones', icon:Trophy,     onClick:() => setTab('mias') },
+            { id:'ranking',    label:'Ranking',       icon:BarChart3,  onClick:() => setTab('ranking') },
+            { id:'perfil',     label:'Perfil',        icon:User,       onClick:() => navigate('/jugador') },
+          ].map(item => {
+            const Icon = item.icon
+            const activo = item.id !== 'perfil' && tab === item.id
+            return (
+              <button key={item.id} onClick={item.onClick}
+                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', background:'none', border:'none', cursor:'pointer', color: activo ? S.cyan : S.muted, padding:'4px 10px', minWidth:'56px' }}>
+                <Icon size={20} strokeWidth={activo ? 2.4 : 1.8}/>
+                <span style={{ fontSize:'.62rem', fontWeight: activo ? '800' : '600' }}>{item.label}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )

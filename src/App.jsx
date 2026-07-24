@@ -19,6 +19,7 @@ const AdminJugadorDetallePage = lazy(() => import('./pages/admin/AdminJugadorDet
 const AdminCalendarioPage     = lazy(() => import('./pages/admin/AdminCalendarioPage'))
 const AdminSponsorsPage       = lazy(() => import('./pages/admin/AdminSponsorsPage'))
 const AdminEquipoDetallePage  = lazy(() => import('./pages/admin/AdminEquipoDetallePage'))
+const EquipoHistorialPage     = lazy(() => import('./pages/EquipoHistorialPage'))
 const AdminTorneoDetallePage  = lazy(() => import('./pages/admin/AdminTorneoDetallePage'))
 const AdminTarjetasPage       = lazy(() => import('./pages/admin/AdminTarjetasPage'))
 const AdminNoticiasPage       = lazy(() => import('./pages/admin/AdminNoticiasPage'))
@@ -361,7 +362,7 @@ export default function App() {
           <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
 
           {/* Equipo detalle — accesible por admin Y jugador */}
-          <Route path="/equipos/:id" element={<PlayerRoute><AdminEquipoDetallePage modoLectura={true}/></PlayerRoute>}/>
+          <Route path="/equipos/:id" element={<PlayerRoute><EquipoHistorialPage/></PlayerRoute>}/>
 
           {/* Portal jugador */}
           <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
