@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { comprimirImagen } from '../lib/imageCompress'
 import { createClient } from '@supabase/supabase-js'
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
@@ -189,16 +190,18 @@ export default function RegistroEquipoPage() {
   async function subirFotosCedula(playerId) {
     const urls = {}
     if (fotoFrontal) {
-      const ext  = fotoFrontal.name.split('.').pop()
+      const archivo = await comprimirImagen(fotoFrontal, { maxSize: 1600, calidad: 0.85 })
+      const ext  = archivo.name.split('.').pop()
       const path = `${playerId}_frontal.${ext}`
-      await supabase.storage.from('cedulas').upload(path, fotoFrontal, { upsert: true })
+      await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
       const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
       urls.cedula_frontal_url = data.publicUrl
     }
     if (fotoTrasera) {
-      const ext  = fotoTrasera.name.split('.').pop()
+      const archivo = await comprimirImagen(fotoTrasera, { maxSize: 1600, calidad: 0.85 })
+      const ext  = archivo.name.split('.').pop()
       const path = `${playerId}_trasera.${ext}`
-      await supabase.storage.from('cedulas').upload(path, fotoTrasera, { upsert: true })
+      await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
       const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
       urls.cedula_trasera_url = data.publicUrl
     }

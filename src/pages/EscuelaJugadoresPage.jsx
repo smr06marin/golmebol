@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { comprimirImagen } from '../lib/imageCompress'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -79,16 +80,20 @@ export default function EscuelaJugadoresPage() {
   async function subirFotos(playerId) {
     const urls = {}
     if (fotoFrontal) {
-      const ext = fotoFrontal.name.split('.').pop()
+      // Más resolución que una foto de perfil (1600px) para que el número
+      // de cédula siga siendo legible después de comprimir.
+      const archivo = await comprimirImagen(fotoFrontal, { maxSize: 1600, calidad: 0.85 })
+      const ext = archivo.name.split('.').pop()
       const path = `${playerId}_frontal.${ext}`
-      await supabase.storage.from('cedulas').upload(path, fotoFrontal, { upsert: true })
+      await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
       const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
       urls.cedula_frontal_url = data.publicUrl
     }
     if (fotoTrasera) {
-      const ext = fotoTrasera.name.split('.').pop()
+      const archivo = await comprimirImagen(fotoTrasera, { maxSize: 1600, calidad: 0.85 })
+      const ext = archivo.name.split('.').pop()
       const path = `${playerId}_trasera.${ext}`
-      await supabase.storage.from('cedulas').upload(path, fotoTrasera, { upsert: true })
+      await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
       const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
       urls.cedula_trasera_url = data.publicUrl
     }

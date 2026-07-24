@@ -46,9 +46,11 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 const APLICAR = process.argv.includes('--apply')
-const MAX_SIZE_PERFIL = 900
-const MAX_SIZE_LOGO   = 500
+const MAX_SIZE_PERFIL  = 900
+const MAX_SIZE_LOGO    = 500
+const MAX_SIZE_CEDULA  = 1600 // más resolución que una foto de perfil para que el número siga siendo legible
 const CALIDAD = 82
+const CALIDAD_CEDULA = 85
 const UMBRAL_OMITIR = 180 * 1024 // si ya pesa menos que esto Y ya es jpeg/png, no se toca
 
 function parsearUrl(url) {
@@ -76,7 +78,7 @@ async function descargarConReintento(url) {
   }
 }
 
-async function procesarUno({ url, maxSize }) {
+async function procesarUno({ url, maxSize, calidad = CALIDAD }) {
   const info = parsearUrl(url)
   if (!info) return { estado: 'url_rara', url }
 
@@ -105,7 +107,7 @@ async function procesarUno({ url, maxSize }) {
       salida = await sharp(buffer)
         .rotate() // respeta la orientación EXIF antes de recomprimir
         .resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: CALIDAD })
+        .jpeg({ quality: calidad })
         .toBuffer()
     } catch (e) {
       return { estado: 'error_procesando', url, ...info, error: e.message, pesoOriginal: buffer.length, formatoOriginal: metadata.format }
@@ -150,15 +152,17 @@ async function procesarLote(items, concurrencia = 4) {
 async function main() {
   console.log(APLICAR ? '=== MODO APLICAR (se van a sobreescribir fotos en Storage) ===' : '=== MODO SIMULACIÓN (no cambia nada, solo reporta) ===')
 
-  const { data: jugadores, error: errJ } = await supabase.from('players').select('id, name, photo_url, photo_face_url')
+  const { data: jugadores, error: errJ } = await supabase.from('players').select('id, name, photo_url, photo_face_url, cedula_frontal_url, cedula_trasera_url')
   if (errJ) { console.error('No se pudo leer players:', errJ.message); process.exit(1) }
   const { data: equipos, error: errE } = await supabase.from('teams').select('id, name, logo_url')
   if (errE) { console.error('No se pudo leer teams:', errE.message); process.exit(1) }
 
   const items = []
   jugadores.forEach(p => {
-    if (p.photo_url)      items.push({ url: p.photo_url,      maxSize: MAX_SIZE_PERFIL })
-    if (p.photo_face_url) items.push({ url: p.photo_face_url, maxSize: MAX_SIZE_PERFIL })
+    if (p.photo_url)          items.push({ url: p.photo_url,          maxSize: MAX_SIZE_PERFIL })
+    if (p.photo_face_url)     items.push({ url: p.photo_face_url,     maxSize: MAX_SIZE_PERFIL })
+    if (p.cedula_frontal_url) items.push({ url: p.cedula_frontal_url, maxSize: MAX_SIZE_CEDULA, calidad: CALIDAD_CEDULA })
+    if (p.cedula_trasera_url) items.push({ url: p.cedula_trasera_url, maxSize: MAX_SIZE_CEDULA, calidad: CALIDAD_CEDULA })
   })
   equipos.forEach(t => { if (t.logo_url) items.push({ url: t.logo_url, maxSize: MAX_SIZE_LOGO }) })
 

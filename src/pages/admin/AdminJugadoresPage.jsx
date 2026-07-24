@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
@@ -353,9 +354,10 @@ export default function AdminJugadoresPage() {
     if (!file) return
     const key   = jugador.id + '_' + cara
     setUploading(u => ({ ...u, [key]: true }))
-    const ext   = file.name.split('.').pop()
+    const archivo = await comprimirImagen(file, { maxSize: 1600, calidad: 0.85 })
+    const ext   = archivo.name.split('.').pop()
     const path  = `${jugador.id}_${cara}.${ext}`
-    const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
     if (error) { setUploading(u => ({ ...u, [key]: false })); showMsg('Error al subir cédula', 'error'); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
     const campo = cara === 'frontal' ? 'cedula_frontal_url' : 'cedula_trasera_url'

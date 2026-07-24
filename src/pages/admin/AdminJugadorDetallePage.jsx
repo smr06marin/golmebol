@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { comprimirImagen } from '../../lib/imageCompress'
 import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle, Download } from 'lucide-react'
 import PlayerCard from '../../components/card/PlayerCard'
 import BuscadorJugador from '../../components/BuscadorJugador'
@@ -313,9 +314,10 @@ export default function AdminJugadorDetallePage() {
   async function handleCedula(file, cara) {
     if (!file) return
     setUploading(u => ({ ...u, [cara]: true }))
-    const ext  = file.name.split('.').pop()
+    const archivo = await comprimirImagen(file, { maxSize: 1600, calidad: 0.85 })
+    const ext  = archivo.name.split('.').pop()
     const path = `${id}_${cara}.${ext}`
-    const { error } = await supabase.storage.from('cedulas').upload(path, file, { upsert: true })
+    const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
     if (error) { showMsg('Error al subir cédula', 'error'); setUploading(u => ({ ...u, [cara]: false })); return }
     const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
     const campo = cara === 'frontal' ? 'cedula_frontal_url' : 'cedula_trasera_url'
