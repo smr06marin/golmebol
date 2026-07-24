@@ -85,7 +85,18 @@ async function procesarUno({ url, maxSize, calidad = CALIDAD }) {
   // Cualquier cosa inesperada (red, sharp, supabase) cae acá y se reporta
   // como error de ESA foto puntual, en vez de tumbar el script completo.
   try {
-    const descarga = await descargarConReintento(url)
+    // El bucket 'cedulas' NO es público (a propósito, son documentos de
+    // identidad) — la URL guardada en la base de datos no se puede
+    // descargar directo, hay que pedir una URL firmada primero (igual que
+    // hace el panel admin para mostrar la cédula).
+    let urlDescarga = url
+    if (info.bucket === 'cedulas') {
+      const { data: firmada, error: errFirma } = await supabase.storage.from('cedulas').createSignedUrl(info.path, 60)
+      if (errFirma || !firmada?.signedUrl) return { estado: 'roto_404', url, ...info, http: null, error: errFirma?.message }
+      urlDescarga = firmada.signedUrl
+    }
+
+    const descarga = await descargarConReintento(urlDescarga)
     if (!descarga.ok) {
       if (descarga.http) return { estado: 'roto_404', url, ...info, http: descarga.http }
       return { estado: 'fetch_fallo', url, ...info, error: descarga.error }
