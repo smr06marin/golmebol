@@ -6,6 +6,7 @@ import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
 import VallaEquipos from '../../components/VallaEquipos'
 import FlyerTorneo from '../../components/FlyerTorneo'
+import FlyerProgramacion from '../../components/FlyerProgramacion'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon } from 'lucide-react'
@@ -810,6 +811,7 @@ export default function AdminTorneoDetallePage() {
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
   const [showFlyerTorneo,  setShowFlyerTorneo]  = useState(false)
+  const [showFlyerProgramacion, setShowFlyerProgramacion] = useState(false)
   const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
   const [verDesact,        setVerDesact]        = useState(false)
   const [abiertosJornada,  setAbiertosJornada]  = useState({})
@@ -3113,13 +3115,21 @@ export default function AdminTorneoDetallePage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            {['partidos','jornada'].map(st => (
-              <button key={st} onClick={() => setSubTab(st)}
-                style={{ padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '.875rem', fontWeight: '500', background: subTab === st ? '#1a73e8' : '#fff', color: subTab === st ? '#fff' : '#5f6368', border: subTab === st ? 'none' : '1px solid #dadce0' }}>
-                {st === 'partidos' ? 'Crear Partido' : 'Jornada Automática'}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {['partidos','jornada'].map(st => (
+                <button key={st} onClick={() => setSubTab(st)}
+                  style={{ padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '.875rem', fontWeight: '500', background: subTab === st ? '#1a73e8' : '#fff', color: subTab === st ? '#fff' : '#5f6368', border: subTab === st ? 'none' : '1px solid #dadce0' }}>
+                  {st === 'partidos' ? 'Crear Partido' : 'Jornada Automática'}
+                </button>
+              ))}
+            </div>
+            {partidos.length > 0 && (
+              <button onClick={() => setShowFlyerProgramacion(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1e8e3e', border: 'none', borderRadius: '8px', padding: '7px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
+                <ImageIcon size={16}/> Crear flyer
               </button>
-            ))}
+            )}
           </div>
 
           {subTab === 'partidos' && (
@@ -3622,6 +3632,7 @@ export default function AdminTorneoDetallePage() {
           {posterEquipo   && <ModalPosterEquipo   equipo={posterEquipo}   onClose={() => setPosterEquipo(null)}/>}
           {uniformeEquipo && <ModalUniformeEquipo equipo={uniformeEquipo} onClose={() => setUniformeEquipo(null)}/>}
           {showFlyerTorneo && <FlyerTorneo torneo={torneo} equipos={equipos} onClose={() => setShowFlyerTorneo(false)}/>}
+          {showFlyerProgramacion && <FlyerProgramacion torneo={torneo} equipos={equipos} partidos={partidos} onClose={() => setShowFlyerProgramacion(false)}/>}
 
           {/* Modal suspender jugador — la sanción queda solo para este torneo */}
           {modalSuspender && (
