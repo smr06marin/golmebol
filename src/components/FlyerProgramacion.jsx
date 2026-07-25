@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo } from 'react'
-import { Calendar, Clock, MapPin, Download, X, ChevronLeft, ChevronRight, Trophy, Instagram } from 'lucide-react'
+import { Calendar, Clock, MapPin, Download, X, ChevronLeft, ChevronRight, Trophy, AtSign } from 'lucide-react'
 
 const POR_PAGINA = 10
 const VERDE = '#22c55e'
@@ -214,7 +214,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                 <div style={{ color: '#fff', fontSize: '12px', fontWeight: '800', letterSpacing: '.5px' }}>golmebol.com</div>
                 <div style={{ color: 'rgba(255,255,255,.45)', fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', marginTop: '4px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', marginTop: '6px' }}>
-                  <Instagram size={11} color="rgba(255,255,255,.5)"/>
+                  <AtSign size={11} color="rgba(255,255,255,.5)"/>
                   <span style={{ color: 'rgba(255,255,255,.5)', fontSize: '9.5px', fontWeight: '600' }}>@golmebol</span>
                 </div>
               </div>
