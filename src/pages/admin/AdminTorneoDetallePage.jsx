@@ -2406,6 +2406,8 @@ export default function AdminTorneoDetallePage() {
         <ModalPartidoAdmin partido={modalPartidoAdmin} onClose={() => setModalPartidoAdmin(null)}/>
       )}
 
+      {showFlyerProgramacion && <FlyerProgramacion torneo={torneo} equipos={equipos} partidos={partidos} onClose={() => setShowFlyerProgramacion(false)}/>}
+
       {/* Confirmación al eliminar un partido — avisa qué más se borra */}
       {partidoAEliminar && (() => {
         const p = partidoAEliminar
@@ -3632,7 +3634,6 @@ export default function AdminTorneoDetallePage() {
           {posterEquipo   && <ModalPosterEquipo   equipo={posterEquipo}   onClose={() => setPosterEquipo(null)}/>}
           {uniformeEquipo && <ModalUniformeEquipo equipo={uniformeEquipo} onClose={() => setUniformeEquipo(null)}/>}
           {showFlyerTorneo && <FlyerTorneo torneo={torneo} equipos={equipos} onClose={() => setShowFlyerTorneo(false)}/>}
-          {showFlyerProgramacion && <FlyerProgramacion torneo={torneo} equipos={equipos} partidos={partidos} onClose={() => setShowFlyerProgramacion(false)}/>}
 
           {/* Modal suspender jugador — la sanción queda solo para este torneo */}
           {modalSuspender && (
