@@ -1,8 +1,9 @@
 import { useRef, useState, useMemo } from 'react'
-import { Calendar, Clock, MapPin, Download, X, ChevronLeft, ChevronRight, Trophy, AtSign } from 'lucide-react'
+import { Calendar, Clock, MapPin, Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 
 const POR_PAGINA = 10
-const VERDE = '#22c55e'
+const VERDE = '#9ACD32'
+const VERDE_OSCURO = '#6b9c1f'
 
 // Deja primero los partidos sin jugar, ordenados por fecha/hora ascendente
 // (los sin fecha van al final); para los jugados, orden cronológico también.
@@ -28,50 +29,63 @@ async function esperarImagenes(container) {
   await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = res })))
 }
 
-function EscudoCirculo({ logo_url, name, size = 40 }) {
+function formatFecha(fecha) {
+  return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' }).toUpperCase()
+}
+function formatHora(fecha) {
+  let h = fecha.getHours()
+  const m = fecha.getMinutes()
+  const suf = h >= 12 ? 'P.M.' : 'A.M.'
+  h = h % 12; if (h === 0) h = 12
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${suf}`
+}
+
+function EscudoCirculo({ logo_url, size = 30 }) {
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', border: `2px solid ${VERDE}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#f1f1f1', border: '1.5px solid #ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
       {logo_url
-        ? <img src={logo_url} crossOrigin="anonymous" style={{ width: '82%', height: '82%', objectFit: 'contain' }}/>
-        : <Trophy size={size * 0.42} color="#1a3a8a"/>}
+        ? <img src={logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
+        : <Trophy size={size * 0.45} color="#999"/>}
     </div>
   )
 }
 
 function FilaPartido({ p }) {
   const esJugado = p.status === 'finished'
-  const fecha = p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }) : 'Por definir'
-  const hora  = p.played_at ? new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''
+  const fechaObj = p.played_at ? new Date(p.played_at) : null
 
   return (
-    <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,.08)', borderRadius: '14px', padding: '12px 14px', marginBottom: '10px' }}>
-      {p.matchday && (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(34,197,94,.15)', border: `1px solid ${VERDE}`, borderRadius: '20px', padding: '2px 10px', marginBottom: '9px' }}>
-          <Calendar size={10} color={VERDE}/>
-          <span style={{ fontSize: '9px', fontWeight: '800', color: VERDE, letterSpacing: '.5px' }}>FECHA {p.matchday}</span>
-        </div>
-      )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '7px', justifyContent: 'flex-end' }}>
-          <span style={{ color: '#fff', fontWeight: '700', fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name || 'Por definir'}</span>
-          <EscudoCirculo logo_url={p.home?.logo_url} name={p.home?.name}/>
+    <div style={{ position: 'relative', background: '#fff', border: '1px solid #ececec', borderRadius: '12px', padding: '14px 12px 10px', marginBottom: '14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
+      {/* Etiqueta FECHA — ribete superior izquierdo */}
+      <div style={{ position: 'absolute', top: '-9px', left: '10px', display: 'flex', alignItems: 'center', gap: '3px', background: '#111', borderRadius: '7px', padding: '3px 8px' }}>
+        <Calendar size={8} color={VERDE}/>
+        <span style={{ fontSize: '8px', fontWeight: '900', color: '#fff', letterSpacing: '.4px' }}>
+          {p.matchday ? `FECHA ${p.matchday}` : 'PARTIDO'}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+          <span style={{ color: '#111', fontWeight: '800', fontSize: '10.5px', textAlign: 'right', textTransform: 'uppercase', lineHeight: 1.15 }}>{p.home?.name || 'Por definir'}</span>
+          <EscudoCirculo logo_url={p.home?.logo_url}/>
         </div>
         {esJugado ? (
-          <div style={{ flexShrink: 0, background: VERDE, borderRadius: '8px', padding: '4px 12px', fontWeight: '900', fontSize: '13px', color: '#06120a' }}>
+          <div style={{ flexShrink: 0, background: VERDE, borderRadius: '7px', padding: '4px 10px', fontWeight: '900', fontSize: '12px', color: '#0d1a03' }}>
             {p.home_score} - {p.away_score}
           </div>
         ) : (
-          <div style={{ flexShrink: 0, background: VERDE, borderRadius: '20px', padding: '4px 12px', fontWeight: '900', fontSize: '11px', color: '#06120a', letterSpacing: '.5px' }}>VS</div>
+          <div style={{ flexShrink: 0, background: VERDE, borderRadius: '7px', padding: '4px 11px', fontWeight: '900', fontSize: '10.5px', color: '#0d1a03', letterSpacing: '.5px' }}>VS</div>
         )}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '7px' }}>
-          <EscudoCirculo logo_url={p.away?.logo_url} name={p.away?.name}/>
-          <span style={{ color: '#fff', fontWeight: '700', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name || 'Por definir'}</span>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <EscudoCirculo logo_url={p.away?.logo_url}/>
+          <span style={{ color: '#111', fontWeight: '800', fontSize: '10.5px', textTransform: 'uppercase', lineHeight: 1.15 }}>{p.away?.name || 'Por definir'}</span>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '9px', paddingTop: '9px', borderTop: '1px solid rgba(255,255,255,.06)' }}>
-        {hora && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', color: 'rgba(255,255,255,.6)' }}><Clock size={10} color="rgba(255,255,255,.45)"/>{hora}</span>}
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', color: 'rgba(255,255,255,.6)' }}><Calendar size={10} color="rgba(255,255,255,.45)"/>{fecha}</span>
-        {p.location && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9.5px', color: 'rgba(255,255,255,.6)' }}><MapPin size={10} color="rgba(255,255,255,.45)"/>{p.location}</span>}
+
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '8px' }}>
+        {fechaObj && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', fontWeight: '700', color: '#666' }}><Calendar size={9} color="#999"/>{formatFecha(fechaObj)}</span>}
+        {fechaObj && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', fontWeight: '700', color: '#666' }}><Clock size={9} color="#999"/>{formatHora(fechaObj)}</span>}
+        {p.location && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', fontWeight: '700', color: '#666' }}><MapPin size={9} color="#999"/>{p.location}</span>}
       </div>
     </div>
   )
@@ -97,7 +111,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   async function descargarPagina(idx) {
     await esperarImagenes(flyerRef.current)
     const { default: html2canvas } = await import('html2canvas')
-    const canvas = await html2canvas(flyerRef.current, { scale: 3, useCORS: true, allowTaint: true, backgroundColor: null })
+    const canvas = await html2canvas(flyerRef.current, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' })
     const link = document.createElement('a')
     const base = (torneo?.name || 'golmebol').replace(/\s+/g, '_')
     const tipo = modo === 'jugados' ? 'resultados' : 'programacion'
@@ -126,9 +140,10 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   }
 
   const titulo = modo === 'jugados' ? 'PARTIDOS JUGADOS' : 'PRÓXIMOS PARTIDOS'
+  const subtitulo = [torneo?.modalidad, torneo?.season || torneo?.categoria].filter(Boolean).join(' · ')
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', maxWidth: '600px', width: '100%', maxHeight: '92vh', overflow: 'auto' }}>
 
         {/* Controles */}
@@ -170,52 +185,65 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
               </div>
             )}
 
-            {/* FLYER */}
+            {/* FLYER — proporción tipo historia de Instagram (ancho fijo 540 -> 1080 al exportar con scale 2) */}
             <div ref={flyerRef} style={{
-              width: '480px', maxWidth: '100%', margin: '0 auto',
-              background: '#0a0a0a', fontFamily: "'Arial Black', 'Impact', sans-serif",
-              padding: '22px 20px', boxSizing: 'border-box',
+              width: '540px', maxWidth: '100%', margin: '0 auto',
+              background: '#fff', fontFamily: "'Arial Black', 'Impact', sans-serif",
+              overflow: 'hidden', borderRadius: '4px',
             }}>
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
-                <div style={{ width: '58px', height: '58px', borderRadius: '50%', background: '#fff', border: `3px solid ${VERDE}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                  {torneo?.logo_url
-                    ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '86%', height: '86%', objectFit: 'contain' }}/>
-                    : <Trophy size={26} color="#1a3a8a"/>}
-                </div>
-                <div style={{ background: 'rgba(34,197,94,.15)', border: `1.5px solid ${VERDE}`, borderRadius: '20px', padding: '5px 14px', textAlign: 'center' }}>
-                  <span style={{ color: VERDE, fontSize: '11px', fontWeight: '900', letterSpacing: '.5px' }}>{equipos.length} EQUIPO{equipos.length !== 1 ? 'S' : ''}</span>
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                <div style={{ color: '#fff', fontSize: '21px', fontWeight: '900', letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.2 }}>
-                  {torneo?.name || 'Torneo'}
-                </div>
-                {(torneo?.categoria || torneo?.modalidad) && (
-                  <div style={{ color: 'rgba(255,255,255,.5)', fontSize: '11px', fontWeight: '700', letterSpacing: '1px', marginTop: '4px', textTransform: 'uppercase' }}>
-                    {[torneo?.modalidad, torneo?.categoria].filter(Boolean).join(' · ')}
+              {/* Header negro */}
+              <div style={{ background: '#0a0a0a', padding: '26px 26px 22px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#fff', border: `2.5px solid ${VERDE}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                      {torneo?.logo_url
+                        ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '86%', height: '86%', objectFit: 'contain' }}/>
+                        : <Trophy size={24} color="#1a3a8a"/>}
+                    </div>
+                    <span style={{ color: VERDE, fontSize: '13px', fontWeight: '900', letterSpacing: '1px' }}>GOLMEBOL</span>
                   </div>
-                )}
-                <div style={{ width: '90px', height: '3px', background: VERDE, margin: '10px auto 0', borderRadius: '2px' }}/>
+                  <div style={{ background: '#111', border: `1.5px solid ${VERDE}`, borderRadius: '10px', padding: '6px 14px', textAlign: 'center', minWidth: '58px' }}>
+                    <div style={{ color: VERDE, fontSize: '17px', fontWeight: '900', lineHeight: 1 }}>{equipos.length}</div>
+                    <div style={{ color: '#fff', fontSize: '8px', fontWeight: '800', letterSpacing: '.5px', marginTop: '2px' }}>EQUIPO{equipos.length !== 1 ? 'S' : ''}</div>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#fff', fontSize: '26px', fontWeight: '900', letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.15, textShadow: `0 0 18px rgba(154,205,50,.35)` }}>
+                    {torneo?.name || 'Torneo'}
+                  </div>
+                  {subtitulo && (
+                    <div style={{ color: VERDE, fontSize: '11px', fontWeight: '800', letterSpacing: '2px', marginTop: '6px', textTransform: 'uppercase' }}>
+                      {subtitulo}
+                    </div>
+                  )}
+                  <div style={{ width: '100px', height: '3px', background: `linear-gradient(90deg, transparent, ${VERDE}, transparent)`, margin: '12px auto 0' }}/>
+                </div>
               </div>
 
-              <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-                <span style={{ display: 'inline-block', background: VERDE, color: '#06120a', fontSize: '12px', fontWeight: '900', letterSpacing: '1px', padding: '5px 16px', borderRadius: '6px' }}>{titulo}</span>
+              {/* Título de sección */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px 4px' }}>
+                <div style={{ flex: 1, borderTop: `2px dashed ${VERDE_OSCURO}` }}/>
+                <span style={{ color: '#111', fontSize: '14px', fontWeight: '900', letterSpacing: '1px', whiteSpace: 'nowrap' }}>{titulo}</span>
+                <div style={{ flex: 1, borderTop: `2px dashed ${VERDE_OSCURO}` }}/>
               </div>
 
               {/* Lista de partidos */}
-              <div>
+              <div style={{ padding: '14px 20px 4px', background: '#fafafa' }}>
                 {items.map(p => <FilaPartido key={p.id} p={p}/>)}
               </div>
 
-              {/* Footer */}
-              <div style={{ textAlign: 'center', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,.1)' }}>
-                <div style={{ color: '#fff', fontSize: '12px', fontWeight: '800', letterSpacing: '.5px' }}>golmebol.com</div>
-                <div style={{ color: 'rgba(255,255,255,.45)', fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', marginTop: '4px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', marginTop: '6px' }}>
-                  <AtSign size={11} color="rgba(255,255,255,.5)"/>
-                  <span style={{ color: 'rgba(255,255,255,.5)', fontSize: '9.5px', fontWeight: '600' }}>@golmebol</span>
+              {/* Footer negro */}
+              <div style={{ background: '#0a0a0a', textAlign: 'center', padding: '18px 20px' }}>
+                <div style={{ color: '#fff', fontSize: '13px', fontWeight: '900', letterSpacing: '.5px' }}>golmebol.com</div>
+                <div style={{ color: 'rgba(255,255,255,.55)', fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', marginTop: '5px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '8px' }}>
+                  {['IG', 'FB', 'TT'].map(s => (
+                    <div key={s} style={{ width: '16px', height: '16px', borderRadius: '50%', border: `1px solid ${VERDE}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ color: VERDE, fontSize: '6px', fontWeight: '900' }}>{s}</span>
+                    </div>
+                  ))}
+                  <span style={{ color: 'rgba(255,255,255,.6)', fontSize: '9.5px', fontWeight: '700', marginLeft: '4px' }}>@golmebol</span>
                 </div>
               </div>
             </div>
