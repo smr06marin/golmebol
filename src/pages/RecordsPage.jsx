@@ -22,6 +22,30 @@ const S = {
   muted:  '#7a9ab5',
 }
 
+// Misma tabla azul de siempre, pero colapsable con un encabezado — para
+// mostrar un grupo a la vez cuando el torneo tiene varios grupos.
+function TablaColapsableRecords({ titulo, rows, defaultOpen = false }) {
+  const [abierto, setAbierto] = useState(defaultOpen)
+  return (
+    <div>
+      <button onClick={() => setAbierto(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+          background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px',
+          padding: '14px 16px', cursor: 'pointer', boxShadow: '0 3px 14px rgba(0,0,0,.3)',
+        }}>
+        <span style={{ color: '#fff', fontWeight: 900, fontSize: '.88rem', letterSpacing: '.08em', textTransform: 'uppercase', textAlign: 'left' }}>{titulo}</span>
+        <span style={{ color: '#7fb3ff', flexShrink: 0, transition: 'transform .15s', display: 'inline-block', transform: abierto ? 'rotate(180deg)' : 'none' }}>▾</span>
+      </button>
+      {abierto && (
+        <div style={{ marginTop: '8px' }}>
+          <TablaPosiciones rows={rows}/>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RecordCard({ titulo, nombre, subtitulo, descripcion, color, icono }) {
   return (
     <div className="gm-fade" style={{
@@ -206,12 +230,20 @@ export default function RecordsPage() {
   async function abrirTablaTorneo(t) {
     setTorneoTabla('cargando')
     registrarVisita('tabla_torneo', t.id)
-    const [{ data: tts }, { data: ms }] = await Promise.all([
+    const [{ data: tts }, { data: ms }, { data: grps }] = await Promise.all([
       supabase.from('tournament_teams').select('*, teams(id, name, logo_url)').eq('tournament_id', t.id),
       supabase.from('matches').select('home_team_id, away_team_id, home_score, away_score, status, fase').eq('tournament_id', t.id),
+      supabase.from('tournament_grupos').select('*').eq('tournament_id', t.id).order('orden'),
     ])
+    let ge = []
+    if (grps?.length) {
+      const { data: geData } = await supabase.from('grupo_equipos').select('*').in('grupo_id', grps.map(g => g.id))
+      ge = geData || []
+    }
+    const equiposMap = {}
+    ;(tts || []).forEach(r => { if (r.teams) equiposMap[r.teams.id] = r.teams })
     const tabla = {}
-    ;(tts || []).forEach(r => { if (r.teams) tabla[r.teams.id] = { equipo: r.teams, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
+    Object.values(equiposMap).forEach(eq => { tabla[eq.id] = { equipo: eq, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
     ;(ms || []).filter(m => m.status === 'finished' && (!m.fase || m.fase === 'grupo')).forEach(m => {
       const L = tabla[m.home_team_id], V = tabla[m.away_team_id]
       if (L) { L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
@@ -220,7 +252,29 @@ export default function RecordsPage() {
         if (m.away_score > m.home_score) { V.pg++; V.pts += 3 } else if (m.away_score === m.home_score) { V.pe++; V.pts++ } else V.pp++ }
     })
     const filas = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
-    setTorneoTabla({ torneo: t, filas })
+    setTorneoTabla({ torneo: t, filas, grupos: grps || [], grupoEquipos: ge, partidos: ms || [], equiposMap })
+  }
+
+  // Tabla de un grupo específico — solo cuenta partidos entre equipos de ese
+  // mismo grupo en fase de grupos.
+  function getTablaGrupoRecords(grupoId, tt) {
+    const eqIds = tt.grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
+    const partGrupo = tt.partidos.filter(m => (!m.fase || m.fase === 'grupo') && eqIds.includes(m.home_team_id) && eqIds.includes(m.away_team_id))
+    const t = {}
+    eqIds.forEach(eid => { if (tt.equiposMap[eid]) t[eid] = { equipo: tt.equiposMap[eid], pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
+    partGrupo.filter(m => m.status === 'finished').forEach(m => {
+      if (t[m.home_team_id]) {
+        const L = t[m.home_team_id]
+        L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
+        if (m.home_score > m.away_score) { L.pg++; L.pts += 3 } else if (m.home_score === m.away_score) { L.pe++; L.pts++ } else L.pp++
+      }
+      if (t[m.away_team_id]) {
+        const V = t[m.away_team_id]
+        V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
+        if (m.away_score > m.home_score) { V.pg++; V.pts += 3 } else if (m.away_score === m.home_score) { V.pe++; V.pts++ } else V.pp++
+      }
+    })
+    return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
   }
 
   // Campeones coronados en los últimos 15 días (se muestran a todo el que entre)
@@ -393,7 +447,16 @@ export default function RecordsPage() {
               <div style={{ textAlign: 'center', padding: '60px 0', color: S.cyan, fontWeight: '700', fontSize: '.85rem' }}>Cargando tabla...</div>
             ) : (
               <>
-                <TablaPosiciones titulo="Tabla de posiciones" rows={torneoTabla.filas}/>
+                {torneoTabla.grupos?.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {torneoTabla.grupos.map(g => (
+                      <TablaColapsableRecords key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupoRecords(g.id, torneoTabla)} defaultOpen/>
+                    ))}
+                    <TablaColapsableRecords titulo="Tabla general — todos los equipos" rows={torneoTabla.filas}/>
+                  </div>
+                ) : (
+                  <TablaPosiciones titulo="Tabla de posiciones" rows={torneoTabla.filas}/>
+                )}
                 {/* CTA: lo demás se desbloquea con sesión */}
                 <div style={{ marginTop: '18px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
                   <div style={{ fontSize: '.82rem', color: S.text, fontWeight: '700', marginBottom: '4px' }}>🔒 ¿Goleadores, estadísticas y tu perfil?</div>
