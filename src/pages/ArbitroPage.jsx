@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { resolverPrediccionesPartido } from '../lib/predix'
 import PlanillaPartido from '../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../lib/planillaRecovery'
 import { ArrowLeft, Trophy, MapPin, Check, Filter } from 'lucide-react'
@@ -97,18 +98,7 @@ export default function ArbitroPage() {
           onGuardarResultado={async (local, visitante) => {
             const { error } = await supabase.from('matches').update({ home_score: local, away_score: visitante, status: 'finished' }).eq('id', planillaPartido.id)
             if (!error) {
-              const ganador = local > visitante ? 'home' : local < visitante ? 'away' : 'draw'
-              const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', planillaPartido.id).eq('resuelta', false)
-              if (preds && preds.length > 0) {
-                for (const pred of preds) {
-                  let pts = 0
-                  if (pred.ganador === ganador) pts += ganador === 'draw' ? 5 : 3
-                  if (pred.goles_home === local)     pts += 3
-                  if (pred.goles_away === visitante) pts += 3
-                  if (pred.goles_home === local && pred.goles_away === visitante) pts += 10
-                  await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
-                }
-              }
+              await resolverPrediccionesPartido(planillaPartido.id, local, visitante)
               showMsg('Resultado guardado ✓')
               setPlanillaPartido(null)
               abrirTorneo(torneoSel)

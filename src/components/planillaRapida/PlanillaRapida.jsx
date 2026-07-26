@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { resolverPrediccionesPartido } from '../../lib/predix'
 import PantallaColores from './PantallaColores'
 import PantallaAsignarNumeros from './PantallaAsignarNumeros'
 import PantallaPartido from './PantallaPartido'
@@ -592,18 +593,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       await supabase.from('tournament_logros').insert({ player_id: mvpId, tournament_id: partido.tournament_id, match_id: partido.id, tipo: 'mvp' })
     }
 
-    const ganador = golesLocalTotal > golesVisTotal ? 'home' : golesLocalTotal < golesVisTotal ? 'away' : 'draw'
-    const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', partido.id).eq('resuelta', false)
-    if (preds && preds.length > 0) {
-      for (const pred of preds) {
-        let pts = 0
-        if (pred.ganador === ganador) pts += ganador === 'draw' ? 5 : 3
-        if (pred.goles_home === golesLocalTotal) pts += 3
-        if (pred.goles_away === golesVisTotal) pts += 3
-        if (pred.goles_home === golesLocalTotal && pred.goles_away === golesVisTotal) pts += 10
-        await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
-      }
-    }
+    await resolverPrediccionesPartido(partido.id, golesLocalTotal, golesVisTotal)
 
     if (erroresGuardado.length > 0) {
       setGuardandoDB(false)

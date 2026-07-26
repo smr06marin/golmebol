@@ -486,20 +486,33 @@ export default function PlayerApuestasPage() {
     const partidosData = pts || []
     const terminadosIds = partidosData.filter(pp => pp.status === 'finished').map(pp => pp.id)
     let mvpMap = {}
+    let goleadorPartidoMap = {} // match_id -> Set(player_id) con más goles en ESE partido (para el Predix de goleador)
     if (terminadosIds.length > 0) {
-      const { data: mvps } = await supabase
-        .from('tournament_logros')
-        .select('match_id, players(name, photo_face_url, photo_url)')
-        .eq('tipo', 'mvp')
-        .in('match_id', terminadosIds)
+      const [{ data: mvps }, { data: statsGoles }] = await Promise.all([
+        supabase.from('tournament_logros').select('match_id, players(name, photo_face_url, photo_url)').eq('tipo', 'mvp').in('match_id', terminadosIds),
+        supabase.from('player_match_stats').select('match_id, player_id, goals_scored').in('match_id', terminadosIds),
+      ])
       ;(mvps || []).forEach(m => {
         mvpMap[m.match_id] = {
           nombre: m.players?.name,
           foto:   m.players?.photo_face_url || m.players?.photo_url,
         }
       })
+      const maxPorPartido = {}
+      ;(statsGoles || []).forEach(s => {
+        const g = s.goals_scored || 0
+        if (g > (maxPorPartido[s.match_id] || 0)) maxPorPartido[s.match_id] = g
+      })
+      ;(statsGoles || []).forEach(s => {
+        const g = s.goals_scored || 0
+        const max = maxPorPartido[s.match_id] || 0
+        if (max > 0 && g === max) {
+          if (!goleadorPartidoMap[s.match_id]) goleadorPartidoMap[s.match_id] = new Set()
+          goleadorPartidoMap[s.match_id].add(s.player_id)
+        }
+      })
     }
-    setPartidos(partidosData.map(pp => ({ ...pp, mvp: mvpMap[pp.id] || null })))
+    setPartidos(partidosData.map(pp => ({ ...pp, mvp: mvpMap[pp.id] || null, top_goleador_ids: goleadorPartidoMap[pp.id] || null })))
 
     const predMap = {}
     ;(preds || []).forEach(pr => { predMap[pr.match_id] = pr })
@@ -681,7 +694,10 @@ export default function PlayerApuestasPage() {
   const rondaActual = proximaRondaRelevante(rondas)
   const rondaActualEstado = rondaActual ? estadoRonda(rondaActual) : null
 
+  // Solo los jugadores registrados en los DOS equipos que juegan este
+  // partido (antes salía cualquier jugador registrado en cualquier torneo).
   const jugsModal = modal ? jugadores
+    .filter(j => j.tournament_id === modal.tournament_id && (j.team_id === modal.home_team_id || j.team_id === modal.away_team_id))
     .map(j => j.players).filter(Boolean) : []
 
   function groupByTournament(lista) {
@@ -1332,7 +1348,7 @@ export default function PlayerApuestasPage() {
                     const acertoGolesHome = pred.goles_home === p.home_score
                     const acertoGolesAway = pred.goles_away === p.away_score
                     const acertoMarcador  = acertoGolesHome && acertoGolesAway
-                    const acertoGoleador  = pred.goleador_id && p.mvp_goleador_id && pred.goleador_id === p.mvp_goleador_id
+                    const acertoGoleador  = !!(pred.goleador_id && p.top_goleador_ids && p.top_goleador_ids.has(pred.goleador_id))
                     const ptsResultado = acertoResultado ? (resultadoReal==='draw' ? 5 : 3) : 0
                     const ptsMarcador  = acertoGolesHome ? 3 : 0
                     const ptsMarcador2 = acertoGolesAway ? 3 : 0

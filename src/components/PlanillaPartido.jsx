@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../lib/predix'
 import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 
@@ -1067,22 +1068,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       })
     }
 
-    // Predicciones
+    // Predicciones — puntos por resultado, marcador exacto y goleador del
+    // partido (lógica compartida en src/lib/predix.js)
     if (!tipoPartido) {
-      const ganador = golesLocalTotal > golesVisTotal ? 'home' : golesLocalTotal < golesVisTotal ? 'away' : 'draw'
-      const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', partido.id).eq('resuelta', false)
-      if (preds && preds.length > 0) {
-        for (const pred of preds) {
-          let pts = 0
-          if (pred.ganador === ganador) pts += ganador === 'draw' ? 5 : 3
-          if (pred.goles_home === golesLocalTotal) pts += 3
-          if (pred.goles_away === golesVisTotal) pts += 3
-          if (pred.goles_home === golesLocalTotal && pred.goles_away === golesVisTotal) pts += 10
-          await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
-        }
-      }
+      await resolverPrediccionesPartido(partido.id, golesLocalTotal, golesVisTotal)
     } else {
-      await supabase.from('predicciones').update({ puntos_ganados: 0, resuelta: true }).eq('match_id', partido.id).eq('resuelta', false)
+      await anularPrediccionesPartido(partido.id)
     }
 
     // Si algo crítico falló, NO se cierra la planilla ni se borra el borrador:

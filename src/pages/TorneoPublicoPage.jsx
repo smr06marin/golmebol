@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Trophy, MapPin, Calendar } from 'lucide-react'
+import { Trophy, MapPin, Calendar, ChevronDown } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
@@ -20,6 +20,31 @@ function TeamLogo({ logo_url, name, size = 28 }) {
 const FASE_LABEL = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final' }
 
 const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
+
+// Misma tabla azul de siempre, pero colapsable con un encabezado — para
+// mostrar un grupo a la vez sin saturar la pantalla cuando el torneo tiene
+// varios grupos.
+function TablaColapsable({ titulo, rows, defaultOpen = false }) {
+  const [abierto, setAbierto] = useState(defaultOpen)
+  return (
+    <div>
+      <button onClick={() => setAbierto(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+          background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px',
+          padding: '14px 16px', cursor: 'pointer', boxShadow: '0 3px 14px rgba(0,0,0,.3)',
+        }}>
+        <span style={{ color: '#fff', fontWeight: 900, fontSize: '.88rem', letterSpacing: '.08em', textTransform: 'uppercase', textAlign: 'left' }}>{titulo}</span>
+        <ChevronDown size={18} color="#7fb3ff" style={{ flexShrink: 0, transition: 'transform .15s', transform: abierto ? 'rotate(180deg)' : 'none' }}/>
+      </button>
+      {abierto && (
+        <div style={{ marginTop: '8px' }}>
+          <TablaPosiciones rows={rows}/>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Modal con foto grande + nombre de cada jugador REGISTRADO de un equipo en
 // este torneo — para que cualquiera pueda verificar en cancha quién sí está
@@ -150,6 +175,8 @@ export default function TorneoPublicoPage() {
   const [partidos,  setPartidos]  = useState([])
   const [goleadores, setGoleadores] = useState([])
   const [porteros,  setPorteros]  = useState([]) // { team_id, id, name, photo_url, photo_face_url }
+  const [grupos,       setGrupos]       = useState([])
+  const [grupoEquipos, setGrupoEquipos] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState('posiciones')
 
@@ -187,6 +214,16 @@ export default function TorneoPublicoPage() {
       setEquipos((teData || []).map(d => ({ ...d.teams })))
       setPartidos(pData || [])
       setGoleadores(gData || [])
+
+      // Grupos del torneo (si los tiene) para mostrar la tabla dividida
+      const { data: grps } = await supabase.from('tournament_grupos').select('*').eq('tournament_id', id).order('orden')
+      setGrupos(grps || [])
+      if (grps?.length) {
+        const { data: ge } = await supabase.from('grupo_equipos').select('*, teams(id,name,logo_url)').in('grupo_id', grps.map(g => g.id))
+        setGrupoEquipos(ge || [])
+      } else {
+        setGrupoEquipos([])
+      }
 
       // Arqueros de cada equipo del torneo (para la valla menos vencida)
       const teamIds = (teData || []).map(d => d.teams?.id).filter(Boolean)
@@ -243,6 +280,33 @@ export default function TorneoPublicoPage() {
     }
   })
   const tablaOrdenada = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+
+  // Tabla de un grupo específico — solo cuenta partidos entre equipos de ese
+  // mismo grupo en fase de grupos (misma lógica que usa el jugador/admin).
+  function getTablaGrupo(grupoId) {
+    const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
+    const partGrupo = partidos.filter(p => (!p.fase || p.fase === 'grupo') && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+    const t = {}
+    eqIds.forEach(eid => {
+      const eq = equipos.find(e => e.id === eid)
+      if (eq) t[eid] = { equipo: eq, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 }
+    })
+    partGrupo.filter(p => p.status === 'finished').forEach(p => {
+      if (t[p.home_team_id]) {
+        t[p.home_team_id].pj++; t[p.home_team_id].gf += p.home_score || 0; t[p.home_team_id].gc += p.away_score || 0
+        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += 3 }
+        else if (p.home_score === p.away_score) { t[p.home_team_id].pe++; t[p.home_team_id].pts++ }
+        else t[p.home_team_id].pp++
+      }
+      if (t[p.away_team_id]) {
+        t[p.away_team_id].pj++; t[p.away_team_id].gf += p.away_score || 0; t[p.away_team_id].gc += p.home_score || 0
+        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += 3 }
+        else if (p.away_score === p.home_score) { t[p.away_team_id].pe++; t[p.away_team_id].pts++ }
+        else t[p.away_team_id].pp++
+      }
+    })
+    return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+  }
 
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
   // los arqueros registrados de cada equipo (fotos y nombres)
@@ -328,7 +392,16 @@ export default function TorneoPublicoPage() {
 
         {/* POSICIONES */}
         {tab === 'posiciones' && (
-          <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada}/>
+          grupos.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {grupos.map(g => (
+                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen/>
+              ))}
+              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada}/>
+            </div>
+          ) : (
+            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada}/>
+          )
         )}
 
         {/* RESULTADOS */}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { resolverPrediccionesPartido } from '../../lib/predix'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
@@ -2017,20 +2018,9 @@ export default function AdminTorneoDetallePage() {
     if (scoreHome === '' || scoreAway === '') return showMsg('Ingresa el marcador', 'error')
     setGuardando(true)
     const local = parseInt(scoreHome), visitante = parseInt(scoreAway)
-    const ganador = local > visitante ? 'home' : local < visitante ? 'away' : 'draw'
     const { error } = await supabase.from('matches').update({ home_score: local, away_score: visitante, status: 'finished' }).eq('id', editandoPartido.id)
     if (error) { showMsg('Error al guardar', 'error'); setGuardando(false); return }
-    const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', editandoPartido.id).eq('resuelta', false)
-    if (preds && preds.length > 0) {
-      for (const pred of preds) {
-        let pts = 0
-        if (pred.ganador === ganador)                                       pts += ganador === 'draw' ? 5 : 3
-        if (pred.goles_home === local)                                      pts += 3
-        if (pred.goles_away === visitante)                                  pts += 3
-        if (pred.goles_home === local && pred.goles_away === visitante)     pts += 10
-        await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
-      }
-    }
+    await resolverPrediccionesPartido(editandoPartido.id, local, visitante)
     showMsg('Resultado guardado ✓'); setEditandoPartido(null); setScoreHome(''); setScoreAway(''); fetchPartidos(); fetchBracket()
     setGuardando(false)
   }
@@ -2384,18 +2374,7 @@ export default function AdminTorneoDetallePage() {
           onGuardarResultado={async (local, visitante) => {
             const { error } = await supabase.from('matches').update({ home_score: local, away_score: visitante, status: 'finished' }).eq('id', planillaPartido.id)
             if (!error) {
-              const ganador = local > visitante ? 'home' : local < visitante ? 'away' : 'draw'
-              const { data: preds } = await supabase.from('predicciones').select('*').eq('match_id', planillaPartido.id).eq('resuelta', false)
-              if (preds && preds.length > 0) {
-                for (const pred of preds) {
-                  let pts = 0
-                  if (pred.ganador === ganador) pts += ganador === 'draw' ? 5 : 3
-                  if (pred.goles_home === local)     pts += 3
-                  if (pred.goles_away === visitante) pts += 3
-                  if (pred.goles_home === local && pred.goles_away === visitante) pts += 10
-                  await supabase.from('predicciones').update({ puntos_ganados: pts, resuelta: true }).eq('id', pred.id)
-                }
-              }
+              await resolverPrediccionesPartido(planillaPartido.id, local, visitante)
               showMsg('Resultado guardado ✓'); cerrarPlanilla(); fetchPartidos(); fetchBracket()
             }
           }}
