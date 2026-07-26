@@ -49,3 +49,32 @@ export function derivarEnVivo(match) {
     reloj: `${minuto}:${String(seg).padStart(2, '0')}`,
   }
 }
+
+// Lista de goles (jugador + minuto) del partido, sacada del mismo snapshot
+// que ya se sincroniza en vivo — para el detalle al tocar un partido en vivo.
+export function extraerGoles(match) {
+  if (!match) return []
+  const candidatos = []
+  if (match.live_state)        candidatos.push({ snap: match.live_state,        updatedAt: match.live_state_updated_at,        tipo: 'completa' })
+  if (match.live_state_rapida) candidatos.push({ snap: match.live_state_rapida, updatedAt: match.live_state_rapida_updated_at, tipo: 'rapida' })
+  if (candidatos.length === 0) return []
+  candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+  const { snap, tipo } = candidatos[0]
+  if (!snap) return []
+
+  let goles = []
+  if (tipo === 'rapida') {
+    goles = (snap.eventos || []).filter(e => e.tipo === 'goal').map(e => ({
+      equipo: e.team, jugador: e.jugadorNombre || 'Jugador', minuto: e.minuto || null, periodo: e.periodo || 1,
+    }))
+  } else {
+    const buscarNombre = (arr, numero) => (arr || []).find(j => String(j.numero) === String(numero))?.nombre || 'Jugador'
+    ;(snap.golesLocal || []).filter(Boolean).forEach(g => {
+      goles.push({ equipo: 'local', jugador: buscarNombre(snap.jugadoresLocal, g.numero), minuto: g.minuto || null, periodo: g.periodo || 1 })
+    })
+    ;(snap.golesVisitante || []).filter(Boolean).forEach(g => {
+      goles.push({ equipo: 'visitante', jugador: buscarNombre(snap.jugadoresVisitante, g.numero), minuto: g.minuto || null, periodo: g.periodo || 1 })
+    })
+  }
+  return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+}

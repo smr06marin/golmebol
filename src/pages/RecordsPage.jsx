@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import TablaPosiciones from '../components/TablaPosiciones'
 import { registrarVisita } from '../lib/visitas'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
-import { derivarEnVivo } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles } from '../lib/liveMatch'
 
 // Icono de cada récord automático (los históricos traen el suyo o usan 🏆)
 const ICONOS_RECORD = {
@@ -252,9 +252,9 @@ function TorneoFeaturedCard({ t, onVerTabla }) {
 }
 
 // ── Tarjeta grande de partido en vivo ──
-function LiveMatchFeatured({ m }) {
+function LiveMatchFeatured({ m, onClick }) {
   return (
-    <div style={{ background: 'linear-gradient(135deg,#1a0505,#0a0a0a)', border: '1px solid #7a1f1f', borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
+    <div onClick={onClick} style={{ background: 'linear-gradient(135deg,#1a0505,#0a0a0a)', border: '1px solid #7a1f1f', borderRadius: '16px', padding: '18px', textAlign: 'center', cursor: 'pointer' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
         <div style={{ flex: 1, textAlign: 'center' }}>
           <TeamShield logo_url={m.home?.logo_url} name={m.home?.name} size={48}/>
@@ -272,13 +272,14 @@ function LiveMatchFeatured({ m }) {
       {m.tournaments?.modalidad && (
         <div style={{ marginTop: '10px', color: 'rgba(255,255,255,.5)', fontSize: '.64rem', fontWeight: '700', letterSpacing: '.08em' }}>{m.tournaments.modalidad.toUpperCase()}</div>
       )}
+      <div style={{ marginTop: '6px', color: 'rgba(255,255,255,.4)', fontSize: '.6rem', fontWeight: '600' }}>Toca para ver los goles ⚽</div>
     </div>
   )
 }
 
-function LiveMatchRow({ m }) {
+function LiveMatchRow({ m, onClick }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderTop: `1px solid ${S.border}` }}>
+    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderTop: `1px solid ${S.border}`, cursor: 'pointer' }}>
       <TeamShield logo_url={m.home?.logo_url} name={m.home?.name} size={18}/>
       <span style={{ flex: 1, color: S.text, fontSize: '.75rem', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</span>
       <span style={{ color: '#fff', fontWeight: '800', fontSize: '.8rem' }}>{m.vivo.golesLocal}</span>
@@ -287,6 +288,57 @@ function LiveMatchRow({ m }) {
       <span style={{ flex: 1, color: S.text, fontSize: '.75rem', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</span>
       <TeamShield logo_url={m.away?.logo_url} name={m.away?.name} size={18}/>
       <span style={{ color: '#ff5252', fontWeight: '800', fontSize: '.68rem', minWidth: '38px', textAlign: 'right' }}>{m.vivo.reloj.split(':')[0]}'</span>
+    </div>
+  )
+}
+
+// ── Detalle de un partido en vivo: marcador, reloj y lista de goles ──
+function LiveMatchDetalle({ m, onClose }) {
+  const goles = extraerGoles(m)
+  const golesLocal = goles.filter(g => g.equipo === 'local')
+  const golesVis    = goles.filter(g => g.equipo === 'visitante')
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 560, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', padding: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <span style={{ fontWeight: '900', color: '#ff5252', fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14}/> EN VIVO · {m.vivo.reloj}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '18px' }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <TeamShield logo_url={m.home?.logo_url} name={m.home?.name} size={46}/>
+            <div style={{ color: '#fff', fontWeight: '800', fontSize: '.75rem', marginTop: '6px' }}>{m.home?.name}</div>
+          </div>
+          <div style={{ color: '#fff', fontWeight: '900', fontSize: '1.6rem' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <TeamShield logo_url={m.away?.logo_url} name={m.away?.name} size={46}/>
+            <div style={{ color: '#fff', fontWeight: '800', fontSize: '.75rem', marginTop: '6px' }}>{m.away?.name}</div>
+          </div>
+        </div>
+
+        {goles.length === 0 ? (
+          <div style={{ textAlign: 'center', color: S.muted, fontSize: '.8rem', padding: '20px 0' }}>Aún no hay goles</div>
+        ) : (
+          <div>
+            <div style={{ fontSize: '.62rem', fontWeight: '800', color: S.muted, letterSpacing: '.08em', marginBottom: '8px' }}>⚽ GOLES</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                {golesLocal.length === 0 && <div style={{ color: S.muted, fontSize: '.72rem' }}>—</div>}
+                {golesLocal.map((g, i) => (
+                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0' }}>⚽ {g.jugador} {g.minuto ? <span style={{ color: S.muted }}>· {g.minuto}'</span> : null}</div>
+                ))}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {golesVis.length === 0 && <div style={{ color: S.muted, fontSize: '.72rem' }}>—</div>}
+                {golesVis.map((g, i) => (
+                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0' }}>{g.minuto ? <span style={{ color: S.muted }}>{g.minuto}' ·</span> : null} {g.jugador} ⚽</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -450,6 +502,7 @@ export default function RecordsPage() {
   const [showBuscador, setShowBuscador] = useState(false)
   const [showDrawer,   setShowDrawer]   = useState(false)
   const [showVivoModal, setShowVivoModal] = useState(false)
+  const [detalleVivoId, setDetalleVivoId] = useState(null)
   const [tick, setTick] = useState(0) // fuerza recalcular el reloj de "en vivo" cada segundo
 
   const torneosRef = useRef(null)
@@ -704,10 +757,10 @@ export default function RecordsPage() {
             )}
           </div>
           <div style={{ maxWidth: '460px', margin: '0 auto' }}>
-            <LiveMatchFeatured m={partidosVivo[0]}/>
+            <LiveMatchFeatured m={partidosVivo[0]} onClick={() => setDetalleVivoId(partidosVivo[0].id)}/>
             {partidosVivo.length > 1 && (
               <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '4px 12px', marginTop: '10px' }}>
-                {partidosVivo.slice(1, 4).map(m => <LiveMatchRow key={m.id} m={m}/>)}
+                {partidosVivo.slice(1, 4).map(m => <LiveMatchRow key={m.id} m={m} onClick={() => setDetalleVivoId(m.id)}/>)}
               </div>
             )}
           </div>
@@ -721,10 +774,15 @@ export default function RecordsPage() {
               <span style={{ fontWeight: '900', color: '#ff5252', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14}/> TODOS LOS PARTIDOS EN VIVO</span>
               <button onClick={() => setShowVivoModal(false)} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
             </div>
-            {partidosVivo.map(m => <LiveMatchRow key={m.id} m={m}/>)}
+            {partidosVivo.map(m => <LiveMatchRow key={m.id} m={m} onClick={() => { setShowVivoModal(false); setDetalleVivoId(m.id) }}/>)}
           </div>
         </div>
       )}
+
+      {detalleVivoId && (() => {
+        const m = partidosVivo.find(x => x.id === detalleVivoId)
+        return m ? <LiveMatchDetalle m={m} onClose={() => setDetalleVivoId(null)}/> : null
+      })()}
 
       {/* ── RÉCORDS GOLMEBOL ── */}
       <div ref={recordsRef} style={{ padding: '26px 16px 8px', textAlign: 'center' }}>
