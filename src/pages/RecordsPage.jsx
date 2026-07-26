@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Menu, Search, User, X, ChevronRight, Calendar, Users, Shield, Trophy, BarChart3, Home, Radio } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import TablaPosiciones from '../components/TablaPosiciones'
 import { registrarVisita } from '../lib/visitas'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
+import { derivarEnVivo } from '../lib/liveMatch'
 
 // Icono de cada récord automático (los históricos traen el suyo o usan 🏆)
 const ICONOS_RECORD = {
@@ -18,8 +20,60 @@ const S = {
   border: '#1e2d3d',
   gold:   '#f9a825',
   cyan:   '#00ddd0',
+  green:  '#22c55e',
   text:   '#e8f4fd',
   muted:  '#7a9ab5',
+}
+
+function TeamShield({ logo_url, name, size = 24 }) {
+  const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  return (
+    <div style={{ width: size, height: size, borderRadius: '7px', background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {logo_url
+        ? <img src={logo_url} alt={name || ''} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/>
+        : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
+    </div>
+  )
+}
+
+// Carrusel genérico de swipe horizontal con puntos — usado para torneos
+// activos y (si hace falta) otras vitrinas. La sección de récords sigue
+// usando su propio <Carrusel> de siempre, sin tocarlo.
+function SwipeCarousel({ items, renderItem, keyFn }) {
+  const ref = useRef(null)
+  const [idx, setIdx] = useState(0)
+  const total = items.length
+
+  function scrollTo(i) {
+    const newIdx = Math.max(0, Math.min(i, total - 1))
+    setIdx(newIdx)
+    if (ref.current) ref.current.scrollTo({ left: newIdx * ref.current.offsetWidth, behavior: 'smooth' })
+  }
+  function handleScroll() {
+    if (ref.current) setIdx(Math.round(ref.current.scrollLeft / ref.current.offsetWidth))
+  }
+  if (total === 0) return null
+  return (
+    <div>
+      <div ref={ref} onScroll={handleScroll}
+        style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <style>{`div::-webkit-scrollbar{display:none}`}</style>
+        {items.map((item, i) => (
+          <div key={keyFn ? keyFn(item, i) : i} style={{ minWidth: '100%', scrollSnapAlign: 'start', boxSizing: 'border-box' }}>
+            {renderItem(item, i)}
+          </div>
+        ))}
+      </div>
+      {total > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '10px' }}>
+          {items.map((_, i) => (
+            <div key={i} onClick={() => scrollTo(i)}
+              style={{ width: i === idx ? '20px' : '6px', height: '6px', borderRadius: '3px', background: i === idx ? S.green : S.border, cursor: 'pointer', transition: 'all .2s', flexShrink: 0 }}/>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Misma tabla azul de siempre, pero colapsable con un encabezado — para
@@ -141,11 +195,198 @@ function Carrusel({ records }) {
   )
 }
 
-function StatBox({ valor, label, color }) {
+// ── Tarjeta grande de un torneo activo (carrusel destacado) ──
+function TorneoFeaturedCard({ t, onVerTabla }) {
+  const proximo = t.proximo
   return (
-    <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '14px 10px', textAlign: 'center', flex: 1 }}>
-      <div style={{ fontWeight: '900', fontSize: '1.6rem', color: color || S.cyan, fontFamily: 'monospace', lineHeight: 1 }}>{valor}</div>
-      <div style={{ fontSize: '.62rem', color: S.muted, marginTop: '4px', fontWeight: '700', letterSpacing: '.08em' }}>{label}</div>
+    <div style={{
+      background: 'linear-gradient(135deg, #0c3018 0%, #071f10 65%, #051608 100%)',
+      border: `1px solid ${S.green}55`, borderRadius: '18px', padding: '18px', margin: '0 2px',
+      boxShadow: '0 6px 24px rgba(0,0,0,.35)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ width: '76px', height: '76px', borderRadius: '16px', background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 18px ${S.green}44` }}>
+          {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '5px' }}/> : <Trophy size={32} color="#1a3a8a"/>}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'inline-block', background: t.enElim ? S.gold : S.green, color: '#04220c', fontSize: '.62rem', fontWeight: '900', letterSpacing: '.06em', borderRadius: '20px', padding: '3px 10px', marginBottom: '6px' }}>
+            {t.estado.toUpperCase()}
+          </span>
+          <div style={{ fontWeight: '900', color: '#fff', fontSize: '1.1rem', lineHeight: 1.2, textTransform: 'uppercase' }}>{t.name}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+        {[
+          { icono: <Users size={13} color={S.green}/>, val: t.equipos, label: 'EQUIPOS' },
+          { icono: <Shield size={13} color={S.green}/>, val: t.estado, label: 'FASE' },
+          { icono: <Calendar size={13} color={S.green}/>, val: t.totalPartidos, label: 'PARTIDOS' },
+        ].map((st, i) => (
+          <div key={i} style={{ flex: 1, textAlign: 'center', background: 'rgba(255,255,255,.05)', borderRadius: '10px', padding: '8px 4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>{st.icono}</div>
+            <div style={{ color: '#fff', fontWeight: '800', fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.val}</div>
+            <div style={{ color: 'rgba(255,255,255,.5)', fontSize: '.58rem', fontWeight: '700', letterSpacing: '.05em' }}>{st.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={() => onVerTabla(t)}
+        style={{ width: '100%', marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: S.green, border: 'none', borderRadius: '10px', padding: '12px', cursor: 'pointer', color: '#04220c', fontWeight: '900', fontSize: '.85rem' }}>
+        VER TORNEO <ChevronRight size={16}/>
+      </button>
+
+      {proximo && (
+        <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '.66rem', color: 'rgba(255,255,255,.65)', fontWeight: '700' }}>
+            PRÓXIMO PARTIDO{proximo.played_at ? ` · ${new Date(proximo.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()} - ${new Date(proximo.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <TeamShield logo_url={proximo.home?.logo_url} name={proximo.home?.name} size={20}/>
+            <span style={{ color: 'rgba(255,255,255,.5)', fontSize: '.6rem', fontWeight: '800' }}>VS</span>
+            <TeamShield logo_url={proximo.away?.logo_url} name={proximo.away?.name} size={20}/>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tarjeta grande de partido en vivo ──
+function LiveMatchFeatured({ m }) {
+  return (
+    <div style={{ background: 'linear-gradient(135deg,#1a0505,#0a0a0a)', border: '1px solid #7a1f1f', borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <TeamShield logo_url={m.home?.logo_url} name={m.home?.name} size={48}/>
+          <div style={{ color: '#fff', fontWeight: '800', fontSize: '.72rem', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</div>
+        </div>
+        <div>
+          <div style={{ color: '#fff', fontWeight: '900', fontSize: '1.8rem', letterSpacing: '.05em' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          <div style={{ color: '#ff5252', fontWeight: '800', fontSize: '.78rem', marginTop: '2px' }}>{m.vivo.reloj}</div>
+        </div>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <TeamShield logo_url={m.away?.logo_url} name={m.away?.name} size={48}/>
+          <div style={{ color: '#fff', fontWeight: '800', fontSize: '.72rem', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</div>
+        </div>
+      </div>
+      {m.tournaments?.modalidad && (
+        <div style={{ marginTop: '10px', color: 'rgba(255,255,255,.5)', fontSize: '.64rem', fontWeight: '700', letterSpacing: '.08em' }}>{m.tournaments.modalidad.toUpperCase()}</div>
+      )}
+    </div>
+  )
+}
+
+function LiveMatchRow({ m }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderTop: `1px solid ${S.border}` }}>
+      <TeamShield logo_url={m.home?.logo_url} name={m.home?.name} size={18}/>
+      <span style={{ flex: 1, color: S.text, fontSize: '.75rem', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</span>
+      <span style={{ color: '#fff', fontWeight: '800', fontSize: '.8rem' }}>{m.vivo.golesLocal}</span>
+      <span style={{ color: S.muted, fontSize: '.7rem' }}>-</span>
+      <span style={{ color: '#fff', fontWeight: '800', fontSize: '.8rem' }}>{m.vivo.golesVis}</span>
+      <span style={{ flex: 1, color: S.text, fontSize: '.75rem', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</span>
+      <TeamShield logo_url={m.away?.logo_url} name={m.away?.name} size={18}/>
+      <span style={{ color: '#ff5252', fontWeight: '800', fontSize: '.68rem', minWidth: '38px', textAlign: 'right' }}>{m.vivo.reloj.split(':')[0]}'</span>
+    </div>
+  )
+}
+
+// ── Buscador simple de jugadores/equipos por nombre ──
+function BuscadorSimple({ onClose }) {
+  const [q, setQ] = useState('')
+  const [jugadores, setJugadores] = useState([])
+  const [equipos, setEquipos] = useState([])
+  const [buscando, setBuscando] = useState(false)
+
+  useEffect(() => {
+    const texto = q.trim()
+    if (texto.length < 2) { setJugadores([]); setEquipos([]); return }
+    setBuscando(true)
+    const t = setTimeout(async () => {
+      const [{ data: js }, { data: es }] = await Promise.all([
+        supabase.from('players').select('id, name, photo_face_url, photo_url').ilike('name', `%${texto}%`).limit(8),
+        supabase.from('teams').select('id, name, logo_url').ilike('name', `%${texto}%`).limit(8),
+      ])
+      setJugadores(js || [])
+      setEquipos(es || [])
+      setBuscando(false)
+    }, 350)
+    return () => clearTimeout(t)
+  }, [q])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.8)', zIndex: 600, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px' }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '16px', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', marginTop: '40px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', borderBottom: `1px solid ${S.border}`, position: 'sticky', top: 0, background: S.bg }}>
+          <Search size={16} color={S.muted}/>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar jugador o equipo..."
+            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: S.text, fontSize: '.9rem' }}/>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
+        </div>
+        <div style={{ padding: '10px 16px 24px' }}>
+          {q.trim().length < 2 ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: S.muted, fontSize: '.8rem' }}>Escribe al menos 2 letras...</div>
+          ) : buscando ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: S.cyan, fontSize: '.8rem' }}>Buscando...</div>
+          ) : (jugadores.length === 0 && equipos.length === 0) ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: S.muted, fontSize: '.8rem' }}>Sin resultados</div>
+          ) : (
+            <>
+              {equipos.length > 0 && (
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '.62rem', fontWeight: '800', color: S.muted, letterSpacing: '.08em', margin: '10px 0 6px' }}>EQUIPOS</div>
+                  {equipos.map(e => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 6px', borderRadius: '10px' }}>
+                      <TeamShield logo_url={e.logo_url} name={e.name} size={30}/>
+                      <span style={{ color: S.text, fontWeight: '600', fontSize: '.85rem' }}>{e.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {jugadores.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '.62rem', fontWeight: '800', color: S.muted, letterSpacing: '.08em', margin: '10px 0 6px' }}>JUGADORES</div>
+                  {jugadores.map(j => (
+                    <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 6px', borderRadius: '10px' }}>
+                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: S.card, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {(j.photo_face_url || j.photo_url) ? <img src={j.photo_face_url || j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '.85rem' }}>👤</span>}
+                      </div>
+                      <span style={{ color: S.text, fontWeight: '600', fontSize: '.85rem' }}>{j.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Menú lateral (hamburguesa / "Más") ──
+function DrawerMenu({ onClose, onIrTorneos, onIrRecords, navigate }) {
+  const opciones = [
+    { label: 'Torneos', icono: <Trophy size={16} color={S.green}/>, onClick: onIrTorneos },
+    { label: 'Estadísticas y récords', icono: <BarChart3 size={16} color={S.gold}/>, onClick: onIrRecords },
+    { label: 'Ingresar al portal (jugador / árbitro / escuela)', icono: <User size={16} color={S.cyan}/>, onClick: () => navigate('/jugador/login') },
+    { label: 'Acceso administrador', icono: <Shield size={16} color={S.muted}/>, onClick: () => navigate('/login') },
+  ]
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)' }}/>
+      <div style={{ position: 'relative', width: '78%', maxWidth: '300px', height: '100%', background: S.bg, borderRight: `1px solid ${S.border}`, padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+          <span style={{ fontWeight: '900', color: S.cyan, letterSpacing: '.15em', fontSize: '1rem' }}>GOLMEBOL</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={20}/></button>
+        </div>
+        {opciones.map(o => (
+          <button key={o.label} onClick={() => { o.onClick(); onClose() }}
+            style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'none', border: 'none', borderRadius: '10px', padding: '13px 10px', cursor: 'pointer', color: S.text, fontSize: '.85rem', fontWeight: '600', textAlign: 'left' }}>
+            {o.icono}{o.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -203,15 +444,62 @@ export default function RecordsPage() {
   // Torneos activos (vitrina pública) y tabla de posiciones del torneo elegido
   const [torneosActivos, setTorneosActivos] = useState([])
   const [torneoTabla,    setTorneoTabla]    = useState(null) // { torneo, filas } | 'cargando'
+  // Stats del encabezado, partidos en vivo, chrome nuevo (buscador/menú)
+  const [stats, setStats] = useState({ torneos: 0, jugadores: 0, equipos: 0, goles: 0 })
+  const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
+  const [showBuscador, setShowBuscador] = useState(false)
+  const [showDrawer,   setShowDrawer]   = useState(false)
+  const [showVivoModal, setShowVivoModal] = useState(false)
+  const [tick, setTick] = useState(0) // fuerza recalcular el reloj de "en vivo" cada segundo
 
-  useEffect(() => { fetchTodo(); fetchCampeonesRecientes(); fetchTorneosActivos(); registrarVisita('inicio') }, [])
+  const torneosRef = useRef(null)
+  const recordsRef = useRef(null)
+
+  useEffect(() => {
+    fetchTodo(); fetchCampeonesRecientes(); fetchTorneosActivos(); fetchStats(); fetchPartidosVivo()
+    registrarVisita('inicio')
+  }, [])
+
+  // Reloj de los partidos en vivo: recalcula localmente cada segundo (sin
+  // pegarle a la base de datos), y cada 20s sí refresca de verdad por si
+  // hubo un gol nuevo, terminó el partido, o empezó uno nuevo.
+  useEffect(() => {
+    const tRelog = setInterval(() => setTick(x => x + 1), 1000)
+    const tRefetch = setInterval(fetchPartidosVivo, 20000)
+    return () => { clearInterval(tRelog); clearInterval(tRefetch) }
+  }, [])
+
+  const partidosVivo = useMemo(() => {
+    void tick
+    return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo)
+  }, [matchesVivoRaw, tick])
+
+  async function fetchPartidosVivo() {
+    const { data } = await supabase.from('matches')
+      .select('id, tournament_id, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad)')
+      .eq('status', 'scheduled')
+      .or('live_state.not.is.null,live_state_rapida.not.is.null')
+    setMatchesVivoRaw(data || [])
+  }
+
+  // ── Estadísticas rápidas del encabezado ──
+  async function fetchStats() {
+    const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
+      supabase.from('tournaments').select('id', { count: 'exact', head: true }),
+      supabase.from('players').select('id', { count: 'exact', head: true }),
+      supabase.from('teams').select('id', { count: 'exact', head: true }),
+      supabase.from('matches').select('home_score, away_score').eq('status', 'finished'),
+    ])
+    const goles = (golesData || []).reduce((s, m) => s + (m.home_score || 0) + (m.away_score || 0), 0)
+    setStats({ torneos: cTorneos || 0, jugadores: cJugadores || 0, equipos: cEquipos || 0, goles })
+  }
 
   // ── TORNEOS ACTIVOS ────────────────────────────────────────────────────────
   async function fetchTorneosActivos() {
     const [{ data: tors }, { data: tts }, { data: ms }] = await Promise.all([
       supabase.from('tournaments').select('id, name, logo_url, modalidad, season, fase_actual').eq('status', 'active'),
       supabase.from('tournament_teams').select('tournament_id'),
-      supabase.from('matches').select('tournament_id, matchday, fase, status'),
+      supabase.from('matches').select('tournament_id, matchday, fase, status, played_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'),
     ])
     const cuentaEq = {}
     ;(tts || []).forEach(t => { cuentaEq[t.tournament_id] = (cuentaEq[t.tournament_id] || 0) + 1 })
@@ -222,7 +510,13 @@ export default function RecordsPage() {
       const elim = mts.filter(m => m.fase && m.fase !== 'grupo').sort((a, b) => (PESO[b.fase] || 0) - (PESO[a.fase] || 0))[0]
       const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
       const estado = elim ? (FASES[elim.fase] || 'Eliminatorias') : maxFecha > 0 ? `Fecha ${maxFecha}` : 'Por comenzar'
-      return { ...t, equipos: cuentaEq[t.id] || 0, estado, enElim: !!elim }
+      const proximo = mts.filter(m => m.status !== 'finished').sort((a, b) => {
+        if (!a.played_at && !b.played_at) return 0
+        if (!a.played_at) return 1
+        if (!b.played_at) return -1
+        return new Date(a.played_at) - new Date(b.played_at)
+      })[0]
+      return { ...t, equipos: cuentaEq[t.id] || 0, estado, enElim: !!elim, totalPartidos: mts.length, proximo }
     }))
   }
 
@@ -331,6 +625,10 @@ export default function RecordsPage() {
     return calcularRecordsAutomaticos()
   }
 
+  function irA(ref) {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   if (loading) return (
     <div style={{ minHeight: '100vh', background: S.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
       {showSplash && campeones.length > 0 && <SplashCampeones campeones={campeones} onClose={cerrarSplash}/>}
@@ -340,50 +638,96 @@ export default function RecordsPage() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: S.bg, color: S.text }}>
+    <div style={{ minHeight: '100vh', background: S.bg, color: S.text, paddingBottom: '76px' }}>
       {showSplash && campeones.length > 0 && <SplashCampeones campeones={campeones} onClose={cerrarSplash}/>}
+      {showBuscador && <BuscadorSimple onClose={() => setShowBuscador(false)}/>}
+      {showDrawer && <DrawerMenu onClose={() => setShowDrawer(false)} onIrTorneos={() => irA(torneosRef)} onIrRecords={() => irA(recordsRef)} navigate={navigate}/>}
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(180deg, #0a0a14 0%, #07070e 100%)', padding: '36px 16px 24px', textAlign: 'center', borderBottom: `1px solid ${S.border}` }}>
-        <div style={{ fontSize: '1.4rem', fontWeight: '800', color: S.cyan, letterSpacing: '6px', marginBottom: '6px' }}>GOLMEBOL</div>
-        <div style={{ fontSize: '.68rem', color: S.muted, letterSpacing: '3px', fontWeight: '700' }}>
-          LA CASA DEL MICROFÚTBOL
+      <div style={{ background: 'linear-gradient(180deg, #0a0a14 0%, #07070e 100%)', padding: '14px 14px 20px', borderBottom: `1px solid ${S.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+          <button onClick={() => setShowDrawer(true)} style={{ background: 'none', border: 'none', color: S.text, cursor: 'pointer', display: 'flex', padding: '4px' }}><Menu size={22}/></button>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '1.15rem', fontWeight: '800', color: S.cyan, letterSpacing: '4px' }}>GOLMEBOL</div>
+            <div style={{ fontSize: '.58rem', color: S.muted, letterSpacing: '2px', fontWeight: '700' }}>LA CASA DEL MICROFÚTBOL</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button onClick={() => setShowBuscador(true)} style={{ background: 'none', border: 'none', color: S.text, cursor: 'pointer', display: 'flex', padding: '4px' }}><Search size={19}/></button>
+            <button onClick={() => navigate('/jugador/login')} style={{ background: 'none', border: `1.5px solid ${S.green}`, borderRadius: '50%', color: S.green, cursor: 'pointer', display: 'flex', padding: '5px' }}><User size={16}/></button>
+          </div>
+        </div>
+
+        {/* Stats rápidas */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+          {[
+            { icono: <Trophy size={14} color={S.gold}/>, val: stats.torneos, label: 'TORNEOS' },
+            { icono: <Users size={14} color={S.cyan}/>, val: stats.jugadores, label: 'JUGADORES' },
+            { icono: <Shield size={13} color={S.green}/>, val: stats.goles, label: 'GOLES' },
+            { icono: <Shield size={13} color="#9955ff"/>, val: stats.equipos, label: 'EQUIPOS' },
+          ].map((st, i) => (
+            <div key={i} style={{ flex: 1, background: S.card, border: `1px solid ${S.border}`, borderRadius: '10px', padding: '9px 4px', textAlign: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>{st.icono}<span style={{ color: '#fff', fontWeight: '800', fontSize: '.92rem' }}>{st.val.toLocaleString('es-CO')}</span></div>
+              <div style={{ color: S.muted, fontSize: '.55rem', fontWeight: '700', letterSpacing: '.05em', marginTop: '2px' }}>{st.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* ── TORNEOS ACTIVOS ── */}
       {torneosActivos.length > 0 && (
-        <div style={{ padding: '22px 16px 6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-            <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.cyan})` }}/>
-            <div style={{ fontWeight: '900', color: S.cyan, fontSize: '.95rem', letterSpacing: '.14em' }}>🏆 TORNEOS ACTIVOS</div>
-            <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.cyan}, transparent)` }}/>
+        <div ref={torneosRef} style={{ padding: '22px 16px 6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+            <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.green})` }}/>
+            <div style={{ fontWeight: '900', color: S.green, fontSize: '.95rem', letterSpacing: '.14em' }}>TORNEOS ACTIVOS</div>
+            <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.green}, transparent)` }}/>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '12px', maxWidth: '760px', margin: '0 auto' }}>
-            {torneosActivos.map(t => (
-              <div key={t.id} onClick={() => abrirTablaTorneo(t)} className="gm-fade"
-                style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
-                <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: '#0a0f1e', border: `1px solid ${S.border}`, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span style={{ fontSize: '1.5rem' }}>🏆</span>}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: '800', color: '#fff', fontSize: '.9rem', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '.62rem', fontWeight: '800', color: t.enElim ? '#000' : S.cyan, background: t.enElim ? S.gold : 'rgba(0,221,208,.12)', border: t.enElim ? 'none' : `1px solid ${S.cyan}44`, borderRadius: '20px', padding: '3px 10px', letterSpacing: '.06em' }}>{t.estado.toUpperCase()}</span>
-                    {t.equipos > 0 && <span style={{ fontSize: '.62rem', fontWeight: '700', color: S.muted, background: 'rgba(255,255,255,.05)', borderRadius: '20px', padding: '3px 10px' }}>{t.equipos} EQUIPOS</span>}
-                  </div>
-                </div>
-                <div style={{ flexShrink: 0, color: S.gold, fontWeight: '800', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  Ver tabla <span style={{ fontSize: '.9rem' }}>›</span>
-                </div>
+          <div style={{ textAlign: 'center', color: S.muted, fontSize: '.68rem', marginBottom: '14px' }}>Elige un torneo para seguirlo en tiempo real</div>
+          <div style={{ maxWidth: '460px', margin: '0 auto' }}>
+            <SwipeCarousel items={torneosActivos} keyFn={t => t.id}
+              renderItem={t => <TorneoFeaturedCard t={t} onVerTabla={abrirTablaTorneo}/>}/>
+          </div>
+        </div>
+      )}
+
+      {/* ── PARTIDOS EN VIVO ── */}
+      {partidosVivo.length > 0 && (
+        <div style={{ padding: '26px 16px 6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '460px', margin: '0 auto 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Radio size={14} color="#ff5252"/>
+              <span style={{ fontWeight: '900', color: '#ff5252', fontSize: '.88rem', letterSpacing: '.1em' }}>PARTIDOS EN VIVO</span>
+            </div>
+            {partidosVivo.length > 1 && (
+              <button onClick={() => setShowVivoModal(true)} style={{ background: 'none', border: 'none', color: S.green, fontWeight: '700', fontSize: '.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                Ver todos <ChevronRight size={13}/>
+              </button>
+            )}
+          </div>
+          <div style={{ maxWidth: '460px', margin: '0 auto' }}>
+            <LiveMatchFeatured m={partidosVivo[0]}/>
+            {partidosVivo.length > 1 && (
+              <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '4px 12px', marginTop: '10px' }}>
+                {partidosVivo.slice(1, 4).map(m => <LiveMatchRow key={m.id} m={m}/>)}
               </div>
-            ))}
+            )}
+          </div>
+        </div>
+      )}
+
+      {showVivoModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 550, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && setShowVivoModal(false)}>
+          <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '480px', maxHeight: '80vh', overflowY: 'auto', padding: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <span style={{ fontWeight: '900', color: '#ff5252', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14}/> TODOS LOS PARTIDOS EN VIVO</span>
+              <button onClick={() => setShowVivoModal(false)} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
+            </div>
+            {partidosVivo.map(m => <LiveMatchRow key={m.id} m={m}/>)}
           </div>
         </div>
       )}
 
       {/* ── RÉCORDS GOLMEBOL ── */}
-      <div style={{ padding: '26px 16px 8px', textAlign: 'center' }}>
+      <div ref={recordsRef} style={{ padding: '26px 16px 8px', textAlign: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
           <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, transparent, ${S.gold})` }}/>
           <div style={{ fontWeight: '900', color: S.gold, fontSize: '1.1rem', letterSpacing: '.1em', lineHeight: 1.3 }}>
@@ -404,18 +748,30 @@ export default function RecordsPage() {
       {/* ── INICIA SESIÓN PARA DESBLOQUEAR ── */}
       <div style={{ padding: '28px 16px 48px', borderTop: `1px solid ${S.border}`, background: 'rgba(0,0,0,.3)' }}>
         <div style={{ maxWidth: '440px', margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🔓</div>
-          <div style={{ fontWeight: '900', color: '#fff', fontSize: '1.05rem', letterSpacing: '.04em', marginBottom: '6px' }}>
-            Inicia sesión para desbloquear todas las estadísticas y funciones de Golmebol
+          <div style={{ fontSize: '1.6rem', marginBottom: '8px' }}>🔒</div>
+          <div style={{ fontWeight: '900', color: '#fff', fontSize: '1rem', letterSpacing: '.02em', marginBottom: '16px' }}>
+            Desbloquea todas las funciones
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center', margin: '16px 0 20px' }}>
-            {['👤 Perfil completo', '📊 Estadísticas personales', '📋 Historial de partidos', '⚽ Goles', '🏅 Logros', '🎁 Premios', '🎯 PREDIX', '🃏 Tu tarjeta de jugador'].map(b => (
-              <span key={b} style={{ fontSize: '.68rem', fontWeight: '700', color: S.text, background: S.card, border: `1px solid ${S.border}`, borderRadius: '20px', padding: '6px 12px' }}>{b}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '22px' }}>
+            {[
+              { icono: <BarChart3 size={18} color={S.cyan}/>, label: 'Estadísticas' },
+              { icono: <Calendar size={18} color={S.cyan}/>, label: 'Historial' },
+              { icono: <Shield size={18} color={S.cyan}/>, label: 'Goles' },
+              { icono: <Trophy size={18} color={S.gold}/>, label: 'Logros' },
+              { icono: <span style={{ fontSize: '18px' }}>🎁</span>, label: 'Premios' },
+              { icono: <span style={{ fontSize: '18px' }}>🎯</span>, label: 'Predix' },
+              { icono: <span style={{ fontSize: '18px' }}>🃏</span>, label: 'Tarjeta' },
+              { icono: <User size={18} color={S.cyan}/>, label: 'Perfil' },
+            ].map(b => (
+              <div key={b.label} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '12px 4px', textAlign: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>{b.icono}</div>
+                <div style={{ fontSize: '.58rem', color: S.muted, fontWeight: '700' }}>{b.label}</div>
+              </div>
             ))}
           </div>
           <button onClick={() => navigate('/jugador/login')}
-            style={{ width: '100%', maxWidth: '320px', padding: '15px', background: `linear-gradient(90deg, ${S.cyan}, #1a73e8)`, border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '900', fontSize: '1rem', letterSpacing: '.5px', display: 'block', margin: '0 auto 12px', boxShadow: `0 4px 20px ${S.cyan}44` }}>
-            🎯 Ingresar al portal
+            style={{ width: '100%', maxWidth: '320px', padding: '15px', background: `linear-gradient(90deg, ${S.green}, ${S.cyan})`, border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '900', fontSize: '1rem', letterSpacing: '.5px', display: 'block', margin: '0 auto 12px', boxShadow: `0 4px 20px ${S.green}44` }}>
+            🔓 Ingresar al portal
           </button>
           <button onClick={() => navigate('/login')}
             style={{ padding: '9px 24px', background: 'none', border: `1px solid ${S.border}`, borderRadius: '10px', cursor: 'pointer', color: S.muted, fontSize: '.75rem' }}>
@@ -471,6 +827,23 @@ export default function RecordsPage() {
           </div>
         </div>
       )}
+
+      {/* ── BOTTOM NAV ── */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#0a0a14', borderTop: `1px solid ${S.border}`, display: 'flex', zIndex: 200, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {[
+          { icono: <Home size={18}/>, label: 'Inicio', onClick: () => window.scrollTo({ top: 0, behavior: 'smooth' }), activo: true },
+          { icono: <Calendar size={18}/>, label: 'Partidos', onClick: () => irA(torneosRef) },
+          { icono: <Trophy size={18}/>, label: 'Torneos', onClick: () => irA(torneosRef) },
+          { icono: <BarChart3 size={18}/>, label: 'Estadísticas', onClick: () => irA(recordsRef) },
+          { icono: <Menu size={18}/>, label: 'Más', onClick: () => setShowDrawer(true) },
+        ].map(it => (
+          <button key={it.label} onClick={it.onClick}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'none', border: 'none', cursor: 'pointer', padding: '9px 2px', color: it.activo ? S.green : S.muted }}>
+            {it.icono}
+            <span style={{ fontSize: '.58rem', fontWeight: '700' }}>{it.label.toUpperCase()}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
