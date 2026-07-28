@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { Trophy, Medal, Building2, ArrowLeft, ArrowRight } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -12,13 +13,10 @@ const lbl = { fontSize:'.7rem', fontWeight:'600', color:S.muted, display:'block'
 
 const EMPTY = { nombre:'', temporada:'', fecha_inicio:'', fecha_fin:'' }
 
-function iconoResultado(r) {
-  if (!r) return '🏆'
-  const t = r.toLowerCase()
-  if (t.includes('campe') && !t.includes('sub')) return '🏆'
-  if (t.includes('subcampe')) return '🥈'
-  if (t.includes('semi')) return '🥉'
-  return '🏆'
+function IconoResultado({ r, size = 20 }) {
+  const t = (r || '').toLowerCase()
+  if (t.includes('subcampe') || t.includes('semi')) return <Medal size={size} color={S.gold}/>
+  return <Trophy size={size} color={S.gold}/>
 }
 
 export default function EscuelaTorneosPage() {
@@ -74,7 +72,7 @@ export default function EscuelaTorneosPage() {
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'560px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escuela</button>
+          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px', display:'inline-flex', alignItems:'center', gap:'4px' }}><ArrowLeft size={11}/> Escuela</button>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
             <div>
               <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>Torneos</div>
@@ -123,13 +121,13 @@ export default function EscuelaTorneosPage() {
 
         {torneos.length === 0 ? (
           <div style={{ textAlign:'center', padding:'50px 20px', color:S.muted }}>
-            <div style={{ fontSize:'2rem', marginBottom:'10px' }}>🏆</div>
+            <div style={{ marginBottom:'10px', display:'flex', justifyContent:'center' }}><Trophy size={30} color={S.muted}/></div>
             <div style={{ fontSize:'.85rem' }}>Todavía no hay torneos registrados.</div>
           </div>
         ) : torneos.map(t => (
           <div key={t.id} onClick={() => navigate(`/escuela/torneos/${t.id}`)}
             style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'14px 16px', marginBottom:'10px', display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
-            <span style={{ fontSize:'1.5rem' }}>{t.resultado_final ? iconoResultado(t.resultado_final) : '🏟️'}</span>
+            {t.resultado_final ? <IconoResultado r={t.resultado_final}/> : <Building2 size={20} color={S.muted}/>}
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontWeight:'700', fontSize:'.9rem' }}>{t.nombre}</div>
               <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'2px' }}>
@@ -138,7 +136,7 @@ export default function EscuelaTorneosPage() {
                 {t.resultado_final && <span> · {t.resultado_final}</span>}
               </div>
             </div>
-            <span style={{ color:S.muted }}>→</span>
+            <ArrowRight size={15} color={S.muted}/>
           </div>
         ))}
       </div>

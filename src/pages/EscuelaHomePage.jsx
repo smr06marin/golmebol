@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
+import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight } from 'lucide-react'
+import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -107,10 +109,10 @@ export default function EscuelaHomePage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <PortalBanner theme="dark" sticky
-        avatarUrl={escuela?.logo_url} avatarEmoji="🛡️" avatarShape="rounded"
+        avatarUrl={escuela?.logo_url} avatarEmoji={<Shield size={22}/>} avatarShape="rounded"
         onAvatarUpload={esCoordinador && escuela ? handleLogo : undefined} uploadingAvatar={subiendoLogo}
-        kicker="🏟️ Club" title={escuela?.name || 'Sin club todavía'}
-        subtitle={`${esCoordinador ? '👑 Coordinador' : '🧑‍🏫 Profesor'} · ${profesor.name?.split(' ')[0]}`}
+        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Building2 size={11}/> Club</span>} title={escuela?.name || 'Sin club todavía'}
+        subtitle={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}>{esCoordinador ? <Crown size={11}/> : <GraduationCap size={11}/>} {esCoordinador ? 'Coordinador' : 'Profesor'} · {profesor.name?.split(' ')[0]}</span>}
         subtitleColor={esCoordinador ? S.gold : S.muted}
         usuario={profesor} actual="profesor" onLogout={handleLogout}
       />
@@ -121,7 +123,7 @@ export default function EscuelaHomePage() {
         {!profesor.escuela_id && (
           esCoordinador ? (
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px' }}>
-              <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🏫</div>
+              <div style={{ marginBottom:'8px' }}><School size={28} color={S.cyan}/></div>
               <div style={{ fontWeight:'800', fontSize:'1.05rem', marginBottom:'4px' }}>Crea tu club</div>
               <div style={{ fontSize:'.8rem', color:S.muted, marginBottom:'18px' }}>Ponle el nombre y la categoría — después podrás agregar tus jugadores, la foto del club y a los demás profesores.</div>
               <div style={{ marginBottom:'12px' }}>
@@ -140,7 +142,7 @@ export default function EscuelaHomePage() {
             </div>
           ) : (
             <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', textAlign:'center' }}>
-              <div style={{ fontSize:'2rem', marginBottom:'8px' }}>⏳</div>
+              <div style={{ marginBottom:'8px' }}><Hourglass size={28} color={S.muted}/></div>
               <div style={{ fontSize:'.85rem', color:S.muted }}>Tu coordinador todavía no te agregó a una escuela. Avísale para que lo haga desde su portal.</div>
             </div>
           )
@@ -163,40 +165,40 @@ export default function EscuelaHomePage() {
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
               <button onClick={() => navigate('/escuela/jugadores')}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <span style={{ fontSize:'1.4rem' }}>👥</span>
+                <Users size={22} color={S.cyan}/>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Jugadores</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>{esCoordinador ? 'Agrega y edita la plantilla de la escuela' : 'Ver la plantilla de la escuela'}</div>
                 </div>
-                <span style={{ color:S.muted }}>→</span>
+                <ArrowRight size={15} color={S.muted}/>
               </button>
 
               {esCoordinador && (
                 <button onClick={() => navigate('/escuela/profesores')}
                   style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                  <span style={{ fontSize:'1.4rem' }}>🧑‍🏫</span>
+                  <GraduationCap size={22} color={S.cyan}/>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Profesores</div>
                     <div style={{ fontSize:'.72rem', color:S.muted }}>Agrega a los demás profesores de tu escuela</div>
                   </div>
-                  <span style={{ color:S.muted }}>→</span>
+                  <ArrowRight size={15} color={S.muted}/>
                 </button>
               )}
 
               <button onClick={() => navigate('/escuela/asistencia')}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <span style={{ fontSize:'1.4rem' }}>📋</span>
+                <ClipboardList size={22} color={S.cyan}/>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Asistencia</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Marca quién vino a entrenar cada día</div>
                 </div>
-                <span style={{ color:S.muted }}>→</span>
+                <ArrowRight size={15} color={S.muted}/>
               </button>
 
               {esCoordinador && (
                 <button onClick={() => navigate('/escuela/mensualidades')}
                   style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${cMensualidad > 0 ? S.warn : S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                  <span style={{ fontSize:'1.4rem' }}>💰</span>
+                  <Wallet size={22} color={S.cyan}/>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:'700', fontSize:'.9rem', display:'flex', alignItems:'center', gap:'8px' }}>
                       Mensualidades
@@ -206,38 +208,38 @@ export default function EscuelaHomePage() {
                     </div>
                     <div style={{ fontSize:'.72rem', color:S.muted }}>{cMensualidad > 0 ? 'Hay pagos por vencer o vencidos' : 'Avisos y cobro por WhatsApp al acudiente'}</div>
                   </div>
-                  <span style={{ color:S.muted }}>→</span>
+                  <ArrowRight size={15} color={S.muted}/>
                 </button>
               )}
 
               <button onClick={() => navigate('/escuela/rankings')}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <span style={{ fontSize:'1.4rem' }}>🏅</span>
+                <Award size={22} color={S.cyan}/>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Rankings</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Tabla completa de goles, minutos, evaluaciones y más</div>
                 </div>
-                <span style={{ color:S.muted }}>→</span>
+                <ArrowRight size={15} color={S.muted}/>
               </button>
 
               <button onClick={() => navigate('/escuela/partido')}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <span style={{ fontSize:'1.4rem' }}>⚽</span>
+                <GiSoccerBall size={20} color={S.cyan}/>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Día de partido</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Convocatoria, formación y partido en vivo</div>
                 </div>
-                <span style={{ color:S.muted }}>→</span>
+                <ArrowRight size={15} color={S.muted}/>
               </button>
 
               <button onClick={() => navigate('/escuela/torneos')}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <span style={{ fontSize:'1.4rem' }}>🏆</span>
+                <Trophy size={22} color={S.cyan}/>
                 <div style={{ flex:1 }}>
                   <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Torneos</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Fase, resultado y premios de los torneos donde juega la escuela</div>
                 </div>
-                <span style={{ color:S.muted }}>→</span>
+                <ArrowRight size={15} color={S.muted}/>
               </button>
             </div>
           </div>

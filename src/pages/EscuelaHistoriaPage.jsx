@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { ArrowLeft, Shield, CheckCircle, Calendar, Trophy, Medal, Target, RefreshCw, Star, Bandage, Crown, FileText, Hand, Building2 } from 'lucide-react'
+import { GiSoccerBall, GiStairsGoal } from 'react-icons/gi'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -8,16 +10,20 @@ const S = {
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
 }
 
-function iconoResultado(r) {
-  if (!r) return '🏆'
-  const t = r.toLowerCase()
-  if (t.includes('campe') && !t.includes('sub')) return '🏆'
-  if (t.includes('subcampe')) return '🥈'
-  if (t.includes('semi')) return '🥉'
-  return '🏆'
+function IconoResultado({ r, size = 16 }) {
+  const t = (r || '').toLowerCase()
+  if (t.includes('subcampe') || t.includes('semi')) return <Medal size={size} color={S.gold}/>
+  return <Trophy size={size} color={S.gold}/>
 }
 
-const EV_ICONS = { goal:'⚽', assist:'🎯', yellow:'🟨', blue:'🟦', red:'🟥', sub:'🔄', highlight:'⭐', injury:'🩹', mvp:'👑', note:'📝', save:'🧤', goal_against:'🥅' }
+const EV_ICONS = {
+  goal: <GiSoccerBall size={11}/>, assist: <Target size={11}/>,
+  yellow: <span style={{width:'8px',height:'11px',borderRadius:'1px',background:'#f9c400',display:'inline-block'}}/>,
+  blue:   <span style={{width:'8px',height:'11px',borderRadius:'1px',background:'#1a73e8',display:'inline-block'}}/>,
+  red:    <span style={{width:'8px',height:'11px',borderRadius:'1px',background:'#d93025',display:'inline-block'}}/>,
+  sub: <RefreshCw size={11}/>, highlight: <Star size={11}/>, injury: <Bandage size={11}/>,
+  mvp: <Crown size={11}/>, note: <FileText size={11}/>, save: <Hand size={11}/>, goal_against: <GiStairsGoal size={11}/>,
+}
 
 function fmtFechaCorta(f) {
   if (!f) return ''
@@ -43,14 +49,14 @@ function FilaPartidoEquipo({ p }) {
       </div>
       {abierto && (
         <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${S.border}` }}>
-          {p.mvp?.first && <div style={{ fontSize:12, marginBottom:8 }}>👑 MVP: {(p.lineup||[]).find(x => String(x.id) === String(p.mvp.first))?.name || '—'}</div>}
+          {p.mvp?.first && <div style={{ fontSize:12, marginBottom:8, display:'flex', alignItems:'center', gap:'5px' }}><Crown size={12}/> MVP: {(p.lineup||[]).find(x => String(x.id) === String(p.mvp.first))?.name || '—'}</div>}
           {p.observaciones && <div style={{ fontSize:'.75rem', color:S.text2, marginBottom:8, fontStyle:'italic' }}>"{p.observaciones}"</div>}
           {(p.eventos||[]).length === 0 ? (
             <div style={{ fontSize:'.72rem', color:S.muted }}>Sin eventos registrados</div>
           ) : (p.eventos||[]).slice(0,25).map(ev => (
             <div key={ev.id} style={{ display:'flex', gap:6, fontSize:'.74rem', padding:'3px 0' }}>
               <span style={{ color:S.cyan, fontFamily:'monospace', minWidth:26 }}>{ev.min}'</span>
-              <span>{EV_ICONS[ev.type]||''}</span>
+              <span style={{display:'inline-flex',alignItems:'center'}}>{EV_ICONS[ev.type]||''}</span>
               <span style={{ color:S.text2 }}>{ev.player}</span>
             </div>
           ))}
@@ -119,9 +125,9 @@ export default function EscuelaHistoriaPage() {
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'500px', margin:'0 auto', display:'flex', alignItems:'center', gap:'12px' }}>
-          <button onClick={() => navigate(-1)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>←</button>
+          <button onClick={() => navigate(-1)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 10px', cursor:'pointer', color:S.muted, fontSize:'.85rem', display:'flex' }}><ArrowLeft size={15}/></button>
           <div style={{ width:'40px', height:'40px', borderRadius:'10px', overflow:'hidden', flexShrink:0, background:S.card2, display:'flex', alignItems:'center', justifyContent:'center' }}>
-            {escuela.logo_url ? <img src={escuela.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'3px' }}/> : <span style={{ fontSize:'1.1rem' }}>🛡️</span>}
+            {escuela.logo_url ? <img src={escuela.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'3px' }}/> : <Shield size={16} color={S.muted}/>}
           </div>
           <div>
             <div style={{ fontSize:'.65rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>Recorrido de la escuela</div>
@@ -134,13 +140,13 @@ export default function EscuelaHistoriaPage() {
         {/* Resumen */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'8px', marginBottom:'18px' }}>
           {[
-            { label:'Partidos', valor: partidos.length, icon:'⚽' },
-            { label:'Ganados', valor: partidos.filter(p=>p.score_home>p.score_away).length, icon:'✅' },
-            { label:'Torneos', valor: torneos.length, icon:'📅' },
-            { label:'Campeonatos', valor: campeonatos.length, icon:'🏆' },
+            { label:'Partidos', valor: partidos.length, Icon: GiSoccerBall },
+            { label:'Ganados', valor: partidos.filter(p=>p.score_home>p.score_away).length, Icon: CheckCircle },
+            { label:'Torneos', valor: torneos.length, Icon: Calendar },
+            { label:'Campeonatos', valor: campeonatos.length, Icon: Trophy },
           ].map(s => (
             <div key={s.label} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'12px 6px', textAlign:'center' }}>
-              <div style={{ fontSize:'1.1rem' }}>{s.icon}</div>
+              <div style={{ display:'flex', justifyContent:'center' }}><s.Icon size={15} color={S.cyan}/></div>
               <div style={{ fontSize:'1.2rem', fontWeight:'900', color:S.cyan, marginTop:'2px' }}>{s.valor}</div>
               <div style={{ fontSize:'.58rem', color:S.muted, marginTop:'2px' }}>{s.label}</div>
             </div>
@@ -148,10 +154,10 @@ export default function EscuelaHistoriaPage() {
         </div>
 
         <div style={{ display:'flex', gap:'6px', marginBottom:'16px' }}>
-          {[{ id:'partidos', label:`⚽ Partidos (${partidos.length})` }, { id:'torneos', label:`🏆 Torneos (${torneos.length})` }].map(t => (
+          {[{ id:'partidos', label:`Partidos (${partidos.length})`, Icon:GiSoccerBall }, { id:'torneos', label:`Torneos (${torneos.length})`, Icon:Trophy }].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ flex:1, padding:'9px', borderRadius:'10px', border:`1px solid ${tab===t.id?S.cyan:S.border}`, background:tab===t.id?S.cyanDim:'transparent', color:tab===t.id?S.cyan:S.muted, fontSize:'.78rem', fontWeight:700, cursor:'pointer' }}>
-              {t.label}
+              style={{ flex:1, padding:'9px', borderRadius:'10px', border:`1px solid ${tab===t.id?S.cyan:S.border}`, background:tab===t.id?S.cyanDim:'transparent', color:tab===t.id?S.cyan:S.muted, fontSize:'.78rem', fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}>
+              <t.Icon size={12}/> {t.label}
             </button>
           ))}
         </div>
@@ -159,7 +165,7 @@ export default function EscuelaHistoriaPage() {
         {tab === 'partidos' && (
           partidos.length === 0 ? (
             <div style={{ textAlign:'center', color:S.muted, padding:'48px 16px' }}>
-              <div style={{ fontSize:'2rem', marginBottom:'8px' }}>⚽</div>
+              <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><GiSoccerBall size={26}/></div>
               <div style={{ fontSize:'.85rem' }}>Esta escuela todavía no tiene partidos guardados</div>
             </div>
           ) : (
@@ -169,7 +175,7 @@ export default function EscuelaHistoriaPage() {
 
         {tab === 'torneos' && (torneos.length === 0 ? (
           <div style={{ textAlign:'center', color:S.muted, padding:'48px 16px' }}>
-            <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
+            <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><FileText size={26}/></div>
             <div style={{ fontSize:'.85rem' }}>Esta escuela todavía no tiene torneos registrados</div>
           </div>
         ) : (
@@ -192,7 +198,7 @@ export default function EscuelaHistoriaPage() {
                   </div>
                   {t.resultado_final && (
                     <div style={{ marginTop:'8px', display:'flex', alignItems:'center', gap:'8px', padding:'8px 10px', borderRadius:'10px', background:'rgba(249,168,37,.08)', border:`1px solid ${S.gold}44` }}>
-                      <span style={{ fontSize:'1.1rem' }}>{iconoResultado(t.resultado_final)}</span>
+                      <IconoResultado r={t.resultado_final}/>
                       <span style={{ fontSize:'.8rem', fontWeight:'700', color:S.gold }}>{t.resultado_final}</span>
                     </div>
                   )}
