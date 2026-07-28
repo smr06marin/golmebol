@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { resolverPrediccionesPartido } from '../lib/predix'
 import PlanillaPartido from '../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../lib/planillaRecovery'
-import { ArrowLeft, Trophy, MapPin, Check, Filter } from 'lucide-react'
+import { ArrowLeft, Trophy, MapPin, Check, Filter, Scale, Calendar, Clock, ClipboardList } from 'lucide-react'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -116,7 +116,7 @@ export default function ArbitroPage() {
           </button>
         )}
         <div style={{ flex: 1 }}>
-          <div style={{ color: '#fff', fontWeight: '800', fontSize: '1rem', letterSpacing: '.03em' }}>🧑‍⚖️ PORTAL DE ÁRBITROS</div>
+          <div style={{ color: '#fff', fontWeight: '800', fontSize: '1rem', letterSpacing: '.03em', display: 'flex', alignItems: 'center', gap: '6px' }}><Scale size={16}/> PORTAL DE ÁRBITROS</div>
           <div style={{ color: 'rgba(255,255,255,.75)', fontSize: '.72rem' }}>{torneoSel ? torneoSel.name : 'Elige el torneo que vas a pitar'}</div>
         </div>
         <button onClick={handleLogout}
@@ -163,7 +163,7 @@ export default function ArbitroPage() {
               {canchas.map(c => (
                 <button key={c.id} onClick={() => setCanchaSel(c.nombre)}
                   style={{ padding: '6px 14px', borderRadius: '20px', border: `1px solid ${canchaSel === c.nombre ? '#1a73e8' : '#dadce0'}`, background: canchaSel === c.nombre ? '#1a73e8' : '#fff', color: canchaSel === c.nombre ? '#fff' : '#5f6368', fontSize: '.78rem', fontWeight: '600', cursor: 'pointer' }}>
-                  📍 {c.nombre}
+                  <MapPin size={11} style={{verticalAlign:'-1px', marginRight:'2px'}}/> {c.nombre}
                 </button>
               ))}
             </div>
@@ -193,10 +193,10 @@ export default function ArbitroPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
                         {p.played_at && (
                           <span style={{ fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 10px', fontWeight: '600' }}>
-                            📅 {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })} · 🕐 {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                            <Calendar size={11} style={{verticalAlign:'-1px'}}/> {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })} · <Clock size={11} style={{verticalAlign:'-1px'}}/> {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         )}
-                        {p.location && <span style={{ fontSize: '.75rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '10px', padding: '2px 10px' }}>📍 {p.location}</span>}
+                        {p.location && <span style={{ fontSize: '.75rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '10px', padding: '2px 10px' }}><MapPin size={11} style={{verticalAlign:'-1px'}}/> {p.location}</span>}
                         {p.matchday && <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>J{p.matchday}</span>}
                         {p.ronda && <span style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '700' }}>{p.ronda}</span>}
                       </div>
@@ -218,7 +218,7 @@ export default function ArbitroPage() {
                         </button>
                         <button onClick={() => setPlanillaPartido(p)}
                           style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', background: '#1a73e8', color: '#fff', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
-                          📋 Abrir planilla
+                          <ClipboardList size={13} style={{verticalAlign:'-2px', marginRight:'4px'}}/>Abrir planilla
                         </button>
                       </div>
                     </div>

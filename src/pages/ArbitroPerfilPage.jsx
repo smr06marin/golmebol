@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, ChevronDown, ChevronUp, Shield } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Shield, Clock, Shirt, Target, Scale, MessageCircle, MapPin, User, ClipboardList, Trophy, FileText, AlertTriangle, CheckCircle, XCircle, Hourglass, Paperclip, Phone, Circle, Award, Activity, Stethoscope, CreditCard } from 'lucide-react'
 
 const FASE_LABEL = { grupo:'Grupos', octavos:'Octavos', cuartos:'Cuartos', semifinal:'Semifinal', tercero:'3er Puesto', final:'Final' }
 const CRITERIOS  = [
-  { key:'puntualidad',    label:'Puntualidad',       icon:'⏰' },
-  { key:'presentacion',   label:'Presentación',      icon:'👔' },
-  { key:'control_juego',  label:'Control',           icon:'🎯' },
-  { key:'criterio',       label:'Criterio',          icon:'⚖️' },
-  { key:'comunicacion',   label:'Comunicación',      icon:'🗣️' },
-  { key:'posicionamiento',label:'Posicionamiento',   icon:'📍' },
+  { key:'puntualidad',    label:'Puntualidad',       icon:Clock },
+  { key:'presentacion',   label:'Presentación',      icon:Shirt },
+  { key:'control_juego',  label:'Control',           icon:Target },
+  { key:'criterio',       label:'Criterio',          icon:Scale },
+  { key:'comunicacion',   label:'Comunicación',      icon:MessageCircle },
+  { key:'posicionamiento',label:'Posicionamiento',   icon:MapPin },
 ]
 const PRUEBAS = [
   { key:'cooper_metros',       label:'Cooper',          unit:'m' },
@@ -149,14 +149,14 @@ export default function ArbitroPerfilPage() {
         </div>
         {esJugado && (
           <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
-            {t.amarillas>0&&<span style={{ fontSize:'.65rem', color:'#f9a825', background:'rgba(249,168,37,.1)', borderRadius:'4px', padding:'1px 6px' }}>🟨 {t.amarillas}</span>}
-            {t.azules>0   &&<span style={{ fontSize:'.65rem', color:'#1a73e8', background:'rgba(26,115,232,.1)',  borderRadius:'4px', padding:'1px 6px' }}>🟦 {t.azules}</span>}
-            {t.rojas>0    &&<span style={{ fontSize:'.65rem', color:'#d93025', background:'rgba(217,48,37,.1)',   borderRadius:'4px', padding:'1px 6px' }}>🟥 {t.rojas}</span>}
-            {!t.amarillas&&!t.azules&&!t.rojas&&<span style={{ fontSize:'.65rem', color:'#1e8e3e' }}>🟢 Sin tarjetas</span>}
+            {t.amarillas>0&&<span style={{ fontSize:'.65rem', color:'#f9a825', background:'rgba(249,168,37,.1)', borderRadius:'4px', padding:'1px 6px', display:'inline-flex', alignItems:'center', gap:'3px' }}><span style={{width:'8px',height:'11px',borderRadius:'1px',background:'#f9c400',display:'inline-block'}}/> {t.amarillas}</span>}
+            {t.azules>0   &&<span style={{ fontSize:'.65rem', color:'#1a73e8', background:'rgba(26,115,232,.1)',  borderRadius:'4px', padding:'1px 6px', display:'inline-flex', alignItems:'center', gap:'3px' }}><span style={{width:'8px',height:'11px',borderRadius:'1px',background:'#1a73e8',display:'inline-block'}}/> {t.azules}</span>}
+            {t.rojas>0    &&<span style={{ fontSize:'.65rem', color:'#d93025', background:'rgba(217,48,37,.1)',   borderRadius:'4px', padding:'1px 6px', display:'inline-flex', alignItems:'center', gap:'3px' }}><span style={{width:'8px',height:'11px',borderRadius:'1px',background:'#d93025',display:'inline-block'}}/> {t.rojas}</span>}
+            {!t.amarillas&&!t.azules&&!t.rojas&&<span style={{ fontSize:'.65rem', color:'#1e8e3e', display:'inline-flex', alignItems:'center', gap:'3px' }}><CheckCircle size={10}/> Sin tarjetas</span>}
             {p.companeros.length>0&&<span style={{ fontSize:'.62rem', color:'#7a9ab5', marginLeft:'auto' }}>con {p.companeros.join(', ')}</span>}
           </div>
         )}
-        {!esJugado&&p.played_at&&<div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'3px' }}>🕐 {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}{p.location&&` · 📍 ${p.location}`}</div>}
+        {!esJugado&&p.played_at&&<div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'3px', display:'flex', alignItems:'center', gap:'3px' }}><Clock size={10}/> {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}{p.location&&<> · <MapPin size={10}/> {p.location}</>}</div>}
       </div>
     )
   }
@@ -174,16 +174,16 @@ export default function ArbitroPerfilPage() {
         <div style={{ background:'linear-gradient(135deg,#111827,#0d1117)', border:'1px solid #1e2d3d', borderRadius:'16px', padding:'20px', marginBottom:'14px' }}>
           <div style={{ display:'flex', gap:'16px', alignItems:'center', marginBottom:'16px' }}>
             <div style={{ width:'72px', height:'72px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', border:'3px solid #f9a825', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {arbitro.photo_face_url||arbitro.photo_url?<img src={arbitro.photo_face_url||arbitro.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<span style={{ fontSize:'2rem' }}>👤</span>}
+              {arbitro.photo_face_url||arbitro.photo_url?<img src={arbitro.photo_face_url||arbitro.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<User size={32} color="#7a9ab5"/>}
             </div>
             <div>
               <div style={{ fontWeight:'900', fontSize:'1.1rem', color:'#e8f4fd' }}>{arbitro.name}</div>
-              <div style={{ fontSize:'.72rem', color:'#f9a825', fontWeight:'700', marginTop:'2px' }}>🟡 ÁRBITRO</div>
+              <div style={{ fontSize:'.72rem', color:'#f9a825', fontWeight:'700', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}><Circle size={8} fill="#f9a825"/> ÁRBITRO</div>
               <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'6px', display:'flex', flexDirection:'column', gap:'2px' }}>
-                {arbitro.numero_cedula && <span>🪪 {arbitro.numero_cedula}</span>}
-                {arbitro.telefono      && <span>📞 {arbitro.telefono}</span>}
-                {arbitro.city          && <span>📍 {arbitro.city}</span>}
-                {arbitro.genero        && <span>👤 {arbitro.genero}</span>}
+                {arbitro.numero_cedula && <span style={{display:'flex',alignItems:'center',gap:'4px'}}><CreditCard size={11}/> {arbitro.numero_cedula}</span>}
+                {arbitro.telefono      && <span style={{display:'flex',alignItems:'center',gap:'4px'}}><Phone size={11}/> {arbitro.telefono}</span>}
+                {arbitro.city          && <span style={{display:'flex',alignItems:'center',gap:'4px'}}><MapPin size={11}/> {arbitro.city}</span>}
+                {arbitro.genero        && <span style={{display:'flex',alignItems:'center',gap:'4px'}}><User size={11}/> {arbitro.genero}</span>}
               </div>
             </div>
           </div>
@@ -191,13 +191,13 @@ export default function ArbitroPerfilPage() {
           {/* Stats principales */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px', marginBottom:'12px' }}>
             {[
-              { label:'Pitados',  value:jugados.length,   color:'#00ddd0', icon:'📋' },
-              { label:'Torneos',  value:torneos,           color:'#1a73e8', icon:'🏆' },
-              { label:'Puntaje',  value:promEval!==null?`${promEval}/60`:'—', color:'#f9a825', icon:'📝' },
-              { label:'Reclamos', value:reclamos.length,  color: reclamos.length>0?'#d93025':'#1e8e3e', icon:'⚠️' },
+              { label:'Pitados',  value:jugados.length,   color:'#00ddd0', icon:ClipboardList },
+              { label:'Torneos',  value:torneos,           color:'#1a73e8', icon:Trophy },
+              { label:'Puntaje',  value:promEval!==null?`${promEval}/60`:'—', color:'#f9a825', icon:FileText },
+              { label:'Reclamos', value:reclamos.length,  color: reclamos.length>0?'#d93025':'#1e8e3e', icon:AlertTriangle },
             ].map(s=>(
               <div key={s.label} style={{ background:'#1e2d3d', borderRadius:'10px', padding:'10px 6px', textAlign:'center' }}>
-                <div style={{ fontSize:'.9rem', marginBottom:'2px' }}>{s.icon}</div>
+                <div style={{ marginBottom:'2px', display:'flex', justifyContent:'center' }}><s.icon size={15} color={s.color}/></div>
                 <div style={{ fontSize:s.value.toString().length>4?'.9rem':'1.2rem', fontWeight:'900', color:s.color, lineHeight:1 }}>{s.value}</div>
                 <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginTop:'2px' }}>{s.label}</div>
               </div>
@@ -206,9 +206,9 @@ export default function ArbitroPerfilPage() {
 
           {/* Tarjetas */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px', marginBottom:'12px' }}>
-            {[{label:'Amarillas',value:totalAm,color:'#f9a825',icon:'🟨'},{label:'Azules',value:totalAz,color:'#1a73e8',icon:'🟦'},{label:'Rojas',value:totalRj,color:'#d93025',icon:'🟥'}].map(s=>(
+            {[{label:'Amarillas',value:totalAm,color:'#f9c400'},{label:'Azules',value:totalAz,color:'#1a73e8'},{label:'Rojas',value:totalRj,color:'#d93025'}].map(s=>(
               <div key={s.label} style={{ background:'#1e2d3d', borderRadius:'10px', padding:'10px', textAlign:'center' }}>
-                <div style={{ fontSize:'.9rem' }}>{s.icon}</div>
+                <div style={{ display:'flex', justifyContent:'center' }}><span style={{width:'10px',height:'14px',borderRadius:'2px',background:s.color,display:'inline-block'}}/></div>
                 <div style={{ fontSize:'1.2rem', fontWeight:'900', color:s.value>0?s.color:'#2a3a4a' }}>{s.value}</div>
                 <div style={{ fontSize:'.6rem', color:'#7a9ab5' }}>{s.label}</div>
               </div>
@@ -218,7 +218,7 @@ export default function ArbitroPerfilPage() {
           {/* Fases dirigidas */}
           {(finales>0||semis>0||cuartos>0||octavos>0) && (
             <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-              {finales>0 &&<span style={{ fontSize:'.72rem', color:'#f9a825', background:'rgba(249,168,37,.1)', borderRadius:'7px', padding:'3px 10px', fontWeight:'700' }}>🏅 Final ×{finales}</span>}
+              {finales>0 &&<span style={{ fontSize:'.72rem', color:'#f9a825', background:'rgba(249,168,37,.1)', borderRadius:'7px', padding:'3px 10px', fontWeight:'700', display:'inline-flex', alignItems:'center', gap:'4px' }}><Award size={11}/> Final ×{finales}</span>}
               {semis>0   &&<span style={{ fontSize:'.72rem', color:'#00ddd0', background:'rgba(0,221,208,.08)',  borderRadius:'7px', padding:'3px 10px' }}>Semifinal ×{semis}</span>}
               {cuartos>0 &&<span style={{ fontSize:'.72rem', color:'#1a73e8', background:'rgba(26,115,232,.08)',borderRadius:'7px', padding:'3px 10px' }}>Cuartos ×{cuartos}</span>}
               {octavos>0 &&<span style={{ fontSize:'.72rem', color:'#7a9ab5', background:'rgba(122,154,181,.08)',borderRadius:'7px', padding:'3px 10px' }}>Octavos ×{octavos}</span>}
@@ -229,7 +229,7 @@ export default function ArbitroPerfilPage() {
         {/* Evaluaciones */}
         {evals.length>0 && (
           <div style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', marginBottom:'10px', overflow:'hidden' }}>
-            <SectionHeader title="📝 Evaluaciones de veedor" stateKey="evals" count={evals.length} color="#1a73e8"/>
+            <SectionHeader title={<span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}><FileText size={13}/> Evaluaciones de veedor</span>} stateKey="evals" count={evals.length} color="#1a73e8"/>
             {abiertos.evals && (
               <div style={{ padding:'12px 14px', borderTop:'0.5px solid #1e2d3d' }}>
                 {/* Promedio por criterio */}
@@ -238,7 +238,7 @@ export default function ArbitroPerfilPage() {
                     const prom = evals.length>0 ? (evals.reduce((s,e)=>s+(e[c.key]||0),0)/evals.length).toFixed(1) : 0
                     return (
                       <div key={c.key} style={{ background:'#1e2d3d', borderRadius:'8px', padding:'8px', textAlign:'center' }}>
-                        <div style={{ fontSize:'.8rem' }}>{c.icon}</div>
+                        <div style={{ display:'flex', justifyContent:'center' }}><c.icon size={13} color="#7a9ab5"/></div>
                         <div style={{ fontSize:'1rem', fontWeight:'900', color:parseFloat(prom)>=8?'#1e8e3e':parseFloat(prom)>=5?'#f9a825':'#d93025' }}>{prom}</div>
                         <div style={{ fontSize:'.58rem', color:'#7a9ab5' }}>{c.label}</div>
                       </div>
@@ -266,29 +266,29 @@ export default function ArbitroPerfilPage() {
         {/* Exámenes */}
         {(ultimoFis||ultimoMed) && (
           <div style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', marginBottom:'10px', overflow:'hidden' }}>
-            <SectionHeader title="🏥 Exámenes" stateKey="examenes" count={exams.length} color="#00ddd0"/>
+            <SectionHeader title={<span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}><Stethoscope size={13}/> Exámenes</span>} stateKey="examenes" count={exams.length} color="#00ddd0"/>
             {abiertos.examenes && (
               <div style={{ padding:'12px 14px', borderTop:'0.5px solid #1e2d3d', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
                 {/* Físico */}
                 {ultimoFis && (
                   <div style={{ background:'#0d1117', borderRadius:'10px', padding:'10px 12px', border:`1px solid ${ultimoFis.resultado==='aprobado'?'rgba(30,142,62,.3)':ultimoFis.resultado==='reprobado'?'rgba(217,48,37,.3)':'#1e2d3d'}` }}>
-                    <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px' }}>🏃 FÍSICO · {ultimoFis.resultado==='aprobado'?'✅':ultimoFis.resultado==='reprobado'?'❌':'⏳'}</div>
+                    <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px', display:'flex', alignItems:'center', gap:'4px' }}><Activity size={11}/> FÍSICO · {ultimoFis.resultado==='aprobado'?<CheckCircle size={11} color="#1e8e3e"/>:ultimoFis.resultado==='reprobado'?<XCircle size={11} color="#d93025"/>:<Hourglass size={11}/>}</div>
                     {PRUEBAS.filter(p=>ultimoFis[p.key]).map(p=>(
                       <div key={p.key} style={{ display:'flex', justifyContent:'space-between', fontSize:'.65rem', marginBottom:'2px' }}>
                         <span style={{ color:'#7a9ab5' }}>{p.label}</span>
                         <span style={{ color:'#e8f4fd', fontWeight:'600' }}>{ultimoFis[p.key]}{p.unit&&' '+p.unit}</span>
                       </div>
                     ))}
-                    {ultimoFis.archivo_url && <a href={ultimoFis.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.62rem', color:'#1a73e8', display:'block', marginTop:'4px' }}>📎 Ver archivo</a>}
+                    {ultimoFis.archivo_url && <a href={ultimoFis.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.62rem', color:'#1a73e8', display:'flex', alignItems:'center', gap:'4px', marginTop:'4px' }}><Paperclip size={10}/> Ver archivo</a>}
                   </div>
                 )}
                 {/* Médico */}
                 {ultimoMed && (
                   <div style={{ background:'#0d1117', borderRadius:'10px', padding:'10px 12px', border:`1px solid ${ultimoMed.resultado==='aprobado'?'rgba(30,142,62,.3)':ultimoMed.resultado==='reprobado'?'rgba(217,48,37,.3)':'#1e2d3d'}` }}>
-                    <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px' }}>🏥 MÉDICO · {ultimoMed.resultado==='aprobado'?'✅':ultimoMed.resultado==='reprobado'?'❌':'⏳'}</div>
+                    <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px', display:'flex', alignItems:'center', gap:'4px' }}><Stethoscope size={11}/> MÉDICO · {ultimoMed.resultado==='aprobado'?<CheckCircle size={11} color="#1e8e3e"/>:ultimoMed.resultado==='reprobado'?<XCircle size={11} color="#d93025"/>:<Hourglass size={11}/>}</div>
                     {ultimoMed.notas && <div style={{ fontSize:'.68rem', color:'#b0c4d8', marginBottom:'4px' }}>{ultimoMed.notas}</div>}
                     {ultimoMed.fecha && <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>{new Date(ultimoMed.fecha).toLocaleDateString('es-CO')}</div>}
-                    {ultimoMed.archivo_url && <a href={ultimoMed.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.62rem', color:'#1a73e8', display:'block', marginTop:'4px' }}>📎 Ver archivo</a>}
+                    {ultimoMed.archivo_url && <a href={ultimoMed.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.62rem', color:'#1a73e8', display:'flex', alignItems:'center', gap:'4px', marginTop:'4px' }}><Paperclip size={10}/> Ver archivo</a>}
                   </div>
                 )}
               </div>
@@ -299,7 +299,7 @@ export default function ArbitroPerfilPage() {
         {/* Reclamos — SOLO visible para el líder */}
         {esLider && reclamos.length>0 && (
           <div style={{ background:'#111827', border:'1px solid rgba(217,48,37,.3)', borderRadius:'12px', marginBottom:'10px', overflow:'hidden' }}>
-            <SectionHeader title="⚠️ Reclamos" stateKey="reclamos" count={reclamos.length} color="#d93025"/>
+            <SectionHeader title={<span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}><AlertTriangle size={13}/> Reclamos</span>} stateKey="reclamos" count={reclamos.length} color="#d93025"/>
             {abiertos.reclamos && (
               <div style={{ padding:'12px 14px', borderTop:'0.5px solid rgba(217,48,37,.2)' }}>
                 {reclamos.map(r=>(
@@ -309,7 +309,7 @@ export default function ArbitroPerfilPage() {
                       <span style={{ fontSize:'.65rem', color:r.estado==='abierto'?'#e8710a':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5' }}>{r.estado}</span>
                     </div>
                     <div style={{ fontSize:'.78rem', color:'#e8f4fd', marginBottom:'4px' }}>{r.descripcion}</div>
-                    {r.matches && <div style={{ fontSize:'.65rem', color:'#7a9ab5' }}>📋 {r.matches.home?.name} vs {r.matches.away?.name} · {r.matches.played_at&&new Date(r.matches.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</div>}
+                    {r.matches && <div style={{ fontSize:'.65rem', color:'#7a9ab5', display:'flex', alignItems:'center', gap:'4px' }}><ClipboardList size={10}/> {r.matches.home?.name} vs {r.matches.away?.name} · {r.matches.played_at&&new Date(r.matches.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</div>}
                   </div>
                 ))}
               </div>
@@ -323,7 +323,7 @@ export default function ArbitroPerfilPage() {
             <div style={{ fontSize:'.72rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em' }}>Compañeros frecuentes</div>
             {topCompaneros.map(([nombre,veces])=>(
               <div key={nombre} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'0.5px solid #1e2d3d' }}>
-                <span style={{ fontSize:'.82rem', color:'#e8f4fd' }}>🟡 {nombre}</span>
+                <span style={{ fontSize:'.82rem', color:'#e8f4fd', display:'flex', alignItems:'center', gap:'5px' }}><Circle size={8} fill="#f9a825" color="#f9a825"/> {nombre}</span>
                 <span style={{ fontSize:'.72rem', color:'#7a9ab5' }}>{veces} partido{veces>1?'s':''}</span>
               </div>
             ))}
@@ -333,14 +333,14 @@ export default function ArbitroPerfilPage() {
         {/* Pendientes */}
         {pendientes.length>0 && (
           <div style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', marginBottom:'10px', overflow:'hidden' }}>
-            <SectionHeader title="⏳ Pendientes" stateKey="pendientes" count={pendientes.length} color="#e8710a"/>
+            <SectionHeader title={<span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}><Hourglass size={13}/> Pendientes</span>} stateKey="pendientes" count={pendientes.length} color="#e8710a"/>
             {abiertos.pendientes && <div style={{ padding:'0 12px 12px', borderTop:'0.5px solid #1e2d3d' }}>{pendientes.map(p=><CardPartido key={p.id} p={p}/>)}</div>}
           </div>
         )}
 
         {/* Dirigidos */}
         <div style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', overflow:'hidden' }}>
-          <SectionHeader title="✅ Partidos dirigidos" stateKey="jugados" count={jugados.length} color="#1e8e3e"/>
+          <SectionHeader title={<span style={{display:'inline-flex',alignItems:'center',gap:'6px'}}><CheckCircle size={13}/> Partidos dirigidos</span>} stateKey="jugados" count={jugados.length} color="#1e8e3e"/>
           {abiertos.jugados && (
             <div style={{ padding:'0 12px 12px', borderTop:'0.5px solid #1e2d3d' }}>
               {jugados.length===0

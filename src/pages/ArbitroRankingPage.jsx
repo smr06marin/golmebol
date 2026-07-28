@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Upload, X } from 'lucide-react'
+import { ArrowLeft, Upload, X, Clock, Shirt, Target, Scale, MessageCircle, MapPin, User, ClipboardList, Trophy, FileText, AlertTriangle, CheckCircle, XCircle, Hourglass, Paperclip, Circle, Award, Activity, Stethoscope, Medal, BellOff } from 'lucide-react'
 
 const inp  = { width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const inp2 = { width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'7px 10px', color:'#e8f4fd', fontSize:'.82rem', outline:'none', boxSizing:'border-box' }
 const lbl  = { fontSize:'.72rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'3px' }
 
 const CRITERIOS_EVAL = [
-  { key:'puntualidad',    label:'Puntualidad',       icon:'⏰' },
-  { key:'presentacion',   label:'Presentación',      icon:'👔' },
-  { key:'control_juego',  label:'Control del juego', icon:'🎯' },
-  { key:'criterio',       label:'Criterio',          icon:'⚖️' },
-  { key:'comunicacion',   label:'Comunicación',      icon:'🗣️' },
-  { key:'posicionamiento',label:'Posicionamiento',   icon:'📍' },
+  { key:'puntualidad',    label:'Puntualidad',       icon:Clock },
+  { key:'presentacion',   label:'Presentación',      icon:Shirt },
+  { key:'control_juego',  label:'Control del juego', icon:Target },
+  { key:'criterio',       label:'Criterio',          icon:Scale },
+  { key:'comunicacion',   label:'Comunicación',      icon:MessageCircle },
+  { key:'posicionamiento',label:'Posicionamiento',   icon:MapPin },
 ]
 
 const PRUEBAS_FISICAS = [
@@ -73,7 +73,7 @@ function ModalEvaluar({ arbitro, partidos, evaluadorId, onClose, onGuardado }) {
           {CRITERIOS_EVAL.map(c=>(
             <div key={c.key}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'5px' }}>
-                <label style={{ fontSize:'.8rem', color:'#e8f4fd', fontWeight:'600' }}>{c.icon} {c.label}</label>
+                <label style={{ fontSize:'.8rem', color:'#e8f4fd', fontWeight:'600', display:'flex', alignItems:'center', gap:'5px' }}><c.icon size={13}/> {c.label}</label>
                 <span style={{ fontSize:'.9rem', fontWeight:'900', color:scores[c.key]>=8?'#1e8e3e':scores[c.key]>=5?'#f9a825':'#d93025', background:'#1e2d3d', borderRadius:'6px', padding:'2px 8px' }}>{scores[c.key]}</span>
               </div>
               <div style={{ display:'flex', gap:'3px' }}>
@@ -164,7 +164,7 @@ function ModalExamen({ arbitro, evaluadorId, onClose, onGuardado }) {
           {['fisico','medico'].map(t=>(
             <button key={t} onClick={()=>setTipo(t)}
               style={{ flex:1, padding:'9px', borderRadius:'8px', border:`1px solid ${tipo===t?'#1a73e8':'#1e2d3d'}`, background:tipo===t?'#1a73e8':'transparent', color:tipo===t?'#fff':'#7a9ab5', cursor:'pointer', fontWeight:'700', fontSize:'.85rem' }}>
-              {t==='fisico'?'🏃 Físico':'🏥 Médico'}
+              {t==='fisico'?<><Activity size={13} style={{verticalAlign:'-2px', marginRight:'4px'}}/>Físico</>:<><Stethoscope size={13} style={{verticalAlign:'-2px', marginRight:'4px'}}/>Médico</>}
             </button>
           ))}
         </div>
@@ -204,7 +204,7 @@ function ModalExamen({ arbitro, evaluadorId, onClose, onGuardado }) {
                 style={{ flex:1, padding:'7px', borderRadius:'7px', border:`1px solid ${result===r?(r==='aprobado'?'#1e8e3e':r==='reprobado'?'#d93025':'#e8710a'):'#1e2d3d'}`,
                   background:result===r?(r==='aprobado'?'rgba(30,142,62,.2)':r==='reprobado'?'rgba(217,48,37,.2)':'rgba(232,113,10,.2)'):'transparent',
                   color:result===r?(r==='aprobado'?'#1e8e3e':r==='reprobado'?'#d93025':'#e8710a'):'#7a9ab5', cursor:'pointer', fontSize:'.72rem', fontWeight:'700' }}>
-                {r==='aprobado'?'✅ Aprobado':r==='reprobado'?'❌ Reprobado':'⏳ Pendiente'}
+                {r==='aprobado'?<><CheckCircle size={11} style={{verticalAlign:'-2px', marginRight:'4px'}}/>Aprobado</>:r==='reprobado'?<><XCircle size={11} style={{verticalAlign:'-2px', marginRight:'4px'}}/>Reprobado</>:<><Hourglass size={11} style={{verticalAlign:'-2px', marginRight:'4px'}}/>Pendiente</>}
               </button>
             ))}
           </div>
@@ -218,7 +218,7 @@ function ModalExamen({ arbitro, evaluadorId, onClose, onGuardado }) {
             <label style={{ display:'block', border:`1px dashed ${file?'#00ddd0':'#1e2d3d'}`, borderRadius:'8px', padding:'12px', textAlign:'center', cursor:'pointer', background:'#111827' }}>
               <input type="file" onChange={e=>setFile(e.target.files[0])} style={{ display:'none' }}/>
               {file
-                ? <span style={{ fontSize:'.8rem', color:'#00ddd0' }}>📎 {file.name}</span>
+                ? <span style={{ fontSize:'.8rem', color:'#00ddd0', display:'inline-flex', alignItems:'center', gap:'5px' }}><Paperclip size={11}/> {file.name}</span>
                 : <span style={{ fontSize:'.78rem', color:'#7a9ab5', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}><Upload size={14}/> Subir archivo</span>}
             </label>
           </div>
@@ -258,7 +258,7 @@ function ModalReclamo({ arbitro, partido, liderId, onClose, onGuardado }) {
       <div style={{ background:'#0d1117', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid rgba(217,48,37,.3)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
           <div>
-            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>⚠️ Reclamo — {arbitro.name}</div>
+            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem', display:'flex', alignItems:'center', gap:'6px' }}><AlertTriangle size={14}/> Reclamo — {arbitro.name}</div>
             <div style={{ fontSize:'.7rem', color:'#7a9ab5', marginTop:'2px' }}>
               {partido.home?.name} vs {partido.away?.name}
               {partido.played_at && ` · ${new Date(partido.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`}
@@ -394,9 +394,9 @@ export default function ArbitroRankingPage() {
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text}</div>}
-      {modalRec && <ModalReclamo arbitro={modalRec.arbitro} partido={modalRec.partido} liderId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado ✓') }}/>}
-      {modalEval && <ModalEvaluar arbitro={modalEval} partidos={partidos} evaluadorId={lider?.id} onClose={()=>setModalEval(null)} onGuardado={()=>{ fetchEvals(); showMsgFn('Evaluación guardada ✓') }}/>}
-      {modalExam && <ModalExamen  arbitro={modalExam} evaluadorId={lider?.id} onClose={()=>setModalExam(null)} onGuardado={()=>{ fetchExamenes(); showMsgFn('Examen registrado ✓') }}/>}
+      {modalRec && <ModalReclamo arbitro={modalRec.arbitro} partido={modalRec.partido} liderId={lider?.id} onClose={()=>setModalRec(null)} onGuardado={()=>{ fetchReclamos(); showMsgFn('Reclamo registrado') }}/>}
+      {modalEval && <ModalEvaluar arbitro={modalEval} partidos={partidos} evaluadorId={lider?.id} onClose={()=>setModalEval(null)} onGuardado={()=>{ fetchEvals(); showMsgFn('Evaluación guardada') }}/>}
+      {modalExam && <ModalExamen  arbitro={modalExam} evaluadorId={lider?.id} onClose={()=>setModalExam(null)} onGuardado={()=>{ fetchExamenes(); showMsgFn('Examen registrado') }}/>}
 
       {/* Header */}
       <div style={{ background:'#0d1117', borderBottom:'0.5px solid #1e2d3d', padding:'12px 16px', display:'flex', alignItems:'center', gap:'12px', position:'sticky', top:0, zIndex:50 }}>
@@ -413,10 +413,10 @@ export default function ArbitroRankingPage() {
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:'4px', marginBottom:'16px', background:'#111827', borderRadius:'10px', padding:'4px' }}>
-          {[{id:'ranking',label:'🏆 Ranking'},{id:'evaluar',label:'📝 Evaluar'},{id:'examenes',label:'🏥 Exámenes'},{id:'reclamos',label:'⚠️ Reclamos'}].map(t=>(
+          {[{id:'ranking',label:'Ranking',Icon:Trophy},{id:'evaluar',label:'Evaluar',Icon:FileText},{id:'examenes',label:'Exámenes',Icon:Stethoscope},{id:'reclamos',label:'Reclamos',Icon:AlertTriangle}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
-              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', cursor:'pointer', fontSize:'.8rem', fontWeight:'700', background:tab===t.id?'#1a73e8':'transparent', color:tab===t.id?'#fff':'#7a9ab5' }}>
-              {t.label}
+              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', cursor:'pointer', fontSize:'.8rem', fontWeight:'700', background:tab===t.id?'#1a73e8':'transparent', color:tab===t.id?'#fff':'#7a9ab5', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}>
+              <t.Icon size={13}/> {t.label}
             </button>
           ))}
         </div>
@@ -444,11 +444,11 @@ export default function ArbitroRankingPage() {
                   <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'10px' }}>
                     {/* Posición */}
                     <div style={{ width:'38px', height:'38px', borderRadius:'50%', background:`${medalColor}22`, border:`2px solid ${medalColor}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontWeight:'900', fontSize:'1rem', color:medalColor }}>
-                      {i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`}
+                      {i<3?<Medal size={16}/>:`${i+1}`}
                     </div>
                     {/* Foto */}
                     <div style={{ width:'42px', height:'42px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<span>👤</span>}
+                      {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<User size={16} color="#7a9ab5"/>}
                     </div>
                     {/* Nombre */}
                     <div style={{ flex:1 }}>
@@ -476,18 +476,20 @@ export default function ArbitroRankingPage() {
                   {/* Stats detalle */}
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'6px' }}>
                     {[
-                      { label:'Partidos', value:a.partidos_pitados, color:'#00ddd0',  icon:'📋' },
-                      { label:'Evals',    value:a.evaluaciones,     color:'#1a73e8',  icon:'📝' },
-                      { label:'🟨',       value:a.amarillas,        color:'#f9a825',  icon:'' },
-                      { label:'🟦',       value:a.azules,           color:'#1a73e8',  icon:'' },
-                      { label:'🟥',       value:a.rojas,            color:'#d93025',  icon:'' },
-                      { label:'Finales',   value:a.finales,           color:'#f9a825',  icon:'🏅' },
-                      { label:'Reclamos',  value:a.reclamos_total,    color:'#d93025',  icon:'⚠️' },
+                      { label:'Partidos', value:a.partidos_pitados, color:'#00ddd0',  Icon:ClipboardList },
+                      { label:'Evals',    value:a.evaluaciones,     color:'#1a73e8',  Icon:FileText },
+                      { label:'Amar.',    value:a.amarillas,        color:'#f9c400',  swatch:true },
+                      { label:'Azul.',    value:a.azules,           color:'#1a73e8',  swatch:true },
+                      { label:'Roj.',     value:a.rojas,            color:'#d93025',  swatch:true },
+                      { label:'Finales',  value:a.finales,          color:'#f9a825',  Icon:Award },
+                      { label:'Reclamos', value:a.reclamos_total,   color:'#d93025',  Icon:AlertTriangle },
                     ].map(s=>(
                       <div key={s.label} style={{ background:'#0d1117', borderRadius:'7px', padding:'6px 4px', textAlign:'center' }}>
-                        <div style={{ fontSize:s.icon?'.75rem':'.82rem', marginBottom:'1px' }}>{s.icon||s.label}</div>
+                        <div style={{ marginBottom:'1px', display:'flex', justifyContent:'center' }}>
+                          {s.swatch ? <span style={{width:'8px',height:'11px',borderRadius:'1px',background:s.color,display:'inline-block'}}/> : s.Icon ? <s.Icon size={12} color="#7a9ab5"/> : null}
+                        </div>
                         <div style={{ fontSize:'1rem', fontWeight:'900', color:s.value>0?s.color:'#2a3a4a', lineHeight:1 }}>{s.value}</div>
-                        {s.icon && <div style={{ fontSize:'.55rem', color:'#7a9ab5', marginTop:'1px' }}>{s.label}</div>}
+                        <div style={{ fontSize:'.55rem', color:'#7a9ab5', marginTop:'1px' }}>{s.label}</div>
                       </div>
                     ))}
                   </div>
@@ -506,7 +508,7 @@ export default function ArbitroRankingPage() {
               return (
                 <div key={a.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'12px' }}>
                   <div style={{ width:'38px', height:'38px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<span>👤</span>}
+                    {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<User size={16} color="#7a9ab5"/>}
                   </div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:'700', fontSize:'.88rem', color:'#e8f4fd' }}>{a.name}</div>
@@ -516,8 +518,8 @@ export default function ArbitroRankingPage() {
                     {ultimo && (
                       <div style={{ display:'flex', gap:'3px', marginTop:'4px', flexWrap:'wrap' }}>
                         {CRITERIOS_EVAL.map(c=>(
-                          <span key={c.key} style={{ fontSize:'.6rem', color:ultimo[c.key]>=8?'#1e8e3e':ultimo[c.key]>=5?'#f9a825':'#d93025', background:'#1e2d3d', borderRadius:'4px', padding:'1px 5px' }}>
-                            {c.icon}{ultimo[c.key]}
+                          <span key={c.key} style={{ fontSize:'.6rem', color:ultimo[c.key]>=8?'#1e8e3e':ultimo[c.key]>=5?'#f9a825':'#d93025', background:'#1e2d3d', borderRadius:'4px', padding:'1px 5px', display:'inline-flex', alignItems:'center', gap:'2px' }}>
+                            <c.icon size={9}/>{ultimo[c.key]}
                           </span>
                         ))}
                       </div>
@@ -541,7 +543,7 @@ export default function ArbitroRankingPage() {
                   <div key={a.id} style={{ background:'#111827', border:`1px solid ${misRec.some(r=>r.estado==='abierto')?'rgba(217,48,37,.3)':'#1e2d3d'}`, borderRadius:'12px', padding:'12px 14px' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom: misRec.length>0?'10px':'0' }}>
                       <div style={{ width:'36px', height:'36px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<span>👤</span>}
+                        {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<User size={16} color="#7a9ab5"/>}
                       </div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:'700', fontSize:'.88rem', color:'#e8f4fd' }}>{a.name}</div>
@@ -551,7 +553,7 @@ export default function ArbitroRankingPage() {
                         <div style={{ fontSize:'.62rem', color:'#7a9ab5', marginBottom:'3px' }}>Reclamar en partido:</div>
                         <select onChange={e=>{ if(e.target.value) setModalRec({arbitro:a, partido:partidos.find(p=>p.id===e.target.value)}); e.target.value='' }}
                           style={{ background:'#1e2d3d', border:'1px solid #d93025', borderRadius:'6px', padding:'4px 8px', color:'#d93025', fontSize:'.7rem', outline:'none', cursor:'pointer' }}>
-                          <option value="">⚠️ Seleccionar partido...</option>
+                          <option value="">Seleccionar partido...</option>
                           {partidos.filter(p=>p.status==='finished'&&(p.arbitro1_id===a.id||p.arbitro2_id===a.id||p.arbitro3_id===a.id)).map(p=>(
                             <option key={p.id} value={p.id}>{p.home?.name} vs {p.away?.name} · {p.played_at?new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):''}</option>
                           ))}
@@ -562,7 +564,7 @@ export default function ArbitroRankingPage() {
                       <div key={r.id} style={{ background:'#0d1117', borderRadius:'8px', padding:'8px 10px', marginBottom:'5px', borderLeft:`3px solid ${r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5'}` }}>
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'3px' }}>
                           <span style={{ fontSize:'.68rem', fontWeight:'700', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5' }}>
-                            {r.estado==='abierto'?'⚠️ Abierto':r.estado==='resuelto'?'✅ Resuelto':'🔕 Desestimado'} · {r.tipo}
+                            {r.estado==='abierto'?<><AlertTriangle size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Abierto</>:r.estado==='resuelto'?<><CheckCircle size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Resuelto</>:<><BellOff size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Desestimado</>} · {r.tipo}
                           </span>
                           <span style={{ fontSize:'.62rem', color:'#3a4a5a' }}>{r.matches?.home?.name} vs {r.matches?.away?.name}</span>
                         </div>
@@ -602,7 +604,7 @@ export default function ArbitroRankingPage() {
                 <div key={a.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'14px 16px' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
                     <div style={{ width:'38px', height:'38px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<span>👤</span>}
+                      {a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>:<User size={16} color="#7a9ab5"/>}
                     </div>
                     <div style={{ flex:1, fontWeight:'700', fontSize:'.9rem', color:'#e8f4fd' }}>{a.name}</div>
                     <button onClick={()=>setModalExam(a)} style={{ padding:'6px 12px', background:'none', border:'1px solid #1a73e8', borderRadius:'7px', cursor:'pointer', color:'#1a73e8', fontSize:'.75rem', fontWeight:'700' }}>+ Examen</button>
@@ -611,11 +613,11 @@ export default function ArbitroRankingPage() {
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
                     {/* Físico */}
                     <div style={{ background:'#0d1117', borderRadius:'10px', padding:'10px 12px', border:`1px solid ${ultimoFis?.resultado==='aprobado'?'rgba(30,142,62,.3)':ultimoFis?.resultado==='reprobado'?'rgba(217,48,37,.3)':'#1e2d3d'}` }}>
-                      <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px' }}>🏃 FÍSICO</div>
+                      <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px', display:'flex', alignItems:'center', gap:'4px' }}><Activity size={11}/> FÍSICO</div>
                       {ultimoFis ? (
                         <>
                           <div style={{ fontSize:'.78rem', fontWeight:'700', color:ultimoFis.resultado==='aprobado'?'#1e8e3e':ultimoFis.resultado==='reprobado'?'#d93025':'#e8710a', marginBottom:'6px' }}>
-                            {ultimoFis.resultado==='aprobado'?'✅ Aprobado':ultimoFis.resultado==='reprobado'?'❌ Reprobado':'⏳ Pendiente'}
+                            {ultimoFis.resultado==='aprobado'?<><CheckCircle size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Aprobado</>:ultimoFis.resultado==='reprobado'?<><XCircle size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Reprobado</>:<><Hourglass size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Pendiente</>}
                           </div>
                           {/* Pruebas */}
                           <div style={{ display:'flex', flexDirection:'column', gap:'3px' }}>
@@ -633,22 +635,22 @@ export default function ArbitroRankingPage() {
                             )}
                           </div>
                           {ultimoFis.fecha && <div style={{ fontSize:'.6rem', color:'#3a4a5a', marginTop:'4px' }}>{new Date(ultimoFis.fecha).toLocaleDateString('es-CO')}</div>}
-                          {ultimoFis.archivo_url && <a href={ultimoFis.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.65rem', color:'#1a73e8', display:'block', marginTop:'3px' }}>📎 Ver archivo</a>}
+                          {ultimoFis.archivo_url && <a href={ultimoFis.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.65rem', color:'#1a73e8', display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}><Paperclip size={10}/> Ver archivo</a>}
                         </>
                       ) : <div style={{ fontSize:'.72rem', color:'#3a4a5a' }}>Sin registro</div>}
                     </div>
 
                     {/* Médico */}
                     <div style={{ background:'#0d1117', borderRadius:'10px', padding:'10px 12px', border:`1px solid ${ultimoMed?.resultado==='aprobado'?'rgba(30,142,62,.3)':ultimoMed?.resultado==='reprobado'?'rgba(217,48,37,.3)':'#1e2d3d'}` }}>
-                      <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px' }}>🏥 MÉDICO</div>
+                      <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px', display:'flex', alignItems:'center', gap:'4px' }}><Stethoscope size={11}/> MÉDICO</div>
                       {ultimoMed ? (
                         <>
                           <div style={{ fontSize:'.78rem', fontWeight:'700', color:ultimoMed.resultado==='aprobado'?'#1e8e3e':ultimoMed.resultado==='reprobado'?'#d93025':'#e8710a', marginBottom:'4px' }}>
-                            {ultimoMed.resultado==='aprobado'?'✅ Aprobado':ultimoMed.resultado==='reprobado'?'❌ Reprobado':'⏳ Pendiente'}
+                            {ultimoMed.resultado==='aprobado'?<><CheckCircle size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Aprobado</>:ultimoMed.resultado==='reprobado'?<><XCircle size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Reprobado</>:<><Hourglass size={10} style={{verticalAlign:'-1px', marginRight:'3px'}}/>Pendiente</>}
                           </div>
                           {ultimoMed.notas && <div style={{ fontSize:'.65rem', color:'#7a9ab5', marginBottom:'4px' }}>{ultimoMed.notas}</div>}
                           {ultimoMed.fecha && <div style={{ fontSize:'.6rem', color:'#3a4a5a', marginTop:'4px' }}>{new Date(ultimoMed.fecha).toLocaleDateString('es-CO')}</div>}
-                          {ultimoMed.archivo_url && <a href={ultimoMed.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.65rem', color:'#1a73e8', display:'block', marginTop:'3px' }}>📎 Ver archivo</a>}
+                          {ultimoMed.archivo_url && <a href={ultimoMed.archivo_url} target="_blank" rel="noreferrer" style={{ fontSize:'.65rem', color:'#1a73e8', display:'flex', alignItems:'center', gap:'4px', marginTop:'3px' }}><Paperclip size={10}/> Ver archivo</a>}
                         </>
                       ) : <div style={{ fontSize:'.72rem', color:'#3a4a5a' }}>Sin registro</div>}
                     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { LogOut, Shield, Download, Check } from 'lucide-react'
+import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Zap, Lock, FileText, Key, Circle } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import PortalBanner from '../components/PortalBanner'
@@ -19,7 +19,7 @@ function ModalCambiarContrasena({ onClose }) {
     setLoading(true)
     const { error } = await supabase.auth.updateUser({ password: nueva })
     if (error) setMsg('Error: ' + error.message)
-    else { setMsg('✅ Contraseña cambiada'); setTimeout(onClose, 1500) }
+    else { setMsg('OK|Contraseña cambiada'); setTimeout(onClose, 1500) }
     setLoading(false)
   }
 
@@ -32,7 +32,7 @@ function ModalCambiarContrasena({ onClose }) {
           <input type="password" value={nueva}   onChange={e=>setNueva(e.target.value)}   style={inp} placeholder="Nueva contraseña"/>
           <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={inp} placeholder="Confirmar contraseña"/>
         </div>
-        {msg && <div style={{ fontSize:'.8rem', color: msg.includes('✅')?'#1e8e3e':'#d93025', marginBottom:'10px' }}>{msg}</div>}
+        {msg && <div style={{ fontSize:'.8rem', color: msg.startsWith('OK|')?'#1e8e3e':'#d93025', marginBottom:'10px' }}>{msg.replace('OK|','')}</div>}
         <div style={{ display:'flex', gap:'8px' }}>
           <button onClick={handleCambiar} disabled={loading} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
             {loading?'Guardando...':'Cambiar'}
@@ -56,8 +56,8 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
         <div style={{ padding:'14px 20px', borderBottom:'1px solid #e8eaed', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div style={{ fontWeight:'700', color:'#202124' }}>Mis partidos asignados</div>
           <div style={{ display:'flex', gap:'8px' }}>
-            <button onClick={() => window.print()} style={{ padding:'5px 12px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem' }}>🖨️ Imprimir</button>
-            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6', fontSize:'1.2rem' }}>✕</button>
+            <button onClick={() => window.print()} style={{ padding:'5px 12px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', display:'flex', alignItems:'center', gap:'5px' }}><Printer size={12}/> Imprimir</button>
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6', fontSize:'1.2rem', display:'flex', alignItems:'center' }}><X size={18}/></button>
           </div>
         </div>
 
@@ -69,7 +69,7 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
               <div style={{ width:'60px', height:'60px', borderRadius:'50%', overflow:'hidden', margin:'0 auto 10px', border:'2px solid #f9a825' }}>
                 <img src={arbitro.photo_face_url||arbitro.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
               </div>
-            ) : <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🟡</div>}
+            ) : <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><Circle size={32} color="#f9a825" fill="#f9a825"/></div>}
             <div style={{ fontSize:'1.1rem', fontWeight:'900', color:'#fff', textTransform:'uppercase' }}>{arbitro?.name}</div>
             <div style={{ fontSize:'.7rem', color:'#f9a825', fontWeight:'700', marginTop:'2px' }}>ÁRBITRO</div>
           </div>
@@ -98,7 +98,7 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
                   {p.away?.logo_url && <img src={p.away.logo_url} style={{ width:'18px', height:'18px', objectFit:'contain' }}/>}
                 </div>
               </div>
-              {p.location && <div style={{ fontSize:'.62rem', color:'#7a9ab5', marginTop:'4px', textAlign:'center' }}>📍 {p.location}</div>}
+              {p.location && <div style={{ fontSize:'.62rem', color:'#7a9ab5', marginTop:'4px', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:'3px' }}><MapPin size={9}/> {p.location}</div>}
             </div>
           ))}
 
@@ -260,7 +260,7 @@ export default function ArbitroHomePage() {
         <div style={{ background:'rgba(217,48,37,.08)', borderBottom:'1px solid rgba(217,48,37,.2)', padding:'10px 16px' }}>
           {notifs.map(n=>(
             <div key={n.id} style={{ fontSize:'.78rem', color:'#e8f4fd', marginBottom:'4px' }}>
-              <span style={{ color:'#d93025', fontWeight:'700' }}>⚠️ {n.titulo}</span> — {n.mensaje}
+              <span style={{ color:'#d93025', fontWeight:'700', display:'inline-flex', alignItems:'center', gap:'4px' }}><AlertTriangle size={11}/> {n.titulo}</span> — {n.mensaje}
             </div>
           ))}
         </div>
@@ -285,8 +285,8 @@ export default function ArbitroHomePage() {
       )}
 
       <PortalBanner theme="dark" sticky
-        avatarUrl={arbitro?.photo_face_url||arbitro?.photo_url} avatarEmoji="👤"
-        kicker="🟡 Árbitro" title={arbitro?.name?.split(' ')[0]}
+        avatarUrl={arbitro?.photo_face_url||arbitro?.photo_url}
+        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Circle size={8} color="#f9a825" fill="#f9a825"/> Árbitro</span>} title={arbitro?.name?.split(' ')[0]}
         subtitle={dias===null?'Activo (gratis)':dias>0?`${dias}d activo`:'Vencido'}
         usuario={arbitro} actual="arbitro"
         onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
@@ -296,12 +296,12 @@ export default function ArbitroHomePage() {
               await supabase.from('notificaciones').update({leida:true}).eq('player_id',arbitro.id).eq('leida',false)
               setNotifs([])
             }} style={{ position:'relative', background:'rgba(217,48,37,.15)', border:'1px solid rgba(217,48,37,.4)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700' }}>
-              ⚠️ {notifs.length} reclamo{notifs.length>1?'s':''}
+              <AlertTriangle size={11} style={{verticalAlign:'-1px', marginRight:'3px'}}/>{notifs.length} reclamo{notifs.length>1?'s':''}
             </button>
           )}
-          <button onClick={()=>setShowFlyer(true)} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem' }}>📋 Mis partidos</button>
-          <button onClick={()=>navigate('/arbitro/encuestas')} style={{ background:'none', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.72rem', fontWeight:'700' }}>📝</button>
-          <button onClick={()=>setShowPass(true)}  style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', fontSize:'.72rem' }}>🔑</button>
+          <button onClick={()=>setShowFlyer(true)} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem', display:'flex', alignItems:'center', gap:'4px' }}><ClipboardList size={13}/> Mis partidos</button>
+          <button onClick={()=>navigate('/arbitro/encuestas')} style={{ background:'none', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.72rem', fontWeight:'700', display:'flex', alignItems:'center' }}><FileText size={13}/></button>
+          <button onClick={()=>setShowPass(true)}  style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', fontSize:'.72rem', display:'flex', alignItems:'center' }}><Key size={13}/></button>
         </>}
       />
 
@@ -309,12 +309,12 @@ export default function ArbitroHomePage() {
         {/* Stats */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'10px', marginBottom:'20px' }}>
           {[
-            { label:'Asignados', value:stats.total,   icon:'📋', color:'#00ddd0' },
-            { label:'Pitados',   value:stats.jugados,  icon:'✅', color:'#1e8e3e' },
-            { label:'Torneos',   value:stats.torneos,  icon:'🏆', color:'#f9a825' },
+            { label:'Asignados', value:stats.total,   icon:ClipboardList, color:'#00ddd0' },
+            { label:'Pitados',   value:stats.jugados,  icon:CheckCircle, color:'#1e8e3e' },
+            { label:'Torneos',   value:stats.torneos,  icon:Trophy, color:'#f9a825' },
           ].map(s=>(
             <div key={s.label} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-              <div style={{ fontSize:'1.1rem', marginBottom:'4px' }}>{s.icon}</div>
+              <div style={{ marginBottom:'4px', display:'flex', justifyContent:'center' }}><s.icon size={18} color={s.color}/></div>
               <div style={{ fontSize:'1.5rem', fontWeight:'900', color:s.color, lineHeight:1 }}>{s.value}</div>
               <div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'3px' }}>{s.label}</div>
             </div>
@@ -334,7 +334,7 @@ export default function ArbitroHomePage() {
         {/* Lista */}
         {lista.length===0 ? (
           <div style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'48px', textAlign:'center', color:'#7a9ab5' }}>
-            <div style={{ fontSize:'2rem', marginBottom:'8px' }}>{tab==='proximos'?'📅':'✅'}</div>
+            <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}>{tab==='proximos'?<Calendar size={26}/>:<CheckCircle size={26}/>}</div>
             <div style={{ fontSize:'.875rem' }}>{tab==='proximos'?'Sin partidos asignados':'Sin partidos pitados'}</div>
           </div>
         ) : lista.map(p=>{
@@ -345,9 +345,9 @@ export default function ArbitroHomePage() {
                 <span style={{ fontSize:'.7rem', color:'#00ddd0', background:'rgba(0,221,208,.1)', borderRadius:'6px', padding:'2px 8px' }}>{p.tournaments?.name}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
                   {p.matchday && <span style={{ fontSize:'.68rem', color:'#7a9ab5' }}>J{p.matchday}</span>}
-                  {p.played_at && <span style={{ fontSize:'.68rem', color:'#7a9ab5' }}>📅 {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</span>}
+                  {p.played_at && <span style={{ fontSize:'.68rem', color:'#7a9ab5', display:'inline-flex', alignItems:'center', gap:'3px' }}><Calendar size={10}/> {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</span>}
                   <span style={{ fontSize:'.65rem', fontWeight:'700', color:esJugado?'#1e8e3e':'#e8710a', background:esJugado?'rgba(30,142,62,.1)':'rgba(232,113,10,.1)', borderRadius:'6px', padding:'1px 6px' }}>
-                    {esJugado?'✓ Pitado':'⏳ Pendiente'}
+                    {esJugado?'✓ Pitado':'Pendiente'}
                   </span>
                 </div>
               </div>
@@ -370,19 +370,19 @@ export default function ArbitroHomePage() {
               </div>
               {(p.played_at||p.location) && (
                 <div style={{ marginTop:'6px', display:'flex', gap:'12px', fontSize:'.68rem', color:'#7a9ab5' }}>
-                  {p.played_at && <span>🕐 {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>}
-                  {p.location  && <span>📍 {p.location}</span>}
+                  {p.played_at && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><Clock size={10}/> {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>}
+                  {p.location  && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><MapPin size={10}/> {p.location}</span>}
                 </div>
               )}
               {esJugado ? (
                 <div title="Solo el coordinador o el admin pueden editar una planilla cerrada"
                   style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'1px solid #1e2d3d', background:'none', color:'#5a6b7a', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', boxSizing:'border-box' }}>
-                  🔒 Planilla cerrada
+                  <Lock size={13}/> Planilla cerrada
                 </div>
               ) : (
                 <button onClick={()=>abrirPlanilla(p)}
                   style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background: p.sin_planillador ? 'linear-gradient(135deg,#f9a825,#e8710a)' : 'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
-                  {p.sin_planillador ? <>⚡ Planilla rápida (sin planillador)</> : <><Check size={14}/> Llenar planilla</>}
+                  {p.sin_planillador ? <><Zap size={14}/> Planilla rápida (sin planillador)</> : <><Check size={14}/> Llenar planilla</>}
                 </button>
               )}
             </div>

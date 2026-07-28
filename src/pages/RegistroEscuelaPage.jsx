@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { GraduationCap } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { comprimirImagen } from '../lib/imageCompress'
@@ -198,7 +199,7 @@ export default function RegistroEscuelaPage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'20px 16px', textAlign:'center' }}>
-        <div style={{ fontSize:'.7rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>🎓 Registro de jugador · Golmebol</div>
+        <div style={{ fontSize:'.7rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}><GraduationCap size={11}/> Registro de jugador · Golmebol</div>
         <div style={{ fontWeight:900, fontSize:'1.2rem', marginTop:4 }}>{escuela?.name}</div>
         {escuela?.categoria && <div style={{ fontSize:'.78rem', color:S.text2, marginTop:2 }}>{escuela.categoria}</div>}
       </div>

@@ -1,3 +1,4 @@
+import { User, Camera } from 'lucide-react'
 import PortalesMenu from './PortalesMenu'
 
 const TEMA = {
@@ -11,7 +12,7 @@ const TEMA = {
 // nombre, rol y a qué portales puede saltar esa cuenta (PortalesMenu).
 export default function PortalBanner({
   theme = 'dark', sticky = false,
-  avatarUrl, avatarEmoji = '👤', avatarShape = 'circle', onAvatarUpload, uploadingAvatar,
+  avatarUrl, avatarEmoji = <User size={22}/>, avatarShape = 'circle', onAvatarUpload, uploadingAvatar,
   kicker, title, subtitle, subtitleColor,
   usuario, actual, onLogout, extraButtons,
 }) {
@@ -46,7 +47,7 @@ export default function PortalBanner({
             {onAvatarUpload && (
               <label style={{ position: 'absolute', bottom: '-3px', right: '-3px', width: '22px', height: '22px', borderRadius: '50%', background: c.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: uploadingAvatar ? 'default' : 'pointer', border: `2px solid ${c.bg2}`, opacity: uploadingAvatar ? .6 : 1 }}
                 title="Cambiar foto">
-                <span style={{ fontSize: '.6rem' }}>📷</span>
+                <Camera size={11} color="#fff"/>
                 <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingAvatar} onChange={e => onAvatarUpload(e.target.files[0] || null)}/>
               </label>
             )}

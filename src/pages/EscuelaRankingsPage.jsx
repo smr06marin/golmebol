@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Medal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EscuelaRankingModal from '../components/EscuelaRankingModal'
@@ -72,8 +73,8 @@ export default function EscuelaRankingsPage() {
                     <span style={{ fontSize:'1.2rem' }}>{item.icon}</span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:'.85rem', fontWeight:700, color:S.text }}>{item.label}</div>
-                      <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2 }}>
-                        {top ? `🥇 ${top.nombre} — ${top[item.campo]}${item.unidad ? ` ${item.unidad}` : ''}` : 'Sin datos todavía'}
+                      <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2, display:'flex', alignItems:'center', gap:'4px' }}>
+                        {top ? <><Medal size={11}/> {top.nombre} — {top[item.campo]}{item.unidad ? ` ${item.unidad}` : ''}</> : 'Sin datos todavía'}
                       </div>
                     </div>
                     <span style={{ color:S.muted, fontSize:'.72rem' }}>{filtrado.length} →</span>

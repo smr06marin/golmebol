@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check } from 'lucide-react'
+import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check, AlertTriangle, CheckCircle, ClipboardList, Circle, MapPin, User, Trophy, FileText, CreditCard, Key, Pencil, CheckSquare, Square, Smartphone, Crown, PartyPopper, Zap } from 'lucide-react'
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import PortalBanner from '../components/PortalBanner'
@@ -10,10 +10,10 @@ const inp ={ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', bor
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
 
 const TABS = [
-  { id:'sin_asignar', label:'Sin árbitro',   icon:'⚠️' },
-  { id:'asignados',   label:'Asignados',      icon:'✅' },
-  { id:'jugados',     label:'Jugados',        icon:'📋' },
-  { id:'arbitros',    label:'Árbitros',       icon:'🟡' },
+  { id:'sin_asignar', label:'Sin árbitro',   icon:AlertTriangle },
+  { id:'asignados',   label:'Asignados',      icon:CheckCircle },
+  { id:'jugados',     label:'Jugados',        icon:ClipboardList },
+  { id:'arbitros',    label:'Árbitros',       icon:Circle },
 ]
 
 function rolActualLabel(p) {
@@ -117,11 +117,11 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
           </div>
           <div style={{ background:'rgba(0,221,208,.06)', border:'1px solid rgba(0,221,208,.2)', borderRadius:'10px', padding:'14px', marginBottom:'16px', display:'flex', alignItems:'center', gap:'12px' }}>
             <div style={{ width:'46px', height:'46px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.2rem' }}>👤</span>}
+              {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <User size={19} color="#7a9ab5"/>}
             </div>
             <div>
               <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>{personaEncontrada.name}</div>
-              <div style={{ fontSize:'.75rem', color:'#7a9ab5', marginTop:'2px' }}>🪪 {personaEncontrada.numero_cedula} · actualmente <strong style={{ color:'#00ddd0' }}>{rolActualLabel(personaEncontrada)}</strong></div>
+              <div style={{ fontSize:'.75rem', color:'#7a9ab5', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}><CreditCard size={11}/> {personaEncontrada.numero_cedula} · actualmente <strong style={{ color:'#00ddd0' }}>{rolActualLabel(personaEncontrada)}</strong></div>
             </div>
           </div>
           <div style={{ fontSize:'.82rem', color:'#e8f4fd', marginBottom:'16px' }}>
@@ -147,12 +147,12 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
           <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Nuevo árbitro</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
         </div>
-        <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginBottom:'16px' }}>⚠️ No hay nadie registrado con la cédula <strong style={{ color:'#e8f4fd' }}>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
+        <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginBottom:'16px', display:'flex', alignItems:'center', gap:'5px' }}><AlertTriangle size={12}/> No hay nadie registrado con la cédula <strong style={{ color:'#e8f4fd' }}>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
         <div style={{ textAlign:'center', marginBottom:'16px' }}>
           <label style={{ cursor:'pointer' }}>
             <input type="file" accept="image/*" onChange={e=>setFotoFile(e.target.files[0])} style={{ display:'none' }}/>
             <div style={{ width:'70px', height:'70px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', border:`2px dashed ${fotoFile?'#00ddd0':'#2a3a4a'}`, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {fotoFile ? <img src={URL.createObjectURL(fotoFile)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.5rem' }}>📷</span>}
+              {fotoFile ? <img src={URL.createObjectURL(fotoFile)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Upload size={22} color="#7a9ab5"/>}
             </div>
             <div style={{ fontSize:'.68rem', color:'#7a9ab5', marginTop:'4px' }}>Foto del árbitro</div>
           </label>
@@ -164,7 +164,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
           <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
         </div>
         <div style={{ background:'rgba(0,221,208,.06)', border:'1px solid rgba(0,221,208,.15)', borderRadius:'8px', padding:'10px 12px', marginBottom:'14px', fontSize:'.75rem', color:'#7a9ab5' }}>
-          📧 <b style={{ color:'#00ddd0' }}>{form.numero_cedula||'cédula'}@golmebol.com</b> · 🔑 <b style={{ color:'#00ddd0' }}>{form.numero_cedula||'cédula'}</b>
+          <b style={{ color:'#00ddd0' }}>{form.numero_cedula||'cédula'}@golmebol.com</b> · <Key size={10} style={{verticalAlign:'-1px'}}/> <b style={{ color:'#00ddd0' }}>{form.numero_cedula||'cédula'}</b>
         </div>
         {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'10px' }}>{error}</div>}
         <div style={{ display:'flex', gap:'8px' }}>
@@ -242,14 +242,14 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
       {/* Pie: ubicación / árbitros asignados + acción */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', padding:'10px 14px', borderTop:'1px solid #1c2937', background:'rgba(0,0,0,.15)' }}>
         <div style={{ display:'flex', flexDirection:'column', gap:'3px', minWidth:0 }}>
-          {p.location && <span style={{ fontSize:'.68rem', color:'#7a9ab5' }}>📍 {p.location}</span>}
+          {p.location && <span style={{ fontSize:'.68rem', color:'#7a9ab5', display:'flex', alignItems:'center', gap:'3px' }}><MapPin size={10}/> {p.location}</span>}
           {tieneArbitro && !esJugado && (
-            <span style={{ fontSize:'.68rem', color:'#1e8e3e', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>✅ {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
+            <span style={{ fontSize:'.68rem', color:'#1e8e3e', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'3px' }}><CheckCircle size={10}/> {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
           )}
           {p.sin_planillador && !esJugado && (
-            <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700' }}>⚡ Sin planillador</span>
+            <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700', display:'flex', alignItems:'center', gap:'3px' }}><Zap size={10}/> Sin planillador</span>
           )}
-          {!tieneArbitro && !esJugado && <span style={{ fontSize:'.68rem', color:'#e8710a', fontWeight:'600' }}>⚠️ Sin árbitro asignado</span>}
+          {!tieneArbitro && !esJugado && <span style={{ fontSize:'.68rem', color:'#e8710a', fontWeight:'600', display:'flex', alignItems:'center', gap:'3px' }}><AlertTriangle size={10}/> Sin árbitro asignado</span>}
         </div>
 
         {!esJugado && (
@@ -270,7 +270,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
         {esJugado && onEditarPlanilla && (
           <button onClick={()=>onEditarPlanilla(p)}
             style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', color:'#7a9ab5', fontSize:'.75rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'5px' }}>
-            ✏️ Editar planilla
+<Pencil size={12}/> Editar planilla
           </button>
         )}
       </div>
@@ -278,13 +278,13 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
       {/* Panel asignación */}
       {abierto && !esJugado && (
         <div style={{ borderTop:'1px solid #1c2937', padding:'14px', background:'#0d1117' }}>
-          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em' }}>🟡 Asignar árbitros</div>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'5px' }}><Circle size={9} color="#f9a825" fill="#f9a825"/> Asignar árbitros</div>
 
           {onToggleSinPlanillador && (
             <button onClick={()=>onToggleSinPlanillador(p.id, !p.sin_planillador)}
               style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 10px', marginBottom:'12px',
                 background: p.sin_planillador ? 'rgba(249,168,37,.12)' : '#1c2937', border:`1px solid ${p.sin_planillador?'#f9a825':'#2a3a4a'}`, borderRadius:'9px', cursor:'pointer' }}>
-              <span style={{ fontSize:'1.1rem' }}>{p.sin_planillador ? '☑️' : '⬜'}</span>
+              {p.sin_planillador ? <CheckSquare size={17} color="#f9a825"/> : <Square size={17} color="#7a9ab5"/>}
               <span style={{ flex:1 }}>
                 <div style={{ fontSize:'.75rem', fontWeight:'700', color: p.sin_planillador?'#f9a825':'#e8f4fd' }}>Sin planillador</div>
                 <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>Los árbitros llevan la planilla rápida (sin un planillador dedicado)</div>
@@ -328,7 +328,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
                 <button key={a.id} type="button" onClick={()=>{ setSeleccion(s=>({...s,[pickerCampo]:a.id})); setPickerCampo(null) }}
                   style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 12px', background: actual?'rgba(0,221,208,.08)':'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color: actual?'#00ddd0':'#e8f4fd', fontSize:'.78rem', fontWeight: actual?'700':'500' }}>
                   <div style={{ width:'24px', height:'24px', borderRadius:'50%', overflow:'hidden', background:'#1c2937', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.7rem' }}>
-                    {(a.photo_face_url||a.photo_url) ? <img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : '🟡'}
+                    {(a.photo_face_url||a.photo_url) ? <img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Circle size={12} color="#f9a825" fill="#f9a825"/>}
                   </div>
                   <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.name}</span>
                   {actual && <Check size={13}/>}
@@ -368,7 +368,7 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
       <div style={{ background:'#0d1117', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid rgba(217,48,37,.4)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
           <div>
-            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>⚠️ Registrar reclamo</div>
+            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem', display:'flex', alignItems:'center', gap:'6px' }}><AlertTriangle size={14}/> Registrar reclamo</div>
             <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'2px' }}>
               {partido.home?.name} vs {partido.away?.name}
               {partido.played_at && ` · ${new Date(partido.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`}
@@ -391,7 +391,7 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
             </div>
           ) : (
             <div>
-              <div style={{ fontSize:'.75rem', color:'#e8710a', marginBottom:'8px' }}>⚠️ Este partido no tiene árbitros asignados — selecciona de la lista:</div>
+              <div style={{ fontSize:'.75rem', color:'#e8710a', marginBottom:'8px', display:'flex', alignItems:'center', gap:'5px' }}><AlertTriangle size={12}/> Este partido no tiene árbitros asignados — selecciona de la lista:</div>
               <select value={arbitroId} onChange={e=>setArbitroId(e.target.value)}
                 style={{ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none' }}>
                 <option value="">Seleccionar árbitro...</option>
@@ -423,7 +423,7 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
         </div>
 
         <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginBottom:'12px', background:'rgba(232,113,10,.06)', border:'1px solid rgba(232,113,10,.15)', borderRadius:'7px', padding:'8px 10px' }}>
-          📱 El árbitro recibirá una notificación de este reclamo
+<Smartphone size={11} style={{verticalAlign:'-2px', marginRight:'3px'}}/>El árbitro recibirá una notificación de este reclamo
         </div>
 
         <div style={{ display:'flex', gap:'8px' }}>
@@ -576,7 +576,7 @@ export default function ArbitroLiderPage() {
         if (authErr) throw authErr
         await supabase.from('players').update({ user_id:authData.user?.id, activo_membresia:true, fecha_vencimiento:null, primer_ingreso:true }).eq('id',arb.id)
       }
-      showMsgFn('✅ Acceso activado (gratis)'); fetchArbitros()
+      showMsgFn('OK|Acceso activado (gratis)'); fetchArbitros()
     } catch(e) { showMsgFn('Error: '+e.message,'error') }
   }
 
@@ -607,13 +607,13 @@ export default function ArbitroLiderPage() {
     if (arb) {
       await supabase.from('notificaciones').insert({
         player_id: arbitroId,
-        titulo: '⚠️ Reclamo registrado',
+        titulo: 'Reclamo registrado',
         mensaje: `Se registró un reclamo en el partido ${partido.home?.name} vs ${partido.away?.name}. Tipo: ${tipo}. "${desc}"`,
         tipo: 'reclamo',
         referencia_id: rec?.id,
       })
     }
-    showMsgFn('Reclamo registrado — árbitro notificado ✓')
+    showMsgFn('Reclamo registrado — árbitro notificado')
     setModalRec(null)
     fetchPartidos()
   }
@@ -631,7 +631,7 @@ export default function ArbitroLiderPage() {
   const torneos = [...new Map(partidos.map(p=>[p.tournament_id,p.tournaments])).values()]
 
   const tabData = {
-    sin_asignar: { lista:sinAsignar, color:'#e8710a', empty:'Todos los partidos tienen árbitro asignado ✓' },
+    sin_asignar: { lista:sinAsignar, color:'#e8710a', empty:'Todos los partidos tienen árbitro asignado' },
     asignados:   { lista:asignados,  color:'#1e8e3e', empty:'Sin partidos asignados pendientes' },
     jugados:     { lista:jugados,    color:'#1a73e8', empty:'Sin partidos jugados' },
     arbitros:    { lista:null,       color:'#f9a825', empty:'' },
@@ -639,7 +639,7 @@ export default function ArbitroLiderPage() {
 
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
-      {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text}</div>}
+      {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text.replace('OK|','')}</div>}
       {/* Modal reclamo */}
       {modalRec && (
         <ModalReclamoLider
@@ -650,7 +650,7 @@ export default function ArbitroLiderPage() {
         />
       )}
 
-      {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado ✓'); fetchArbitros() }}/>}
+      {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado'); fetchArbitros() }}/>}
 
       {planillaPartido && (
         planillaPartido.sin_planillador ? (
@@ -669,8 +669,8 @@ export default function ArbitroLiderPage() {
       )}
 
       <PortalBanner theme="dark" sticky
-        avatarEmoji="👑"
-        kicker="👑 Coordinador de árbitros" title={lider?.name?.split(' ')[0]}
+        avatarEmoji={<Crown size={22}/>}
+        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Crown size={11}/> Coordinador de árbitros</span>} title={lider?.name?.split(' ')[0]}
         subtitle={lider?.genero === 'Femenino' ? 'Coordinadora' : 'Coordinador'} subtitleColor="#f9a825"
         usuario={lider} actual="arbitro_lider"
         onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
@@ -681,14 +681,14 @@ export default function ArbitroLiderPage() {
         {/* Resumen en 4 tarjetas */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px', marginBottom:'16px' }}>
           {[
-            { label:'Sin árbitro', value:sinAsignar.length, color:'#e8710a', bg:'rgba(232,113,10,.1)', border:'rgba(232,113,10,.3)', icon:'⚠️', tab:'sin_asignar' },
-            { label:'Asignados',   value:asignados.length,  color:'#1e8e3e', bg:'rgba(30,142,62,.1)',  border:'rgba(30,142,62,.3)',  icon:'✅', tab:'asignados' },
-            { label:'Jugados',     value:jugados.length,    color:'#1a73e8', bg:'rgba(26,115,232,.1)', border:'rgba(26,115,232,.3)', icon:'📋', tab:'jugados' },
-            { label:'Árbitros',    value:arbitros.length,   color:'#f9a825', bg:'rgba(249,168,37,.1)', border:'rgba(249,168,37,.3)', icon:'🟡', tab:'arbitros' },
+            { label:'Sin árbitro', value:sinAsignar.length, color:'#e8710a', bg:'rgba(232,113,10,.1)', border:'rgba(232,113,10,.3)', icon:AlertTriangle, tab:'sin_asignar' },
+            { label:'Asignados',   value:asignados.length,  color:'#1e8e3e', bg:'rgba(30,142,62,.1)',  border:'rgba(30,142,62,.3)',  icon:CheckCircle, tab:'asignados' },
+            { label:'Jugados',     value:jugados.length,    color:'#1a73e8', bg:'rgba(26,115,232,.1)', border:'rgba(26,115,232,.3)', icon:ClipboardList, tab:'jugados' },
+            { label:'Árbitros',    value:arbitros.length,   color:'#f9a825', bg:'rgba(249,168,37,.1)', border:'rgba(249,168,37,.3)', icon:Circle, tab:'arbitros' },
           ].map(s=>(
             <div key={s.tab} onClick={()=>setTab(s.tab)}
               style={{ background:tab===s.tab?s.bg:'#111827', border:`1px solid ${tab===s.tab?s.border:'#1e2d3d'}`, borderRadius:'12px', padding:'12px', textAlign:'center', cursor:'pointer', transition:'all .15s' }}>
-              <div style={{ fontSize:'1.1rem', marginBottom:'2px' }}>{s.icon}</div>
+              <div style={{ marginBottom:'2px', display:'flex', justifyContent:'center' }}><s.icon size={16} color={s.color}/></div>
               <div style={{ fontSize:'1.5rem', fontWeight:'900', color:s.color, lineHeight:1 }}>{s.value}</div>
               <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginTop:'2px' }}>{s.label}</div>
             </div>
@@ -718,7 +718,7 @@ export default function ArbitroLiderPage() {
           <div>
             {sinAsignar.length===0 ? (
               <div style={{ textAlign:'center', padding:'48px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#1e8e3e' }}>
-                <div style={{ fontSize:'2rem', marginBottom:'8px' }}>🎉</div>
+                <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><PartyPopper size={26}/></div>
                 <div style={{ fontWeight:'700' }}>Todos los partidos tienen árbitro</div>
               </div>
             ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
@@ -730,7 +730,7 @@ export default function ArbitroLiderPage() {
           <div>
             {asignados.length===0 ? (
               <div style={{ textAlign:'center', padding:'48px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5' }}>
-                <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
+                <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><ClipboardList size={26}/></div>
                 <div>Sin partidos asignados</div>
               </div>
             ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
@@ -742,7 +742,7 @@ export default function ArbitroLiderPage() {
           <div>
             {jugados.length===0 ? (
               <div style={{ textAlign:'center', padding:'48px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5' }}>
-                <div style={{ fontSize:'2rem', marginBottom:'8px' }}>📋</div>
+                <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><ClipboardList size={26}/></div>
                 <div>Sin partidos jugados</div>
               </div>
             ) : [...jugados].reverse().map(p => {
@@ -756,10 +756,10 @@ export default function ArbitroLiderPage() {
                       <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
                         {(reclamosMap[p.id]||[]).map((r,i)=>{
                           const arb = arbitros.find(a=>a.id===r.arbitro_id)
-                          return <span key={i} style={{ fontSize:'.62rem', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5', background:r.estado==='abierto'?'rgba(217,48,37,.1)':'rgba(122,154,181,.08)', borderRadius:'5px', padding:'2px 7px' }}>⚠️ {arb?.name?.split(' ')[0]||'Árb.'} · {r.estado}</span>
+                          return <span key={i} style={{ fontSize:'.62rem', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5', background:r.estado==='abierto'?'rgba(217,48,37,.1)':'rgba(122,154,181,.08)', borderRadius:'5px', padding:'2px 7px', display:'inline-flex', alignItems:'center', gap:'3px' }}><AlertTriangle size={9}/> {arb?.name?.split(' ')[0]||'Árb.'} · {r.estado}</span>
                         })}
                       </div>
-                      <button onClick={()=>setModalRec(p)} style={{ padding:'4px 10px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700', flexShrink:0 }}>⚠️ Reclamo</button>
+                      <button onClick={()=>setModalRec(p)} style={{ padding:'4px 10px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'4px' }}><AlertTriangle size={11}/> Reclamo</button>
                     </div>
                 </div>
               )
@@ -778,11 +778,11 @@ export default function ArbitroLiderPage() {
               <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
                 <button onClick={()=>navigate('/arbitro/ranking')}
                   style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(249,168,37,.1)', border:'1px solid rgba(249,168,37,.3)', borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:'#f9a825', fontSize:'.78rem', fontWeight:'700' }}>
-                  🏆 Ranking
+<Trophy size={13}/> Ranking
                 </button>
                 <button onClick={()=>navigate('/arbitro/encuestas')}
                   style={{ display:'flex', alignItems:'center', gap:'5px', background:'rgba(26,115,232,.1)', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:'#1a73e8', fontSize:'.78rem', fontWeight:'700' }}>
-                  📝 Encuestas
+                  <FileText size={13}/> Encuestas
                 </button>
                 <button onClick={()=>setShowNuevo(true)}
                   style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'8px 14px', cursor:'pointer', color:'#fff', fontSize:'.82rem', fontWeight:'700' }}>
@@ -801,7 +801,7 @@ export default function ArbitroLiderPage() {
                       <div style={{ width:'42px', height:'42px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', border:`2px solid ${activo?'#00ddd0':'#2a3a4a'}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
                         {uploading===a.id?<span style={{ fontSize:'.6rem' }}>...</span>
                           :a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                          :<span>👤</span>}
+                          :<User size={17} color="#7a9ab5"/>}
                       </div>
                       <div style={{ position:'absolute', bottom:0, right:0, width:'14px', height:'14px', background:'#1a73e8', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center' }}>
                         <Upload size={7} color="#fff"/>
@@ -811,9 +811,9 @@ export default function ArbitroLiderPage() {
                       <div onClick={()=>navigate(`/arbitro/perfil/${a.id}`)}
                         style={{ fontWeight:'700', fontSize:'.88rem', color:'#00ddd0', cursor:'pointer', textDecoration:'underline', textDecorationColor:'rgba(0,221,208,.3)' }}>{a.name}</div>
                       <div style={{ fontSize:'.68rem', color:'#7a9ab5', marginTop:'2px', display:'flex', gap:'8px' }}>
-                        <span>📋 {a.stats.total} asig.</span>
-                        <span style={{ color:'#1e8e3e' }}>✅ {a.stats.jugados} pitados</span>
-                        {a.numero_cedula && <span>🪪 {a.numero_cedula}</span>}
+                        <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><ClipboardList size={10}/> {a.stats.total} asig.</span>
+                        <span style={{ color:'#1e8e3e', display:'inline-flex',alignItems:'center',gap:'3px' }}><CheckCircle size={10}/> {a.stats.jugados} pitados</span>
+                        {a.numero_cedula && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><CreditCard size={10}/> {a.numero_cedula}</span>}
                       </div>
                     </div>
                     <div style={{ textAlign:'right', flexShrink:0 }}>
@@ -821,7 +821,7 @@ export default function ArbitroLiderPage() {
                         <button onClick={()=>handleActivar(a)} style={{ padding:'5px 10px', background:'#1a73e8', border:'none', borderRadius:'7px', cursor:'pointer', color:'#fff', fontSize:'.72rem', fontWeight:'700' }}>Activar</button>
                       ):activo?(
                         <div>
-                          <div style={{ fontSize:'.7rem', color:'#1e8e3e', fontWeight:'700' }}>✅ Activo</div>
+                          <div style={{ fontSize:'.7rem', color:'#1e8e3e', fontWeight:'700', display:'flex', alignItems:'center', gap:'3px', justifyContent:'flex-end' }}><CheckCircle size={10}/> Activo</div>
                           <div style={{ fontSize:'.6rem', color:'#7a9ab5' }}>{dias}d</div>
                         </div>
                       ):(

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
@@ -60,7 +61,7 @@ export default function AcudientePage() {
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'600px', margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
-            <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em' }}>👪 Acudiente · Golmebol</div>
+            <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', display:'flex', alignItems:'center', gap:'5px' }}><Users size={11}/> Acudiente · Golmebol</div>
             <div style={{ fontWeight:'800', fontSize:'1.1rem' }}>{acudiente.name}</div>
           </div>
           <button onClick={handleLogout} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 14px', cursor:'pointer', color:S.muted, fontSize:'.78rem', fontWeight:'600' }}>Salir</button>
