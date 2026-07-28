@@ -376,6 +376,28 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (corriendo) inicioEpochRef.current = null // se pausa: al reanudar se recalcula el ancla desde el segundo actual
     setCorriendo(c => !c)
   }
+
+  // Suspender el partido y salir SIN guardar resultado (no queda "jugado"):
+  // pausa el reloj primero (si seguía corriendo) para que el tiempo restante
+  // quede correcto al retomarlo, guarda el borrador ya mismo y sale. Al volver
+  // a entrar a este mismo partido, la planilla se restaura tal cual quedó.
+  function pausarYSalir() {
+    const seguiaCorriendo = corriendo
+    if (!window.confirm(seguiaCorriendo
+      ? 'Se va a pausar el cronómetro y salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir jugando el tiempo que falta.\n\n¿Continuar?'
+      : 'Vas a salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir donde quedó.\n\n¿Continuar?')) return
+    pararAlarma()
+    inicioEpochRef.current = null
+    if (seguiaCorriendo) setCorriendo(false)
+    // pausado:true → para que este partido deje de salir en "en vivo" en la
+    // pantalla de inicio hasta que el árbitro vuelva a entrar y siga jugando
+    // (el próximo guardado automático ya no manda este campo, así que vuelve
+    // a aparecer en vivo solo).
+    const snap = { ...construirSnap(), corriendo: false, pausado: true }
+    try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
+    guardarRemotoInmediato(snap)
+    onClose && onClose()
+  }
   function cambiarPeriodo() {
     if (periodo === 2) return
     pararAlarma()
@@ -655,6 +677,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}
         onSeleccionarArquero={seleccionarArquero}
         onRegistrarEvento={registrarEvento} onQuitarEvento={quitarEvento}
+        onSalir={pausarYSalir}
       />
       {alertaNumero && (
         <AlertaNumeroDesconocido

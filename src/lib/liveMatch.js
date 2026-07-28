@@ -19,6 +19,10 @@ export function derivarEnVivo(match) {
   if (!snap || !updatedAt) return null
   // Planilla rápida: mientras arma colores/roster todavía no empezó el partido de verdad
   if (tipo === 'rapida' && snap.step !== 'partido') return null
+  // El árbitro tocó "Suspender" (parar el partido sin guardar resultado, para
+  // seguirlo después) — no está en cancha ahora mismo, así que no debe salir
+  // como "en vivo" hasta que vuelva a entrar y siga jugando.
+  if (snap.pausado) return null
 
   const minutosDesde = (Date.now() - new Date(updatedAt).getTime()) / 60000
   if (minutosDesde > MINUTOS_STALE) return null
@@ -41,9 +45,16 @@ export function derivarEnVivo(match) {
   const minuto = Math.floor(segundos / 60)
   const seg = segundos % 60
 
+  const periodo = snap.periodo || 1
+  // "Descanso" = se acabó el tiempo del primer período y el árbitro todavía
+  // no arrancó el segundo (que es lo que pone periodo en 2). En el segundo
+  // período, tiempoAgotado ya significa que se acabó el partido (no descanso).
+  const descanso = !!snap.tiempoAgotado && periodo === 1
+
   return {
     golesLocal, golesVis,
-    periodo: snap.periodo || 1,
+    periodo,
+    descanso,
     corriendo: !!snap.corriendo,
     tiempoAgotado: !!snap.tiempoAgotado,
     reloj: `${minuto}:${String(seg).padStart(2, '0')}`,
@@ -77,4 +88,38 @@ export function extraerGoles(match) {
     })
   }
   return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+}
+
+// Tarjetas (amarilla/azul/roja) del partido, sacadas del mismo snapshot en
+// vivo — para mostrarlas en el detalle del partido en la pantalla de inicio
+// (antes solo se mostraban los goles, las tarjetas quedaban registradas bien
+// en la planilla pero nunca se veían del lado del "en vivo").
+const TIPOS_TARJETA = { yellow_card: 'amarilla', blue_card: 'azul', red_card: 'roja' }
+
+export function extraerTarjetas(match) {
+  if (!match) return []
+  const candidatos = []
+  if (match.live_state)        candidatos.push({ snap: match.live_state,        updatedAt: match.live_state_updated_at,        tipo: 'completa' })
+  if (match.live_state_rapida) candidatos.push({ snap: match.live_state_rapida, updatedAt: match.live_state_rapida_updated_at, tipo: 'rapida' })
+  if (candidatos.length === 0) return []
+  candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+  const { snap, tipo } = candidatos[0]
+  if (!snap) return []
+
+  let tarjetas = []
+  if (tipo === 'rapida') {
+    tarjetas = (snap.eventos || []).filter(e => TIPOS_TARJETA[e.tipo]).map(e => ({
+      equipo: e.team, jugador: e.jugadorNombre || 'Jugador', color: TIPOS_TARJETA[e.tipo], minuto: e.minuto || null, periodo: e.periodo || 1,
+    }))
+  } else {
+    const extraerDe = (jugs, equipo) => (jugs || []).forEach(j => {
+      const nombre = j.nombre || (j.numero ? `#${j.numero}` : 'Jugador')
+      if (j.amarilla) tarjetas.push({ equipo, jugador: nombre, color: 'amarilla', minuto: typeof j.amarilla === 'string' ? j.amarilla : null, periodo: 1 })
+      if (j.azul)     tarjetas.push({ equipo, jugador: nombre, color: 'azul',     minuto: typeof j.azul === 'string' ? j.azul : null, periodo: 1 })
+      if (j.roja)     tarjetas.push({ equipo, jugador: nombre, color: 'roja',     minuto: typeof j.roja === 'string' ? j.roja : null, periodo: 1 })
+    })
+    extraerDe(snap.jugadoresLocal, 'local')
+    extraerDe(snap.jugadoresVisitante, 'visitante')
+  }
+  return tarjetas
 }

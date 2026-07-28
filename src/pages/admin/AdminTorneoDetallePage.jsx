@@ -636,10 +636,14 @@ export default function AdminTorneoDetallePage() {
       // queda impar, ya no se infla a mano: se deja tal cual y el admin
       // elige en el wizard si entra un mejor perdedor más o si alguien
       // pasa directo (modoImpar).
-      const sugerido = clasificanPorGrupo * grupos.length
+      // Usa el valor REAL guardado (equipos_clasifican) en vez del input
+      // editable en pantalla, para que no se desincronice con lo que ve
+      // el jugador si ese campo se toca sin querer después de crear los grupos.
+      const porGrupo = torneo?.equipos_clasifican || clasificanPorGrupo
+      const sugerido = porGrupo * grupos.length
       if (sugerido >= 2) setNumClasifElim(sugerido)
     }
-  }, [grupos.length, clasificanPorGrupo, bracket.length])
+  }, [grupos.length, clasificanPorGrupo, bracket.length, torneo?.equipos_clasifican])
 
   // Vista previa en vivo: arrastrar un equipo encima de otro intercambia
   // sus puestos en el orden de siembra (el 5° se va al puesto del 2° y el
@@ -1241,11 +1245,22 @@ export default function AdminTorneoDetallePage() {
 
   // ── ELIMINATORIAS ───────────────────────────────────
 
+  // Una vez que ya existen los grupos, el número real de clasificados por
+  // grupo es el que quedó guardado en tournaments.equipos_clasifican (la
+  // misma fuente que usa el jugador para su propia vista previa). El input
+  // "Clasifican por grupo" de la configuración sigue editable en pantalla
+  // mientras no se finalice la fase de grupos, pero cambiarlo ahí NO
+  // re-guarda nada — si se usara ese valor local suelto acá, un cambio sin
+  // querer en ese campo desincronizaba la vista previa en vivo del admin
+  // respecto a la que ve el jugador (el jugador siempre lee el valor real
+  // de la base de datos). Por eso, con grupos ya creados, se prioriza el
+  // valor guardado.
   function getClasificados() {
+    const porGrupo = grupos.length > 0 ? (torneo?.equipos_clasifican || clasificanPorGrupo) : clasificanPorGrupo
     const clasificados = []
     for (const grupo of grupos) {
       const tabla = getTablaGrupo(grupo.id)
-      tabla.slice(0, clasificanPorGrupo).forEach((row, pos) => {
+      tabla.slice(0, porGrupo).forEach((row, pos) => {
         if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc })
       })
     }
@@ -2868,7 +2883,9 @@ export default function AdminTorneoDetallePage() {
                 </div>
                 <div>
                   <label style={labelStyle}>Clasifican por grupo</label>
-                  <input type="number" min="1" max="8" value={clasificanPorGrupo} onChange={e => setClasificanPorGrupo(parseInt(e.target.value))} style={inputStyle}/>
+                  <input type="number" min="1" max="8" value={grupos.length > 0 ? (torneo?.equipos_clasifican || clasificanPorGrupo) : clasificanPorGrupo}
+                    disabled={grupos.length > 0} title={grupos.length > 0 ? 'Ya se crearon los grupos con este valor — no se puede cambiar acá' : ''}
+                    onChange={e => setClasificanPorGrupo(parseInt(e.target.value))} style={{ ...inputStyle, opacity: grupos.length > 0 ? .65 : 1, cursor: grupos.length > 0 ? 'not-allowed' : 'text' }}/>
                 </div>
                 <div>
                   <label style={labelStyle}>Fecha partidos grupos</label>

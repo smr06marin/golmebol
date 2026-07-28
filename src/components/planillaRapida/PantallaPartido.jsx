@@ -11,7 +11,7 @@ export default function PantallaPartido({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
   arqueroLocal, arqueroVis, eventosLocal, eventosVis, periodo, segundos, corriendo, tiempoAgotado, modalidad,
   onVolverLista, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
-  onRegistrarEvento, onQuitarEvento,
+  onRegistrarEvento, onQuitarEvento, onSalir,
 }) {
   const cLocal = colorPorHex(colorLocal)
   const cVis = colorPorHex(colorVis)
@@ -26,7 +26,11 @@ export default function PantallaPartido({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: `1px solid ${BORDE}`, flexShrink: 0 }}>
         <button onClick={onVolverLista} style={{ background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.72rem', cursor: 'pointer', padding: '4px' }}>👥 Jugadores</button>
         <span style={{ fontSize: '.68rem', color: TEXTO_TENUE, fontWeight: '700' }}>PLANILLA RÁPIDA</span>
-        <button onClick={onAbrirCierre} style={{ background: '#1a73e8', border: 'none', borderRadius: '7px', color: '#fff', fontSize: '.72rem', fontWeight: '800', cursor: 'pointer', padding: '5px 10px' }}>🏁 Finalizar</button>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button onClick={onSalir} title="Salir sin guardar resultado — el partido queda pendiente para seguir después"
+            style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '5px 8px' }}>⏸ Suspender</button>
+          <button onClick={onAbrirCierre} style={{ background: '#1a73e8', border: 'none', borderRadius: '7px', color: '#fff', fontSize: '.72rem', fontWeight: '800', cursor: 'pointer', padding: '5px 10px' }}>🏁 Finalizar</button>
+        </div>
       </div>
 
       <EquipoHalf arriba equipoNombre={nombreLocal} color={cLocal.hex} colorTexto={cLocal.texto}

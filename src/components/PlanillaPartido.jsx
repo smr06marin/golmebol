@@ -409,6 +409,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
   }
 
+  // Ref que siempre apunta a la versión MÁS RECIENTE de construirSnap(). Hace
+  // falta porque el guardado periódico del cronómetro (recalcular/
+  // alCambiarVisibilidad, más abajo) vive dentro de un efecto que solo se
+  // recrea cuando cambian corriendo/límite/tiempoAgotado — si mientras tanto
+  // se marca un gol o una falta sin tocar el cronómetro, ese guardado
+  // periódico seguía usando un construirSnap() viejo (de closure) que no
+  // incluía el gol nuevo, y lo subía así pisando el borrador bueno: el gol
+  // "desaparecía" al recargar (ej. al volver de otra app en el celular).
+  const construirSnapRef = useRef(construirSnap)
+  construirSnapRef.current = construirSnap
+
   // Sube el snapshot a Supabase (matches.live_state) para que cualquier otro
   // celular asignado a este partido pueda retomarlo tal cual. No bloquea la
   // interfaz ni rompe nada si falla (ej. sin internet): es solo un respaldo.
@@ -540,7 +551,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       // usarlo tal cual guardaba un tiempo atrasado en el snapshot.
       if (!loading && next - ultimoGuardadoSegRef.current >= 8) {
         ultimoGuardadoSegRef.current = next
-        const snap = { ...construirSnap(), segundos: next }
+        const snap = { ...construirSnapRef.current(), segundos: next }
         try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
         sincronizarRemoto(snap)
       }
@@ -555,7 +566,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const next = recalcular()
       if (document.hidden && !loading) {
         ultimoGuardadoSegRef.current = next
-        const snap = { ...construirSnap(), segundos: next }
+        const snap = { ...construirSnapRef.current(), segundos: next }
         try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
         sincronizarRemoto(snap, { inmediato: true })
       }
@@ -1102,12 +1113,20 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
 
   function handleCerrar() {
-    // La X roja y el botón "✕ Cerrar" SOLO guardan lo llenado hasta ahora como
-    // borrador (localStorage + snapshot remoto en vivo), para que al volver a
-    // entrar aparezca tal cual quedó (números, goles, etc.). No exigen firma
-    // ni MVP, y NO suben resultado ni marcan el partido como jugado — eso solo
-    // pasa al tocar "💾 Guardar resultado".
-    const snap = construirSnap()
+    // El botón "⏸ Suspender" SOLO guarda lo llenado hasta ahora como borrador
+    // (localStorage + snapshot remoto en vivo), para que al volver a entrar
+    // aparezca tal cual quedó (números, goles, etc.). No exige firma ni MVP,
+    // y NO sube resultado ni marca el partido como jugado — eso solo pasa al
+    // tocar "💾 Guardar resultado". Si el cronómetro seguía corriendo se
+    // pausa antes de guardar, para que el tiempo restante quede correcto al
+    // retomar el partido (si no, al reabrirlo se extrapolaría como si
+    // hubiera seguido corriendo todo el tiempo que estuvo cerrada la app).
+    if (corriendo) setCorriendo(false)
+    // pausado:true → para que este partido deje de salir en "en vivo" en la
+    // pantalla de inicio hasta que el árbitro vuelva a entrar y siga jugando
+    // (al reabrir la planilla, el próximo guardado automático ya no manda
+    // este campo, así que vuelve a aparecer en vivo solo).
+    const snap = { ...construirSnap(), corriendo: false, pausado: true }
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
     sincronizarRemoto(snap, { inmediato: true })
     onClose()
@@ -1397,11 +1416,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         {/* Fondo oscuro: enfoca la lista y al tocarlo se cierra */}
         <div onClick={e => { e.stopPropagation(); setDropdownOpen(null) }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9490 }}/>
+        {/* Ocupa casi toda la altura de la pantalla (top y bottom chiquitos en
+            vez de un maxHeight fijo) para que la lista completa de jugadores
+            entre sin tener que hacer scroll para ver los últimos. */}
         <div onClick={e => e.stopPropagation()}
           style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)',
-            ...(arriba ? { top: '60px' } : { bottom: '20px' }),
+            top: '14px', bottom: '14px',
             zIndex: 9500, background: '#fff', border: '1px solid #dadce0', borderRadius: '14px',
-            boxShadow: '0 12px 40px rgba(0,0,0,.45)', width: 'min(92vw, 340px)', maxHeight: '62vh',
+            boxShadow: '0 12px 40px rgba(0,0,0,.45)', width: 'min(92vw, 340px)',
             overflowY: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '10px 14px', background: arriba ? colorLocal : colorVisitante, color: '#fff', fontWeight: 800, fontSize: '.82rem', position: 'sticky', top: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>{arriba ? partido.home?.name : partido.away?.name}</span>
@@ -1961,9 +1983,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}
               {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales</span>}
               {mvpId && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff8e1', borderRadius: '6px', padding: '4px 10px', fontWeight: '600', border: '1px solid #ffe082' }}>⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || '...'}</span>}
-              <button onClick={handleCerrar}
+              <button onClick={handleCerrar} title="Pausa el cronómetro y guarda un borrador — el partido queda pendiente para seguir después, sin marcarlo como jugado"
                 style={{ padding:'6px 12px', background:'none', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem', fontWeight:'600', display:'flex', alignItems:'center', gap:'4px' }}>
-                ✕ Cerrar
+                ⏸ Suspender
               </button>
               <button onClick={() => { if (!informeTipo) setInformeTipo('otro'); setShowInforme({ motivo: 'otro' }) }} style={{ padding: '6px 12px', background: informeGuardado ? '#1e8e3e' : '#7b1fa2', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>{informeGuardado ? '✓ Informe' : '📝 Informe'}</button>
               <button onClick={() => setShowEspecial('w')} style={{ padding: '6px 12px', background: '#e8710a', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>🏆 Por W</button>
