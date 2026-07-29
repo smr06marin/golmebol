@@ -2044,9 +2044,20 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleGuardarTorneo() {
-    const { error } = await supabase.from('tournaments').update(formTorneo).eq('id', id)
+    const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
+    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0) }
+    let avisoDegradado = null
+    let { error } = await supabase.from('tournaments').update(payload).eq('id', id)
+    if (error && (error.message?.includes('pts_victoria') || error.message?.includes('pts_empate') || error.message?.includes('pts_derrota'))) {
+      // Falta correr migracion_sistema_puntos.sql en Supabase: se reintenta sin esos 3 campos
+      const { pts_victoria, pts_empate, pts_derrota, ...resto } = payload
+      payload = resto
+      avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+      ;({ error } = await supabase.from('tournaments').update(payload).eq('id', id))
+    }
     if (error) { showMsg(`Error al actualizar torneo: ${error.message}`, 'error'); return }
-    setTorneo(p => ({ ...p, ...formTorneo })); setEditandoTorneo(false); showMsg('Torneo actualizado ✓')
+    setTorneo(p => ({ ...p, ...payload })); setEditandoTorneo(false)
+    showMsg(avisoDegradado || 'Torneo actualizado ✓', avisoDegradado ? 'error' : 'ok')
   }
 
   async function handleGuardarEditPartido() {
@@ -2598,6 +2609,15 @@ export default function AdminTorneoDetallePage() {
               ))}
               <div><label style={labelStyle}>Modalidad</label><select value={formTorneo.modalidad || ''} onChange={e => setFormTorneo(p => ({ ...p, modalidad: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option><option>Fútbol 5</option><option>Fútbol 7</option><option>Fútbol 11</option></select></div>
               <div><label style={labelStyle}>Género</label><select value={formTorneo.genero || ''} onChange={e => setFormTorneo(p => ({ ...p, genero: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option><option>Masculino</option><option>Femenino</option><option>Mixto</option></select></div>
+              <div>
+                <label style={labelStyle}>Sistema de puntos (victoria / empate / derrota)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input type="number" min="0" value={formTorneo.pts_victoria ?? 3} onChange={e => setFormTorneo(p => ({ ...p, pts_victoria: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder="Victoria"/>
+                  <input type="number" min="0" value={formTorneo.pts_empate ?? 1} onChange={e => setFormTorneo(p => ({ ...p, pts_empate: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder="Empate"/>
+                  <input type="number" min="0" value={formTorneo.pts_derrota ?? 0} onChange={e => setFormTorneo(p => ({ ...p, pts_derrota: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder="Derrota"/>
+                </div>
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Cuánto suma cada equipo en la tabla de posiciones según el resultado (ej: 3-1-0 o 2-1-0)</div>
+              </div>
               {esAdminRol && torneo.organizador_id && (
                 <div>
                   <label style={labelStyle}>Cupo de equipos habilitados (organizador)</label>
@@ -2811,7 +2831,7 @@ export default function AdminTorneoDetallePage() {
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
             </div>
           </div>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0 }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>
