@@ -2047,15 +2047,23 @@ export default function AdminTorneoDetallePage() {
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
     let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0) }
     let avisoDegradado = null
-    let { error } = await supabase.from('tournaments').update(payload).eq('id', id)
+    let { data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id')
     if (error && (error.message?.includes('pts_victoria') || error.message?.includes('pts_empate') || error.message?.includes('pts_derrota'))) {
       // Falta correr migracion_sistema_puntos.sql en Supabase: se reintenta sin esos 3 campos
       const { pts_victoria, pts_empate, pts_derrota, ...resto } = payload
       payload = resto
       avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
-      ;({ error } = await supabase.from('tournaments').update(payload).eq('id', id))
+      ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error) { showMsg(`Error al actualizar torneo: ${error.message}`, 'error'); return }
+    // Si no hay error pero tampoco vino ninguna fila de vuelta, el update no
+    // afectó ninguna fila (típicamente permisos/RLS en Supabase) — evita el
+    // falso "guardado ✓" que hacía creer que quedó bien cuando en realidad
+    // nunca se escribió en la base de datos.
+    if (!data || data.length === 0) {
+      showMsg('El torneo no se actualizó: no tenés permiso para editarlo (revisa las políticas RLS de "tournaments" en Supabase)', 'error')
+      return
+    }
     setTorneo(p => ({ ...p, ...payload })); setEditandoTorneo(false)
     showMsg(avisoDegradado || 'Torneo actualizado ✓', avisoDegradado ? 'error' : 'ok')
   }

@@ -127,18 +127,21 @@ export default function AdminTorneosPage() {
 
     if (editId) {
       let payload = { ...formNorm, finanzas_config: finanzasConfig }
-      let { error } = await supabase.from('tournaments').update(payload).eq('id', editId)
+      let { data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id')
       if (error && esErrorFinanzas(error)) {
         payload = formNorm
         avisoDegradado = 'Torneo actualizado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
-        ;({ error } = await supabase.from('tournaments').update(payload).eq('id', editId))
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorPuntos(error)) {
         payload = sinPuntos(payload)
         avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
-        ;({ error } = await supabase.from('tournaments').update(payload).eq('id', editId))
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error) showMsg('Error al guardar', 'error')
+      // Si no vino error pero tampoco ninguna fila afectada, el update no
+      // escribió nada (típicamente permisos/RLS) — evita el falso "✓".
+      else if (!data || data.length === 0) showMsg('El torneo no se actualizó: no tenés permiso para editarlo (revisa las políticas RLS de "tournaments" en Supabase)', 'error')
       else { showMsg(avisoDegradado || 'Torneo actualizado ✓', avisoDegradado ? 'error' : 'ok'); setEditId(null) }
     } else {
       const cleanForm = {
