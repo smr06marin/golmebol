@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ChevronDown, ChevronUp, Trophy, Calendar, BarChart3, User, Swords, Flame, Award, MapPin, Clock } from 'lucide-react'
+import { getPuntosTorneo } from '../lib/puntosTorneo'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -280,7 +281,7 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
 
   useEffect(() => {
     async function load() {
-      const [{ data: ttData }, { data: mData }, { data: sData }] = await Promise.all([
+      const [{ data: ttData }, { data: mData }, { data: sData }, { data: torneoData }] = await Promise.all([
         supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', tournamentId),
         supabase.from('matches')
           .select('*, home:home_team_id(id,name), away:away_team_id(id,name)')
@@ -289,14 +290,16 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
         supabase.from('goleadores_por_torneo').select('*')
           .eq('tournament_id', tournamentId).eq('team_id', teamId)
           .order('total_goals', { ascending: false }).limit(5),
+        supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
       ])
+      const Ppts = getPuntosTorneo(torneoData)
 
       const tabla = {}
       ;(ttData || []).forEach(t => { tabla[t.teams.id] = { team: t.teams, pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, pts:0 } })
       ;(mData || []).filter(m => !m.fase || m.fase === 'grupo').forEach(m => {
         const h = tabla[m.home_team_id], a = tabla[m.away_team_id]
-        if (h) { h.pj++; h.gf += m.home_score||0; h.gc += m.away_score||0; if (m.home_score > m.away_score) { h.pg++; h.pts += 3 } else if (m.home_score === m.away_score) { h.pe++; h.pts++ } else h.pp++ }
-        if (a) { a.pj++; a.gf += m.away_score||0; a.gc += m.home_score||0; if (m.away_score > m.home_score) { a.pg++; a.pts += 3 } else if (m.away_score === m.home_score) { a.pe++; a.pts++ } else a.pp++ }
+        if (h) { h.pj++; h.gf += m.home_score||0; h.gc += m.away_score||0; if (m.home_score > m.away_score) { h.pg++; h.pts += Ppts.victoria } else if (m.home_score === m.away_score) { h.pe++; h.pts += Ppts.empate } else { h.pp++; h.pts += Ppts.derrota } }
+        if (a) { a.pj++; a.gf += m.away_score||0; a.gc += m.home_score||0; if (m.away_score > m.home_score) { a.pg++; a.pts += Ppts.victoria } else if (m.away_score === m.home_score) { a.pe++; a.pts += Ppts.empate } else { a.pp++; a.pts += Ppts.derrota } }
       })
       const sorted   = Object.values(tabla).sort((a,b) => b.pts - a.pts || (b.gf-b.gc)-(a.gf-a.gc))
       const pos      = sorted.findIndex(r => r.team.id === teamId) + 1

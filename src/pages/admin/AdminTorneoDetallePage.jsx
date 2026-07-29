@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
+import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
@@ -1175,6 +1176,7 @@ export default function AdminTorneoDetallePage() {
 
   // Calcular tabla por grupo
   function getTablaGrupo(grupoId) {
+    const P = getPuntosTorneo(torneo)
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
     const partGrupo = partidos.filter(p => p.fase === 'grupo' && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
     const tabla = {}
@@ -1187,17 +1189,17 @@ export default function AdminTorneoDetallePage() {
         tabla[p.home_team_id].pj++
         tabla[p.home_team_id].gf += p.home_score || 0
         tabla[p.home_team_id].gc += p.away_score || 0
-        if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3 }
-        else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += 1 }
-        else tabla[p.home_team_id].pp++
+        if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
+        else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
+        else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
       }
       if (tabla[p.away_team_id]) {
         tabla[p.away_team_id].pj++
         tabla[p.away_team_id].gf += p.away_score || 0
         tabla[p.away_team_id].gc += p.home_score || 0
-        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += 3 }
-        else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += 1 }
-        else tabla[p.away_team_id].pp++
+        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
+        else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
+        else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
       }
     })
     return Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
@@ -1961,20 +1963,21 @@ export default function AdminTorneoDetallePage() {
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
+    const P = getPuntosTorneo(torneo)
     const tabla = {}
     equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
     partidos.filter(p => p.status === 'finished' && (!p.fase || p.fase === 'grupo')).forEach(p => {
       if (tabla[p.home_team_id]) {
         tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
-        if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3 }
-        else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += 1 }
-        else tabla[p.home_team_id].pp++
+        if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
+        else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
+        else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
       }
       if (tabla[p.away_team_id]) {
         tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score || 0; tabla[p.away_team_id].gc += p.home_score || 0
-        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += 3 }
-        else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += 1 }
-        else tabla[p.away_team_id].pp++
+        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
+        else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
+        else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
       }
     })
     return Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))

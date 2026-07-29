@@ -6,6 +6,7 @@ import {
   LayoutGrid, BarChart3, Clock, MapPin,
 } from 'lucide-react'
 import { responderPregunta } from '../lib/motorPreguntas'
+import { getPuntosTorneo } from '../lib/puntosTorneo'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -94,12 +95,13 @@ export default function EquipoHistorialPage() {
       jugMap[t.tournament_id] = jug || []
 
       // Posición en la tabla general del torneo (best-effort — solo fase de grupos)
+      const Ppts = getPuntosTorneo(t.tournaments)
       const tabla = {}
       ;(equiposTorneo || []).forEach(e => { tabla[e.team_id] = { pts: 0, gf: 0, gc: 0 } })
       ;(partidosTorneo || []).filter(m => !m.fase || m.fase === 'grupo').forEach(m => {
         const h = tabla[m.home_team_id], a = tabla[m.away_team_id]
-        if (h) { h.gf += m.home_score||0; h.gc += m.away_score||0; if (m.home_score>m.away_score) h.pts+=3; else if (m.home_score===m.away_score) h.pts++ }
-        if (a) { a.gf += m.away_score||0; a.gc += m.home_score||0; if (m.away_score>m.home_score) a.pts+=3; else if (m.away_score===m.home_score) a.pts++ }
+        if (h) { h.gf += m.home_score||0; h.gc += m.away_score||0; if (m.home_score>m.away_score) h.pts+=Ppts.victoria; else if (m.home_score===m.away_score) h.pts+=Ppts.empate; else h.pts+=Ppts.derrota }
+        if (a) { a.gf += m.away_score||0; a.gc += m.home_score||0; if (m.away_score>m.home_score) a.pts+=Ppts.victoria; else if (m.away_score===m.home_score) a.pts+=Ppts.empate; else a.pts+=Ppts.derrota }
       })
       const orden = Object.entries(tabla).sort((x, y) => y[1].pts - x[1].pts || (y[1].gf-y[1].gc)-(x[1].gf-x[1].gc))
       const idx = orden.findIndex(([tid]) => tid === id)

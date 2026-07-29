@@ -6,6 +6,7 @@ import { ArrowLeft, Shield, X, ChevronDown } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
+import { getPuntosTorneo } from '../lib/puntosTorneo'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -627,6 +628,7 @@ export default function PlayerTorneoPage() {
   // reclasificación que usa el admin — así no se mezclan los resultados
   // de eliminatorias directas.
   function getTablaGrupoPlayer(grupoId) {
+    const P = getPuntosTorneo(torneo)
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
     const partGrupo = partidos.filter(p => (p.fase === 'grupo' || !p.fase) && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
     const t = {}
@@ -637,34 +639,35 @@ export default function PlayerTorneoPage() {
     partGrupo.filter(p => p.status === 'finished').forEach(p => {
       if (t[p.home_team_id]) {
         t[p.home_team_id].pj++; t[p.home_team_id].gf += p.home_score||0; t[p.home_team_id].gc += p.away_score||0
-        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += 3 }
-        else if (p.home_score === p.away_score) { t[p.home_team_id].pe++; t[p.home_team_id].pts++ }
-        else t[p.home_team_id].pp++
+        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += P.victoria }
+        else if (p.home_score === p.away_score) { t[p.home_team_id].pe++; t[p.home_team_id].pts += P.empate }
+        else { t[p.home_team_id].pp++; t[p.home_team_id].pts += P.derrota }
       }
       if (t[p.away_team_id]) {
         t[p.away_team_id].pj++; t[p.away_team_id].gf += p.away_score||0; t[p.away_team_id].gc += p.home_score||0
-        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += 3 }
-        else if (p.away_score === p.home_score) { t[p.away_team_id].pe++; t[p.away_team_id].pts++ }
-        else t[p.away_team_id].pp++
+        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += P.victoria }
+        else if (p.away_score === p.home_score) { t[p.away_team_id].pe++; t[p.away_team_id].pts += P.empate }
+        else { t[p.away_team_id].pp++; t[p.away_team_id].pts += P.derrota }
       }
     })
     return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
   }
 
+  const puntosTabla = getPuntosTorneo(torneo)
   const tabla = {}
   equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
   partidos.filter(p => p.status === 'finished' && (p.fase === 'grupo' || !p.fase)).forEach(p => {
     if (tabla[p.home_team_id]) {
       tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score||0; tabla[p.home_team_id].gc += p.away_score||0
-      if (p.home_score > p.away_score) { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += 3 }
-      else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts++ }
-      else tabla[p.home_team_id].pp++
+      if (p.home_score > p.away_score) { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += puntosTabla.victoria }
+      else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += puntosTabla.empate }
+      else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += puntosTabla.derrota }
     }
     if (tabla[p.away_team_id]) {
       tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score||0; tabla[p.away_team_id].gc += p.home_score||0
-      if (p.away_score > p.home_score) { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += 3 }
-      else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts++ }
-      else tabla[p.away_team_id].pp++
+      if (p.away_score > p.home_score) { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += puntosTabla.victoria }
+      else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += puntosTabla.empate }
+      else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += puntosTabla.derrota }
     }
   })
   const tablaOrdenada      = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))

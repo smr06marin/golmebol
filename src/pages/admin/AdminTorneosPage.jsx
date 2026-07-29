@@ -6,7 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star } from 'lucide-react'
 
 
-const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '' }
+const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0 }
 const FIN_EMPTY = {
   llevar_cuentas: false,
   precio_amarilla: '', precio_azul: '', precio_roja: '',
@@ -99,6 +99,9 @@ export default function AdminTorneosPage() {
     }
     setLoading(true)
     const num = v => (v === '' || v === null || v === undefined) ? 0 : (parseFloat(v) || 0)
+    const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
+    // Si el admin borró alguna casilla del sistema de puntos, se vuelve al default (3-1-0)
+    const formNorm = { ...form, pts_victoria: numDef(form.pts_victoria, 3), pts_empate: numDef(form.pts_empate, 1), pts_derrota: numDef(form.pts_derrota, 0) }
     const finanzasConfig = {
       llevar_cuentas:       !!fin.llevar_cuentas,
       precio_amarilla:      num(fin.precio_amarilla),
@@ -113,28 +116,52 @@ export default function AdminTorneosPage() {
       pago_arbitro_partido: num(fin.pago_arbitro_partido),
       pago_arbitro_w:       num(fin.pago_arbitro_w),
     }
+    // Si a Supabase todavía le falta alguna columna nueva (finanzas_config o
+    // pts_victoria/pts_empate/pts_derrota — faltan sus migraciones), se
+    // reintenta sin ese campo en vez de fallar todo el guardado.
+    const sinPuntos = obj => { const { pts_victoria, pts_empate, pts_derrota, ...resto } = obj; return resto }
+    const esErrorFinanzas = error => error?.message?.includes('finanzas_config')
+    const esErrorPuntos   = error => error?.message?.includes('pts_victoria') || error?.message?.includes('pts_empate') || error?.message?.includes('pts_derrota')
+
+    let avisoDegradado = null // mensaje a mostrar si se guardó pero faltó algo por migración pendiente
+
     if (editId) {
-      let { error } = await supabase.from('tournaments').update({ ...form, finanzas_config: finanzasConfig }).eq('id', editId)
-      if (error && error.message?.includes('finanzas_config')) {
-        // La columna aún no existe: guardar sin finanzas y avisar
-        ;({ error } = await supabase.from('tournaments').update(form).eq('id', editId))
-        if (!error) showMsg('Torneo actualizado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase', 'error')
-      } else if (error) showMsg('Error al guardar', 'error')
-      else { showMsg('Torneo actualizado ✓'); setEditId(null) }
+      let payload = { ...formNorm, finanzas_config: finanzasConfig }
+      let { error } = await supabase.from('tournaments').update(payload).eq('id', editId)
+      if (error && esErrorFinanzas(error)) {
+        payload = formNorm
+        avisoDegradado = 'Torneo actualizado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').update(payload).eq('id', editId))
+      }
+      if (error && esErrorPuntos(error)) {
+        payload = sinPuntos(payload)
+        avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').update(payload).eq('id', editId))
+      }
+      if (error) showMsg('Error al guardar', 'error')
+      else { showMsg(avisoDegradado || 'Torneo actualizado ✓', avisoDegradado ? 'error' : 'ok'); setEditId(null) }
     } else {
-        const cleanForm = {
-  ...form,
-  status: 'active',
-  fecha_inicio: form.fecha_inicio || null,
-  fecha_fin: form.fecha_fin || null,
-  organizador_id: esOrganizador ? user?.id : null,
-}
-let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanzas_config: finanzasConfig })
-        if (error && error.message?.includes('finanzas_config')) {
-          ;({ error } = await supabase.from('tournaments').insert(cleanForm))
-          if (!error) showMsg('Torneo creado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase', 'error')
-        } else if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
-      else showMsg('Torneo creado ✓')
+      const cleanForm = {
+        ...formNorm,
+        status: 'active',
+        fecha_inicio: formNorm.fecha_inicio || null,
+        fecha_fin: formNorm.fecha_fin || null,
+        organizador_id: esOrganizador ? user?.id : null,
+      }
+      let payload = { ...cleanForm, finanzas_config: finanzasConfig }
+      let { error } = await supabase.from('tournaments').insert(payload)
+      if (error && esErrorFinanzas(error)) {
+        payload = cleanForm
+        avisoDegradado = 'Torneo creado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
+      if (error && esErrorPuntos(error)) {
+        payload = sinPuntos(payload)
+        avisoDegradado = 'Torneo creado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
+      if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
+      else showMsg(avisoDegradado || 'Torneo creado ✓', avisoDegradado ? 'error' : 'ok')
     }
     setForm(EMPTY)
     setFin(FIN_EMPTY)
@@ -144,7 +171,7 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
   }
 
   function handleEdit(t) {
-    setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '' })
+    setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0 })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -251,6 +278,26 @@ let { error } = await supabase.from('tournaments').insert({ ...cleanForm, finanz
               <div>
               <label style={label}>Fecha fin <span style={{ color: '#9aa0a6', fontWeight: '400' }}>(opcional — puede definirse después)</span></label>
               <input type="date" value={form.fecha_fin} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} style={input}/>
+              </div>
+            </div>
+
+            {/* Sistema de puntos de la tabla de posiciones */}
+            <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>Sistema de puntos</div>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Cuánto suma cada equipo en la tabla de posiciones según el resultado del partido (ej: 3-1-0 o 2-1-0)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: cols3, gap: '16px' }}>
+                <div>
+                  <label style={label}>Victoria</label>
+                  <input type="number" min="0" value={form.pts_victoria} onChange={e => setForm(f => ({ ...f, pts_victoria: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
+                </div>
+                <div>
+                  <label style={label}>Empate</label>
+                  <input type="number" min="0" value={form.pts_empate} onChange={e => setForm(f => ({ ...f, pts_empate: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
+                </div>
+                <div>
+                  <label style={label}>Derrota</label>
+                  <input type="number" min="0" value={form.pts_derrota} onChange={e => setForm(f => ({ ...f, pts_derrota: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
+                </div>
               </div>
             </div>
 

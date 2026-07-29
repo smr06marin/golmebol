@@ -14,6 +14,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import { registrarVisita } from '../lib/visitas'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
+import { getPuntosTorneo } from '../lib/puntosTorneo'
 
 // Icono de cada récord automático (los históricos traen el suyo — texto libre
 // desde la BD — o si no, uno de estos componentes SVG según el tipo)
@@ -649,11 +650,16 @@ export default function RecordsPage() {
 
   // ── TORNEOS ACTIVOS ────────────────────────────────────────────────────────
   async function fetchTorneosActivos() {
-    const [{ data: tors }, { data: tts }, { data: ms }] = await Promise.all([
-      supabase.from('tournaments').select('id, name, logo_url, modalidad, season, fase_actual').eq('status', 'active'),
+    // pts_victoria/pts_empate/pts_derrota son columnas nuevas (migracion_sistema_puntos.sql);
+    // si todavía no se corrió esa migración en Supabase, se reintenta sin
+    // ellas para no dejar la vitrina de torneos vacía por un error de columna.
+    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, fase_actual, pts_victoria, pts_empate, pts_derrota').eq('status', 'active')
+    if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, fase_actual').eq('status', 'active')
+    const [{ data: tts }, { data: ms }] = await Promise.all([
       supabase.from('tournament_teams').select('tournament_id'),
       supabase.from('matches').select('tournament_id, matchday, fase, status, played_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'),
     ])
+    const tors = torsRes.data
     const cuentaEq = {}
     ;(tts || []).forEach(t => { cuentaEq[t.tournament_id] = (cuentaEq[t.tournament_id] || 0) + 1 })
     const FASES = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: '¡Gran Final!' }
@@ -694,12 +700,13 @@ export default function RecordsPage() {
     ;(tts || []).forEach(r => { if (r.teams) equiposMap[r.teams.id] = r.teams })
     const tabla = {}
     Object.values(equiposMap).forEach(eq => { tabla[eq.id] = { equipo: eq, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
+    const Ppts = getPuntosTorneo(t)
     ;(ms || []).filter(m => m.status === 'finished' && (!m.fase || m.fase === 'grupo')).forEach(m => {
       const L = tabla[m.home_team_id], V = tabla[m.away_team_id]
       if (L) { L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
-        if (m.home_score > m.away_score) { L.pg++; L.pts += 3 } else if (m.home_score === m.away_score) { L.pe++; L.pts++ } else L.pp++ }
+        if (m.home_score > m.away_score) { L.pg++; L.pts += Ppts.victoria } else if (m.home_score === m.away_score) { L.pe++; L.pts += Ppts.empate } else { L.pp++; L.pts += Ppts.derrota } }
       if (V) { V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
-        if (m.away_score > m.home_score) { V.pg++; V.pts += 3 } else if (m.away_score === m.home_score) { V.pe++; V.pts++ } else V.pp++ }
+        if (m.away_score > m.home_score) { V.pg++; V.pts += Ppts.victoria } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota } }
     })
     const filas = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
     setTorneoTabla({ torneo: t, filas, grupos: grps || [], grupoEquipos: ge, partidos: ms || [], equiposMap, goleadores: golData || [] })
@@ -711,17 +718,18 @@ export default function RecordsPage() {
     const eqIds = tt.grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
     const partGrupo = tt.partidos.filter(m => (!m.fase || m.fase === 'grupo') && eqIds.includes(m.home_team_id) && eqIds.includes(m.away_team_id))
     const t = {}
+    const Ppts = getPuntosTorneo(tt.torneo)
     eqIds.forEach(eid => { if (tt.equiposMap[eid]) t[eid] = { equipo: tt.equiposMap[eid], pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
     partGrupo.filter(m => m.status === 'finished').forEach(m => {
       if (t[m.home_team_id]) {
         const L = t[m.home_team_id]
         L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
-        if (m.home_score > m.away_score) { L.pg++; L.pts += 3 } else if (m.home_score === m.away_score) { L.pe++; L.pts++ } else L.pp++
+        if (m.home_score > m.away_score) { L.pg++; L.pts += Ppts.victoria } else if (m.home_score === m.away_score) { L.pe++; L.pts += Ppts.empate } else { L.pp++; L.pts += Ppts.derrota }
       }
       if (t[m.away_team_id]) {
         const V = t[m.away_team_id]
         V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
-        if (m.away_score > m.home_score) { V.pg++; V.pts += 3 } else if (m.away_score === m.home_score) { V.pe++; V.pts++ } else V.pp++
+        if (m.away_score > m.home_score) { V.pg++; V.pts += Ppts.victoria } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota }
       }
     })
     return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))

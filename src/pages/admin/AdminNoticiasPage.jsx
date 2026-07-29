@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, CalendarDays } from 'lucide-react'
+import { getPuntosTorneo } from '../../lib/puntosTorneo'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
 
@@ -141,6 +142,7 @@ export default function AdminNoticiasPage() {
 
   const [torneos,   setTorneos]   = useState([])
   const [torneoId,  setTorneoId]  = useState('')
+  const [torneoPuntos, setTorneoPuntos] = useState({ victoria: 3, empate: 1, derrota: 0 })
   const [partidos,  setPartidos]  = useState([])
   const [noticias,  setNoticias]  = useState([])
   const [loading,   setLoading]   = useState(false)
@@ -164,7 +166,12 @@ export default function AdminNoticiasPage() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { if (session) fetchTorneos() })
   }, [])
-  useEffect(() => { if (torneoId) { fetchPartidos(); fetchNoticias() } }, [torneoId])
+  useEffect(() => {
+    if (!torneoId) return
+    fetchPartidos(); fetchNoticias()
+    supabase.from('tournaments').select('*').eq('id', torneoId).single()
+      .then(({ data }) => setTorneoPuntos(getPuntosTorneo(data)))
+  }, [torneoId])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
   useEffect(() => {
     const jornadas = [...new Set(
@@ -231,9 +238,9 @@ export default function AdminNoticiasPage() {
       if (!tabla[p.home_team_id]) tabla[p.home_team_id] = { name: p.home?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
       if (!tabla[p.away_team_id]) tabla[p.away_team_id] = { name: p.away?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
       tabla[p.home_team_id].pj++; tabla[p.away_team_id].pj++
-      if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts+=3; tabla[p.away_team_id].pp++ }
-      else if (p.home_score===p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts++; tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts++ }
-      else                                  { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts+=3; tabla[p.home_team_id].pp++ }
+      if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts+=torneoPuntos.victoria; tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts+=torneoPuntos.derrota }
+      else if (p.home_score===p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts+=torneoPuntos.empate; tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts+=torneoPuntos.empate }
+      else                                  { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts+=torneoPuntos.victoria; tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts+=torneoPuntos.derrota }
     })
 
     const enfrentamientos = (histPartidos||[]).filter(p =>
@@ -306,16 +313,16 @@ export default function AdminNoticiasPage() {
       // En tablaAntes excluimos este partido
       if (p.id !== partido.id && p.fase === 'grupo') {
         tablaAntes[p.home_team_id].pj++; tablaAntes[p.away_team_id].pj++
-        if (p.home_score > p.away_score)      { tablaAntes[p.home_team_id].pg++; tablaAntes[p.home_team_id].pts+=3; tablaAntes[p.away_team_id].pp++ }
-        else if (p.home_score===p.away_score) { tablaAntes[p.home_team_id].pe++; tablaAntes[p.home_team_id].pts++; tablaAntes[p.away_team_id].pe++; tablaAntes[p.away_team_id].pts++ }
-        else                                  { tablaAntes[p.away_team_id].pg++; tablaAntes[p.away_team_id].pts+=3; tablaAntes[p.home_team_id].pp++ }
+        if (p.home_score > p.away_score)      { tablaAntes[p.home_team_id].pg++; tablaAntes[p.home_team_id].pts+=torneoPuntos.victoria; tablaAntes[p.away_team_id].pp++; tablaAntes[p.away_team_id].pts+=torneoPuntos.derrota }
+        else if (p.home_score===p.away_score) { tablaAntes[p.home_team_id].pe++; tablaAntes[p.home_team_id].pts+=torneoPuntos.empate; tablaAntes[p.away_team_id].pe++; tablaAntes[p.away_team_id].pts+=torneoPuntos.empate }
+        else                                  { tablaAntes[p.away_team_id].pg++; tablaAntes[p.away_team_id].pts+=torneoPuntos.victoria; tablaAntes[p.home_team_id].pp++; tablaAntes[p.home_team_id].pts+=torneoPuntos.derrota }
       }
       // En tablaDespues incluimos todos
       if (p.fase === 'grupo') {
         tablaDespues[p.home_team_id].pj++; tablaDespues[p.away_team_id].pj++
-        if (p.home_score > p.away_score)      { tablaDespues[p.home_team_id].pg++; tablaDespues[p.home_team_id].pts+=3; tablaDespues[p.away_team_id].pp++ }
-        else if (p.home_score===p.away_score) { tablaDespues[p.home_team_id].pe++; tablaDespues[p.home_team_id].pts++; tablaDespues[p.away_team_id].pe++; tablaDespues[p.away_team_id].pts++ }
-        else                                  { tablaDespues[p.away_team_id].pg++; tablaDespues[p.away_team_id].pts+=3; tablaDespues[p.home_team_id].pp++ }
+        if (p.home_score > p.away_score)      { tablaDespues[p.home_team_id].pg++; tablaDespues[p.home_team_id].pts+=torneoPuntos.victoria; tablaDespues[p.away_team_id].pp++; tablaDespues[p.away_team_id].pts+=torneoPuntos.derrota }
+        else if (p.home_score===p.away_score) { tablaDespues[p.home_team_id].pe++; tablaDespues[p.home_team_id].pts+=torneoPuntos.empate; tablaDespues[p.away_team_id].pe++; tablaDespues[p.away_team_id].pts+=torneoPuntos.empate }
+        else                                  { tablaDespues[p.away_team_id].pg++; tablaDespues[p.away_team_id].pts+=torneoPuntos.victoria; tablaDespues[p.home_team_id].pp++; tablaDespues[p.home_team_id].pts+=torneoPuntos.derrota }
       }
     })
 
@@ -411,14 +418,14 @@ export default function AdminNoticiasPage() {
       const esDeEstaFecha = idsFecha.includes(p.id)
       if (!esDeEstaFecha) {
         tablaAntes[p.home_team_id].pj++; tablaAntes[p.away_team_id].pj++
-        if (p.home_score > p.away_score)      { tablaAntes[p.home_team_id].pg++; tablaAntes[p.home_team_id].pts+=3; tablaAntes[p.away_team_id].pp++ }
-        else if (p.home_score===p.away_score) { tablaAntes[p.home_team_id].pe++; tablaAntes[p.home_team_id].pts++; tablaAntes[p.away_team_id].pe++; tablaAntes[p.away_team_id].pts++ }
-        else                                  { tablaAntes[p.away_team_id].pg++; tablaAntes[p.away_team_id].pts+=3; tablaAntes[p.home_team_id].pp++ }
+        if (p.home_score > p.away_score)      { tablaAntes[p.home_team_id].pg++; tablaAntes[p.home_team_id].pts+=torneoPuntos.victoria; tablaAntes[p.away_team_id].pp++; tablaAntes[p.away_team_id].pts+=torneoPuntos.derrota }
+        else if (p.home_score===p.away_score) { tablaAntes[p.home_team_id].pe++; tablaAntes[p.home_team_id].pts+=torneoPuntos.empate; tablaAntes[p.away_team_id].pe++; tablaAntes[p.away_team_id].pts+=torneoPuntos.empate }
+        else                                  { tablaAntes[p.away_team_id].pg++; tablaAntes[p.away_team_id].pts+=torneoPuntos.victoria; tablaAntes[p.home_team_id].pp++; tablaAntes[p.home_team_id].pts+=torneoPuntos.derrota }
       }
       tablaDespues[p.home_team_id].pj++; tablaDespues[p.away_team_id].pj++
-      if (p.home_score > p.away_score)      { tablaDespues[p.home_team_id].pg++; tablaDespues[p.home_team_id].pts+=3; tablaDespues[p.away_team_id].pp++ }
-      else if (p.home_score===p.away_score) { tablaDespues[p.home_team_id].pe++; tablaDespues[p.home_team_id].pts++; tablaDespues[p.away_team_id].pe++; tablaDespues[p.away_team_id].pts++ }
-      else                                  { tablaDespues[p.away_team_id].pg++; tablaDespues[p.away_team_id].pts+=3; tablaDespues[p.home_team_id].pp++ }
+      if (p.home_score > p.away_score)      { tablaDespues[p.home_team_id].pg++; tablaDespues[p.home_team_id].pts+=torneoPuntos.victoria; tablaDespues[p.away_team_id].pp++; tablaDespues[p.away_team_id].pts+=torneoPuntos.derrota }
+      else if (p.home_score===p.away_score) { tablaDespues[p.home_team_id].pe++; tablaDespues[p.home_team_id].pts+=torneoPuntos.empate; tablaDespues[p.away_team_id].pe++; tablaDespues[p.away_team_id].pts+=torneoPuntos.empate }
+      else                                  { tablaDespues[p.away_team_id].pg++; tablaDespues[p.away_team_id].pts+=torneoPuntos.victoria; tablaDespues[p.home_team_id].pp++; tablaDespues[p.home_team_id].pts+=torneoPuntos.derrota }
     })
 
     const golesFecha = (statsFecha || []).reduce((acc,s) => { const n = s.players?.name; if (n) acc[n] = (acc[n]||0) + s.goals_scored; return acc }, {})
@@ -482,9 +489,9 @@ RESULTADO MÁS CONTUNDENTE: ${golearStr}`
       if (!tabla[p.home_team_id]) tabla[p.home_team_id] = { name: p.home?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
       if (!tabla[p.away_team_id]) tabla[p.away_team_id] = { name: p.away?.name, pj:0,pg:0,pe:0,pp:0,pts:0 }
       tabla[p.home_team_id].pj++; tabla[p.away_team_id].pj++
-      if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts+=3; tabla[p.away_team_id].pp++ }
-      else if (p.home_score===p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts++; tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts++ }
-      else                                  { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts+=3; tabla[p.home_team_id].pp++ }
+      if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts+=torneoPuntos.victoria; tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts+=torneoPuntos.derrota }
+      else if (p.home_score===p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts+=torneoPuntos.empate; tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts+=torneoPuntos.empate }
+      else                                  { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts+=torneoPuntos.victoria; tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts+=torneoPuntos.derrota }
     })
 
     return {
