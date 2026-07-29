@@ -101,7 +101,15 @@ export default function AdminTorneosPage() {
     const num = v => (v === '' || v === null || v === undefined) ? 0 : (parseFloat(v) || 0)
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
     // Si el admin borró alguna casilla del sistema de puntos, se vuelve al default (3-1-0)
-    const formNorm = { ...form, pts_victoria: numDef(form.pts_victoria, 3), pts_empate: numDef(form.pts_empate, 1), pts_derrota: numDef(form.pts_derrota, 0) }
+    // fecha_fin (y fecha_inicio) no pueden viajar como "" a una columna date de
+    // Postgres — "" no es una fecha válida y Supabase la rechaza con
+    // "invalid input syntax for type date". Si el campo quedó vacío, se manda null.
+    const formNorm = {
+      ...form,
+      pts_victoria: numDef(form.pts_victoria, 3), pts_empate: numDef(form.pts_empate, 1), pts_derrota: numDef(form.pts_derrota, 0),
+      fecha_inicio: form.fecha_inicio || null,
+      fecha_fin:    form.fecha_fin || null,
+    }
     const finanzasConfig = {
       llevar_cuentas:       !!fin.llevar_cuentas,
       precio_amarilla:      num(fin.precio_amarilla),
