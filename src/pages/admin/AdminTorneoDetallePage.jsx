@@ -872,7 +872,7 @@ export default function AdminTorneoDetallePage() {
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
-    setTimeout(() => setMsg(null), 3000)
+    setTimeout(() => setMsg(null), type === 'error' ? 8000 : 3000)
   }
 
   async function fetchTodo() {
@@ -2055,7 +2055,7 @@ export default function AdminTorneoDetallePage() {
       avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
-    if (error) { showMsg(`Error al actualizar torneo: ${error.message}`, 'error'); return }
+    if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al actualizar torneo: ${error.message || error.code || error.details || 'desconocido'}`, 'error'); return }
     // Si no hay error pero tampoco vino ninguna fila de vuelta, el update no
     // afectó ninguna fila (típicamente permisos/RLS en Supabase) — evita el
     // falso "guardado ✓" que hacía creer que quedó bien cuando en realidad

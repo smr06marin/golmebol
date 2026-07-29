@@ -80,7 +80,7 @@ export default function AdminTorneosPage() {
 
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
-    setTimeout(() => setMsg(null), 3000)
+    setTimeout(() => setMsg(null), type === 'error' ? 8000 : 3000)
   }
 
   async function handleSave() {
@@ -138,7 +138,7 @@ export default function AdminTorneosPage() {
         avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
-      if (error) showMsg('Error al guardar', 'error')
+      if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al guardar: ${error.message || error.code || 'desconocido'}`, 'error') }
       // Si no vino error pero tampoco ninguna fila afectada, el update no
       // escribió nada (típicamente permisos/RLS) — evita el falso "✓".
       else if (!data || data.length === 0) showMsg('El torneo no se actualizó: no tenés permiso para editarlo (revisa las políticas RLS de "tournaments" en Supabase)', 'error')
