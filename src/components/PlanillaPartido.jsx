@@ -1600,11 +1600,22 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   const tF = faltas.length > n
                   const per = faltas[n]
                   const esUltima = tF && n === faltas.length - 1
+                  // Casilla siguiente vacía: solo se habilita para marcar la falta
+                  // personal A MANO cuando ya no hay espacio en la tabla de Faltas
+                  // Acumulativas del equipo en el periodo actual (sus 5 casillas
+                  // llenas) — antes de eso, las faltas se cargan por esa tabla.
+                  const faltasAcumEquipo = equipo === 'local' ? faltasAcumLocal : faltasAcumVis
+                  const acumuladorLleno = faltasAcumEquipo[`p${periodo}`].every(v => v !== null)
+                  const esProxima = !tF && n === faltas.length && String(j.numero) !== ''
+                  const puedeAgregar = esProxima && acumuladorLleno
                   return (
                     <td key={n}
-                      onDoubleClick={() => { if (esUltima && String(j.numero) !== '') quitarFaltaDeJugador(equipo, j.numero, per) }}
-                      title={esUltima ? 'Doble click para borrar esta falta' : ''}
-                      style={{ ...cell, background: tF ? (per === 2 ? ROJO : AZUL) : 'transparent', cursor: esUltima ? 'pointer' : 'default' }}>
+                      onDoubleClick={() => {
+                        if (esUltima && String(j.numero) !== '') { quitarFaltaDeJugador(equipo, j.numero, per); return }
+                        if (puedeAgregar) intentarAccionConArquero(equipo, () => addFaltaAJugador(equipo, j.numero))
+                      }}
+                      title={esUltima ? 'Doble click para borrar esta falta' : puedeAgregar ? 'Doble click para marcar falta personal' : esProxima ? 'Primero se llenan las 5 faltas acumulativas del equipo' : ''}
+                      style={{ ...cell, background: tF ? (per === 2 ? ROJO : AZUL) : 'transparent', cursor: (esUltima || puedeAgregar) ? 'pointer' : 'default' }}>
                       {tF && <span style={{ color: '#fff', fontWeight: '800' }}>P</span>}
                     </td>
                   )
@@ -2054,7 +2065,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 </div>
               </>
             )}
-            <div style={{ marginLeft: 'auto', fontSize: '.7rem', color: '#9aa0a6' }}>💡 <b>Doble click</b> para borrar · Goles/faltas: doble click en el último para eliminar</div>
+            <div style={{ marginLeft: 'auto', fontSize: '.7rem', color: '#9aa0a6' }}>💡 <b>Doble click</b> para borrar · Goles/faltas: doble click en el último para eliminar, o en la casilla vacía para agregar a mano</div>
           </div>
 
           <div id="planilla-print" style={{ padding: '10px', fontFamily: 'Arial, sans-serif' }}>
