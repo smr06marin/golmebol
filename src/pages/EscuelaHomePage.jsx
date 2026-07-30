@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight } from 'lucide-react'
+import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight, Pencil, Image as ImageIcon, X } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -26,6 +26,14 @@ export default function EscuelaHomePage() {
   const [guardando,     setGuardando]     = useState(false)
   const [error,         setError]         = useState('')
   const [subiendoLogo,  setSubiendoLogo]  = useState(false)
+
+  // Editar escuela (solo coordinador): nombre, categoría, ciudad,
+  // representante e imagen de fondo de la página pública de registro.
+  const [editandoEscuela,   setEditandoEscuela]   = useState(false)
+  const [formEscuela,       setFormEscuela]       = useState(null)
+  const [guardandoEdicion,  setGuardandoEdicion]  = useState(false)
+  const [subiendoFondo,     setSubiendoFondo]     = useState(false)
+  const [errorEdicion,      setErrorEdicion]      = useState('')
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -98,6 +106,51 @@ export default function EscuelaHomePage() {
     fetchTodo()
   }
 
+  function abrirEditarEscuela() {
+    if (!escuela) return
+    setFormEscuela({
+      name: escuela.name || '', categoria: escuela.categoria || '', city: escuela.city || '',
+      representante_nombre: escuela.representante_nombre || '', representante_telefono: escuela.representante_telefono || '',
+    })
+    setErrorEdicion(''); setEditandoEscuela(true)
+  }
+
+  async function handleFondo(file) {
+    if (!file || !escuela) return
+    setSubiendoFondo(true)
+    const ext = file.name.split('.').pop()
+    const path = `fondos/${escuela.id}.${ext}`
+    const { error: errUp } = await supabase.storage.from('teams').upload(path, file, { upsert: true })
+    if (!errUp) {
+      const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+      // imagen_fondo_url es columna nueva (migracion_escuela_fondo.sql); si
+      // todavía no se corrió esa migración, el update falla silenciosamente
+      // acá y se avisa igual desde handleGuardarEscuela cuando se detecte.
+      const { error: errCol } = await supabase.from('teams').update({ imagen_fondo_url: urlData.publicUrl }).eq('id', escuela.id)
+      if (errCol && errCol.message?.includes('imagen_fondo_url')) {
+        setErrorEdicion('No se pudo guardar la imagen: falta ejecutar migracion_escuela_fondo.sql en Supabase')
+      } else {
+        setEscuela(e => ({ ...e, imagen_fondo_url: urlData.publicUrl }))
+      }
+    }
+    setSubiendoFondo(false)
+  }
+
+  async function handleGuardarEscuela() {
+    if (!escuela || !formEscuela) return
+    if (!formEscuela.name.trim()) { setErrorEdicion('El nombre de la escuela es obligatorio'); return }
+    setGuardandoEdicion(true); setErrorEdicion('')
+    const payload = {
+      name: formEscuela.name.trim(), categoria: formEscuela.categoria.trim() || null, city: formEscuela.city.trim() || null,
+      representante_nombre: formEscuela.representante_nombre.trim() || null, representante_telefono: formEscuela.representante_telefono.trim() || null,
+    }
+    const { error: errUpd } = await supabase.from('teams').update(payload).eq('id', escuela.id)
+    setGuardandoEdicion(false)
+    if (errUpd) { setErrorEdicion('Error al guardar: ' + errUpd.message); return }
+    setEscuela(e => ({ ...e, ...payload }))
+    setEditandoEscuela(false)
+  }
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
@@ -151,6 +204,13 @@ export default function EscuelaHomePage() {
         {/* Ya tiene escuela */}
         {profesor.escuela_id && escuela && (
           <div>
+            {esCoordinador && (
+              <button onClick={abrirEditarEscuela}
+                style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', width:'100%', padding:'10px', marginBottom:'14px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontSize:'.8rem', fontWeight:'700' }}>
+                <Pencil size={13}/> Editar escuela y página pública
+              </button>
+            )}
+
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
               <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
                 <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.cyan }}>{numJugadores}</div>
@@ -245,6 +305,55 @@ export default function EscuelaHomePage() {
           </div>
         )}
       </div>
+
+      {/* Modal: editar escuela + imagen de fondo de la página pública */}
+      {editandoEscuela && formEscuela && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'420px', maxWidth:'100%', maxHeight:'88vh', overflowY:'auto' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'18px' }}>
+              <div style={{ fontWeight:'800', fontSize:'1rem' }}>Editar escuela</div>
+              <button onClick={() => setEditandoEscuela(false)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+            </div>
+
+            <div style={{ marginBottom:'12px' }}>
+              <label style={lbl}>Nombre de la escuela *</label>
+              <input value={formEscuela.name} onChange={e => setFormEscuela(f => ({ ...f, name:e.target.value }))} style={inp} placeholder="Nombre de la escuela"/>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+              <div><label style={lbl}>Categoría</label><input value={formEscuela.categoria} onChange={e => setFormEscuela(f => ({ ...f, categoria:e.target.value }))} style={inp} placeholder="Ej: Sub-10"/></div>
+              <div><label style={lbl}>Ciudad</label><input value={formEscuela.city} onChange={e => setFormEscuela(f => ({ ...f, city:e.target.value }))} style={inp} placeholder="Ciudad"/></div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'18px' }}>
+              <div><label style={lbl}>Representante</label><input value={formEscuela.representante_nombre} onChange={e => setFormEscuela(f => ({ ...f, representante_nombre:e.target.value }))} style={inp} placeholder="Nombre"/></div>
+              <div><label style={lbl}>Tel. representante</label><input value={formEscuela.representante_telefono} onChange={e => setFormEscuela(f => ({ ...f, representante_telefono:e.target.value }))} style={inp} placeholder="WhatsApp"/></div>
+            </div>
+
+            <div style={{ marginBottom:'18px' }}>
+              <label style={lbl}>Imagen de fondo (página pública de registro)</label>
+              <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'8px' }}>Se muestra de fondo en el link de registro que le mandas a los acudientes.</div>
+              {escuela?.imagen_fondo_url && (
+                <div style={{ width:'100%', height:'90px', borderRadius:'10px', overflow:'hidden', marginBottom:'8px', border:`1px solid ${S.border}` }}>
+                  <img src={escuela.imagen_fondo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                </div>
+              )}
+              <label style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:S.card2, border:`1px dashed ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontSize:'.8rem', fontWeight:'600' }}>
+                <ImageIcon size={14}/> {subiendoFondo ? 'Subiendo...' : escuela?.imagen_fondo_url ? 'Cambiar imagen de fondo' : 'Subir imagen de fondo'}
+                <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoFondo} onChange={e => handleFondo(e.target.files[0])}/>
+              </label>
+            </div>
+
+            {errorEdicion && <div style={{ color:'#ff6b6b', fontSize:'.8rem', marginBottom:'14px' }}>{errorEdicion}</div>}
+
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={handleGuardarEscuela} disabled={guardandoEdicion}
+                style={{ flex:1, padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.85rem', opacity:guardandoEdicion?.7:1 }}>
+                {guardandoEdicion ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button onClick={() => setEditandoEscuela(false)} style={{ padding:'12px 18px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

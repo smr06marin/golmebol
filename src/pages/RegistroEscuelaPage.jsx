@@ -198,7 +198,16 @@ export default function RegistroEscuelaPage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'20px 16px', textAlign:'center' }}>
+      <div style={{
+        position:'relative', padding:'34px 16px 22px', textAlign:'center', overflow:'hidden',
+        borderBottom:`0.5px solid ${S.border}`,
+        ...(escuela?.imagen_fondo_url
+          ? { backgroundImage:`linear-gradient(180deg, rgba(7,7,14,.55), rgba(7,7,14,.92)), url(${escuela.imagen_fondo_url})`, backgroundSize:'cover', backgroundPosition:'center' }
+          : { background:S.surface }),
+      }}>
+        {escuela?.logo_url && (
+          <img src={escuela.logo_url} style={{ width:'56px', height:'56px', borderRadius:'14px', objectFit:'cover', marginBottom:'10px', border:`2px solid ${S.border}` }}/>
+        )}
         <div style={{ fontSize:'.7rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.1em', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px' }}><GraduationCap size={11}/> Registro de jugador · Golmebol</div>
         <div style={{ fontWeight:900, fontSize:'1.2rem', marginTop:4 }}>{escuela?.name}</div>
         {escuela?.categoria && <div style={{ fontSize:'.78rem', color:S.text2, marginTop:2 }}>{escuela.categoria}</div>}
