@@ -1,0 +1,142 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
+
+const S = {
+  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
+  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+}
+const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
+
+export default function EscenarioPedidoPage() {
+  const navigate = useNavigate()
+  const [encargado, setEncargado] = useState(null)
+  const [escenario, setEscenario] = useState(null)
+  const [productos, setProductos] = useState([])
+  const [pedidos,   setPedidos]   = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [cart,      setCart]      = useState({})
+  const [nombre,    setNombre]    = useState('')
+  const [telefono,  setTelefono]  = useState('')
+  const [msg,       setMsg]       = useState('')
+
+  useEffect(() => { fetchTodo() }, [])
+
+  async function fetchTodo() {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { navigate('/jugador/login'); return }
+    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
+    if (!p || !p.es_encargado_escenario || !p.escenario_id) { navigate('/escenario'); return }
+    setEncargado(p)
+    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', p.escenario_id).single()
+    setEscenario(esc || null)
+    const [{ data: prods }, { data: peds }] = await Promise.all([
+      supabase.from('escenario_productos').select('*').eq('escenario_id', p.escenario_id).order('nombre'),
+      supabase.from('escenario_pedidos').select('*').eq('escenario_id', p.escenario_id).eq('estado', 'pendiente').order('created_at', { ascending: false }),
+    ])
+    setProductos(prods || [])
+    setPedidos(peds || [])
+    setLoading(false)
+  }
+
+  function getProduct(id) { return productos.find(p => p.id === id) }
+  function addToCart(id) { setCart(c => ({ ...c, [id]: (c[id]||0)+1 })) }
+
+  async function enviarPedido() {
+    const items = Object.entries(cart).filter(([,q])=>q>0).map(([id,q]) => { const p=getProduct(id); return { productId:id, nombre:p.nombre, cantidad:q, precio:p.precio } })
+    if (items.length===0) return
+    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
+    const now = new Date()
+    const { error } = await supabase.from('escenario_pedidos').insert({
+      escenario_id: escenario.id, items, nombre: nombre.trim()||'Cliente', telefono: telefono.trim(),
+      total, fecha: todayStr(), hora: now.toTimeString().slice(0,5), estado:'pendiente',
+    })
+    if (error) { setMsg('Error: ' + error.message); return }
+    if (escenario?.whatsapp) {
+      const wa = `Hola, quiero hacer un pedido:\n` + items.map(it=>`- ${it.cantidad}x ${it.nombre} (${fmtMoney(it.precio*it.cantidad)})`).join('\n') +
+        `\nTotal: ${fmtMoney(total)}\nNombre: ${nombre||'Cliente'}\nEstoy en la cancha, ¿me lo pueden traer?`
+      window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(wa)}`, '_blank')
+    }
+    setCart({}); setNombre(''); setTelefono('')
+    setMsg('📱 Pedido enviado'); setTimeout(()=>setMsg(''),3000)
+    fetchTodo()
+  }
+
+  async function entregarPedido(pedido) {
+    const items = pedido.items.map(it => {
+      const p = getProduct(it.productId)
+      const cantidad = p ? Math.min(it.cantidad, p.cantidad) : it.cantidad
+      return { productId: it.productId, nombre: it.nombre, cantidad, precio: it.precio, costo: p?.costo || 0 }
+    })
+    await Promise.all(items.map(it => { const p=getProduct(it.productId); return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad - it.cantidad }).eq('id', it.productId) : null }).filter(Boolean))
+    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
+    const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
+    const now = new Date()
+    await supabase.from('escenario_ventas').insert({
+      escenario_id: escenario.id, fecha: todayStr(), hora: now.toTimeString().slice(0,5),
+      items, total, costo_total: costoTotal, ganancia: total-costoTotal, origen_pedido: true,
+    })
+    await supabase.from('escenario_pedidos').update({ estado:'completado' }).eq('id', pedido.id)
+    setMsg('✅ Pedido entregado y registrado como venta'); setTimeout(()=>setMsg(''),3000)
+    fetchTodo()
+  }
+
+  if (loading) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+  )
+
+  const items = Object.entries(cart).filter(([,q])=>q>0)
+  const total = items.reduce((a,[id,q])=> a + q*getProduct(id).precio, 0)
+
+  return (
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
+      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
+        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
+          <button onClick={() => navigate('/escenario')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
+          <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>📱 Pedido a distancia</div>
+          <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
+        {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'14px' }}>Para clientes que están en la cancha y no quieren acercarse a la tienda: arman su pedido y lo envían por WhatsApp.</div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'16px' }}>
+          {productos.map(p => (
+            <button key={p.id} onClick={()=>addToCart(p.id)}
+              style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', padding:'14px 8px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text }}>
+              {cart[p.id] && <span style={{ position:'absolute', top:'-6px', right:'-6px', background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>}
+              <span style={{ fontSize:'1.4rem' }}>{p.emoji}</span>
+              <span style={{ fontSize:'.72rem', fontWeight:700, textAlign:'center' }}>{p.nombre}</span>
+              <span style={{ fontSize:'.7rem', color:S.gold, fontWeight:700 }}>{fmtMoney(p.precio)}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'14px' }}>
+          <input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/>
+          <input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="Teléfono"/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800, fontSize:'1rem', marginBottom:'10px' }}>
+          <span>Total</span><span style={{ color:S.cyan }}>{fmtMoney(total)}</span>
+        </div>
+        <button onClick={enviarPedido} disabled={items.length===0}
+          style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem', opacity:items.length===0?.5:1, marginBottom:'22px' }}>
+          Enviar pedido por WhatsApp
+        </button>
+
+        <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Pedidos pendientes por entregar</div>
+        {pedidos.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay pedidos remotos pendientes.</div> : pedidos.map(o => (
+          <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', marginBottom:'8px' }}>
+            <span style={{ fontSize:'.78rem' }}>{o.nombre} · {(o.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')} · {fmtMoney(o.total)}</span>
+            <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap' }}>Entregado</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,176 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney } from '../lib/escenarioHelpers'
+
+const S = {
+  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
+  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+  win: '#1e8e3e', warn: '#e8710a', loss: '#d93025',
+}
+const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'9px 12px', color:S.text, fontSize:'.82rem', outline:'none', boxSizing:'border-box' }
+const lbl = { fontSize:'.68rem', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
+const card = { background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'16px', marginBottom:'14px' }
+const rowItem = { display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'9px 0', borderBottom:`1px solid ${S.border}` }
+
+export default function EscenarioAdminReservasPage() {
+  const navigate = useNavigate()
+  const [encargado, setEncargado] = useState(null)
+  const [escenario, setEscenario] = useState(null)
+  const [reservas,  setReservas]  = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [msg,       setMsg]       = useState('')
+  const [mCancha,   setMCancha]   = useState('futbol5')
+  const [mFecha,    setMFecha]    = useState(todayStr())
+  const [mHora,     setMHora]     = useState('')
+
+  useEffect(() => { fetchTodo() }, [])
+
+  async function fetchTodo() {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { navigate('/jugador/login'); return }
+    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
+    if (!p || !p.es_encargado_escenario || !p.escenario_id) { navigate('/escenario'); return }
+    setEncargado(p)
+    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', p.escenario_id).single()
+    setEscenario(esc || null)
+    const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', p.escenario_id)
+    setReservas(rsvs || [])
+    if (!mHora && esc) setMHora(getHours(esc)[0] || '08:00')
+    setLoading(false)
+  }
+
+  function showMsg(t) { setMsg(t); setTimeout(()=>setMsg(''),3000) }
+
+  async function aceptar(r) {
+    await supabase.from('escenario_reservas').update({ estado:'aceptada' }).eq('id', r.id)
+    if (r.recurrente) {
+      const filas = []
+      for (let i=1;i<=8;i++) {
+        const d = new Date(r.fecha+'T00:00:00'); d.setDate(d.getDate()+7*i)
+        filas.push({
+          escenario_id: r.escenario_id, cancha: r.cancha, fecha: d.toISOString().slice(0,10), hora: r.hora, duracion: r.duracion,
+          nombre: r.nombre, telefono: r.telefono, equipo: r.equipo, estado:'aceptada', pago:'pendiente', monto:r.monto, monto_pagado:0,
+          recurrente:false, generada_de_recurrente:true,
+        })
+      }
+      await supabase.from('escenario_reservas').insert(filas)
+    }
+    const msgTxt = `Hola ${r.nombre}, tu reserva de ${r.cancha==='futbol5'?'Fútbol 5':'Fútbol 7'} el ${r.fecha} a las ${r.hora} fue confirmada. ¡Te esperamos!`
+    if (escenario?.whatsapp) window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, '_blank')
+    showMsg('✅ Reserva aceptada'); fetchTodo()
+  }
+  async function rechazar(r) {
+    await supabase.from('escenario_reservas').update({ estado:'rechazada' }).eq('id', r.id)
+    showMsg('Solicitud rechazada'); fetchTodo()
+  }
+  async function cambiarPago(r, valor) {
+    const payload = { pago: valor }
+    if (valor === 'pagado') payload.monto_pagado = r.monto
+    await supabase.from('escenario_reservas').update(payload).eq('id', r.id)
+    fetchTodo()
+  }
+  async function bloquear() {
+    if (!escenario) return
+    await supabase.from('escenario_reservas').insert({
+      escenario_id: escenario.id, cancha: mCancha, fecha: mFecha, hora: mHora, duracion:60,
+      nombre:'Mantenimiento', telefono:'', equipo:'', estado:'mantenimiento', pago:'pagado', monto:0,
+    })
+    showMsg('Horario bloqueado'); fetchTodo()
+  }
+
+  if (loading) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+  )
+
+  const pendientes = reservas.filter(r=>r.estado==='pendiente').sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora))
+  const aceptadas = reservas.filter(r=>r.estado==='aceptada').sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,20)
+
+  const clientesMap = {}
+  reservas.forEach(r => {
+    if (r.estado !== 'aceptada') return
+    clientesMap[r.telefono] = clientesMap[r.telefono] || { nombre:r.nombre, telefono:r.telefono, reservas:0, pendiente:0 }
+    clientesMap[r.telefono].reservas++
+    if (r.pago !== 'pagado') clientesMap[r.telefono].pendiente += Math.max((r.monto||0)-(r.monto_pagado||0),0)
+  })
+  const clientes = Object.values(clientesMap)
+
+  const ocupacion = { futbol5:0, futbol7:0 }
+  const horas = escenario ? getHours(escenario) : []
+  const totalSlotsSemana = horas.length * 7
+  const hoy = new Date()
+  for (let i=0;i<7;i++) {
+    const d = new Date(hoy); d.setDate(d.getDate()+i)
+    const f = d.toISOString().slice(0,10)
+    ;['futbol5','futbol7'].forEach(c => { horas.forEach(h => { if (slotEstado(reservas,c,f,h)==='ocupado') ocupacion[c]++ }) })
+  }
+
+  return (
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
+      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
+        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
+          <button onClick={() => navigate('/escenario')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
+          <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>✅ Solicitudes de cancha</div>
+          <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
+        {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
+
+        <div style={card}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Solicitudes pendientes</div>
+          {pendientes.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay solicitudes pendientes.</div> : pendientes.map(r => (
+            <div key={r.id} style={rowItem}>
+              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {r.hora} · {r.cancha==='futbol5'?'F5':'F7'} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
+              <span style={{ display:'flex', gap:'6px' }}>
+                <button onClick={()=>aceptar(r)} style={{ padding:'5px 10px', background:S.cyan, border:'none', borderRadius:'6px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.72rem' }}>Aceptar</button>
+                <button onClick={()=>rechazar(r)} style={{ padding:'5px 10px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor:'pointer', color:S.loss, fontSize:'.72rem' }}>Rechazar</button>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div style={card}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Reservas confirmadas próximas</div>
+          {aceptadas.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin reservas confirmadas.</div> : aceptadas.map(r => (
+            <div key={r.id} style={rowItem}>
+              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {r.hora} · {r.cancha==='futbol5'?'F5':'F7'} · {r.nombre}</span>
+              <select value={r.pago} onChange={e=>cambiarPago(r,e.target.value)} style={{ ...inp, width:'auto', padding:'5px 8px', fontSize:'.72rem' }}>
+                <option value="pendiente">Pendiente</option><option value="anticipo">Anticipo</option><option value="pagado">Pagado</option>
+              </select>
+            </div>
+          ))}
+        </div>
+
+        <div style={card}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>🛠️ Bloquear horario (mantenimiento)</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
+            <div><label style={lbl}>Cancha</label><select value={mCancha} onChange={e=>setMCancha(e.target.value)} style={inp}><option value="futbol5">Fútbol 5</option><option value="futbol7">Fútbol 7</option></select></div>
+            <div><label style={lbl}>Fecha</label><input type="date" value={mFecha} onChange={e=>setMFecha(e.target.value)} style={inp}/></div>
+            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Hora</label><select value={mHora} onChange={e=>setMHora(e.target.value)} style={inp}>{horas.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+          </div>
+          <button onClick={bloquear} style={{ width:'100%', padding:'10px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text, fontWeight:700, fontSize:'.8rem' }}>Bloquear</button>
+        </div>
+
+        <div style={card}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>📊 Ocupación de la semana</div>
+          <div style={rowItem}><span style={{fontSize:'.8rem'}}>Fútbol 5</span><span style={{fontSize:'.8rem', fontWeight:700, color:S.cyan}}>{totalSlotsSemana?Math.round(ocupacion.futbol5/totalSlotsSemana*100):0}%</span></div>
+          <div style={{...rowItem, borderBottom:'none'}}><span style={{fontSize:'.8rem'}}>Fútbol 7</span><span style={{fontSize:'.8rem', fontWeight:700, color:S.cyan}}>{totalSlotsSemana?Math.round(ocupacion.futbol7/totalSlotsSemana*100):0}%</span></div>
+        </div>
+
+        <div style={{...card, marginBottom:0}}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>👥 Historial de clientes</div>
+          {clientes.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Aún no hay clientes con reservas confirmadas.</div> : clientes.map(c => (
+            <div key={c.telefono} style={rowItem}>
+              <span style={{fontSize:'.8rem'}}>{c.nombre} ({c.telefono})</span>
+              <span style={{fontSize:'.78rem', color: c.pendiente>0?S.warn:S.win}}>{c.reservas} reservas · {c.pendiente>0?fmtMoney(c.pendiente)+' pend.':'al día'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

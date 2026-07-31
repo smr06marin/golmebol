@@ -1,0 +1,145 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { fmtMoney } from '../lib/escenarioHelpers'
+import { Plus, X, Package } from 'lucide-react'
+
+const S = {
+  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
+  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5', loss: '#d93025',
+}
+const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
+const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }
+
+const EMPTY = { emoji:'🛒', nombre:'', costo:0, precio:0, cantidad:0, stock_minimo:5 }
+
+function ModalProducto({ producto, onClose, onGuardar, onEliminar }) {
+  const [f, setF] = useState(producto || EMPTY)
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar() {
+    setGuardando(true)
+    await onGuardar({ ...f, costo:Number(f.costo)||0, precio:Number(f.precio)||0, cantidad:parseInt(f.cantidad)||0, stock_minimo:parseInt(f.stock_minimo)||0 })
+    setGuardando(false)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+          <div style={{ fontWeight:800, fontSize:'1rem' }}>{producto?.id ? 'Editar' : 'Nuevo'} producto</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:'10px', marginBottom:'12px' }}>
+          <div><label style={lbl}>Emoji</label><input value={f.emoji} onChange={e=>setF(p=>({...p,emoji:e.target.value}))} style={inp}/></div>
+          <div><label style={lbl}>Nombre</label><input value={f.nombre} onChange={e=>setF(p=>({...p,nombre:e.target.value}))} style={inp} placeholder="Nombre del producto"/></div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+          <div><label style={lbl}>Precio de compra</label><input type="number" value={f.costo} onChange={e=>setF(p=>({...p,costo:e.target.value}))} style={inp}/></div>
+          <div><label style={lbl}>Precio de venta</label><input type="number" value={f.precio} onChange={e=>setF(p=>({...p,precio:e.target.value}))} style={inp}/></div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'18px' }}>
+          <div><label style={lbl}>Cantidad disponible</label><input type="number" value={f.cantidad} onChange={e=>setF(p=>({...p,cantidad:e.target.value}))} style={inp}/></div>
+          <div><label style={lbl}>Stock mínimo</label><input type="number" value={f.stock_minimo} onChange={e=>setF(p=>({...p,stock_minimo:e.target.value}))} style={inp}/></div>
+        </div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={guardar} disabled={guardando} style={{ flex:1, padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:guardando?.7:1 }}>{guardando?'Guardando...':'Guardar'}</button>
+          {producto?.id && <button onClick={()=>onEliminar(producto)} style={{ padding:'12px 16px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontSize:'.85rem' }}>Eliminar</button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function EscenarioInventarioPage() {
+  const navigate = useNavigate()
+  const [encargado, setEncargado] = useState(null)
+  const [escenario, setEscenario] = useState(null)
+  const [productos, setProductos] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [modal,     setModal]     = useState(null) // null | {} (nuevo) | producto (editar)
+  const [msg,       setMsg]       = useState('')
+
+  useEffect(() => { fetchTodo() }, [])
+
+  async function fetchTodo() {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { navigate('/jugador/login'); return }
+    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
+    if (!p || !p.es_encargado_escenario || !p.escenario_id) { navigate('/escenario'); return }
+    setEncargado(p)
+    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', p.escenario_id).single()
+    setEscenario(esc || null)
+    const { data: prods } = await supabase.from('escenario_productos').select('*').eq('escenario_id', p.escenario_id).order('nombre')
+    setProductos(prods || [])
+    setLoading(false)
+  }
+
+  async function guardarProducto(data) {
+    if (data.id) {
+      const { id, escenario_id, created_at, ...payload } = data
+      await supabase.from('escenario_productos').update(payload).eq('id', id)
+    } else {
+      await supabase.from('escenario_productos').insert({ ...data, escenario_id: escenario.id })
+    }
+    setModal(null); setMsg('✅ Producto guardado'); setTimeout(()=>setMsg(''),3000)
+    fetchTodo()
+  }
+  async function eliminarProducto(p) {
+    if (!confirm(`¿Eliminar "${p.nombre}"?`)) return
+    await supabase.from('escenario_productos').delete().eq('id', p.id)
+    setModal(null); setMsg('Producto eliminado'); setTimeout(()=>setMsg(''),3000)
+    fetchTodo()
+  }
+
+  if (loading) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+  )
+
+  return (
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
+      {modal && <ModalProducto producto={modal.id ? modal : null} onClose={()=>setModal(null)} onGuardar={guardarProducto} onEliminar={eliminarProducto}/>}
+
+      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
+        <div style={{ maxWidth:'640px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
+          <div>
+            <button onClick={() => navigate('/escenario')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
+            <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>📦 Inventario</div>
+            <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
+          </div>
+          <button onClick={()=>setModal({})} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.78rem' }}><Plus size={14}/> Agregar</button>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
+        {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
+
+        {productos.length===0 ? (
+          <div style={{ textAlign:'center', color:S.muted, padding:'40px 0' }}>
+            <Package size={32} style={{ opacity:.3, marginBottom:'8px' }}/>
+            <div>Sin productos todavía.</div>
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+            {productos.map(p => (
+              <button key={p.id} onClick={()=>setModal(p)}
+                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text, textAlign:'left' }}>
+                <span style={{ fontSize:'1.4rem' }}>{p.emoji}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:'.85rem' }}>{p.nombre}</div>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>Compra {fmtMoney(p.costo)} · Venta {fmtMoney(p.precio)}</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontWeight:800, fontSize:'.9rem', color: p.cantidad<=p.stock_minimo?S.loss:S.cyan }}>{p.cantidad}</div>
+                  <div style={{ fontSize:'.65rem', color:S.muted }}>und. (mín {p.stock_minimo})</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

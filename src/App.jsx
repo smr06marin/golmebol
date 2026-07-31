@@ -55,6 +55,20 @@ const EscuelaAsistenciaPage     = lazy(() => import('./pages/EscuelaAsistenciaPa
 const EscuelaMensualidadesPage  = lazy(() => import('./pages/EscuelaMensualidadesPage'))
 const EscuelaRankingsPage       = lazy(() => import('./pages/EscuelaRankingsPage'))
 
+// Escenarios Deportivos (tienda + canchas)
+const AdminEscenariosPage         = lazy(() => import('./pages/admin/AdminEscenariosPage'))
+const EscenarioHomePage           = lazy(() => import('./pages/EscenarioHomePage'))
+const EscenarioCanchasPage        = lazy(() => import('./pages/EscenarioCanchasPage'))
+const EscenarioAdminReservasPage  = lazy(() => import('./pages/EscenarioAdminReservasPage'))
+const EscenarioVentasPage         = lazy(() => import('./pages/EscenarioVentasPage'))
+const EscenarioPedidoPage         = lazy(() => import('./pages/EscenarioPedidoPage'))
+const EscenarioInventarioPage     = lazy(() => import('./pages/EscenarioInventarioPage'))
+const EscenarioComprasPage        = lazy(() => import('./pages/EscenarioComprasPage'))
+const EscenarioCierrePage         = lazy(() => import('./pages/EscenarioCierrePage'))
+const EscenarioReportesPage       = lazy(() => import('./pages/EscenarioReportesPage'))
+const EscenarioConfigPage         = lazy(() => import('./pages/EscenarioConfigPage'))
+const ReservarEscenarioPage       = lazy(() => import('./pages/ReservarEscenarioPage'))
+
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 
@@ -206,6 +220,36 @@ function EscuelaRoute({ children }) {
   return children
 }
 
+// Igual que EscuelaRoute pero para el portal de Escenarios Deportivos: solo
+// deja pasar cuentas marcadas como encargado de un escenario.
+function EscenarioRoute({ children }) {
+  const { user, loading } = useAuthStore()
+  const [estado, setEstado] = useState('cargando') // cargando | ok | no_encargado | sin_perfil
+
+  useEffect(() => {
+    if (loading) return
+    if (!user) { setEstado('sin_perfil'); return }
+    let cancelado = false
+    supabase.from('players').select('es_encargado_escenario').eq('user_id', user.id).maybeSingle()
+      .then(({ data: p }) => {
+        if (cancelado) return
+        if (!p) setEstado('sin_perfil')
+        else if (p.es_encargado_escenario) setEstado('ok')
+        else setEstado('no_encargado')
+      })
+    return () => { cancelado = true }
+  }, [loading, user])
+
+  if (loading || estado === 'cargando') return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
+      CARGANDO...
+    </div>
+  )
+  if (estado === 'sin_perfil')   return <Navigate to="/jugador/login" replace/>
+  if (estado === 'no_encargado') return <Navigate to="/jugador" replace/>
+  return children
+}
+
 // Portal del acudiente (padre/madre de un jugador de escuela): solo deja
 // pasar cuentas marcadas con es_acudiente.
 function AcudienteRoute({ children }) {
@@ -350,6 +394,7 @@ export default function App() {
             <Route path="records"       element={<AdminRecordsPage/>}/>
             <Route path="arbitros"      element={<AdminArbitrosPage/>}/>
             <Route path="escuelas"      element={<AdminEscuelasPage/>}/>
+            <Route path="escenarios"    element={<AdminEscenariosPage/>}/>
             <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
             <Route path="predix"        element={<AdminPredixPage/>}/>
           </Route>
@@ -360,6 +405,8 @@ export default function App() {
           <Route path="/registro/equipo/:token/:tournamentId" element={<RegistroEquipoPage/>}/>
           {/* Registro público de jugadores de escuela (acudiente) */}
           <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
+          {/* Reserva pública de cancha — sin login */}
+          <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>}/>
 
           {/* Equipo detalle — accesible por admin Y jugador */}
           <Route path="/equipos/:id" element={<PlayerRoute><EquipoHistorialPage/></PlayerRoute>}/>
@@ -390,6 +437,18 @@ export default function App() {
           <Route path="/escuela/asistencia"    element={<EscuelaRoute><EscuelaAsistenciaPage/></EscuelaRoute>}/>
           <Route path="/escuela/mensualidades" element={<EscuelaRoute><EscuelaMensualidadesPage/></EscuelaRoute>}/>
           <Route path="/escuela/rankings"      element={<EscuelaRoute><EscuelaRankingsPage/></EscuelaRoute>}/>
+
+          {/* Portal Escenarios Deportivos (tienda + canchas) */}
+          <Route path="/escenario"             element={<EscenarioRoute><EscenarioHomePage/></EscenarioRoute>}/>
+          <Route path="/escenario/canchas"     element={<EscenarioRoute><EscenarioCanchasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/reservas"    element={<EscenarioRoute><EscenarioAdminReservasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/ventas"      element={<EscenarioRoute><EscenarioVentasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/pedido"      element={<EscenarioRoute><EscenarioPedidoPage/></EscenarioRoute>}/>
+          <Route path="/escenario/inventario"  element={<EscenarioRoute><EscenarioInventarioPage/></EscenarioRoute>}/>
+          <Route path="/escenario/compras"     element={<EscenarioRoute><EscenarioComprasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/cierre"      element={<EscenarioRoute><EscenarioCierrePage/></EscenarioRoute>}/>
+          <Route path="/escenario/reportes"    element={<EscenarioRoute><EscenarioReportesPage/></EscenarioRoute>}/>
+          <Route path="/escenario/config"      element={<EscenarioRoute><EscenarioConfigPage/></EscenarioRoute>}/>
 
           {/* Portal acudiente */}
           <Route path="/acudiente"           element={<AcudienteRoute><AcudientePage/></AcudienteRoute>}/>

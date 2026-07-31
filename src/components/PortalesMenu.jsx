@@ -32,6 +32,9 @@ export default function PortalesMenu({ usuario, actual, theme = 'dark' }) {
       to: '/escuela', color: '#00ddd0', bg: 'rgba(0,221,208,.15)',
     })
   }
+  if (usuario.es_encargado_escenario) {
+    opciones.push({ key: 'escenario', label: '🏟️ Escenario', to: '/escenario', color: '#00ddd0', bg: 'rgba(0,221,208,.15)' })
+  }
 
   if (opciones.length <= 1) return null
 

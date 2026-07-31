@@ -173,17 +173,26 @@ export default function PlayerLoginPage() {
     // aunque sí exista. Con una lista simple tomamos la fila correcta a mano:
     // la que ya tenga cuenta de acceso creada manda; si ninguna la tiene, la más
     // completa (más roles marcados).
-    const { data: filas } = await supabase
+    // es_encargado_escenario es columna nueva (migracion_escenarios.sql); si
+    // todavía no se corrió esa migración en Supabase, este select fallaría
+    // para TODO el login de la plataforma — se reintenta sin esa columna.
+    let { data: filas, error: errFilas } = await supabase
       .from('players')
-      .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_acudiente, es_jugador_escuela, equipo_deseado')
+      .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_encargado_escenario, es_acudiente, es_jugador_escuela, equipo_deseado')
       .eq('numero_cedula', cedula.trim())
+    if (errFilas) {
+      ;({ data: filas } = await supabase
+        .from('players')
+        .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_acudiente, es_jugador_escuela, equipo_deseado')
+        .eq('numero_cedula', cedula.trim()))
+    }
     setLoading(false)
     const candidatas = filas || []
     let p = null
     if (candidatas.length === 1) {
       p = candidatas[0]
     } else if (candidatas.length > 1) {
-      const puntaje = (x) => (x.user_id ? 100 : 0) + Number(!!x.es_arbitro) + Number(!!x.es_arbitro_lider) + Number(!!x.es_profesor) + Number(!!x.es_profesor_coordinador) + Number(!!x.es_acudiente) + Number(!!x.es_jugador_escuela)
+      const puntaje = (x) => (x.user_id ? 100 : 0) + Number(!!x.es_arbitro) + Number(!!x.es_arbitro_lider) + Number(!!x.es_profesor) + Number(!!x.es_profesor_coordinador) + Number(!!x.es_encargado_escenario) + Number(!!x.es_acudiente) + Number(!!x.es_jugador_escuela)
       p = [...candidatas].sort((a, b) => puntaje(b) - puntaje(a))[0]
     }
     // Si el jugador existe pero aún no tiene cuenta, NO se muestra su nombre de
@@ -284,6 +293,7 @@ export default function PlayerLoginPage() {
         if (player?.es_arbitro_lider) navigate('/arbitro/lider')
         else if (player?.rol === 'arbitro' && !player?.es_arbitro) navigate('/arbitro')
         else if (player?.rol === 'profesor' || player?.es_profesor || player?.es_profesor_coordinador) navigate('/escuela')
+        else if (player?.es_encargado_escenario) navigate('/escenario')
         else if (player?.es_acudiente) navigate('/acudiente')
         else if (player?.es_jugador_escuela) navigate('/mi-tarjeta')
         else navigate('/jugador')
