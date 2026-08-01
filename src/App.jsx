@@ -58,6 +58,7 @@ const EscuelaRankingsPage       = lazy(() => import('./pages/EscuelaRankingsPage
 // Escenarios Deportivos (tienda + canchas)
 const AdminEscenariosPage         = lazy(() => import('./pages/admin/AdminEscenariosPage'))
 const EscenarioHomePage           = lazy(() => import('./pages/EscenarioHomePage'))
+const EscenarioDashboardPage      = lazy(() => import('./pages/EscenarioDashboardPage'))
 const EscenarioCanchasPage        = lazy(() => import('./pages/EscenarioCanchasPage'))
 const EscenarioAdminReservasPage  = lazy(() => import('./pages/EscenarioAdminReservasPage'))
 const EscenarioVentasPage         = lazy(() => import('./pages/EscenarioVentasPage'))
@@ -438,17 +439,19 @@ export default function App() {
           <Route path="/escuela/mensualidades" element={<EscuelaRoute><EscuelaMensualidadesPage/></EscuelaRoute>}/>
           <Route path="/escuela/rankings"      element={<EscuelaRoute><EscuelaRankingsPage/></EscuelaRoute>}/>
 
-          {/* Portal Escenarios Deportivos (tienda + canchas) */}
-          <Route path="/escenario"             element={<EscenarioRoute><EscenarioHomePage/></EscenarioRoute>}/>
-          <Route path="/escenario/canchas"     element={<EscenarioRoute><EscenarioCanchasPage/></EscenarioRoute>}/>
-          <Route path="/escenario/reservas"    element={<EscenarioRoute><EscenarioAdminReservasPage/></EscenarioRoute>}/>
-          <Route path="/escenario/ventas"      element={<EscenarioRoute><EscenarioVentasPage/></EscenarioRoute>}/>
-          <Route path="/escenario/pedido"      element={<EscenarioRoute><EscenarioPedidoPage/></EscenarioRoute>}/>
-          <Route path="/escenario/inventario"  element={<EscenarioRoute><EscenarioInventarioPage/></EscenarioRoute>}/>
-          <Route path="/escenario/compras"     element={<EscenarioRoute><EscenarioComprasPage/></EscenarioRoute>}/>
-          <Route path="/escenario/cierre"      element={<EscenarioRoute><EscenarioCierrePage/></EscenarioRoute>}/>
-          <Route path="/escenario/reportes"    element={<EscenarioRoute><EscenarioReportesPage/></EscenarioRoute>}/>
-          <Route path="/escenario/config"      element={<EscenarioRoute><EscenarioConfigPage/></EscenarioRoute>}/>
+          {/* Portal Escenarios Deportivos (tienda + canchas) — un encargado
+              puede tener varios escenarios, por eso todo vive bajo :escenarioId */}
+          <Route path="/escenario"                          element={<EscenarioRoute><EscenarioHomePage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId"             element={<EscenarioRoute><EscenarioDashboardPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/canchas"     element={<EscenarioRoute><EscenarioCanchasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/reservas"    element={<EscenarioRoute><EscenarioAdminReservasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/ventas"      element={<EscenarioRoute><EscenarioVentasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/pedido"      element={<EscenarioRoute><EscenarioPedidoPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/inventario"  element={<EscenarioRoute><EscenarioInventarioPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/compras"     element={<EscenarioRoute><EscenarioComprasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/cierre"      element={<EscenarioRoute><EscenarioCierrePage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/reportes"    element={<EscenarioRoute><EscenarioReportesPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/config"      element={<EscenarioRoute><EscenarioConfigPage/></EscenarioRoute>}/>
 
           {/* Portal acudiente */}
           <Route path="/acudiente"           element={<AcudienteRoute><AcudientePage/></AcudienteRoute>}/>

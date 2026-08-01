@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
 
@@ -13,6 +13,7 @@ const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6p
 
 export default function EscenarioComprasPage() {
   const navigate = useNavigate()
+  const { escenarioId } = useParams()
   const [escenario, setEscenario] = useState(null)
   const [productos, setProductos] = useState([])
   const [compras,   setCompras]   = useState([])
@@ -25,19 +26,21 @@ export default function EscenarioComprasPage() {
   const [costo,     setCosto]     = useState(0)
   const [fecha,     setFecha]     = useState(todayStr())
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => { fetchTodo() }, [escenarioId])
 
   async function fetchTodo() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario || !p.escenario_id) { navigate('/escenario'); return }
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', p.escenario_id).single()
+    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    if (!acceso) { navigate('/escenario'); return }
+    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     const [{ data: prods }, { data: comp }] = await Promise.all([
-      supabase.from('escenario_productos').select('*').eq('escenario_id', p.escenario_id).order('nombre'),
-      supabase.from('escenario_compras').select('*').eq('escenario_id', p.escenario_id).order('fecha', { ascending: false }),
+      supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre'),
+      supabase.from('escenario_compras').select('*').eq('escenario_id', escenarioId).order('fecha', { ascending: false }),
     ])
     setProductos(prods || [])
     if (prods?.length && !productId) setProductId(prods[0].id)
@@ -67,7 +70,7 @@ export default function EscenarioComprasPage() {
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escenario')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
+          <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
           <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>🚚 Compras</div>
           <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
         </div>

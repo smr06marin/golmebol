@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, fmtDate, todayStr } from '../lib/escenarioHelpers'
 
@@ -12,12 +12,13 @@ const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, 
 
 export default function EscenarioCierrePage() {
   const navigate = useNavigate()
+  const { escenarioId } = useParams()
   const [escenario, setEscenario] = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [fecha,     setFecha]     = useState(todayStr())
   const [ventas,    setVentas]    = useState([])
 
-  useEffect(() => { fetchEscenario() }, [])
+  useEffect(() => { fetchEscenario() }, [escenarioId])
   useEffect(() => { if (escenario) fetchVentas() }, [fecha, escenario])
 
   async function fetchEscenario() {
@@ -25,8 +26,10 @@ export default function EscenarioCierrePage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario || !p.escenario_id) { navigate('/escenario'); return }
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', p.escenario_id).single()
+    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    if (!acceso) { navigate('/escenario'); return }
+    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     setLoading(false)
   }
@@ -53,7 +56,7 @@ export default function EscenarioCierrePage() {
 
       <div className="no-print" style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escenario')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
+          <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
           <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>🧾 Cierre diario</div>
           <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
         </div>

@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 const PALETAS = {
   dark:  { border: '#1e2d3d', muted: '#7a9ab5' },
@@ -7,13 +9,27 @@ const PALETAS = {
 
 // Menú compartido de "cambiar de portal": aparece en la cabecera de las
 // páginas de cada rol (jugador, árbitro, coordinador de árbitros, profesor/
-// coordinador de escuela) para saltar entre los portales que tenga esa misma
-// cuenta, resaltando en cuál está parado ahora mismo. Si la cuenta solo tiene
-// un rol, no se muestra (no hay a dónde más ir).
+// coordinador de escuela, encargado de escenario) para saltar entre los
+// portales que tenga esa misma cuenta, resaltando en cuál está parado ahora
+// mismo. Si la cuenta solo tiene un rol, no se muestra (no hay a dónde más ir).
 export default function PortalesMenu({ usuario, actual, theme = 'dark' }) {
   const navigate = useNavigate()
-  if (!usuario) return null
+  const { escenarioId } = useParams()
+  const [escenarios, setEscenarios] = useState([])
   const c = PALETAS[theme] || PALETAS.dark
+
+  useEffect(() => {
+    if (!usuario?.es_encargado_escenario) { setEscenarios([]); return }
+    let cancelado = false
+    supabase.from('escenario_encargados').select('escenarios(id, name)').eq('player_id', usuario.id)
+      .then(({ data }) => {
+        if (cancelado) return
+        setEscenarios((data || []).map(d => d.escenarios).filter(Boolean))
+      })
+    return () => { cancelado = true }
+  }, [usuario?.id, usuario?.es_encargado_escenario])
+
+  if (!usuario) return null
 
   const opciones = []
   if (usuario.rol !== 'arbitro' && usuario.rol !== 'profesor') {
@@ -33,7 +49,16 @@ export default function PortalesMenu({ usuario, actual, theme = 'dark' }) {
     })
   }
   if (usuario.es_encargado_escenario) {
-    opciones.push({ key: 'escenario', label: '🏟️ Escenario', to: '/escenario', color: '#00ddd0', bg: 'rgba(0,221,208,.15)' })
+    // Un mismo encargado puede tener varios escenarios asignados — si tiene
+    // más de uno, sale un botón por cada uno (con su nombre) en vez de un
+    // único botón genérico "Escenario".
+    if (escenarios.length > 1) {
+      escenarios.forEach(e => {
+        opciones.push({ key: `escenario-${e.id}`, label: `🏟️ ${e.name}`, to: `/escenario/${e.id}`, color: '#00ddd0', bg: 'rgba(0,221,208,.15)', isEscenario: true, escenarioId: e.id })
+      })
+    } else {
+      opciones.push({ key: 'escenario', label: '🏟️ Escenario', to: '/escenario', color: '#00ddd0', bg: 'rgba(0,221,208,.15)', isEscenario: true })
+    }
   }
 
   if (opciones.length <= 1) return null
@@ -41,7 +66,9 @@ export default function PortalesMenu({ usuario, actual, theme = 'dark' }) {
   return (
     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
       {opciones.map(o => {
-        const isActual = o.key === actual
+        const isActual = o.isEscenario
+          ? (actual === 'escenario' && (!o.escenarioId || o.escenarioId === escenarioId))
+          : o.key === actual
         return (
           <button key={o.key} onClick={() => !isActual && navigate(o.to)} disabled={isActual}
             style={{

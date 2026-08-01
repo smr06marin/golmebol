@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
 
@@ -12,6 +12,7 @@ const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, 
 
 export default function EscenarioPedidoPage() {
   const navigate = useNavigate()
+  const { escenarioId } = useParams()
   const [encargado, setEncargado] = useState(null)
   const [escenario, setEscenario] = useState(null)
   const [productos, setProductos] = useState([])
@@ -22,20 +23,22 @@ export default function EscenarioPedidoPage() {
   const [telefono,  setTelefono]  = useState('')
   const [msg,       setMsg]       = useState('')
 
-  useEffect(() => { fetchTodo() }, [])
+  useEffect(() => { fetchTodo() }, [escenarioId])
 
   async function fetchTodo() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario || !p.escenario_id) { navigate('/escenario'); return }
+    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    if (!acceso) { navigate('/escenario'); return }
     setEncargado(p)
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', p.escenario_id).single()
+    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     const [{ data: prods }, { data: peds }] = await Promise.all([
-      supabase.from('escenario_productos').select('*').eq('escenario_id', p.escenario_id).order('nombre'),
-      supabase.from('escenario_pedidos').select('*').eq('escenario_id', p.escenario_id).eq('estado', 'pendiente').order('created_at', { ascending: false }),
+      supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre'),
+      supabase.from('escenario_pedidos').select('*').eq('escenario_id', escenarioId).eq('estado', 'pendiente').order('created_at', { ascending: false }),
     ])
     setProductos(prods || [])
     setPedidos(peds || [])
@@ -95,7 +98,7 @@ export default function EscenarioPedidoPage() {
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escenario')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
+          <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
           <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>📱 Pedido a distancia</div>
           <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
         </div>

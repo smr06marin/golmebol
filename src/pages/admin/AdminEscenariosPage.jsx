@@ -6,6 +6,20 @@ const EMPTY = { name: '', telefono: '', numero_cedula: '', city: '', genero: '' 
 const inp = { width:'100%', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'8px 12px', color:'#202124', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'block', marginBottom:'4px' }
 
+function SelectorEscenarios({ escenarios, seleccionados, onToggle }) {
+  if (escenarios.length === 0) return <div style={{ fontSize:'.78rem', color:'#9aa0a6' }}>Todavía no hay escenarios creados.</div>
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'160px', overflowY:'auto', border:'1px solid #dadce0', borderRadius:'8px', padding:'10px' }}>
+      {escenarios.map(e => (
+        <label key={e.id} style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'.82rem', color:'#202124', cursor:'pointer' }}>
+          <input type="checkbox" checked={seleccionados.includes(e.id)} onChange={() => onToggle(e.id)}/>
+          🏟️ {e.name}{e.city ? ` · ${e.city}` : ''}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 function ModalMembresia({ encargado, onClose, onActivar }) {
   const [meses,   setMeses]   = useState(1)
   const [loading, setLoading] = useState(false)
@@ -77,7 +91,7 @@ export default function AdminEscenariosPage() {
   const [buscandoCedula,     setBuscandoCedula]     = useState(false)
   const [personaEncontrada,  setPersonaEncontrada]  = useState(null)
   const [mostrarCamposNuevo, setMostrarCamposNuevo] = useState(false)
-  const [escenarioAsignar,   setEscenarioAsignar]   = useState('')
+  const [escenariosAsignados, setEscenariosAsignados] = useState([]) // array de escenario_id — un encargado puede tener varios
 
   useEffect(() => { fetchEscenarios(); fetchEncargados() }, [])
 
@@ -87,11 +101,27 @@ export default function AdminEscenariosPage() {
   }
 
   async function fetchEncargados() {
-    const { data } = await supabase.from('players')
-      .select('*, escenario:escenario_id(name, city)')
+    const { data: players } = await supabase.from('players')
+      .select('*')
       .eq('es_encargado_escenario', true)
       .order('name')
-    setEncargados(data || [])
+    const { data: asignaciones } = await supabase.from('escenario_encargados').select('player_id, escenarios(id, name, city)')
+    const porPlayer = {}
+    ;(asignaciones || []).forEach(a => {
+      if (!a.escenarios) return
+      porPlayer[a.player_id] = porPlayer[a.player_id] || []
+      porPlayer[a.player_id].push(a.escenarios)
+    })
+    setEncargados((players || []).map(p => ({ ...p, escenarios: porPlayer[p.id] || [] })))
+  }
+
+  function toggleEscenarioAsignado(id) {
+    setEscenariosAsignados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  async function sincronizarAsignaciones(playerId, ids) {
+    await supabase.from('escenario_encargados').delete().eq('player_id', playerId)
+    if (ids.length > 0) await supabase.from('escenario_encargados').insert(ids.map(escenario_id => ({ escenario_id, player_id: playerId })))
   }
 
   function showMsgFn(text, type = 'ok') {
@@ -101,7 +131,7 @@ export default function AdminEscenariosPage() {
 
   function cerrarFormNuevo() {
     setShowForm(false); setForm(EMPTY); setEditId(null)
-    setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenarioAsignar('')
+    setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenariosAsignados([])
   }
 
   async function handleCrearEscenario() {
@@ -135,9 +165,10 @@ export default function AdminEscenariosPage() {
     }
     setLoading(true)
     const { error } = await supabase.from('players').update({
-      es_encargado_escenario: true, escenario_id: escenarioAsignar || null,
+      es_encargado_escenario: true,
       activo_membresia: true, fecha_vencimiento: null,
     }).eq('id', existente.id)
+    if (!error) await sincronizarAsignaciones(existente.id, escenariosAsignados)
     setLoading(false)
     if (error) return showMsgFn('Error al habilitar como encargado', 'error')
     showMsgFn(`${existente.name} ahora es encargado ✓ — entra con la misma cuenta`)
@@ -150,16 +181,17 @@ export default function AdminEscenariosPage() {
     if (!form.numero_cedula) return showMsgFn('La cédula es obligatoria', 'error')
     setLoading(true)
     if (editId) {
-      const payload = { ...form, escenario_id: escenarioAsignar || null }
-      const { error } = await supabase.from('players').update(payload).eq('id', editId)
+      const { error } = await supabase.from('players').update(form).eq('id', editId)
+      if (!error) await sincronizarAsignaciones(editId, escenariosAsignados)
       if (error) showMsgFn('Error al guardar', 'error')
       else { showMsgFn('Encargado actualizado ✓'); setEditId(null) }
     } else {
       const payload = {
-        ...form, es_encargado_escenario: true, escenario_id: escenarioAsignar || null,
+        ...form, es_encargado_escenario: true,
         activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
       }
-      const { error } = await supabase.from('players').insert(payload)
+      const { data: nuevo, error } = await supabase.from('players').insert(payload).select().single()
+      if (!error && nuevo) await sincronizarAsignaciones(nuevo.id, escenariosAsignados)
       if (error) showMsgFn('Error al crear: ' + error.message, 'error')
       else showMsgFn('Encargado creado ✓ — ya puede entrar con su cédula en /jugador/login')
     }
@@ -221,7 +253,8 @@ export default function AdminEscenariosPage() {
 
   async function handleQuitarRol(encargado) {
     if (!confirm(`¿Quitar rol de encargado a ${encargado.name}?`)) return
-    await supabase.from('players').update({ es_encargado_escenario: false, escenario_id: null }).eq('id', encargado.id)
+    await supabase.from('players').update({ es_encargado_escenario: false }).eq('id', encargado.id)
+    await supabase.from('escenario_encargados').delete().eq('player_id', encargado.id)
     showMsgFn('Rol de encargado removido')
     fetchEncargados()
   }
@@ -249,7 +282,7 @@ export default function AdminEscenariosPage() {
             style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1e8e3e', border:'none', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600' }}>
             <Building2 size={16}/> Crear escenario
           </button>
-          <button onClick={() => { setForm(EMPTY); setEditId(null); setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenarioAsignar(''); setShowForm(true) }}
+          <button onClick={() => { setForm(EMPTY); setEditId(null); setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenariosAsignados([]); setShowForm(true) }}
             style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600' }}>
             <Plus size={16}/> Encargado nuevo
           </button>
@@ -310,11 +343,8 @@ export default function AdminEscenariosPage() {
             <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="Número de cédula"/></div>
             <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
             <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
-            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Escenario asignado</label>
-              <select value={escenarioAsignar} onChange={e => setEscenarioAsignar(e.target.value)} style={inp}>
-                <option value="">Sin asignar</option>
-                {escenarios.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Escenarios asignados</label>
+              <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado}/>
             </div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
@@ -353,11 +383,8 @@ export default function AdminEscenariosPage() {
             </div>
           </div>
           <div style={{ marginBottom:'16px' }}>
-            <label style={lbl}>Asignar a escenario</label>
-            <select value={escenarioAsignar} onChange={e => setEscenarioAsignar(e.target.value)} style={inp}>
-              <option value="">Sin asignar</option>
-              {escenarios.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
+            <label style={lbl}>Asignar a escenario(s)</label>
+            <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado}/>
           </div>
           <div style={{ fontSize:'.85rem', color:'#202124', marginBottom:'16px' }}>
             ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando como encargado? Si confirmas, podrá entrar con la misma cuenta y contraseña a los dos portales.
@@ -379,11 +406,8 @@ export default function AdminEscenariosPage() {
             <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#f1f3f4', color:'#9aa0a6'}}/></div>
             <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
             <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
-            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Escenario asignado</label>
-              <select value={escenarioAsignar} onChange={e => setEscenarioAsignar(e.target.value)} style={inp}>
-                <option value="">Sin asignar</option>
-                {escenarios.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Escenarios asignados</label>
+              <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado}/>
             </div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
@@ -426,8 +450,10 @@ export default function AdminEscenariosPage() {
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
                   <div style={{ fontWeight:'700', fontSize:'.95rem', color:'#202124' }}>{a.name}</div>
-                  {a.escenario?.name && <span style={{ fontSize:'.65rem', color:'#1e8e3e', background:'#e6f4ea', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>🏟️ {a.escenario.name}</span>}
-                  {!a.escenario?.name && <span style={{ fontSize:'.65rem', color:'#e8710a', background:'#fce8d9', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>Sin escenario asignado</span>}
+                  {(a.escenarios||[]).map(e => (
+                    <span key={e.id} style={{ fontSize:'.65rem', color:'#1e8e3e', background:'#e6f4ea', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>🏟️ {e.name}</span>
+                  ))}
+                  {(!a.escenarios || a.escenarios.length===0) && <span style={{ fontSize:'.65rem', color:'#e8710a', background:'#fce8d9', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>Sin escenario asignado</span>}
                 </div>
                 <div style={{ fontSize:'.75rem', color:'#9aa0a6', marginTop:'2px', display:'flex', gap:'10px', flexWrap:'wrap' }}>
                   {a.numero_cedula && <span>🪪 {a.numero_cedula}</span>}
@@ -450,7 +476,7 @@ export default function AdminEscenariosPage() {
               </div>
 
               <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
-                <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEscenarioAsignar(a.escenario_id||''); setEditId(a.id); setShowForm(true) }}
+                <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEscenariosAsignados((a.escenarios||[]).map(e=>e.id)); setEditId(a.id); setShowForm(true) }}
                   style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem' }}>✏️</button>
                 {!activo && (
                   <button onClick={() => a.user_id ? setModalMem(a) : handleActivarGratis(a)}
