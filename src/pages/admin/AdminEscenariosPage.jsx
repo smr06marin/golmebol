@@ -186,6 +186,14 @@ export default function AdminEscenariosPage() {
   async function handleCrearEscenario() {
     setErrorEsc('')
     if (!nombreNuevo.trim()) { setErrorEsc('Ponle un nombre al escenario'); return }
+    // Evita crear sin querer un duplicado del mismo complejo (ej: "El Gol" y
+    // "el gol" — mismo lugar, dos filas). Si ya existe uno con el mismo
+    // nombre y ciudad (sin importar mayúsculas/espacios), avisamos en vez
+    // de crear otro — hay que asignarle el encargado a ese, no crear uno nuevo.
+    const nombreNorm = nombreNuevo.trim().toLowerCase()
+    const ciudadNorm = ciudadNueva.trim().toLowerCase()
+    const yaExiste = escenarios.some(e => (e.name||'').trim().toLowerCase() === nombreNorm && (e.city||'').trim().toLowerCase() === ciudadNorm)
+    if (yaExiste) { setErrorEsc('Ya existe un escenario con ese nombre y ciudad. Buscalo en la lista de abajo y usá "+ Asignar encargado" ahí, no crees uno nuevo.'); return }
     setGuardandoEsc(true)
     const { error } = await supabase.from('escenarios').insert({ name: nombreNuevo.trim(), city: ciudadNueva.trim() || null })
     setGuardandoEsc(false)
