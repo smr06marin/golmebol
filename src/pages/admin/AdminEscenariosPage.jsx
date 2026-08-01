@@ -221,26 +221,32 @@ export default function AdminEscenariosPage() {
     setPersonaEncontrada(null)
     setMostrarCamposNuevo(false)
     const { data } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim()).maybeSingle()
-    if (data) setPersonaEncontrada(data)
+    if (data) {
+      setPersonaEncontrada(data)
+      // Si ya es encargado de otro(s) escenario(s), se los precargamos
+      // seleccionados para no perderlos al guardar (un encargado puede
+      // tener varios escenarios a la vez).
+      if (data.es_encargado_escenario) {
+        const { data: asign } = await supabase.from('escenario_encargados').select('escenario_id').eq('player_id', data.id)
+        const yaAsignados = (asign || []).map(a => a.escenario_id)
+        setEscenariosAsignados(prev => Array.from(new Set([...prev, ...yaAsignados])))
+      }
+    }
     else { setMostrarCamposNuevo(true); setForm(f => ({ ...f, numero_cedula: cedulaBuscar.trim() })) }
     setBuscandoCedula(false)
   }
 
   async function handleConfirmarPersonaEncontrada() {
     const existente = personaEncontrada
-    if (existente.es_encargado_escenario) {
-      showMsgFn(`${existente.name} ya es encargado de un escenario`, 'error')
-      return
-    }
     setLoading(true)
-    const { error } = await supabase.from('players').update({
-      es_encargado_escenario: true,
-      activo_membresia: true, fecha_vencimiento: null,
-    }).eq('id', existente.id)
+    const payload = existente.es_encargado_escenario
+      ? { es_encargado_escenario: true }
+      : { es_encargado_escenario: true, activo_membresia: true, fecha_vencimiento: null }
+    const { error } = await supabase.from('players').update(payload).eq('id', existente.id)
     if (!error) await sincronizarAsignaciones(existente.id, escenariosAsignados)
     setLoading(false)
     if (error) return showMsgFn('Error al habilitar como encargado', 'error')
-    showMsgFn(`${existente.name} ahora es encargado ✓ — entra con la misma cuenta`)
+    showMsgFn(`${existente.name} ahora es encargado de ${escenariosAsignados.length} escenario${escenariosAsignados.length===1?'':'s'} ✓`)
     cerrarFormNuevo()
     fetchEncargados()
   }
@@ -491,7 +497,9 @@ export default function AdminEscenariosPage() {
             <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado}/>
           </div>
           <div style={{ fontSize:'.85rem', color:'#202124', marginBottom:'16px' }}>
-            ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando como encargado? Si confirmas, podrá entrar con la misma cuenta y contraseña a los dos portales.
+            {personaEncontrada.es_encargado_escenario
+              ? <>Ya es encargado — marcá los escenarios que debe tener asignados (podés sumarle más sin quitarle los que ya tiene).</>
+              : <>¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando como encargado? Si confirmas, podrá entrar con la misma cuenta y contraseña a los dos portales.</>}
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
             <button onClick={handleConfirmarPersonaEncontrada} disabled={loading} style={{ flex:1, padding:'11px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':`✓ Sí, registrar como encargado`}</button>
