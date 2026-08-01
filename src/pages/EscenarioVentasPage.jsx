@@ -109,7 +109,9 @@ export default function EscenarioVentasPage() {
                 {cart[p.id] && (
                   <span onClick={e=>{e.stopPropagation(); quitarUno(p.id)}} style={{ position:'absolute', top:'-6px', right:'-6px', background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>
                 )}
-                <span style={{ fontSize:'1.4rem' }}>{p.emoji}</span>
+                {p.foto_url
+                  ? <div style={{ width:'34px', height:'34px', borderRadius:'8px', overflow:'hidden' }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/></div>
+                  : <span style={{ fontSize:'1.4rem' }}>{p.emoji || '📦'}</span>}
                 <span style={{ fontSize:'.72rem', fontWeight:700, textAlign:'center' }}>{p.nombre}</span>
                 <span style={{ fontSize:'.7rem', color:S.gold, fontWeight:700 }}>{fmtMoney(p.precio)}</span>
               </button>
@@ -124,7 +126,7 @@ export default function EscenarioVentasPage() {
             <div style={{ maxHeight:'90px', overflowY:'auto', marginBottom:'10px' }}>
               {items.map(([id,q]) => { const p=getProduct(id); return (
                 <div key={id} style={{ display:'flex', justifyContent:'space-between', fontSize:'.78rem', padding:'3px 0' }}>
-                  <span>{p.emoji} {p.nombre} x{q}</span><span>{fmtMoney(p.precio*q)}</span>
+                  <span>{p.emoji || '📦'} {p.nombre} x{q}</span><span>{fmtMoney(p.precio*q)}</span>
                 </div>
               )})}
             </div>

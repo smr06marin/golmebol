@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney } from '../lib/escenarioHelpers'
-import { Plus, X, Package } from 'lucide-react'
+import { fmtMoney, comprimirImagen } from '../lib/escenarioHelpers'
+import { Plus, X, Package, Camera } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -12,11 +12,27 @@ const S = {
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }
 
-const EMPTY = { emoji:'🛒', nombre:'', costo:0, precio:0, cantidad:0, stock_minimo:5 }
+const EMPTY = { emoji:'📦', nombre:'', costo:0, precio:0, cantidad:0, stock_minimo:5, foto_url:null }
 
-function ModalProducto({ producto, onClose, onGuardar, onEliminar }) {
+function ModalProducto({ producto, escenarioId, onClose, onGuardar, onEliminar }) {
   const [f, setF] = useState(producto || EMPTY)
   const [guardando, setGuardando] = useState(false)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
+
+  async function handleFoto(file) {
+    if (!file) return
+    setSubiendoFoto(true)
+    try {
+      const comprimida = await comprimirImagen(file, { maxDim: 500, calidad: 0.72 })
+      const path = `productos/${escenarioId}/${f.id || Date.now()}.jpg`
+      const { error } = await supabase.storage.from('teams').upload(path, comprimida, { upsert: true, contentType: 'image/jpeg' })
+      if (!error) {
+        const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+        setF(p => ({ ...p, foto_url: urlData.publicUrl + '?t=' + Date.now() }))
+      }
+    } catch (e) { /* si falla, la persona puede reintentar tocando la foto de nuevo */ }
+    setSubiendoFoto(false)
+  }
 
   async function guardar() {
     setGuardando(true)
@@ -31,9 +47,19 @@ function ModalProducto({ producto, onClose, onGuardar, onEliminar }) {
           <div style={{ fontWeight:800, fontSize:'1rem' }}>{producto?.id ? 'Editar' : 'Nuevo'} producto</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:'10px', marginBottom:'12px' }}>
-          <div><label style={lbl}>Emoji</label><input value={f.emoji} onChange={e=>setF(p=>({...p,emoji:e.target.value}))} style={inp}/></div>
-          <div><label style={lbl}>Nombre</label><input value={f.nombre} onChange={e=>setF(p=>({...p,nombre:e.target.value}))} style={inp} placeholder="Nombre del producto"/></div>
+        <div style={{ display:'flex', gap:'12px', marginBottom:'14px', alignItems:'center' }}>
+          <label style={{ cursor:'pointer', flexShrink:0, position:'relative' }}>
+            <input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleFoto(e.target.files[0])}/>
+            <div style={{ width:'60px', height:'60px', borderRadius:'12px', overflow:'hidden', background:S.card2, border:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {subiendoFoto ? <div style={{ fontSize:'.6rem', color:S.muted }}>...</div>
+                : f.foto_url ? <img src={f.foto_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                : <Package size={22} color={S.muted}/>}
+            </div>
+            <div style={{ position:'absolute', bottom:'-3px', right:'-3px', width:'20px', height:'20px', background:S.cyan, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Camera size={11} color="#000"/>
+            </div>
+          </label>
+          <div style={{ flex:1 }}><label style={lbl}>Nombre</label><input value={f.nombre} onChange={e=>setF(p=>({...p,nombre:e.target.value}))} style={inp} placeholder="Nombre del producto"/></div>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
           <div><label style={lbl}>Precio de compra</label><input type="number" value={f.costo} onChange={e=>setF(p=>({...p,costo:e.target.value}))} style={inp}/></div>
@@ -81,13 +107,24 @@ export default function EscenarioInventarioPage() {
   }
 
   async function guardarProducto(data) {
-    if (data.id) {
-      const { id, escenario_id, created_at, ...payload } = data
-      await supabase.from('escenario_productos').update(payload).eq('id', id)
-    } else {
-      await supabase.from('escenario_productos').insert({ ...data, escenario_id: escenario.id })
+    const intentar = (payload) => data.id
+      ? supabase.from('escenario_productos').update(payload).eq('id', data.id)
+      : supabase.from('escenario_productos').insert({ ...payload, escenario_id: escenario.id })
+
+    const { id, escenario_id, created_at, ...payload } = data
+    let { error } = await intentar(payload)
+    let avisoFoto = false
+    if (error && /foto_url/.test(error.message || '')) {
+      // Todavía no se corrió migracion_escenario_producto_foto.sql — guardamos
+      // el resto igual y avisamos, en vez de perder todo el cambio.
+      const { foto_url, ...sinFoto } = payload
+      ;({ error } = await intentar(sinFoto))
+      avisoFoto = !error
     }
-    setModal(null); setMsg('✅ Producto guardado'); setTimeout(()=>setMsg(''),3000)
+    if (error) { setMsg('❌ ' + error.message); setTimeout(()=>setMsg(''),5000); return }
+    setModal(null)
+    setMsg(avisoFoto ? '⚠️ Guardado, pero la foto no — corré migracion_escenario_producto_foto.sql' : '✅ Producto guardado')
+    setTimeout(()=>setMsg(''),4000)
     fetchTodo()
   }
   async function eliminarProducto(p) {
@@ -103,7 +140,7 @@ export default function EscenarioInventarioPage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      {modal && <ModalProducto producto={modal.id ? modal : null} onClose={()=>setModal(null)} onGuardar={guardarProducto} onEliminar={eliminarProducto}/>}
+      {modal && <ModalProducto producto={modal.id ? modal : null} escenarioId={escenarioId} onClose={()=>setModal(null)} onGuardar={guardarProducto} onEliminar={eliminarProducto}/>}
 
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
@@ -129,7 +166,9 @@ export default function EscenarioInventarioPage() {
             {productos.map(p => (
               <button key={p.id} onClick={()=>setModal(p)}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <span style={{ fontSize:'1.4rem' }}>{p.emoji}</span>
+                {p.foto_url
+                  ? <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0 }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/></div>
+                  : <span style={{ fontSize:'1.4rem' }}>{p.emoji || '📦'}</span>}
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontWeight:700, fontSize:'.85rem' }}>{p.nombre}</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Compra {fmtMoney(p.costo)} · Venta {fmtMoney(p.precio)}</div>

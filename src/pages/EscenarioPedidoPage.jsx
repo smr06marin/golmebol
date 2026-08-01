@@ -113,7 +113,9 @@ export default function EscenarioPedidoPage() {
             <button key={p.id} onClick={()=>addToCart(p.id)}
               style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', padding:'14px 8px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text }}>
               {cart[p.id] && <span style={{ position:'absolute', top:'-6px', right:'-6px', background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>}
-              <span style={{ fontSize:'1.4rem' }}>{p.emoji}</span>
+              {p.foto_url
+                ? <div style={{ width:'34px', height:'34px', borderRadius:'8px', overflow:'hidden' }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/></div>
+                : <span style={{ fontSize:'1.4rem' }}>{p.emoji || '📦'}</span>}
               <span style={{ fontSize:'.72rem', fontWeight:700, textAlign:'center' }}>{p.nombre}</span>
               <span style={{ fontSize:'.7rem', color:S.gold, fontWeight:700 }}>{fmtMoney(p.precio)}</span>
             </button>

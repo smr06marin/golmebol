@@ -85,7 +85,7 @@ export default function EscenarioComprasPage() {
           <div style={{ marginBottom:'10px' }}>
             <label style={lbl}>Producto</label>
             <select value={productId} onChange={e=>setProductId(e.target.value)} style={inp}>
-              {productos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nombre}</option>)}
+              {productos.map(p => <option key={p.id} value={p.id}>{p.emoji || '📦'} {p.nombre}</option>)}
             </select>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>

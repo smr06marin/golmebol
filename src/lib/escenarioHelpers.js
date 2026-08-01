@@ -53,6 +53,33 @@ export function precioCancha(escenario, cancha) {
 // pagada, el portal del encargado y la página pública de reservas dejan de
 // funcionar. Sin fecha_vencimiento (o sin la columna todavía, si falta
 // correr la migración) se considera activo mientras "activo" no sea false.
+// Redimensiona y comprime una foto en el navegador antes de subirla (para
+// que una foto de cámara de celular, que puede pesar varios MB, no se suba
+// tal cual). Devuelve un Blob JPEG liviano listo para mandar a Storage.
+export function comprimirImagen(file, { maxDim = 500, calidad = 0.72 } = {}) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      if (width > maxDim || height > maxDim) {
+        if (width > height) { height = Math.round(height * maxDim / width); width = maxDim }
+        else { width = Math.round(width * maxDim / height); height = maxDim }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width; canvas.height = height
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('No se pudo comprimir la imagen')),
+        'image/jpeg', calidad
+      )
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')) }
+    img.src = url
+  })
+}
+
 export function escenarioActivo(escenario) {
   if (!escenario) return false
   if (escenario.activo === false) return false
