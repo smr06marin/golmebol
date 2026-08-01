@@ -164,8 +164,13 @@ export default function AdminEscenariosPage() {
   }
 
   async function sincronizarAsignaciones(playerId, ids) {
-    await supabase.from('escenario_encargados').delete().eq('player_id', playerId)
-    if (ids.length > 0) await supabase.from('escenario_encargados').insert(ids.map(escenario_id => ({ escenario_id, player_id: playerId })))
+    const { error: errDel } = await supabase.from('escenario_encargados').delete().eq('player_id', playerId)
+    if (errDel) return 'Error al actualizar asignaciones: ' + errDel.message
+    if (ids.length > 0) {
+      const { error: errIns } = await supabase.from('escenario_encargados').insert(ids.map(escenario_id => ({ escenario_id, player_id: playerId })))
+      if (errIns) return 'Error al asignar escenario(s): ' + errIns.message
+    }
+    return null
   }
 
   function showMsgFn(text, type = 'ok') {
@@ -243,9 +248,10 @@ export default function AdminEscenariosPage() {
       ? { es_encargado_escenario: true }
       : { es_encargado_escenario: true, activo_membresia: true, fecha_vencimiento: null }
     const { error } = await supabase.from('players').update(payload).eq('id', existente.id)
-    if (!error) await sincronizarAsignaciones(existente.id, escenariosAsignados)
+    if (error) { setLoading(false); return showMsgFn('Error al habilitar como encargado: ' + error.message, 'error') }
+    const errSync = await sincronizarAsignaciones(existente.id, escenariosAsignados)
     setLoading(false)
-    if (error) return showMsgFn('Error al habilitar como encargado', 'error')
+    if (errSync) return showMsgFn(errSync, 'error')
     showMsgFn(`${existente.name} ahora es encargado de ${escenariosAsignados.length} escenario${escenariosAsignados.length===1?'':'s'} ✓`)
     cerrarFormNuevo()
     fetchEncargados()
@@ -257,8 +263,9 @@ export default function AdminEscenariosPage() {
     setLoading(true)
     if (editId) {
       const { error } = await supabase.from('players').update(form).eq('id', editId)
-      if (!error) await sincronizarAsignaciones(editId, escenariosAsignados)
-      if (error) showMsgFn('Error al guardar', 'error')
+      if (error) { setLoading(false); return showMsgFn('Error al guardar: ' + error.message, 'error') }
+      const errSync = await sincronizarAsignaciones(editId, escenariosAsignados)
+      if (errSync) showMsgFn(errSync, 'error')
       else { showMsgFn('Encargado actualizado ✓'); setEditId(null) }
     } else {
       const payload = {
@@ -266,8 +273,10 @@ export default function AdminEscenariosPage() {
         activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
       }
       const { data: nuevo, error } = await supabase.from('players').insert(payload).select().single()
-      if (!error && nuevo) await sincronizarAsignaciones(nuevo.id, escenariosAsignados)
+      let errSync = null
+      if (!error && nuevo) errSync = await sincronizarAsignaciones(nuevo.id, escenariosAsignados)
       if (error) showMsgFn('Error al crear: ' + error.message, 'error')
+      else if (errSync) showMsgFn(errSync, 'error')
       else showMsgFn('Encargado creado ✓ — ya puede entrar con su cédula en /jugador/login')
     }
     cerrarFormNuevo(); setLoading(false); fetchEncargados()
