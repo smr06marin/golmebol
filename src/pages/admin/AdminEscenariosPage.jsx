@@ -421,6 +421,10 @@ export default function AdminEscenariosPage() {
                   <button onClick={() => handleBloquearEscenario(e)}
                     style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Bloquear</button>
                 )}
+                <button onClick={() => { setForm(EMPTY); setEditId(null); setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenariosAsignados([e.id]); setShowForm(true) }}
+                  style={{ background:'none', border:'1px solid #1a73e8', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.8rem', fontWeight:'600' }}>
+                  + Asignar encargado
+                </button>
               </div>
               <a href={`/reservar/${e.id}`} target="_blank" rel="noreferrer"
                 style={{ fontSize:'.75rem', color:'#1a73e8', textDecoration:'none', fontWeight:'600', whiteSpace:'nowrap' }}>
