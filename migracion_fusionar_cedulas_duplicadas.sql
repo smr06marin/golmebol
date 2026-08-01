@@ -1,24 +1,32 @@
 -- ============================================================
 -- FUSIÓN DE CÉDULAS DUPLICADAS (una persona con una fila como
--- jugador y otra fila como árbitro, de antes de que existiera el
--- aviso de "ya está registrado").
+-- jugador y otra fila como árbitro/profesor/encargado de escenario,
+-- de antes de que existiera el aviso de "ya está registrado").
 --
 -- Qué hace:
 -- 1) Busca cédulas que aparecen más de una vez en `players`.
 -- 2) Por cada cédula duplicada, decide cuál fila conservar
 --    (la que ya tiene cuenta de acceso creada manda; si ninguna o
 --    las dos tienen, gana la que tenga más datos llenos).
--- 3) A la fila que sobrevive le pega los roles de la otra
---    (queda jugador Y árbitro si correspondía), y le rellena los
---    datos que le faltaran (foto, teléfono, ciudad, etc.) con los
---    de la duplicada.
+-- 3) A la fila que sobrevive le pega los roles de la otra (jugador,
+--    árbitro, profesor/coordinador de escuela, encargado de
+--    escenario, acudiente...) y le rellena los datos que le
+--    faltaran (foto, teléfono, ciudad, etc.) con los de la duplicada.
 -- 4) Traspasa a la fila que sobrevive todo lo que estaba enganchado
 --    a la fila duplicada: equipos, inscripciones a torneos,
---    predicciones, partidos arbitrados, sanciones, finanzas, etc.
+--    predicciones, partidos arbitrados, sanciones, finanzas,
+--    escenarios asignados (escenario_encargados), etc.
 -- 5) Borra la fila duplicada ya vacía.
 -- 6) Al final dejamos un índice único por cédula para que este tipo
 --    de duplicado no se pueda volver a crear en la base de datos,
 --    pase lo que pase en el código.
+--
+-- IMPORTANTE: si a alguien ya le habías asignado un escenario desde
+-- /admin/escenarios pero al entrar le sale "no tenés ningún escenario
+-- asignado", este es casi siempre el motivo — quedó con dos filas en
+-- `players` con la misma cédula (una vieja, de jugador, con la que
+-- inicia sesión; y otra nueva con el rol de encargado y el escenario
+-- enganchado). Corré este script para fusionarlas.
 --
 -- Caso especial: si las DOS filas duplicadas ya tienen su propia
 -- cuenta de acceso (dos logins reales para la misma persona), el
@@ -89,6 +97,11 @@ begin
       update players p set
         es_arbitro        = p.es_arbitro or s.es_arbitro or p.rol = 'arbitro' or s.rol = 'arbitro',
         es_arbitro_lider   = p.es_arbitro_lider or s.es_arbitro_lider,
+        es_profesor              = p.es_profesor or s.es_profesor,
+        es_profesor_coordinador  = p.es_profesor_coordinador or s.es_profesor_coordinador,
+        es_encargado_escenario   = p.es_encargado_escenario or s.es_encargado_escenario,
+        es_acudiente             = p.es_acudiente or s.es_acudiente,
+        es_jugador_escuela       = p.es_jugador_escuela or s.es_jugador_escuela,
         rol = case
                 when p.rol = 'jugador' or s.rol = 'jugador' then 'jugador'
                 when p.rol = 'arbitro' or s.rol = 'arbitro' then 'arbitro'
@@ -148,6 +161,21 @@ begin
         update matches set arbitro1_id = primary_id where arbitro1_id = secondary_id;
         update matches set arbitro2_id = primary_id where arbitro2_id = secondary_id;
         update matches set arbitro3_id = primary_id where arbitro3_id = secondary_id;
+      exception when undefined_table or undefined_column then null;
+      end;
+      begin
+        -- Escenarios asignados al encargado: si la fila que sobrevive ya
+        -- tenía asignado el mismo escenario, no duplicamos esa asignación.
+        delete from escenario_encargados sec
+        using escenario_encargados pri
+        where sec.player_id = secondary_id
+          and pri.player_id = primary_id
+          and pri.escenario_id = sec.escenario_id;
+        update escenario_encargados set player_id = primary_id where player_id = secondary_id;
+      exception when undefined_table or undefined_column then null;
+      end;
+      begin
+        update escenario_reservas set aceptada_por = primary_id where aceptada_por = secondary_id;
       exception when undefined_table or undefined_column then null;
       end;
 

@@ -225,7 +225,21 @@ export default function AdminEscenariosPage() {
     setBuscandoCedula(true)
     setPersonaEncontrada(null)
     setMostrarCamposNuevo(false)
-    const { data } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim()).maybeSingle()
+    // OJO: NO usamos .maybeSingle() acá — si por algún motivo quedaron dos
+    // filas con la misma cédula (bug conocido, ver
+    // migracion_fusionar_cedulas_duplicadas.sql), .maybeSingle() revienta
+    // con error y esto terminaba creando una TERCERA fila duplicada (la
+    // causa de "le asigné el escenario pero al entrar no le aparece" — el
+    // login usa otra fila distinta). Con una lista simple tomamos la fila
+    // correcta a mano: la que ya tenga cuenta de acceso creada manda.
+    const { data: filas } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim())
+    const candidatas = filas || []
+    if (candidatas.length > 1) {
+      showMsgFn(`⚠️ Esta cédula tiene ${candidatas.length} registros duplicados en Golmebol — corré migracion_fusionar_cedulas_duplicadas.sql en Supabase antes de asignar, si no la persona puede terminar entrando por la fila equivocada.`, 'error')
+    }
+    const data = candidatas.length > 0
+      ? [...candidatas].sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0))[0]
+      : null
     if (data) {
       setPersonaEncontrada(data)
       // Si ya es encargado de otro(s) escenario(s), se los precargamos
