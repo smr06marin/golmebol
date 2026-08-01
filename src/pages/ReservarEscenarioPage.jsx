@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Building2, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, fmtMoney } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, precioCancha, fmtMoney, escenarioActivo } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -79,6 +79,13 @@ export default function ReservarEscenarioPage() {
   )
   if (notFound) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem', padding:20, textAlign:'center' }}>Este link de reserva no es válido.</div>
+  )
+  if (!escenarioActivo(escenario)) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem', padding:20, textAlign:'center', gap:'12px' }}>
+      <div style={{ fontSize:'2.2rem' }}>🔒</div>
+      <div style={{ fontWeight:800, fontSize:'1rem', color:S.text }}>{escenario.name} no está disponible por ahora</div>
+      <div style={{ maxWidth:'320px', lineHeight:1.5 }}>Este escenario no está aceptando reservas en este momento. Intentá más tarde o contactá directamente al lugar.</div>
+    </div>
   )
 
   const horas = getHours(escenario)

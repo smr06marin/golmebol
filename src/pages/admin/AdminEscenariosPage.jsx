@@ -70,6 +70,49 @@ function ModalMembresia({ encargado, onClose, onActivar }) {
   )
 }
 
+function ModalActivarEscenario({ escenario, onClose, onActivar }) {
+  const [meses,   setMeses]   = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+
+  async function handleActivar() {
+    setLoading(true); setError('')
+    const err = await onActivar(escenario, meses)
+    if (err) setError(err)
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:'#fff', borderRadius:'16px', padding:'28px', width:'400px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+          <div>
+            <div style={{ fontWeight:'700', color:'#202124', fontSize:'1rem' }}>Activar / renovar escenario</div>
+            <div style={{ fontSize:'.8rem', color:'#5f6368', marginTop:'2px' }}>{escenario.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6' }}><X size={18}/></button>
+        </div>
+        <div style={{ marginBottom:'16px' }}>
+          <label style={lbl}>Meses a activar</label>
+          <div style={{ display:'flex', gap:'8px' }}>
+            {[1,2,3,6,12].map(m => (
+              <button key={m} onClick={() => setMeses(m)}
+                style={{ flex:1, padding:'8px 4px', borderRadius:'8px', border:`1px solid ${meses===m?'#1e8e3e':'#dadce0'}`, background: meses===m?'#1e8e3e':'#fff', color: meses===m?'#fff':'#5f6368', cursor:'pointer', fontSize:'.8rem', fontWeight:'600' }}>
+                {m}m
+              </button>
+            ))}
+          </div>
+        </div>
+        {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'12px' }}>{error}</div>}
+        <button onClick={handleActivar} disabled={loading}
+          style={{ width:'100%', padding:'11px', background:'#1e8e3e', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
+          {loading ? 'Procesando...' : `✅ Activar por ${meses} mes${meses>1?'es':''}`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminEscenariosPage() {
   const [escenarios,  setEscenarios]  = useState([])
   const [encargados,  setEncargados]  = useState([])
@@ -86,6 +129,7 @@ export default function AdminEscenariosPage() {
   const [msg,         setMsg]         = useState(null)
   const [search,      setSearch]      = useState('')
   const [modalMem,    setModalMem]    = useState(null)
+  const [modalActivarEsc, setModalActivarEsc] = useState(null)
 
   const [cedulaBuscar,       setCedulaBuscar]       = useState('')
   const [buscandoCedula,     setBuscandoCedula]     = useState(false)
@@ -143,6 +187,31 @@ export default function AdminEscenariosPage() {
     if (error) { setErrorEsc('No se pudo crear: ' + error.message); return }
     setShowCrear(false); setNombreNuevo(''); setCiudadNueva('')
     showMsgFn('Escenario creado ✓ — ahora asignale un encargado')
+    fetchEscenarios()
+  }
+
+  async function handleActivarEscenario(escenario, meses) {
+    const base = escenario.fecha_vencimiento && new Date(escenario.fecha_vencimiento) > new Date() ? new Date(escenario.fecha_vencimiento) : new Date()
+    base.setMonth(base.getMonth() + meses)
+    const payload = { activo: true, fecha_vencimiento: base.toISOString(), meses_pagados: (escenario.meses_pagados || 0) + meses }
+    const { error } = await supabase.from('escenarios').update(payload).eq('id', escenario.id)
+    if (error) return 'Error al activar: ' + error.message
+    showMsgFn(`✅ ${escenario.name} activado por ${meses} mes${meses>1?'es':''}`)
+    setModalActivarEsc(null); fetchEscenarios(); return null
+  }
+
+  async function handleBloquearEscenario(escenario) {
+    if (!confirm(`¿Bloquear "${escenario.name}"? El encargado no va a poder entrar a su portal y la página pública de reservas quedará deshabilitada hasta que lo reactives.`)) return
+    const { error } = await supabase.from('escenarios').update({ activo: false }).eq('id', escenario.id)
+    if (error) return showMsgFn('Error al bloquear: ' + error.message, 'error')
+    showMsgFn(`🔒 ${escenario.name} bloqueado`)
+    fetchEscenarios()
+  }
+
+  async function handleDesbloquearEscenario(escenario) {
+    const { error } = await supabase.from('escenarios').update({ activo: true }).eq('id', escenario.id)
+    if (error) return showMsgFn('Error al desbloquear: ' + error.message, 'error')
+    showMsgFn(`✅ ${escenario.name} desbloqueado`)
     fetchEscenarios()
   }
 
@@ -316,23 +385,54 @@ export default function AdminEscenariosPage() {
       {/* Lista de escenarios */}
       {escenarios.length > 0 && (
         <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', overflow:'hidden', boxShadow:'0 1px 3px rgba(0,0,0,.06)', marginBottom:'24px' }}>
-          {escenarios.map((e, i) => (
-            <div key={e.id} style={{ padding:'12px 20px', borderBottom: i<escenarios.length-1?'1px solid #f1f3f4':'none', display:'flex', alignItems:'center', gap:'12px' }}>
+          {escenarios.map((e, i) => {
+            const dias = e.fecha_vencimiento ? Math.ceil((new Date(e.fecha_vencimiento) - new Date()) / 86400000) : null
+            const bloqueado = e.activo === false || (dias !== null && dias <= 0)
+            return (
+            <div key={e.id} style={{ padding:'12px 20px', borderBottom: i<escenarios.length-1?'1px solid #f1f3f4':'none', display:'flex', alignItems:'center', gap:'12px', flexWrap:'wrap' }}>
               <div style={{ width:'38px', height:'38px', borderRadius:'10px', overflow:'hidden', background:'#f1f3f4', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
                 {e.logo_url ? <img src={e.logo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Building2 size={16} color="#9aa0a6"/>}
               </div>
-              <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ flex:1, minWidth:'140px' }}>
                 <div style={{ fontWeight:'700', fontSize:'.9rem', color:'#202124' }}>{e.name}</div>
                 <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>{e.city || 'Sin ciudad'}</div>
+              </div>
+              <div style={{ textAlign:'center', flexShrink:0 }}>
+                {bloqueado ? (
+                  <span style={{ fontSize:'.72rem', color:'#d93025', background:'#fce8e6', borderRadius:'6px', padding:'2px 8px', fontWeight:'600' }}>🔒 Bloqueado</span>
+                ) : dias !== null ? (
+                  <div>
+                    <div style={{ fontSize:'.72rem', color:'#1e8e3e', fontWeight:'700' }}>✅ Activo</div>
+                    <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{dias}d restantes</div>
+                  </div>
+                ) : (
+                  <span style={{ fontSize:'.72rem', color:'#1e8e3e', fontWeight:'700' }}>✅ Activo</span>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+                <button onClick={() => setModalActivarEsc(e)}
+                  style={{ background:'#1e8e3e', border:'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                  {bloqueado || dias === null ? 'Activar' : 'Renovar'}
+                </button>
+                {e.activo === false ? (
+                  <button onClick={() => handleDesbloquearEscenario(e)}
+                    style={{ background:'none', border:'1px solid #1a73e8', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.8rem' }}>Desbloquear</button>
+                ) : (
+                  <button onClick={() => handleBloquearEscenario(e)}
+                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Bloquear</button>
+                )}
               </div>
               <a href={`/reservar/${e.id}`} target="_blank" rel="noreferrer"
                 style={{ fontSize:'.75rem', color:'#1a73e8', textDecoration:'none', fontWeight:'600', whiteSpace:'nowrap' }}>
                 Ver página pública ↗
               </a>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
+
+      {modalActivarEsc && <ModalActivarEscenario escenario={modalActivarEsc} onClose={() => setModalActivarEsc(null)} onActivar={handleActivarEscenario}/>}
 
       {/* Form: editar encargado existente */}
       {showForm && editId && (

@@ -48,3 +48,14 @@ export function allSlotsForDate(escenario, reservas, fecha) {
 export function precioCancha(escenario, cancha) {
   return cancha === 'futbol5' ? (escenario?.precio_futbol5 ?? 60000) : (escenario?.precio_futbol7 ?? 90000)
 }
+
+// Si el admin bloqueó el escenario (activo=false) o se venció la fecha
+// pagada, el portal del encargado y la página pública de reservas dejan de
+// funcionar. Sin fecha_vencimiento (o sin la columna todavía, si falta
+// correr la migración) se considera activo mientras "activo" no sea false.
+export function escenarioActivo(escenario) {
+  if (!escenario) return false
+  if (escenario.activo === false) return false
+  if (escenario.fecha_vencimiento && new Date(escenario.fecha_vencimiento) < new Date()) return false
+  return true
+}

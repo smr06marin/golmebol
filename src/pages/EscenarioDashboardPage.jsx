@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { fmtMoney, todayStr, allSlotsForDate } from '../lib/escenarioHelpers'
+import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo } from '../lib/escenarioHelpers'
 import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
@@ -87,6 +87,18 @@ export default function EscenarioDashboardPage() {
     </div>
   )
   if (!encargado || !escenario) return null
+
+  if (!escenarioActivo(escenario)) return (
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem', padding:20, textAlign:'center', gap:'14px' }}>
+      <div style={{ fontSize:'2.2rem' }}>🔒</div>
+      <div style={{ fontWeight:800, fontSize:'1rem', color:S.text }}>{escenario.name} está bloqueado</div>
+      <div style={{ maxWidth:'320px', lineHeight:1.5 }}>Contactá al administrador de Golmebol para reactivar el acceso a este escenario.</div>
+      {otros.length > 1 && (
+        <button onClick={()=>navigate('/escenario')} style={{ padding:'9px 18px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.8rem' }}>Ver mis escenarios</button>
+      )}
+      <button onClick={handleLogout} style={{ padding:'9px 18px', background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.muted, fontWeight:700, fontSize:'.8rem' }}>Cerrar sesión</button>
+    </div>
+  )
 
   const totalVentasHoy = ventasHoy.reduce((a, v) => a + Number(v.total || 0), 0)
   const gananciaHoy = ventasHoy.reduce((a, v) => a + Number(v.ganancia || 0), 0)
