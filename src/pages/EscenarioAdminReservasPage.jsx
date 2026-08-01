@@ -24,6 +24,7 @@ export default function EscenarioAdminReservasPage() {
   const [mCancha,   setMCancha]   = useState('futbol5')
   const [mFecha,    setMFecha]    = useState(todayStr())
   const [mHora,     setMHora]     = useState('')
+  const [waConfirm, setWaConfirm] = useState(null) // { link, nombre } — confirmación pendiente de enviar por WhatsApp
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -45,7 +46,15 @@ export default function EscenarioAdminReservasPage() {
   function showMsg(t) { setMsg(t); setTimeout(()=>setMsg(''),3000) }
 
   async function aceptar(r) {
-    await supabase.from('escenario_reservas').update({ estado:'aceptada' }).eq('id', r.id)
+    let payload = { estado:'aceptada', aceptada_por: encargado?.id || null, aceptada_por_nombre: encargado?.name || null }
+    let { error } = await supabase.from('escenario_reservas').update(payload).eq('id', r.id)
+    let avisoDegradado = null
+    if (error && (error.message?.includes('aceptada_por'))) {
+      // Falta correr migracion_escenario_reservas_aceptada_por.sql en Supabase
+      payload = { estado:'aceptada' }
+      ;({ error } = await supabase.from('escenario_reservas').update(payload).eq('id', r.id))
+      avisoDegradado = 'Aceptada, pero no se guardó quién la aceptó: ejecuta migracion_escenario_reservas_aceptada_por.sql en Supabase'
+    }
     if (r.recurrente) {
       const filas = []
       for (let i=1;i<=8;i++) {
@@ -58,9 +67,14 @@ export default function EscenarioAdminReservasPage() {
       }
       await supabase.from('escenario_reservas').insert(filas)
     }
-    const msgTxt = `Hola ${r.nombre}, tu reserva de ${r.cancha==='futbol5'?'Fútbol 5':'Fútbol 7'} el ${r.fecha} a las ${r.hora} fue confirmada. ¡Te esperamos!`
-    if (escenario?.whatsapp) window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, '_blank')
-    showMsg('✅ Reserva aceptada'); fetchTodo()
+    // El navegador bloquea el window.open automático acá (pasa después de un
+    // await) — se deja un botón para que el encargado lo abra él mismo.
+    if (escenario?.whatsapp) {
+      const msgTxt = `Hola ${r.nombre}, tu reserva de ${r.cancha==='futbol5'?'Fútbol 5':'Fútbol 7'} el ${r.fecha} a las ${r.hora} fue confirmada. ¡Te esperamos!`
+      setWaConfirm({ link: `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, nombre: r.nombre })
+    }
+    showMsg(avisoDegradado || '✅ Reserva aceptada')
+    fetchTodo()
   }
   async function rechazar(r) {
     await supabase.from('escenario_reservas').update({ estado:'rechazada' }).eq('id', r.id)
@@ -120,6 +134,17 @@ export default function EscenarioAdminReservasPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
+        {waConfirm && (
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'12px 14px', marginBottom:'14px' }}>
+            <span style={{ flex:1, fontSize:'.78rem', color:S.text2 }}>Reserva de {waConfirm.nombre} aceptada. ¿Le avisás por WhatsApp?</span>
+            <a href={waConfirm.link} target="_blank" rel="noreferrer" onClick={()=>setWaConfirm(null)}
+              style={{ padding:'8px 14px', background:'#25D366', borderRadius:'8px', color:'#fff', fontWeight:700, fontSize:'.75rem', textDecoration:'none', whiteSpace:'nowrap' }}>
+              📲 WhatsApp
+            </a>
+            <button onClick={()=>setWaConfirm(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, fontSize:'.75rem' }}>✕</button>
+          </div>
+        )}
+
         <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Solicitudes pendientes</div>
           {pendientes.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay solicitudes pendientes.</div> : pendientes.map(r => (
@@ -137,7 +162,10 @@ export default function EscenarioAdminReservasPage() {
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Reservas confirmadas próximas</div>
           {aceptadas.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin reservas confirmadas.</div> : aceptadas.map(r => (
             <div key={r.id} style={rowItem}>
-              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {r.hora} · {r.cancha==='futbol5'?'F5':'F7'} · {r.nombre}</span>
+              <span style={{ fontSize:'.8rem' }}>
+                {fmtDate(r.fecha)} {r.hora} · {r.cancha==='futbol5'?'F5':'F7'} · {r.nombre}
+                {r.aceptada_por_nombre && <span style={{ display:'block', fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Aceptada por {r.aceptada_por_nombre}</span>}
+              </span>
               <select value={r.pago} onChange={e=>cambiarPago(r,e.target.value)} style={{ ...inp, width:'auto', padding:'5px 8px', fontSize:'.72rem' }}>
                 <option value="pendiente">Pendiente</option><option value="anticipo">Anticipo</option><option value="pagado">Pagado</option>
               </select>

@@ -30,6 +30,7 @@ export default function ReservarEscenarioPage() {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
   const [exito, setExito] = useState(false)
+  const [waLink, setWaLink] = useState(null)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -44,7 +45,7 @@ export default function ReservarEscenarioPage() {
   }
 
   function abrirSlot(hora) {
-    setModalSlot(hora); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError(''); setExito(false)
+    setModalSlot(hora); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError(''); setExito(false); setWaLink(null)
   }
 
   async function enviarReserva() {
@@ -58,10 +59,16 @@ export default function ReservarEscenarioPage() {
     })
     setEnviando(false)
     if (errIns) { setError('No se pudo enviar la solicitud: ' + errIns.message); return }
+    // El navegador bloquea el window.open automático acá porque pasa después
+    // de un await (ya no cuenta como "click directo del usuario") — en vez de
+    // intentar abrirlo solo, se muestra un botón para que la persona lo abra
+    // ella misma con un click, así funciona siempre (celular y escritorio).
     if (escenario.whatsapp) {
       const msg = `Hola, quiero reservar la cancha de ${cancha==='futbol5'?'Fútbol 5':'Fútbol 7'}.\n` +
         `Nombre: ${nombre}\nTeléfono: ${telefono}\nEquipo: ${equipo||'-'}\nFecha: ${fecha}\nHora: ${modalSlot}\nDuración: ${duracion} min`
-      window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msg)}`, '_blank')
+      setWaLink(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msg)}`)
+    } else {
+      setWaLink(null)
     }
     setExito(true)
     fetchTodo()
@@ -137,7 +144,15 @@ export default function ReservarEscenarioPage() {
                 <div style={{ fontSize:'.82rem', color:S.text2, lineHeight:1.5, marginBottom:18 }}>
                   Tu reserva de {cancha==='futbol5'?'Fútbol 5':'Fútbol 7'} el {fmtDate(fecha)} a las {modalSlot} quedó pendiente de aprobación del escenario.
                 </div>
-                <button onClick={()=>setModalSlot(null)} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Listo</button>
+                {waLink && (
+                  <a href={waLink} target="_blank" rel="noreferrer"
+                    style={{ display:'block', width:'100%', padding:'13px', marginBottom:'10px', background:'#25D366', borderRadius:'10px', color:'#fff', fontWeight:800, fontSize:'.85rem', textDecoration:'none', boxSizing:'border-box' }}>
+                    📲 Confirmar por WhatsApp
+                  </a>
+                )}
+                <button onClick={()=>setModalSlot(null)} style={{ width:'100%', padding:'12px', background: waLink ? 'none' : S.cyan, border: waLink ? `1px solid ${S.border}` : 'none', borderRadius:'10px', cursor:'pointer', color: waLink ? S.muted : '#000', fontWeight:800, fontSize:'.85rem' }}>
+                  {waLink ? 'Cerrar' : 'Listo'}
+                </button>
               </div>
             ) : (
               <>
