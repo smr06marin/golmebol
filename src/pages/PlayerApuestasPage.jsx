@@ -1569,6 +1569,36 @@ export default function PlayerApuestasPage() {
           .map(pr => ({ pred: pr, partido: partidos.find(p => p.id === pr.match_id) }))
           .filter(x => x.partido)
           .sort((a, b) => new Date(b.partido.played_at || 0) - new Date(a.partido.played_at || 0))
+
+        // Puntos por torneo — no solo predicciones, también lo que sumó/restó
+        // en duelos 1v1 y apuestas abiertas (mismo modo), así el total de
+        // cada torneo coincide con lo que realmente aporta al puntaje global.
+        const torneoDe = (matchId) => partidos.find(p => p.id === matchId)?.tournaments
+        const porTorneo = {}
+        function sumarTorneo(matchId, pts) {
+          const t = torneoDe(matchId)
+          const key = t?.id || 'sin-torneo'
+          if (!porTorneo[key]) porTorneo[key] = { id: key, nombre: t?.name || 'Sin torneo', puntos: 0 }
+          porTorneo[key].puntos += pts
+        }
+        predsJugador.forEach(({ pred }) => sumarTorneo(pred.match_id, pred.puntos_ganados || 0))
+        ;(duelos || []).filter(d => d.estado === 'aceptado' && d.modo === rankingModo && (d.retador_id === modalDesglose.id || d.retado_id === modalDesglose.id)).forEach(d => {
+          const r = calcularDuelo(d, partidos, duelos)
+          if (r.estado === 'pendiente') return
+          sumarTorneo(d.match_id, d.retador_id === modalDesglose.id ? r.retador : r.retado)
+        })
+        const posturasModoResumen = (posturas || []).filter(p2 => p2.modo === rankingModo)
+        const idsModoResumen = new Set(posturasModoResumen.map(p2 => p2.id))
+        ;(cruces || []).filter(c => idsModoResumen.has(c.postura_a_id) && idsModoResumen.has(c.postura_b_id)).forEach(c => {
+          const r = calcularCrucePostura(c, posturasModoResumen, cruces, partidos)
+          if (r.estado === 'pendiente') return
+          const posturaA = posturasModoResumen.find(p2 => p2.id === c.postura_a_id)
+          const posturaB = posturasModoResumen.find(p2 => p2.id === c.postura_b_id)
+          if (posturaA?.player_id === modalDesglose.id) sumarTorneo(c.match_id, r.a)
+          if (posturaB?.player_id === modalDesglose.id) sumarTorneo(c.match_id, r.b)
+        })
+        const resumenTorneos = Object.values(porTorneo).filter(t => t.puntos !== 0).sort((a, b) => b.puntos - a.puntos)
+
         return (
           <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
             onClick={e => e.target === e.currentTarget && setModalDesglose(null)}>
@@ -1584,8 +1614,22 @@ export default function PlayerApuestasPage() {
                 <button onClick={() => setModalDesglose(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, fontSize:'1.3rem', lineHeight:1, padding:'4px' }}>✕</button>
               </div>
               <div style={{ overflowY:'auto', padding:'14px 16px' }}>
+                {resumenTorneos.length > 0 && (
+                  <div style={{ marginBottom:'16px' }}>
+                    <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.muted, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Puntos por torneo</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                      {resumenTorneos.map(t => (
+                        <div key={t.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:S.card, border:`0.5px solid ${S.border}`, borderRadius:'10px', padding:'9px 12px' }}>
+                          <span style={{ fontSize:'.8rem', fontWeight:'600', color:S.text }}>{t.nombre}</span>
+                          <span style={{ fontSize:'.85rem', fontWeight:'900', color: t.puntos > 0 ? S.gold : t.puntos < 0 ? S.loss : S.muted }}>{t.puntos > 0 ? `+${t.puntos}` : t.puntos} pts</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.muted, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Detalle por partido</div>
                 {predsJugador.length === 0 ? (
-                  <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted }}>Sus puntos vienen de duelos o apuestas abiertas, no de predicciones de partidos.</div>
+                  <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted }}>Sus puntos de predicciones vienen de duelos o apuestas abiertas, no de predicciones sueltas de partidos.</div>
                 ) : predsJugador.map(({ pred, partido: p }) => (
                   <div key={pred.id} style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'10px', border:`0.5px solid ${pred.puntos_ganados > 0 ? S.win : S.border}` }}>
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
