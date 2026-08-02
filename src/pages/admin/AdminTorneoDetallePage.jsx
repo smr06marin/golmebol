@@ -886,7 +886,12 @@ export default function AdminTorneoDetallePage() {
     setLoading(true)
     // Pintar la página apenas llega el torneo; equipos y partidos llegan
     // en paralelo y van llenando las secciones (clave en celular).
-    const pResto = Promise.all([fetchEquipos(), fetchPartidos(), fetchFinalizado()])
+    // fetchBracket() va acá también (antes solo se cargaba al entrar a la
+    // pestaña "Eliminatorias") — si no, el avance automático de rondas nunca
+    // se enteraba de que había una ronda completa cuando el admin entraba
+    // directo a otra pestaña (Actividad, Partidos, etc.) y cerraba un partido
+    // desde ahí, sin haber visitado Eliminatorias en esa sesión.
+    const pResto = Promise.all([fetchEquipos(), fetchPartidos(), fetchFinalizado(), fetchBracket()])
     await fetchTorneo()
     setLoading(false)
     await pResto
@@ -2046,6 +2051,10 @@ export default function AdminTorneoDetallePage() {
   // no hay ninguna decisión real que tomar ahí.
   useEffect(() => {
     if (bracket.length === 0) return
+    // rankPorReclasificacion (para armar la siguiente ronda) necesita la
+    // tabla de grupos, que sale de equipos+partidos — hasta que eso no
+    // termine de cargar no hay que disparar el avance solo.
+    if (!datosPreviewListos) return
     if (generandoRonda || generandoRondaRef.current) return
     const est = getEstadoEliminatorias()
     if (!est) return
@@ -2058,7 +2067,7 @@ export default function AdminTorneoDetallePage() {
     if (proximaEsFinal && est.perdedoresElegibles.length >= 2) return // decide el admin (tercer puesto)
     handleGenerarSiguienteRonda()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bracket, generandoRonda])
+  }, [bracket, generandoRonda, datosPreviewListos])
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
