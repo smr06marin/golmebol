@@ -1,9 +1,10 @@
 // force redeploy
 import { useEffect, useState, lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { supabase } from './lib/supabase'
+import { supabase, supabaseSilent } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 import { useVersionCheck } from './hooks/useVersionCheck'
+import GlobalToast from './components/GlobalToast'
 
 // Carga diferida por página: el celular solo descarga el código de la página que visita
 const LoginPage               = lazy(() => import('./pages/LoginPage'))
@@ -322,7 +323,9 @@ export default function App() {
       if (data && data.activo !== false) {
         setRol({ rol: data.rol, plan: data.plan })
         // Vincular la cuenta al rol (para que el admin vea de quién es cada torneo)
-        supabase.from('roles_plataforma').update({ user_id: u.id }).eq('email', email).then(() => {}, () => {})
+        // — con el cliente silencioso: esto corre solo en cada sesión, no es
+        // una acción de la persona, no debe salir el aviso de "cambios guardados".
+        supabaseSilent.from('roles_plataforma').update({ user_id: u.id }).eq('email', email).then(() => {}, () => {})
       }
       else if (ADMINS_PRINCIPALES.includes(email)) setRol({ rol: 'admin' })
       else setRol({ rol: null })
@@ -361,6 +364,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    <GlobalToast/>
     {hayVersionNueva && (
       <div onClick={() => window.location.reload()}
         style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#1a73e8', color: '#fff', textAlign: 'center', padding: '10px 16px', fontSize: '.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'system-ui, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
