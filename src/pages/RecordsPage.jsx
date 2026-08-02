@@ -48,7 +48,15 @@ function TeamShield({ logo_url, name, size = 24 }) {
 
 function ProgramacionRow({ m }) {
   const fecha = m.played_at ? new Date(m.played_at) : null
-  const jugado = m.home_score !== null && m.home_score !== undefined
+  // Antes esto se fijaba en si home_score no era null — pero un partido
+  // recién programado ya trae 0-0 por defecto en la base, así que salía
+  // como "jugado" (0-0) sin fecha ni hora. El estado real es m.status.
+  const jugado = m.status === 'finished'
+  // En fase de eliminatorias (cuartos, semifinal, etc.) mostramos la ronda
+  // en vez del nombre del torneo — así se distingue de qué partido se trata
+  // y, si es ida y vuelta, cuál de las dos es (m.ronda ya viene como
+  // "Semifinal" / "Semifinal (vuelta)").
+  const etiqueta = (m.fase && m.fase !== 'grupo') ? (m.ronda || m.fase) : m.tournaments?.name
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 4px', borderTop: `1px solid ${S.border}` }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -70,8 +78,8 @@ function ProgramacionRow({ m }) {
             <div style={{ color: S.muted, fontSize: '.64rem' }}>{fecha ? fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
           </>
         )}
-        {m.tournaments?.name && (
-          <div style={{ color: S.muted, fontSize: '.58rem', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>{m.tournaments.name}</div>
+        {etiqueta && (
+          <div style={{ color: S.cyan, fontSize: '.58rem', fontWeight: '700', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>{etiqueta}</div>
         )}
       </div>
     </div>
@@ -687,7 +695,7 @@ export default function RecordsPage() {
     registrarVisita('tabla_torneo', t.id)
     const [{ data: tts }, { data: ms }, { data: grps }, { data: golData }] = await Promise.all([
       supabase.from('tournament_teams').select('*, teams(id, name, logo_url)').eq('tournament_id', t.id),
-      supabase.from('matches').select('id, home_team_id, away_team_id, home_score, away_score, status, fase, played_at').eq('tournament_id', t.id),
+      supabase.from('matches').select('id, home_team_id, away_team_id, home_score, away_score, status, fase, ronda, played_at').eq('tournament_id', t.id),
       supabase.from('tournament_grupos').select('*').eq('tournament_id', t.id).order('orden'),
       supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', t.id).gt('total_goals', 0).order('total_goals', { ascending: false }).limit(5),
     ])
