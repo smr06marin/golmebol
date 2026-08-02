@@ -1557,13 +1557,15 @@ export default function PlayerApuestasPage() {
               <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'12px' }}>Este es el ranking que compite por los premios mensuales. #{miRankingActual || '—'} es tu posición. Tocá un nombre para ver el desglose de sus puntos.</div>
             )}
             {torneosRanking.length > 1 && (
-              <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'8px', marginBottom:'12px', scrollbarWidth:'none', WebkitOverflowScrolling:'touch' }}>
-                {[{ id:null, name:'🌐 Global (todos)' }, ...torneosRanking].map(t => (
-                  <button key={t?.id||'all'} onClick={() => setTorneoFiltroRanking(t?.id||null)}
-                    style={{ flexShrink:0, padding:'6px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.75rem', whiteSpace:'nowrap', background: torneoFiltroRanking===(t?.id||null) ? S.cyan : S.card, color: torneoFiltroRanking===(t?.id||null) ? '#000' : S.muted }}>
-                    {t?.name||'🌐 Global (todos)'}
-                  </button>
-                ))}
+              <div style={{ marginBottom:'14px' }}>
+                <label style={{ display:'block', fontSize:'.68rem', color:S.muted, marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.06em' }}>Torneo</label>
+                <select value={torneoFiltroRanking || ''} onChange={e => setTorneoFiltroRanking(e.target.value || null)}
+                  style={{ width:'100%', padding:'11px 12px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', color:S.text, fontSize:'.85rem', fontWeight:'600', outline:'none' }}>
+                  <option value="">🌐 Global (todos los torneos)</option>
+                  {torneosRanking.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
               </div>
             )}
             {rankingActual.length === 0 ? (
