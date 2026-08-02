@@ -1387,12 +1387,12 @@ export default function AdminTorneoDetallePage() {
       if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length !== 1 ? 's' : ''} programado${parejas.length !== 1 ? 's' : ''} de verdad (no es la vista previa), con las fechas que armaste en la vista previa${avisoBye}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
       setGenerandoElim(true)
 
-      // Un equipo no avanza a eliminatorias con tarjetas sin pagar
+      // Aviso de tarjetas sin pagar — ya no bloquea, solo recuerda que hay
+      // que cobrarlas (el admin decide si igual arma los partidos).
       const idsParticipantes = [...new Set([...parejas.flatMap(([a, b]) => [a?.id, b?.id]), byeTeam?.id].filter(Boolean))]
       const deudores = await getDeudoresTarjetas(idsParticipantes)
       if (deudores.length > 0) {
-        showMsg(`⛔ Tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
-        return
+        showMsg(`⚠️ Recordatorio: tienen tarjetas sin pagar: ${deudores.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
       }
 
       // Eliminar eliminatorias anteriores
@@ -1896,12 +1896,11 @@ export default function AdminTorneoDetallePage() {
     if (!fechaRonda) return showMsg('Selecciona la fecha de la siguiente ronda', 'error')
     setGenerandoRonda(true)
 
-    // Un equipo no avanza de ronda con tarjetas sin pagar
+    // Aviso de tarjetas sin pagar — ya no bloquea, solo recuerda que hay
+    // que cobrarlas (el admin decide si igual arma la siguiente ronda).
     const deudoresRonda = await getDeudoresTarjetas(est.vivos.map(v => v.id))
     if (deudoresRonda.length > 0) {
-      showMsg(`⛔ Tienen tarjetas sin pagar: ${deudoresRonda.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
-      setGenerandoRonda(false)
-      return
+      showMsg(`⚠️ Recordatorio: tienen tarjetas sin pagar: ${deudoresRonda.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
     }
 
     const conVuelta = est.llaves.some(l => l.matches.length > 1)
