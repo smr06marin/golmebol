@@ -349,10 +349,17 @@ export default function App() {
   }
 
   useEffect(() => {
-    // La app cargó bien — si había quedado la bandera de "ya intenté
-    // recargar por un chunk viejo" de una sesión anterior, se limpia acá
-    // para que un próximo deploy también pueda disparar la recarga sola.
-    try { sessionStorage.removeItem('golmebol_reload_chunk') } catch {}
+    // OJO: si esto se limpia de una (al montar), y la recarga automática del
+    // ErrorBoundary cae otra vez en el mismo chunk roto, este efecto borra
+    // la bandera ANTES de que se detecte el error de nuevo — y arma un
+    // parpadeo infinito de recargas. Por eso se espera unos segundos: recién
+    // ahí se confirma que la app quedó realmente arriba (no se cayó de
+    // nuevo), y se limpia para que un futuro deploy pueda volver a disparar
+    // la recarga sola.
+    const t = setTimeout(() => {
+      try { sessionStorage.removeItem('golmebol_reload_chunk') } catch {}
+    }, 6000)
+    return () => clearTimeout(t)
   }, [])
 
   useEffect(() => {
