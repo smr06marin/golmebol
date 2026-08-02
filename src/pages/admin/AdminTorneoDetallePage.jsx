@@ -613,9 +613,16 @@ export default function AdminTorneoDetallePage() {
   const [estiloLlaves,     setEstiloLlaves]     = useState('consecutivo') // 'consecutivo' | 'cruzado' | 'manual'
   const [ordenManual,      setOrdenManual]      = useState([]) // participantes del sorteo físico (todavía por emparejar + ya emparejados)
   const [llavesManuales,   setLlavesManuales]   = useState([]) // [[equipoA, equipoB], ...] armadas arrastrando
-  const [fechaRonda,       setFechaRonda]       = useState('')
+  // Arranca en HOY por defecto (en vez de vacío) para que el avance automático
+  // de rondas siempre tenga una fecha de respaldo válida aunque el admin no
+  // haya tocado nada — se puede editar libremente antes o después.
+  const [fechaRonda,       setFechaRonda]       = useState(() => new Date().toISOString().slice(0, 10))
   const [horaRonda,        setHoraRonda]        = useState('08:00')
   const [generandoRonda,   setGenerandoRonda]   = useState(false)
+  // Traba síncrona (además del estado de arriba) para que el avance
+  // automático de rondas nunca dispare dos generaciones al mismo tiempo por
+  // una re-ejecución rápida del efecto antes de que el estado se actualice.
+  const generandoRondaRef = useRef(false)
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
   const [equipoByeId,      setEquipoByeId]      = useState(null) // a quién se le da el pase directo cuando modoImpar==='bye' (null = el último de la reclasificación)
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
@@ -1922,6 +1929,16 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleGenerarSiguienteRonda() {
+    if (generandoRondaRef.current) return
+    generandoRondaRef.current = true
+    try {
+      await handleGenerarSiguienteRondaInterna()
+    } finally {
+      generandoRondaRef.current = false
+    }
+  }
+
+  async function handleGenerarSiguienteRondaInterna() {
     const est = getEstadoEliminatorias()
     if (!est) return
     if (est.actual === 'final') return showMsg('El torneo ya está en la final', 'error')
@@ -2015,6 +2032,33 @@ export default function AdminTorneoDetallePage() {
     setGenerandoRonda(false)
     fetchPartidos(); fetchBracket()
   }
+
+  // Avance automático de eliminatorias: apenas una ronda queda completa (sin
+  // empates) se arma sola la siguiente, con los ganadores ya puestos en sus
+  // casillas — sin apretar ningún botón. Casos donde SÍ hace falta que el
+  // admin decida (a propósito no se resuelven solos, tal como se pidió):
+  //   - Número IMPAR de equipos vivos: se deja el aviso de siempre (con las
+  //     opciones "entra el mejor perdedor" / "pasa directo el mejor ubicado")
+  //     — recién se genera cuando el admin elige y aprieta el botón ahí.
+  //   - Al llegar a la FINAL habiendo candidatos a tercer puesto: se deja el
+  //     aviso para que el admin decida si arma ese partido junto con la final.
+  // El repechaje y la semifinal-de-3 SÍ se resuelven solos: son deterministas,
+  // no hay ninguna decisión real que tomar ahí.
+  useEffect(() => {
+    if (bracket.length === 0) return
+    if (generandoRonda || generandoRondaRef.current) return
+    const est = getEstadoEliminatorias()
+    if (!est) return
+    if (est.actual === 'final') return
+    if (!est.completa || est.hayEmpates) return
+    if (est.repechajePendiente) { handleGenerarSiguienteRonda(); return }
+    const esImpar = est.vivos.length % 2 !== 0 && est.vivos.length > 3
+    if (esImpar) return // se deja el aviso — decide el admin
+    const proximaEsFinal = est.vivos.length === 2
+    if (proximaEsFinal && est.perdedoresElegibles.length >= 2) return // decide el admin (tercer puesto)
+    handleGenerarSiguienteRonda()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bracket, generandoRonda])
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
