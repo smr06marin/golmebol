@@ -91,6 +91,19 @@ if (typeof window !== 'undefined') {
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error) {
+    // Después de cada actualización de Golmebol, quien ya tenía la página
+    // abierta puede quedar con el navegador buscando un archivo .js viejo
+    // que el deploy nuevo ya renombró ("Failed to fetch dynamically imported
+    // module"). En vez de mostrarle la pantalla de error, se recarga sola
+    // una vez (el sessionStorage evita quedar en bucle si el error es otro).
+    const msg = String(error?.message || error || '')
+    const esChunkViejo = /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|error loading dynamically imported module/i.test(msg)
+    if (esChunkViejo && !sessionStorage.getItem('golmebol_reload_chunk')) {
+      sessionStorage.setItem('golmebol_reload_chunk', '1')
+      window.location.reload()
+    }
+  }
   render() {
     if (!this.state.error) return this.props.children
     return (
@@ -334,6 +347,13 @@ export default function App() {
       setRol({ rol: 'admin' })
     }
   }
+
+  useEffect(() => {
+    // La app cargó bien — si había quedado la bandera de "ya intenté
+    // recargar por un chunk viejo" de una sesión anterior, se limpia acá
+    // para que un próximo deploy también pueda disparar la recarga sola.
+    try { sessionStorage.removeItem('golmebol_reload_chunk') } catch {}
+  }, [])
 
   useEffect(() => {
     // Si ya había una sesión guardada en este celular, NO asumimos "sin
