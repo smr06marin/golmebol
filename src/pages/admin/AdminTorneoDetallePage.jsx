@@ -1355,7 +1355,6 @@ export default function AdminTorneoDetallePage() {
 
   async function handleGenerarEliminatorias() {
     try {
-      if (!fechaElim) return showMsg('Selecciona la fecha de los partidos', 'error')
       let byeManual = null
       if (estiloLlaves === 'manual') {
         const idsEnLlaves = new Set(llavesManuales.flatMap(([a, b]) => [a.id, b.id]))
@@ -1369,8 +1368,23 @@ export default function AdminTorneoDetallePage() {
       const parejas = getParejasElim()
       const byeTeam = byeManual || getByeInicial()
       if (parejas.length < 1 && !byeTeam) return showMsg('Necesitas al menos 2 clasificados', 'error')
+
+      const total = parejas.length * 2 + (byeTeam ? 1 : 0)
+      const fase  = getFaseValue(total)
+      const ronda = getRondaNombre(total)
+
+      // Cada llave usa la fecha/hora que le pusiste en la vista previa en vivo
+      // (previewCalendario) — si a alguna no le pusiste una puntual, se usa
+      // la fecha general de respaldo (la del asistente, si la llenaste).
+      const fechaHoraLlave = (i) => {
+        const c = previewCalendario?.[fase]?.[i]
+        return { fecha: c?.fecha || fechaElim, hora: c?.hora || horaElim || '08:00' }
+      }
+      const faltaFecha = parejas.some((_, i) => !fechaHoraLlave(i).fecha)
+      if (faltaFecha) return showMsg('Faltan fechas — completalas en la vista previa en vivo (o poné una fecha general en "Ajustar cupos/formato" como respaldo)', 'error')
+
       const avisoBye = byeTeam ? ` — ${byeTeam.name} pasa directo a la siguiente ronda sin jugar` : ''
-      if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length !== 1 ? 's' : ''} programado${parejas.length !== 1 ? 's' : ''} de verdad (no es la vista previa) para el ${fechaElim}${avisoBye}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
+      if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length !== 1 ? 's' : ''} programado${parejas.length !== 1 ? 's' : ''} de verdad (no es la vista previa), con las fechas que armaste en la vista previa${avisoBye}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
       setGenerandoElim(true)
 
       // Un equipo no avanza a eliminatorias con tarjetas sin pagar
@@ -1381,24 +1395,21 @@ export default function AdminTorneoDetallePage() {
         return
       }
 
-      const total = parejas.length * 2 + (byeTeam ? 1 : 0)
-      const fase  = getFaseValue(total)
-      const ronda = getRondaNombre(total)
-
       // Eliminar eliminatorias anteriores
       const { error: errDel } = await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
       if (errDel) { showMsg(`No se pudo borrar el bracket anterior: ${errDel.message}`, 'error'); return }
 
       const inserts = []
-      parejas.forEach(([local, visitante]) => {
+      parejas.forEach(([local, visitante], i) => {
+        const { fecha, hora } = fechaHoraLlave(i)
         inserts.push({
           tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
-          played_at: `${fechaElim}T${horaElim}:00-05:00`, status: 'scheduled', fase, ronda, matchday: null,
+          played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda, matchday: null,
         })
         if (idaVuelta) {
           inserts.push({
             tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
-            played_at: `${fechaElim}T${horaElim}:00-05:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
+            played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
           })
         }
       })
@@ -3745,8 +3756,13 @@ export default function AdminTorneoDetallePage() {
       {/* ── TAB ELIMINATORIAS ── */}
       {tab === 'eliminatorias' && (
         <div>
-          {/* Iniciar / reconfigurar */}
-          {bracket.length === 0 ? (
+          {/* Iniciar / reconfigurar — este cartel con el botón grande solo sale
+              cuando todavía no hay ni siquiera equipos/grupos para armar una
+              vista previa. En cuanto hay algo que previsualizar, se muestra
+              directamente el árbol en vivo de más abajo (con su propio botón
+              para pasar esos partidos a jugar de verdad) y este cartel se oculta,
+              para no tener dos formas de arrancar la misma cosa a la vista. */}
+          {bracket.length === 0 && !(grupos.length > 0 || equipos.length >= 2) ? (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '40px 24px', textAlign: 'center', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
               <GitBranch size={40} color="#e8710a" style={{ marginBottom: '10px' }}/>
               <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>Eliminaciones directas</div>
@@ -3758,7 +3774,7 @@ export default function AdminTorneoDetallePage() {
                 ⚡ Iniciar eliminaciones directas
               </button>
             </div>
-          ) : (
+          ) : bracket.length > 0 ? (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
               {!bracket.some(m => m.status === 'finished') && (
                 <button onClick={handleQuitarBracket}
@@ -3771,7 +3787,7 @@ export default function AdminTorneoDetallePage() {
                 <Shuffle size={13}/> Reconfigurar eliminatorias
               </button>
             </div>
-          )}
+          ) : null}
 
           {/* Vista previa en vivo — se recalcula sola con cada resultado de grupos */}
           {bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2) && !showWizardElim && (() => {
@@ -3832,7 +3848,13 @@ export default function AdminTorneoDetallePage() {
                   </button>
                 </div>
                 <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
-                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para intercambiar sus puestos en el orden. Cuando termines la fase de grupos, tocá "{bracket.length > 0 ? 'Reconfigurar' : 'Iniciar'} eliminaciones directas" para que el árbol quede en firme y se puedan jugar esos partidos.
+                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para intercambiar sus puestos en el orden, y ponele fecha/hora a cada llave acá abajo. Cuando ya esté como querés que se juegue, tocá el botón de acá abajo para mandar esos partidos a jugar de verdad, con esas mismas fechas.
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                  <button onClick={handleGenerarEliminatorias} disabled={generandoElim}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: generandoElim ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: generandoElim ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                    <GitBranch size={15}/> {generandoElim ? 'Creando...' : 'Iniciar eliminatorias con esta programación'}
+                  </button>
                 </div>
                 {byeInicialPreviewLive && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', padding: '8px 12px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px' }}>
