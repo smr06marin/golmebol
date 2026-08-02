@@ -38,6 +38,54 @@ function resultadoRealPartido(p) {
 }
 function huboPenalesPartido(p) { return p && p.home_score === p.away_score && !!p.penales_ganador }
 
+// Desglose de puntos de una predicción puntual — un solo lugar con la
+// lógica de puntaje para no tenerla duplicada: se usa tanto en "Mis
+// predicciones" (mis propias predicciones) como en el modal que se abre al
+// tocar un nombre en el Ranking (predicciones de cualquier otro jugador).
+function DesglosePartido({ p, pred }) {
+  const resultadoReal = p.home_score > p.away_score ? 'home' : p.away_score > p.home_score ? 'away' : 'draw'
+  const acertoResultado = pred.ganador === resultadoReal
+  const acertoGolesHome = pred.goles_home === p.home_score
+  const acertoGolesAway = pred.goles_away === p.away_score
+  const acertoMarcador  = acertoGolesHome && acertoGolesAway
+  const acertoGoleador  = !!(pred.goleador_id && p.top_goleador_ids && p.top_goleador_ids.has(pred.goleador_id))
+  const ptsResultado = acertoResultado ? (resultadoReal === 'draw' ? 5 : 3) : 0
+  const ptsMarcador  = acertoGolesHome ? 3 : 0
+  const ptsMarcador2 = acertoGolesAway ? 3 : 0
+  const ptsExacto    = acertoMarcador  ? 10 : 0
+  const ptsGoleador  = acertoGoleador  ? 2  : 0
+  const nombreGanador = pred.ganador === 'home' ? p.home?.name + ' gana' : pred.ganador === 'away' ? p.away?.name + ' gana' : 'Empate'
+  return (
+    <div style={{ marginTop: '10px', background: S.navy, borderRadius: '10px', padding: '10px 12px', border: `0.5px solid ${S.border}` }}>
+      <div style={{ fontSize: '.68rem', fontWeight: '700', color: S.muted, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '.06em' }}>Desglose de la predicción</div>
+      <div style={{ fontSize: '.72rem', color: S.muted, marginBottom: '6px' }}>
+        Predijo: <span style={{ color: S.text, fontWeight: '600' }}>{pred.goles_home}–{pred.goles_away} · {nombreGanador}</span>
+      </div>
+      {[
+        { label: acertoResultado ? '✅ Resultado correcto' : '❌ Resultado incorrecto', pts: ptsResultado, detail: acertoResultado ? (resultadoReal === 'draw' ? 'Empate vale más' : 'Ganador correcto') : `Era ${resultadoReal === 'home' ? p.home?.name : resultadoReal === 'away' ? p.away?.name : 'Empate'}` },
+        { label: acertoGolesHome ? `✅ Goles ${p.home?.name} exactos` : `❌ Goles ${p.home?.name} incorrectos`, pts: ptsMarcador, detail: acertoGolesHome ? `Predijo ${pred.goles_home} ✓` : `Predijo ${pred.goles_home}, fueron ${p.home_score}` },
+        { label: acertoGolesAway ? `✅ Goles ${p.away?.name} exactos` : `❌ Goles ${p.away?.name} incorrectos`, pts: ptsMarcador2, detail: acertoGolesAway ? `Predijo ${pred.goles_away} ✓` : `Predijo ${pred.goles_away}, fueron ${p.away_score}` },
+        acertoMarcador ? { label: '🎯 Bonus marcador exacto', pts: ptsExacto, detail: 'Acertó el marcador exacto' } : null,
+        pred.goleador_id ? { label: acertoGoleador ? '✅ Goleador correcto' : '❌ Goleador incorrecto', pts: ptsGoleador, detail: acertoGoleador ? `${pred.goleador?.name} anotó ✓` : `Predijo ${pred.goleador?.name || '—'}` } : null,
+      ].filter(Boolean).map((row, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', borderTop: i > 0 ? `0.5px solid ${S.border}` : 'none' }}>
+          <div>
+            <div style={{ fontSize: '.72rem', color: row.pts > 0 ? S.text : S.muted, fontWeight: row.pts > 0 ? '600' : '400' }}>{row.label}</div>
+            <div style={{ fontSize: '.65rem', color: S.muted }}>{row.detail}</div>
+          </div>
+          <span style={{ fontSize: '.82rem', fontWeight: '900', color: row.pts > 0 ? S.gold : S.muted, minWidth: '40px', textAlign: 'right' }}>
+            {row.pts > 0 ? `+${row.pts}` : '—'}
+          </span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${S.border}` }}>
+        <span style={{ fontSize: '.75rem', fontWeight: '700', color: S.text }}>Total ganado</span>
+        <span style={{ fontSize: '1rem', fontWeight: '900', color: pred.puntos_ganados > 0 ? S.gold : S.muted }}>{pred.puntos_ganados > 0 ? `+${pred.puntos_ganados} pts` : '0 pts'}</span>
+      </div>
+    </div>
+  )
+}
+
 // Cuántos duelos aceptados y ya resueltos hubo antes entre este mismo par
 // de jugadores (sin importar quién retó a quién) — determina el factor.
 function repeticionParaDuelo(duelo, duelos, partidos) {
@@ -412,6 +460,7 @@ export default function PlayerApuestasPage() {
   const [rankingDemo,  setRankingDemo]  = useState([])
   const [rankingPago,  setRankingPago]  = useState([])
   const [rankingModo,  setRankingModo]  = useState('pago')
+  const [modalDesglose,setModalDesglose]= useState(null) // fila del ranking en la que se tocó el nombre
   const [misPuntosDemo,setMisPuntosDemo]= useState(0)
   const [misPuntosPago,setMisPuntosPago]= useState(0)
   const [jugadores,    setJugadores]    = useState([])
@@ -467,7 +516,10 @@ export default function PlayerApuestasPage() {
       supabase.from('tournament_player_registrations')
         .select('tournament_id, team_id, players(id,name,photo_url)')
         .eq('activo', true),
-      supabase.from('predicciones').select('player_id, match_id, puntos_ganados, modo'),
+      // Trae la predicción completa (no solo los puntos) de TODOS los
+      // jugadores — así el modal de desglose del Ranking puede mostrar qué
+      // predijo cada quien en cada partido, no solo el total de puntos.
+      supabase.from('predicciones').select('*, goleador:goleador_id(name)'),
       supabase.from('predix_duelos').select('*').order('created_at', { ascending: false }),
       supabase.from('players').select('id, name, photo_face_url, photo_url, user_id, es_arbitro, rol').eq('activo_membresia', true).order('name'),
       supabase.from('predix_posturas').select('*').order('created_at', { ascending: true }),
@@ -1344,50 +1396,7 @@ export default function PlayerApuestasPage() {
                     </div>
                     <span style={{ flex:1, fontWeight:'600', color:S.text }}>{p.away?.name}</span>
                   </div>
-                  {esTerminado && (() => {
-                    // Calcular desglose de puntos
-                    const resultadoReal = p.home_score > p.away_score ? 'home' : p.away_score > p.home_score ? 'away' : 'draw'
-                    const acertoResultado = pred.ganador === resultadoReal
-                    const acertoGolesHome = pred.goles_home === p.home_score
-                    const acertoGolesAway = pred.goles_away === p.away_score
-                    const acertoMarcador  = acertoGolesHome && acertoGolesAway
-                    const acertoGoleador  = !!(pred.goleador_id && p.top_goleador_ids && p.top_goleador_ids.has(pred.goleador_id))
-                    const ptsResultado = acertoResultado ? (resultadoReal==='draw' ? 5 : 3) : 0
-                    const ptsMarcador  = acertoGolesHome ? 3 : 0
-                    const ptsMarcador2 = acertoGolesAway ? 3 : 0
-                    const ptsExacto    = acertoMarcador  ? 10 : 0
-                    const ptsGoleador  = acertoGoleador  ? 2  : 0
-                    const nombreGanador = pred.ganador==='home'?p.home?.name+' gana':pred.ganador==='away'?p.away?.name+' gana':'Empate'
-                    return (
-                      <div style={{ marginTop:'10px', background:S.navy, borderRadius:'10px', padding:'10px 12px', border:`0.5px solid ${S.border}` }}>
-                        <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.muted, marginBottom:'8px', textTransform:'uppercase', letterSpacing:'.06em' }}>Desglose de tu predicción</div>
-                        <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'6px' }}>
-                          Predijiste: <span style={{ color:S.text, fontWeight:'600' }}>{pred.goles_home}–{pred.goles_away} · {nombreGanador}</span>
-                        </div>
-                        {[
-                          { label: acertoResultado ? '✅ Resultado correcto' : '❌ Resultado incorrecto', pts: ptsResultado, detail: acertoResultado ? (resultadoReal==='draw'?'Empate vale más':'Ganador correcto') : `Era ${resultadoReal==='home'?p.home?.name:resultadoReal==='away'?p.away?.name:'Empate'}` },
-                          { label: acertoGolesHome ? `✅ Goles ${p.home?.name} exactos` : `❌ Goles ${p.home?.name} incorrectos`, pts: ptsMarcador, detail: acertoGolesHome ? `Predijiste ${pred.goles_home} ✓` : `Predijiste ${pred.goles_home}, fueron ${p.home_score}` },
-                          { label: acertoGolesAway ? `✅ Goles ${p.away?.name} exactos` : `❌ Goles ${p.away?.name} incorrectos`, pts: ptsMarcador2, detail: acertoGolesAway ? `Predijiste ${pred.goles_away} ✓` : `Predijiste ${pred.goles_away}, fueron ${p.away_score}` },
-                          acertoMarcador ? { label: '🎯 Bonus marcador exacto', pts: ptsExacto, detail: 'Acertaste el marcador exacto' } : null,
-                          pred.goleador_id ? { label: acertoGoleador ? '✅ Goleador correcto' : '❌ Goleador incorrecto', pts: ptsGoleador, detail: acertoGoleador ? `${pred.goleador?.name} anotó ✓` : `Predijiste ${pred.goleador?.name||'—'}` } : null,
-                        ].filter(Boolean).map((row, i) => (
-                          <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 0', borderTop: i>0?`0.5px solid ${S.border}`:'none' }}>
-                            <div>
-                              <div style={{ fontSize:'.72rem', color: row.pts>0?S.text:S.muted, fontWeight: row.pts>0?'600':'400' }}>{row.label}</div>
-                              <div style={{ fontSize:'.65rem', color:S.muted }}>{row.detail}</div>
-                            </div>
-                            <span style={{ fontSize:'.82rem', fontWeight:'900', color: row.pts>0?S.gold:S.muted, minWidth:'40px', textAlign:'right' }}>
-                              {row.pts>0 ? `+${row.pts}` : '—'}
-                            </span>
-                          </div>
-                        ))}
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'8px', paddingTop:'8px', borderTop:`1px solid ${S.border}` }}>
-                          <span style={{ fontSize:'.75rem', fontWeight:'700', color:S.text }}>Total ganado</span>
-                          <span style={{ fontSize:'1rem', fontWeight:'900', color: pred.puntos_ganados>0?S.gold:S.muted }}>{pred.puntos_ganados>0?`+${pred.puntos_ganados} pts`:'0 pts'}</span>
-                        </div>
-                      </div>
-                    )
-                  })()}
+                  {esTerminado && <DesglosePartido p={p} pred={pred}/>}
                   {/* MVP del partido */}
                   {esTerminado && p.mvp && (
                     <div style={{ display:'flex', alignItems:'center', gap:'8px', marginTop:'8px', padding:'6px 10px', background:'rgba(249,168,37,.1)', border:'1px solid rgba(249,168,37,.3)', borderRadius:'8px' }}>
@@ -1526,14 +1535,15 @@ export default function PlayerApuestasPage() {
               ))}
             </div>
             {rankingModo === 'pago' && (
-              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'12px' }}>Este es el ranking que compite por los premios mensuales. #{miRankingActual || '—'} es tu posición.</div>
+              <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'12px' }}>Este es el ranking que compite por los premios mensuales. #{miRankingActual || '—'} es tu posición. Tocá un nombre para ver el desglose de sus puntos.</div>
             )}
             {rankingActual.length === 0 ? (
               <div style={{ textAlign:'center', padding:'60px 20px', color:S.muted }}><div style={{ fontSize:'2rem', marginBottom:'12px' }}>🏆</div><div>Sin datos de ranking aún</div></div>
             ) : rankingActual.map((r, i) => {
               const esYo = r.id === player.id
               return (
-                <div key={r.id} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px', background: esYo ? S.cyanDim : S.card, borderRadius:'12px', marginBottom:'8px', border: `0.5px solid ${esYo ? S.cyan : S.border}` }}>
+                <button key={r.id} onClick={() => setModalDesglose(r)}
+                  style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px', background: esYo ? S.cyanDim : S.card, borderRadius:'12px', marginBottom:'8px', border: `0.5px solid ${esYo ? S.cyan : S.border}`, width:'100%', cursor:'pointer', textAlign:'left' }}>
                   <div style={{ width:'28px', fontWeight:'900', fontSize:'.9rem', textAlign:'center', flexShrink:0, color: i===0?S.gold : i===1?'#9aa0a6' : i===2?'#cd7f32' : S.muted }}>
                     {i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `#${i+1}`}
                   </div>
@@ -1545,12 +1555,60 @@ export default function PlayerApuestasPage() {
                   </span>
                   <span style={{ fontWeight:'900', fontSize:'1.1rem', color:S.gold }}>{r.puntos}</span>
                   <span style={{ fontSize:'.65rem', color:S.muted }}>pts</span>
-                </div>
+                </button>
               )
             })}
           </div>
         )}
       </div>
+
+      {/* Modal: desglose de puntos de un jugador del Ranking */}
+      {modalDesglose && (() => {
+        const predsJugador = todasPredicciones
+          .filter(pr => pr.player_id === modalDesglose.id && pr.modo === rankingModo && pr.resuelta)
+          .map(pr => ({ pred: pr, partido: partidos.find(p => p.id === pr.match_id) }))
+          .filter(x => x.partido)
+          .sort((a, b) => new Date(b.partido.played_at || 0) - new Date(a.partido.played_at || 0))
+        return (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+            onClick={e => e.target === e.currentTarget && setModalDesglose(null)}>
+            <div style={{ background:S.surface, borderTopLeftRadius:'20px', borderTopRightRadius:'20px', width:'100%', maxWidth:'600px', maxHeight:'85vh', display:'flex', flexDirection:'column' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'16px 18px', borderBottom:`0.5px solid ${S.border}`, flexShrink:0 }}>
+                <div style={{ width:'34px', height:'34px', borderRadius:'50%', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {modalDesglose.foto ? <img src={modalDesglose.foto} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.9rem' }}>👤</span>}
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:'800', fontSize:'.9rem', color:S.text }}>{modalDesglose.nombre}</div>
+                  <div style={{ fontSize:'.68rem', color:S.muted }}>{modalDesglose.puntos} pts en total · {rankingModo === 'pago' ? '💰 Pago' : '🎓 Demo'}</div>
+                </div>
+                <button onClick={() => setModalDesglose(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, fontSize:'1.3rem', lineHeight:1, padding:'4px' }}>✕</button>
+              </div>
+              <div style={{ overflowY:'auto', padding:'14px 16px' }}>
+                {predsJugador.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted }}>Sus puntos vienen de duelos o apuestas abiertas, no de predicciones de partidos.</div>
+                ) : predsJugador.map(({ pred, partido: p }) => (
+                  <div key={pred.id} style={{ background:S.card, borderRadius:'14px', padding:'14px 16px', marginBottom:'10px', border:`0.5px solid ${pred.puntos_ganados > 0 ? S.win : S.border}` }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
+                      <span style={{ fontSize:'.72rem', color:S.muted }}>{p.tournaments?.name}</span>
+                      <span style={{ fontSize:'.75rem', fontWeight:'800', color: pred.puntos_ganados > 0 ? S.gold : S.muted, background: pred.puntos_ganados > 0 ? S.goldDim : 'rgba(154,160,166,.1)', borderRadius:'10px', padding:'2px 10px' }}>
+                        {pred.puntos_ganados > 0 ? `+${pred.puntos_ganados} pts ✓` : '0 pts'}
+                      </span>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'.85rem' }}>
+                      <span style={{ flex:1, textAlign:'right', fontWeight:'600', color:S.text }}>{p.home?.name}</span>
+                      <div style={{ background:S.card2, borderRadius:'8px', padding:'4px 10px', textAlign:'center', minWidth:'56px' }}>
+                        <span style={{ fontSize:'.9rem', fontWeight:'800', color:S.text }}>{p.home_score}–{p.away_score}</span>
+                      </div>
+                      <span style={{ flex:1, fontWeight:'600', color:S.text }}>{p.away?.name}</span>
+                    </div>
+                    <DesglosePartido p={p} pred={pred}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Bottom nav */}
       <div style={{ position:'fixed', left:0, right:0, bottom:0, background:S.surface, borderTop:`0.5px solid ${S.border}`, padding:'8px 10px calc(8px + env(safe-area-inset-bottom))', zIndex:20 }}>
