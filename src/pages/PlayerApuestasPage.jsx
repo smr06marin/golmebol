@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ChevronDown, ChevronUp, Trophy, Calendar, BarChart3, User, Swords, Flame, Award, MapPin, Clock } from 'lucide-react'
@@ -250,6 +250,53 @@ function saldoDisponiblePorModo(playerId, modo, allPreds, duelos, partidos, post
     - comprometidoEnPosturas(playerId, posturasM, partidos)
 }
 
+// Ranking separado por modo (demo/pago) y, opcionalmente, filtrado a un solo
+// torneo (torneoId=null trae el ranking global, sumando todos los torneos).
+// Recibe la info de nombre/foto ya resuelta aparte (infoJugadores) para que
+// se pueda recalcular en vivo con useMemo al cambiar el filtro, sin tener
+// que volver a pedirle nada a Supabase.
+function construirRankingTorneo(modo, torneoId, { preds, duelosArr, posturasArr, crucesArr, partidosArr, infoJugadores }) {
+  const perteneceTorneo = (matchId) => {
+    if (!torneoId) return true
+    return partidosArr.find(pp => pp.id === matchId)?.tournament_id === torneoId
+  }
+  const rankMap = {}
+  ;(preds || []).filter(pr => pr.modo === modo && perteneceTorneo(pr.match_id)).forEach(pr => {
+    if (!rankMap[pr.player_id]) rankMap[pr.player_id] = { id: pr.player_id, puntos: 0, nombre: null, foto: null }
+    rankMap[pr.player_id].puntos += pr.puntos_ganados || 0
+  })
+  ;(duelosArr || []).filter(d => d.estado === 'aceptado' && d.modo === modo && perteneceTorneo(d.match_id)).forEach(d => {
+    const partido = partidosArr.find(pp => pp.id === d.match_id)
+    if (!partido || partido.status !== 'finished') return
+    const r = calcularDuelo(d, partidosArr, duelosArr || [])
+    if (r.estado === 'pendiente') return
+    if (!rankMap[d.retador_id]) rankMap[d.retador_id] = { id: d.retador_id, puntos: 0, nombre: d.retador_nombre, foto: null }
+    if (!rankMap[d.retado_id])  rankMap[d.retado_id]  = { id: d.retado_id,  puntos: 0, nombre: d.retado_nombre,  foto: null }
+    rankMap[d.retador_id].puntos += r.retador
+    rankMap[d.retado_id].puntos  += r.retado
+  })
+  const posturasModo = (posturasArr || []).filter(p2 => p2.modo === modo)
+  const idsModo = new Set(posturasModo.map(p2 => p2.id))
+  ;(crucesArr || []).filter(c => idsModo.has(c.postura_a_id) && idsModo.has(c.postura_b_id) && perteneceTorneo(c.match_id)).forEach(c => {
+    const partido = partidosArr.find(pp => pp.id === c.match_id)
+    if (!partido || partido.status !== 'finished') return
+    const r = calcularCrucePostura(c, posturasModo, crucesArr || [], partidosArr)
+    if (r.estado === 'pendiente') return
+    const posturaA = posturasModo.find(p2 => p2.id === c.postura_a_id)
+    const posturaB = posturasModo.find(p2 => p2.id === c.postura_b_id)
+    if (!posturaA || !posturaB) return
+    if (!rankMap[posturaA.player_id]) rankMap[posturaA.player_id] = { id: posturaA.player_id, puntos: 0, nombre: posturaA.nombre, foto: null }
+    if (!rankMap[posturaB.player_id]) rankMap[posturaB.player_id] = { id: posturaB.player_id, puntos: 0, nombre: posturaB.nombre, foto: null }
+    rankMap[posturaA.player_id].puntos += r.a
+    rankMap[posturaB.player_id].puntos += r.b
+  })
+  Object.values(rankMap).forEach(row => {
+    const info = infoJugadores?.[row.id]
+    if (info) { row.nombre = info.nombre; row.foto = info.foto }
+  })
+  return Object.values(rankMap).sort((a, b) => b.puntos - a.puntos)
+}
+
 const WA_PREDIX = (texto) => `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
 
 // ── Rondas (fechas de apertura/cierre/fin por torneo, las pone el admin) ──
@@ -457,9 +504,9 @@ export default function PlayerApuestasPage() {
   const [form,         setForm]         = useState({ ganador:null, golesHome:0, golesAway:0, goleadorId:null })
   const [guardando,    setGuardando]    = useState(false)
   const [successAnim,  setSuccessAnim]  = useState(false)
-  const [rankingDemo,  setRankingDemo]  = useState([])
-  const [rankingPago,  setRankingPago]  = useState([])
   const [rankingModo,  setRankingModo]  = useState('pago')
+  const [torneoFiltroRanking, setTorneoFiltroRanking] = useState(null)
+  const [infoJugadores,setInfoJugadores]= useState({}) // { player_id: { nombre, foto } } — para pintar el ranking
   const [modalDesglose,setModalDesglose]= useState(null) // fila del ranking en la que se tocó el nombre
   const [misPuntosDemo,setMisPuntosDemo]= useState(0)
   const [misPuntosPago,setMisPuntosPago]= useState(0)
@@ -495,6 +542,19 @@ export default function PlayerApuestasPage() {
   const [rondas,          setRondas]          = useState([])
 
   useEffect(() => { fetchTodo() }, [])
+
+  // Se recalcula solo (sin volver a pedirle nada a Supabase) cada vez que
+  // cambia el modo (demo/pago) o el torneo elegido en el filtro del Ranking.
+  const rankingActual = useMemo(() => construirRankingTorneo(rankingModo, torneoFiltroRanking, {
+    preds: todasPredicciones, duelosArr: duelos, posturasArr: posturas, crucesArr: cruces, partidosArr: partidos, infoJugadores,
+  }), [rankingModo, torneoFiltroRanking, todasPredicciones, duelos, posturas, cruces, partidos, infoJugadores])
+
+  // Torneos disponibles para filtrar el Ranking — de TODOS los partidos
+  // conocidos (no solo los pendientes), así un torneo ya terminado sigue
+  // apareciendo en el filtro.
+  const torneosRanking = useMemo(() => [...new Map(
+    partidos.filter(p => p.tournament_id && p.tournaments).map(p => [p.tournament_id, p.tournaments])
+  ).values()], [partidos])
 
   async function fetchTodo() {
     setLoading(true)
@@ -576,53 +636,13 @@ export default function PlayerApuestasPage() {
     setMisPuntosPago(puntosPorModo(p.id, 'pago', allPreds || [], duelosData || [], partidosData, posturasData || [], crucesData || []))
     setJugadores(jugs || [])
 
-    // Ranking separado por modo: demo (gratis, sin premio) y pago (con
-    // suscripción activa, sí compite por premio) son economías distintas.
-    function construirRanking(modo) {
-      const rankMap = {}
-      ;(allPreds || []).filter(pr => pr.modo === modo).forEach(pr => {
-        if (!rankMap[pr.player_id]) rankMap[pr.player_id] = { id: pr.player_id, puntos: 0, nombre: null, foto: null }
-        rankMap[pr.player_id].puntos += pr.puntos_ganados || 0
-      })
-      ;(duelosData || []).filter(d => d.estado === 'aceptado' && d.modo === modo).forEach(d => {
-        const partido = partidosData.find(pp => pp.id === d.match_id)
-        if (!partido || partido.status !== 'finished') return
-        const r = calcularDuelo(d, partidosData, duelosData || [])
-        if (r.estado === 'pendiente') return
-        if (!rankMap[d.retador_id]) rankMap[d.retador_id] = { id: d.retador_id, puntos: 0, nombre: d.retador_nombre, foto: null }
-        if (!rankMap[d.retado_id])  rankMap[d.retado_id]  = { id: d.retado_id,  puntos: 0, nombre: d.retado_nombre,  foto: null }
-        rankMap[d.retador_id].puntos += r.retador
-        rankMap[d.retado_id].puntos  += r.retado
-      })
-      const posturasModo = (posturasData || []).filter(p2 => p2.modo === modo)
-      const idsModo = new Set(posturasModo.map(p2 => p2.id))
-      ;(crucesData || []).filter(c => idsModo.has(c.postura_a_id) && idsModo.has(c.postura_b_id)).forEach(c => {
-        const partido = partidosData.find(pp => pp.id === c.match_id)
-        if (!partido || partido.status !== 'finished') return
-        const r = calcularCrucePostura(c, posturasModo, crucesData || [], partidosData)
-        if (r.estado === 'pendiente') return
-        const posturaA = posturasModo.find(p2 => p2.id === c.postura_a_id)
-        const posturaB = posturasModo.find(p2 => p2.id === c.postura_b_id)
-        if (!posturaA || !posturaB) return
-        if (!rankMap[posturaA.player_id]) rankMap[posturaA.player_id] = { id: posturaA.player_id, puntos: 0, nombre: posturaA.nombre, foto: null }
-        if (!rankMap[posturaB.player_id]) rankMap[posturaB.player_id] = { id: posturaB.player_id, puntos: 0, nombre: posturaB.nombre, foto: null }
-        rankMap[posturaA.player_id].puntos += r.a
-        rankMap[posturaB.player_id].puntos += r.b
-      })
-      return rankMap
-    }
-    const rankMapDemo = construirRanking('demo')
-    const rankMapPago = construirRanking('pago')
-    const playerIds = [...new Set([...Object.keys(rankMapDemo), ...Object.keys(rankMapPago)])]
-    if (playerIds.length > 0) {
-      const { data: playersData } = await supabase.from('players').select('id, name, photo_face_url, photo_url').in('id', playerIds)
-      ;(playersData || []).forEach(pl => {
-        if (rankMapDemo[pl.id]) { rankMapDemo[pl.id].nombre = pl.name; rankMapDemo[pl.id].foto = pl.photo_face_url || pl.photo_url }
-        if (rankMapPago[pl.id]) { rankMapPago[pl.id].nombre = pl.name; rankMapPago[pl.id].foto = pl.photo_face_url || pl.photo_url }
-      })
-    }
-    setRankingDemo(Object.values(rankMapDemo).sort((a,b) => b.puntos - a.puntos))
-    setRankingPago(Object.values(rankMapPago).sort((a,b) => b.puntos - a.puntos))
+    // Nombre/foto de todos los jugadores — el ranking en sí se arma en vivo
+    // con useMemo (construirRankingTorneo) según el modo y el torneo que se
+    // elija, sin tener que volver a pedirle nada a Supabase al cambiar el filtro.
+    const { data: playersInfo } = await supabase.from('players').select('id, name, photo_face_url, photo_url')
+    const infoMap = {}
+    ;(playersInfo || []).forEach(pl => { infoMap[pl.id] = { nombre: pl.name, foto: pl.photo_face_url || pl.photo_url } })
+    setInfoJugadores(infoMap)
     setLoading(false)
   }
 
@@ -743,7 +763,6 @@ export default function PlayerApuestasPage() {
 
   const pendientes = partidos.filter(p => p.status !== 'finished')
   const terminados = partidos.filter(p => p.status === 'finished')
-  const rankingActual = rankingModo === 'pago' ? rankingPago : rankingDemo
   const miRankingActual = rankingActual.findIndex(r => r.id === player.id) + 1
   const misSuscripciones = suscripciones.filter(s => s.player_id === player.id && s.estado === 'activa' && s.fecha_fin >= HOY())
   const rondaActual = proximaRondaRelevante(rondas)
@@ -1536,6 +1555,16 @@ export default function PlayerApuestasPage() {
             </div>
             {rankingModo === 'pago' && (
               <div style={{ fontSize:'.68rem', color:S.muted, marginBottom:'12px' }}>Este es el ranking que compite por los premios mensuales. #{miRankingActual || '—'} es tu posición. Tocá un nombre para ver el desglose de sus puntos.</div>
+            )}
+            {torneosRanking.length > 1 && (
+              <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'8px', marginBottom:'12px', scrollbarWidth:'none', WebkitOverflowScrolling:'touch' }}>
+                {[{ id:null, name:'🌐 Global (todos)' }, ...torneosRanking].map(t => (
+                  <button key={t?.id||'all'} onClick={() => setTorneoFiltroRanking(t?.id||null)}
+                    style={{ flexShrink:0, padding:'6px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.75rem', whiteSpace:'nowrap', background: torneoFiltroRanking===(t?.id||null) ? S.cyan : S.card, color: torneoFiltroRanking===(t?.id||null) ? '#000' : S.muted }}>
+                    {t?.name||'🌐 Global (todos)'}
+                  </button>
+                ))}
+              </div>
             )}
             {rankingActual.length === 0 ? (
               <div style={{ textAlign:'center', padding:'60px 20px', color:S.muted }}><div style={{ fontSize:'2rem', marginBottom:'12px' }}>🏆</div><div>Sin datos de ranking aún</div></div>
