@@ -521,8 +521,13 @@ export default function PlayerTorneoPage() {
             }
           }
         }
-        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales }
+        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales, slotIndex: primero.slot_index }
       })
+      // Mismo orden de casillas que usa el admin (0, 1, 2...) — así la
+      // llave i de esta fase siempre corresponde a ganador(2i) vs
+      // ganador(2i+1) de la fase anterior. Los partidos viejos sin
+      // slot_index (de antes de este cambio) quedan al final.
+      porFase[f].sort((a, b) => (a.slotIndex ?? 999) - (b.slotIndex ?? 999))
     })
     return porFase
   }
@@ -1342,14 +1347,17 @@ export default function PlayerTorneoPage() {
           // Columnas del árbol: fases jugadas + placeholders "por definir", siempre hasta la final
           const columnas = []
           let n = porFase[fasesExist[0]].length
+          let ultimaLlavesReales = null
           for (let idx = FASE_ORDEN_ELIM.indexOf(fasesExist[0]); idx < FASE_ORDEN_ELIM.length; idx++) {
             const f = FASE_ORDEN_ELIM[idx]
             if (porFase[f]) {
               columnas.push({ fase: f, llaves: porFase[f] })
               n = porFase[f].length
+              ultimaLlavesReales = porFase[f]
             } else {
               n = Math.max(Math.floor(n / 2), 1)
-              columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null) })
+              columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null), feeder: ultimaLlavesReales })
+              ultimaLlavesReales = null
             }
           }
 
@@ -1429,11 +1437,32 @@ export default function PlayerTorneoPage() {
                                 : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
                           </div>
                         </div>
-                      ) : (
-                        <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.7rem', fontWeight: '600', background: '#f1f3f4' }}>
-                          Por definir
-                        </div>
-                      ))}
+                      ) : (() => {
+                        const feederA = col.feeder?.[i * 2], feederB = col.feeder?.[i * 2 + 1]
+                        const conocidoA = feederA?.terminada && feederA?.ganador ? feederA.ganador : null
+                        const conocidoB = feederB?.terminada && feederB?.ganador ? feederB.ganador : null
+                        const hayConocido = conocidoA || conocidoB
+                        return (
+                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.7rem', fontWeight: '600', background: '#f1f3f4' }}>
+                            {hayConocido ? (
+                              [conocidoA, conocidoB].map((t, ti) => (
+                                <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 2px', justifyContent: 'center' }}>
+                                  {t ? (
+                                    <>
+                                      <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, background: '#fff' }}>
+                                        {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
+                                      </div>
+                                      <span style={{ fontSize: '.74rem', fontWeight: '800', color: '#1e8e3e' }}>{t.name} ✓</span>
+                                    </>
+                                  ) : (
+                                    <span style={{ fontSize: '.66rem', color: '#9aa0a6', fontStyle: 'italic' }}>rival por definir</span>
+                                  )}
+                                </div>
+                              ))
+                            ) : 'Por definir'}
+                          </div>
+                        )
+                      })())}
                     </div>
                   </div>
                 ))}
