@@ -623,6 +623,8 @@ export default function AdminTorneoDetallePage() {
   // automático de rondas nunca dispare dos generaciones al mismo tiempo por
   // una re-ejecución rápida del efecto antes de que el estado se actualice.
   const generandoRondaRef = useRef(false)
+  // Traba equivalente para el avance por casilla fija (ver intentarAvanzarSlots).
+  const avanzandoSlotsRef = useRef(false)
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
   const [equipoByeId,      setEquipoByeId]      = useState(null) // a quién se le da el pase directo cuando modoImpar==='bye' (null = el último de la reclasificación)
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
@@ -1416,12 +1418,12 @@ export default function AdminTorneoDetallePage() {
         const { fecha, hora } = fechaHoraLlave(i)
         inserts.push({
           tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
-          played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda, matchday: null,
+          played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda, matchday: null, slot_index: i,
         })
         if (idaVuelta) {
           inserts.push({
             tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
-            played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null,
+            played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null, slot_index: i,
           })
         }
       })
@@ -1497,7 +1499,18 @@ export default function AdminTorneoDetallePage() {
             }
           }
         }
-        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales }
+        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales, slotIndex: primero.slot_index }
+      })
+      // Orden estable por casilla (slot_index) — así "llave 0" siempre es la
+      // misma casilla del árbol, sin importar en qué orden hayan quedado los
+      // resultados o si se editó una fecha después. Las llaves viejas de
+      // antes de este cambio (sin slot_index) quedan al final, en el orden
+      // que ya traía la consulta.
+      porFase[f].sort((a, b) => {
+        if (a.slotIndex == null && b.slotIndex == null) return 0
+        if (a.slotIndex == null) return 1
+        if (b.slotIndex == null) return -1
+        return a.slotIndex - b.slotIndex
       })
     })
     return porFase
@@ -2038,22 +2051,88 @@ export default function AdminTorneoDetallePage() {
     fetchPartidos(); fetchBracket()
   }
 
-  // Avance automático de eliminatorias: apenas una ronda queda completa (sin
-  // empates) se arma sola la siguiente, con los ganadores ya puestos en sus
-  // casillas — sin apretar ningún botón. Casos donde SÍ hace falta que el
-  // admin decida (a propósito no se resuelven solos, tal como se pidió):
-  //   - Número IMPAR de equipos vivos: se deja el aviso de siempre (con las
-  //     opciones "entra el mejor perdedor" / "pasa directo el mejor ubicado")
-  //     — recién se genera cuando el admin elige y aprieta el botón ahí.
-  //   - Al llegar a la FINAL habiendo candidatos a tercer puesto: se deja el
-  //     aviso para que el admin decida si arma ese partido junto con la final.
-  // El repechaje y la semifinal-de-3 SÍ se resuelven solos: son deterministas,
-  // no hay ninguna decisión real que tomar ahí.
+  // Avance por CASILLA FIJA: el ganador de la casilla 0 y el de la casilla 1
+  // arman la casilla 0 de la ronda siguiente, el de la 2 y la 3 arman la
+  // casilla 1, etc. — apenas se conocen los DOS ganadores de esa pareja de
+  // casillas, se crea el partido siguiente ya mismo, sin esperar a que
+  // termine el resto de la ronda (así se ve avanzar de una, en vivo).
+  //
+  // Solo actúa en el caso "limpio": cantidad PAR de llaves en la ronda
+  // actual y nadie con pase directo (bye) pendiente de una ronda anterior
+  // sin haber entrado todavía. Si hay algo raro (bye, cantidad impar) no
+  // toca nada — eso lo sigue resolviendo el flujo manual de siempre (ver el
+  // otro efecto más abajo), que usa reclasificación por tabla de grupos.
+  async function intentarAvanzarSlots() {
+    if (avanzandoSlotsRef.current) return
+    avanzandoSlotsRef.current = true
+    try {
+      const porFase = getLlavesPorFase()
+      const fasesExist = FASE_ORDEN.filter(f => porFase[f])
+      if (fasesExist.length === 0) return
+      const actual = fasesExist[fasesExist.length - 1]
+      if (actual === 'final') return
+      const llaves = porFase[actual]
+      if (llaves.length < 2 || llaves.length % 2 !== 0) return // impar/bye — a mano
+
+      // Si en la primera fase de eliminatorias falta por entrar el equipo
+      // que tenía pase directo (bye inicial), no es el caso limpio todavía.
+      if (actual === fasesExist[0] && torneo?.bye_inicial_team_id) {
+        const enFase = new Set(llaves.flatMap(l => [l.teamA.id, l.teamB.id]))
+        if (!enFase.has(torneo.bye_inicial_team_id)) return
+      }
+
+      const proximaFase = getFaseValue(llaves.length)
+      // La FINAL se deja siempre para el flujo manual de siempre (el aviso
+      // de "ronda completa" con el botón) — así el admin sigue pudiendo
+      // elegir si se juega también el partido por el tercer puesto, tal
+      // como se pidió explícitamente que NO se resuelva solo.
+      if (proximaFase === 'final') return
+      const rondaNombre = getRondaNombre(llaves.length)
+      const conVuelta = llaves.some(l => l.matches.length > 1)
+      const inserts = []
+      const resumen = []
+
+      for (let i = 0; i * 2 + 1 < llaves.length; i++) {
+        const A = llaves[i * 2], B = llaves[i * 2 + 1]
+        if (!A.terminada || !B.terminada) continue
+        if (!A.ganador || !B.ganador) continue // empate sin penales resueltos todavía
+        const yaExiste = bracket.some(m => m.fase === proximaFase && m.slot_index === i)
+        if (yaExiste) continue
+        const c = previewCalendario?.[proximaFase]?.[i]
+        const fecha = c?.fecha || fechaRonda
+        const hora  = c?.hora  || horaRonda || '08:00'
+        if (!fecha) continue
+        const playedAt = `${fecha}T${hora}:00-05:00`
+        inserts.push({ tournament_id: id, home_team_id: A.ganador.id, away_team_id: B.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: rondaNombre, matchday: null, slot_index: i })
+        if (conVuelta) inserts.push({ tournament_id: id, home_team_id: B.ganador.id, away_team_id: A.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: `${rondaNombre} (vuelta)`, matchday: null, slot_index: i })
+        resumen.push(`${A.ganador.name} vs ${B.ganador.name}`)
+      }
+
+      if (inserts.length === 0) return
+      const { error } = await supabase.from('matches').insert(inserts)
+      if (error) { console.error('Avance automático de casillas:', error); return }
+      showMsg(`⚡ Avanzan a ${FASE_LABEL[proximaFase]}: ${resumen.join(', ')} ✓`)
+      fetchPartidos(); fetchBracket()
+    } finally {
+      avanzandoSlotsRef.current = false
+    }
+  }
+
   useEffect(() => {
     if (bracket.length === 0) return
-    // rankPorReclasificacion (para armar la siguiente ronda) necesita la
-    // tabla de grupos, que sale de equipos+partidos — hasta que eso no
-    // termine de cargar no hay que disparar el avance solo.
+    intentarAvanzarSlots()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bracket])
+
+  // Casos especiales que el avance por casilla fija de arriba NO resuelve
+  // (porque no son una ronda con cantidad par de llaves): el repechaje de la
+  // semifinal-de-3 y la semifinal-de-3 misma se resuelven solos (son
+  // deterministas, no hay ninguna decisión real que tomar ahí) usando el
+  // flujo de reclasificación de siempre. El resto de casos con número IMPAR
+  // de equipos, o la final con candidatos a tercer puesto, se dejan con el
+  // aviso de siempre para que el admin decida.
+  useEffect(() => {
+    if (bracket.length === 0) return
     if (!datosPreviewListos) return
     if (generandoRonda || generandoRondaRef.current) return
     const est = getEstadoEliminatorias()
@@ -2061,11 +2140,7 @@ export default function AdminTorneoDetallePage() {
     if (est.actual === 'final') return
     if (!est.completa || est.hayEmpates) return
     if (est.repechajePendiente) { handleGenerarSiguienteRonda(); return }
-    const esImpar = est.vivos.length % 2 !== 0 && est.vivos.length > 3
-    if (esImpar) return // se deja el aviso — decide el admin
-    const proximaEsFinal = est.vivos.length === 2
-    if (proximaEsFinal && est.perdedoresElegibles.length >= 2) return // decide el admin (tercer puesto)
-    handleGenerarSiguienteRonda()
+    if (est.vivos.length === 3) { handleGenerarSiguienteRonda(); return }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bracket, generandoRonda, datosPreviewListos])
   // ── TABLA GENERAL ───────────────────────────────────
@@ -4246,17 +4321,25 @@ export default function AdminTorneoDetallePage() {
                 ? 'Semifinal (1° vs 2°)'
                 : getRondaNombre(esImpar && modoImpar === 'mejor_perdedor' ? vivos.length + 1 : vivos.length)
 
-            // Columnas del árbol: fases jugadas + placeholders, siempre hasta la final
+            // Columnas del árbol: fases jugadas + placeholders, siempre hasta la final.
+            // La PRIMERA columna todavía sin jugar guarda también "feeder": las
+            // llaves de la columna anterior, para poder mostrar el nombre del
+            // equipo que YA se sabe (ganó su llave) aunque el partido real
+            // todavía no exista porque falta el rival (que es la otra llave
+            // de esa misma pareja).
             const columnas = []
             let n = porFase[fasesExist[0]].length
+            let ultimaLlavesReales = null
             for (let idx = FASE_ORDEN.indexOf(fasesExist[0]); idx < FASE_ORDEN.length; idx++) {
               const f = FASE_ORDEN[idx]
               if (porFase[f]) {
                 columnas.push({ fase: f, llaves: porFase[f] })
                 n = porFase[f].length
+                ultimaLlavesReales = porFase[f]
               } else {
                 n = Math.max(Math.floor(n / 2), 1)
-                columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null) })
+                columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null), feeder: ultimaLlavesReales })
+                ultimaLlavesReales = null // el feeder solo aplica a la primera columna futura
               }
             }
 
@@ -4412,22 +4495,45 @@ export default function AdminTorneoDetallePage() {
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '14px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
-                            Por definir
-                            <div style={{ fontSize: '.62rem', fontWeight: '500', color: '#9aa0a6', marginTop: '4px', marginBottom: '4px' }}>
-                              Podés ponerle fecha/hora desde ya
+                        ) : (() => {
+                          // ¿Ya se sabe alguno de los dos equipos de esta casilla? (ganó su
+                          // llave en la ronda anterior, aunque el rival todavía no se sepa)
+                          const feederA = col.feeder?.[i * 2], feederB = col.feeder?.[i * 2 + 1]
+                          const conocidoA = feederA?.terminada && feederA?.ganador ? feederA.ganador : null
+                          const conocidoB = feederB?.terminada && feederB?.ganador ? feederB.ganador : null
+                          const hayConocido = conocidoA || conocidoB
+                          return (
+                            <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '14px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
+                              {hayConocido ? (
+                                <div style={{ marginBottom: '6px' }}>
+                                  {[conocidoA, conocidoB].map((t, ti) => (
+                                    <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 2px', justifyContent: 'center' }}>
+                                      {t ? (
+                                        <>
+                                          <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={t.logo_url} name={t.name} size={18}/></div>
+                                          <span style={{ fontSize: '.74rem', fontWeight: '800', color: '#1e8e3e' }}>{t.name} ✓</span>
+                                        </>
+                                      ) : (
+                                        <span style={{ fontSize: '.68rem', color: '#9aa0a6', fontStyle: 'italic' }}>rival por definir</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : 'Por definir'}
+                              <div style={{ fontSize: '.62rem', fontWeight: '500', color: '#9aa0a6', marginTop: '4px', marginBottom: '4px' }}>
+                                Podés ponerle fecha/hora desde ya
+                              </div>
+                              <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                                <input type="date" value={previewCalendario?.[col.fase]?.[i]?.fecha || ''}
+                                  onChange={e => actualizarCalendarioLlave(col.fase, i, 'fecha', e.target.value)}
+                                  style={{ flex: 1, minWidth: 0, fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
+                                <input type="time" value={previewCalendario?.[col.fase]?.[i]?.hora || ''}
+                                  onChange={e => actualizarCalendarioLlave(col.fase, i, 'hora', e.target.value)}
+                                  style={{ width: '62px', fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
+                              </div>
                             </div>
-                            <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
-                              <input type="date" value={previewCalendario?.[col.fase]?.[i]?.fecha || ''}
-                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'fecha', e.target.value)}
-                                style={{ flex: 1, minWidth: 0, fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
-                              <input type="time" value={previewCalendario?.[col.fase]?.[i]?.hora || ''}
-                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'hora', e.target.value)}
-                                style={{ width: '62px', fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
-                            </div>
-                          </div>
-                        ))}
+                          )
+                        })())}
                       </div>
                     </div>
                   ))}
