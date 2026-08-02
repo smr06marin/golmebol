@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
 import PantallaColores from './PantallaColores'
@@ -9,6 +9,7 @@ import AlertaNumeroDesconocido from './AlertaNumeroDesconocido'
 import AlertaFaltasEquipo from './AlertaFaltasEquipo'
 import ModalCierrePartido from './ModalCierrePartido'
 import { FONDO, CIAN, formatTiempo } from './estilosRapida'
+import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeuda'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -65,6 +66,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const [alertaFaltas, setAlertaFaltas] = useState(null) // { team }
   const [mostrarCierre, setMostrarCierre] = useState(false)
   const [guardandoDB, setGuardandoDB] = useState(false)
+  const [finanzasConfig, setFinanzasConfig] = useState(null) // se guarda para poder recalcular la deuda en vivo
+  const [deudaDetalle, setDeudaDetalle] = useState({}) // player_id -> [{tipo, cantidad, monto, fecha, home_team_id, away_team_id}]
+  const [equiposNombre, setEquiposNombre] = useState({}) // team_id -> name
 
   const remoteTimer = useRef(null)
   const alarmaRef = useRef(null)
@@ -75,6 +79,39 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => { fetchTodo() }, [])
+
+  // Si se registra el pago de una tarjeta desde otro lado mientras esta
+  // planilla rápida está abierta, se libera al jugador acá en vivo (sin
+  // tocar goles/números/eventos ya cargados) — igual que en la planilla completa.
+  const refetchDeudaTarjetas = useCallback(async () => {
+    if (!partido?.tournament_id || !finanzasConfig) return
+    const { data } = await supabase.from('player_match_stats')
+      .select('player_id, match_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid')
+      .eq('tournament_id', partido.tournament_id)
+    const matchesInfo = await fetchMatchesInfo((data || []).map(s => s.match_id))
+    const { idsDebenTarjeta, detallePorJugador, idsEquipos } = construirDeudaTarjetas(data, finanzasConfig, matchesInfo)
+    setDeudaDetalle(detallePorJugador)
+    if (idsEquipos.size > 0) {
+      supabase.from('teams').select('id,name').in('id', [...idsEquipos]).then(({ data: eq }) => {
+        if (eq) setEquiposNombre(prev => { const m = { ...prev }; eq.forEach(t => { m[t.id] = t.name }); return m })
+      })
+    }
+    setJugadoresLocal(prev => prev.map(j => j.id ? { ...j, debeTarjeta: idsDebenTarjeta.has(j.id) } : j))
+    setJugadoresVisitante(prev => prev.map(j => j.id ? { ...j, debeTarjeta: idsDebenTarjeta.has(j.id) } : j))
+    // Si el jugador que tenía abierto el modal de asignar número ya pagó, se desbloquea solo.
+    setModalFoto(prev => (prev && prev.jugador?.id && !idsDebenTarjeta.has(prev.jugador.id)) ? { ...prev, jugador: { ...prev.jugador, debeTarjeta: false } } : prev)
+  }, [partido?.tournament_id, finanzasConfig])
+
+  useEffect(() => {
+    if (!partido?.tournament_id) return
+    const channel = supabase
+      .channel(`planilla-rapida-deuda-tarjetas-${partido.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'player_match_stats', filter: `tournament_id=eq.${partido.tournament_id}` }, () => {
+        refetchDeudaTarjetas()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [partido?.tournament_id, refetchDeudaTarjetas])
 
   // Pantalla completa real (oculta también la barra del navegador móvil),
   // igual que la planilla completa — se sale sola al desmontar el componente.
@@ -114,7 +151,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
       // Tarjetas sin pagar de este torneo: para avisarle al árbitro en la planilla
-      supabase.from('player_match_stats').select('player_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
+      // (con match_id para poder traer aparte los datos del partido y armar el detalle)
+      supabase.from('player_match_stats').select('player_id, match_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
     ])
     const modalidadDB = torn.data?.modalidad
     const dur = modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
@@ -133,13 +171,16 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       }
     }
 
-    // Jugadores que deben alguna tarjeta de este torneo (solo si el torneo cobra por tarjetas)
+    // Jugadores que deben alguna tarjeta de este torneo (solo si el torneo cobra
+    // por tarjetas) — con detalle (tipo, monto, partido) para el modal de asignar número.
     const fcTorneoDeuda = torn.data?.finanzas_config || {}
-    const cobraTarjetas = (fcTorneoDeuda.precio_amarilla || 0) + (fcTorneoDeuda.precio_azul || 0) + (fcTorneoDeuda.precio_roja || 0) > 0
-    const idsDebenTarjeta = new Set()
-    if (cobraTarjetas) {
-      (tarjetasDB?.data || []).forEach(s => {
-        if ((s.yellow_cards > 0 && !s.yellow_paid) || (s.blue_cards > 0 && !s.blue_paid) || (s.red_cards > 0 && !s.red_paid)) idsDebenTarjeta.add(s.player_id)
+    setFinanzasConfig(fcTorneoDeuda)
+    const matchesInfoDeuda = await fetchMatchesInfo((tarjetasDB?.data || []).map(s => s.match_id))
+    const { idsDebenTarjeta, detallePorJugador, idsEquipos } = construirDeudaTarjetas(tarjetasDB?.data, fcTorneoDeuda, matchesInfoDeuda)
+    setDeudaDetalle(detallePorJugador)
+    if (idsEquipos.size > 0) {
+      supabase.from('teams').select('id,name').in('id', [...idsEquipos]).then(({ data }) => {
+        if (data) setEquiposNombre(prev => { const m = { ...prev }; data.forEach(t => { m[t.id] = t.name }); return m })
       })
     }
 
@@ -655,7 +696,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         volviendoDesdePartido={volviendoDesdePartido}
       />
       {modalFoto && (
-        <ModalFotoNumero jugador={modalFoto.jugador} onConfirmar={confirmarNumero} onQuitar={quitarNumero} onCerrar={() => setModalFoto(null)}/>
+        <ModalFotoNumero jugador={modalFoto.jugador} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
+          onConfirmar={confirmarNumero} onQuitar={quitarNumero} onCerrar={() => setModalFoto(null)}/>
       )}
     </>
   )

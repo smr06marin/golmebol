@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../lib/predix'
 import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
+import { construirDeudaTarjetas, fetchMatchesInfo } from '../lib/tarjetasDeuda'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -121,6 +122,51 @@ function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
           transition: 'all .12s ease',
         }}/>
     </td>
+  )
+}
+
+// Detalle de qué tarjeta(s) sin pagar tiene un jugador — se abre al hacer
+// click en el aviso "⚠️ DEBE TARJETA" o en la casilla bloqueada del número
+// de camiseta. Se actualiza solo (y se cierra solo si ya pagó) por la
+// suscripción en tiempo real a player_match_stats.
+function ModalDeudaTarjeta({ jugador, items, equiposNombre, onClose }) {
+  const total = items.reduce((sum, it) => sum + (it.monto || 0), 0)
+  const iconoTipo = { Amarilla: '🟨', Azul: '🟦', Roja: '🟥' }
+  const colorTipo = { Amarilla: '#c46200', Azul: '#1a56c7', Roja: '#d93025' }
+  return (
+    <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: '1.6rem', marginBottom: '4px' }}>⚠️</div>
+        <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>{jugador?.nombre || 'Jugador'}</div>
+        <div style={{ fontSize: '.82rem', color: '#5f6368', marginBottom: '14px' }}>
+          Debe tarjeta(s) sin pagar de partidos anteriores de este torneo. No puede salir con número de camiseta en esta planilla hasta ponerse al día.
+        </div>
+        {items.length === 0 ? (
+          <div style={{ fontSize: '.85rem', color: '#5f6368', fontStyle: 'italic' }}>Sin detalle disponible.</div>
+        ) : items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid #eee' }}>
+            <div>
+              <span style={{ fontWeight: '800', color: colorTipo[it.tipo] || '#202124', fontSize: '.88rem' }}>{iconoTipo[it.tipo] || '🃏'} {it.tipo}{it.cantidad > 1 ? ` x${it.cantidad}` : ''}</span>
+              {(it.home_team_id || it.away_team_id) && (
+                <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '2px' }}>
+                  {equiposNombre?.[it.home_team_id] || '?'} vs {equiposNombre?.[it.away_team_id] || '?'}
+                  {it.fecha ? ' · ' + new Date(it.fecha).toLocaleDateString('es-CO') : ''}
+                </div>
+              )}
+            </div>
+            {it.monto > 0 && <div style={{ fontWeight: '800', fontSize: '.88rem', color: '#202124', whiteSpace: 'nowrap' }}>${it.monto.toLocaleString('es-CO')}</div>}
+          </div>
+        ))}
+        {total > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', fontWeight: '800', fontSize: '.95rem' }}>
+            <span>Total a pagar</span><span>${total.toLocaleString('es-CO')}</span>
+          </div>
+        )}
+        <button onClick={onClose} style={{ marginTop: '18px', width: '100%', padding: '11px', background: '#1a3a8a', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '.9rem', cursor: 'pointer' }}>
+          Entendido
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -300,6 +346,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [mvpId,              setMvpId]              = useState('')
   const [showEspecial,       setShowEspecial]       = useState(null)
   const [logEdicion,         setLogEdicion]         = useState([]) // historial de ediciones después de cerrada
+  const [deudaDetalle,       setDeudaDetalle]       = useState({}) // player_id -> [{tipo, cantidad, monto, fecha, home_team_id, away_team_id}]
+  const [equiposNombre,      setEquiposNombre]      = useState({}) // team_id -> name (para mostrar rival en el detalle de deuda)
+  const [modalDeudaJugador,  setModalDeudaJugador]  = useState(null) // jugador clickeado para ver detalle de tarjeta(s) sin pagar
 
   const [hubopenales,      setHuboPenales]      = useState(false)
   const [penalesGanador,   setPenalesGanador]   = useState('')
@@ -605,6 +654,44 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido])
 
   useEffect(() => { fetchTodo() }, [])
+
+  // Si un admin registra el pago de una tarjeta desde otro lado (o desde otro
+  // celular) mientras esta planilla está abierta, hay que "liberar" al
+  // jugador acá mismo en vivo — sin refrescar la página completa, para no
+  // perder lo que el árbitro ya venía llenando (goles, faltas, otros
+  // números de camiseta, etc). Solo se toca debeTarjeta/deudaDetalle.
+  const refetchDeudaTarjetas = useCallback(async () => {
+    if (!partido?.tournament_id) return
+    const fc = torneo?.finanzas_config
+    if (!fc) return // torneo aún no cargado (o no cobra tarjetas, no hay nada que refrescar)
+    const { data } = await supabase.from('player_match_stats')
+      .select('player_id, match_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid')
+      .eq('tournament_id', partido.tournament_id)
+    const matchesInfo = await fetchMatchesInfo((data || []).map(s => s.match_id))
+    const { idsDebenTarjeta, detallePorJugador, idsEquipos } = construirDeudaTarjetas(data, fc, matchesInfo)
+    setDeudaDetalle(detallePorJugador)
+    if (idsEquipos.size > 0) {
+      supabase.from('teams').select('id,name').in('id', [...idsEquipos]).then(({ data: eq }) => {
+        if (eq) setEquiposNombre(prev => { const m = { ...prev }; eq.forEach(t => { m[t.id] = t.name }); return m })
+      })
+    }
+    setJugadoresLocal(prev => prev.map(j => j.id ? { ...j, debeTarjeta: idsDebenTarjeta.has(j.id) } : j))
+    setJugadoresVisitante(prev => prev.map(j => j.id ? { ...j, debeTarjeta: idsDebenTarjeta.has(j.id) } : j))
+    // Si el jugador que estaba viendo el modal de deuda ya pagó, cerrarlo solo.
+    setModalDeudaJugador(prev => (prev && !idsDebenTarjeta.has(prev.id)) ? null : prev)
+  }, [partido?.tournament_id, torneo?.finanzas_config])
+
+  useEffect(() => {
+    if (!partido?.tournament_id) return
+    const channel = supabase
+      .channel(`planilla-deuda-tarjetas-${partido.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'player_match_stats', filter: `tournament_id=eq.${partido.tournament_id}` }, () => {
+        refetchDeudaTarjetas()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [partido?.tournament_id, refetchDeudaTarjetas])
+
   useEffect(() => {
     const close = () => setDropdownOpen(null)
     window.addEventListener('click', close)
@@ -719,7 +806,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       // Jugadores sancionados: no se les deja aparecer en la planilla de este torneo
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
       // Tarjetas sin pagar (de este torneo): para avisarle al árbitro en la planilla
-      supabase.from('player_match_stats').select('player_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
+      // (con match_id para poder traer aparte los datos del partido y mostrar
+      // el detalle: qué tarjeta, de qué partido/rival, y cuánto se debe)
+      supabase.from('player_match_stats').select('player_id, match_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
     ])
     setLogEdicion(editLogDB?.data || [])
 
@@ -736,13 +825,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
 
     // Jugadores que deben alguna tarjeta de este torneo (solo si el torneo
-    // cobra por tarjetas) — se les muestra un aviso chiquito en la planilla.
+    // cobra por tarjetas) — se les muestra un aviso chiquito en la planilla,
+    // y al hacer click ven el detalle (qué tarjeta, de qué partido, cuánto).
     const fcTorneoDeuda = torn.data?.finanzas_config || {}
-    const cobraTarjetas = (fcTorneoDeuda.precio_amarilla || 0) + (fcTorneoDeuda.precio_azul || 0) + (fcTorneoDeuda.precio_roja || 0) > 0
-    const idsDebenTarjeta = new Set()
-    if (cobraTarjetas) {
-      (tarjetasDB?.data || []).forEach(s => {
-        if ((s.yellow_cards > 0 && !s.yellow_paid) || (s.blue_cards > 0 && !s.blue_paid) || (s.red_cards > 0 && !s.red_paid)) idsDebenTarjeta.add(s.player_id)
+    const matchesInfoDeuda = await fetchMatchesInfo((tarjetasDB?.data || []).map(s => s.match_id))
+    const { idsDebenTarjeta, detallePorJugador, idsEquipos } = construirDeudaTarjetas(tarjetasDB?.data, fcTorneoDeuda, matchesInfoDeuda)
+    setDeudaDetalle(detallePorJugador)
+    if (idsEquipos.size > 0) {
+      supabase.from('teams').select('id,name').in('id', [...idsEquipos]).then(({ data }) => {
+        if (data) setEquiposNombre(prev => { const m = { ...prev }; data.forEach(t => { m[t.id] = t.name }); return m })
       })
     }
 
@@ -1586,11 +1677,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   </span>
                   {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
-                  {j.debeTarjeta && <span title="Tiene una tarjeta de un partido anterior sin pagar" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '4px', padding: '1px 4px' }}>⚠️ DEBE TARJETA</span>}
+                  {j.debeTarjeta && <span onClick={() => setModalDeudaJugador(j)} title="Click para ver qué tarjeta debe" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '4px', padding: '1px 4px', cursor: 'pointer' }}>⚠️ DEBE TARJETA</span>}
                   {j.debeFoto && <span title="El admin marcó una de sus fotos (tarjeta, perfil o cédula) para cambiar" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '4px', padding: '1px 4px' }}>📸 CAMBIAR FOTO</span>}
                 </td>
                 {(hayArqueroEquipo || sinRegistro) ? (
-                  <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+                  j.debeTarjeta ? (
+                    <td onClick={() => setModalDeudaJugador(j)} title="Debe tarjeta sin pagar — no puede registrar número hasta ponerse al día. Click para ver el detalle." style={{ ...cell, background: '#ffd6d6', padding: '1px', cursor: 'pointer' }}>
+                      {j.numero ? <span style={{ fontSize: '9px', fontWeight: '800', color: '#d93025' }}>{j.numero} 🔒</span> : <span style={{ fontSize: '12px' }}>🔒</span>}
+                    </td>
+                  ) : (
+                    <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+                  )
                 ) : (
                   <td style={{ ...cell, background: '#fff3cd', padding: '1px' }}>
                     <button onClick={() => seleccionarArquero(equipo, j)} title="Marcar como arquero titular" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '2px', lineHeight: 1 }}>🧤</button>
@@ -1765,6 +1862,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
       {showEspecial && (
         <ModalEspecial tipo={showEspecial} partido={partido} onConfirmar={handleConfirmarEspecial} onCancelar={() => setShowEspecial(null)}/>
+      )}
+
+      {modalDeudaJugador && (
+        <ModalDeudaTarjeta jugador={modalDeudaJugador} items={deudaDetalle[modalDeudaJugador.id] || []} equiposNombre={equiposNombre} onClose={() => setModalDeudaJugador(null)}/>
       )}
 
       {/* Aviso: faltan firmas de los árbitros para poder cerrar/guardar */}
