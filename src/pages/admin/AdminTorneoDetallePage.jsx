@@ -1907,6 +1907,20 @@ export default function AdminTorneoDetallePage() {
     setTab('actividad')
   }
 
+  // Fecha/hora planeada por llave (posición dentro de la ronda) — se puede ir
+  // editando en cualquier momento, incluso ANTES de que se sepa qué equipos
+  // juegan ahí (columnas "Por definir" del árbol). Así, cuando los equipos
+  // avanzan a esa fase, la fecha/hora ya está lista y visible para todos.
+  // Se reusa tanto en la vista previa antes de crear el bracket como en las
+  // columnas futuras del árbol ya creado.
+  function actualizarCalendarioLlave(fase, idx, campo, valor) {
+    setPreviewCalendario(prev => {
+      const arr = Array.isArray(prev?.[fase]) ? [...prev[fase]] : []
+      arr[idx] = { ...(arr[idx] || {}), [campo]: valor }
+      return { ...prev, [fase]: arr }
+    })
+  }
+
   async function handleGenerarSiguienteRonda() {
     const est = getEstadoEliminatorias()
     if (!est) return
@@ -1924,7 +1938,14 @@ export default function AdminTorneoDetallePage() {
     }
 
     const conVuelta = est.llaves.some(l => l.matches.length > 1)
-    const base = { tournament_id: id, played_at: `${fechaRonda}T${horaRonda}:00-05:00`, status: 'scheduled', matchday: null }
+    const baseSinFecha = { tournament_id: id, status: 'scheduled', matchday: null }
+    const base = { ...baseSinFecha, played_at: `${fechaRonda}T${horaRonda}:00-05:00` }
+    // Si a alguna llave del árbol ya le pusiste fecha/hora puntual (en las
+    // columnas "Por definir"), se usa esa — si no, la fecha general de acá arriba.
+    const fechaHoraLlave = (fase, idx) => {
+      const c = previewCalendario?.[fase]?.[idx]
+      return { fecha: c?.fecha || fechaRonda, hora: c?.hora || horaRonda || '08:00' }
+    }
     const inserts = []
 
     // Repechaje de la semifinal de 3: perdedor del 1v2 contra el 3°
@@ -1972,10 +1993,14 @@ export default function AdminTorneoDetallePage() {
     const fase  = getFaseValue(totalVivos)
     const ronda = getRondaNombre(totalVivos)
 
+    let llaveIdx = 0
     for (let i = 0; i + 1 < equiposRonda.length; i += 2) {
       const local = equiposRonda[i], visitante = equiposRonda[i + 1]
-      inserts.push({ ...base, home_team_id: local.id, away_team_id: visitante.id, fase, ronda })
-      if (conVuelta) inserts.push({ ...base, home_team_id: visitante.id, away_team_id: local.id, fase, ronda: `${ronda} (vuelta)` })
+      const { fecha, hora } = fechaHoraLlave(fase, llaveIdx)
+      const playedAt = `${fecha}T${hora}:00-05:00`
+      inserts.push({ ...baseSinFecha, played_at: playedAt, home_team_id: local.id, away_team_id: visitante.id, fase, ronda })
+      if (conVuelta) inserts.push({ ...baseSinFecha, played_at: playedAt, home_team_id: visitante.id, away_team_id: local.id, fase, ronda: `${ronda} (vuelta)` })
+      llaveIdx++
     }
 
     // Partido por el tercer puesto (junto con la final)
@@ -3843,14 +3868,9 @@ export default function AdminTorneoDetallePage() {
             }
 
             // Cada partido (llave) tiene su propio horario — se guarda por
-            // posición dentro de la ronda, no uno solo para toda la ronda.
-            function actualizarCalendarioLlave(fase, idx, campo, valor) {
-              setPreviewCalendario(prev => {
-                const arr = Array.isArray(prev?.[fase]) ? [...prev[fase]] : []
-                arr[idx] = { ...(arr[idx] || {}), [campo]: valor }
-                return { ...prev, [fase]: arr }
-              })
-            }
+            // posición dentro de la ronda, no uno solo para toda la ronda
+            // (actualizarCalendarioLlave está definida a nivel de componente,
+            // se reusa también en el árbol ya creado más abajo).
 
             return (
               <div style={{ marginBottom: '20px' }}>
@@ -4340,8 +4360,19 @@ export default function AdminTorneoDetallePage() {
                             )}
                           </div>
                         ) : (
-                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
+                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '14px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
                             Por definir
+                            <div style={{ fontSize: '.62rem', fontWeight: '500', color: '#9aa0a6', marginTop: '4px', marginBottom: '4px' }}>
+                              Podés ponerle fecha/hora desde ya
+                            </div>
+                            <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                              <input type="date" value={previewCalendario?.[col.fase]?.[i]?.fecha || ''}
+                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'fecha', e.target.value)}
+                                style={{ flex: 1, minWidth: 0, fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
+                              <input type="time" value={previewCalendario?.[col.fase]?.[i]?.hora || ''}
+                                onChange={e => actualizarCalendarioLlave(col.fase, i, 'hora', e.target.value)}
+                                style={{ width: '62px', fontSize: '.62rem', padding: '3px 2px', border: '1px solid #dadce0', borderRadius: '5px', color: '#5f6368', background: '#fff' }}/>
+                            </div>
                           </div>
                         ))}
                       </div>

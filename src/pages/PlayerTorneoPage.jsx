@@ -385,6 +385,13 @@ export default function PlayerTorneoPage() {
 
   useEffect(() => { fetchTodo() }, [id])
 
+  // Ya pasamos a eliminatorias directas (hay árbol real) → los grupos dejan de
+  // ser lo relevante, así que si el jugador estaba viendo "Posiciones" (que ya
+  // no va a estar en las pestañas) lo pasamos solo a "Llaves".
+  useEffect(() => {
+    if (bracket.length > 0 && tab === 'posiciones') setTab('llaves')
+  }, [bracket.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // En vivo: cuando alguien (árbitro/admin) registra o edita un resultado de
   // este torneo, Supabase avisa por websocket y refrescamos partidos + árbol
   // de eliminatorias + goleadores solos, sin que el jugador tenga que recargar
@@ -809,9 +816,14 @@ export default function PlayerTorneoPage() {
       </div>
 
       {/* Tabs — "Llaves" aparece si ya hay árbol real, o si hay suficientes
-          equipos/grupos como para armar al menos una proyección en vivo */}
+          equipos/grupos como para armar al menos una proyección en vivo.
+          "Posiciones" (grupos) se quita apenas arranca la fase de
+          eliminatorias directas — ya no aplica, lo que importa es el árbol. */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px', overflowX: 'auto' }}>
-        {((bracket.length > 0 || grupos.length > 0 || equipos.length >= 2) ? [...TABS, { id: 'llaves', label: '🏆 Llaves' }] : TABS).map(t => (
+        {(bracket.length > 0
+          ? [...TABS.filter(t => t.id !== 'posiciones'), { id: 'llaves', label: '🏆 Llaves' }]
+          : (grupos.length > 0 || equipos.length >= 2) ? [...TABS, { id: 'llaves', label: '🏆 Llaves' }] : TABS
+        ).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {t.label}
