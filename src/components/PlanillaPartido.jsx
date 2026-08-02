@@ -146,7 +146,12 @@ function ModalDeudaTarjeta({ jugador, items, equiposNombre, onClose }) {
         ) : items.map((it, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid #eee' }}>
             <div>
-              <span style={{ fontWeight: '800', color: colorTipo[it.tipo] || '#202124', fontSize: '.88rem' }}>{iconoTipo[it.tipo] || '🃏'} {it.tipo}{it.cantidad > 1 ? ` x${it.cantidad}` : ''}</span>
+              <span style={{ fontWeight: '800', color: colorTipo[it.tipo] || '#202124', fontSize: '.88rem' }}>
+                {(it.tiposDelPartido || [it.tipo]).map(t => iconoTipo[t] || '🃏').join(' ')} {(it.tiposDelPartido || [it.tipo]).join(' + ')}
+              </span>
+              {it.tiposDelPartido?.length > 1 && (
+                <div style={{ fontSize: '.68rem', color: '#5f6368' }}>Varias en el mismo partido — se cobra solo la de mayor valor</div>
+              )}
               {(it.home_team_id || it.away_team_id) && (
                 <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '2px' }}>
                   {equiposNombre?.[it.home_team_id] || '?'} vs {equiposNombre?.[it.away_team_id] || '?'}

@@ -37,7 +37,12 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
               <div style={{ fontSize: '.75rem', color: TEXTO_TENUE }}>Sin detalle disponible.</div>
             ) : deudaItems.map((it, i) => (
               <div key={i} style={{ fontSize: '.75rem', color: TEXTO, marginBottom: '5px' }}>
-                <span style={{ fontWeight: '700' }}>{iconoTipo[it.tipo] || '🃏'} {it.tipo}{it.cantidad > 1 ? ` x${it.cantidad}` : ''}</span>
+                <span style={{ fontWeight: '700' }}>
+                  {(it.tiposDelPartido || [it.tipo]).map(t => iconoTipo[t] || '🃏').join(' ')} {(it.tiposDelPartido || [it.tipo]).join(' + ')}
+                </span>
+                {it.tiposDelPartido?.length > 1 && (
+                  <div style={{ color: TEXTO_TENUE, fontSize: '.65rem' }}>Varias en el mismo partido — se cobra solo la de mayor valor</div>
+                )}
                 {(it.home_team_id || it.away_team_id) && (
                   <div style={{ color: TEXTO_TENUE, fontSize: '.68rem' }}>{equiposNombre[it.home_team_id] || '?'} vs {equiposNombre[it.away_team_id] || '?'}{it.fecha ? ' · ' + new Date(it.fecha).toLocaleDateString('es-CO') : ''}</div>
                 )}

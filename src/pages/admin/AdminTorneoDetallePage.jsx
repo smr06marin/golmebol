@@ -1614,13 +1614,15 @@ export default function AdminTorneoDetallePage() {
       eventos = evs2 || []
     }
 
-    // Normalizar: filas { team_id, player_id, nombre, am, az, rj }
+    // Normalizar: filas { team_id, player_id, match_id, nombre, am, az, rj }
     // Si un partido tiene eventos de tarjeta, manda el evento; si no tiene
-    // ninguno (planilla vieja), se usan sus estadísticas.
+    // ninguno (planilla vieja), se usan sus estadísticas. match_id se guarda
+    // para poder agrupar por partido más abajo (regla: si un jugador tiene
+    // varias tarjetas en el MISMO partido, solo se cobra la de mayor valor).
     const partidosConEventos = new Set(eventos.map(e => e.match_id))
     const filasTarjetas = []
     eventos.forEach(e => filasTarjetas.push({
-      team_id: e.team_id, player_id: e.player_id,
+      team_id: e.team_id, player_id: e.player_id, match_id: e.match_id,
       nombre: e.players?.name || (e.player_nombre ? `${e.player_nombre} (sin registro)` : 'Jugador sin registro'),
       am: e.event_type === 'yellow_card' ? 1 : 0,
       az: e.event_type === 'blue_card'   ? 1 : 0,
@@ -1630,7 +1632,7 @@ export default function AdminTorneoDetallePage() {
       if (partidosConEventos.has(s.match_id)) return
       const am = s.yellow_cards || 0, az = s.blue_cards || 0, rj = s.red_cards || 0
       if (am + az + rj === 0) return
-      filasTarjetas.push({ team_id: s.team_id, player_id: s.player_id, nombre: s.players?.name, am, az, rj })
+      filasTarjetas.push({ team_id: s.team_id, player_id: s.player_id, match_id: s.match_id, nombre: s.players?.name, am, az, rj })
     })
     setStatsTarjetas(filasTarjetas)
   }
@@ -1661,15 +1663,29 @@ export default function AdminTorneoDetallePage() {
     // Tarjetas por jugador (filas ya normalizadas en fetchFinanzas). No se
     // omite a nadie aunque el precio esté en $0: la tarjeta se ve igual.
     // Los sin registro se identifican por su nombre (no se fusionan entre sí).
-    const porJugador = {}
+    //
+    // REGLA: si a un jugador le sacan varias tarjetas en el MISMO partido, solo
+    // se le cobra la de mayor valor de ese partido (no la suma de todas). Por
+    // eso primero se agrupa por partido y se calcula el máximo ahí, y recién
+    // después se suma entre partidos distintos. am/az/rj siguen sumando TODAS
+    // las tarjetas (para mostrar el detalle completo), solo "valor" cambia.
+    const porJugadorPartido = {}
     statsTarjetas.forEach(s => {
       if ((s.am || 0) + (s.az || 0) + (s.rj || 0) === 0) return
-      const key = `${s.team_id}|${s.player_id || 'nr:' + (s.nombre || 'sin nombre')}`
-      if (!porJugador[key]) porJugador[key] = { team_id: s.team_id, player_id: s.player_id, nombre: s.nombre || 'Jugador sin registro', am: 0, az: 0, rj: 0, valor: 0 }
-      porJugador[key].am += s.am || 0
-      porJugador[key].az += s.az || 0
-      porJugador[key].rj += s.rj || 0
-      porJugador[key].valor += (s.am || 0) * pA + (s.az || 0) * pZ + (s.rj || 0) * pR
+      const keyJugador = `${s.team_id}|${s.player_id || 'nr:' + (s.nombre || 'sin nombre')}`
+      const keyPartido = `${keyJugador}|${s.match_id || 'sp:' + Math.random()}`
+      if (!porJugadorPartido[keyPartido]) porJugadorPartido[keyPartido] = { keyJugador, team_id: s.team_id, player_id: s.player_id, nombre: s.nombre || 'Jugador sin registro', am: 0, az: 0, rj: 0 }
+      porJugadorPartido[keyPartido].am += s.am || 0
+      porJugadorPartido[keyPartido].az += s.az || 0
+      porJugadorPartido[keyPartido].rj += s.rj || 0
+    })
+    const porJugador = {}
+    Object.values(porJugadorPartido).forEach(p => {
+      if (!porJugador[p.keyJugador]) porJugador[p.keyJugador] = { team_id: p.team_id, player_id: p.player_id, nombre: p.nombre, am: 0, az: 0, rj: 0, valor: 0 }
+      porJugador[p.keyJugador].am += p.am
+      porJugador[p.keyJugador].az += p.az
+      porJugador[p.keyJugador].rj += p.rj
+      porJugador[p.keyJugador].valor += Math.max(p.am > 0 ? pA : 0, p.az > 0 ? pZ : 0, p.rj > 0 ? pR : 0)
     })
     Object.values(porJugador).forEach(j => {
       if (porEquipo[j.team_id]) {
@@ -1773,7 +1789,9 @@ export default function AdminTorneoDetallePage() {
     const { data: st } = await supabase.from('player_match_stats').select('team_id, yellow_cards, blue_cards, red_cards').eq('tournament_id', id)
     const { data: pagos } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_tarjetas')
     const saldo = {}
-    ;(st || []).forEach(s => { saldo[s.team_id] = (saldo[s.team_id] || 0) + (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR })
+    // Cada fila ya es un jugador en UN partido: si tiene varias tarjetas ese
+    // partido, solo se cobra la de mayor valor (no la suma de todas).
+    ;(st || []).forEach(s => { saldo[s.team_id] = (saldo[s.team_id] || 0) + Math.max(s.yellow_cards > 0 ? pA : 0, s.blue_cards > 0 ? pZ : 0, s.red_cards > 0 ? pR : 0) })
     ;(pagos || []).forEach(p => { saldo[p.team_id] = (saldo[p.team_id] || 0) - (p.monto || 0) })
     return teamIds
       .filter(tid => (saldo[tid] || 0) > 0)
@@ -1840,7 +1858,9 @@ export default function AdminTorneoDetallePage() {
         ])
         const cargoEq = {}, pagosEq = {}, valorJug = {}
         ;(st || []).forEach(s => {
-          const v = (s.yellow_cards || 0) * pA + (s.blue_cards || 0) * pZ + (s.red_cards || 0) * pR
+          // Cada fila es un jugador en UN partido: si tiene varias tarjetas
+          // ese partido, solo se cobra la de mayor valor (no la suma de todas).
+          const v = Math.max(s.yellow_cards > 0 ? pA : 0, s.blue_cards > 0 ? pZ : 0, s.red_cards > 0 ? pR : 0)
           if (v === 0) return
           cargoEq[s.team_id] = (cargoEq[s.team_id] || 0) + v
           const k = `${s.team_id}|${s.player_id}`
