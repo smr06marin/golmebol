@@ -2069,50 +2069,74 @@ export default function AdminTorneoDetallePage() {
       const porFase = getLlavesPorFase()
       const fasesExist = FASE_ORDEN.filter(f => porFase[f])
       if (fasesExist.length === 0) return
-      const actual = fasesExist[fasesExist.length - 1]
-      if (actual === 'final') return
-      const llaves = porFase[actual]
-      if (llaves.length < 2 || llaves.length % 2 !== 0) return // impar/bye — a mano
 
-      // Si en la primera fase de eliminatorias falta por entrar el equipo
-      // que tenía pase directo (bye inicial), no es el caso limpio todavía.
-      if (actual === fasesExist[0] && torneo?.bye_inicial_team_id) {
-        const enFase = new Set(llaves.flatMap(l => [l.teamA.id, l.teamB.id]))
-        if (!enFase.has(torneo.bye_inicial_team_id)) return
-      }
-
-      const proximaFase = getFaseValue(llaves.length)
-      // La FINAL se deja siempre para el flujo manual de siempre (el aviso
-      // de "ronda completa" con el botón) — así el admin sigue pudiendo
-      // elegir si se juega también el partido por el tercer puesto, tal
-      // como se pidió explícitamente que NO se resuelva solo.
-      if (proximaFase === 'final') return
-      const rondaNombre = getRondaNombre(llaves.length)
-      const conVuelta = llaves.some(l => l.matches.length > 1)
       const inserts = []
       const resumen = []
 
-      for (let i = 0; i * 2 + 1 < llaves.length; i++) {
-        const A = llaves[i * 2], B = llaves[i * 2 + 1]
-        if (!A.terminada || !B.terminada) continue
-        if (!A.ganador || !B.ganador) continue // empate sin penales resueltos todavía
-        const yaExiste = bracket.some(m => m.fase === proximaFase && m.slot_index === i)
-        if (yaExiste) continue
-        const c = previewCalendario?.[proximaFase]?.[i]
-        const fecha = c?.fecha || fechaRonda
-        const hora  = c?.hora  || horaRonda || '08:00'
-        if (!fecha) continue
-        const playedAt = `${fecha}T${hora}:00-05:00`
-        inserts.push({ tournament_id: id, home_team_id: A.ganador.id, away_team_id: B.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: rondaNombre, matchday: null, slot_index: i })
-        if (conVuelta) inserts.push({ tournament_id: id, home_team_id: B.ganador.id, away_team_id: A.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: `${rondaNombre} (vuelta)`, matchday: null, slot_index: i })
-        resumen.push(`${A.ganador.name} vs ${B.ganador.name}`)
+      // Antes esto solo miraba la ÚLTIMA fase que ya existiera — si esa fase
+      // (ej. semifinal) ya tenía una sola llave creada por otra pareja de
+      // cuartos, se dejaba de revisar cuartos por completo y una llave que
+      // terminaba después nunca generaba su casilla siguiente. Ahora se
+      // revisan TODAS las fases existentes en cada pasada.
+      for (const actual of fasesExist) {
+        if (actual === 'final') continue
+        const llaves = porFase[actual]
+        if (llaves.length < 2 || llaves.length % 2 !== 0) continue // impar/bye — a mano
+
+        // Si en la primera fase de eliminatorias falta por entrar el equipo
+        // que tenía pase directo (bye inicial), no es el caso limpio todavía.
+        if (actual === fasesExist[0] && torneo?.bye_inicial_team_id) {
+          const enFase = new Set(llaves.flatMap(l => [l.teamA.id, l.teamB.id]))
+          if (!enFase.has(torneo.bye_inicial_team_id)) continue
+        }
+
+        const proximaFase = getFaseValue(llaves.length)
+        // La FINAL se deja siempre para el flujo manual de siempre (el aviso
+        // de "ronda completa" con el botón) — así el admin sigue pudiendo
+        // elegir si se juega también el partido por el tercer puesto, tal
+        // como se pidió explícitamente que NO se resuelva solo.
+        if (proximaFase === 'final') continue
+        const rondaNombre = getRondaNombre(llaves.length)
+        const conVuelta = llaves.some(l => l.matches.length > 1)
+
+        for (let i = 0; i * 2 + 1 < llaves.length; i++) {
+          const A = llaves[i * 2], B = llaves[i * 2 + 1]
+          if (!A.terminada || !B.terminada) continue
+          if (!A.ganador || !B.ganador) continue // empate sin penales resueltos todavía
+          const yaExiste = bracket.some(m => m.fase === proximaFase && m.slot_index === i)
+          if (yaExiste) continue
+          const c = previewCalendario?.[proximaFase]?.[i]
+          const fecha = c?.fecha || fechaRonda
+          const hora  = c?.hora  || horaRonda || '08:00'
+          if (!fecha) continue
+          const playedAt = `${fecha}T${hora}:00-05:00`
+          inserts.push({ tournament_id: id, home_team_id: A.ganador.id, away_team_id: B.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: rondaNombre, matchday: null, slot_index: i })
+          if (conVuelta) inserts.push({ tournament_id: id, home_team_id: B.ganador.id, away_team_id: A.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: `${rondaNombre} (vuelta)`, matchday: null, slot_index: i })
+          resumen.push(`${A.ganador.name} vs ${B.ganador.name}`)
+        }
       }
 
       if (inserts.length === 0) return
-      const { error } = await supabase.from('matches').insert(inserts)
+
+      // Antes de insertar, se vuelve a preguntar a la base (no solo el estado
+      // local, que puede estar un poco desactualizado) si esas casillas ya
+      // existen — así, si esta función corre dos veces casi al mismo tiempo
+      // (ej. el árbol se refresca desde dos lados justo cuando termina el
+      // último partido de la ronda), no se crea el mismo partido dos veces.
+      const fasesAInsertar = [...new Set(inserts.map(m => m.fase))]
+      const { data: yaEnBase } = await supabase
+        .from('matches')
+        .select('fase, slot_index')
+        .eq('tournament_id', id)
+        .in('fase', fasesAInsertar)
+      const existentes = new Set((yaEnBase || []).map(m => `${m.fase}|${m.slot_index}`))
+      const insertsFiltrados = inserts.filter(m => !existentes.has(`${m.fase}|${m.slot_index}`))
+      if (insertsFiltrados.length === 0) return
+
+      const { error } = await supabase.from('matches').insert(insertsFiltrados)
       if (error) { console.error('Avance automático de casillas:', error); return }
-      showMsg(`⚡ Avanzan a ${FASE_LABEL[proximaFase]}: ${resumen.join(', ')} ✓`)
-      fetchPartidos(); fetchBracket()
+      showMsg(`⚡ Avanzan: ${resumen.join(', ')} ✓`)
+      await Promise.all([fetchPartidos(), fetchBracket()])
     } finally {
       avanzandoSlotsRef.current = false
     }
