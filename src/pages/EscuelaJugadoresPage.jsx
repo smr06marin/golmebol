@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { comprimirImagen } from '../lib/imageCompress'
+import { ChevronLeft, ChevronRight, Plus, Search, SlidersHorizontal, MessageCircle, CreditCard, Users, Pencil, Shield, Circle } from 'lucide-react'
+import { FaWhatsapp } from 'react-icons/fa'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
   win: '#1e8e3e', loss: '#d93025',
 }
@@ -145,43 +148,55 @@ export default function EscuelaJugadoresPage() {
   const filtrados = jugadores.filter(j => j.name.toLowerCase().includes(search.toLowerCase()))
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.green, fontSize:'.9rem' }}>Cargando...</div>
   )
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escuela</button>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
-            <div>
-              <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>Jugadores</div>
-              <div style={{ fontSize:'.72rem', color:S.muted }}>{escuela?.name}{escuela?.categoria ? ` · ${escuela.categoria}` : ''} · {jugadores.length} en la plantilla</div>
-            </div>
-            {esCoordinador && (
-              <button onClick={() => { cerrarForm(); setShowForm(true) }}
-                style={{ background:S.cyan, border:'none', borderRadius:'10px', padding:'9px 16px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.82rem' }}>
-                + Jugador
-              </button>
-            )}
+      <div style={{ padding:'16px 16px 4px' }}>
+        <div style={{ maxWidth:'640px', margin:'0 auto', display:'flex', alignItems:'flex-start', gap:'12px', flexWrap:'wrap' }}>
+          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, padding:'4px 0', flexShrink:0, display:'flex' }}>
+            <ChevronLeft size={24}/>
+          </button>
+          <div style={{ width:'52px', height:'52px', borderRadius:'10px', overflow:'hidden', flexShrink:0, background:S.card2, display:'flex', alignItems:'center', justifyContent:'center' }}>
+            {escuela?.logo_url ? <img src={escuela.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <Shield size={24} color={S.muted}/>}
           </div>
+          <div style={{ flex:1, minWidth:'160px' }}>
+            <div style={{ fontSize:'.68rem', fontWeight:'800', color:S.green, letterSpacing:'.07em', textTransform:'uppercase' }}>{escuela?.name}</div>
+            <div style={{ fontSize:'1.5rem', fontWeight:'900', color:'#fff', lineHeight:1.05, marginTop:'2px', letterSpacing:'.01em' }}>JUGADORES</div>
+            <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'5px', display:'flex', alignItems:'center', gap:'6px' }}>
+              <span style={{ width:'5px', height:'5px', borderRadius:'50%', background:S.green, display:'inline-block', flexShrink:0 }}/>
+              {escuela?.categoria || 'Libre'} · {jugadores.length} en la plantilla
+            </div>
+          </div>
+          {esCoordinador && (
+            <button onClick={() => { cerrarForm(); setShowForm(true) }}
+              style={{ display:'flex', alignItems:'center', gap:'6px', background:S.green, border:'none', borderRadius:'12px', padding:'11px 16px', cursor:'pointer', color:'#07240f', fontWeight:'900', fontSize:'.72rem', letterSpacing:'.02em', whiteSpace:'nowrap', flexShrink:0 }}>
+              <Plus size={15} strokeWidth={3}/> AGREGAR JUGADOR
+            </button>
+          )}
         </div>
       </div>
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
 
         {esCoordinador && escuela && (
-          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'14px 16px', marginBottom:'18px' }}>
-            <div style={{ fontWeight:700, fontSize:'.85rem', marginBottom:4 }}>📲 Link de registro para los acudientes</div>
-            <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:10 }}>Envíaselo por WhatsApp — cada acudiente registra a su hijo/a y su cédula queda como acceso para ver la tarjeta después.</div>
-            <button onClick={() => {
-                const link = `${window.location.origin}/registro/escuela/${escuela.id}`
-                const texto = `¡Hola! Regístrate como acudiente de tu hijo/a en ${escuela.name} en Golmebol: ${link}`
-                window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')
-              }}
-              style={{ width:'100%', padding:'10px', background:'#25D366', border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.8rem' }}>
-              Compartir por WhatsApp
-            </button>
+          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'16px', marginBottom:'18px', display:'flex', gap:'12px', alignItems:'flex-start' }}>
+            <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:S.greenDim, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <MessageCircle size={18} color={S.green}/>
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontWeight:800, fontSize:'.86rem', color:'#fff', marginBottom:4 }}>Link de registro para los acudientes</div>
+              <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:12, lineHeight:1.4 }}>Envíalo por WhatsApp — cada acudiente registra a su hijo/a y su cédula queda como acceso para ver la tarjeta después.</div>
+              <button onClick={() => {
+                  const link = `${window.location.origin}/registro/escuela/${escuela.id}`
+                  const texto = `¡Hola! Regístrate como acudiente de tu hijo/a en ${escuela.name} en Golmebol: ${link}`
+                  window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')
+                }}
+                style={{ width:'100%', padding:'12px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#07240f', fontWeight:900, fontSize:'.78rem', letterSpacing:'.02em', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+                COMPARTIR POR WHATSAPP <FaWhatsapp size={16}/>
+              </button>
+            </div>
           </div>
         )}
 
@@ -219,7 +234,7 @@ export default function EscuelaJugadoresPage() {
             {error && <div style={{ color:'#ff6b6b', fontSize:'.78rem', marginBottom:'12px' }}>{error}</div>}
             <div style={{ display:'flex', gap:'8px' }}>
               <button onClick={handleGuardar} disabled={guardando}
-                style={{ flex:1, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.85rem', opacity:guardando?.7:1 }}>
+                style={{ flex:1, padding:'11px', background:S.green, border:'none', borderRadius:'10px', cursor:'pointer', color:'#07240f', fontWeight:'800', fontSize:'.85rem', opacity:guardando?.7:1 }}>
                 {guardando ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear jugador'}
               </button>
               <button onClick={cerrarForm} style={{ padding:'11px 18px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>Cancelar</button>
@@ -227,33 +242,55 @@ export default function EscuelaJugadoresPage() {
           </div>
         )}
 
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jugador..." style={{ ...inp, marginBottom:'14px' }}/>
+        <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
+          <div style={{ flex:1, position:'relative' }}>
+            <Search size={15} color={S.muted} style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar jugador..." style={{ ...inp, paddingLeft:'34px' }}/>
+          </div>
+          <button title="Filtros" style={{ width:'42px', flexShrink:0, background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', color:S.muted, cursor:'pointer' }}>
+            <SlidersHorizontal size={15}/>
+          </button>
+        </div>
 
         {filtrados.length === 0 ? (
           <div style={{ textAlign:'center', padding:'50px 20px', color:S.muted }}>
             <div style={{ fontSize:'2rem', marginBottom:'10px' }}>👥</div>
             <div style={{ fontSize:'.85rem' }}>{jugadores.length === 0 ? 'Aún no hay jugadores en la escuela' : 'Sin resultados'}</div>
           </div>
-        ) : filtrados.map(j => {
+        ) : filtrados.map((j, i) => {
           const edad = calcularEdad(j.fecha_nacimiento)
           return (
-            <div key={j.id} onClick={() => navigate(`/escuela/jugador/${j.id}`)} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px', marginBottom:'8px', display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
-              <div style={{ width:'40px', height:'40px', borderRadius:'50%', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {j.photo_face_url || j.photo_url ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span>👤</span>}
+            <div key={j.id} onClick={() => navigate(`/escuela/jugador/${j.id}`)}
+              style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'14px', marginBottom:'10px', display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
+              <div style={{ fontSize:'1.4rem', fontWeight:'900', color:'#fff', width:'24px', textAlign:'center', flexShrink:0 }}>{i + 1}</div>
+              <div style={{ width:'62px', height:'62px', borderRadius:'12px', overflow:'hidden', flexShrink:0, background:S.card2, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {j.photo_face_url || j.photo_url ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'1.5rem' }}>👤</span>}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontWeight:'700', fontSize:'.88rem' }}>{j.name}</div>
-                <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px', display:'flex', gap:'8px', flexWrap:'wrap' }}>
-                  {edad !== null && <span>{edad} años{edad < 18 ? ' · menor' : ''}</span>}
-                  {j.posicion && <span>⚽ {j.posicion}</span>}
-                  {j.numero_cedula && <span>🪪 {j.numero_cedula}</span>}
-                  {j.acudiente_nombre && <span>👪 {j.acudiente_nombre}</span>}
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'8px' }}>
+                  <div style={{ fontWeight:'900', fontSize:'.84rem', color:'#fff', lineHeight:1.25, textTransform:'uppercase' }}>{j.name}</div>
+                  {j.posicion && (
+                    <span style={{ flexShrink:0, fontSize:'.6rem', fontWeight:'700', color:S.green, border:`1px solid ${S.green}66`, borderRadius:'20px', padding:'2px 9px', whiteSpace:'nowrap' }}>{j.posicion}</span>
+                  )}
+                </div>
+                <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'5px', display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                  {edad !== null && <span>{edad} años{edad < 18 ? ' · Menor' : ''}</span>}
+                  {j.posicion && <span style={{ display:'flex', alignItems:'center', gap:'4px', color:S.green, fontWeight:'700' }}><Circle size={6} fill={S.green} color={S.green}/> {j.posicion}</span>}
+                </div>
+                <div style={{ fontSize:'.66rem', color:S.muted, marginTop:'4px', display:'flex', flexDirection:'column', gap:'3px' }}>
+                  {j.numero_cedula && <span style={{ display:'flex', alignItems:'center', gap:'5px' }}><CreditCard size={11}/> {j.numero_cedula}</span>}
+                  {j.acudiente_nombre && <span style={{ display:'flex', alignItems:'center', gap:'5px' }}><Users size={11}/> {j.acudiente_nombre}</span>}
                 </div>
               </div>
-              {esCoordinador && (
-                <button onClick={e => { e.stopPropagation(); abrirEditar(j) }} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:S.muted, fontSize:'.78rem' }}>✏️</button>
-              )}
-              <span style={{ color:S.muted, fontSize:'.8rem' }}>→</span>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'10px', flexShrink:0 }}>
+                {esCoordinador && (
+                  <button onClick={e => { e.stopPropagation(); abrirEditar(j) }}
+                    style={{ width:'32px', height:'32px', borderRadius:'50%', background:'none', border:`1.5px solid ${S.green}88`, cursor:'pointer', color:S.green, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <Pencil size={13}/>
+                  </button>
+                )}
+                <ChevronRight size={16} color={S.muted}/>
+              </div>
             </div>
           )
         })}
