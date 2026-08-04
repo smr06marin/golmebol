@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
 import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight, Pencil, Image as ImageIcon, X } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
+import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -23,27 +24,6 @@ const IMG_RANKINGS       = 'https://images.unsplash.com/photo-1579952363873-27f3
 const IMG_DIA_PARTIDO    = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
 const IMG_TORNEOS        = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
 
-// Tarjeta de acceso del panel: icono, título y descripción sobre una foto de
-// fondo bien tenue (una capa oscura encima para que el texto se lea bien).
-function EscuelaFeatureCard({ icon, title, desc, bg, badge, warn, onClick }) {
-  return (
-    <button onClick={onClick} style={{
-      position: 'relative', textAlign: 'center', padding: '20px 10px 16px', borderRadius: '16px',
-      border: `1px solid ${warn ? S.warn + '77' : S.green + '44'}`, cursor: 'pointer', overflow: 'hidden',
-      backgroundImage: `linear-gradient(180deg, rgba(7,7,14,.65) 0%, rgba(7,7,14,.94) 78%), url(${bg})`,
-      backgroundSize: 'cover', backgroundPosition: 'center', color: S.text,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minHeight: '128px',
-    }}>
-      {badge > 0 && (
-        <span style={{ position: 'absolute', top: '8px', right: '8px', fontSize: '.62rem', fontWeight: '800', color: '#000', background: S.warn, borderRadius: '10px', padding: '1px 7px' }}>{badge}</span>
-      )}
-      {icon}
-      <div style={{ fontWeight: '900', fontSize: '.76rem', letterSpacing: '.03em', textTransform: 'uppercase', color: '#fff' }}>{title}</div>
-      <div style={{ fontSize: '.64rem', color: S.text2, lineHeight: 1.3 }}>{desc}</div>
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: warn ? S.warn : S.green }}/>
-    </button>
-  )
-}
 const inp = { width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'11px 14px', color:S.text, fontSize:'.9rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.72rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
 

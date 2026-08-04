@@ -1,19 +1,29 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import EscuelaFeatureCard from './EscuelaFeatureCard'
 
 const S = {
   card: '#111827', card2: '#1a2234', border: '#1e2d3d',
-  cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)', gold: '#f9a825',
+  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)', gold: '#f9a825',
   text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'9px 12px', color:S.text, fontSize:'.82rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.66rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'3px', textTransform:'uppercase', letterSpacing:'.04em' }
 
+// Fotos de fondo tenues para cada tarjeta — mismas que ya se usan en el
+// resto del portal de escuela, así no se depende de subir imágenes nuevas.
+const IMG_MEDIDAS    = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
+const IMG_FISICAS    = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
+const IMG_TECNICA    = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
+const IMG_TACTICA    = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
+const IMG_DISCIPLINA = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
+
 // ── Categorías: tabla, frecuencia recomendada y campos (config-driven, así
 // el formulario y las gráficas se generan solos para las 5 categorías). ──
 const CATEGORIAS = [
   {
-    key:'medidas', tabla:'escuela_medidas', label:'📏 Medidas físicas', frecuencia:'Peso cada mes · estatura/envergadura/pie cada 3-6 meses',
+    key:'medidas', tabla:'escuela_medidas', emoji:'📏', tituloCorto:'Medidas', label:'📏 Medidas físicas', frecuencia:'Peso cada mes · estatura/envergadura/pie cada 3-6 meses', bg: IMG_MEDIDAS,
     campos:[
       { key:'peso_kg', label:'Peso (kg)', step:0.1 },
       { key:'estatura_cm', label:'Estatura (cm)', step:0.5 },
@@ -23,7 +33,7 @@ const CATEGORIAS = [
     destacados:['peso_kg','estatura_cm'],
   },
   {
-    key:'fisicas', tabla:'escuela_pruebas_fisicas', label:'⚡ Pruebas físicas', frecuencia:'Cada 3 meses',
+    key:'fisicas', tabla:'escuela_pruebas_fisicas', emoji:'⚡', tituloCorto:'Pruebas físicas', label:'⚡ Pruebas físicas', frecuencia:'Cada 3 meses', bg: IMG_FISICAS,
     campos:[
       { key:'velocidad_seg', label:'Velocidad 20-30m (seg)', step:0.01 },
       { key:'agilidad_seg', label:'Agilidad / zigzag (seg)', step:0.01 },
@@ -35,7 +45,7 @@ const CATEGORIAS = [
     destacados:['velocidad_seg','resistencia_nivel'],
   },
   {
-    key:'tecnica', tabla:'escuela_tecnica', label:'⚽ Evaluación técnica', frecuencia:'Cada 2-3 meses · escala 1 a 10', escala10:true,
+    key:'tecnica', tabla:'escuela_tecnica', emoji:'⚽', tituloCorto:'Técnica', label:'⚽ Evaluación técnica', frecuencia:'Cada 2-3 meses · escala 1 a 10', escala10:true, bg: IMG_TECNICA,
     campos:[
       { key:'control', label:'Control del balón' },
       { key:'pase_corto', label:'Pase corto' },
@@ -48,7 +58,7 @@ const CATEGORIAS = [
     ],
   },
   {
-    key:'tactica', tabla:'escuela_tactica', label:'🧠 Evaluación táctica', frecuencia:'Cada 3 meses · escala 1 a 10', escala10:true,
+    key:'tactica', tabla:'escuela_tactica', emoji:'🧠', tituloCorto:'Táctica', label:'🧠 Evaluación táctica', frecuencia:'Cada 3 meses · escala 1 a 10', escala10:true, bg: IMG_TACTICA,
     campos:[
       { key:'posicionamiento', label:'Posicionamiento' },
       { key:'decisiones', label:'Toma de decisiones' },
@@ -58,7 +68,7 @@ const CATEGORIAS = [
     ],
   },
   {
-    key:'disciplina', tabla:'escuela_disciplina', label:'🤝 Disciplina y actitud', frecuencia:'Mensual · escala 1 a 10', escala10:true,
+    key:'disciplina', tabla:'escuela_disciplina', emoji:'🤝', tituloCorto:'Disciplina', label:'🤝 Disciplina y actitud', frecuencia:'Mensual · escala 1 a 10', escala10:true, bg: IMG_DISCIPLINA,
     campos:[
       { key:'puntualidad', label:'Puntualidad' },
       { key:'asistencia', label:'Asistencia' },
@@ -78,7 +88,7 @@ function fmtFecha(f) {
 }
 
 // Mini gráfica de línea en SVG, sin librerías externas.
-function Spark({ historial, campoKey, color = S.cyan }) {
+function Spark({ historial, campoKey, color = S.green }) {
   const puntos = historial.filter(h => h[campoKey] != null).map(h => ({ fecha:h.fecha, value:Number(h[campoKey]) }))
   if (puntos.length === 0) return null
   if (puntos.length === 1) {
@@ -116,7 +126,7 @@ function Cadena({ historial, campoKey }) {
     <span>
       {puntos.map((v,i) => (
         <span key={i}>
-          <b style={{ color: i === puntos.length-1 ? S.cyan : S.text2 }}>{v}</b>
+          <b style={{ color: i === puntos.length-1 ? S.green : S.text2 }}>{v}</b>
           {i < puntos.length-1 && <span style={{ color:S.muted }}> → </span>}
         </span>
       ))}
@@ -126,11 +136,12 @@ function Cadena({ historial, campoKey }) {
 
 function today() { return new Date().toISOString().slice(0,10) }
 
-function Categoria({ cat, historial, editable, onAgregar }) {
+// Modal que se abre al tocar la tarjeta cuadrada de una categoría — trae el
+// formulario para registrar (si es editable) y el historial/evolución.
+function CategoriaModal({ cat, historial, editable, onAgregar, onClose }) {
   const [abierto, setAbierto] = useState(false)
   const [form, setForm] = useState({ fecha: today() })
   const [guardando, setGuardando] = useState(false)
-
   const ultimo = historial[historial.length - 1]
 
   async function guardar() {
@@ -139,7 +150,6 @@ function Categoria({ cat, historial, editable, onAgregar }) {
     cat.campos.forEach(c => {
       if (form[c.key] !== undefined && form[c.key] !== '') payload[c.key] = Number(form[c.key])
     })
-    // IMC automático si esta categoría trae peso y estatura juntos
     if (payload.peso_kg && payload.estatura_cm) {
       payload.imc = Math.round((payload.peso_kg / Math.pow(payload.estatura_cm/100, 2)) * 10) / 10
     }
@@ -150,78 +160,89 @@ function Categoria({ cat, historial, editable, onAgregar }) {
   }
 
   return (
-    <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:14, padding:16, marginBottom:12 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, marginBottom:4 }}>
-        <div>
-          <div style={{ fontWeight:700, fontSize:'.86rem' }}>{cat.label}</div>
-          <div style={{ fontSize:'.66rem', color:S.muted, marginTop:1 }}>{cat.frecuencia}</div>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:600, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:S.card, borderTop:`1px solid ${S.border}`, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:'560px', maxHeight:'88vh', overflowY:'auto', padding:'18px 18px 26px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, marginBottom:4 }}>
+          <div>
+            <div style={{ fontWeight:800, fontSize:'.95rem' }}>{cat.label}</div>
+            <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2 }}>{cat.frecuencia}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, display:'flex', flexShrink:0 }}><X size={20}/></button>
         </div>
+
         {editable && (
-          <button onClick={() => setAbierto(a => !a)} style={{ background:S.cyanDim, border:`1px solid ${S.cyan}55`, color:S.cyan, borderRadius:8, padding:'5px 10px', fontSize:'.72rem', fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>
-            {abierto ? 'Cancelar' : '+ Registrar'}
-          </button>
+          <div style={{ marginTop:14 }}>
+            {!abierto ? (
+              <button onClick={() => setAbierto(true)} style={{ width:'100%', background:S.greenDim, border:`1px solid ${S.green}55`, color:S.green, borderRadius:10, padding:'10px', fontSize:'.8rem', fontWeight:800, cursor:'pointer' }}>
+                + Registrar
+              </button>
+            ) : (
+              <div style={{ background:S.card2, borderRadius:10, padding:12, marginBottom:14 }}>
+                <div style={{ marginBottom:8 }}>
+                  <label style={lbl}>Fecha</label>
+                  <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha:e.target.value }))} style={inp}/>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                  {cat.campos.map(c => (
+                    <div key={c.key}>
+                      <label style={lbl}>{c.label}</label>
+                      <input type="number" step={cat.escala10 ? 1 : (c.step ?? 0.1)} min={cat.escala10 ? 1 : undefined} max={cat.escala10 ? 10 : undefined}
+                        value={form[c.key] ?? ''} onChange={e => setForm(f => ({ ...f, [c.key]:e.target.value }))} style={inp} placeholder={cat.escala10 ? '1-10' : 'Opcional'}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={guardar} disabled={guardando} style={{ flex:1, padding:'9px', background:S.green, border:'none', borderRadius:8, cursor:'pointer', color:'#07240f', fontWeight:800, fontSize:'.78rem', opacity:guardando?.7:1 }}>
+                    {guardando ? 'Guardando...' : 'Guardar registro'}
+                  </button>
+                  <button onClick={() => setAbierto(false)} style={{ padding:'9px 14px', background:'none', border:`1px solid ${S.border}`, borderRadius:8, cursor:'pointer', color:S.muted, fontSize:'.78rem' }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
-      </div>
 
-      {abierto && (
-        <div style={{ background:S.card2, borderRadius:10, padding:12, margin:'10px 0' }}>
-          <div style={{ marginBottom:8 }}>
-            <label style={lbl}>Fecha</label>
-            <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha:e.target.value }))} style={inp}/>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
-            {cat.campos.map(c => (
-              <div key={c.key}>
-                <label style={lbl}>{c.label}</label>
-                <input type="number" step={cat.escala10 ? 1 : (c.step ?? 0.1)} min={cat.escala10 ? 1 : undefined} max={cat.escala10 ? 10 : undefined}
-                  value={form[c.key] ?? ''} onChange={e => setForm(f => ({ ...f, [c.key]:e.target.value }))} style={inp} placeholder={cat.escala10 ? '1-10' : 'Opcional'}/>
-              </div>
-            ))}
-          </div>
-          <button onClick={guardar} disabled={guardando} style={{ width:'100%', padding:'9px', background:S.cyan, border:'none', borderRadius:8, cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.78rem', opacity:guardando?.7:1 }}>
-            {guardando ? 'Guardando...' : 'Guardar registro'}
-          </button>
-        </div>
-      )}
-
-      {historial.length === 0 ? (
-        <div style={{ fontSize:'.74rem', color:S.muted, marginTop:6 }}>Todavía no hay registros.</div>
-      ) : cat.escala10 ? (
-        <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:8 }}>
-          {cat.campos.map(c => (
-            <div key={c.key} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'.76rem' }}>
-              <span style={{ color:S.text2 }}>{c.label}</span>
-              <Cadena historial={historial} campoKey={c.key}/>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div style={{ marginTop:8 }}>
-          {cat.destacados ? (
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {cat.destacados.map(k => {
-                const campo = cat.campos.find(c => c.key === k)
-                return (
-                  <div key={k}>
-                    <div style={{ fontSize:'.72rem', color:S.text2, marginBottom:4 }}>{campo.label}</div>
-                    <Spark historial={historial} campoKey={k}/>
-                  </div>
-                )
-              })}
-              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 14px', fontSize:'.72rem', color:S.muted }}>
-                {cat.campos.filter(c => !cat.destacados.includes(c.key)).map(c => (
-                  ultimo?.[c.key] != null ? <span key={c.key}>{c.label}: <b style={{ color:S.text2 }}>{ultimo[c.key]}</b></span> : null
-                ))}
-                {ultimo?.imc != null && <span>IMC: <b style={{ color:S.text2 }}>{ultimo.imc}</b></span>}
-              </div>
+        <div style={{ marginTop:16 }}>
+          {historial.length === 0 ? (
+            <div style={{ fontSize:'.78rem', color:S.muted, textAlign:'center', padding:'10px 0' }}>Todavía no hay registros.</div>
+          ) : cat.escala10 ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {cat.campos.map(c => (
+                <div key={c.key} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'.8rem' }}>
+                  <span style={{ color:S.text2 }}>{c.label}</span>
+                  <Cadena historial={historial} campoKey={c.key}/>
+                </div>
+              ))}
             </div>
           ) : (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 14px', fontSize:'.76rem', color:S.text2 }}>
-              {cat.campos.map(c => ultimo?.[c.key] != null ? <span key={c.key}>{c.label}: <b>{ultimo[c.key]}</b></span> : null)}
+            <div>
+              {cat.destacados ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                  {cat.destacados.map(k => {
+                    const campo = cat.campos.find(c => c.key === k)
+                    return (
+                      <div key={k}>
+                        <div style={{ fontSize:'.75rem', color:S.text2, marginBottom:4 }}>{campo.label}</div>
+                        <Spark historial={historial} campoKey={k}/>
+                      </div>
+                    )
+                  })}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 14px', fontSize:'.74rem', color:S.muted }}>
+                    {cat.campos.filter(c => !cat.destacados.includes(c.key)).map(c => (
+                      ultimo?.[c.key] != null ? <span key={c.key}>{c.label}: <b style={{ color:S.text2 }}>{ultimo[c.key]}</b></span> : null
+                    ))}
+                    {ultimo?.imc != null && <span>IMC: <b style={{ color:S.text2 }}>{ultimo.imc}</b></span>}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 14px', fontSize:'.78rem', color:S.text2 }}>
+                  {cat.campos.map(c => ultimo?.[c.key] != null ? <span key={c.key}>{c.label}: <b>{ultimo[c.key]}</b></span> : null)}
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -235,7 +256,7 @@ function EstadisticasPartidos({ registros }) {
       <div style={{ fontWeight:700, fontSize:'.86rem', marginBottom:2 }}>📊 Historial de partidos</div>
       <div style={{ fontSize:'.66rem', color:S.muted, marginBottom:10 }}>Titular/suplente y minutos se calculan solos al finalizar cada partido; recuperaciones, pases y calificación los carga el profesor.</div>
       <div style={{ display:'flex', gap:16, marginBottom:12, padding:'8px 10px', background:S.card2, borderRadius:10 }}>
-        <div><div style={{ fontWeight:800, fontSize:'.95rem', color:S.cyan }}>⏱️ {totalMinutos}'</div><div style={{ fontSize:'.6rem', color:S.muted }}>minutos totales</div></div>
+        <div><div style={{ fontWeight:800, fontSize:'.95rem', color:S.green }}>⏱️ {totalMinutos}'</div><div style={{ fontSize:'.6rem', color:S.muted }}>minutos totales</div></div>
         <div><div style={{ fontWeight:800, fontSize:'.95rem', color:S.gold }}>★ {totalTitular}/{registros.length}</div><div style={{ fontSize:'.6rem', color:S.muted }}>partidos de titular</div></div>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -266,13 +287,15 @@ function EstadisticasPartidos({ registros }) {
 }
 
 // Ficha de Evolución del Jugador: mediciones físicas, pruebas, técnica,
-// táctica, disciplina y estadísticas de partido — cada una con su propia
-// frecuencia recomendada y gráfica de evolución en el tiempo.
+// táctica, disciplina y estadísticas de partido. Cada categoría se ve como
+// una tarjeta cuadrada (mismo estilo que el resto del portal de escuela) y
+// al tocarla se abre el formulario/historial en una hoja abajo.
 // editable=true → el coordinador puede agregar registros nuevos.
 export default function FichaEvolucion({ jugadorId, editable = false }) {
   const [datos, setDatos] = useState(null)
   const [partidoStats, setPartidoStats] = useState([])
   const [loading, setLoading] = useState(true)
+  const [catAbierta, setCatAbierta] = useState(null)
 
   useEffect(() => { if (jugadorId) fetchTodo() }, [jugadorId])
 
@@ -301,11 +324,27 @@ export default function FichaEvolucion({ jugadorId, editable = false }) {
   return (
     <div>
       <div style={{ fontWeight:800, fontSize:'.95rem', color:S.text, margin:'18px 0 4px' }}>📈 Ficha de evolución</div>
-      <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:14 }}>Así ha ido mejorando con el paso de los meses.</div>
-      {CATEGORIAS.map(cat => (
-        <Categoria key={cat.key} cat={cat} historial={datos[cat.key]} editable={editable} onAgregar={handleAgregar}/>
-      ))}
+      <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:14 }}>Así ha ido mejorando con el paso de los meses. Toca una tarjeta para ver el detalle{editable ? ' o registrar' : ''}.</div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'10px', marginBottom:'14px' }}>
+        {CATEGORIAS.map(cat => {
+          const historial = datos[cat.key]
+          const ultimo = historial[historial.length - 1]
+          return (
+            <EscuelaFeatureCard key={cat.key} onClick={() => setCatAbierta(cat)} bg={cat.bg}
+              icon={<span style={{ fontSize:'1.7rem' }}>{cat.emoji}</span>}
+              title={cat.tituloCorto}
+              desc={ultimo ? `Último: ${fmtFecha(ultimo.fecha)}` : 'Sin registros'}/>
+          )
+        })}
+      </div>
+
       <EstadisticasPartidos registros={partidoStats}/>
+
+      {catAbierta && (
+        <CategoriaModal cat={catAbierta} historial={datos[catAbierta.key]} editable={editable}
+          onAgregar={handleAgregar} onClose={() => setCatAbierta(null)}/>
+      )}
     </div>
   )
 }
