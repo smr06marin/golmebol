@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Medal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EscuelaRankingModal from '../components/EscuelaRankingModal'
 import { RANKING_SECCIONES, fetchRosterConRanking } from '../lib/escuelaRankings'
 import EscuelaPageHeader from '../components/EscuelaPageHeader'
+import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
   green: '#22c55e', greenDim: 'rgba(34,197,94,.14)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+}
+
+// Mismas fotos de fondo tenues que se usan en el resto del portal de
+// escuela — una por sección, para que se vea igual sin subir imágenes nuevas.
+const IMG_POR_SECCION = {
+  '⚽ Rendimiento en cancha':      'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60',
+  '🧤 Arqueros':                   'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60',
+  '⚡ Pruebas físicas':            'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60',
+  '📏 Medidas':                    'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60',
+  '📋 Evaluaciones del profesor':  'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60',
 }
 
 // Rankings completos de la escuela — solo para profesores/coordinador. Acá sí
@@ -55,32 +65,30 @@ export default function EscuelaRankingsPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {roster.length === 0 ? (
           <div style={{ textAlign:'center', padding:'40px 20px', color:S.muted, fontSize:'.85rem' }}>Todavía no hay jugadores en la escuela.</div>
-        ) : RANKING_SECCIONES.map(sec => (
-          <div key={sec.titulo} style={{ marginBottom: 20 }}>
-            <div style={{ fontSize:'.78rem', fontWeight:700, color:S.text2, marginBottom:8 }}>{sec.titulo}</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {sec.items.map(item => {
-                const filtrado = roster.filter(j => (!item.soloPortero || j.esPortero) && j[item.campo] != null)
-                const top = filtrado.length > 0
-                  ? [...filtrado].sort((a,b) => item.orden==='asc' ? a[item.campo]-b[item.campo] : b[item.campo]-a[item.campo])[0]
-                  : null
-                return (
-                  <button key={item.key} onClick={() => setAbierto(item)}
-                    style={{ display:'flex', alignItems:'center', gap:12, background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'12px 16px', cursor:'pointer', textAlign:'left' }}>
-                    <span style={{ fontSize:'1.2rem' }}>{item.icon}</span>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:'.85rem', fontWeight:700, color:S.text }}>{item.label}</div>
-                      <div style={{ fontSize:'.7rem', color:S.muted, marginTop:2, display:'flex', alignItems:'center', gap:'4px' }}>
-                        {top ? <><Medal size={11}/> {top.nombre} — {top[item.campo]}{item.unidad ? ` ${item.unidad}` : ''}</> : 'Sin datos todavía'}
-                      </div>
-                    </div>
-                    <span style={{ color:S.muted, fontSize:'.72rem' }}>{filtrado.length} →</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+        ) : (
+          <>
+            <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:14 }}>Toca una tarjeta para ver la lista completa de esa categoría.</div>
+            {RANKING_SECCIONES.map(sec => (
+              <div key={sec.titulo} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize:'.78rem', fontWeight:700, color:S.text2, marginBottom:8 }}>{sec.titulo}</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
+                  {sec.items.map(item => {
+                    const filtrado = roster.filter(j => (!item.soloPortero || j.esPortero) && j[item.campo] != null)
+                    const top = filtrado.length > 0
+                      ? [...filtrado].sort((a,b) => item.orden==='asc' ? a[item.campo]-b[item.campo] : b[item.campo]-a[item.campo])[0]
+                      : null
+                    return (
+                      <EscuelaFeatureCard key={item.key} onClick={() => setAbierto(item)} bg={IMG_POR_SECCION[sec.titulo]}
+                        icon={<span style={{ fontSize:'1.5rem' }}>{item.icon}</span>}
+                        title={item.label}
+                        desc={top ? `🥇 ${top.nombre.split(' ')[0]} — ${top[item.campo]}${item.unidad ? ` ${item.unidad}` : ''}` : 'Sin datos'}/>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {abierto && (
