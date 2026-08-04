@@ -5,6 +5,7 @@ import { supabase, supabaseSilent } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import GlobalToast from './components/GlobalToast'
+import EscuelaBottomNav from './components/EscuelaBottomNav'
 
 // Carga diferida por página: el celular solo descarga el código de la página que visita
 const LoginPage               = lazy(() => import('./pages/LoginPage'))
@@ -232,7 +233,15 @@ function EscuelaRoute({ children }) {
   )
   if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_profesor') return <Navigate to="/jugador" replace/>
-  return children
+  // La barra de abajo (con el balón que vuelve al panel de /escuela) va en
+  // todas las páginas del portal de escuela — se agrega acá una sola vez en
+  // vez de repetirla en cada página.
+  return (
+    <div style={{ paddingBottom: '58px' }}>
+      {children}
+      <EscuelaBottomNav/>
+    </div>
+  )
 }
 
 // Igual que EscuelaRoute pero para el portal de Escenarios Deportivos: solo

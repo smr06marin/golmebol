@@ -8,7 +8,41 @@ import { GiSoccerBall } from 'react-icons/gi'
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)', warn: '#f9a825',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+}
+
+// Fotos de fondo (muy tenues, solo de ambiente) para cada tarjeta del panel
+// — las mismas que ya se usan para las tarjetas de jugador en otras partes
+// de la app, así no se depende de subir imágenes nuevas.
+const IMG_JUGADORES      = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
+const IMG_PROFESORES     = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
+const IMG_ASISTENCIA     = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
+const IMG_MENSUALIDADES  = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
+const IMG_RANKINGS       = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
+const IMG_DIA_PARTIDO    = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
+const IMG_TORNEOS        = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
+
+// Tarjeta de acceso del panel: icono, título y descripción sobre una foto de
+// fondo bien tenue (una capa oscura encima para que el texto se lea bien).
+function EscuelaFeatureCard({ icon, title, desc, bg, badge, warn, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      position: 'relative', textAlign: 'center', padding: '20px 10px 16px', borderRadius: '16px',
+      border: `1px solid ${warn ? S.warn + '77' : S.green + '44'}`, cursor: 'pointer', overflow: 'hidden',
+      backgroundImage: `linear-gradient(180deg, rgba(7,7,14,.65) 0%, rgba(7,7,14,.94) 78%), url(${bg})`,
+      backgroundSize: 'cover', backgroundPosition: 'center', color: S.text,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minHeight: '128px',
+    }}>
+      {badge > 0 && (
+        <span style={{ position: 'absolute', top: '8px', right: '8px', fontSize: '.62rem', fontWeight: '800', color: '#000', background: S.warn, borderRadius: '10px', padding: '1px 7px' }}>{badge}</span>
+      )}
+      {icon}
+      <div style={{ fontWeight: '900', fontSize: '.76rem', letterSpacing: '.03em', textTransform: 'uppercase', color: '#fff' }}>{title}</div>
+      <div style={{ fontSize: '.64rem', color: S.text2, lineHeight: 1.3 }}>{desc}</div>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: warn ? S.warn : S.green }}/>
+    </button>
+  )
 }
 const inp = { width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'11px 14px', color:S.text, fontSize:'.9rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.72rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
@@ -212,95 +246,53 @@ export default function EscuelaHomePage() {
             )}
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
-              <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-                <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.cyan }}>{numJugadores}</div>
-                <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Jugadores</div>
+              <div style={{ background:S.card, border:`1px solid ${S.green}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
+                <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><Users size={18} color={S.green}/></div>
+                <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.green, lineHeight:1 }}>{numJugadores}</div>
+                <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Jugadores</div>
+                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>Activos en la escuela</div>
               </div>
-              <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-                <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.gold }}>{numProfesores}</div>
-                <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Profesores</div>
+              <div style={{ background:S.card, border:`1px solid ${S.gold}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
+                <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><GraduationCap size={18} color={S.gold}/></div>
+                <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{numProfesores}</div>
+                <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Profesores</div>
+                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>En el cuerpo técnico</div>
               </div>
             </div>
 
-            <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-              <button onClick={() => navigate('/escuela/jugadores')}
-                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <Users size={22} color={S.cyan}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Jugadores</div>
-                  <div style={{ fontSize:'.72rem', color:S.muted }}>{esCoordinador ? 'Agrega y edita la plantilla de la escuela' : 'Ver la plantilla de la escuela'}</div>
-                </div>
-                <ArrowRight size={15} color={S.muted}/>
-              </button>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'10px' }}>
+              <EscuelaFeatureCard onClick={() => navigate('/escuela/jugadores')} bg={IMG_JUGADORES}
+                icon={<Users size={24} color={S.green}/>} title="Jugadores"
+                desc={esCoordinador ? 'Agrega y edita la plantilla' : 'Ver la plantilla de la escuela'}/>
 
               {esCoordinador && (
-                <button onClick={() => navigate('/escuela/profesores')}
-                  style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                  <GraduationCap size={22} color={S.cyan}/>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Profesores</div>
-                    <div style={{ fontSize:'.72rem', color:S.muted }}>Agrega a los demás profesores de tu escuela</div>
-                  </div>
-                  <ArrowRight size={15} color={S.muted}/>
-                </button>
+                <EscuelaFeatureCard onClick={() => navigate('/escuela/profesores')} bg={IMG_PROFESORES}
+                  icon={<GraduationCap size={24} color={S.green}/>} title="Profesores"
+                  desc="Agrega a los demás profesores"/>
               )}
 
-              <button onClick={() => navigate('/escuela/asistencia')}
-                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <ClipboardList size={22} color={S.cyan}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Asistencia</div>
-                  <div style={{ fontSize:'.72rem', color:S.muted }}>Marca quién vino a entrenar cada día</div>
-                </div>
-                <ArrowRight size={15} color={S.muted}/>
-              </button>
+              <EscuelaFeatureCard onClick={() => navigate('/escuela/asistencia')} bg={IMG_ASISTENCIA}
+                icon={<ClipboardList size={24} color={S.green}/>} title="Asistencia"
+                desc="Marca quién vino a entrenar"/>
 
               {esCoordinador && (
-                <button onClick={() => navigate('/escuela/mensualidades')}
-                  style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${cMensualidad > 0 ? S.warn : S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                  <Wallet size={22} color={S.cyan}/>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontWeight:'700', fontSize:'.9rem', display:'flex', alignItems:'center', gap:'8px' }}>
-                      Mensualidades
-                      {cMensualidad > 0 && (
-                        <span style={{ fontSize:'.65rem', fontWeight:800, color:'#000', background:S.warn, borderRadius:'10px', padding:'1px 8px' }}>{cMensualidad}</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize:'.72rem', color:S.muted }}>{cMensualidad > 0 ? 'Hay pagos por vencer o vencidos' : 'Avisos y cobro por WhatsApp al acudiente'}</div>
-                  </div>
-                  <ArrowRight size={15} color={S.muted}/>
-                </button>
+                <EscuelaFeatureCard onClick={() => navigate('/escuela/mensualidades')} bg={IMG_MENSUALIDADES}
+                  icon={<Wallet size={24} color={S.green}/>} title="Mensualidades"
+                  desc={cMensualidad > 0 ? 'Hay pagos por vencer o vencidos' : 'Avisos y cobros por WhatsApp'}
+                  badge={cMensualidad} warn={cMensualidad > 0}/>
               )}
 
-              <button onClick={() => navigate('/escuela/rankings')}
-                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <Award size={22} color={S.cyan}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Rankings</div>
-                  <div style={{ fontSize:'.72rem', color:S.muted }}>Tabla completa de goles, minutos, evaluaciones y más</div>
-                </div>
-                <ArrowRight size={15} color={S.muted}/>
-              </button>
+              <EscuelaFeatureCard onClick={() => navigate('/escuela/rankings')} bg={IMG_RANKINGS}
+                icon={<Award size={24} color={S.green}/>} title="Rankings"
+                desc="Tabla de goles, minutos y evaluaciones"/>
 
-              <button onClick={() => navigate('/escuela/partido')}
-                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <GiSoccerBall size={20} color={S.cyan}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Día de partido</div>
-                  <div style={{ fontSize:'.72rem', color:S.muted }}>Convocatoria, formación y partido en vivo</div>
-                </div>
-                <ArrowRight size={15} color={S.muted}/>
-              </button>
+              <EscuelaFeatureCard onClick={() => navigate('/escuela/partido')} bg={IMG_DIA_PARTIDO}
+                icon={<GiSoccerBall size={22} color={S.green}/>} title="Día de partido"
+                desc="Convocatoria, formación y en vivo"/>
 
-              <button onClick={() => navigate('/escuela/torneos')}
-                style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-                <Trophy size={22} color={S.cyan}/>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:'700', fontSize:'.9rem' }}>Torneos</div>
-                  <div style={{ fontSize:'.72rem', color:S.muted }}>Fase, resultado y premios de los torneos donde juega la escuela</div>
-                </div>
-                <ArrowRight size={15} color={S.muted}/>
-              </button>
+              <EscuelaFeatureCard onClick={() => navigate('/escuela/torneos')} bg={IMG_TORNEOS}
+                icon={<Trophy size={24} color={S.green}/>} title="Torneos"
+                desc="Fase, resultado y premios"/>
             </div>
           </div>
         )}
