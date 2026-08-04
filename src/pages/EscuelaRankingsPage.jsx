@@ -4,10 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EscuelaRankingModal from '../components/EscuelaRankingModal'
 import { RANKING_SECCIONES, fetchRosterConRanking } from '../lib/escuelaRankings'
+import EscuelaPageHeader from '../components/EscuelaPageHeader'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
 }
 
@@ -42,18 +44,13 @@ export default function EscuelaRankingsPage() {
   }
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.green, fontSize:'.9rem' }}>Cargando...</div>
   )
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escuela</button>
-          <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>🏅 Rankings</div>
-          <div style={{ fontSize:'.72rem', color:S.muted }}>{escuela?.name}{escuela?.categoria ? ` · ${escuela.categoria}` : ''} · lista completa</div>
-        </div>
-      </div>
+      <EscuelaPageHeader escuela={escuela} kicker={escuela?.name} titulo="RANKINGS"
+        subtitulo={`${escuela?.categoria || 'Libre'} · lista completa`}/>
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {roster.length === 0 ? (

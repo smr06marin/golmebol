@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import EscuelaPageHeader from '../components/EscuelaPageHeader'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
-  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  border: '#1e2d3d', cyan: '#22c55e', cyanDim: 'rgba(34,197,94,.14)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
 }
 
@@ -735,17 +736,11 @@ export default function EscuelaPartidoPage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'30px' }}>
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'12px 14px' }}>
-        <div style={{ maxWidth:'620px', margin:'0 auto' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
-            <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem' }}>← Escuela</button>
-            <div style={{ fontSize:'.72rem', color:S.muted, fontWeight:600 }}>⚽ {escuela?.name}</div>
-          </div>
-          <div style={{ display:'flex', gap:'6px', overflowX:'auto' }}>
-            {NAV.map(n => <button key={n.v} onClick={() => irA(n.v)} style={navBtn(view === n.v)}>{n.l}</button>)}
-          </div>
+      <EscuelaPageHeader compact escuela={escuela} kicker={escuela?.name} titulo="DÍA DE PARTIDO">
+        <div style={{ display:'flex', gap:'6px', overflowX:'auto' }}>
+          {NAV.map(n => <button key={n.v} onClick={() => irA(n.v)} style={navBtn(view === n.v)}>{n.l}</button>)}
         </div>
-      </div>
+      </EscuelaPageHeader>
 
       {/* Cancha a todo el ancho de la pantalla, con el marcador flotando encima */}
       {view === 'match' && (

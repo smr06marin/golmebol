@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { Plus } from 'lucide-react'
+import EscuelaPageHeader from '../components/EscuelaPageHeader'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
@@ -117,31 +120,24 @@ export default function EscuelaProfesoresPage() {
   }
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.green, fontSize:'.9rem' }}>Cargando...</div>
   )
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escuela</button>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
-            <div>
-              <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>Profesores</div>
-              <div style={{ fontSize:'.72rem', color:S.muted }}>{escuela?.name} · {profesores.length} profesor{profesores.length!==1?'es':''}</div>
-            </div>
-            <button onClick={() => { cerrarForm(); setShowForm(true) }}
-              style={{ background:S.cyan, border:'none', borderRadius:'10px', padding:'9px 16px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.82rem' }}>
-              + Profesor
-            </button>
-          </div>
-        </div>
-      </div>
+      <EscuelaPageHeader escuela={escuela} kicker={escuela?.name} titulo="PROFESORES"
+        subtitulo={`${profesores.length} profesor${profesores.length !== 1 ? 'es' : ''}`}
+        accion={(
+          <button onClick={() => { cerrarForm(); setShowForm(true) }}
+            style={{ display:'flex', alignItems:'center', gap:'6px', background:S.green, border:'none', borderRadius:'12px', padding:'11px 16px', cursor:'pointer', color:'#07240f', fontWeight:'900', fontSize:'.72rem', letterSpacing:'.02em', whiteSpace:'nowrap', flexShrink:0 }}>
+            <Plus size={15} strokeWidth={3}/> AGREGAR PROFESOR
+          </button>
+        )}/>
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
 
         {msg && (
-          <div style={{ background:'rgba(0,221,208,.1)', border:`1px solid rgba(0,221,208,.3)`, borderRadius:'10px', padding:'10px 14px', marginBottom:'14px', fontSize:'.8rem', color:S.cyan }}>{msg}</div>
+          <div style={{ background:S.greenDim, border:`1px solid rgba(34,197,94,.3)`, borderRadius:'10px', padding:'10px 14px', marginBottom:'14px', fontSize:'.8rem', color:S.green }}>{msg}</div>
         )}
 
         {showForm && (
@@ -152,22 +148,22 @@ export default function EscuelaProfesoresPage() {
                 <div style={{ fontSize:'.75rem', color:S.muted, marginBottom:'12px' }}>Primero escribe su cédula — así revisamos si ya está registrado en Golmebol.</div>
                 <div style={{ display:'flex', gap:'8px' }}>
                   <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} onKeyDown={e => e.key==='Enter' && handleBuscarCedula()} style={inp} placeholder="Número de cédula" autoFocus/>
-                  <button onClick={handleBuscarCedula} disabled={buscando} style={{ padding:'10px 18px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'700', fontSize:'.82rem', flexShrink:0, opacity:buscando?.7:1 }}>{buscando?'Buscando...':'Buscar'}</button>
+                  <button onClick={handleBuscarCedula} disabled={buscando} style={{ padding:'10px 18px', background:S.green, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'700', fontSize:'.82rem', flexShrink:0, opacity:buscando?.7:1 }}>{buscando?'Buscando...':'Buscar'}</button>
                 </div>
               </>
             )}
 
             {personaEncontrada && (
               <>
-                <div style={{ background:S.cyanDim, border:`1px solid rgba(0,221,208,.3)`, borderRadius:'10px', padding:'14px', marginBottom:'14px' }}>
-                  <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.cyan, marginBottom:'8px', letterSpacing:'.05em' }}>YA ESTÁ REGISTRADO EN GOLMEBOL</div>
+                <div style={{ background:S.greenDim, border:`1px solid rgba(34,197,94,.3)`, borderRadius:'10px', padding:'14px', marginBottom:'14px' }}>
+                  <div style={{ fontSize:'.68rem', fontWeight:'700', color:S.green, marginBottom:'8px', letterSpacing:'.05em' }}>YA ESTÁ REGISTRADO EN GOLMEBOL</div>
                   <div style={{ fontWeight:'700' }}>{personaEncontrada.name}</div>
                   <div style={{ fontSize:'.75rem', color:S.text2, marginTop:'2px' }}>🪪 {personaEncontrada.numero_cedula}{personaEncontrada.escuela?.name ? ` · ya pertenece a ${personaEncontrada.escuela.name}` : ''}</div>
                 </div>
                 <div style={{ fontSize:'.82rem', marginBottom:'14px' }}>¿Agregar a <b>{personaEncontrada.name}</b> como profesor de <b>{escuela?.name}</b>?</div>
                 {error && <div style={{ color:'#ff6b6b', fontSize:'.78rem', marginBottom:'10px' }}>{error}</div>}
                 <div style={{ display:'flex', gap:'8px' }}>
-                  <button onClick={handleConfirmarPersonaEncontrada} disabled={guardando} style={{ flex:1, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.85rem', opacity:guardando?.7:1 }}>{guardando?'Guardando...':'✓ Sí, agregar'}</button>
+                  <button onClick={handleConfirmarPersonaEncontrada} disabled={guardando} style={{ flex:1, padding:'11px', background:S.green, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.85rem', opacity:guardando?.7:1 }}>{guardando?'Guardando...':'✓ Sí, agregar'}</button>
                   <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar('') }} style={{ padding:'11px 16px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>Otra cédula</button>
                 </div>
               </>
@@ -185,7 +181,7 @@ export default function EscuelaProfesoresPage() {
                 </div>
                 {error && <div style={{ color:'#ff6b6b', fontSize:'.78rem', marginBottom:'10px' }}>{error}</div>}
                 <div style={{ display:'flex', gap:'8px' }}>
-                  <button onClick={handleCrearProfesorNuevo} disabled={guardando} style={{ flex:1, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.85rem', opacity:guardando?.7:1 }}>{guardando?'Creando...':'Crear profesor'}</button>
+                  <button onClick={handleCrearProfesorNuevo} disabled={guardando} style={{ flex:1, padding:'11px', background:S.green, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.85rem', opacity:guardando?.7:1 }}>{guardando?'Creando...':'Crear profesor'}</button>
                   <button onClick={cerrarForm} style={{ padding:'11px 16px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>Cancelar</button>
                 </div>
               </>

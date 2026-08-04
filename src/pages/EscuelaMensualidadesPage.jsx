@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import EscuelaPageHeader from '../components/EscuelaPageHeader'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
+  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
   win: '#1e8e3e', warn: '#e8710a', loss: '#d93025',
 }
@@ -60,7 +62,7 @@ function ModalMensualidad({ jugador, onClose, onGuardar }) {
           <div style={{ display:'flex', gap:'8px' }}>
             {[1,2,3,6,12].map(m => (
               <button key={m} onClick={() => setMeses(m)}
-                style={{ flex:1, padding:'8px 4px', border: meses===m ? `2px solid ${S.cyan}` : `1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', background: meses===m ? S.cyanDim : 'transparent', color: meses===m ? S.cyan : S.muted, fontWeight: meses===m?700:400, fontSize:'.78rem' }}>
+                style={{ flex:1, padding:'8px 4px', border: meses===m ? `2px solid ${S.green}` : `1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', background: meses===m ? S.greenDim : 'transparent', color: meses===m ? S.green : S.muted, fontWeight: meses===m?700:400, fontSize:'.78rem' }}>
                 {m === 12 ? '1 año' : `${m}m`}
               </button>
             ))}
@@ -68,7 +70,7 @@ function ModalMensualidad({ jugador, onClose, onGuardar }) {
         </div>
         <div style={{ display:'flex', gap:'10px' }}>
           <button onClick={handleGuardar} disabled={guardando}
-            style={{ flex:1, padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:guardando?.7:1 }}>
+            style={{ flex:1, padding:'11px', background:S.green, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:guardando?.7:1 }}>
             {guardando ? 'Guardando...' : '✓ Registrar pago'}
           </button>
           <button onClick={onClose} style={{ padding:'11px 16px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>Cancelar</button>
@@ -174,7 +176,7 @@ export default function EscuelaMensualidadesPage() {
   }
 
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
+    <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.green, fontSize:'.9rem' }}>Cargando...</div>
   )
 
   const vencidos   = jugadores.filter(j => j.fecha_vencimiento && diasRestantes(j.fecha_vencimiento) < 0)
@@ -188,18 +190,13 @@ export default function EscuelaMensualidadesPage() {
         <ModalMensualidad jugador={modalJugador} onClose={() => setModalJugador(null)} onGuardar={handleGuardarMensualidad}/>
       )}
 
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
-        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escuela')} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escuela</button>
-          <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>💰 Mensualidades</div>
-          <div style={{ fontSize:'.72rem', color:S.muted }}>{escuela?.name}{escuela?.categoria ? ` · ${escuela.categoria}` : ''}</div>
-        </div>
-      </div>
+      <EscuelaPageHeader escuela={escuela} kicker={escuela?.name} titulo="MENSUALIDADES"
+        subtitulo={escuela?.categoria || 'Libre'}/>
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
 
         {msg && (
-          <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>
+          <div style={{ background:S.greenDim, color:S.green, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>
         )}
 
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'18px' }}>
