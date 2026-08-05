@@ -83,6 +83,29 @@ export default function EscuelaTorneosPage() {
 
       <div style={{ maxWidth:'560px', margin:'0 auto', padding:'18px 16px' }}>
 
+        {(escuela?.torneos_campeon > 0 || escuela?.torneos_subcampeon > 0 || escuela?.torneos_tercero > 0) && (
+          <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+            {escuela.torneos_campeon > 0 && (
+              <div style={{ flex:1, minWidth:90, background:S.card, border:`1px solid ${S.gold}55`, borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+                <div style={{ fontSize:'1.3rem', fontWeight:900, color:S.gold }}>🏆 {escuela.torneos_campeon}</div>
+                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:2 }}>Campeonatos</div>
+              </div>
+            )}
+            {escuela.torneos_subcampeon > 0 && (
+              <div style={{ flex:1, minWidth:90, background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+                <div style={{ fontSize:'1.3rem', fontWeight:900, color:S.text2 }}>🥈 {escuela.torneos_subcampeon}</div>
+                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:2 }}>Subcampeonatos</div>
+              </div>
+            )}
+            {escuela.torneos_tercero > 0 && (
+              <div style={{ flex:1, minWidth:90, background:S.card, border:`1px solid ${S.border}`, borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+                <div style={{ fontSize:'1.3rem', fontWeight:900, color:S.text2 }}>🥉 {escuela.torneos_tercero}</div>
+                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:2 }}>Terceros puestos</div>
+              </div>
+            )}
+          </div>
+        )}
+
         {showForm && (
           <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'18px', marginBottom:'18px' }}>
             <div style={{ fontWeight:'700', fontSize:'.95rem', marginBottom:'14px' }}>Nuevo torneo</div>

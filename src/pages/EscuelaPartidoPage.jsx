@@ -106,6 +106,22 @@ function PitchSVG({ style }) {
 const todayISO = () => new Date().toISOString().split('T')[0]
 const EMPTY_MATCHINFO = { rival:'', fecha: todayISO(), hora:'15:00', torneo:'Amistoso' }
 
+// Fases de un torneo de la escuela — se elige al crear el partido para
+// saber en qué momento del torneo va, y así poder avisar solos si pasan de
+// ronda o si el torneo se termina. "tercer_puesto" queda aparte de la
+// cadena normal (no lleva a ninguna fase siguiente).
+const FASES = [
+  { v:'grupos', l:'Fase de grupos' },
+  { v:'dieciseisavos', l:'Dieciseisavos de final' },
+  { v:'octavos', l:'Octavos de final' },
+  { v:'cuartos', l:'Cuartos de final' },
+  { v:'semifinal', l:'Semifinal' },
+  { v:'tercer_puesto', l:'Tercer / cuarto puesto' },
+  { v:'final', l:'Final' },
+]
+const FASE_LABELS = Object.fromEntries(FASES.map(f => [f.v, f.l]))
+const FASE_SIGUIENTE = { dieciseisavos:'octavos', octavos:'cuartos', cuartos:'semifinal', semifinal:'final' }
+
 export default function EscuelaPartidoPage() {
   const navigate = useNavigate()
   const [profesor, setProfesor] = useState(null)
@@ -113,6 +129,7 @@ export default function EscuelaPartidoPage() {
   const [roster, setRoster] = useState([])
   const [torneosEscuela, setTorneosEscuela] = useState([])
   const [torneoId, setTorneoId] = useState(null)
+  const [fase, setFase] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -223,6 +240,7 @@ export default function EscuelaPartidoPage() {
     setJugaron(row.jugaron || [])
     setTitulares(row.titulares || [])
     setTorneoId(row.torneo_id || null)
+    setFase(row.fase || null)
   }
 
   // Cada vez que cambia la alineación, se van sumando (sin repetir) todos los
@@ -711,19 +729,116 @@ export default function EscuelaPartidoPage() {
     }).eq('id', creadoPor)
   }
 
+  // Le suma el resultado final del torneo (campeón/subcampeón/tercero) a
+  // todos los que participaron en CUALQUIER partido de ese torneo — no solo
+  // el que lo cerró — para no dejar por fuera a quien jugó la fase de
+  // grupos con otra alineación o a otro profesor que dirigió una fecha
+  // anterior.
+  async function sumarResultadoTorneo(resultadoFinal) {
+    const { data: partidosTorneo } = await supabase.from('escuela_partidos')
+      .select('jugaron, creado_por').eq('torneo_id', torneoId)
+    const jugadorIds = Array.from(new Set((partidosTorneo || []).flatMap(p => p.jugaron || [])))
+    const profesorIds = Array.from(new Set((partidosTorneo || []).map(p => p.creado_por).filter(Boolean)))
+
+    const campoJug = resultadoFinal === 'campeon' ? 'torneos_campeon_escuela' : resultadoFinal === 'subcampeon' ? 'torneos_subcampeon_escuela' : resultadoFinal === 'tercero' ? 'torneos_tercero_escuela' : null
+    const campoProf = resultadoFinal === 'campeon' ? 'torneos_campeon_prof' : resultadoFinal === 'subcampeon' ? 'torneos_subcampeon_prof' : resultadoFinal === 'tercero' ? 'torneos_tercero_prof' : null
+    const campoEquipo = resultadoFinal === 'campeon' ? 'torneos_campeon' : resultadoFinal === 'subcampeon' ? 'torneos_subcampeon' : resultadoFinal === 'tercero' ? 'torneos_tercero' : null
+
+    if (jugadorIds.length > 0) {
+      const cols = ['id', 'torneos_jugados_escuela', ...(campoJug ? [campoJug] : [])]
+      const { data: actuales } = await supabase.from('players').select(cols.join(', ')).in('id', jugadorIds)
+      await Promise.all((actuales || []).map(j => supabase.from('players').update({
+        torneos_jugados_escuela: (j.torneos_jugados_escuela || 0) + 1,
+        ...(campoJug ? { [campoJug]: (j[campoJug] || 0) + 1 } : {}),
+      }).eq('id', j.id)))
+    }
+    if (profesorIds.length > 0) {
+      const cols = ['id', 'torneos_jugados_prof', ...(campoProf ? [campoProf] : [])]
+      const { data: actuales } = await supabase.from('players').select(cols.join(', ')).in('id', profesorIds)
+      await Promise.all((actuales || []).map(p => supabase.from('players').update({
+        torneos_jugados_prof: (p.torneos_jugados_prof || 0) + 1,
+        ...(campoProf ? { [campoProf]: (p[campoProf] || 0) + 1 } : {}),
+      }).eq('id', p.id)))
+    }
+    const colsEquipo = ['torneos_jugados', ...(campoEquipo ? [campoEquipo] : [])]
+    const { data: equipoActual } = await supabase.from('teams').select(colsEquipo.join(', ')).eq('id', escuela.id).single()
+    if (equipoActual) {
+      await supabase.from('teams').update({
+        torneos_jugados: (equipoActual.torneos_jugados || 0) + 1,
+        ...(campoEquipo ? { [campoEquipo]: (equipoActual[campoEquipo] || 0) + 1 } : {}),
+      }).eq('id', escuela.id)
+    }
+  }
+
+  // Si este partido pertenece a un torneo de la escuela y tiene fase
+  // marcada, revisa el resultado para avisar si pasan de ronda o si el
+  // torneo se termina, y deja el torneo (estado/fase actual/resultado
+  // final) al día solo. Devuelve el texto del aviso, o null si no aplica.
+  async function actualizarTorneo() {
+    if (!torneoId || !fase) return null
+    const { data: t } = await supabase.from('escuela_torneos').select('*').eq('id', torneoId).maybeSingle()
+    if (!t || t.estado === 'finalizado') return null
+
+    const gano = score.home > score.away
+    const perdio = score.home < score.away
+    const empato = score.home === score.away
+
+    let resultadoFinal = null // 'campeon' | 'subcampeon' | 'tercero' | 'cuarto' | null (null pero finalizado = eliminado)
+    let quedaFinalizado = false
+    let notif = null
+
+    if (fase === 'grupos') {
+      // No se avisa nada especial en fase de grupos — el torneo sigue.
+    } else if (empato) {
+      notif = '⚖️ Empate — si hubo definición por penales, ajusta el resultado del torneo a mano desde Torneos.'
+    } else if (fase === 'final') {
+      quedaFinalizado = true
+      resultadoFinal = gano ? 'campeon' : 'subcampeon'
+      notif = gano ? '🏆 ¡Campeones del torneo!' : '🥈 Subcampeones del torneo.'
+    } else if (fase === 'tercer_puesto') {
+      quedaFinalizado = true
+      resultadoFinal = gano ? 'tercero' : 'cuarto'
+      notif = gano ? '🥉 Quedan en tercer puesto del torneo.' : 'Quedan en cuarto puesto del torneo.'
+    } else if (perdio) {
+      quedaFinalizado = true
+      notif = `❌ Quedan eliminados en ${FASE_LABELS[fase].toLowerCase()}.`
+    } else {
+      const siguiente = FASE_SIGUIENTE[fase]
+      notif = siguiente ? `✅ ¡Avanzan a ${FASE_LABELS[siguiente].toLowerCase()}!` : '✅ Ganan este partido.'
+    }
+
+    const RESULTADO_TXT = { campeon:'Campeón', subcampeon:'Subcampeón', tercero:'Tercer puesto', cuarto:'Cuarto puesto' }
+    const patchTorneo = { fase_actual: FASE_LABELS[fase], updated_at: new Date().toISOString() }
+    if (quedaFinalizado) {
+      patchTorneo.estado = 'finalizado'
+      patchTorneo.resultado_final = resultadoFinal ? RESULTADO_TXT[resultadoFinal] : `Eliminados en ${FASE_LABELS[fase]}`
+    }
+    await supabase.from('escuela_torneos').update(patchTorneo).eq('id', torneoId)
+
+    if (quedaFinalizado) {
+      // resultadoFinal puede venir null (eliminados antes de la final/tercer
+      // puesto) — igual se suma como torneo jugado, solo que sin sumar a
+      // los contadores de campeón/subcampeón/tercero.
+      try { await sumarResultadoTorneo(resultadoFinal) } catch {}
+    }
+    return notif
+  }
+
   async function guardarHistorial() {
     setGuardandoFinal(true)
     await supabase.from('escuela_partidos').update({
       estado:'finalizado', vista:'match', mvp, observaciones: matchObs, timer_sec: timerSec,
       eventos: events, score_home: score.home, score_away: score.away,
-      lineup, bench, positions, jugaron, titulares, torneo_id: torneoId, updated_at: new Date().toISOString(),
+      lineup, bench, positions, jugaron, titulares, torneo_id: torneoId, fase, updated_at: new Date().toISOString(),
     }).eq('id', partidoId)
     try { await actualizarStatsJugadores() } catch {}
     try { await actualizarStatsProfesor() } catch {}
     try { await guardarStatsPartido() } catch {}
+    let notifTorneo = null
+    try { notifTorneo = await actualizarTorneo() } catch {}
     setGuardandoFinal(false)
     setShowFinish(false)
-    alert('✅ Partido guardado en el historial de la escuela.')
+    alert(notifTorneo ? `✅ Partido guardado en el historial de la escuela.\n\n${notifTorneo}` : '✅ Partido guardado en el historial de la escuela.')
     fetchTodo()
   }
 
@@ -905,6 +1020,19 @@ export default function EscuelaPartidoPage() {
                       : 'Se va a guardar como amistoso, separado de tus torneos.'}
                 </div>
               </div>
+              {torneoId && (
+                <div style={{ gridColumn:'1/-1' }}>
+                  <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>¿Qué fase están jugando?</label>
+                  <select value={fase || ''} onChange={e => { const v = e.target.value || null; setFase(v); persist({ fase: v }) }}
+                    style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}>
+                    <option value="">Seleccionar fase...</option>
+                    {FASES.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
+                  </select>
+                  <div style={{ fontSize:10, color:S.muted, marginTop:5 }}>
+                    Al terminar el partido, si pierden en una fase eliminatoria o si es la final, el torneo se cierra solo y se le suma el resultado a los jugadores, al profesor y al equipo.
+                  </div>
+                </div>
+              )}
             </div>
             <div style={{ marginBottom:'20px' }}>
               <div style={{ fontSize:11, color:S.muted, textTransform:'uppercase', marginBottom:8 }}>Estilo de cancha</div>

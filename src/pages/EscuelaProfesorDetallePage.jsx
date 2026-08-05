@@ -26,6 +26,8 @@ const STAT_LABELS = {
   partidos_jugados_prof:'Partidos jugados', partidos_ganados_prof:'Ganados',
   partidos_empatados_prof:'Empatados', partidos_perdidos_prof:'Perdidos',
 }
+const TORNEO_STAT_KEYS = ['torneos_jugados_prof','torneos_campeon_prof','torneos_subcampeon_prof','torneos_tercero_prof']
+const TORNEO_STAT_LABELS = { torneos_jugados_prof:'Torneos dirigidos', torneos_campeon_prof:'Campeón', torneos_subcampeon_prof:'Subcampeón', torneos_tercero_prof:'Tercer puesto' }
 
 const EVAL_KEYS = ['puntualidad','conocimiento_tecnico','comunicacion','liderazgo','disciplina','compromiso']
 const EVAL_LABELS = {
@@ -205,6 +207,19 @@ export default function EscuelaProfesorDetallePage() {
                     </div>
                   ))}
                 </div>
+                <div style={{ fontSize:'.7rem', fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Torneos dirigidos</div>
+                <div style={{ fontSize:9.5, color:S.muted, marginBottom:8 }}>Se suman solos cuando un torneo que dirigió termina (campeón, subcampeón o tercer puesto).</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+                  {TORNEO_STAT_KEYS.map(k => (
+                    <div key={k}>
+                      <label style={lbl}>{TORNEO_STAT_LABELS[k]}</label>
+                      <input type="number" min="0" value={prof[k] ?? 0}
+                        onChange={e => setProf(pr => ({ ...pr, [k]: e.target.value }))}
+                        onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}
+                        style={inp}/>
+                    </div>
+                  ))}
+                </div>
                 <label style={lbl}>Logros / notas</label>
                 <textarea value={prof.logros_prof || ''} onChange={e => setProf(pr => ({ ...pr, logros_prof:e.target.value }))}
                   onBlur={e => handleGuardarCampo('logros_prof', e.target.value.trim() || null)}
@@ -213,6 +228,7 @@ export default function EscuelaProfesorDetallePage() {
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                 {STAT_KEYS.map(k => <FilaDato key={k} label={STAT_LABELS[k]} valor={prof[k] ?? 0}/>)}
+                {TORNEO_STAT_KEYS.map(k => <FilaDato key={k} label={TORNEO_STAT_LABELS[k]} valor={prof[k] ?? 0}/>)}
                 {prof.logros_prof && <FilaDato label="Logros / notas" valor={prof.logros_prof}/>}
               </div>
             )}

@@ -29,6 +29,8 @@ const TIPOS_SANGRE = ['O+','O-','A+','A-','B+','B-','AB+','AB-']
 const POSICIONES = ['Portero','Defensa','Mediocampista','Delantero','Cierre','Ala','Pívot']
 const STAT_KEYS = ['goles_escuela','asistencias_escuela','amarillas_escuela','rojas_escuela','partidos_escuela','mvp_escuela']
 const STAT_LABELS = { goles_escuela:'Goles', asistencias_escuela:'Asistencias', amarillas_escuela:'Amarillas', rojas_escuela:'Rojas', partidos_escuela:'Partidos', mvp_escuela:'MVP' }
+const TORNEO_STAT_KEYS = ['torneos_jugados_escuela','torneos_campeon_escuela','torneos_subcampeon_escuela','torneos_tercero_escuela']
+const TORNEO_STAT_LABELS = { torneos_jugados_escuela:'Torneos jugados', torneos_campeon_escuela:'Campeón', torneos_subcampeon_escuela:'Subcampeón', torneos_tercero_escuela:'Tercer puesto' }
 
 export default function EscuelaJugadorDetallePage() {
   const { id } = useParams()
@@ -251,10 +253,23 @@ export default function EscuelaJugadorDetallePage() {
 
             {modalAbierto === 'stats' && (
               <EscuelaSheetModal titulo="Estadísticas" subtitulo="Se actualizan solas al terminar cada partido, pero las puedes ajustar." onClose={() => setModalAbierto(null)}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
                   {STAT_KEYS.map(k => (
                     <div key={k}>
                       <label style={lbl}>{STAT_LABELS[k]}</label>
+                      <input type="number" min="0" value={jugador[k] ?? 0}
+                        onChange={e => setJugador(j => ({ ...j, [k]: e.target.value }))}
+                        onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}
+                        style={inp}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize:'.7rem', fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Torneos</div>
+                <div style={{ fontSize:9.5, color:S.muted, marginBottom:8 }}>Se suman solos cuando el torneo termina (campeón, subcampeón o tercer puesto).</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  {TORNEO_STAT_KEYS.map(k => (
+                    <div key={k}>
+                      <label style={lbl}>{TORNEO_STAT_LABELS[k]}</label>
                       <input type="number" min="0" value={jugador[k] ?? 0}
                         onChange={e => setJugador(j => ({ ...j, [k]: e.target.value }))}
                         onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}
