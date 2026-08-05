@@ -208,44 +208,24 @@ export default function EscuelaProfesorDetallePage() {
         )}
 
         {modalAbierto === 'vida' && (
-          <EscuelaSheetModal titulo="Vida futbolística" subtitulo={esCoordinador ? 'Partidos jugados/ganados/empatados/perdidos se suman solos al terminar cada Día de partido que dirija. Los demás campos son editables.' : undefined} onClose={() => setModalAbierto(null)}>
+          <EscuelaSheetModal titulo="Vida futbolística" subtitulo="Partidos y torneos se suman solos al terminar cada Día de partido — no se pueden editar a mano, para que el dato sea siempre real." onClose={() => setModalAbierto(null)}>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+              {STAT_KEYS.map(k => <FilaDato key={k} label={STAT_LABELS[k]} valor={prof[k] ?? 0}/>)}
+            </div>
+            <div style={{ fontSize:'.7rem', fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Torneos dirigidos</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+              {TORNEO_STAT_KEYS.map(k => <FilaDato key={k} label={TORNEO_STAT_LABELS[k]} valor={prof[k] ?? 0}/>)}
+            </div>
+
             {esCoordinador ? (
               <>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-                  {STAT_KEYS.map(k => (
-                    <div key={k}>
-                      <label style={lbl}>{STAT_LABELS[k]}</label>
-                      <input type="number" min="0" value={prof[k] ?? 0}
-                        onChange={e => setProf(pr => ({ ...pr, [k]: e.target.value }))}
-                        onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}
-                        style={inp}/>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ fontSize:'.7rem', fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Torneos dirigidos</div>
-                <div style={{ fontSize:9.5, color:S.muted, marginBottom:8 }}>Se suman solos cuando un torneo que dirigió termina (campeón, subcampeón o tercer puesto).</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-                  {TORNEO_STAT_KEYS.map(k => (
-                    <div key={k}>
-                      <label style={lbl}>{TORNEO_STAT_LABELS[k]}</label>
-                      <input type="number" min="0" value={prof[k] ?? 0}
-                        onChange={e => setProf(pr => ({ ...pr, [k]: e.target.value }))}
-                        onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}
-                        style={inp}/>
-                    </div>
-                  ))}
-                </div>
                 <label style={lbl}>Logros / notas</label>
                 <textarea value={prof.logros_prof || ''} onChange={e => setProf(pr => ({ ...pr, logros_prof:e.target.value }))}
                   onBlur={e => handleGuardarCampo('logros_prof', e.target.value.trim() || null)}
-                  style={{ ...inp, minHeight:70, resize:'vertical' }} placeholder="Torneos ganados, reconocimientos, etc."/>
+                  style={{ ...inp, minHeight:70, resize:'vertical' }} placeholder="Torneos ganados, reconocimientos, etc. (este campo sí es manual)"/>
               </>
             ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {STAT_KEYS.map(k => <FilaDato key={k} label={STAT_LABELS[k]} valor={prof[k] ?? 0}/>)}
-                {TORNEO_STAT_KEYS.map(k => <FilaDato key={k} label={TORNEO_STAT_LABELS[k]} valor={prof[k] ?? 0}/>)}
-                {prof.logros_prof && <FilaDato label="Logros / notas" valor={prof.logros_prof}/>}
-              </div>
+              prof.logros_prof && <FilaDato label="Logros / notas" valor={prof.logros_prof}/>
             )}
           </EscuelaSheetModal>
         )}
