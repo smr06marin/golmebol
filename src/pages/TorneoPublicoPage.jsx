@@ -855,7 +855,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         )}
 
         <div style={{ textAlign: 'center', marginTop: '24px', color: '#c4c7ca', fontSize: '.72rem' }}>
-          golmebol.app
+          golmebol.com
         </div>
       </div>
 

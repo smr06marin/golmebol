@@ -9,7 +9,7 @@ function esHostPropio(hostname) {
   return (
     h === 'localhost' ||
     h === '127.0.0.1' ||
-    h.endsWith('golmebol.app') ||
+    h.endsWith('golmebol.com') ||
     h.endsWith('.vercel.app')
   )
 }
