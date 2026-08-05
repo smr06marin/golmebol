@@ -16,6 +16,7 @@ const S = {
 const IMG_DATOS = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
 const IMG_VIDA  = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
 const IMG_EVAL  = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
+const IMG_TORNEOS = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
 
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'.05em' }
@@ -63,9 +64,10 @@ export default function EscuelaProfesorDetallePage() {
   const [escuela, setEscuela] = useState(null)
   const [prof, setProf] = useState(null)
   const [evaluaciones, setEvaluaciones] = useState([])
+  const [torneosHistorial, setTorneosHistorial] = useState([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
-  const [modalAbierto, setModalAbierto] = useState(null) // 'datos' | 'vida' | 'evaluacion' | null
+  const [modalAbierto, setModalAbierto] = useState(null) // 'datos' | 'vida' | 'evaluacion' | 'torneos' | null
   const [showEvalForm, setShowEvalForm] = useState(false)
   const [nuevaEval, setNuevaEval] = useState(EVAL_VACIA)
   const [guardandoEval, setGuardandoEval] = useState(false)
@@ -92,6 +94,16 @@ export default function EscuelaProfesorDetallePage() {
 
     const { data: evs } = await supabase.from('escuela_profesor_evaluaciones').select('*').eq('profesor_id', id).order('fecha', { ascending:false })
     setEvaluaciones(evs || [])
+
+    // Torneos en los que dirigió al menos un partido — el resultado sale
+    // directo de escuela_torneos, que se actualiza solo cuando el torneo
+    // termina desde Día de partido.
+    const { data: partidosTorneo } = await supabase.from('escuela_partidos')
+      .select('torneo_id, escuela_torneos:torneo_id(id, nombre, temporada, estado, resultado_final, fase_actual)')
+      .eq('creado_por', id)
+    const torneosUnicos = {}
+    ;(partidosTorneo || []).forEach(row => { if (row.escuela_torneos) torneosUnicos[row.escuela_torneos.id] = row.escuela_torneos })
+    setTorneosHistorial(Object.values(torneosUnicos))
     setLoading(false)
   }
 
@@ -155,6 +167,9 @@ export default function EscuelaProfesorDetallePage() {
           <EscuelaFeatureCard onClick={() => setModalAbierto('evaluacion')} bg={IMG_EVAL} accent={S.gold}
             icon={<Star size={24} color={S.gold}/>} title="Evaluación"
             desc={promedioGeneral ? `${promedioGeneral}/10 · ${evaluaciones.length} eval.` : 'Sin evaluar'}/>
+          <EscuelaFeatureCard onClick={() => setModalAbierto('torneos')} bg={IMG_TORNEOS}
+            icon={<Trophy size={24} color={S.green}/>} title="Torneos"
+            desc={torneosHistorial.length > 0 ? `${torneosHistorial.length} dirigido${torneosHistorial.length !== 1 ? 's' : ''}` : 'Sin torneos todavía'}/>
         </div>
 
         {modalAbierto === 'datos' && (
@@ -287,6 +302,25 @@ export default function EscuelaProfesorDetallePage() {
                   ))}
                 </div>
                 {ev.comentario && <div style={{ fontSize:'.74rem', color:S.text2, fontStyle:'italic' }}>"{ev.comentario}"</div>}
+              </div>
+            ))}
+          </EscuelaSheetModal>
+        )}
+
+        {modalAbierto === 'torneos' && (
+          <EscuelaSheetModal titulo="Torneos dirigidos" subtitulo="El resultado se llena solo cuando el torneo termina desde Día de partido." onClose={() => setModalAbierto(null)}>
+            {torneosHistorial.length === 0 ? (
+              <div style={{ fontSize:'.78rem', color:S.muted, textAlign:'center', padding:'10px 0' }}>Todavía no ha dirigido ningún partido de torneo.</div>
+            ) : torneosHistorial.map(t => (
+              <div key={t.id} onClick={() => navigate(`/escuela/torneos/${t.id}`)}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 4px', borderBottom:`1px solid ${S.border}`, cursor:'pointer' }}>
+                <Trophy size={18} color={t.resultado_final ? S.gold : S.muted}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:'.8rem', fontWeight:700 }}>{t.nombre}{t.temporada ? ` · ${t.temporada}` : ''}</div>
+                  <div style={{ fontSize:'.68rem', color: t.resultado_final ? S.gold : S.muted, marginTop:2 }}>
+                    {t.resultado_final || (t.estado === 'finalizado' ? 'Finalizado' : t.fase_actual ? `En curso — ${t.fase_actual}` : 'En curso')}
+                  </div>
+                </div>
               </div>
             ))}
           </EscuelaSheetModal>

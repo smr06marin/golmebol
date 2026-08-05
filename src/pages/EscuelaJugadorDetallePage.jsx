@@ -7,7 +7,7 @@ import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import EscuelaPageHeader from '../components/EscuelaPageHeader'
 import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 import EscuelaSheetModal from '../components/EscuelaSheetModal'
-import { KeyRound, Camera, IdCard, BarChart3, Award } from 'lucide-react'
+import { KeyRound, Camera, IdCard, BarChart3, Award, Trophy } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -22,6 +22,7 @@ const IMG_FOTOS   = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a
 const IMG_DATOS   = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
 const IMG_STATS   = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
 const IMG_PREMIOS = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
+const IMG_TORNEOS = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'.05em' }
 
@@ -40,6 +41,7 @@ export default function EscuelaJugadorDetallePage() {
   const [jugador, setJugador] = useState(null)
   const [premios, setPremios] = useState([])
   const [premiosTorneo, setPremiosTorneo] = useState([])
+  const [torneosHistorial, setTorneosHistorial] = useState([])
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [subiendoFoto, setSubiendoFoto] = useState(false)
@@ -74,6 +76,16 @@ export default function EscuelaJugadorDetallePage() {
 
     const { data: premTorneo } = await supabase.from('escuela_torneo_premios').select('*, torneo:torneo_id(nombre)').eq('jugador_id', id).order('created_at', { ascending:false })
     setPremiosTorneo(premTorneo || [])
+
+    // Torneos en los que jugó al menos un partido — el resultado (campeón,
+    // subcampeón, eliminado en tal fase...) sale directo de escuela_torneos,
+    // que se actualiza solo cuando termina cada torneo desde Día de partido.
+    const { data: partidosTorneo } = await supabase.from('escuela_partidos')
+      .select('torneo_id, escuela_torneos:torneo_id(id, nombre, temporada, estado, resultado_final, fase_actual)')
+      .contains('jugaron', [id])
+    const torneosUnicos = {}
+    ;(partidosTorneo || []).forEach(row => { if (row.escuela_torneos) torneosUnicos[row.escuela_torneos.id] = row.escuela_torneos })
+    setTorneosHistorial(Object.values(torneosUnicos))
     setLoading(false)
   }
 
@@ -178,6 +190,9 @@ export default function EscuelaJugadorDetallePage() {
               <EscuelaFeatureCard onClick={() => setModalAbierto('premios')} bg={IMG_PREMIOS}
                 icon={<Award size={24} color={S.cyan}/>} title="Premios"
                 desc={`${premios.length} creado${premios.length !== 1 ? 's' : ''}`}/>
+              <EscuelaFeatureCard onClick={() => setModalAbierto('torneos')} bg={IMG_TORNEOS}
+                icon={<Trophy size={24} color={S.cyan}/>} title="Torneos"
+                desc={torneosHistorial.length > 0 ? `${torneosHistorial.length} jugado${torneosHistorial.length !== 1 ? 's' : ''}` : 'Sin torneos todavía'}/>
             </div>
 
             {modalAbierto === 'acceso' && (
@@ -321,6 +336,25 @@ export default function EscuelaJugadorDetallePage() {
                       </div>
                     </div>
                     <button onClick={() => handleEliminarPremio(p.id)} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:'.85rem' }}>🗑️</button>
+                  </div>
+                ))}
+              </EscuelaSheetModal>
+            )}
+
+            {modalAbierto === 'torneos' && (
+              <EscuelaSheetModal titulo="Torneos jugados" subtitulo="El resultado se llena solo cuando el torneo termina desde Día de partido." onClose={() => setModalAbierto(null)}>
+                {torneosHistorial.length === 0 ? (
+                  <div style={{ fontSize:'.78rem', color:S.muted, textAlign:'center', padding:'10px 0' }}>Todavía no ha jugado ningún partido de torneo.</div>
+                ) : torneosHistorial.map(t => (
+                  <div key={t.id} onClick={() => navigate(`/escuela/torneos/${t.id}`)}
+                    style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 4px', borderBottom:`1px solid ${S.border}`, cursor:'pointer' }}>
+                    <Trophy size={18} color={t.resultado_final ? S.gold : S.muted}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:'.8rem', fontWeight:700 }}>{t.nombre}{t.temporada ? ` · ${t.temporada}` : ''}</div>
+                      <div style={{ fontSize:'.68rem', color: t.resultado_final ? S.gold : S.muted, marginTop:2 }}>
+                        {t.resultado_final || (t.estado === 'finalizado' ? 'Finalizado' : t.fase_actual ? `En curso — ${t.fase_actual}` : 'En curso')}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </EscuelaSheetModal>
