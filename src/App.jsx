@@ -45,6 +45,7 @@ const EncuestaArbitrosPage    = lazy(() => import('./pages/EncuestaArbitrosPage'
 const EscuelaHomePage         = lazy(() => import('./pages/EscuelaHomePage'))
 const EscuelaJugadoresPage    = lazy(() => import('./pages/EscuelaJugadoresPage'))
 const EscuelaProfesoresPage   = lazy(() => import('./pages/EscuelaProfesoresPage'))
+const EscuelaProfesorDetallePage = lazy(() => import('./pages/EscuelaProfesorDetallePage'))
 const EscuelaPartidoPage      = lazy(() => import('./pages/EscuelaPartidoPage'))
 const EscuelaJugadorDetallePage = lazy(() => import('./pages/EscuelaJugadorDetallePage'))
 const RegistroEscuelaPage     = lazy(() => import('./pages/RegistroEscuelaPage'))
@@ -471,6 +472,7 @@ export default function App() {
           <Route path="/escuela"             element={<EscuelaRoute><EscuelaHomePage/></EscuelaRoute>}/>
           <Route path="/escuela/jugadores"   element={<EscuelaRoute><EscuelaJugadoresPage/></EscuelaRoute>}/>
           <Route path="/escuela/profesores"  element={<EscuelaRoute><EscuelaProfesoresPage/></EscuelaRoute>}/>
+          <Route path="/escuela/profesores/:id" element={<EscuelaRoute><EscuelaProfesorDetallePage/></EscuelaRoute>}/>
           <Route path="/escuela/partido"     element={<EscuelaRoute><EscuelaPartidoPage/></EscuelaRoute>}/>
           <Route path="/escuela/jugador/:id" element={<EscuelaRoute><EscuelaJugadorDetallePage/></EscuelaRoute>}/>
           <Route path="/escuela/torneos"     element={<EscuelaRoute><EscuelaTorneosPage/></EscuelaRoute>}/>

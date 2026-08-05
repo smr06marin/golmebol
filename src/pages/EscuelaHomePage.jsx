@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight, Pencil, Image as ImageIcon, X } from 'lucide-react'
+import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight, Pencil, Image as ImageIcon, X, User } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 
@@ -244,6 +244,10 @@ export default function EscuelaHomePage() {
               <EscuelaFeatureCard onClick={() => navigate('/escuela/jugadores')} bg={IMG_JUGADORES}
                 icon={<Users size={24} color={S.green}/>} title="Jugadores"
                 desc={esCoordinador ? 'Agrega y edita la plantilla' : 'Ver la plantilla de la escuela'}/>
+
+              <EscuelaFeatureCard onClick={() => navigate(`/escuela/profesores/${profesor.id}`)} bg={IMG_PROFESORES}
+                icon={<User size={24} color={S.green}/>} title="Mi perfil"
+                desc="Tu vida futbolística y evaluación"/>
 
               {esCoordinador && (
                 <EscuelaFeatureCard onClick={() => navigate('/escuela/profesores')} bg={IMG_PROFESORES}

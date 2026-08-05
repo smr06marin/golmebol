@@ -199,7 +199,8 @@ export default function EscuelaProfesoresPage() {
             <div style={{ fontSize:'.85rem' }}>Todavía eres el único profesor de la escuela</div>
           </div>
         ) : profesores.map(p => (
-          <div key={p.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px', marginBottom:'8px', display:'flex', alignItems:'center', gap:'12px' }}>
+          <div key={p.id} onClick={() => navigate(`/escuela/profesores/${p.id}`)}
+            style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px', marginBottom:'8px', display:'flex', alignItems:'center', gap:'12px', cursor:'pointer' }}>
             <div style={{ width:'40px', height:'40px', borderRadius:'50%', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
               {p.photo_face_url || p.photo_url ? <img src={p.photo_face_url || p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span>👤</span>}
             </div>
@@ -215,7 +216,7 @@ export default function EscuelaProfesoresPage() {
               </div>
             </div>
             {p.id !== profesor.id && (
-              <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+              <div onClick={e => e.stopPropagation()} style={{ display:'flex', gap:'6px', flexShrink:0 }}>
                 <button onClick={() => handleToggleCoordinador(p)}
                   style={{ background: p.es_profesor_coordinador?'rgba(249,168,37,.15)':'none', border:`1px solid ${p.es_profesor_coordinador?'#f9a825':S.border}`, borderRadius:'8px', padding:'5px 8px', cursor:'pointer', color: p.es_profesor_coordinador?S.gold:S.muted, fontSize:'.75rem' }}
                   title="Marcar/quitar como coordinador">👑</button>
