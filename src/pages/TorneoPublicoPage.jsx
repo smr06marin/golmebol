@@ -7,6 +7,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { hydratePlayersPublico } from '../lib/playersPublico'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
 // que usa el admin para armar el bracket real.
@@ -305,11 +306,14 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     setRosterModal({ team, jugadores: [], loading: true })
     const { data } = await supabase
       .from('tournament_player_registrations')
-      .select('players(id, name, photo_url, photo_face_url)')
+      .select('player_id')
       .eq('tournament_id', id)
       .eq('team_id', team.id)
       .eq('activo', true)
-    const jugadores = (data || []).map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    const hydrated = await hydratePlayersPublico(data || [], {
+      columns: 'id, name, photo_url, photo_face_url',
+    })
+    const jugadores = hydrated.map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     setRosterModal({ team, jugadores, loading: false })
   }
 
@@ -345,11 +349,14 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       if (teamIds.length > 0) {
         const { data: tpData } = await supabase
           .from('team_players')
-          .select('team_id, players(id,name,photo_url,photo_face_url,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
+          .select('team_id, player_id')
           .in('team_id', teamIds)
+        const hydrated = await hydratePlayersPublico(tpData || [], {
+          columns: 'id, name, photo_url, photo_face_url, posicion_futbol5, posicion_futbol7, posicion_futbol11',
+        })
         const modalidad = t?.modalidad || ''
         const campoPos = modalidad.includes('11') ? 'posicion_futbol11' : modalidad.includes('7') ? 'posicion_futbol7' : 'posicion_futbol5'
-        const arqueros = (tpData || [])
+        const arqueros = hydrated
           .filter(tp => tp.players && (tp.players[campoPos] === 'Portero' || tp.players.posicion_futbol5 === 'Portero' || tp.players.posicion_futbol7 === 'Portero' || tp.players.posicion_futbol11 === 'Portero'))
           .map(tp => ({ team_id: tp.team_id, ...tp.players }))
         setPorteros(arqueros)

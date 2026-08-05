@@ -1,17 +1,22 @@
 import { supabase } from './supabase'
+import { hydratePlayersPublico } from './playersPublico'
 
 // Calcula los récords que se generan solos con los datos de la liga
 // (máximo goleador, hat-tricks, rachas, etc.). Se usa tanto en la página
 // pública de récords como en el panel de admin (para que el admin vea qué
 // dato real se mostraría antes de decidir si lo oculta o no).
+//
+// Los nombres/posiciones salen de players_publico (no del embed a players),
+// para que la página pública siga funcionando cuando anon pierda SELECT
+// sobre la tabla base.
 export async function calcularRecordsAutomaticos() {
-  const { data: cache } = await supabase
+  const { data: cacheRaw } = await supabase
     .from('player_stats_cache')
-    .select('*, players(name, posicion_futbol5, posicion_futbol7, posicion_futbol11)')
+    .select('*')
 
-  const { data: statsPorPartido } = await supabase
+  const { data: statsRaw } = await supabase
     .from('player_match_stats')
-    .select('*, players(name), matches(home_score, away_score, played_at, home:home_team_id(name), away:away_team_id(name))')
+    .select('*, matches(home_score, away_score, played_at, home:home_team_id(name), away:away_team_id(name))')
     .gt('goals_scored', 0)
     .order('goals_scored', { ascending: false })
 
@@ -20,11 +25,17 @@ export async function calcularRecordsAutomaticos() {
     .select('*, home:home_team_id(name), away:away_team_id(name)')
     .eq('status', 'finished')
 
+  const cols = 'id, name, posicion_futbol5, posicion_futbol7, posicion_futbol11'
+  const [cache, statsPorPartido] = await Promise.all([
+    hydratePlayersPublico(cacheRaw || [], { columns: cols }),
+    hydratePlayersPublico(statsRaw || [], { columns: 'id, name' }),
+  ])
+
   const recs = []
   const GOLD = '#f9a825', CYAN = '#00ddd0'
 
   // 1. Máximo goleador
-  const topGol = [...(cache || [])].sort((a, b) => b.goles - a.goles)[0]
+  const topGol = [...cache].sort((a, b) => b.goles - a.goles)[0]
   if (topGol?.goles > 0) recs.push({
     id: 'max_goleador',
     titulo: `${topGol.goles} goles históricos`,
@@ -35,7 +46,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 2. Más goles en un partido
-  const topGolPar = (statsPorPartido || [])[0]
+  const topGolPar = statsPorPartido[0]
   if (topGolPar?.goals_scored >= 2) recs.push({
     id: 'goles_partido',
     titulo: `${topGolPar.goals_scored} goles en un partido`,
@@ -46,7 +57,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 3. Hat-tricks
-  const topHat = [...(cache || [])].sort((a, b) => b.hat_tricks - a.hat_tricks)[0]
+  const topHat = [...cache].sort((a, b) => b.hat_tricks - a.hat_tricks)[0]
   if (topHat?.hat_tricks > 0) recs.push({
     id: 'hat_tricks',
     titulo: `${topHat.hat_tricks} hat-trick${topHat.hat_tricks > 1 ? 's' : ''}`,
@@ -57,7 +68,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 4. Más victorias
-  const topVic = [...(cache || [])].sort((a, b) => b.victorias - a.victorias)[0]
+  const topVic = [...cache].sort((a, b) => b.victorias - a.victorias)[0]
   if (topVic?.victorias > 0) recs.push({
     id: 'victorias',
     titulo: `${topVic.victorias} victorias`,
@@ -68,7 +79,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 5. Más partidos
-  const topPJ = [...(cache || [])].sort((a, b) => b.pj - a.pj)[0]
+  const topPJ = [...cache].sort((a, b) => b.pj - a.pj)[0]
   if (topPJ?.pj > 0) recs.push({
     id: 'mas_partidos',
     titulo: `${topPJ.pj} partidos jugados`,
@@ -79,7 +90,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 6. Racha victorias
-  const topRachaV = [...(cache || [])].sort((a, b) => (b.racha_victorias_max || b.racha_victorias_actual || 0) - (a.racha_victorias_max || a.racha_victorias_actual || 0))[0]
+  const topRachaV = [...cache].sort((a, b) => (b.racha_victorias_max || b.racha_victorias_actual || 0) - (a.racha_victorias_max || a.racha_victorias_actual || 0))[0]
   const rachaV = topRachaV?.racha_victorias_max || topRachaV?.racha_victorias_actual || 0
   if (rachaV >= 2) recs.push({
     id: 'racha_vic',
@@ -91,7 +102,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 7. Racha goles
-  const topRachaG = [...(cache || [])].sort((a, b) => (b.racha_goles_actual || 0) - (a.racha_goles_actual || 0))[0]
+  const topRachaG = [...cache].sort((a, b) => (b.racha_goles_actual || 0) - (a.racha_goles_actual || 0))[0]
   if (topRachaG?.racha_goles_actual >= 2) recs.push({
     id: 'racha_gol',
     titulo: `goles en ${topRachaG.racha_goles_actual} partidos seguidos`,
@@ -102,7 +113,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 8. Arcos en cero
-  const porteros = (cache || []).filter(s => {
+  const porteros = cache.filter(s => {
     const pos = s.players?.posicion_futbol5 || s.players?.posicion_futbol7 || s.players?.posicion_futbol11 || ''
     return pos === 'Portero'
   })
@@ -117,7 +128,7 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 9. Fair play
-  const topFair = [...(cache || [])].filter(s => s.partidos_sin_tarjetas > 0).sort((a, b) => b.partidos_sin_tarjetas - a.partidos_sin_tarjetas)[0]
+  const topFair = [...cache].filter(s => s.partidos_sin_tarjetas > 0).sort((a, b) => b.partidos_sin_tarjetas - a.partidos_sin_tarjetas)[0]
   if (topFair) recs.push({
     id: 'fair_play',
     titulo: `${topFair.partidos_sin_tarjetas} partidos sin tarjetas`,

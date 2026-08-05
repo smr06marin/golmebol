@@ -57,24 +57,50 @@ export default function RegistroEscuelaPage() {
   }
 
   async function subirFotos(playerId) {
-    const urls = {}
+    let frontalExt = null
+    let traseraExt = null
     if (fotoFrontal) {
       const archivo = await comprimirImagen(fotoFrontal, { maxSize: 1600, calidad: 0.85 })
       const ext = archivo.name.split('.').pop()
       const path = `${playerId}_frontal.${ext}`
-      await supabase.storage.from('cedulas').upload(path, archivo, { upsert:true })
-      const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
-      urls.cedula_frontal_url = data.publicUrl
+      const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+      if (error) throw new Error('Error al subir documento (frente): ' + error.message)
+      frontalExt = ext
     }
     if (fotoTrasera) {
       const archivo = await comprimirImagen(fotoTrasera, { maxSize: 1600, calidad: 0.85 })
       const ext = archivo.name.split('.').pop()
       const path = `${playerId}_trasera.${ext}`
-      await supabase.storage.from('cedulas').upload(path, archivo, { upsert:true })
-      const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
-      urls.cedula_trasera_url = data.publicUrl
+      const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+      if (error) throw new Error('Error al subir documento (atrás): ' + error.message)
+      traseraExt = ext
     }
-    if (Object.keys(urls).length > 0) await supabase.from('players').update(urls).eq('id', playerId)
+    if (frontalExt || traseraExt) {
+      const { error } = await supabase.rpc('confirmar_cedula_urls', {
+        p_player_id: playerId,
+        p_frontal_ext: frontalExt,
+        p_trasera_ext: traseraExt,
+      })
+      if (error) throw new Error('Error al guardar documentos: ' + error.message)
+    }
+  }
+
+  async function vincularAuthSiPuede(playerId, cedulaDoc) {
+    const email = `${cedulaDoc}@golmebol.com`
+    const password = cedulaDoc
+    const { data: authData, error: errAuth } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { player_id: playerId, cedula: cedulaDoc } },
+    })
+    if (!errAuth && authData?.user) {
+      await supabase.rpc('vincular_auth_player', { p_player_id: playerId })
+      return
+    }
+    // Cuenta de auth ya creada de un intento previo: entrar y vincular
+    const { data: signInData } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInData?.user) {
+      await supabase.rpc('vincular_auth_player', { p_player_id: playerId })
+    }
   }
 
   async function handleRegistrar() {
@@ -88,77 +114,29 @@ export default function RegistroEscuelaPage() {
     setGuardando(true)
 
     try {
-      // 1) Acudiente: reutiliza la cuenta si ya existe (por cédula), o crea una nueva.
-      const { data: existente } = await supabase.from('players').select('*').eq('numero_cedula', acudiente.cedula.trim()).maybeSingle()
-      let acudienteId
-      if (existente) {
-        acudienteId = existente.id
-        if (!existente.es_acudiente) {
-          await supabase.from('players').update({ es_acudiente:true }).eq('id', existente.id)
-        }
-      } else {
-        const { data: nuevoAcud, error: errAcud } = await supabase.from('players')
-          .insert({
-            name: acudiente.nombre.trim(), numero_cedula: acudiente.cedula.trim(), telefono: acudiente.telefono.trim(),
-            rol: 'acudiente', es_acudiente: true, activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
-            fecha_registro: new Date().toISOString(),
-          }).select().single()
-        if (errAcud || !nuevoAcud) throw new Error(errAcud?.message || 'No se pudo crear el acudiente')
-        acudienteId = nuevoAcud.id
-        // Cuenta de acceso: mismo patrón usado en todo Golmebol (cédula@golmebol.com, password = cédula)
-        const email = `${acudiente.cedula.trim()}@golmebol.com`
-        const { data: authData, error: errAuth } = await supabase.auth.signUp({
-          email, password: acudiente.cedula.trim(),
-          options: { data: { player_id: acudienteId, cedula: acudiente.cedula.trim() } },
-        })
-        if (!errAuth && authData?.user) {
-          await supabase.from('players').update({ user_id: authData.user.id }).eq('id', acudienteId)
-        } else if (errAuth) {
-          // Ya existe una cuenta de auth con este correo (de un intento anterior que
-          // no se alcanzó a vincular): entramos con esa cuenta para completar el link
-          // en vez de dejar al acudiente huérfano en silencio.
-          const { data: signInData } = await supabase.auth.signInWithPassword({ email, password: acudiente.cedula.trim() })
-          if (signInData?.user) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', acudienteId)
-        }
-      }
-
-      // 2) Jugador (el niño): la tarjeta de identidad es tanto su documento como
-      // su usuario para entrar después a ver su propia tarjeta.
-      const tiJugador = jugador.numero_cedula.trim()
-      const { data: yaExiste } = await supabase.from('players').select('id').eq('numero_cedula', tiJugador).maybeSingle()
-      if (yaExiste) throw new Error('Ya hay una persona registrada con ese número de documento. Revisa el número.')
-
-      const { data: nuevoJugador, error: errJug } = await supabase.from('players')
-        .insert({
-          name: jugador.name.trim(), fecha_nacimiento: jugador.fecha_nacimiento, numero_cedula: tiJugador,
-          tipo_sangre: jugador.tipo_sangre || null, genero: jugador.genero || null, telefono: jugador.telefono.trim() || null,
-          posicion: jugador.posicion || null, pie_dominante: jugador.pie_dominante || null,
-          anios_jugando: jugador.anios_jugando === '' ? null : Number(jugador.anios_jugando),
-          acudiente_nombre: acudiente.nombre.trim(), acudiente_telefono: acudiente.telefono.trim(),
-          es_jugador_escuela: true, activo_membresia: true, fecha_vencimiento: null, primer_ingreso: false,
-          fecha_registro: new Date().toISOString(),
-        }).select().single()
-      if (errJug || !nuevoJugador) throw new Error(errJug?.message || 'No se pudo registrar al jugador')
-
-      // Cuenta de acceso del jugador (mismo patrón: TI@golmebol.com, password = TI)
-      const emailJugador = `${tiJugador}@golmebol.com`
-      const { data: authJugador, error: errAuthJugador } = await supabase.auth.signUp({
-        email: emailJugador, password: tiJugador,
-        options: { data: { player_id: nuevoJugador.id, cedula: tiJugador } },
+      const { data, error } = await supabase.rpc('registrar_escuela', {
+        p_escuela_id: escuela.id,
+        p_acudiente_nombre: acudiente.nombre.trim(),
+        p_acudiente_cedula: acudiente.cedula.trim(),
+        p_acudiente_telefono: acudiente.telefono.trim(),
+        p_jugador_name: jugador.name.trim(),
+        p_jugador_fecha_nacimiento: jugador.fecha_nacimiento,
+        p_jugador_cedula: jugador.numero_cedula.trim(),
+        p_tipo_sangre: jugador.tipo_sangre || null,
+        p_genero: jugador.genero || null,
+        p_telefono: jugador.telefono.trim() || null,
+        p_posicion: jugador.posicion || null,
+        p_pie_dominante: jugador.pie_dominante || null,
+        p_anios_jugando: jugador.anios_jugando === '' ? null : Number(jugador.anios_jugando),
       })
-      if (!errAuthJugador && authJugador?.user) {
-        await supabase.from('players').update({ user_id: authJugador.user.id }).eq('id', nuevoJugador.id)
-      } else if (errAuthJugador) {
-        // Mismo caso: cuenta de auth ya creada de un intento previo sin vincular.
-        const { data: signInJugador } = await supabase.auth.signInWithPassword({ email: emailJugador, password: tiJugador })
-        if (signInJugador?.user) await supabase.from('players').update({ user_id: signInJugador.user.id }).eq('id', nuevoJugador.id)
-      }
+      if (error || !data?.jugador_id) throw new Error(error?.message || 'No se pudo registrar')
 
-      await subirFotos(nuevoJugador.id)
+      // Auth del acudiente + vínculo user_id
+      await vincularAuthSiPuede(data.acudiente_id, acudiente.cedula.trim())
+      // Auth del jugador (TI) + vínculo
+      await vincularAuthSiPuede(data.jugador_id, jugador.numero_cedula.trim())
 
-      // 3) Vincular jugador a la escuela y al acudiente
-      await supabase.from('team_players').insert({ team_id: escuela.id, player_id: nuevoJugador.id, activo:true })
-      await supabase.from('escuela_acudientes').insert({ acudiente_id: acudienteId, jugador_id: nuevoJugador.id })
+      await subirFotos(data.jugador_id)
 
       limpiarBorrador(`draft_registro_escuela_acud_${escuelaId || 'x'}`)
       limpiarBorrador(`draft_registro_escuela_jug_${escuelaId || 'x'}`)

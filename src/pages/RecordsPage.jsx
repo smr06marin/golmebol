@@ -446,7 +446,7 @@ function BuscadorSimple({ onClose }) {
     setBuscando(true)
     const t = setTimeout(async () => {
       const [{ data: js }, { data: es }] = await Promise.all([
-        supabase.from('players').select('id, name, photo_face_url, photo_url').ilike('name', `%${texto}%`).limit(8),
+        supabase.from('players_publico').select('id, name, photo_face_url, photo_url').ilike('name', `%${texto}%`).limit(8),
         supabase.from('teams').select('id, name, logo_url').ilike('name', `%${texto}%`).limit(8),
       ])
       setJugadores(js || [])
@@ -648,7 +648,7 @@ export default function RecordsPage() {
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
       supabase.from('tournaments').select('id', { count: 'exact', head: true }),
-      supabase.from('players').select('id', { count: 'exact', head: true }),
+      supabase.from('players_publico').select('id', { count: 'exact', head: true }),
       supabase.from('teams').select('id', { count: 'exact', head: true }),
       supabase.from('matches').select('home_score, away_score').eq('status', 'finished'),
     ])
