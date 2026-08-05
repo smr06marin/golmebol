@@ -32,6 +32,8 @@ const STAT_KEYS = ['goles_escuela','asistencias_escuela','amarillas_escuela','ro
 const STAT_LABELS = { goles_escuela:'Goles', asistencias_escuela:'Asistencias', amarillas_escuela:'Amarillas', rojas_escuela:'Rojas', partidos_escuela:'Partidos', mvp_escuela:'MVP' }
 const TORNEO_STAT_KEYS = ['torneos_jugados_escuela','torneos_campeon_escuela','torneos_subcampeon_escuela','torneos_tercero_escuela']
 const TORNEO_STAT_LABELS = { torneos_jugados_escuela:'Torneos jugados', torneos_campeon_escuela:'Campeón', torneos_subcampeon_escuela:'Subcampeón', torneos_tercero_escuela:'Tercer puesto' }
+const PENAL_STAT_KEYS = ['goles_penales_escuela','atajadas_penales_escuela','goles_recibidos_penales_escuela']
+const PENAL_STAT_LABELS = { goles_penales_escuela:'Goles en penales', atajadas_penales_escuela:'Atajadas en penales', goles_recibidos_penales_escuela:'Recibidos en penales' }
 
 export default function EscuelaJugadorDetallePage() {
   const { id } = useParams()
@@ -281,10 +283,23 @@ export default function EscuelaJugadorDetallePage() {
                 </div>
                 <div style={{ fontSize:'.7rem', fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Torneos</div>
                 <div style={{ fontSize:9.5, color:S.muted, marginBottom:8 }}>Se suman solos cuando el torneo termina (campeón, subcampeón o tercer puesto).</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
                   {TORNEO_STAT_KEYS.map(k => (
                     <div key={k}>
                       <label style={lbl}>{TORNEO_STAT_LABELS[k]}</label>
+                      <input type="number" min="0" value={jugador[k] ?? 0}
+                        onChange={e => setJugador(j => ({ ...j, [k]: e.target.value }))}
+                        onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}
+                        style={inp}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize:'.7rem', fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>🥅 Tandas de penales</div>
+                <div style={{ fontSize:9.5, color:S.muted, marginBottom:8 }}>Dato especial, aparte de los goles/atajadas del partido — se suma solo desde "Tanda de penales" al finalizar un partido.</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+                  {PENAL_STAT_KEYS.map(k => (
+                    <div key={k}>
+                      <label style={lbl}>{PENAL_STAT_LABELS[k]}</label>
                       <input type="number" min="0" value={jugador[k] ?? 0}
                         onChange={e => setJugador(j => ({ ...j, [k]: e.target.value }))}
                         onBlur={e => handleGuardarCampo(k, Number(e.target.value) || 0)}

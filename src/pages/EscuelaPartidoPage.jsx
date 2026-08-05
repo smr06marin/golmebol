@@ -152,6 +152,15 @@ export default function EscuelaPartidoPage() {
   const [timerRunning, setTimerRunning] = useState(false)
   const [showFinish, setShowFinish] = useState(false)
   const [mvp, setMvp] = useState({ first:'', second:'', third:'' })
+  // Tanda de penales — solo se usa si el partido termina empatado. Se
+  // registra aparte del marcador del partido: no es tan valioso como un gol
+  // de partido, así que se guarda en columnas propias.
+  const [penalesActivo, setPenalesActivo] = useState(false)
+  const [penalesArqueroId, setPenalesArqueroId] = useState('')
+  const [penalesCobroJugadorId, setPenalesCobroJugadorId] = useState('')
+  const [penalesCobros, setPenalesCobros] = useState([]) // [{ jugadorId, gol }]
+  const [penalesRivalGoles, setPenalesRivalGoles] = useState(0)
+  const [penalesRivalAtajadas, setPenalesRivalAtajadas] = useState(0)
   const [jugaron, setJugaron] = useState([]) // ids de todos los que estuvieron en cancha en algún momento
   const [titulares, setTitulares] = useState([]) // ids de quienes arrancaron de titular (se fija una sola vez al iniciar)
   const [statsExtra, setStatsExtra] = useState({}) // { [jugadorId]: { minutos, recuperaciones, pases_acertados, calificacion } } — se llena al finalizar
@@ -241,6 +250,12 @@ export default function EscuelaPartidoPage() {
     setTitulares(row.titulares || [])
     setTorneoId(row.torneo_id || null)
     setFase(row.fase || null)
+    const pd = row.penales_detalle || null
+    setPenalesActivo(!!row.penales_jugados)
+    setPenalesArqueroId(pd?.arqueroId || '')
+    setPenalesCobros(pd?.cobros || [])
+    setPenalesRivalGoles(pd?.rivalGoles || 0)
+    setPenalesRivalAtajadas(pd?.rivalAtajadas || 0)
   }
 
   // Cada vez que cambia la alineación, se van sumando (sin repetir) todos los
@@ -406,6 +421,77 @@ export default function EscuelaPartidoPage() {
     setActivePlayer(null)
     persist({ lineup: nuevoLineup, score_away: nuevoScore.away, eventos: nuevosEventos })
     showToast(`🥅 Gol recibido — ${player.name.split(' ')[0]}`, '#ef4444')
+  }
+
+  // ── Tanda de penales — se guarda aparte del partido, no es tan valioso
+  // como un gol de partido. Se persiste como penales_detalle (jsonb) para
+  // no perderla si se cierra la pantalla a mitad de la tanda.
+  function persistPenales(cobros, arqueroId, rivalGoles, rivalAtajadas) {
+    persist({
+      penales_jugados: true,
+      penales_home: cobros.filter(c => c.gol).length,
+      penales_away: rivalGoles,
+      penales_detalle: { arqueroId, cobros, rivalGoles, rivalAtajadas },
+    })
+  }
+
+  function agregarCobroPenal(gol) {
+    if (!penalesCobroJugadorId) return
+    const jugador = roster.find(r => r.id === penalesCobroJugadorId)
+    if (!jugador) return
+    const nuevos = [...penalesCobros, { jugadorId: jugador.id, nombre: jugador.name, gol }]
+    setPenalesCobros(nuevos)
+    setPenalesCobroJugadorId('')
+    persistPenales(nuevos, penalesArqueroId, penalesRivalGoles, penalesRivalAtajadas)
+  }
+
+  function quitarCobroPenal(idx) {
+    const nuevos = penalesCobros.filter((_, i) => i !== idx)
+    setPenalesCobros(nuevos)
+    persistPenales(nuevos, penalesArqueroId, penalesRivalGoles, penalesRivalAtajadas)
+  }
+
+  function registrarAtajadaPenal() {
+    const n = penalesRivalAtajadas + 1
+    setPenalesRivalAtajadas(n)
+    persistPenales(penalesCobros, penalesArqueroId, penalesRivalGoles, n)
+  }
+
+  function registrarGolRecibidoPenal() {
+    const n = penalesRivalGoles + 1
+    setPenalesRivalGoles(n)
+    persistPenales(penalesCobros, penalesArqueroId, n, penalesRivalAtajadas)
+  }
+
+  function elegirArqueroPenal(arqueroId) {
+    setPenalesArqueroId(arqueroId)
+    persistPenales(penalesCobros, arqueroId, penalesRivalGoles, penalesRivalAtajadas)
+  }
+
+  // Suma los goles/atajadas de la tanda a la ficha de cada jugador que
+  // participó — en columnas propias, separadas de las estadísticas del
+  // partido, porque un gol de penales no vale lo mismo que un gol de partido.
+  async function guardarStatsPenales() {
+    if (!penalesActivo) return
+    const golesPorJugador = {}
+    penalesCobros.forEach(c => { if (c.gol) golesPorJugador[c.jugadorId] = (golesPorJugador[c.jugadorId] || 0) + 1 })
+    const ids = Object.keys(golesPorJugador)
+    if (ids.length > 0) {
+      const { data: actuales } = await supabase.from('players').select('id, goles_penales_escuela').in('id', ids)
+      const porId = Object.fromEntries((actuales || []).map(p => [p.id, p]))
+      await Promise.all(ids.map(pid => supabase.from('players').update({
+        goles_penales_escuela: (porId[pid]?.goles_penales_escuela || 0) + golesPorJugador[pid],
+      }).eq('id', pid)))
+    }
+    if (penalesArqueroId && (penalesRivalAtajadas > 0 || penalesRivalGoles > 0)) {
+      const { data: arq } = await supabase.from('players').select('atajadas_penales_escuela, goles_recibidos_penales_escuela').eq('id', penalesArqueroId).single()
+      if (arq) {
+        await supabase.from('players').update({
+          atajadas_penales_escuela: (arq.atajadas_penales_escuela || 0) + penalesRivalAtajadas,
+          goles_recibidos_penales_escuela: (arq.goles_recibidos_penales_escuela || 0) + penalesRivalGoles,
+        }).eq('id', penalesArqueroId)
+      }
+    }
   }
 
   // Sustitución directa desde el menú del jugador (sin necesidad de arrastrar)
@@ -779,9 +865,17 @@ export default function EscuelaPartidoPage() {
     const { data: t } = await supabase.from('escuela_torneos').select('*').eq('id', torneoId).maybeSingle()
     if (!t || t.estado === 'finalizado') return null
 
-    const gano = score.home > score.away
-    const perdio = score.home < score.away
-    const empato = score.home === score.away
+    // Si hubo tanda de penales, esa es la que decide quién avanza — el
+    // marcador del partido se queda empatado en el historial igual.
+    const usoPenales = penalesActivo && (penalesCobros.length > 0 || penalesRivalGoles > 0)
+    const penalesHomeGoles = penalesCobros.filter(c => c.gol).length
+    const golesLocal = usoPenales ? penalesHomeGoles : score.home
+    const golesVisita = usoPenales ? penalesRivalGoles : score.away
+
+    const gano = golesLocal > golesVisita
+    const perdio = golesLocal < golesVisita
+    const empato = golesLocal === golesVisita
+    const sufijoPenales = usoPenales ? ` (definido por penales ${penalesHomeGoles}-${penalesRivalGoles})` : ''
 
     let resultadoFinal = null // 'campeon' | 'subcampeon' | 'tercero' | 'cuarto' | null (null pero finalizado = eliminado)
     let quedaFinalizado = false
@@ -790,28 +884,28 @@ export default function EscuelaPartidoPage() {
     if (fase === 'grupos') {
       // No se avisa nada especial en fase de grupos — el torneo sigue.
     } else if (empato) {
-      notif = '⚖️ Empate — si hubo definición por penales, ajusta el resultado del torneo a mano desde Torneos.'
+      notif = '⚖️ Empate — si hubo definición por penales, regístrala arriba en "Tanda de penales" antes de guardar.'
     } else if (fase === 'final') {
       quedaFinalizado = true
       resultadoFinal = gano ? 'campeon' : 'subcampeon'
-      notif = gano ? '🏆 ¡Campeones del torneo!' : '🥈 Subcampeones del torneo.'
+      notif = (gano ? '🏆 ¡Campeones del torneo!' : '🥈 Subcampeones del torneo.') + sufijoPenales
     } else if (fase === 'tercer_puesto') {
       quedaFinalizado = true
       resultadoFinal = gano ? 'tercero' : 'cuarto'
-      notif = gano ? '🥉 Quedan en tercer puesto del torneo.' : 'Quedan en cuarto puesto del torneo.'
+      notif = (gano ? '🥉 Quedan en tercer puesto del torneo.' : 'Quedan en cuarto puesto del torneo.') + sufijoPenales
     } else if (perdio) {
       quedaFinalizado = true
-      notif = `❌ Quedan eliminados en ${FASE_LABELS[fase].toLowerCase()}.`
+      notif = `❌ Quedan eliminados en ${FASE_LABELS[fase].toLowerCase()}.${sufijoPenales}`
     } else {
       const siguiente = FASE_SIGUIENTE[fase]
-      notif = siguiente ? `✅ ¡Avanzan a ${FASE_LABELS[siguiente].toLowerCase()}!` : '✅ Ganan este partido.'
+      notif = (siguiente ? `✅ ¡Avanzan a ${FASE_LABELS[siguiente].toLowerCase()}!` : '✅ Ganan este partido.') + sufijoPenales
     }
 
     const RESULTADO_TXT = { campeon:'Campeón', subcampeon:'Subcampeón', tercero:'Tercer puesto', cuarto:'Cuarto puesto' }
     const patchTorneo = { fase_actual: FASE_LABELS[fase], updated_at: new Date().toISOString() }
     if (quedaFinalizado) {
       patchTorneo.estado = 'finalizado'
-      patchTorneo.resultado_final = resultadoFinal ? RESULTADO_TXT[resultadoFinal] : `Eliminados en ${FASE_LABELS[fase]}`
+      patchTorneo.resultado_final = (resultadoFinal ? RESULTADO_TXT[resultadoFinal] : `Eliminados en ${FASE_LABELS[fase]}`) + sufijoPenales
     }
     await supabase.from('escuela_torneos').update(patchTorneo).eq('id', torneoId)
 
@@ -829,11 +923,16 @@ export default function EscuelaPartidoPage() {
     await supabase.from('escuela_partidos').update({
       estado:'finalizado', vista:'match', mvp, observaciones: matchObs, timer_sec: timerSec,
       eventos: events, score_home: score.home, score_away: score.away,
-      lineup, bench, positions, jugaron, titulares, torneo_id: torneoId, fase, updated_at: new Date().toISOString(),
+      lineup, bench, positions, jugaron, titulares, torneo_id: torneoId, fase,
+      penales_jugados: penalesActivo, penales_home: penalesActivo ? penalesCobros.filter(c => c.gol).length : null,
+      penales_away: penalesActivo ? penalesRivalGoles : null,
+      penales_detalle: penalesActivo ? { arqueroId: penalesArqueroId, cobros: penalesCobros, rivalGoles: penalesRivalGoles, rivalAtajadas: penalesRivalAtajadas } : null,
+      updated_at: new Date().toISOString(),
     }).eq('id', partidoId)
     try { await actualizarStatsJugadores() } catch {}
     try { await actualizarStatsProfesor() } catch {}
     try { await guardarStatsPartido() } catch {}
+    try { await guardarStatsPenales() } catch {}
     let notifTorneo = null
     try { notifTorneo = await actualizarTorneo() } catch {}
     setGuardandoFinal(false)
@@ -1293,6 +1392,76 @@ export default function EscuelaPartidoPage() {
               <div style={{ fontSize:18, color:S.muted }}>–</div>
               <div style={{ textAlign:'center' }}><div style={{ fontSize:10, color:S.muted }}>{matchInfo.rival||'Rival'}</div><div style={{ fontSize:44, fontWeight:900 }}>{score.away}</div></div>
             </div>
+
+            {score.home === score.away && (
+              <div style={{ marginBottom:16 }}>
+                {!penalesActivo ? (
+                  <button onClick={() => setPenalesActivo(true)}
+                    style={{ width:'100%', background:'rgba(249,168,37,.12)', border:`1px solid ${S.gold}55`, color:S.gold, borderRadius:10, padding:'10px 0', fontSize:12, fontWeight:800, cursor:'pointer' }}>
+                    🥅 Hubo tanda de penales
+                  </button>
+                ) : (
+                  <div style={{ background:'rgba(0,0,0,.26)', borderRadius:10, padding:12 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:S.gold, textTransform:'uppercase' }}>🥅 Tanda de penales</div>
+                      <button onClick={() => {
+                          setPenalesActivo(false); setPenalesCobros([]); setPenalesRivalGoles(0); setPenalesRivalAtajadas(0); setPenalesArqueroId('')
+                          persist({ penales_jugados:false, penales_home:null, penales_away:null, penales_detalle:null })
+                        }}
+                        style={{ background:'none', border:'none', color:S.muted, fontSize:10, cursor:'pointer' }}>Cancelar</button>
+                    </div>
+
+                    <div style={{ textAlign:'center', fontSize:22, fontWeight:900, marginBottom:10, color:S.gold }}>
+                      {penalesCobros.filter(c => c.gol).length} – {penalesRivalGoles}
+                    </div>
+
+                    <label style={{ fontSize:10, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Arquero de la tanda</label>
+                    <select value={penalesArqueroId} onChange={e => elegirArqueroPenal(e.target.value)}
+                      style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:8, padding:'8px 10px', color:S.text, fontSize:12, marginBottom:10 }}>
+                      <option value="">Seleccionar arquero...</option>
+                      {roster.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+                    </select>
+
+                    <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+                      <button onClick={registrarAtajadaPenal} disabled={!penalesArqueroId}
+                        style={{ flex:1, background:'rgba(14,165,233,.15)', border:'1px solid #0ea5e955', color:'#0ea5e9', borderRadius:8, padding:'8px 0', fontSize:11, fontWeight:700, cursor:'pointer', opacity: penalesArqueroId?1:.5 }}>
+                        🧤 Atajada rival ({penalesRivalAtajadas})
+                      </button>
+                      <button onClick={registrarGolRecibidoPenal} disabled={!penalesArqueroId}
+                        style={{ flex:1, background:'rgba(239,68,68,.15)', border:'1px solid #ef444455', color:'#ef4444', borderRadius:8, padding:'8px 0', fontSize:11, fontWeight:700, cursor:'pointer', opacity: penalesArqueroId?1:.5 }}>
+                        🥅 Gol rival ({penalesRivalGoles})
+                      </button>
+                    </div>
+
+                    <label style={{ fontSize:10, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Cobrador</label>
+                    <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                      <select value={penalesCobroJugadorId} onChange={e => setPenalesCobroJugadorId(e.target.value)}
+                        style={{ flex:1, background:S.card2, border:`1px solid ${S.border}`, borderRadius:8, padding:'8px 10px', color:S.text, fontSize:12 }}>
+                        <option value="">Seleccionar jugador...</option>
+                        {roster.map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+                      </select>
+                      <button onClick={() => agregarCobroPenal(true)} disabled={!penalesCobroJugadorId}
+                        style={{ background:'#10b981', border:'none', color:'#fff', borderRadius:8, padding:'0 12px', fontSize:14, fontWeight:900, cursor:'pointer', opacity:penalesCobroJugadorId?1:.5 }} title="Gol">⚽</button>
+                      <button onClick={() => agregarCobroPenal(false)} disabled={!penalesCobroJugadorId}
+                        style={{ background:'rgba(255,255,255,.08)', border:`1px solid ${S.border}`, color:S.muted, borderRadius:8, padding:'0 12px', fontSize:14, fontWeight:900, cursor:'pointer', opacity:penalesCobroJugadorId?1:.5 }} title="Falló">❌</button>
+                    </div>
+
+                    {penalesCobros.length > 0 && (
+                      <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                        {penalesCobros.map((c, i) => (
+                          <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:S.card2, borderRadius:6, padding:'5px 8px' }}>
+                            <span style={{ fontSize:11 }}>{c.gol ? '⚽' : '❌'} {c.nombre}</span>
+                            <button onClick={() => quitarCobroPenal(i)} style={{ background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:11 }}>🗑️</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize:9.5, color:S.muted, marginTop:10 }}>Los goles de penales no cuentan como goles de partido — quedan guardados aparte, como un dato especial.</div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ marginBottom:16 }}>
               <div style={{ fontSize:10, fontWeight:700, color:S.muted, marginBottom:8, textTransform:'uppercase' }}>Mejores jugadores</div>
               {[{ k:'first', l:'🥇 MVP' }, { k:'second', l:'🥈 Segundo' }, { k:'third', l:'🥉 Tercero' }].map(({ k, l }) => (
