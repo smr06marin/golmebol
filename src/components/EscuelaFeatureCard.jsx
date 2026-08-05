@@ -8,11 +8,15 @@ const S = {
 // abajo. Se usa tanto en el panel principal (Jugadores, Profesores, etc.)
 // como dentro de cada jugador (Medidas físicas, Pruebas físicas, Datos
 // básicos, etc.) para que todo el portal se vea igual.
-export default function EscuelaFeatureCard({ icon, title, desc, bg, badge, warn, onClick }) {
+export default function EscuelaFeatureCard({ icon, title, desc, bg, badge, warn, accent, onClick }) {
+  // "accent" deja poner un color propio (ej. rojo para vencidas) sin romper
+  // las tarjetas que ya usan solo "warn" (dorado) o el verde por defecto.
+  const color = accent || (warn ? S.warn : S.green)
+  const alpha = (accent || warn) ? '77' : '44'
   return (
     <button onClick={onClick} style={{
       position: 'relative', textAlign: 'center', padding: '20px 10px 16px', borderRadius: '16px',
-      border: `1px solid ${warn ? S.warn + '77' : S.green + '44'}`, cursor: 'pointer', overflow: 'hidden',
+      border: `1px solid ${color}${alpha}`, cursor: 'pointer', overflow: 'hidden',
       backgroundImage: `linear-gradient(180deg, rgba(7,7,14,.65) 0%, rgba(7,7,14,.94) 78%), url(${bg})`,
       backgroundSize: 'cover', backgroundPosition: 'center', color: S.text,
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minHeight: '128px',
@@ -23,7 +27,7 @@ export default function EscuelaFeatureCard({ icon, title, desc, bg, badge, warn,
       {icon}
       <div style={{ fontWeight: '900', fontSize: '.76rem', letterSpacing: '.03em', textTransform: 'uppercase', color: '#fff' }}>{title}</div>
       {desc && <div style={{ fontSize: '.64rem', color: S.text2, lineHeight: 1.3 }}>{desc}</div>}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: warn ? S.warn : S.green }}/>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: color }}/>
     </button>
   )
 }

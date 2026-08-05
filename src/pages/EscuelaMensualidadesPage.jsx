@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EscuelaPageHeader from '../components/EscuelaPageHeader'
+import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
+import EscuelaSheetModal from '../components/EscuelaSheetModal'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -12,6 +14,13 @@ const S = {
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const DIAS_AVISO = 3 // avisa desde 3 días antes de vencer
+
+// Mismas fotos tenues de fondo que se usan en el resto del portal de
+// escuela — una por categoría, para que se vea igual sin subir imágenes nuevas.
+const IMG_VENCIDAS   = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
+const IMG_POR_VENCER = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
+const IMG_SIN_ACTIVAR= 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
+const IMG_AL_DIA     = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
 
 function diasRestantes(fechaVenc) {
   if (!fechaVenc) return null
@@ -88,7 +97,9 @@ function FilaJugador({ j, escuelaNombre, urgencia, onAbrirModal }) {
     ? `Vencida hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}`
     : urgencia === 'porVencer'
       ? (dias === 0 ? 'Vence hoy' : `Vence en ${dias} día${dias===1?'':'s'}`)
-      : j.fecha_vencimiento ? `Al día · vence ${formatoFecha(j.fecha_vencimiento)}` : 'Sin mensualidad activa'
+      : urgencia === 'alDia'
+        ? (j.fecha_pago ? `Pagó el ${formatoFecha(j.fecha_pago)} · vence el ${formatoFecha(j.fecha_vencimiento)}` : `Al día · vence ${formatoFecha(j.fecha_vencimiento)}`)
+        : 'Sin mensualidad activa'
 
   function enviarWhatsApp() {
     const numero = (j.acudiente_telefono || '').replace(/\D/g, '')
@@ -135,7 +146,7 @@ export default function EscuelaMensualidadesPage() {
   const [loading,   setLoading]   = useState(true)
   const [modalJugador, setModalJugador] = useState(null)
   const [msg, setMsg] = useState('')
-  const [verAlDia, setVerAlDia] = useState(false)
+  const [abierto, setAbierto] = useState(null) // 'vencidos' | 'porVencer' | 'sinActivar' | 'alDia' | null
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -158,7 +169,11 @@ export default function EscuelaMensualidadesPage() {
   }
 
   async function handleGuardarMensualidad(jugador, meses) {
-    const base = jugador.fecha_vencimiento && new Date(jugador.fecha_vencimiento) > new Date() ? new Date(jugador.fecha_vencimiento) : new Date()
+    // Si ya tenía una fecha de vencimiento (esté vencida o no) el nuevo
+    // periodo se cuenta desde esa fecha, no desde hoy — así los días que
+    // quedó vencido se descuentan del pago en vez de regalarle días extra.
+    // Solo se usa la fecha de hoy cuando nunca ha tenido mensualidad activa.
+    const base = jugador.fecha_vencimiento ? new Date(jugador.fecha_vencimiento) : new Date()
     base.setMonth(base.getMonth() + meses)
     const nuevaFecha = base.toISOString()
     const { error } = await supabase.from('players').update({
@@ -179,10 +194,18 @@ export default function EscuelaMensualidadesPage() {
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.green, fontSize:'.9rem' }}>Cargando...</div>
   )
 
-  const vencidos   = jugadores.filter(j => j.fecha_vencimiento && diasRestantes(j.fecha_vencimiento) < 0)
-  const porVencer  = jugadores.filter(j => j.fecha_vencimiento && diasRestantes(j.fecha_vencimiento) >= 0 && diasRestantes(j.fecha_vencimiento) <= DIAS_AVISO)
+  const vencidos   = jugadores.filter(j => j.fecha_vencimiento && diasRestantes(j.fecha_vencimiento) < 0).sort((a,b) => diasRestantes(a.fecha_vencimiento) - diasRestantes(b.fecha_vencimiento))
+  const porVencer  = jugadores.filter(j => j.fecha_vencimiento && diasRestantes(j.fecha_vencimiento) >= 0 && diasRestantes(j.fecha_vencimiento) <= DIAS_AVISO).sort((a,b) => diasRestantes(a.fecha_vencimiento) - diasRestantes(b.fecha_vencimiento))
   const sinActivar = jugadores.filter(j => !j.fecha_vencimiento)
   const alDia      = jugadores.filter(j => j.fecha_vencimiento && diasRestantes(j.fecha_vencimiento) > DIAS_AVISO)
+
+  const CATEGORIAS = [
+    { key:'vencidos',   titulo:'Vencidas',     icon:'🔴', bg:IMG_VENCIDAS,    accent:S.loss,  lista:vencidos,   subtitulo:'Vencidas — enviar recordatorio', desc:'Toca para ver y avisar' },
+    { key:'porVencer',  titulo:'Por vencer',   icon:'🟠', bg:IMG_POR_VENCER,  accent:S.warn,  lista:porVencer,  subtitulo:`Vencen en los próximos ${DIAS_AVISO} días`, desc:`Próximos ${DIAS_AVISO} días` },
+    { key:'sinActivar', titulo:'Sin activar',  icon:'⚪', bg:IMG_SIN_ACTIVAR, accent:S.muted, lista:sinActivar, subtitulo:'Nunca han pagado mensualidad', desc:'Nunca han pagado' },
+    { key:'alDia',      titulo:'Al día',       icon:'✅', bg:IMG_AL_DIA,      accent:S.green, lista:alDia,      subtitulo:'Pagos al día', desc:'Pagos al día' },
+  ]
+  const catAbierta = CATEGORIAS.find(c => c.key === abierto)
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
@@ -199,65 +222,32 @@ export default function EscuelaMensualidadesPage() {
           <div style={{ background:S.greenDim, color:S.green, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>
         )}
 
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'18px' }}>
-          <div style={{ background:S.card, border:`1px solid ${S.loss}`, borderRadius:'12px', padding:'12px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:900, color:S.loss }}>{vencidos.length}</div>
-            <div style={{ fontSize:'.65rem', color:S.muted, marginTop:'2px' }}>Vencidas</div>
-          </div>
-          <div style={{ background:S.card, border:`1px solid ${S.warn}`, borderRadius:'12px', padding:'12px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:900, color:S.warn }}>{porVencer.length}</div>
-            <div style={{ fontSize:'.65rem', color:S.muted, marginTop:'2px' }}>Por vencer</div>
-          </div>
-          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'12px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:900, color:S.muted }}>{sinActivar.length}</div>
-            <div style={{ fontSize:'.65rem', color:S.muted, marginTop:'2px' }}>Sin activar</div>
-          </div>
-        </div>
-
         {vencidos.length === 0 && porVencer.length === 0 && sinActivar.length === 0 && (
-          <div style={{ textAlign:'center', padding:'30px 20px', color:S.win, fontSize:'.85rem', fontWeight:700 }}>✓ Todas las mensualidades están al día</div>
+          <div style={{ textAlign:'center', padding:'14px 20px', color:S.win, fontSize:'.85rem', fontWeight:700, marginBottom:14 }}>✓ Todas las mensualidades están al día</div>
         )}
 
-        {vencidos.length > 0 && (
-          <div style={{ marginBottom:'20px' }}>
-            <div style={{ fontSize:'.78rem', fontWeight:700, color:S.loss, marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.05em' }}>🔴 Vencidas ({vencidos.length})</div>
-            {vencidos.sort((a,b) => diasRestantes(a.fecha_vencimiento) - diasRestantes(b.fecha_vencimiento)).map(j => (
-              <FilaJugador key={j.id} j={j} escuelaNombre={escuela?.name || 'la escuela'} urgencia="vencido" onAbrirModal={setModalJugador}/>
-            ))}
-          </div>
-        )}
-
-        {porVencer.length > 0 && (
-          <div style={{ marginBottom:'20px' }}>
-            <div style={{ fontSize:'.78rem', fontWeight:700, color:S.warn, marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.05em' }}>🟠 Por vencer — próximos {DIAS_AVISO} días ({porVencer.length})</div>
-            {porVencer.sort((a,b) => diasRestantes(a.fecha_vencimiento) - diasRestantes(b.fecha_vencimiento)).map(j => (
-              <FilaJugador key={j.id} j={j} escuelaNombre={escuela?.name || 'la escuela'} urgencia="porVencer" onAbrirModal={setModalJugador}/>
-            ))}
-          </div>
-        )}
-
-        {sinActivar.length > 0 && (
-          <div style={{ marginBottom:'20px' }}>
-            <div style={{ fontSize:'.78rem', fontWeight:700, color:S.muted, marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.05em' }}>⚪ Sin mensualidad activa ({sinActivar.length})</div>
-            {sinActivar.map(j => (
-              <FilaJugador key={j.id} j={j} escuelaNombre={escuela?.name || 'la escuela'} urgencia="sinActivar" onAbrirModal={setModalJugador}/>
-            ))}
-          </div>
-        )}
-
-        {alDia.length > 0 && (
-          <div>
-            <button onClick={() => setVerAlDia(v => !v)}
-              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 14px', cursor:'pointer', color:S.win, fontSize:'.78rem', fontWeight:700, marginBottom:'10px' }}>
-              <span>✓ Al día ({alDia.length})</span>
-              <span>{verAlDia ? '▲' : '▼'}</span>
-            </button>
-            {verAlDia && alDia.map(j => (
-              <FilaJugador key={j.id} j={j} escuelaNombre={escuela?.name || 'la escuela'} urgencia="alDia" onAbrirModal={setModalJugador}/>
-            ))}
-          </div>
-        )}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:10 }}>
+          {CATEGORIAS.map(c => (
+            <EscuelaFeatureCard key={c.key} onClick={() => setAbierto(c.key)} bg={c.bg} accent={c.accent} badge={c.lista.length}
+              icon={<span style={{ fontSize:'1.5rem' }}>{c.icon}</span>}
+              title={c.titulo} desc={c.desc}/>
+          ))}
+        </div>
       </div>
+
+      {catAbierta && (
+        <EscuelaSheetModal titulo={`${catAbierta.icon} ${catAbierta.titulo} (${catAbierta.lista.length})`} subtitulo={catAbierta.subtitulo} onClose={() => setAbierto(null)}>
+          {catAbierta.lista.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'20px 10px', color:S.muted, fontSize:'.8rem' }}>No hay jugadores en esta categoría.</div>
+          ) : (
+            catAbierta.lista.map(j => (
+              <FilaJugador key={j.id} j={j} escuelaNombre={escuela?.name || 'la escuela'}
+                urgencia={{ vencidos:'vencido', porVencer:'porVencer', sinActivar:'sinActivar', alDia:'alDia' }[catAbierta.key]}
+                onAbrirModal={(jug) => { setAbierto(null); setModalJugador(jug) }}/>
+            ))
+          )}
+        </EscuelaSheetModal>
+      )}
     </div>
   )
 }
