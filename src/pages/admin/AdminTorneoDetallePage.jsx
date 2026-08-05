@@ -11,7 +11,7 @@ import FlyerTorneo from '../../components/FlyerTorneo'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
@@ -172,14 +172,22 @@ function ModalPartidoAdmin({ partido, onClose }) {
 
 
 const TABS = [
-  { id: 'actividad',      label: 'Actividad',      icon: <Trophy size={16}/> },
-  { id: 'grupos',         label: 'Grupos',          icon: <Users size={16}/> },
-  { id: 'calendario',     label: 'Calendario',      icon: <Calendar size={16}/> },
-  { id: 'equipos',        label: 'Equipos',         icon: <Shield size={16}/> },
-  { id: 'estadisticas',   label: 'Estadísticas',    icon: <BarChart2 size={16}/> },
-  { id: 'eliminatorias',  label: 'Eliminatorias',   icon: <GitBranch size={16}/> },
-  { id: 'finanzas',       label: 'Finanzas',        icon: <DollarSign size={16}/> },
+  { id: 'actividad',       label: 'Actividad',       icon: <Trophy size={16}/> },
+  { id: 'grupos',          label: 'Grupos',          icon: <Users size={16}/> },
+  { id: 'calendario',      label: 'Calendario',      icon: <Calendar size={16}/> },
+  { id: 'equipos',         label: 'Equipos',         icon: <Shield size={16}/> },
+  { id: 'estadisticas',    label: 'Estadísticas',    icon: <BarChart2 size={16}/> },
+  { id: 'eliminatorias',   label: 'Eliminatorias',   icon: <GitBranch size={16}/> },
+  { id: 'finanzas',        label: 'Finanzas',        icon: <DollarSign size={16}/> },
+  { id: 'personalizacion', label: 'Personalización', icon: <Palette size={16}/> },
 ]
+
+function hexValido(v, fallback = '#1a73e8') {
+  const t = (v || '').trim()
+  if (/^#[0-9A-Fa-f]{6}$/.test(t)) return t
+  if (/^[0-9A-Fa-f]{6}$/.test(t)) return `#${t}`
+  return fallback
+}
 
 const inputStyle = {
   width: '100%', background: '#fff', border: '1px solid #dadce0',
@@ -821,6 +829,16 @@ export default function AdminTorneoDetallePage() {
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
 
+  // ── PERSONALIZACIÓN (marca + patrocinadores del torneo) ──
+  const [formMarca,          setFormMarca]          = useState({ custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', favicon_url: '', logo_url: '' })
+  const [guardandoMarca,     setGuardandoMarca]     = useState(false)
+  const [uploadingFavicon,   setUploadingFavicon]   = useState(false)
+  const [uploadingLogoMarca, setUploadingLogoMarca] = useState(false)
+  const [torneoSponsors,     setTorneoSponsors]     = useState([])
+  const [loadingSponsors,    setLoadingSponsors]    = useState(false)
+  const [uploadingSponsorId, setUploadingSponsorId] = useState(null)
+  const [savingSponsorId,    setSavingSponsorId]    = useState(null)
+
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   const [posterEquipo,     setPosterEquipo]      = useState(null)
@@ -861,6 +879,17 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
+  useEffect(() => {
+    if (tab !== 'personalizacion' || !torneo) return
+    setFormMarca({
+      custom_domain:    torneo.custom_domain || '',
+      color_primario:   torneo.color_primario || '#1a73e8',
+      color_secundario: torneo.color_secundario || '#202124',
+      favicon_url:      torneo.favicon_url || '',
+      logo_url:         torneo.logo_url || '',
+    })
+    fetchTorneoSponsors()
+  }, [tab, torneo?.id])
 
   // Guardar el borrador de la jornada aleatoria en cada cambio. Así, sin
   // importar qué pase (recarga, cambio de pestaña, se cae el internet), al
@@ -1804,6 +1833,117 @@ export default function AdminTorneoDetallePage() {
     setTorneo(p => ({ ...p, finanzas_config: fc }))
     setShowConfigFin(false)
     showMsg('Precios actualizados ✓ — todas las cuentas se recalcularon')
+  }
+
+  // ── PERSONALIZACIÓN ─────────────────────────────────
+  async function fetchTorneoSponsors() {
+    setLoadingSponsors(true)
+    const { data, error } = await supabase
+      .from('tournament_sponsors')
+      .select('*')
+      .eq('tournament_id', id)
+      .order('orden', { ascending: true })
+    setLoadingSponsors(false)
+    if (error) return showMsg('Error cargando patrocinadores (¿ejecutaste migracion_tournament_sponsors.sql?)', 'error')
+    setTorneoSponsors(data || [])
+  }
+
+  async function handleGuardarMarca() {
+    setGuardandoMarca(true)
+    const payload = {
+      custom_domain:    formMarca.custom_domain?.trim() || null,
+      color_primario:   formMarca.color_primario?.trim() || null,
+      color_secundario: formMarca.color_secundario?.trim() || null,
+      favicon_url:      formMarca.favicon_url || null,
+      logo_url:         formMarca.logo_url || torneo.logo_url || null,
+    }
+    const { error } = await supabase.from('tournaments').update(payload).eq('id', id)
+    setGuardandoMarca(false)
+    if (error) return showMsg('Error al guardar marca: ' + error.message, 'error')
+    setTorneo(p => ({ ...p, ...payload }))
+    showMsg('Marca guardada ✓')
+  }
+
+  async function handleUploadFavicon(file) {
+    if (!file) return
+    setUploadingFavicon(true)
+    const ext = file.name.split('.').pop()
+    const path = `${id}/favicon.${ext}`
+    const { error: uploadError } = await supabase.storage.from('torneo-branding').upload(path, file, { upsert: true })
+    if (uploadError) { setUploadingFavicon(false); return showMsg('Error al subir favicon: ' + uploadError.message, 'error') }
+    const { data: urlData } = supabase.storage.from('torneo-branding').getPublicUrl(path)
+    const url = urlData.publicUrl
+    const { error } = await supabase.from('tournaments').update({ favicon_url: url }).eq('id', id)
+    setUploadingFavicon(false)
+    if (error) return showMsg('Error al guardar favicon', 'error')
+    setFormMarca(f => ({ ...f, favicon_url: url }))
+    setTorneo(p => ({ ...p, favicon_url: url }))
+    showMsg('Favicon subido ✓')
+  }
+
+  async function handleUploadLogoMarca(file) {
+    if (!file) return
+    setUploadingLogoMarca(true)
+    // Mismo bucket/path que el botón cámara del encabezado — no duplicar storage
+    const ext = file.name.split('.').pop()
+    const path = `logos/${id}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
+    if (uploadError) { setUploadingLogoMarca(false); return showMsg('Error al subir logo: ' + uploadError.message, 'error') }
+    const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
+    const url = urlData.publicUrl
+    const { error } = await supabase.from('tournaments').update({ logo_url: url }).eq('id', id)
+    setUploadingLogoMarca(false)
+    if (error) return showMsg('Error al guardar logo', 'error')
+    setFormMarca(f => ({ ...f, logo_url: url }))
+    setTorneo(p => ({ ...p, logo_url: url }))
+    showMsg('Logo subido ✓')
+  }
+
+  function updateSponsorLocal(sponsorId, field, value) {
+    setTorneoSponsors(prev => prev.map(s => s.id === sponsorId ? { ...s, [field]: value } : s))
+  }
+
+  async function saveSponsorField(sponsor, field, value) {
+    setSavingSponsorId(sponsor.id)
+    const { error } = await supabase.from('tournament_sponsors').update({ [field]: value }).eq('id', sponsor.id)
+    setSavingSponsorId(null)
+    if (error) showMsg('Error al guardar patrocinador', 'error')
+  }
+
+  async function handleAgregarSponsor() {
+    const orden = torneoSponsors.length > 0 ? Math.max(...torneoSponsors.map(s => s.orden || 0)) + 1 : 0
+    const { data, error } = await supabase.from('tournament_sponsors').insert({
+      tournament_id: id,
+      nombre: '',
+      logo_url: null,
+      link: null,
+      orden,
+    }).select().single()
+    if (error) return showMsg('Error al agregar patrocinador: ' + error.message, 'error')
+    setTorneoSponsors(prev => [...prev, data])
+  }
+
+  async function handleSponsorLogo(sponsor, file) {
+    if (!file) return
+    setUploadingSponsorId(sponsor.id)
+    const ext = file.name.split('.').pop()
+    const path = `${id}/sponsors/${sponsor.id}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('torneo-branding').upload(path, file, { upsert: true })
+    if (uploadError) { setUploadingSponsorId(null); return showMsg('Error al subir logo', 'error') }
+    const { data: urlData } = supabase.storage.from('torneo-branding').getPublicUrl(path)
+    const { error } = await supabase.from('tournament_sponsors').update({ logo_url: urlData.publicUrl }).eq('id', sponsor.id)
+    setUploadingSponsorId(null)
+    if (error) return showMsg('Error al guardar logo del patrocinador', 'error')
+    setTorneoSponsors(prev => prev.map(s => s.id === sponsor.id ? { ...s, logo_url: urlData.publicUrl } : s))
+    showMsg('Logo del patrocinador subido ✓')
+  }
+
+  async function handleEliminarSponsor(sponsor) {
+    if (!confirm(`¿Eliminar patrocinador${sponsor.nombre ? ` "${sponsor.nombre}"` : ''}?`)) return
+    const { error } = await supabase.from('tournament_sponsors').delete().eq('id', sponsor.id)
+    if (error) return showMsg('Error al eliminar', 'error')
+    setTorneoSponsors(prev => prev.filter(s => s.id !== sponsor.id))
+    showMsg('Patrocinador eliminado')
   }
 
   // Equipos con tarjetas sin pagar (para bloquear eliminatorias)
@@ -4777,6 +4917,199 @@ export default function AdminTorneoDetallePage() {
           </div>
         )
       })()}
+
+      {/* ── TAB PERSONALIZACIÓN ── */}
+      {tab === 'personalizacion' && (
+        <div>
+          {/* Marca */}
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>🎨 Marca</div>
+            <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '16px' }}>Colores, dominio, logo y favicon de este torneo</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Dominio personalizado</label>
+                <input
+                  value={formMarca.custom_domain}
+                  onChange={e => setFormMarca(f => ({ ...f, custom_domain: e.target.value }))}
+                  style={inputStyle}
+                  placeholder="miclub.com"
+                />
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>
+                  Ej: miclub.com — después hay que configurar el DNS aparte
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Color primario</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={hexValido(formMarca.color_primario, '#1a73e8')}
+                    onChange={e => setFormMarca(f => ({ ...f, color_primario: e.target.value }))}
+                    style={{ width: '44px', height: '38px', border: '1px solid #dadce0', borderRadius: '8px', padding: '2px', background: '#fff', cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <input
+                    value={formMarca.color_primario}
+                    onChange={e => setFormMarca(f => ({ ...f, color_primario: e.target.value }))}
+                    onBlur={e => setFormMarca(f => ({ ...f, color_primario: hexValido(e.target.value, f.color_primario || '#1a73e8') }))}
+                    style={inputStyle}
+                    placeholder="#1a73e8"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Color secundario</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={hexValido(formMarca.color_secundario, '#202124')}
+                    onChange={e => setFormMarca(f => ({ ...f, color_secundario: e.target.value }))}
+                    style={{ width: '44px', height: '38px', border: '1px solid #dadce0', borderRadius: '8px', padding: '2px', background: '#fff', cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <input
+                    value={formMarca.color_secundario}
+                    onChange={e => setFormMarca(f => ({ ...f, color_secundario: e.target.value }))}
+                    onBlur={e => setFormMarca(f => ({ ...f, color_secundario: hexValido(e.target.value, f.color_secundario || '#202124') }))}
+                    style={inputStyle}
+                    placeholder="#202124"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+              {/* Logo — mismo campo que el botón cámara del encabezado */}
+              <div>
+                <label style={labelStyle}>Logo del torneo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '10px', background: '#e8f0fe', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {formMarca.logo_url || torneo.logo_url
+                      ? <img src={formMarca.logo_url || torneo.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                      : <Trophy size={22} color="#1a73e8"/>}
+                  </div>
+                  <div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
+                      <Upload size={12}/> {uploadingLogoMarca ? 'Subiendo...' : 'Subir logo'}
+                      <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingLogoMarca}
+                        onChange={e => { handleUploadLogoMarca(e.target.files[0]); e.target.value = '' }}/>
+                    </label>
+                    <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Favicon */}
+              <div>
+                <label style={labelStyle}>Favicon</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '10px', background: '#f8f9fa', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {formMarca.favicon_url
+                      ? <img src={formMarca.favicon_url} alt="favicon" style={{ width: '32px', height: '32px', objectFit: 'contain' }}/>
+                      : <ImageIcon size={20} color="#9aa0a6"/>}
+                  </div>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
+                    <Upload size={12}/> {uploadingFavicon ? 'Subiendo...' : 'Subir favicon'}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingFavicon}
+                      onChange={e => { handleUploadFavicon(e.target.files[0]); e.target.value = '' }}/>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <button onClick={handleGuardarMarca} disabled={guardandoMarca}
+              style={{ padding: '10px 22px', background: guardandoMarca ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoMarca ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+              {guardandoMarca ? 'Guardando...' : '✓ Guardar marca'}
+            </button>
+          </div>
+
+          {/* Patrocinadores del torneo */}
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🤝 Patrocinadores del torneo</div>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>Aparecen en la página pública — distinto de los sponsors de tarjetas de jugador</div>
+              </div>
+              <button onClick={handleAgregarSponsor}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>
+                <Plus size={14}/> Agregar patrocinador
+              </button>
+            </div>
+
+            {loadingSponsors ? (
+              <div style={{ textAlign: 'center', color: '#9aa0a6', padding: '32px', fontSize: '.875rem' }}>Cargando...</div>
+            ) : torneoSponsors.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#9aa0a6', padding: '28px', fontSize: '.8rem', background: '#f8f9fa', borderRadius: '10px' }}>
+                Todavía no hay patrocinadores — agregá el primero
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {torneoSponsors.map(sponsor => (
+                  <div key={sponsor.id} style={{ border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px', background: '#fafafa' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '14px', alignItems: 'start' }}>
+                      <div>
+                        <div style={{ width: '100px', height: '60px', background: '#fff', borderRadius: '8px', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: '8px' }}>
+                          {sponsor.logo_url
+                            ? <img src={sponsor.logo_url} alt={sponsor.nombre || 'sponsor'} style={{ maxWidth: '90px', maxHeight: '52px', objectFit: 'contain' }}/>
+                            : <span style={{ fontSize: '.7rem', color: '#9aa0a6' }}>Sin logo</span>}
+                        </div>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.72rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>
+                          <Upload size={11}/> {uploadingSponsorId === sponsor.id ? 'Subiendo...' : 'Logo'}
+                          <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingSponsorId === sponsor.id}
+                            onChange={e => { handleSponsorLogo(sponsor, e.target.files[0]); e.target.value = '' }}/>
+                        </label>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
+                        <div>
+                          <label style={labelStyle}>Nombre</label>
+                          <input
+                            value={sponsor.nombre || ''}
+                            onChange={e => updateSponsorLocal(sponsor.id, 'nombre', e.target.value)}
+                            onBlur={e => saveSponsorField(sponsor, 'nombre', e.target.value)}
+                            style={inputStyle}
+                            placeholder="Nombre del patrocinador"
+                          />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Link</label>
+                          <input
+                            value={sponsor.link || ''}
+                            onChange={e => updateSponsorLocal(sponsor.id, 'link', e.target.value)}
+                            onBlur={e => saveSponsorField(sponsor, 'link', e.target.value || null)}
+                            style={inputStyle}
+                            placeholder="https://..."
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                          <div style={{ width: '90px' }}>
+                            <label style={labelStyle}>Orden</label>
+                            <input
+                              type="number"
+                              value={sponsor.orden ?? 0}
+                              onChange={e => updateSponsorLocal(sponsor.id, 'orden', parseInt(e.target.value, 10) || 0)}
+                              onBlur={e => saveSponsorField(sponsor, 'orden', parseInt(e.target.value, 10) || 0)}
+                              style={inputStyle}
+                            />
+                          </div>
+                          <button onClick={() => handleEliminarSponsor(sponsor)}
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.75rem', marginBottom: '1px' }}>
+                            <X size={13}/> Eliminar
+                          </button>
+                          {savingSponsorId === sponsor.id && (
+                            <span style={{ fontSize: '.72rem', color: '#9aa0a6', paddingBottom: '10px' }}>Guardando...</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modal registrar pago */}
       {pagoModal && (
