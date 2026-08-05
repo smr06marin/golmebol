@@ -21,10 +21,10 @@ const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, 
 const lbl = { fontSize:'.7rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'.05em' }
 
 const POSICIONES = ['Portero','Defensa','Mediocampista','Delantero','Cierre','Ala','Pívot']
-const STAT_KEYS = ['partidos_jugados_prof','partidos_ganados_prof','partidos_empatados_prof','partidos_perdidos_prof','goles_prof']
+const STAT_KEYS = ['partidos_jugados_prof','partidos_ganados_prof','partidos_empatados_prof','partidos_perdidos_prof']
 const STAT_LABELS = {
   partidos_jugados_prof:'Partidos jugados', partidos_ganados_prof:'Ganados',
-  partidos_empatados_prof:'Empatados', partidos_perdidos_prof:'Perdidos', goles_prof:'Goles',
+  partidos_empatados_prof:'Empatados', partidos_perdidos_prof:'Perdidos',
 }
 
 const EVAL_KEYS = ['puntualidad','conocimiento_tecnico','comunicacion','liderazgo','disciplina','compromiso']
@@ -149,7 +149,7 @@ export default function EscuelaProfesorDetallePage() {
             desc={prof.posicion_prof || 'Sin definir'}/>
           <EscuelaFeatureCard onClick={() => setModalAbierto('vida')} bg={IMG_VIDA}
             icon={<Trophy size={24} color={S.green}/>} title="Vida futbolística"
-            desc={`${prof.partidos_jugados_prof || 0} PJ · ${prof.goles_prof || 0} goles`}/>
+            desc={`${prof.partidos_jugados_prof || 0} PJ · ${prof.partidos_ganados_prof || 0}G ${prof.partidos_empatados_prof || 0}E ${prof.partidos_perdidos_prof || 0}P`}/>
           <EscuelaFeatureCard onClick={() => setModalAbierto('evaluacion')} bg={IMG_EVAL} accent={S.gold}
             icon={<Star size={24} color={S.gold}/>} title="Evaluación"
             desc={promedioGeneral ? `${promedioGeneral}/10 · ${evaluaciones.length} eval.` : 'Sin evaluar'}/>
