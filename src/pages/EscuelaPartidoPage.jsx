@@ -1134,7 +1134,7 @@ export default function EscuelaPartidoPage() {
       })()}
 
       {showFinish && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.87)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:16 }}>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.87)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:700, padding:16 }}>
           <div style={{ background:'linear-gradient(135deg,#090f1e,#131f35)', border:`2px solid ${S.cyan}55`, borderRadius:16, padding:22, width:'min(440px,100%)', maxHeight:'88vh', overflowY:'auto' }}>
             <div style={{ fontSize:18, fontWeight:900, color:S.cyan, marginBottom:18, textAlign:'center' }}>🏆 RESUMEN DEL PARTIDO</div>
             <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:18, marginBottom:20, background:'rgba(0,0,0,.3)', borderRadius:12, padding:14 }}>
