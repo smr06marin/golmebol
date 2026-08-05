@@ -862,26 +862,26 @@ export default function EscuelaPartidoPage() {
                   style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
               </div>
               <div style={{ gridColumn:'1/-1' }}>
-                <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>Torneo / tipo</label>
-                <input value={matchInfo.torneo} onChange={e => guardarMatchInfo('torneo', e.target.value)} placeholder="Ej: Amistoso, Liga infantil..."
-                  style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}/>
-              </div>
-              {torneosEscuela.length > 0 && (
-                <div style={{ gridColumn:'1/-1' }}>
-                  <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>¿Es parte de uno de los torneos de la escuela?</label>
-                  <select value={torneoId || ''} onChange={e => {
-                      const val = e.target.value || null
-                      setTorneoId(val)
-                      persist({ torneo_id: val })
-                      const t = torneosEscuela.find(x => x.id === val)
-                      if (t) guardarMatchInfo('torneo', t.nombre)
-                    }}
-                    style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}>
-                    <option value="">No — es amistoso u otro</option>
-                    {torneosEscuela.map(t => <option key={t.id} value={t.id}>{t.nombre}{t.temporada ? ` (${t.temporada})` : ''}</option>)}
-                  </select>
+                <label style={{ fontSize:11, color:S.muted, display:'block', marginBottom:4, textTransform:'uppercase' }}>¿De qué partido se trata?</label>
+                <select value={torneoId || ''} onChange={e => {
+                    const val = e.target.value || null
+                    setTorneoId(val)
+                    persist({ torneo_id: val })
+                    const t = torneosEscuela.find(x => x.id === val)
+                    guardarMatchInfo('torneo', t ? t.nombre : 'Amistoso')
+                  }}
+                  style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 12px', color:S.text, fontSize:'.85rem', boxSizing:'border-box' }}>
+                  <option value="">⚽ Amistoso (no cuenta para ningún torneo)</option>
+                  {torneosEscuela.map(t => <option key={t.id} value={t.id}>🏆 {t.nombre}{t.temporada ? ` (${t.temporada})` : ''}</option>)}
+                </select>
+                <div style={{ fontSize:10, color:S.muted, marginTop:5 }}>
+                  {torneoId
+                    ? 'Este partido se va a guardar dentro de ese torneo — vas a poder verlo en Torneos.'
+                    : torneosEscuela.length === 0
+                      ? 'Todavía no tienes torneos creados — se guarda como amistoso. Crea uno en la pestaña Torneos si este partido es parte de alguno.'
+                      : 'Se va a guardar como amistoso, separado de tus torneos.'}
                 </div>
-              )}
+              </div>
             </div>
             <div style={{ marginBottom:'20px' }}>
               <div style={{ fontSize:11, color:S.muted, textTransform:'uppercase', marginBottom:8 }}>Estilo de cancha</div>
