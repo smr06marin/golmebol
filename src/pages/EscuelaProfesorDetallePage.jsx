@@ -191,7 +191,7 @@ export default function EscuelaProfesorDetallePage() {
         )}
 
         {modalAbierto === 'vida' && (
-          <EscuelaSheetModal titulo="Vida futbolística" subtitulo={esCoordinador ? 'Editable — se guarda apenas cambias el valor.' : undefined} onClose={() => setModalAbierto(null)}>
+          <EscuelaSheetModal titulo="Vida futbolística" subtitulo={esCoordinador ? 'Partidos jugados/ganados/empatados/perdidos se suman solos al terminar cada Día de partido que dirija. Los demás campos son editables.' : undefined} onClose={() => setModalAbierto(null)}>
             {esCoordinador ? (
               <>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>

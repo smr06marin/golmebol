@@ -117,6 +117,7 @@ export default function EscuelaPartidoPage() {
   const [error, setError] = useState('')
 
   const [partidoId, setPartidoId] = useState(null)
+  const [creadoPor, setCreadoPor] = useState(null) // id del profesor que dirige este partido — a él se le suma en "vida futbolística"
   const [view, setView] = useState('setup')
   const [matchInfo, setMatchInfo] = useState(EMPTY_MATCHINFO)
   const [estado, setEstado] = useState('pendiente')
@@ -203,6 +204,7 @@ export default function EscuelaPartidoPage() {
 
   function hidratar(row) {
     setPartidoId(row.id)
+    setCreadoPor(row.creado_por || null)
     setView(row.vista || 'setup')
     setMatchInfo({ rival: row.rival || '', fecha: row.fecha || todayISO(), hora: row.hora || '15:00', torneo: row.torneo || 'Amistoso' })
     setEstado(row.estado || 'pendiente')
@@ -689,6 +691,26 @@ export default function EscuelaPartidoPage() {
     ))
   }
 
+  // Suma el resultado del partido a la "vida futbolística" del profesor que
+  // lo dirigió (quien lo creó en Día de partido) — partidos dirigidos y
+  // ganados/empatados/perdidos según el marcador final. No toca los goles
+  // del profesor: esos son de su propia carrera como jugador, no del equipo
+  // que dirige.
+  async function actualizarStatsProfesor() {
+    if (!creadoPor) return
+    const { data: actual } = await supabase.from('players')
+      .select('partidos_jugados_prof, partidos_ganados_prof, partidos_empatados_prof, partidos_perdidos_prof')
+      .eq('id', creadoPor).single()
+    if (!actual) return
+    const resultado = score.home > score.away ? 'ganado' : score.home === score.away ? 'empatado' : 'perdido'
+    await supabase.from('players').update({
+      partidos_jugados_prof:   (actual.partidos_jugados_prof   || 0) + 1,
+      partidos_ganados_prof:   (actual.partidos_ganados_prof   || 0) + (resultado === 'ganado'   ? 1 : 0),
+      partidos_empatados_prof: (actual.partidos_empatados_prof || 0) + (resultado === 'empatado' ? 1 : 0),
+      partidos_perdidos_prof:  (actual.partidos_perdidos_prof  || 0) + (resultado === 'perdido'  ? 1 : 0),
+    }).eq('id', creadoPor)
+  }
+
   async function guardarHistorial() {
     setGuardandoFinal(true)
     await supabase.from('escuela_partidos').update({
@@ -697,6 +719,7 @@ export default function EscuelaPartidoPage() {
       lineup, bench, positions, jugaron, titulares, torneo_id: torneoId, updated_at: new Date().toISOString(),
     }).eq('id', partidoId)
     try { await actualizarStatsJugadores() } catch {}
+    try { await actualizarStatsProfesor() } catch {}
     try { await guardarStatsPartido() } catch {}
     setGuardandoFinal(false)
     setShowFinish(false)
