@@ -17,6 +17,9 @@ const S = {
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'11px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 
+// Cobro fijo por llevar el pedido hasta la cancha.
+const DOMICILIO = 1000
+
 function claveTutorialVisto(escenarioId) {
   return `golmebol_pedido_tutorial_visto_${escenarioId}`
 }
@@ -84,7 +87,9 @@ export default function PedirEscenarioPage() {
   }
 
   const items = Object.entries(cart).filter(([,q])=>q>0)
-  const total = items.reduce((a,[id,q])=> a + q*getProduct(id).precio, 0)
+  const subtotal = items.reduce((a,[id,q])=> a + q*getProduct(id).precio, 0)
+  const domicilio = items.length > 0 ? DOMICILIO : 0
+  const total = subtotal + domicilio
   const pagaConNum = Number(pagaCon) || 0
   const devuelta = metodoPago === 'efectivo' && pagaConNum > 0 ? pagaConNum - total : null
 
@@ -109,7 +114,7 @@ export default function PedirEscenarioPage() {
     const now = new Date()
     const { error } = await supabase.from('escenario_pedidos').insert({
       escenario_id: escenarioId, items: pedidoItems, nombre: nombre.trim()||'Cliente', telefono: telefono.trim(),
-      total, fecha: todayStr(), hora: now.toTimeString().slice(0,5), estado:'pendiente',
+      total, domicilio, fecha: todayStr(), hora: now.toTimeString().slice(0,5), estado:'pendiente',
       metodo_pago: metodoPago, paga_con: metodoPago==='efectivo' ? (pagaConNum || null) : null,
       devuelta: devuelta !== null && devuelta >= 0 ? devuelta : null,
     })
@@ -120,6 +125,7 @@ export default function PedirEscenarioPage() {
         ? `Pago: Efectivo${pagaConNum > 0 ? ` (pago con ${fmtMoney(pagaConNum)}${devuelta>=0 ? `, devuelta ${fmtMoney(devuelta)}` : ''})` : ''}`
         : 'Pago: Transferencia'
       const wa = `Hola, quiero hacer un pedido:\n` + pedidoItems.map(it=>`- ${it.cantidad}x ${it.nombre} (${fmtMoney(it.precio*it.cantidad)})`).join('\n') +
+        `\nServicio a domicilio: ${fmtMoney(domicilio)}` +
         `\nTotal: ${fmtMoney(total)}\n${lineaPago}\nNombre: ${nombre.trim()||'Cliente'}\nEstoy en la cancha, ¿me lo pueden traer?`
       window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(wa)}`, '_blank')
     }
@@ -157,7 +163,7 @@ export default function PedirEscenarioPage() {
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'16px 16px 0' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'14px' }}>Toca los productos que quieres, arma tu pedido y lo mandamos por WhatsApp — te lo llevan a la cancha.</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'14px' }}>Toca los productos que quieres, arma tu pedido y lo mandamos por WhatsApp — te lo llevan a la cancha (servicio a domicilio de {fmtMoney(DOMICILIO)}).</div>
 
         <div style={{ position:'relative', marginBottom:'14px' }}>
           <Search size={15} color={S.muted} style={{ position:'absolute', left:'13px', top:'50%', transform:'translateY(-50%)' }}/>
@@ -245,6 +251,12 @@ export default function PedirEscenarioPage() {
               </div>
             )}
 
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'.78rem', color:S.muted, marginBottom:'3px' }}>
+              <span>Subtotal</span><span>{fmtMoney(subtotal)}</span>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'.78rem', color:S.muted, marginBottom:'8px' }}>
+              <span>Servicio a domicilio</span><span>{fmtMoney(domicilio)}</span>
+            </div>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
               <span style={{ fontWeight:700, fontSize:'.9rem' }}>Total</span>
               <span style={{ fontWeight:900, fontSize:'1.3rem', color:S.gold }}>{fmtMoney(total)}</span>

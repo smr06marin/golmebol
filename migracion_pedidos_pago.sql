@@ -12,3 +12,9 @@
 alter table escenario_pedidos add column if not exists metodo_pago text;
 alter table escenario_pedidos add column if not exists paga_con numeric;
 alter table escenario_pedidos add column if not exists devuelta numeric;
+
+-- Cobro extra por llevar el pedido hasta la cancha (domicilio). Ya viene
+-- sumado dentro de "total"; queda aparte también para poder mostrarlo como
+-- línea separada y para que, al marcar el pedido como entregado, se sume
+-- correctamente a la venta (ver EscenarioPedidoPage.jsx → entregarPedido).
+alter table escenario_pedidos add column if not exists domicilio numeric default 0;

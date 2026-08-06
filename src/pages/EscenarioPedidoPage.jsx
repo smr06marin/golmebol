@@ -84,7 +84,11 @@ export default function EscenarioPedidoPage() {
       return { productId: it.productId, nombre: it.nombre, cantidad, precio: it.precio, costo: p?.costo || 0 }
     })
     await Promise.all(items.map(it => { const p=getProduct(it.productId); return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad - it.cantidad }).eq('id', it.productId) : null }).filter(Boolean))
-    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
+    // El domicilio ($1.000 que cobra la página pública por llevar el pedido)
+    // no viene en "items" — hay que sumarlo aparte para que la venta quede
+    // completa (es ganancia pura, no tiene costo asociado).
+    const domicilio = pedido.domicilio || 0
+    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0) + domicilio
     const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
     const now = new Date()
     await supabase.from('escenario_ventas').insert({
@@ -154,6 +158,7 @@ export default function EscenarioPedidoPage() {
           <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', marginBottom:'8px' }}>
             <span style={{ fontSize:'.78rem' }}>
               {o.nombre} · {(o.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')} · {fmtMoney(o.total)}
+              {o.domicilio > 0 && <span style={{ color:S.muted }}> (incluye {fmtMoney(o.domicilio)} domicilio)</span>}
               {o.metodo_pago === 'efectivo' && (
                 <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>
                   💵 Efectivo{o.paga_con ? ` · paga con ${fmtMoney(o.paga_con)}` : ''}{o.devuelta!=null ? ` · devuelta ${fmtMoney(o.devuelta)}` : ''}
