@@ -6,6 +6,7 @@ import { useAuthStore } from './store/authStore'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import GlobalToast from './components/GlobalToast'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
+import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
 
 // Carga diferida por página: el celular solo descarga el código de la página que visita
 const LoginPage               = lazy(() => import('./pages/LoginPage'))
@@ -408,6 +409,7 @@ export default function App() {
         🔄 Hay una versión nueva de Golmebol — toca para actualizar
       </div>
     )}
+    <DominioPersonalizadoGate>
     <BrowserRouter>
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>
@@ -504,6 +506,7 @@ export default function App() {
         </Routes>
       </Suspense>
     </BrowserRouter>
+    </DominioPersonalizadoGate>
     </ErrorBoundary>
   )
 }

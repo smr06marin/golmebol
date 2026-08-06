@@ -7,6 +7,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { hydratePlayersPublico } from '../lib/playersPublico'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
 // que usa el admin para armar el bracket real.
@@ -173,8 +174,9 @@ function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
   )
 }
 
-export default function TorneoPublicoPage() {
-  const { id } = useParams()
+export default function TorneoPublicoPage({ tournamentId } = {}) {
+  const params = useParams()
+  const id = tournamentId || params.id
 
   const [torneo,    setTorneo]    = useState(null)
   const [equipos,   setEquipos]   = useState([])
@@ -184,6 +186,7 @@ export default function TorneoPublicoPage() {
   const [grupos,       setGrupos]       = useState([])
   const [grupoEquipos, setGrupoEquipos] = useState([])
   const [bracket,   setBracket]   = useState([]) // partidos de eliminatorias (todas las fases), para el árbol público
+  const [sponsors,  setSponsors]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState('posiciones')
 
@@ -284,32 +287,51 @@ export default function TorneoPublicoPage() {
 
   useEffect(() => { registrarVisita('torneo_publico', id) }, [id])
 
+  // Favicon dinámico del torneo (no se revierte al salir)
+  useEffect(() => {
+    if (!torneo?.favicon_url) return
+    const links = document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon']")
+    if (links.length === 0) {
+      const link = document.createElement('link')
+      link.rel = 'icon'
+      link.href = torneo.favicon_url
+      document.head.appendChild(link)
+      return
+    }
+    links.forEach(link => { link.href = torneo.favicon_url })
+  }, [torneo?.favicon_url])
+
   async function abrirRoster(team) {
     if (!team?.id) return
     setRosterModal({ team, jugadores: [], loading: true })
     const { data } = await supabase
       .from('tournament_player_registrations')
-      .select('players(id, name, photo_url, photo_face_url)')
+      .select('player_id')
       .eq('tournament_id', id)
       .eq('team_id', team.id)
       .eq('activo', true)
-    const jugadores = (data || []).map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    const hydrated = await hydratePlayersPublico(data || [], {
+      columns: 'id, name, photo_url, photo_face_url',
+    })
+    const jugadores = hydrated.map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     setRosterModal({ team, jugadores, loading: false })
   }
 
   useEffect(() => {
     async function fetchAll() {
       setLoading(true)
-      const [{ data: t }, { data: teData }, { data: pData }, { data: gData }] = await Promise.all([
+      const [{ data: t }, { data: teData }, { data: pData }, { data: gData }, { data: spData }] = await Promise.all([
         supabase.from('tournaments').select('*').eq('id', id).single(),
         supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', id),
         supabase.from('matches').select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('tournament_id', id).order('played_at', { ascending: true }),
         supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false }),
+        supabase.from('tournament_sponsors').select('*').eq('tournament_id', id).order('orden', { ascending: true }),
       ])
       setTorneo(t)
       setEquipos((teData || []).map(d => ({ ...d.teams })))
       setPartidos(pData || [])
       setGoleadores(gData || [])
+      setSponsors(spData || [])
       fetchBracket()
 
       // Grupos del torneo (si los tiene) para mostrar la tabla dividida
@@ -327,11 +349,14 @@ export default function TorneoPublicoPage() {
       if (teamIds.length > 0) {
         const { data: tpData } = await supabase
           .from('team_players')
-          .select('team_id, players(id,name,photo_url,photo_face_url,posicion_futbol5,posicion_futbol7,posicion_futbol11)')
+          .select('team_id, player_id')
           .in('team_id', teamIds)
+        const hydrated = await hydratePlayersPublico(tpData || [], {
+          columns: 'id, name, photo_url, photo_face_url, posicion_futbol5, posicion_futbol7, posicion_futbol11',
+        })
         const modalidad = t?.modalidad || ''
         const campoPos = modalidad.includes('11') ? 'posicion_futbol11' : modalidad.includes('7') ? 'posicion_futbol7' : 'posicion_futbol5'
-        const arqueros = (tpData || [])
+        const arqueros = hydrated
           .filter(tp => tp.players && (tp.players[campoPos] === 'Portero' || tp.players.posicion_futbol5 === 'Portero' || tp.players.posicion_futbol7 === 'Portero' || tp.players.posicion_futbol11 === 'Portero'))
           .map(tp => ({ team_id: tp.team_id, ...tp.players }))
         setPorteros(arqueros)
@@ -416,24 +441,34 @@ export default function TorneoPublicoPage() {
 
   // Ya arrancaron las eliminatorias (hay árbol real) → la tabla de posiciones
   // de grupos deja de ser lo relevante, se muestra el árbol en su lugar.
-  const tabs = bracket.length > 0
-    ? [
-        { id: 'llaves',     label: '🏆 Llaves' },
-        { id: 'resultados', label: 'Resultados' },
-        { id: 'proximos',   label: 'Próximos' },
-        { id: 'goleadores', label: 'Goleadores' },
-      ]
-    : [
-        { id: 'posiciones', label: 'Posiciones' },
-        { id: 'resultados', label: 'Resultados' },
-        { id: 'proximos',   label: 'Próximos' },
-        { id: 'goleadores', label: 'Goleadores' },
-      ]
+  const tabs = [
+    ...(bracket.length > 0
+      ? [
+          { id: 'llaves',     label: '🏆 Llaves' },
+          { id: 'resultados', label: 'Resultados' },
+          { id: 'proximos',   label: 'Próximos' },
+          { id: 'goleadores', label: 'Goleadores' },
+        ]
+      : [
+          { id: 'posiciones', label: 'Posiciones' },
+          { id: 'resultados', label: 'Resultados' },
+          { id: 'proximos',   label: 'Próximos' },
+          { id: 'goleadores', label: 'Goleadores' },
+        ]),
+    ...(sponsors.length > 0 ? [{ id: 'patrocinadores', label: 'Patrocinadores' }] : []),
+  ]
+
+  const colorPrimario   = torneo.color_primario   || '#1a73e8'
+  const colorSecundario = torneo.color_secundario || '#1a237e'
 
   const s = {
-    page: { minHeight: '100vh', background: '#f4f6fb', fontFamily: 'system-ui, sans-serif' },
+    page: {
+      minHeight: '100vh', background: '#f4f6fb', fontFamily: 'system-ui, sans-serif',
+      ['--color-primario']: colorPrimario,
+      ['--color-secundario']: colorSecundario,
+    },
     header: {
-      background: 'linear-gradient(135deg, #1a237e 0%, #1a73e8 60%, #00bcd4 100%)',
+      background: 'linear-gradient(135deg, var(--color-secundario) 0%, var(--color-primario) 60%, #00bcd4 100%)',
       padding: '0',
       position: 'relative',
       overflow: 'hidden',
@@ -491,7 +526,7 @@ export default function TorneoPublicoPage() {
         {/* Tab bar */}
         <div style={s.tabBar}>
           {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: '1 1 auto', padding: '8px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: '600', whiteSpace: 'nowrap', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: '1 1 auto', padding: '8px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: '600', whiteSpace: 'nowrap', transition: 'all .15s', background: tab === t.id ? 'var(--color-primario)' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
               {t.label}
             </button>
           ))}
@@ -696,9 +731,9 @@ export default function TorneoPublicoPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f3f4', borderRadius: '10px', padding: '6px 14px', flexShrink: 0 }}>
-                      <span style={{ fontWeight: '800', fontSize: '1.15rem', color: homeWin ? '#1a73e8' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.home_score}</span>
+                      <span style={{ fontWeight: '800', fontSize: '1.15rem', color: homeWin ? 'var(--color-primario)' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.home_score}</span>
                       <span style={{ color: '#9aa0a6', fontSize: '.85rem', fontWeight: '400' }}>-</span>
-                      <span style={{ fontWeight: '800', fontSize: '1.15rem', color: awayWin ? '#1a73e8' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.away_score}</span>
+                      <span style={{ fontWeight: '800', fontSize: '1.15rem', color: awayWin ? 'var(--color-primario)' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.away_score}</span>
                     </div>
                     <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })}
                       style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
@@ -783,8 +818,44 @@ export default function TorneoPublicoPage() {
           </>
         )}
 
+        {/* PATROCINADORES */}
+        {tab === 'patrocinadores' && sponsors.length > 0 && (
+          <div style={s.card}>
+            <div style={s.cardTitle}>Patrocinadores</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '16px', padding: '20px 18px' }}>
+              {sponsors.map(sp => {
+                const inner = (
+                  <div style={{
+                    background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '12px',
+                    padding: '16px 12px', textAlign: 'center', minHeight: '110px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                    transition: 'border-color .15s',
+                  }}>
+                    <div style={{ width: '100%', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {sp.logo_url
+                        ? <img src={sp.logo_url} alt={sp.nombre || 'Patrocinador'} style={{ maxWidth: '100%', maxHeight: '56px', objectFit: 'contain' }}/>
+                        : <span style={{ fontSize: '.75rem', color: '#9aa0a6', fontWeight: '600' }}>{sp.nombre || 'Sin logo'}</span>}
+                    </div>
+                    {sp.nombre && (
+                      <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', lineHeight: 1.25 }}>{sp.nombre}</div>
+                    )}
+                  </div>
+                )
+                if (sp.link) {
+                  return (
+                    <a key={sp.id} href={sp.link} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      {inner}
+                    </a>
+                  )
+                }
+                return <div key={sp.id}>{inner}</div>
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ textAlign: 'center', marginTop: '24px', color: '#c4c7ca', fontSize: '.72rem' }}>
-          golmebol.app
+          golmebol.com
         </div>
       </div>
 

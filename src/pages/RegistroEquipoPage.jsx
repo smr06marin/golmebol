@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Shield, Check, Users, Upload } from 'lucide-react'
 import { useFormDraft, limpiarBorrador } from '../hooks/useFormDraft'
+import { hydratePlayersPublico } from '../lib/playersPublico'
 
 // Cliente aparte SIN sesión persistente: se usa solo para verificar la cédula y
 // contraseña de quien desactiva un jugador, sin tocar la sesión del navegador.
@@ -121,10 +122,13 @@ export default function RegistroEquipoPage() {
   async function abrirDesactivar() {
     setShowDesactivar(true); setJugadorADesactivar(null); setAuthCedula(''); setAuthPass('')
     setErrorDesactivar(''); setDesactivadoOk(null)
+    // Sin embed a players: anon no tendrá SELECT en la tabla tras la tanda 1.
+    // nombre vía players_publico (sin cédula — PII).
     const { data } = await supabase.from('tournament_player_registrations')
-      .select('id, player_id, players(name, numero_cedula)')
+      .select('id, player_id')
       .eq('tournament_id', tournamentId).eq('team_id', equipo.id).eq('activo', true)
-    setPlantilla(data || [])
+    const hydrated = await hydratePlayersPublico(data || [], { columns: 'id, name' })
+    setPlantilla(hydrated)
   }
 
   async function handleDesactivarJugador(e) {
@@ -188,25 +192,31 @@ export default function RegistroEquipoPage() {
   }
 
   async function subirFotosCedula(playerId) {
-    const urls = {}
+    let frontalExt = null
+    let traseraExt = null
     if (fotoFrontal) {
       const archivo = await comprimirImagen(fotoFrontal, { maxSize: 1600, calidad: 0.85 })
       const ext  = archivo.name.split('.').pop()
       const path = `${playerId}_frontal.${ext}`
-      await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
-      const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
-      urls.cedula_frontal_url = data.publicUrl
+      const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+      if (error) throw new Error('Error al subir cédula frontal: ' + error.message)
+      frontalExt = ext
     }
     if (fotoTrasera) {
       const archivo = await comprimirImagen(fotoTrasera, { maxSize: 1600, calidad: 0.85 })
       const ext  = archivo.name.split('.').pop()
       const path = `${playerId}_trasera.${ext}`
-      await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
-      const { data } = supabase.storage.from('cedulas').getPublicUrl(path)
-      urls.cedula_trasera_url = data.publicUrl
+      const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+      if (error) throw new Error('Error al subir cédula trasera: ' + error.message)
+      traseraExt = ext
     }
-    if (Object.keys(urls).length > 0) {
-      await supabase.from('players').update(urls).eq('id', playerId)
+    if (frontalExt || traseraExt) {
+      const { error } = await supabase.rpc('confirmar_cedula_urls', {
+        p_player_id: playerId,
+        p_frontal_ext: frontalExt,
+        p_trasera_ext: traseraExt,
+      })
+      if (error) throw new Error('Error al guardar URLs de cédula: ' + error.message)
     }
   }
 
@@ -218,46 +228,41 @@ export default function RegistroEquipoPage() {
     setDeudaJugador(null)
     setSancionJugador(null)
 
-    // Buscar jugador
-    const { data: jugador } = await supabase.from('players').select('*').eq('numero_cedula', cedula.trim()).single()
+    const { data: res, error } = await supabase.rpc('buscar_jugador_por_cedula', {
+      p_cedula: cedula.trim(),
+      p_tournament_id: tournamentId,
+    })
+    if (error) {
+      showMsg('Error al buscar: ' + error.message)
+      setBuscando(false)
+      return
+    }
 
-    if (jugador) {
-      // Verificar si ya está registrado en ESTE torneo (en cualquier equipo)
-      const { data: yaEnTorneo } = await supabase
-        .from('tournament_player_registrations')
-        .select('*, teams(name)')
-        .eq('tournament_id', tournamentId)
-        .eq('player_id', jugador.id)
-        .eq('activo', true)
-        .single()
-
-      if (yaEnTorneo) {
-        showMsg(`⚠️ Ya estás registrado en este torneo con el equipo "${yaEnTorneo.teams?.name}"`, 'warning')
-        setBuscando(false)
-        return
-      }
-      // Verificar deuda personal de tarjetas de torneos anteriores
-      try {
-        const { data: deudas } = await supabase
-          .from('torneo_finanzas').select('monto, concepto')
-          .eq('player_id', jugador.id).eq('tipo', 'deuda_personal').eq('pagado', false)
-        const total = (deudas || []).reduce((a, d) => a + (d.monto || 0), 0)
-        if (total > 0) setDeudaJugador({ total, concepto: (deudas || []).map(d => d.concepto).filter(Boolean)[0] || 'tarjetas de torneos anteriores' })
-      } catch { /* tabla de finanzas aún no creada */ }
-      // Verificar sanción activa (aplica a todos los torneos)
-      try {
-        const { data: sanc } = await supabase
-          .from('sanciones').select('motivo, fecha_fin')
-          .eq('player_id', jugador.id).eq('activa', true)
-        const ahora = new Date()
-        const activa = (sanc || []).find(s => !s.fecha_fin || new Date(s.fecha_fin) > ahora)
-        if (activa) setSancionJugador(activa)
-      } catch { /* tabla de sanciones aún no creada */ }
-      setJugadorExiste(jugador)
-    } else {
+    if (!res?.encontrado) {
       setMostrarNuevo(true)
       setFormNuevo({ ...EMPTY_FORM })
+      setBuscando(false)
+      return
     }
+
+    if (res.ya_en_torneo) {
+      showMsg(`⚠️ Ya estás registrado en este torneo con el equipo "${res.equipo_en_torneo || 'otro equipo'}"`, 'warning')
+      setBuscando(false)
+      return
+    }
+
+    const [{ data: deuda }, { data: sanc }] = await Promise.all([
+      supabase.rpc('jugador_tiene_deuda', { p_player_id: res.id }),
+      supabase.rpc('jugador_sancion_activa', { p_player_id: res.id }),
+    ])
+    if (deuda?.tiene_deuda) {
+      setDeudaJugador({ total: deuda.total, concepto: deuda.concepto || 'tarjetas de torneos anteriores' })
+    }
+    if (sanc?.sancionado) {
+      setSancionJugador({ motivo: sanc.motivo, fecha_fin: sanc.fecha_fin })
+    }
+
+    setJugadorExiste(res)
     setBuscando(false)
   }
 
@@ -303,28 +308,23 @@ export default function RegistroEquipoPage() {
 
   async function registrarExistente() {
     setGuardando(true)
+    try {
+      const { data, error } = await supabase.rpc('registrar_equipo', {
+        p_token: token,
+        p_tournament_id: tournamentId,
+        p_cedula: cedula.trim(),
+      })
+      if (error) throw new Error(error.message || 'Error al registrarte')
 
-    // Insertar en tournament_player_registrations
-    const { error } = await supabase.from('tournament_player_registrations').insert({
-      tournament_id: tournamentId,
-      team_id:       equipo.id,
-      player_id:     jugadorExiste.id,
-      activo:        true,
-    })
-    if (error) { showMsg('Error al registrarte. Intenta de nuevo.'); setGuardando(false); return }
+      await subirFotosCedula(data.player_id)
 
-    // Si no está en team_players, agregarlo
-    const { data: yaEnEquipo } = await supabase.from('team_players').select('id').eq('team_id', equipo.id).eq('player_id', jugadorExiste.id).single()
-    if (!yaEnEquipo) {
-      await supabase.from('team_players').insert({ team_id: equipo.id, player_id: jugadorExiste.id, activo: true })
+      limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
+      setExito(true)
+    } catch (e) {
+      showMsg(e.message || 'Error al registrarte. Intenta de nuevo.')
+    } finally {
+      setGuardando(false)
     }
-
-    // Subir fotos si las puso
-    await subirFotosCedula(jugadorExiste.id)
-
-    limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
-    setExito(true)
-    setGuardando(false)
   }
 
   async function handleCrearYRegistrar() {
@@ -341,28 +341,6 @@ export default function RegistroEquipoPage() {
       if (!fotoTrasera) return showMsg('La foto trasera de la cédula es obligatoria')
     }
 
-    // Un mismo número de WhatsApp no puede quedar repetido en dos jugadores
-    // distintos — por ese número es que se hace la verificación de identidad,
-    // así que si dos jugadores comparten número no sirve para confirmar a
-    // ninguno de los dos.
-    const digitos = formNuevo.telefono.replace(/\D/g, '').slice(-10)
-    if (digitos.length === 10) {
-      setBuscando(true)
-      const { data: repetidos } = await supabase
-        .from('players')
-        .select('id, name, numero_cedula, telefono, whatsapp')
-        .or(`telefono.ilike.%${digitos}%,whatsapp.ilike.%${digitos}%`)
-      setBuscando(false)
-      const choque = (repetidos || []).find(p => {
-        const t = (p.telefono  || '').replace(/\D/g, '').slice(-10)
-        const w = (p.whatsapp  || '').replace(/\D/g, '').slice(-10)
-        return t === digitos || w === digitos
-      })
-      if (choque) {
-        return showMsg(`⚠️ Ese número de WhatsApp ya está registrado con otro jugador (${choque.name}). Cada jugador debe tener su propio WhatsApp para poder verificarse. Si es un error, escríbenos.`, 'warning')
-      }
-    }
-
     // Confirmación por WhatsApp al número que registró
     if (iniciarVerificacion('nuevo')) return
     crearYRegistrarReal()
@@ -371,35 +349,32 @@ export default function RegistroEquipoPage() {
   async function crearYRegistrarReal() {
     setGuardando(true)
     setSubiendoFotos(true)
+    try {
+      const { data, error } = await supabase.rpc('registrar_equipo', {
+        p_token: token,
+        p_tournament_id: tournamentId,
+        p_cedula: cedula.trim(),
+        p_name: formNuevo.name,
+        p_telefono: formNuevo.telefono,
+        p_city: formNuevo.city,
+        p_genero: formNuevo.genero,
+        p_fecha_nacimiento: formNuevo.fecha_nacimiento,
+        p_posicion_futbol5: formNuevo.posicion_futbol5 || null,
+        p_posicion_futbol7: formNuevo.posicion_futbol7 || null,
+        p_posicion_futbol11: formNuevo.posicion_futbol11 || null,
+      })
+      if (error) throw new Error(error.message || 'Error al crear el jugador')
 
-    // Crear jugador
-    const { data: nuevo, error } = await supabase.from('players').insert({
-      ...formNuevo,
-      numero_cedula: cedula.trim(),
-      activo_membresia: true,
-      fecha_registro: new Date().toISOString(),
-    }).select().single()
-    if (error) { showMsg('Error al crear el jugador. Intenta de nuevo.'); setGuardando(false); setSubiendoFotos(false); return }
+      await subirFotosCedula(data.player_id)
 
-    // Subir fotos cédula
-    await subirFotosCedula(nuevo.id)
-    setSubiendoFotos(false)
-
-    // Registrar en torneo
-    const { error: e2 } = await supabase.from('tournament_player_registrations').insert({
-      tournament_id: tournamentId,
-      team_id:       equipo.id,
-      player_id:     nuevo.id,
-      activo:        true,
-    })
-    if (e2) { showMsg('Jugador creado pero error al registrarlo en el torneo.'); setGuardando(false); return }
-
-    // Registrar en equipo base
-    await supabase.from('team_players').insert({ team_id: equipo.id, player_id: nuevo.id, activo: true })
-
-    limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
-    setExito(true)
-    setGuardando(false)
+      limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
+      setExito(true)
+    } catch (e) {
+      showMsg(e.message || 'Error al crear el jugador. Intenta de nuevo.')
+    } finally {
+      setSubiendoFotos(false)
+      setGuardando(false)
+    }
   }
 
   if (loading) return (
@@ -597,7 +572,7 @@ export default function RegistroEquipoPage() {
             )}
 
             {/* Fotos cédula opcionales para jugadores existentes */}
-            {(!jugadorExiste.cedula_frontal_url || !jugadorExiste.cedula_trasera_url) && (
+            {(!jugadorExiste.tiene_cedula_frontal || !jugadorExiste.tiene_cedula_trasera) && (
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '12px', background: '#fff8e1', padding: '10px 12px', borderRadius: '8px', border: '1px solid #ffe082' }}>
                   📸 Aprovecha para subir tu foto de cédula si aún no la tienes registrada
@@ -782,7 +757,7 @@ export default function RegistroEquipoPage() {
                         <span style={{ fontSize: '.9rem' }}>{jugadorADesactivar?.id === r.id ? '🔴' : '⚪'}</span>
                         <div>
                           <div style={{ fontSize: '.85rem', fontWeight: '600', color: '#202124' }}>{r.players?.name}</div>
-                          <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>CC {r.players?.numero_cedula}</div>
+                          <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>Jugador inscrito</div>
                         </div>
                       </div>
                     ))}
