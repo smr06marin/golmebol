@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
-import { ShoppingCart, Search, Trash2, Star, DollarSign } from 'lucide-react'
+import { ShoppingCart, Search, Trash2, DollarSign } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -10,21 +10,17 @@ const S = {
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5', loss: '#d93025',
   green: '#22c55e', greenDark: '#16a34a',
 }
-const MAS_VENDIDOS = 'Más vendidos'
-const SIN_CATEGORIA = 'Otros'
-
 export default function EscenarioVentasPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
   const [encargado, setEncargado] = useState(null)
   const [escenario, setEscenario] = useState(null)
   const [productos, setProductos] = useState([])
-  const [masVendidosIds, setMasVendidosIds] = useState([])
+  const [ventasPorProducto, setVentasPorProducto] = useState({})
   const [loading,   setLoading]   = useState(true)
   const [cart,      setCart]      = useState({})
   const [msg,       setMsg]       = useState('')
   const [buscar,    setBuscar]    = useState('')
-  const [tab,       setTab]       = useState(MAS_VENDIDOS)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -42,14 +38,14 @@ export default function EscenarioVentasPage() {
     const { data: prods } = await supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre')
     setProductos(prods || [])
 
-    // "Más vendidos" se calcula solo de las ventas de los últimos 60 días —
-    // no es un campo que el encargado tenga que marcar a mano.
+    // El orden de la vitrina se calcula solo de las ventas de los últimos 60
+    // días — no es un campo que el encargado tenga que marcar a mano. Lo más
+    // vendido queda de primero, sin pestañas ni que separar nada.
     const desde = new Date(); desde.setDate(desde.getDate() - 60)
     const { data: ventas } = await supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).gte('fecha', desde.toISOString().slice(0,10))
     const conteo = {}
     ;(ventas || []).forEach(v => (v.items || []).forEach(it => { conteo[it.productId] = (conteo[it.productId] || 0) + it.cantidad }))
-    const top = Object.entries(conteo).sort((a,b) => b[1]-a[1]).slice(0, 6).map(([id]) => id)
-    setMasVendidosIds(top)
+    setVentasPorProducto(conteo)
     setLoading(false)
   }
 
@@ -93,32 +89,25 @@ export default function EscenarioVentasPage() {
     fetchTodo()
   }
 
-  const categorias = useMemo(() => {
-    const set = new Set(productos.map(p => p.categoria || SIN_CATEGORIA))
-    const tabs = []
-    if (masVendidosIds.length > 0) tabs.push(MAS_VENDIDOS)
-    return tabs.concat([...set].sort())
-  }, [productos, masVendidosIds])
-
-  useEffect(() => {
-    if (categorias.length > 0 && !categorias.includes(tab)) setTab(categorias[0])
-  }, [categorias])
-
   const items = Object.entries(cart).filter(([,q])=>q>0)
   const total = items.reduce((a,[id,q])=> a + q*getProduct(id).precio, 0)
 
+  // Un solo listado, sin pestañas: lo más vendido de primero, después lo
+  // segundo más vendido, y así — los productos sin ventas en los últimos 60
+  // días quedan al final, ordenados por nombre entre ellos.
   const visibles = useMemo(() => {
     let lista = productos
     if (buscar.trim()) {
       const q = buscar.trim().toLowerCase()
       lista = lista.filter(p => p.nombre.toLowerCase().includes(q))
-    } else if (tab === MAS_VENDIDOS) {
-      lista = masVendidosIds.map(id => getProduct(id)).filter(Boolean)
-    } else {
-      lista = lista.filter(p => (p.categoria || SIN_CATEGORIA) === tab)
     }
-    return lista
-  }, [productos, buscar, tab, masVendidosIds])
+    return [...lista].sort((a, b) => {
+      const va = ventasPorProducto[a.id] || 0
+      const vb = ventasPorProducto[b.id] || 0
+      if (vb !== va) return vb - va
+      return a.nombre.localeCompare(b.nombre)
+    })
+  }, [productos, buscar, ventasPorProducto])
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
@@ -150,21 +139,6 @@ export default function EscenarioVentasPage() {
             style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'11px 14px 11px 38px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }}/>
         </div>
 
-        {!buscar.trim() && categorias.length > 0 && (
-          <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'14px', scrollbarWidth:'none' }}>
-            {categorias.map(c => {
-              const sel = tab === c
-              return (
-                <button key={c} onClick={()=>setTab(c)}
-                  style={{ flexShrink:0, display:'flex', alignItems:'center', gap:'6px', padding:'9px 15px', borderRadius:999, cursor:'pointer', fontWeight:800, fontSize:'.78rem', whiteSpace:'nowrap',
-                    background: sel ? S.gold : 'transparent', color: sel ? '#1a1300' : S.text2, border:`1.5px solid ${sel ? S.gold : S.border}` }}>
-                  {c === MAS_VENDIDOS && <Star size={12}/>} {c}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
         {productos.length===0 ? (
           <div style={{ textAlign:'center', color:S.muted, padding:'40px 0' }}>
             <ShoppingCart size={32} style={{ opacity:.3, marginBottom:'8px' }}/>
@@ -181,10 +155,18 @@ export default function EscenarioVentasPage() {
                 {cart[p.id] && (
                   <span onClick={e=>{e.stopPropagation(); quitarUno(p.id)}} style={{ position:'absolute', top:'6px', right:'6px', zIndex:2, background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>
                 )}
-                <div style={{ width:'100%', aspectRatio:'1/1', background:S.card2, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {p.foto_url
-                    ? <img src={p.foto_url} style={{ width:'85%', height:'85%', objectFit:'contain' }}/>
-                    : <span style={{ fontSize:'2.4rem' }}>{p.emoji || '📦'}</span>}
+                {/* Cuadro de tamaño fijo para la foto: padding-bottom:100% fuerza
+                    el cuadrado sin depender de aspect-ratio (algunos navegadores
+                    embebidos, como el de WhatsApp, lo ignoran y dejan que la
+                    foto original — vertical, horizontal, lo que sea — estire
+                    toda la tarjeta). Así todas las tarjetas quedan del mismo
+                    tamaño sin importar la forma de la imagen que se suba. */}
+                <div style={{ width:'100%', paddingBottom:'100%', position:'relative', background:S.card2, overflow:'hidden' }}>
+                  <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {p.foto_url
+                      ? <img src={p.foto_url} style={{ maxWidth:'85%', maxHeight:'85%', width:'auto', height:'auto', objectFit:'contain' }}/>
+                      : <span style={{ fontSize:'2.4rem' }}>{p.emoji || '📦'}</span>}
+                  </div>
                 </div>
                 <div style={{ padding:'8px 9px' }}>
                   <div style={{ fontSize:'.75rem', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.nombre}</div>
