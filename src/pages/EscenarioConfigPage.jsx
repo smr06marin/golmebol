@@ -34,7 +34,7 @@ export default function EscenarioConfigPage() {
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     if (esc) setForm({
-      name: esc.name || '', city: esc.city || '', whatsapp: esc.whatsapp || '',
+      name: esc.name || '', city: esc.city || '', whatsapp: esc.whatsapp || '', direccion: esc.direccion || '',
       hora_apertura: esc.hora_apertura ?? 8, hora_cierre: esc.hora_cierre ?? 22,
       precio_futbol5: esc.precio_futbol5 ?? 60000, precio_futbol7: esc.precio_futbol7 ?? 90000,
     })
@@ -60,6 +60,7 @@ export default function EscenarioConfigPage() {
     setGuardando(true); setMsg('')
     const payload = {
       name: form.name.trim(), city: form.city.trim() || null, whatsapp: form.whatsapp.trim() || null,
+      direccion: form.direccion.trim() || null,
       hora_apertura: parseInt(form.hora_apertura)||8, hora_cierre: parseInt(form.hora_cierre)||22,
       precio_futbol5: Number(form.precio_futbol5)||0, precio_futbol7: Number(form.precio_futbol7)||0,
     }
@@ -91,9 +92,14 @@ export default function EscenarioConfigPage() {
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'14px' }}>Datos del escenario</div>
           <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp}/></div>
           <div style={{ marginBottom:'12px' }}><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp}/></div>
-          <div style={{ marginBottom:'0' }}>
+          <div style={{ marginBottom:'12px' }}>
             <label style={lbl}>WhatsApp del negocio (sin + ni espacios, con código de país)</label>
             <input value={form.whatsapp} onChange={e=>setForm(f=>({...f,whatsapp:e.target.value}))} style={inp} placeholder="573001234567"/>
+          </div>
+          <div style={{ marginBottom:'0' }}>
+            <label style={lbl}>Dirección</label>
+            <input value={form.direccion} onChange={e=>setForm(f=>({...f,direccion:e.target.value}))} style={inp} placeholder="Ej: Barrio Puerto Espejo, Armenia, Quindío"/>
+            <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'6px' }}>Se usa para mostrar el mapa en la página pública de reservas.</div>
           </div>
         </div>
 
