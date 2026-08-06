@@ -16,6 +16,7 @@ import { registrarVisita } from '../lib/visitas'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 // Icono de cada récord automático (los históricos traen el suyo — texto libre
 // desde la BD — o si no, uno de estos componentes SVG según el tipo)
@@ -76,7 +77,7 @@ function ProgramacionRow({ m }) {
         ) : (
           <>
             <div style={{ color: S.green, fontWeight: '800', fontSize: '.68rem' }}>{fecha ? fecha.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }).toUpperCase() : 'S/F'}</div>
-            <div style={{ color: S.muted, fontSize: '.64rem' }}>{fecha ? fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+            <div style={{ color: S.muted, fontSize: '.64rem' }}>{fecha ? fmtHoraDate(fecha) : ''}</div>
           </>
         )}
         {etiqueta && (
@@ -296,7 +297,7 @@ function TorneoFeaturedCard({ t, onVerTabla }) {
       {proximo && (
         <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '.66rem', color: 'rgba(255,255,255,.65)', fontWeight: '700' }}>
-            PRÓXIMO PARTIDO{proximo.played_at ? ` · ${new Date(proximo.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()} - ${new Date(proximo.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}` : ''}
+            PRÓXIMO PARTIDO{proximo.played_at ? ` · ${new Date(proximo.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }).toUpperCase()} - ${fmtHoraDate(proximo.played_at)}` : ''}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <TeamShield logo_url={proximo.home?.logo_url} name={proximo.home?.name} size={20}/>

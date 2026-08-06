@@ -4,6 +4,8 @@ import { supabase, supabaseSilent } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import GlobalToast from './components/GlobalToast'
+import SessionGuard from './components/SessionGuard'
+import MarcaGolmebol from './components/MarcaGolmebol'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
 import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
 import { PantallaCargando } from './components/PantallaCargando'
@@ -65,6 +67,7 @@ const EscenarioHomePage           = lazy(() => import('./pages/EscenarioHomePage
 const EscenarioDashboardPage      = lazy(() => import('./pages/EscenarioDashboardPage'))
 const EscenarioCanchasPage        = lazy(() => import('./pages/EscenarioCanchasPage'))
 const EscenarioAdminReservasPage  = lazy(() => import('./pages/EscenarioAdminReservasPage'))
+const EscenarioReservasFijasPage  = lazy(() => import('./pages/EscenarioReservasFijasPage'))
 const EscenarioVentasPage         = lazy(() => import('./pages/EscenarioVentasPage'))
 const EscenarioPedidoPage         = lazy(() => import('./pages/EscenarioPedidoPage'))
 const EscenarioInventarioPage     = lazy(() => import('./pages/EscenarioInventarioPage'))
@@ -73,6 +76,7 @@ const EscenarioCierrePage         = lazy(() => import('./pages/EscenarioCierrePa
 const EscenarioReportesPage       = lazy(() => import('./pages/EscenarioReportesPage'))
 const EscenarioConfigPage         = lazy(() => import('./pages/EscenarioConfigPage'))
 const ReservarEscenarioPage       = lazy(() => import('./pages/ReservarEscenarioPage'))
+const PedirEscenarioPage          = lazy(() => import('./pages/PedirEscenarioPage'))
 
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -403,6 +407,8 @@ export default function App() {
     )}
     <DominioPersonalizadoGate>
     <BrowserRouter>
+      <SessionGuard/>
+      <MarcaGolmebol/>
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>
 
@@ -443,6 +449,7 @@ export default function App() {
           <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
           {/* Reserva pública de cancha — sin login */}
           <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>}/>
+          <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>}/>
 
           {/* Equipo detalle — accesible por admin Y jugador */}
           <Route path="/equipos/:id" element={<PlayerRoute><EquipoHistorialPage/></PlayerRoute>}/>
@@ -481,6 +488,7 @@ export default function App() {
           <Route path="/escenario/:escenarioId"             element={<EscenarioRoute><EscenarioDashboardPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/canchas"     element={<EscenarioRoute><EscenarioCanchasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/reservas"    element={<EscenarioRoute><EscenarioAdminReservasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/fijas"       element={<EscenarioRoute><EscenarioReservasFijasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/ventas"      element={<EscenarioRoute><EscenarioVentasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/pedido"      element={<EscenarioRoute><EscenarioPedidoPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/inventario"  element={<EscenarioRoute><EscenarioInventarioPage/></EscenarioRoute>}/>

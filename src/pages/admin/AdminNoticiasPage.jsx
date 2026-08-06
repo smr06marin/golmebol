@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, CalendarDays } from 'lucide-react'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
+import { fmtHoraDate } from '../../lib/horaHelpers'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
 
@@ -78,7 +79,7 @@ function buildContextoPre(partido, datos) {
   const golH = Object.entries(datos.golesHomeTorneo).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([n,g])=>`${n}(${g})`).join(', ') || 'sin goles'
   const golA = Object.entries(datos.golesAwayTorneo).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([n,g])=>`${n}(${g})`).join(', ') || 'sin goles'
   const fecha = partido.played_at
-    ? new Date(partido.played_at).toLocaleString('es-CO', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' })
+    ? new Date(partido.played_at).toLocaleString('es-CO', { weekday:'long', day:'numeric', month:'long' }) + ' ' + fmtHoraDate(partido.played_at)
     : 'fecha por confirmar'
   return `PARTIDO: ${partido.home?.name} vs ${partido.away?.name}${esFaseElim ? ` | ${FASES_LABEL[partido.fase]} ⚡ELIMINATORIA` : ''}
 FECHA: ${fecha}${partido.location ? ` · ${partido.location}` : ''}
@@ -1075,7 +1076,7 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
                             {partido && <span style={{ fontSize:'.68rem', color:'#9aa0a6' }}>
                               {partido.home?.name}{n.tipo==='post_partido'?` ${partido.home_score}-${partido.away_score}`:' vs'} {partido.away?.name}
                             </span>}
-                            <span style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{new Date(n.creada_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span>
+                            <span style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{new Date(n.creada_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} {fmtHoraDate(n.creada_at)}</span>
                           </div>
                           <div style={{ fontWeight:'700', color:'#202124', fontSize:'.9rem', lineHeight:1.3 }}>{n.titulo}</div>
                         </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, ChevronDown, ChevronUp, Shield, Clock, Shirt, Target, Scale, MessageCircle, MapPin, User, ClipboardList, Trophy, FileText, AlertTriangle, CheckCircle, XCircle, Hourglass, Paperclip, Phone, Circle, Award, Activity, Stethoscope, CreditCard } from 'lucide-react'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 const FASE_LABEL = { grupo:'Grupos', octavos:'Octavos', cuartos:'Cuartos', semifinal:'Semifinal', tercero:'3er Puesto', final:'Final' }
 const CRITERIOS  = [
@@ -156,7 +157,7 @@ export default function ArbitroPerfilPage() {
             {p.companeros.length>0&&<span style={{ fontSize:'.62rem', color:'#7a9ab5', marginLeft:'auto' }}>con {p.companeros.join(', ')}</span>}
           </div>
         )}
-        {!esJugado&&p.played_at&&<div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'3px', display:'flex', alignItems:'center', gap:'3px' }}><Clock size={10}/> {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}{p.location&&<> · <MapPin size={10}/> {p.location}</>}</div>}
+        {!esJugado&&p.played_at&&<div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'3px', display:'flex', alignItems:'center', gap:'3px' }}><Clock size={10}/> {fmtHoraDate(p.played_at)}{p.location&&<> · <MapPin size={10}/> {p.location}</>}</div>}
       </div>
     )
   }

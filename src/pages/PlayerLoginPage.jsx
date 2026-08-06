@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { registrarSesionDispositivo, marcarInicioLogin } from '../lib/deviceSession'
 import SponsorSplash from '../components/card/SponsorSplash'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
@@ -224,6 +225,7 @@ export default function PlayerLoginPage() {
     e.preventDefault()
     if (!pass.trim()) { setError('Ingresa tu contraseña'); return }
     setLoading(true); setError('')
+    marcarInicioLogin()
     const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
     if (authError) { setError('Contraseña incorrecta'); setLoading(false); return }
     // Golmebol es gratis: ya no se revisa membresía activa ni verificación
@@ -234,6 +236,7 @@ export default function PlayerLoginPage() {
       setShowCambiarPass(true)
       return
     }
+    await registrarSesionDispositivo(player.id)
     const splashData = await fetchSplashData(player.id)
     setLoading(false)
     setSplash(splashData)
@@ -244,6 +247,7 @@ export default function PlayerLoginPage() {
     if (!pass.trim() || pass.length < 6) { setError('Mínimo 6 caracteres'); return }
     if (pass !== pass2) { setError('Las contraseñas no coinciden'); return }
     setLoading(true); setError('')
+    marcarInicioLogin()
     const email = `${cedula.trim()}@golmebol.com`
     const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass })
     if (authError) {
@@ -262,6 +266,7 @@ export default function PlayerLoginPage() {
           return
         }
         if (!player.user_id) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', player.id)
+        await registrarSesionDispositivo(player.id)
         const splashData = await fetchSplashData(player.id)
         setLoading(false)
         setSplash(splashData)
@@ -272,6 +277,7 @@ export default function PlayerLoginPage() {
       return
     }
     await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
+    await registrarSesionDispositivo(player.id)
     const splashData = await fetchSplashData(player.id)
     setLoading(false)
     setSplash(splashData)
@@ -308,6 +314,7 @@ export default function PlayerLoginPage() {
         {showCambiarPass && (
           <ModalCambiarPass cedula={cedula} onCambiada={async () => {
             setShowCambiarPass(false)
+            await registrarSesionDispositivo(player.id)
             const splashData = await fetchSplashData(player.id)
             setSplash(splashData)
           }}/>

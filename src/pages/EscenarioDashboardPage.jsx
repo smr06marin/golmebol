@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo } from '../lib/escenarioHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight } from 'lucide-react'
+import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight, Repeat } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -20,6 +20,7 @@ export default function EscenarioDashboardPage() {
   const [otros,      setOtros]      = useState([]) // otros escenarios del mismo encargado (para el switch)
   const [productos,  setProductos]  = useState([])
   const [ventasHoy,  setVentasHoy]  = useState([])
+  const [canchas,    setCanchas]    = useState([])
   const [reservas,   setReservas]   = useState([])
   const [pedidosPend,setPedidosPend]= useState(0)
   const [loading,    setLoading]    = useState(true)
@@ -46,14 +47,17 @@ export default function EscenarioDashboardPage() {
     setEscenario(esc || null)
 
     const hoy = todayStr()
-    const [{ data: prods }, { data: ventas }, { data: rsvs }, { count: cPed }] = await Promise.all([
+    await asegurarReservasFijas(escenarioId)
+    const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }] = await Promise.all([
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
-      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy),
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy).eq('estado', 'completada'),
+      supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy),
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
     ])
     setProductos(prods || [])
     setVentasHoy(ventas || [])
+    setCanchas(cs || [])
     setReservas(rsvs || [])
     setPedidosPend(cPed || 0)
     setLoading(false)
@@ -103,7 +107,7 @@ export default function EscenarioDashboardPage() {
   const totalVentasHoy = ventasHoy.reduce((a, v) => a + Number(v.total || 0), 0)
   const gananciaHoy = ventasHoy.reduce((a, v) => a + Number(v.ganancia || 0), 0)
   const bajoStock = productos.filter(p => p.cantidad <= p.stock_minimo)
-  const slotsHoy = allSlotsForDate(escenario, reservas, todayStr())
+  const slotsHoy = allSlotsForDate(escenario, canchas, reservas, todayStr())
   const libres = slotsHoy.filter(s => s.estado === 'libre').length
   const ocupados = slotsHoy.filter(s => s.estado !== 'libre').length
 
@@ -111,6 +115,7 @@ export default function EscenarioDashboardPage() {
   const NAV = [
     { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente' },
     { to: `/escenario/${B}/reservas`,   icon: CheckSquare,    label: 'Solicitudes',    desc: 'Aprobar/rechazar reservas, mantenimiento' },
+    { to: `/escenario/${B}/fijas`,      icon: Repeat,         label: 'Reservas fijas', desc: 'Clientes que juegan el mismo día y hora' },
     { to: `/escenario/${B}/ventas`,     icon: ShoppingCart,   label: 'Ventas',         desc: 'Punto de venta de la tienda' },
     { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha' },
     { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock' },

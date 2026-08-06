@@ -5,6 +5,7 @@ import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
+import { fmtHoraDate } from '../../lib/horaHelpers'
 
 const POSICIONES = {
   'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
@@ -551,7 +552,7 @@ export default function AdminJugadoresPage() {
                   <div style={{ fontSize: '.72rem', color: j.equipo_deseado ? '#1a73e8' : '#e8710a', marginTop: '2px', fontWeight: '600' }}>
                     {j.equipo_deseado ? `⚽ Dice jugar en: ${j.equipo_deseado}` : '🎯 Sin equipo — solo PREDIX'}
                   </div>
-                  {j.fecha_registro && <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '2px' }}>Registrado: {new Date(j.fecha_registro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
+                  {j.fecha_registro && <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '2px' }}>Registrado: {new Date(j.fecha_registro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} {fmtHoraDate(j.fecha_registro)}</div>}
                 </div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   <button onClick={() => abrirWhatsAppVerificacion(j)}

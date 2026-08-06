@@ -5,6 +5,7 @@ import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, Cli
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import PortalBanner from '../components/PortalBanner'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -84,7 +85,7 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
                 <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700' }}>{p.tournaments?.name}</span>
                 <span style={{ fontSize:'.65rem', color:'#7a9ab5' }}>
                   {p.played_at && new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}
-                  {p.played_at && ` ${new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`}
+                  {p.played_at && ` ${fmtHoraDate(p.played_at)}`}
                 </span>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
@@ -370,7 +371,7 @@ export default function ArbitroHomePage() {
               </div>
               {(p.played_at||p.location) && (
                 <div style={{ marginTop:'6px', display:'flex', gap:'12px', fontSize:'.68rem', color:'#7a9ab5' }}>
-                  {p.played_at && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><Clock size={10}/> {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>}
+                  {p.played_at && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><Clock size={10}/> {fmtHoraDate(p.played_at)}</span>}
                   {p.location  && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><MapPin size={10}/> {p.location}</span>}
                 </div>
               )}

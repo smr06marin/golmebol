@@ -53,6 +53,76 @@ export const RANKING_SECCIONES = [
   },
 ]
 
+// Rankings de profesores — solo con datos reales (automáticos + la
+// evaluación del coordinador). No incluye nada que se pueda editar a mano,
+// para que el ranking no se pueda "inflar".
+export const PROFESOR_RANKING_SECCIONES = [
+  {
+    titulo: '📋 Dirección técnica',
+    items: [
+      { key: 'ganados',    label: 'Partidos ganados',   icon: '🏅', campo: 'partidos_ganados_prof',      orden: 'desc', unidad: '' },
+      { key: 'porcentaje', label: '% de victorias',      icon: '📈', campo: 'porcentaje_victorias_prof',  orden: 'desc', unidad: '%' },
+      { key: 'dirigidos',  label: 'Partidos dirigidos', icon: '📋', campo: 'partidos_jugados_prof',      orden: 'desc', unidad: '' },
+    ],
+  },
+  {
+    titulo: '🏆 Torneos',
+    items: [
+      { key: 'campeonatos',     label: 'Campeonatos',           icon: '🏆', campo: 'torneos_campeon_prof', orden: 'desc', unidad: '' },
+      { key: 'podios',          label: 'Podios (1°, 2° o 3°)',   icon: '🥉', campo: 'torneos_podio_prof',   orden: 'desc', unidad: '' },
+      { key: 'torneosdirigidos',label: 'Torneos dirigidos',      icon: '🎽', campo: 'torneos_jugados_prof', orden: 'desc', unidad: '' },
+    ],
+  },
+  {
+    titulo: '⭐ Evaluación del coordinador',
+    items: [
+      { key: 'evaluacion', label: 'Promedio general', icon: '⭐', campo: 'promedio_evaluacion_prof', orden: 'desc', unidad: '/10' },
+    ],
+  },
+]
+
+const EVAL_CRITERIOS_PROF = ['puntualidad', 'conocimiento_tecnico', 'comunicacion', 'liderazgo', 'disciplina', 'compromiso']
+
+function promedioEvaluacionesProfesor(evs) {
+  const vals = []
+  ;(evs || []).forEach(e => EVAL_CRITERIOS_PROF.forEach(k => { if (e[k] != null) vals.push(Number(e[k])) }))
+  if (vals.length === 0) return null
+  return parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1))
+}
+
+// Arma la plantilla de profesores de la escuela con lo necesario para los
+// rankings de arriba — solo datos automáticos (partidos/torneos, que ya no
+// se pueden editar a mano) más el promedio de las evaluaciones que le hizo
+// el coordinador.
+export async function fetchProfesoresConRanking(escuelaId) {
+  const { data: profs } = await supabase.from('players').select('*')
+    .eq('escuela_id', escuelaId).or('rol.eq.profesor,es_profesor.eq.true,es_profesor_coordinador.eq.true')
+  const roster = profs || []
+  const ids = roster.map(p => p.id)
+  if (ids.length === 0) return []
+
+  const { data: evs } = await supabase.from('escuela_profesor_evaluaciones').select('*').in('profesor_id', ids)
+  const evalsPorProf = {}
+  ;(evs || []).forEach(e => { (evalsPorProf[e.profesor_id] ||= []).push(e) })
+
+  return roster.map(p => {
+    const jugados = p.partidos_jugados_prof || 0
+    const ganados = p.partidos_ganados_prof || 0
+    return {
+      id: p.id,
+      nombre: p.name,
+      foto: p.photo_face_url || p.photo_url || null,
+      partidos_jugados_prof: jugados,
+      partidos_ganados_prof: ganados,
+      porcentaje_victorias_prof: jugados > 0 ? Math.round((ganados / jugados) * 100) : null,
+      torneos_jugados_prof: p.torneos_jugados_prof || 0,
+      torneos_campeon_prof: p.torneos_campeon_prof || 0,
+      torneos_podio_prof: (p.torneos_campeon_prof || 0) + (p.torneos_subcampeon_prof || 0) + (p.torneos_tercero_prof || 0),
+      promedio_evaluacion_prof: promedioEvaluacionesProfesor(evalsPorProf[p.id]),
+    }
+  })
+}
+
 function ultimoPorJugador(rows) {
   const mapa = {}
   ;(rows || []).forEach(r => { if (!mapa[r.jugador_id]) mapa[r.jugador_id] = r })

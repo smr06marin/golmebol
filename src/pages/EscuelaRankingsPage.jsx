@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EscuelaRankingModal from '../components/EscuelaRankingModal'
-import { RANKING_SECCIONES, fetchRosterConRanking } from '../lib/escuelaRankings'
+import { RANKING_SECCIONES, fetchRosterConRanking, PROFESOR_RANKING_SECCIONES, fetchProfesoresConRanking } from '../lib/escuelaRankings'
 import EscuelaPageHeader from '../components/EscuelaPageHeader'
 import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 
@@ -23,6 +23,12 @@ const IMG_POR_SECCION = {
   '📋 Evaluaciones del profesor':  'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60',
 }
 
+const IMG_POR_SECCION_PROF = {
+  '📋 Dirección técnica':              'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60',
+  '🏆 Torneos':                        'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60',
+  '⭐ Evaluación del coordinador':      'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60',
+}
+
 // Rankings completos de la escuela — solo para profesores/coordinador. Acá sí
 // se ve la lista entera de cada categoría (a diferencia de la vista del
 // jugador, que solo ve al #1 y su propia posición).
@@ -31,8 +37,10 @@ export default function EscuelaRankingsPage() {
   const [profesor, setProfesor] = useState(null)
   const [escuela, setEscuela] = useState(null)
   const [roster, setRoster] = useState([])
+  const [rosterProf, setRosterProf] = useState([])
   const [loading, setLoading] = useState(true)
   const [abierto, setAbierto] = useState(null)
+  const [abiertoProf, setAbiertoProf] = useState(null)
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -50,6 +58,9 @@ export default function EscuelaRankingsPage() {
 
     const conRanking = await fetchRosterConRanking(p.escuela_id)
     setRoster(conRanking)
+
+    const profesoresConRanking = await fetchProfesoresConRanking(p.escuela_id)
+    setRosterProf(profesoresConRanking)
     setLoading(false)
   }
 
@@ -89,10 +100,38 @@ export default function EscuelaRankingsPage() {
             ))}
           </>
         )}
+
+        {rosterProf.length > 0 && (
+          <>
+            <div style={{ fontSize:'.78rem', fontWeight:800, color:S.gold, marginTop:8, marginBottom:12, paddingTop:16, borderTop:`1px solid ${S.border}` }}>🧑‍🏫 Profesores</div>
+            {PROFESOR_RANKING_SECCIONES.map(sec => (
+              <div key={sec.titulo} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize:'.78rem', fontWeight:700, color:S.text2, marginBottom:8 }}>{sec.titulo}</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
+                  {sec.items.map(item => {
+                    const filtrado = rosterProf.filter(p => p[item.campo] != null)
+                    const top = filtrado.length > 0
+                      ? [...filtrado].sort((a,b) => item.orden==='asc' ? a[item.campo]-b[item.campo] : b[item.campo]-a[item.campo])[0]
+                      : null
+                    return (
+                      <EscuelaFeatureCard key={item.key} onClick={() => setAbiertoProf(item)} bg={IMG_POR_SECCION_PROF[sec.titulo]} accent={S.gold}
+                        icon={<span style={{ fontSize:'1.5rem' }}>{item.icon}</span>}
+                        title={item.label}
+                        desc={top ? `🥇 ${top.nombre.split(' ')[0]} — ${top[item.campo]}${item.unidad ? ` ${item.unidad}` : ''}` : 'Sin datos'}/>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {abierto && (
         <EscuelaRankingModal item={abierto} roster={roster} playerId={profesor?.id} modoCompleto onClose={() => setAbierto(null)}/>
+      )}
+      {abiertoProf && (
+        <EscuelaRankingModal item={abiertoProf} roster={rosterProf} playerId={profesor?.id} modoCompleto onClose={() => setAbiertoProf(null)}/>
       )}
     </div>
   )

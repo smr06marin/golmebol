@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
 const S = {
@@ -13,7 +14,58 @@ const S = {
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }
 
-function ModalReserva({ escenario, cancha, fecha, hora, onClose, onGuardado }) {
+// Cuando el horario ya tiene una solicitud pendiente, es porque el cliente
+// ya llenó sus datos desde la página pública — acá no se le vuelven a pedir,
+// solo se muestran para revisar y aceptar/rechazar con un click.
+function ModalRevisar({ reserva, canchas, encargado, onClose, onResuelto }) {
+  const [procesando, setProcesando] = useState(false)
+
+  async function aceptar() {
+    setProcesando(true)
+    let { error } = await supabase.from('escenario_reservas')
+      .update({ estado:'aceptada', aceptada_por: encargado?.id || null, aceptada_por_nombre: encargado?.name || null })
+      .eq('id', reserva.id)
+    if (error && error.message?.includes('aceptada_por')) {
+      ;({ error } = await supabase.from('escenario_reservas').update({ estado:'aceptada' }).eq('id', reserva.id))
+    }
+    setProcesando(false)
+    onResuelto(error ? 'Error al aceptar: ' + error.message : '✅ Reserva aceptada')
+  }
+
+  async function rechazar() {
+    setProcesando(true)
+    const { error } = await supabase.from('escenario_reservas').update({ estado:'rechazada' }).eq('id', reserva.id)
+    setProcesando(false)
+    onResuelto(error ? 'Error al rechazar: ' + error.message : 'Solicitud rechazada')
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+          <div style={{ fontWeight:800, fontSize:'1rem' }}>Solicitud pendiente</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+        </div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{nombreCancha(canchas, reserva.cancha)} · {fmtDate(reserva.fecha)} — {fmtHora12(reserva.hora)}</div>
+        <div style={{ background:S.card2, borderRadius:'10px', padding:'14px', marginBottom:'18px' }}>
+          <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:'8px' }}>Datos ya enviados por el cliente</div>
+          <div style={{ fontSize:'.88rem', fontWeight:700, marginBottom:'4px' }}>{reserva.nombre}</div>
+          {reserva.telefono && <div style={{ fontSize:'.8rem', color:S.text2 }}>{reserva.telefono}</div>}
+          {reserva.equipo && <div style={{ fontSize:'.8rem', color:S.text2 }}>Equipo: {reserva.equipo}</div>}
+          <div style={{ fontSize:'.8rem', color:S.text2 }}>Duración: {reserva.duracion} min</div>
+        </div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={rechazar} disabled={procesando} style={{ flex:1, padding:'12px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.85rem', opacity:procesando?.7:1 }}>Rechazar</button>
+          <button onClick={aceptar} disabled={procesando} style={{ flex:1, padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
+            {procesando ? '...' : 'Aceptar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuardado }) {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [equipo, setEquipo] = useState('')
@@ -25,7 +77,7 @@ function ModalReserva({ escenario, cancha, fecha, hora, onClose, onGuardado }) {
   async function handleReservar() {
     if (!nombre.trim() || !telefono.trim()) { setError('Nombre y teléfono son obligatorios'); return }
     setGuardando(true); setError('')
-    const monto = precioCancha(escenario, cancha)
+    const monto = precioCancha(canchas, cancha)
     const { error: errIns } = await supabase.from('escenario_reservas').insert({
       escenario_id: escenario.id, cancha, fecha, hora, duracion,
       nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
@@ -40,10 +92,10 @@ function ModalReserva({ escenario, cancha, fecha, hora, onClose, onGuardado }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
       <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
-          <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {cancha==='futbol5'?'Fútbol 5':'Fútbol 7'}</div>
+          <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {nombreCancha(canchas, cancha)}</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
         </div>
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {hora}</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(hora)}</div>
         <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Nombre"/></div>
         <div style={{ marginBottom:'12px' }}><label style={lbl}>Teléfono</label><input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
         <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
@@ -71,11 +123,13 @@ export default function EscenarioCanchasPage() {
   const { escenarioId } = useParams()
   const [encargado, setEncargado] = useState(null)
   const [escenario, setEscenario] = useState(null)
+  const [canchas,   setCanchas]   = useState([])
   const [reservas,  setReservas]  = useState([])
   const [loading,   setLoading]   = useState(true)
-  const [cancha,    setCancha]    = useState('futbol5')
+  const [cancha,    setCancha]    = useState(null)
   const [fecha,     setFecha]     = useState(todayStr())
   const [modalSlot, setModalSlot] = useState(null)
+  const [revisando, setRevisando] = useState(null)
   const [msg,       setMsg]       = useState('')
 
   useEffect(() => { fetchTodo() }, [escenarioId])
@@ -91,6 +145,10 @@ export default function EscenarioCanchasPage() {
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
+    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
+    setCanchas(cs || [])
+    setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
+    await asegurarReservasFijas(escenarioId)
     const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
     setReservas(rsvs || [])
     setLoading(false)
@@ -98,6 +156,13 @@ export default function EscenarioCanchasPage() {
 
   function abrir(cancha, fecha, hora) { setModalSlot({ cancha, fecha, hora }) }
   function guardado() { setModalSlot(null); setMsg('✅ Reserva registrada'); setTimeout(()=>setMsg(''),3000); fetchTodo() }
+
+  function abrirRevisar(cancha, fecha, hora) {
+    const r = reservas.find(x => x.cancha === cancha && x.fecha === fecha && x.estado === 'pendiente'
+      && parseInt(hora,10) >= parseInt(x.hora,10) && parseInt(hora,10) < parseInt(x.hora,10) + Math.ceil((x.duracion||60)/60))
+    if (r) setRevisando(r)
+  }
+  function resuelto(texto) { setRevisando(null); setMsg(texto); setTimeout(()=>setMsg(''),3000); fetchTodo() }
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
@@ -108,8 +173,12 @@ export default function EscenarioCanchasPage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       {modalSlot && (
-        <ModalReserva escenario={escenario} cancha={modalSlot.cancha} fecha={modalSlot.fecha} hora={modalSlot.hora}
+        <ModalReserva escenario={escenario} canchas={canchas} cancha={modalSlot.cancha} fecha={modalSlot.fecha} hora={modalSlot.hora}
           onClose={()=>setModalSlot(null)} onGuardado={guardado}/>
+      )}
+      {revisando && (
+        <ModalRevisar reserva={revisando} canchas={canchas} encargado={encargado}
+          onClose={()=>setRevisando(null)} onResuelto={resuelto}/>
       )}
 
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
@@ -123,13 +192,14 @@ export default function EscenarioCanchasPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
-        <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
-          {['futbol5','futbol7'].map(c => (
-            <button key={c} onClick={()=>setCancha(c)}
-              style={{ flex:1, padding:'10px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:800, fontSize:'.82rem', background: cancha===c?S.cyan:S.card, color: cancha===c?'#000':S.muted }}>
-              {c==='futbol5'?'Fútbol 5':'Fútbol 7'}
+        <div style={{ display:'flex', gap:'8px', marginBottom:'14px', flexWrap:'wrap' }}>
+          {canchas.map(c => (
+            <button key={c.id} onClick={()=>setCancha(c.slug)}
+              style={{ flex:'1 1 auto', padding:'10px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:800, fontSize:'.82rem', background: cancha===c.slug?S.cyan:S.card, color: cancha===c.slug?'#000':S.muted }}>
+              {c.nombre}
             </button>
           ))}
+          {canchas.length === 0 && <div style={{ fontSize:'.8rem', color:S.muted }}>No hay canchas creadas — agrégalas en Configuración.</div>}
         </div>
         <div style={{ marginBottom:'14px' }}>
           <label style={lbl}>Fecha</label>
@@ -142,10 +212,10 @@ export default function EscenarioCanchasPage() {
             const label = est==='libre' ? '🟢 Disponible' : est==='pendiente' ? '🟡 Solicitud pendiente' : '🔴 Ocupado'
             const color = est==='libre' ? S.win : est==='pendiente' ? S.warn : S.loss
             return (
-              <div key={h} onClick={() => est==='libre' && abrir(cancha, fecha, h)}
-                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor: est==='libre'?'pointer':'default' }}>
-                <span style={{ fontWeight:700, fontSize:'.85rem' }}>{h}</span>
-                <span style={{ fontSize:'.78rem', color, fontWeight:600 }}>{label}</span>
+              <div key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' && abrirRevisar(cancha, fecha, h)}
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor: est==='ocupado'?'default':'pointer' }}>
+                <span style={{ fontWeight:700, fontSize:'.85rem' }}>{fmtHora12(h)}</span>
+                <span style={{ fontSize:'.78rem', color, fontWeight:600 }}>{label}{est==='pendiente' && ' · toca para revisar'}</span>
               </div>
             )
           })}

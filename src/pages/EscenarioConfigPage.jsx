@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Image as ImageIcon } from 'lucide-react'
+import { Image as ImageIcon, Plus, Trash2, RotateCcw } from 'lucide-react'
+import { slugifyCancha } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -15,11 +16,14 @@ export default function EscenarioConfigPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
   const [escenario, setEscenario] = useState(null)
+  const [canchas,   setCanchas]   = useState([])
   const [loading,   setLoading]   = useState(true)
   const [form,      setForm]      = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [subiendoFondo, setSubiendoFondo] = useState(false)
   const [msg,       setMsg]       = useState('')
+  const [nuevaCancha, setNuevaCancha] = useState({ nombre:'', precio_hora:'' })
+  const [agregando, setAgregando] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -34,11 +38,40 @@ export default function EscenarioConfigPage() {
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     if (esc) setForm({
-      name: esc.name || '', city: esc.city || '', whatsapp: esc.whatsapp || '',
+      name: esc.name || '', city: esc.city || '', whatsapp: esc.whatsapp || '', direccion: esc.direccion || '',
       hora_apertura: esc.hora_apertura ?? 8, hora_cierre: esc.hora_cierre ?? 22,
-      precio_futbol5: esc.precio_futbol5 ?? 60000, precio_futbol7: esc.precio_futbol7 ?? 90000,
     })
+    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).order('orden')
+    setCanchas(cs || [])
     setLoading(false)
+  }
+
+  function editarCanchaLocal(id, campo, valor) {
+    setCanchas(cs => cs.map(c => c.id === id ? { ...c, [campo]: valor } : c))
+  }
+
+  async function guardarCancha(c) {
+    await supabase.from('escenario_canchas').update({ nombre: c.nombre.trim() || 'Cancha', precio_hora: Number(c.precio_hora) || 0 }).eq('id', c.id)
+    fetchTodo()
+  }
+
+  async function toggleCancha(c) {
+    await supabase.from('escenario_canchas').update({ activa: !c.activa }).eq('id', c.id)
+    fetchTodo()
+  }
+
+  async function agregarCancha() {
+    if (!nuevaCancha.nombre.trim()) { setMsg('Escribe un nombre para la cancha'); return }
+    setAgregando(true)
+    const slug = slugifyCancha(nuevaCancha.nombre)
+    const { error } = await supabase.from('escenario_canchas').insert({
+      escenario_id: escenarioId, slug, nombre: nuevaCancha.nombre.trim(),
+      precio_hora: Number(nuevaCancha.precio_hora) || 0, orden: canchas.length, activa: true,
+    })
+    setAgregando(false)
+    if (error) { setMsg('Error al crear la cancha: ' + error.message); return }
+    setNuevaCancha({ nombre:'', precio_hora:'' })
+    fetchTodo()
   }
 
   async function handleFondo(file) {
@@ -60,8 +93,8 @@ export default function EscenarioConfigPage() {
     setGuardando(true); setMsg('')
     const payload = {
       name: form.name.trim(), city: form.city.trim() || null, whatsapp: form.whatsapp.trim() || null,
+      direccion: form.direccion.trim() || null,
       hora_apertura: parseInt(form.hora_apertura)||8, hora_cierre: parseInt(form.hora_cierre)||22,
-      precio_futbol5: Number(form.precio_futbol5)||0, precio_futbol7: Number(form.precio_futbol7)||0,
     }
     const { error } = await supabase.from('escenarios').update(payload).eq('id', escenario.id)
     setGuardando(false)
@@ -91,21 +124,53 @@ export default function EscenarioConfigPage() {
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'14px' }}>Datos del escenario</div>
           <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp}/></div>
           <div style={{ marginBottom:'12px' }}><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp}/></div>
-          <div style={{ marginBottom:'0' }}>
+          <div style={{ marginBottom:'12px' }}>
             <label style={lbl}>WhatsApp del negocio (sin + ni espacios, con código de país)</label>
             <input value={form.whatsapp} onChange={e=>setForm(f=>({...f,whatsapp:e.target.value}))} style={inp} placeholder="573001234567"/>
+          </div>
+          <div style={{ marginBottom:'0' }}>
+            <label style={lbl}>Dirección</label>
+            <input value={form.direccion} onChange={e=>setForm(f=>({...f,direccion:e.target.value}))} style={inp} placeholder="Ej: Barrio Puerto Espejo, Armenia, Quindío"/>
+            <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'6px' }}>Se usa para mostrar el mapa en la página pública de reservas.</div>
           </div>
         </div>
 
         <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px', marginBottom:'16px' }}>
-          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'14px' }}>Canchas</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'14px' }}>Horario</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
             <div><label style={lbl}>Hora de apertura</label><input type="number" value={form.hora_apertura} onChange={e=>setForm(f=>({...f,hora_apertura:e.target.value}))} style={inp}/></div>
             <div><label style={lbl}>Hora de cierre</label><input type="number" value={form.hora_cierre} onChange={e=>setForm(f=>({...f,hora_cierre:e.target.value}))} style={inp}/></div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <div><label style={lbl}>Precio por hora Fútbol 5</label><input type="number" value={form.precio_futbol5} onChange={e=>setForm(f=>({...f,precio_futbol5:e.target.value}))} style={inp}/></div>
-            <div><label style={lbl}>Precio por hora Fútbol 7</label><input type="number" value={form.precio_futbol7} onChange={e=>setForm(f=>({...f,precio_futbol7:e.target.value}))} style={inp}/></div>
+          <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'8px' }}>Aplica para todas las canchas del escenario.</div>
+        </div>
+
+        <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px', marginBottom:'16px' }}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'4px' }}>Canchas</div>
+          <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'14px' }}>Crea las canchas que tenga tu escenario, con su propio nombre y precio por hora.</div>
+
+          {canchas.map(c => (
+            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'10px', opacity: c.activa ? 1 : .5 }}>
+              <input value={c.nombre} onChange={e=>editarCanchaLocal(c.id,'nombre',e.target.value)} onBlur={()=>guardarCancha(c)}
+                style={{ ...inp, flex:'1 1 auto' }} placeholder="Nombre de la cancha"/>
+              <input type="number" value={c.precio_hora} onChange={e=>editarCanchaLocal(c.id,'precio_hora',e.target.value)} onBlur={()=>guardarCancha(c)}
+                style={{ ...inp, width:'110px', flex:'0 0 auto' }} placeholder="$/hora"/>
+              <button onClick={()=>toggleCancha(c)} title={c.activa ? 'Desactivar cancha' : 'Reactivar cancha'}
+                style={{ flexShrink:0, width:'36px', height:'36px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: c.activa ? '#ff6b6b' : S.cyan }}>
+                {c.activa ? <Trash2 size={14}/> : <RotateCcw size={14}/>}
+              </button>
+            </div>
+          ))}
+          {canchas.length === 0 && <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'12px' }}>Todavía no tienes canchas creadas.</div>}
+
+          <div style={{ display:'flex', gap:'8px', marginTop:'14px', paddingTop:'14px', borderTop:`1px solid ${S.border}` }}>
+            <input value={nuevaCancha.nombre} onChange={e=>setNuevaCancha(f=>({...f,nombre:e.target.value}))}
+              style={{ ...inp, flex:'1 1 auto' }} placeholder="Ej: Cancha 3"/>
+            <input type="number" value={nuevaCancha.precio_hora} onChange={e=>setNuevaCancha(f=>({...f,precio_hora:e.target.value}))}
+              style={{ ...inp, width:'110px', flex:'0 0 auto' }} placeholder="$/hora"/>
+            <button onClick={agregarCancha} disabled={agregando}
+              style={{ flexShrink:0, width:'36px', height:'36px', display:'flex', alignItems:'center', justifyContent:'center', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', opacity:agregando?.7:1 }}>
+              <Plus size={16}/>
+            </button>
           </div>
         </div>
 

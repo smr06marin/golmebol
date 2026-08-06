@@ -39,14 +39,18 @@ export default function EscenarioCierrePage() {
     setVentas(data || [])
   }
 
+  const ventasCompletadas = ventas.filter(v => v.estado !== 'devuelta')
+  const ventasDevueltas = ventas.filter(v => v.estado === 'devuelta')
+  const totalDevuelto = ventasDevueltas.reduce((a,v)=>a+Number(v.total||0),0)
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
 
-  const totalVentas = ventas.reduce((a,v)=>a+Number(v.total||0),0)
-  const costoTotal = ventas.reduce((a,v)=>a+Number(v.costo_total||0),0)
+  const totalVentas = ventasCompletadas.reduce((a,v)=>a+Number(v.total||0),0)
+  const costoTotal = ventasCompletadas.reduce((a,v)=>a+Number(v.costo_total||0),0)
   const ganancia = totalVentas - costoTotal
-  const productosVendidos = ventas.reduce((a,v)=>a+(v.items||[]).reduce((b,i)=>b+i.cantidad,0),0)
+  const productosVendidos = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).reduce((b,i)=>b+i.cantidad,0),0)
 
   const stat = { background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }
 
@@ -75,6 +79,9 @@ export default function EscenarioCierrePage() {
             <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Costo de productos vendidos</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(costoTotal)}</div></div>
             <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ganancia</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(ganancia)}</div></div>
             <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Productos vendidos</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{productosVendidos}</div></div>
+            {ventasDevueltas.length > 0 && (
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Devuelto ({ventasDevueltas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>-{fmtMoney(totalDevuelto)}</div></div>
+            )}
             <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja esperada</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas)}</div></div>
           </div>
         </div>

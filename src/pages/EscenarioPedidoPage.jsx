@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
+import { Link2, QrCode } from 'lucide-react'
+import FlyerPedidoQR from '../components/FlyerPedidoQR'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -22,6 +24,15 @@ export default function EscenarioPedidoPage() {
   const [nombre,    setNombre]    = useState('')
   const [telefono,  setTelefono]  = useState('')
   const [msg,       setMsg]       = useState('')
+  const [copiado,   setCopiado]   = useState(false)
+  const [mostrarQR, setMostrarQR] = useState(false)
+
+  function copiarLinkClientes() {
+    const link = `${window.location.origin}/pedir/${escenarioId}`
+    navigator.clipboard?.writeText(link).then(() => {
+      setCopiado(true); setTimeout(() => setCopiado(false), 2000)
+    })
+  }
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -75,7 +86,11 @@ export default function EscenarioPedidoPage() {
       return { productId: it.productId, nombre: it.nombre, cantidad, precio: it.precio, costo: p?.costo || 0 }
     })
     await Promise.all(items.map(it => { const p=getProduct(it.productId); return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad - it.cantidad }).eq('id', it.productId) : null }).filter(Boolean))
-    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
+    // El domicilio ($1.000 que cobra la página pública por llevar el pedido)
+    // no viene en "items" — hay que sumarlo aparte para que la venta quede
+    // completa (es ganancia pura, no tiene costo asociado).
+    const domicilio = pedido.domicilio || 0
+    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0) + domicilio
     const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
     const now = new Date()
     await supabase.from('escenario_ventas').insert({
@@ -106,8 +121,20 @@ export default function EscenarioPedidoPage() {
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'14px' }}>Para clientes que están en la cancha y no quieren acercarse a la tienda: arman su pedido y lo envían por WhatsApp.</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'10px' }}>Para clientes que están en la cancha y no quieren acercarse a la tienda: arman su pedido y lo envían por WhatsApp.</div>
 
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'18px' }}>
+          <button onClick={copiarLinkClientes}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'7px', padding:'11px 10px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.76rem', textAlign:'center' }}>
+            <Link2 size={15}/> {copiado ? '¡Copiado!' : 'Copiar enlace'}
+          </button>
+          <button onClick={()=>setMostrarQR(true)}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'7px', padding:'11px 10px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.76rem', textAlign:'center' }}>
+            <QrCode size={15}/> Código QR para imprimir
+          </button>
+        </div>
+
+        <div style={{ fontWeight:800, fontSize:'.85rem', marginBottom:'10px' }}>Armar pedido manual (por teléfono)</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'16px' }}>
           {productos.map(p => (
             <button key={p.id} onClick={()=>addToCart(p.id)}
@@ -137,11 +164,24 @@ export default function EscenarioPedidoPage() {
         <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Pedidos pendientes por entregar</div>
         {pedidos.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay pedidos remotos pendientes.</div> : pedidos.map(o => (
           <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', marginBottom:'8px' }}>
-            <span style={{ fontSize:'.78rem' }}>{o.nombre} · {(o.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')} · {fmtMoney(o.total)}</span>
-            <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap' }}>Entregado</button>
+            <span style={{ fontSize:'.78rem' }}>
+              {o.nombre} · {(o.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')} · {fmtMoney(o.total)}
+              {o.domicilio > 0 && <span style={{ color:S.muted }}> (incluye {fmtMoney(o.domicilio)} domicilio)</span>}
+              {o.metodo_pago === 'efectivo' && (
+                <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>
+                  💵 Efectivo{o.paga_con ? ` · paga con ${fmtMoney(o.paga_con)}` : ''}{o.devuelta!=null ? ` · devuelta ${fmtMoney(o.devuelta)}` : ''}
+                </span>
+              )}
+              {o.metodo_pago === 'transferencia' && (
+                <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>🏦 Transferencia</span>
+              )}
+            </span>
+            <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap', flexShrink:0 }}>Entregado</button>
           </div>
         ))}
       </div>
+
+      {mostrarQR && <FlyerPedidoQR escenario={escenario} escenarioId={escenarioId} onClose={()=>setMostrarQR(false)}/>}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check, AlertTr
 import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import PortalBanner from '../components/PortalBanner'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 const inp ={ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
@@ -218,7 +219,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
         <div style={{ textAlign:'right', flexShrink:0 }}>
           {p.played_at ? (
             <div style={{ fontSize:'.68rem', color:'#7a9ab5', fontWeight:'600' }}>
-              {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} · {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
+              {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} · {fmtHoraDate(p.played_at)}
             </div>
           ) : <div style={{ fontSize:'.65rem', color:'#7a9ab5' }}>Sin fecha</div>}
         </div>
