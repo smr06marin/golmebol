@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -19,10 +19,11 @@ export default function EscenarioAdminReservasPage() {
   const { escenarioId } = useParams()
   const [encargado, setEncargado] = useState(null)
   const [escenario, setEscenario] = useState(null)
+  const [canchas,   setCanchas]   = useState([])
   const [reservas,  setReservas]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [msg,       setMsg]       = useState('')
-  const [mCancha,   setMCancha]   = useState('futbol5')
+  const [mCancha,   setMCancha]   = useState(null)
   const [mFecha,    setMFecha]    = useState(todayStr())
   const [mHora,     setMHora]     = useState('')
   const [waConfirm, setWaConfirm] = useState(null) // { link, nombre } — confirmación pendiente de enviar por WhatsApp
@@ -40,6 +41,9 @@ export default function EscenarioAdminReservasPage() {
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
+    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
+    setCanchas(cs || [])
+    setMCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
     const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
     setReservas(rsvs || [])
     if (!mHora && esc) setMHora(getHours(esc)[0] || '08:00')
@@ -73,7 +77,7 @@ export default function EscenarioAdminReservasPage() {
     // El navegador bloquea el window.open automático acá (pasa después de un
     // await) — se deja un botón para que el encargado lo abra él mismo.
     if (escenario?.whatsapp) {
-      const msgTxt = `Hola ${r.nombre}, tu reserva de ${r.cancha==='futbol5'?'Fútbol 5':'Fútbol 7'} el ${r.fecha} a las ${r.hora} fue confirmada. ¡Te esperamos!`
+      const msgTxt = `Hola ${r.nombre}, tu reserva de ${nombreCancha(canchas, r.cancha)} el ${r.fecha} a las ${r.hora} fue confirmada. ¡Te esperamos!`
       setWaConfirm({ link: `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, nombre: r.nombre })
     }
     showMsg(avisoDegradado || '✅ Reserva aceptada')
@@ -114,14 +118,15 @@ export default function EscenarioAdminReservasPage() {
   })
   const clientes = Object.values(clientesMap)
 
-  const ocupacion = { futbol5:0, futbol7:0 }
+  const ocupacion = {}
+  canchas.forEach(c => { ocupacion[c.slug] = 0 })
   const horas = escenario ? getHours(escenario) : []
   const totalSlotsSemana = horas.length * 7
   const hoy = new Date()
   for (let i=0;i<7;i++) {
     const d = new Date(hoy); d.setDate(d.getDate()+i)
     const f = d.toISOString().slice(0,10)
-    ;['futbol5','futbol7'].forEach(c => { horas.forEach(h => { if (slotEstado(reservas,c,f,h)==='ocupado') ocupacion[c]++ }) })
+    canchas.forEach(c => { horas.forEach(h => { if (slotEstado(reservas,c.slug,f,h)==='ocupado') ocupacion[c.slug]++ }) })
   }
 
   return (
@@ -152,7 +157,7 @@ export default function EscenarioAdminReservasPage() {
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Solicitudes pendientes</div>
           {pendientes.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay solicitudes pendientes.</div> : pendientes.map(r => (
             <div key={r.id} style={rowItem}>
-              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {r.hora} · {r.cancha==='futbol5'?'F5':'F7'} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
+              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
               <span style={{ display:'flex', gap:'6px' }}>
                 <button onClick={()=>aceptar(r)} style={{ padding:'5px 10px', background:S.cyan, border:'none', borderRadius:'6px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.72rem' }}>Aceptar</button>
                 <button onClick={()=>rechazar(r)} style={{ padding:'5px 10px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor:'pointer', color:S.loss, fontSize:'.72rem' }}>Rechazar</button>
@@ -166,7 +171,7 @@ export default function EscenarioAdminReservasPage() {
           {aceptadas.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin reservas confirmadas.</div> : aceptadas.map(r => (
             <div key={r.id} style={rowItem}>
               <span style={{ fontSize:'.8rem' }}>
-                {fmtDate(r.fecha)} {r.hora} · {r.cancha==='futbol5'?'F5':'F7'} · {r.nombre}
+                {fmtDate(r.fecha)} {r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre}
                 {r.aceptada_por_nombre && <span style={{ display:'block', fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Aceptada por {r.aceptada_por_nombre}</span>}
               </span>
               <select value={r.pago} onChange={e=>cambiarPago(r,e.target.value)} style={{ ...inp, width:'auto', padding:'5px 8px', fontSize:'.72rem' }}>
@@ -179,7 +184,7 @@ export default function EscenarioAdminReservasPage() {
         <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>🛠️ Bloquear horario (mantenimiento)</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
-            <div><label style={lbl}>Cancha</label><select value={mCancha} onChange={e=>setMCancha(e.target.value)} style={inp}><option value="futbol5">Fútbol 5</option><option value="futbol7">Fútbol 7</option></select></div>
+            <div><label style={lbl}>Cancha</label><select value={mCancha||''} onChange={e=>setMCancha(e.target.value)} style={inp}>{canchas.map(c=><option key={c.id} value={c.slug}>{c.nombre}</option>)}</select></div>
             <div><label style={lbl}>Fecha</label><input type="date" value={mFecha} onChange={e=>setMFecha(e.target.value)} style={inp}/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Hora</label><select value={mHora} onChange={e=>setMHora(e.target.value)} style={inp}>{horas.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
           </div>
@@ -188,8 +193,12 @@ export default function EscenarioAdminReservasPage() {
 
         <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>📊 Ocupación de la semana</div>
-          <div style={rowItem}><span style={{fontSize:'.8rem'}}>Fútbol 5</span><span style={{fontSize:'.8rem', fontWeight:700, color:S.cyan}}>{totalSlotsSemana?Math.round(ocupacion.futbol5/totalSlotsSemana*100):0}%</span></div>
-          <div style={{...rowItem, borderBottom:'none'}}><span style={{fontSize:'.8rem'}}>Fútbol 7</span><span style={{fontSize:'.8rem', fontWeight:700, color:S.cyan}}>{totalSlotsSemana?Math.round(ocupacion.futbol7/totalSlotsSemana*100):0}%</span></div>
+          {canchas.map((c,i) => (
+            <div key={c.id} style={i===canchas.length-1 ? {...rowItem, borderBottom:'none'} : rowItem}>
+              <span style={{fontSize:'.8rem'}}>{c.nombre}</span>
+              <span style={{fontSize:'.8rem', fontWeight:700, color:S.cyan}}>{totalSlotsSemana?Math.round((ocupacion[c.slug]||0)/totalSlotsSemana*100):0}%</span>
+            </div>
+          ))}
         </div>
 
         <div style={{...card, marginBottom:0}}>

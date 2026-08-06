@@ -35,18 +35,39 @@ export function slotEstado(reservas, cancha, fecha, hora) {
   return 'libre'
 }
 
-export function allSlotsForDate(escenario, reservas, fecha) {
+// `canchas` es la lista de filas de escenario_canchas (id, slug, nombre,
+// precio_hora, activa...) — reemplaza el viejo hardcode a solo
+// ['futbol5','futbol7'], ahora el escenario puede tener las canchas que
+// el encargado haya creado.
+export function allSlotsForDate(escenario, canchas, reservas, fecha) {
   const slots = []
-  ;['futbol5', 'futbol7'].forEach(cancha => {
+  ;(canchas || []).forEach(({ slug }) => {
     getHours(escenario).forEach(h => {
-      slots.push({ cancha, hora: h, estado: slotEstado(reservas, cancha, fecha, h) })
+      slots.push({ cancha: slug, hora: h, estado: slotEstado(reservas, slug, fecha, h) })
     })
   })
   return slots
 }
 
-export function precioCancha(escenario, cancha) {
-  return cancha === 'futbol5' ? (escenario?.precio_futbol5 ?? 60000) : (escenario?.precio_futbol7 ?? 90000)
+export function precioCancha(canchas, slug) {
+  return (canchas || []).find(c => c.slug === slug)?.precio_hora ?? 0
+}
+
+export function nombreCancha(canchas, slug) {
+  return (canchas || []).find(c => c.slug === slug)?.nombre || slug
+}
+
+// Genera un slug único y legible a partir del nombre que escribió el
+// encargado (ej: "Cancha VIP" → "cancha-vip-4f2a"), para guardarlo en
+// escenario_reservas.cancha.
+export function slugifyCancha(nombre) {
+  const base = (nombre || 'cancha')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quita tildes
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'cancha'
+  const suf = Math.random().toString(36).slice(2, 6)
+  return `${base}-${suf}`
 }
 
 // Si el admin bloqueó el escenario (activo=false) o se venció la fecha

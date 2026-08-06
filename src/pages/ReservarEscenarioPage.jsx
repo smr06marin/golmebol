@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, fmtMoney, escenarioActivo } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo } from '../lib/escenarioHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
 // oscuro) porque esta es la página pública que un cliente cualquiera ve
@@ -16,8 +16,6 @@ const S = {
 }
 const inp = { width:'100%', background:'#fff', border:`1.5px solid ${S.border}`, borderRadius:'10px', padding:'11px 13px', color:S.text, fontSize:'.88rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.72rem', fontWeight:'700', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
-
-const CANCHA_LABEL = { futbol5: 'Cancha 5', futbol7: 'Cancha 7' }
 
 function fmtHora12(h) {
   const n = parseInt(h, 10)
@@ -49,10 +47,11 @@ function proximosDias(n = 10) {
 export default function ReservarEscenarioPage() {
   const { escenarioId } = useParams()
   const [escenario, setEscenario] = useState(null)
+  const [canchas,   setCanchas]   = useState([])
   const [reservas,  setReservas]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [notFound,  setNotFound]  = useState(false)
-  const [cancha,    setCancha]    = useState('futbol5')
+  const [cancha,    setCancha]    = useState(null)
   const [fecha,     setFecha]     = useState(todayStr())
   const [horaSel,   setHoraSel]   = useState(null)
   const [modalSlot, setModalSlot] = useState(null)
@@ -71,8 +70,13 @@ export default function ReservarEscenarioPage() {
     const { data } = await supabase.from('escenarios').select('*').eq('id', escenarioId).maybeSingle()
     if (!data) { setNotFound(true); setLoading(false); return }
     setEscenario(data)
-    const { data: rsvs } = await supabase.from('escenario_reservas').select('cancha, fecha, hora, duracion, estado').eq('escenario_id', escenarioId)
+    const [{ data: cs }, { data: rsvs }] = await Promise.all([
+      supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
+      supabase.from('escenario_reservas').select('cancha, fecha, hora, duracion, estado').eq('escenario_id', escenarioId),
+    ])
+    setCanchas(cs || [])
     setReservas(rsvs || [])
+    setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
     setLoading(false)
   }
 
@@ -89,7 +93,7 @@ export default function ReservarEscenarioPage() {
   function handleReservar(e) {
     if (!nombre.trim()) { e.preventDefault(); setError('Escribe tu nombre'); return }
     setError('')
-    const monto = precioCancha(escenario, cancha)
+    const monto = precioCancha(canchas, cancha)
     supabase.from('escenario_reservas').insert({
       escenario_id: escenario.id, cancha, fecha, hora: modalSlot, duracion,
       nombre: nombre.trim(), equipo: equipo.trim() || null,
@@ -108,6 +112,13 @@ export default function ReservarEscenarioPage() {
       <div style={{ fontSize:'2.2rem' }}>🔒</div>
       <div style={{ fontWeight:800, fontSize:'1rem', color:S.text }}>{escenario.name} no está disponible por ahora</div>
       <div style={{ maxWidth:'320px', lineHeight:1.5 }}>Este escenario no está aceptando reservas en este momento. Intentá más tarde o contactá directamente al lugar.</div>
+    </div>
+  )
+  if (canchas.length === 0) return (
+    <div style={{ minHeight:'100vh', background:S.bg, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem', padding:20, textAlign:'center', gap:'12px' }}>
+      <div style={{ fontSize:'2.2rem' }}>⚽</div>
+      <div style={{ fontWeight:800, fontSize:'1rem', color:S.text }}>{escenario.name} todavía no tiene canchas configuradas</div>
+      <div style={{ maxWidth:'320px', lineHeight:1.5 }}>Volvé a intentar más tarde.</div>
     </div>
   )
 
@@ -195,16 +206,16 @@ export default function ReservarEscenarioPage() {
           <div>
             <StepLabel n={2} texto="Elige la cancha"/>
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-              {['futbol5','futbol7'].map(c => {
-                const sel = cancha === c
+              {canchas.map(c => {
+                const sel = cancha === c.slug
                 return (
-                  <button key={c} onClick={() => setCancha(c)}
+                  <button key={c.id} onClick={() => setCancha(c.slug)}
                     style={{ flex:'1 1 160px', display:'flex', alignItems:'center', gap:10, padding:'13px 16px', borderRadius:12, cursor:'pointer',
                       border: sel ? `2px solid ${S.green}` : `1.5px solid ${S.border}`, background: sel ? S.greenDim : '#fff' }}>
                     <Building2 size={18} color={sel ? S.greenDark : S.muted}/>
                     <div style={{ textAlign:'left' }}>
-                      <div style={{ fontWeight:800, fontSize:'.9rem', color: sel ? S.greenDark : S.text }}>{CANCHA_LABEL[c]}</div>
-                      <div style={{ fontSize:'.72rem', color:S.muted }}>{fmtMoney(precioCancha(escenario, c))}/hora</div>
+                      <div style={{ fontWeight:800, fontSize:'.9rem', color: sel ? S.greenDark : S.text }}>{c.nombre}</div>
+                      <div style={{ fontSize:'.72rem', color:S.muted }}>{fmtMoney(c.precio_hora)}/hora</div>
                     </div>
                   </button>
                 )
@@ -244,7 +255,7 @@ export default function ReservarEscenarioPage() {
               background: horaSel ? `linear-gradient(135deg, ${S.green}, ${S.greenDark})` : '#e5e9e7', color: horaSel ? '#fff' : S.muted,
               fontWeight:900, fontSize:'.95rem', textAlign:'center', boxShadow: horaSel ? '0 8px 22px rgba(34,197,94,.35)' : 'none' }}>
             {horaSel ? (
-              <>Reservar {fmtHora12(horaSel)}<div style={{ fontWeight:600, fontSize:'.76rem', marginTop:2, opacity:.9 }}>{CANCHA_LABEL[cancha]} – {fmtDate(fecha)}</div></>
+              <>Reservar {fmtHora12(horaSel)}<div style={{ fontWeight:600, fontSize:'.76rem', marginTop:2, opacity:.9 }}>{nombreCancha(canchas, cancha)} – {fmtDate(fecha)}</div></>
             ) : 'Elige una hora disponible'}
           </button>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:'.72rem', color:S.muted, marginTop:-14 }}>
@@ -301,17 +312,17 @@ export default function ReservarEscenarioPage() {
       </div>
 
       {modalSlot && (() => {
-        const mensajeWA = `Hola, quiero reservar la ${CANCHA_LABEL[cancha]}.\n` +
+        const mensajeWA = `Hola, quiero reservar la ${nombreCancha(canchas, cancha)}.\n` +
           `Nombre: ${nombre.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}\nDuración: ${duracion} min`
         const hrefReservar = escenario?.whatsapp ? `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(mensajeWA)}` : null
         return (
         <div style={{ position:'fixed', inset:0, background:'rgba(10,15,13,.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
           <div style={{ background:'#fff', borderRadius:'18px', padding:'24px', width:'380px', maxWidth:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
-              <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {CANCHA_LABEL[cancha]}</div>
+              <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {nombreCancha(canchas, cancha)}</div>
               <button onClick={()=>setModalSlot(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
             </div>
-            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(escenario,cancha))}/h</div>
+            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(canchas,cancha))}/h</div>
             <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
             <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
             <div style={{ marginBottom:'18px' }}>

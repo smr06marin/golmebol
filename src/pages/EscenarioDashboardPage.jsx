@@ -20,6 +20,7 @@ export default function EscenarioDashboardPage() {
   const [otros,      setOtros]      = useState([]) // otros escenarios del mismo encargado (para el switch)
   const [productos,  setProductos]  = useState([])
   const [ventasHoy,  setVentasHoy]  = useState([])
+  const [canchas,    setCanchas]    = useState([])
   const [reservas,   setReservas]   = useState([])
   const [pedidosPend,setPedidosPend]= useState(0)
   const [loading,    setLoading]    = useState(true)
@@ -46,14 +47,16 @@ export default function EscenarioDashboardPage() {
     setEscenario(esc || null)
 
     const hoy = todayStr()
-    const [{ data: prods }, { data: ventas }, { data: rsvs }, { count: cPed }] = await Promise.all([
+    const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }] = await Promise.all([
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy),
+      supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy),
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
     ])
     setProductos(prods || [])
     setVentasHoy(ventas || [])
+    setCanchas(cs || [])
     setReservas(rsvs || [])
     setPedidosPend(cPed || 0)
     setLoading(false)
@@ -103,7 +106,7 @@ export default function EscenarioDashboardPage() {
   const totalVentasHoy = ventasHoy.reduce((a, v) => a + Number(v.total || 0), 0)
   const gananciaHoy = ventasHoy.reduce((a, v) => a + Number(v.ganancia || 0), 0)
   const bajoStock = productos.filter(p => p.cantidad <= p.stock_minimo)
-  const slotsHoy = allSlotsForDate(escenario, reservas, todayStr())
+  const slotsHoy = allSlotsForDate(escenario, canchas, reservas, todayStr())
   const libres = slotsHoy.filter(s => s.estado === 'libre').length
   const ocupados = slotsHoy.filter(s => s.estado !== 'libre').length
 
