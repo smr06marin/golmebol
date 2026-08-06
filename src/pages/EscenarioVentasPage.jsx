@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
-import { ShoppingCart, Search, Trash2, DollarSign } from 'lucide-react'
+import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -17,10 +17,12 @@ export default function EscenarioVentasPage() {
   const [escenario, setEscenario] = useState(null)
   const [productos, setProductos] = useState([])
   const [ventasPorProducto, setVentasPorProducto] = useState({})
+  const [ventasHoy, setVentasHoy] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [cart,      setCart]      = useState({})
   const [msg,       setMsg]       = useState('')
   const [buscar,    setBuscar]    = useState('')
+  const [mostrarHistorial, setMostrarHistorial] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -42,11 +44,28 @@ export default function EscenarioVentasPage() {
     // días — no es un campo que el encargado tenga que marcar a mano. Lo más
     // vendido queda de primero, sin pestañas ni que separar nada.
     const desde = new Date(); desde.setDate(desde.getDate() - 60)
-    const { data: ventas } = await supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).gte('fecha', desde.toISOString().slice(0,10))
+    const { data: ventas } = await supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', desde.toISOString().slice(0,10))
     const conteo = {}
     ;(ventas || []).forEach(v => (v.items || []).forEach(it => { conteo[it.productId] = (conteo[it.productId] || 0) + it.cantidad }))
     setVentasPorProducto(conteo)
+
+    // Ventas de hoy, para poder devolver alguna si el cliente trae algo de
+    // vuelta — la más reciente de primero.
+    const { data: hoy } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', todayStr()).order('hora', { ascending: false })
+    setVentasHoy(hoy || [])
     setLoading(false)
+  }
+
+  async function devolverVenta(venta) {
+    if (venta.estado === 'devuelta') return
+    if (!window.confirm(`¿Confirmas la devolución de esta venta por ${fmtMoney(venta.total)}? El producto vuelve al inventario y deja de contar como ingreso.`)) return
+    await Promise.all((venta.items||[]).map(it => {
+      const p = getProduct(it.productId)
+      return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad + it.cantidad }).eq('id', it.productId) : null
+    }).filter(Boolean))
+    await supabase.from('escenario_ventas').update({ estado:'devuelta', devuelta_at: new Date().toISOString() }).eq('id', venta.id)
+    setMsg('↩️ Venta devuelta — inventario repuesto'); setTimeout(()=>setMsg(''),3000)
+    fetchTodo()
   }
 
   function getProduct(id) { return productos.find(p => p.id === id) }
@@ -132,6 +151,32 @@ export default function EscenarioVentasPage() {
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'16px 16px 0' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
+
+        <button onClick={()=>setMostrarHistorial(v=>!v)}
+          style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'7px', width:'100%', padding:'10px', background: mostrarHistorial ? S.cyanDim : S.card, border:`1px solid ${mostrarHistorial ? S.cyan : S.border}`, borderRadius:'10px', cursor:'pointer', color: mostrarHistorial ? S.cyan : S.text2, fontWeight:700, fontSize:'.78rem', marginBottom:'14px' }}>
+          <History size={14}/> Ventas de hoy {ventasHoy.length>0 ? `(${ventasHoy.length})` : ''} — devolver una venta
+        </button>
+
+        {mostrarHistorial && (
+          <div style={{ marginBottom:'16px' }}>
+            {ventasHoy.length===0 ? (
+              <div style={{ textAlign:'center', color:S.muted, fontSize:'.8rem', padding:'14px 0' }}>Todavía no hay ventas hoy.</div>
+            ) : ventasHoy.map(v => (
+              <div key={v.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 12px', background:S.card, border:`1px solid ${v.estado==='devuelta'?S.loss:S.border}`, borderRadius:'10px', marginBottom:'8px', opacity: v.estado==='devuelta' ? .55 : 1 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:'.72rem', color:S.muted }}>{v.hora}</div>
+                  <div style={{ fontSize:'.78rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{(v.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')}</div>
+                  <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>{fmtMoney(v.total)}</div>
+                </div>
+                {v.estado==='devuelta'
+                  ? <span style={{ fontSize:'.7rem', fontWeight:700, color:S.loss, flexShrink:0 }}>Devuelta</span>
+                  : <button onClick={()=>devolverVenta(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(217,48,37,.12)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                      <RotateCcw size={12}/> Devolver
+                    </button>}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ position:'relative', marginBottom:'14px' }}>
           <Search size={15} color={S.muted} style={{ position:'absolute', left:'13px', top:'50%', transform:'translateY(-50%)' }}/>

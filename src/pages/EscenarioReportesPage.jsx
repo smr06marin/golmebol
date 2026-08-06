@@ -48,7 +48,7 @@ export default function EscenarioReportesPage() {
 
   async function fetchVentas() {
     const desde = rangoPeriodo(periodo)
-    const { data } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde)
+    const { data } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('estado', 'completada').gte('fecha', desde)
     setVentas(data || [])
   }
 

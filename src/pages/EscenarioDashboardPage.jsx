@@ -50,7 +50,7 @@ export default function EscenarioDashboardPage() {
     await asegurarReservasFijas(escenarioId)
     const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }] = await Promise.all([
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
-      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy),
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy).eq('estado', 'completada'),
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy),
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
