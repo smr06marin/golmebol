@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
 import { X } from 'lucide-react'
 
 const S = {
@@ -95,6 +95,7 @@ export default function EscenarioCanchasPage() {
     const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
     setCanchas(cs || [])
     setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
+    await asegurarReservasFijas(escenarioId)
     const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
     setReservas(rsvs || [])
     setLoading(false)

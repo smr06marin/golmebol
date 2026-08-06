@@ -22,6 +22,10 @@ create table if not exists escenario_canchas (
   unique(escenario_id, slug)
 );
 create index if not exists idx_escenario_canchas_escenario on escenario_canchas(escenario_id);
+-- Supabase activa RLS por defecto en tablas nuevas — el resto de tablas de
+-- este módulo lo tiene desactivado (ver migracion_escenarios_rls.sql), así
+-- que esta también, para que la app pueda leer/escribir sin bloquearse.
+alter table escenario_canchas disable row level security;
 
 -- Semilla: cada escenario ya tenía sus 2 canchas fijas con precio en
 -- columnas propias (precio_futbol5 / precio_futbol7) — se migran a filas

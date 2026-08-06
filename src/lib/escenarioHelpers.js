@@ -2,6 +2,10 @@
 // (tienda + canchas). Centralizados acá para no repetir la lógica de horarios/
 // slots en cada página (Canchas, Solicitudes, Panel, página pública, etc).
 
+import { supabase } from './supabase'
+
+export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
 export function fmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-CO') }
 
 export function todayStr() { return new Date().toISOString().slice(0, 10) }
@@ -99,6 +103,42 @@ export function comprimirImagen(file, { maxDim = 500, calidad = 0.72 } = {}) {
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')) }
     img.src = url
   })
+}
+
+// Mantiene generadas las próximas `semanas` ocurrencias de cada reserva fija
+// activa del escenario, como filas reales de escenario_reservas (para que
+// aparezcan en la agenda/disponibilidad igual que cualquier otra reserva).
+// Es una "ventana móvil": se puede llamar cada vez que se abre cualquier
+// pantalla que lea reservas, sin duplicar nada — cada ocurrencia queda
+// enlazada a su regla vía reserva_fija_id, así que si ya existe para esa
+// fecha no se vuelve a crear (y si el encargado canceló puntualmente una
+// fecha, esa cancelación queda como está, no se regenera).
+export async function asegurarReservasFijas(escenarioId, semanas = 8) {
+  const { data: fijas } = await supabase.from('escenario_reservas_fijas').select('*').eq('escenario_id', escenarioId).eq('activa', true)
+  if (!fijas || fijas.length === 0) return
+
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+  const desde = hoy.toISOString().slice(0, 10)
+  const { data: existentes } = await supabase.from('escenario_reservas').select('reserva_fija_id, fecha')
+    .eq('escenario_id', escenarioId).not('reserva_fija_id', 'is', null).gte('fecha', desde)
+  const yaExiste = new Set((existentes || []).map(r => `${r.reserva_fija_id}_${r.fecha}`))
+
+  const filas = []
+  fijas.forEach(f => {
+    for (let i = 0; i < semanas * 7; i++) {
+      const d = new Date(hoy); d.setDate(d.getDate() + i)
+      if (d.getDay() !== f.dia_semana) continue
+      const fecha = d.toISOString().slice(0, 10)
+      if (yaExiste.has(`${f.id}_${fecha}`)) continue
+      filas.push({
+        escenario_id: escenarioId, cancha: f.cancha, fecha, hora: f.hora, duracion: f.duracion,
+        nombre: f.nombre, telefono: f.telefono || '', equipo: f.equipo || null,
+        estado: 'aceptada', pago: 'pendiente', monto: f.monto, monto_pagado: 0,
+        reserva_fija_id: f.id,
+      })
+    }
+  })
+  if (filas.length > 0) await supabase.from('escenario_reservas').insert(filas)
 }
 
 export function escenarioActivo(escenario) {

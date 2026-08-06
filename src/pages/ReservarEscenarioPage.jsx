@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
 // oscuro) porque esta es la página pública que un cliente cualquiera ve
@@ -70,6 +70,7 @@ export default function ReservarEscenarioPage() {
     const { data } = await supabase.from('escenarios').select('*').eq('id', escenarioId).maybeSingle()
     if (!data) { setNotFound(true); setLoading(false); return }
     setEscenario(data)
+    await asegurarReservasFijas(escenarioId)
     const [{ data: cs }, { data: rsvs }] = await Promise.all([
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
       supabase.from('escenario_reservas').select('cancha, fecha, hora, duracion, estado').eq('escenario_id', escenarioId),

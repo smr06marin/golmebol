@@ -66,6 +66,7 @@ const EscenarioHomePage           = lazy(() => import('./pages/EscenarioHomePage
 const EscenarioDashboardPage      = lazy(() => import('./pages/EscenarioDashboardPage'))
 const EscenarioCanchasPage        = lazy(() => import('./pages/EscenarioCanchasPage'))
 const EscenarioAdminReservasPage  = lazy(() => import('./pages/EscenarioAdminReservasPage'))
+const EscenarioReservasFijasPage  = lazy(() => import('./pages/EscenarioReservasFijasPage'))
 const EscenarioVentasPage         = lazy(() => import('./pages/EscenarioVentasPage'))
 const EscenarioPedidoPage         = lazy(() => import('./pages/EscenarioPedidoPage'))
 const EscenarioInventarioPage     = lazy(() => import('./pages/EscenarioInventarioPage'))
@@ -491,6 +492,7 @@ export default function App() {
           <Route path="/escenario/:escenarioId"             element={<EscenarioRoute><EscenarioDashboardPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/canchas"     element={<EscenarioRoute><EscenarioCanchasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/reservas"    element={<EscenarioRoute><EscenarioAdminReservasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/fijas"       element={<EscenarioRoute><EscenarioReservasFijasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/ventas"      element={<EscenarioRoute><EscenarioVentasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/pedido"      element={<EscenarioRoute><EscenarioPedidoPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/inventario"  element={<EscenarioRoute><EscenarioInventarioPage/></EscenarioRoute>}/>

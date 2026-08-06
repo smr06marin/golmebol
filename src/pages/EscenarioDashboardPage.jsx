@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo } from '../lib/escenarioHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight } from 'lucide-react'
+import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight, Repeat } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -47,6 +47,7 @@ export default function EscenarioDashboardPage() {
     setEscenario(esc || null)
 
     const hoy = todayStr()
+    await asegurarReservasFijas(escenarioId)
     const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }] = await Promise.all([
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy),
@@ -114,6 +115,7 @@ export default function EscenarioDashboardPage() {
   const NAV = [
     { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente' },
     { to: `/escenario/${B}/reservas`,   icon: CheckSquare,    label: 'Solicitudes',    desc: 'Aprobar/rechazar reservas, mantenimiento' },
+    { to: `/escenario/${B}/fijas`,      icon: Repeat,         label: 'Reservas fijas', desc: 'Clientes que juegan el mismo día y hora' },
     { to: `/escenario/${B}/ventas`,     icon: ShoppingCart,   label: 'Ventas',         desc: 'Punto de venta de la tienda' },
     { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha' },
     { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock' },
