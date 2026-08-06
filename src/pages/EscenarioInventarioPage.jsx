@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, prepararFotoProducto, CATEGORIAS_PRODUCTO } from '../lib/escenarioHelpers'
+import { fmtMoney, prepararFotoProducto, CATEGORIAS_PRODUCTO, registrarActividad } from '../lib/escenarioHelpers'
 import { Plus, X, Package, Camera, Wand2 } from 'lucide-react'
 
 const S = {
@@ -121,6 +121,9 @@ export default function EscenarioInventarioPage() {
   }
 
   async function guardarProducto(data) {
+    const esNuevo = !data.id
+    const original = data.id ? productos.find(p => p.id === data.id) : null
+
     const intentar = (payload) => data.id
       ? supabase.from('escenario_productos').update(payload).eq('id', data.id)
       : supabase.from('escenario_productos').insert({ ...payload, escenario_id: escenario.id })
@@ -143,12 +146,26 @@ export default function EscenarioInventarioPage() {
     setModal(null)
     setMsg(camposOmitidos.length ? `⚠️ Guardado, pero falta correr una migración para: ${camposOmitidos.join(', ')}` : '✅ Producto guardado')
     setTimeout(()=>setMsg(''),4000)
+
+    if (esNuevo) {
+      registrarActividad(escenarioId, encargado, 'crear', 'producto', `Agregó el producto "${data.nombre}" (precio ${fmtMoney(data.precio)})`)
+    } else if (original) {
+      const cambios = []
+      if (Number(original.precio) !== Number(data.precio)) cambios.push(`precio de ${fmtMoney(original.precio)} a ${fmtMoney(data.precio)}`)
+      if (Number(original.costo) !== Number(data.costo)) cambios.push(`precio de compra de ${fmtMoney(original.costo)} a ${fmtMoney(data.costo)}`)
+      if (original.nombre !== data.nombre) cambios.push(`nombre de "${original.nombre}" a "${data.nombre}"`)
+      if (Number(original.cantidad) !== Number(data.cantidad)) cambios.push(`cantidad de ${original.cantidad} a ${data.cantidad}`)
+      if (cambios.length > 0) {
+        registrarActividad(escenarioId, encargado, 'editar', 'producto', `Editó "${data.nombre}": cambió ${cambios.join(', ')}`)
+      }
+    }
     fetchTodo()
   }
   async function eliminarProducto(p) {
     if (!confirm(`¿Eliminar "${p.nombre}"?`)) return
     await supabase.from('escenario_productos').delete().eq('id', p.id)
     setModal(null); setMsg('Producto eliminado'); setTimeout(()=>setMsg(''),3000)
+    registrarActividad(escenarioId, encargado, 'eliminar', 'producto', `Eliminó el producto "${p.nombre}" (precio ${fmtMoney(p.precio)})`)
     fetchTodo()
   }
 

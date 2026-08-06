@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
 import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight, Repeat } from 'lucide-react'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight, Repeat, History } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -122,6 +122,7 @@ export default function EscenarioDashboardPage() {
     { to: `/escenario/${B}/compras`,    icon: Truck,          label: 'Compras',        desc: 'Registro de compras a proveedores' },
     { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Cierre diario',  desc: 'Cierre e imprimir PDF' },
     { to: `/escenario/${B}/reportes`,   icon: BarChart3,      label: 'Reportes',       desc: 'Más vendidos, ganancia por producto' },
+    { to: `/escenario/${B}/actividad`,  icon: History,        label: 'Actividad',      desc: 'Quién cambió precios, agregó o eliminó algo' },
     { to: `/escenario/${B}/config`,     icon: Settings,       label: 'Configuración',  desc: 'Datos, WhatsApp, horarios, precios, fondo' },
   ]
 

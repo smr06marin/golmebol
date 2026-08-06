@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
+import { fmtMoney, todayStr, registrarActividad } from '../lib/escenarioHelpers'
 import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History } from 'lucide-react'
 
 const S = {
@@ -65,6 +65,8 @@ export default function EscenarioVentasPage() {
     }).filter(Boolean))
     await supabase.from('escenario_ventas').update({ estado:'devuelta', devuelta_at: new Date().toISOString() }).eq('id', venta.id)
     setMsg('↩️ Venta devuelta — inventario repuesto'); setTimeout(()=>setMsg(''),3000)
+    const detalle = (venta.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')
+    registrarActividad(escenarioId, encargado, 'devolver', 'venta', `Devolvió una venta (${fmtMoney(venta.total)}): ${detalle}`)
     fetchTodo()
   }
 

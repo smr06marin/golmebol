@@ -74,6 +74,7 @@ const EscenarioInventarioPage     = lazy(() => import('./pages/EscenarioInventar
 const EscenarioComprasPage        = lazy(() => import('./pages/EscenarioComprasPage'))
 const EscenarioCierrePage         = lazy(() => import('./pages/EscenarioCierrePage'))
 const EscenarioReportesPage       = lazy(() => import('./pages/EscenarioReportesPage'))
+const EscenarioActividadPage      = lazy(() => import('./pages/EscenarioActividadPage'))
 const EscenarioConfigPage         = lazy(() => import('./pages/EscenarioConfigPage'))
 const ReservarEscenarioPage       = lazy(() => import('./pages/ReservarEscenarioPage'))
 const PedirEscenarioPage          = lazy(() => import('./pages/PedirEscenarioPage'))
@@ -503,6 +504,7 @@ export default function App() {
           <Route path="/escenario/:escenarioId/compras"     element={<EscenarioRoute><EscenarioComprasPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/cierre"      element={<EscenarioRoute><EscenarioCierrePage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/reportes"    element={<EscenarioRoute><EscenarioReportesPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/actividad"   element={<EscenarioRoute><EscenarioActividadPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/config"      element={<EscenarioRoute><EscenarioConfigPage/></EscenarioRoute>}/>
 
           {/* Portal acudiente */}
