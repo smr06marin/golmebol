@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { registrarSesionDispositivo } from '../lib/deviceSession'
 import SponsorSplash from '../components/card/SponsorSplash'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
@@ -234,6 +235,7 @@ export default function PlayerLoginPage() {
       setShowCambiarPass(true)
       return
     }
+    await registrarSesionDispositivo(player.id)
     const splashData = await fetchSplashData(player.id)
     setLoading(false)
     setSplash(splashData)
@@ -262,6 +264,7 @@ export default function PlayerLoginPage() {
           return
         }
         if (!player.user_id) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', player.id)
+        await registrarSesionDispositivo(player.id)
         const splashData = await fetchSplashData(player.id)
         setLoading(false)
         setSplash(splashData)
@@ -272,6 +275,7 @@ export default function PlayerLoginPage() {
       return
     }
     await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
+    await registrarSesionDispositivo(player.id)
     const splashData = await fetchSplashData(player.id)
     setLoading(false)
     setSplash(splashData)
@@ -308,6 +312,7 @@ export default function PlayerLoginPage() {
         {showCambiarPass && (
           <ModalCambiarPass cedula={cedula} onCambiada={async () => {
             setShowCambiarPass(false)
+            await registrarSesionDispositivo(player.id)
             const splashData = await fetchSplashData(player.id)
             setSplash(splashData)
           }}/>
