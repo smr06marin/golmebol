@@ -12,7 +12,7 @@ import FlyerProgramacion from '../../components/FlyerProgramacion'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
@@ -4924,8 +4924,21 @@ export default function AdminTorneoDetallePage() {
         <div>
           {/* Marca */}
           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>🎨 Marca</div>
-            <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '16px' }}>Colores, dominio, logo y favicon de este torneo</div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>🎨 Marca</div>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Colores, dominio, logo y favicon de este torneo</div>
+              </div>
+              <a
+                href={`/t/${id}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Abre /t/{id} en otra pestaña: la página tal cual la ve el público, con colores, logo y sponsors ya aplicados (aunque el dominio personalizado aún no esté vinculado)"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0, padding: '8px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', color: '#1a73e8', fontSize: '.78rem', fontWeight: '600', textDecoration: 'none', whiteSpace: 'nowrap' }}
+              >
+                <ExternalLink size={14}/> Ver página pública
+              </a>
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
               <div style={{ gridColumn: '1 / -1' }}>
