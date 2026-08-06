@@ -76,6 +76,7 @@ const EscenarioCierrePage         = lazy(() => import('./pages/EscenarioCierrePa
 const EscenarioReportesPage       = lazy(() => import('./pages/EscenarioReportesPage'))
 const EscenarioConfigPage         = lazy(() => import('./pages/EscenarioConfigPage'))
 const ReservarEscenarioPage       = lazy(() => import('./pages/ReservarEscenarioPage'))
+const PedirEscenarioPage          = lazy(() => import('./pages/PedirEscenarioPage'))
 
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -456,6 +457,7 @@ export default function App() {
           <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
           {/* Reserva pública de cancha — sin login */}
           <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>}/>
+          <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>}/>
 
           {/* Equipo detalle — accesible por admin Y jugador */}
           <Route path="/equipos/:id" element={<PlayerRoute><EquipoHistorialPage/></PlayerRoute>}/>

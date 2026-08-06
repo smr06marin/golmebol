@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
+import { Link2 } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -22,6 +23,14 @@ export default function EscenarioPedidoPage() {
   const [nombre,    setNombre]    = useState('')
   const [telefono,  setTelefono]  = useState('')
   const [msg,       setMsg]       = useState('')
+  const [copiado,   setCopiado]   = useState(false)
+
+  function copiarLinkClientes() {
+    const link = `${window.location.origin}/pedir/${escenarioId}`
+    navigator.clipboard?.writeText(link).then(() => {
+      setCopiado(true); setTimeout(() => setCopiado(false), 2000)
+    })
+  }
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -106,8 +115,14 @@ export default function EscenarioPedidoPage() {
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'14px' }}>Para clientes que están en la cancha y no quieren acercarse a la tienda: arman su pedido y lo envían por WhatsApp.</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'10px' }}>Para clientes que están en la cancha y no quieren acercarse a la tienda: arman su pedido y lo envían por WhatsApp.</div>
 
+        <button onClick={copiarLinkClientes}
+          style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', padding:'11px 14px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.8rem', marginBottom:'18px' }}>
+          <Link2 size={15}/> {copiado ? '¡Enlace copiado!' : 'Copiar enlace para que los clientes pidan desde su celular'}
+        </button>
+
+        <div style={{ fontWeight:800, fontSize:'.85rem', marginBottom:'10px' }}>Armar pedido manual (por teléfono)</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'16px' }}>
           {productos.map(p => (
             <button key={p.id} onClick={()=>addToCart(p.id)}
