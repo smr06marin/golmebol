@@ -273,16 +273,28 @@ export default function ReservarEscenarioPage() {
           </div>
         )}
 
-        {/* Footer CTA */}
+        {/* Footer CTA — bien visible: horarios especiales / eventos no están
+            en la grilla de horas, así que hay que ofrecer WhatsApp directo. */}
         {waHref && (
-          <div style={{ background:S.card, borderRadius:20, boxShadow:'0 4px 18px rgba(20,30,25,.06)', padding:'22px', marginTop:20, display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
-            <div>
-              <div style={{ fontWeight:800, fontSize:'.95rem' }}>¿Tienes dudas?</div>
-              <div style={{ fontSize:'.78rem', color:S.muted, marginTop:2 }}>Escríbenos y te ayudamos con tu reserva.</div>
+          <div style={{
+            background:'linear-gradient(135deg, #17231d, #0f1a16)', borderRadius:20,
+            boxShadow:'0 10px 30px rgba(20,60,40,.25)', padding:'24px', marginTop:20,
+            display:'flex', alignItems:'center', gap:18, flexWrap:'wrap',
+            border:`1.5px solid ${S.green}`,
+          }}>
+            <div style={{ width:44, height:44, borderRadius:12, background:'rgba(34,197,94,.18)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <FaWhatsapp size={22} color={S.green}/>
+            </div>
+            <div style={{ flex:'1 1 220px' }}>
+              <div style={{ fontWeight:900, fontSize:'1rem', color:'#fff' }}>¿Necesitas algo especial?</div>
+              <div style={{ fontSize:'.82rem', color:'#c9d6d1', marginTop:4, lineHeight:1.5 }}>
+                Si quieres reservar una cancha <b style={{ color:'#fff' }}>fuera de los horarios publicados</b>, escríbenos.
+                Si quieres hacer un <b style={{ color:'#fff' }}>evento</b>, también puedes escribirnos por WhatsApp.
+              </div>
             </div>
             <a href={waHref} target="_blank" rel="noreferrer"
-              style={{ display:'flex', alignItems:'center', gap:8, background:S.green, borderRadius:12, padding:'12px 20px', color:'#fff', fontWeight:800, fontSize:'.85rem', textDecoration:'none', whiteSpace:'nowrap' }}>
-              <FaWhatsapp size={17}/> Reservar por WhatsApp
+              style={{ display:'flex', alignItems:'center', gap:8, background:S.green, borderRadius:12, padding:'13px 22px', color:'#0f1a16', fontWeight:900, fontSize:'.85rem', textDecoration:'none', whiteSpace:'nowrap', boxShadow:'0 6px 18px rgba(34,197,94,.4)' }}>
+              <FaWhatsapp size={18}/> Quiero chatear con alguien
             </a>
           </div>
         )}
