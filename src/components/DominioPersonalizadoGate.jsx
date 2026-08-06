@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import MarcaGolmebol from './MarcaGolmebol'
 
 const TorneoPublicoPage = lazy(() => import('../pages/TorneoPublicoPage'))
 
@@ -94,6 +95,7 @@ export default function DominioPersonalizadoGate({ children }) {
       <MemoryRouter initialEntries={[`/t/${torneoId}`]}>
         <TorneoPublicoPage tournamentId={torneoId} />
       </MemoryRouter>
+      <MarcaGolmebol/>
     </Suspense>
   )
 }
