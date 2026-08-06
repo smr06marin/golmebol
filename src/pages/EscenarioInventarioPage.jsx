@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, comprimirImagen } from '../lib/escenarioHelpers'
-import { Plus, X, Package, Camera } from 'lucide-react'
+import { fmtMoney, prepararFotoProducto, CATEGORIAS_PRODUCTO } from '../lib/escenarioHelpers'
+import { Plus, X, Package, Camera, Wand2 } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -12,20 +12,22 @@ const S = {
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }
 
-const EMPTY = { emoji:'📦', nombre:'', costo:0, precio:0, cantidad:0, stock_minimo:5, foto_url:null }
+const EMPTY = { emoji:'📦', nombre:'', categoria:'', costo:0, precio:0, cantidad:0, stock_minimo:5, foto_url:null }
 
 function ModalProducto({ producto, escenarioId, onClose, onGuardar, onEliminar }) {
   const [f, setF] = useState(producto || EMPTY)
   const [guardando, setGuardando] = useState(false)
   const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const [quitarFondo, setQuitarFondo] = useState(true)
 
   async function handleFoto(file) {
     if (!file) return
     setSubiendoFoto(true)
     try {
-      const comprimida = await comprimirImagen(file, { maxDim: 500, calidad: 0.72 })
-      const path = `productos/${escenarioId}/${f.id || Date.now()}.jpg`
-      const { error } = await supabase.storage.from('teams').upload(path, comprimida, { upsert: true, contentType: 'image/jpeg' })
+      const procesada = await prepararFotoProducto(file, { maxDim: 500, quitarFondo })
+      const ext = quitarFondo ? 'png' : 'jpg'
+      const path = `productos/${escenarioId}/${f.id || Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('teams').upload(path, procesada, { upsert: true, contentType: quitarFondo ? 'image/png' : 'image/jpeg' })
       if (!error) {
         const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
         setF(p => ({ ...p, foto_url: urlData.publicUrl + '?t=' + Date.now() }))
@@ -47,12 +49,15 @@ function ModalProducto({ producto, escenarioId, onClose, onGuardar, onEliminar }
           <div style={{ fontWeight:800, fontSize:'1rem' }}>{producto?.id ? 'Editar' : 'Nuevo'} producto</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
         </div>
-        <div style={{ display:'flex', gap:'12px', marginBottom:'14px', alignItems:'center' }}>
+        <div style={{ display:'flex', gap:'12px', marginBottom:'8px', alignItems:'center' }}>
           <label style={{ cursor:'pointer', flexShrink:0, position:'relative' }}>
             <input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleFoto(e.target.files[0])}/>
-            <div style={{ width:'60px', height:'60px', borderRadius:'12px', overflow:'hidden', background:S.card2, border:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <div style={{
+              width:'60px', height:'60px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'center',
+              background: f.foto_url ? 'repeating-conic-gradient(#22303f 0% 25%, #1a2234 0% 50%) 50% / 12px 12px' : S.card2,
+            }}>
               {subiendoFoto ? <div style={{ fontSize:'.6rem', color:S.muted }}>...</div>
-                : f.foto_url ? <img src={f.foto_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                : f.foto_url ? <img src={f.foto_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
                 : <Package size={22} color={S.muted}/>}
             </div>
             <div style={{ position:'absolute', bottom:'-3px', right:'-3px', width:'20px', height:'20px', background:S.cyan, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -60,6 +65,15 @@ function ModalProducto({ producto, escenarioId, onClose, onGuardar, onEliminar }
             </div>
           </label>
           <div style={{ flex:1 }}><label style={lbl}>Nombre</label><input value={f.nombre} onChange={e=>setF(p=>({...p,nombre:e.target.value}))} style={inp} placeholder="Nombre del producto"/></div>
+        </div>
+        <label style={{ display:'flex', alignItems:'center', gap:'7px', fontSize:'.76rem', color:S.text2, marginBottom:'14px', cursor:'pointer' }}>
+          <input type="checkbox" checked={quitarFondo} onChange={e=>setQuitarFondo(e.target.checked)}/>
+          <Wand2 size={13} color={S.cyan}/> Quitar el fondo automáticamente al subir la foto
+        </label>
+        <div style={{ marginBottom:'12px' }}>
+          <label style={lbl}>Categoría</label>
+          <input value={f.categoria||''} onChange={e=>setF(p=>({...p,categoria:e.target.value}))} style={inp} placeholder="Ej: Bebidas" list="categorias-producto"/>
+          <datalist id="categorias-producto">{CATEGORIAS_PRODUCTO.map(c => <option key={c} value={c}/>)}</datalist>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
           <div><label style={lbl}>Precio de compra</label><input type="number" value={f.costo} onChange={e=>setF(p=>({...p,costo:e.target.value}))} style={inp}/></div>
@@ -113,17 +127,21 @@ export default function EscenarioInventarioPage() {
 
     const { id, escenario_id, created_at, ...payload } = data
     let { error } = await intentar(payload)
-    let avisoFoto = false
-    if (error && /foto_url/.test(error.message || '')) {
-      // Todavía no se corrió migracion_escenario_producto_foto.sql — guardamos
-      // el resto igual y avisamos, en vez de perder todo el cambio.
-      const { foto_url, ...sinFoto } = payload
-      ;({ error } = await intentar(sinFoto))
-      avisoFoto = !error
+    // Si faltan correr las migraciones de foto_url o categoria, se
+    // reintenta sin esos campos en vez de perder todo el cambio.
+    const camposOmitidos = []
+    let restante = payload
+    while (error && /Could not find the .* column/.test(error.message || '')) {
+      const m = error.message.match(/Could not find the '(\w+)' column/)
+      if (!m || !(m[1] in restante)) break
+      const { [m[1]]: _omitido, ...sinCampo } = restante
+      restante = sinCampo
+      camposOmitidos.push(m[1])
+      ;({ error } = await intentar(restante))
     }
     if (error) { setMsg('❌ ' + error.message); setTimeout(()=>setMsg(''),5000); return }
     setModal(null)
-    setMsg(avisoFoto ? '⚠️ Guardado, pero la foto no — corré migracion_escenario_producto_foto.sql' : '✅ Producto guardado')
+    setMsg(camposOmitidos.length ? `⚠️ Guardado, pero falta correr una migración para: ${camposOmitidos.join(', ')}` : '✅ Producto guardado')
     setTimeout(()=>setMsg(''),4000)
     fetchTodo()
   }
@@ -167,10 +185,10 @@ export default function EscenarioInventarioPage() {
               <button key={p.id} onClick={()=>setModal(p)}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text, textAlign:'left' }}>
                 {p.foto_url
-                  ? <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0 }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/></div>
+                  ? <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0, background:S.card2 }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/></div>
                   : <span style={{ fontSize:'1.4rem' }}>{p.emoji || '📦'}</span>}
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:700, fontSize:'.85rem' }}>{p.nombre}</div>
+                  <div style={{ fontWeight:700, fontSize:'.85rem' }}>{p.nombre}{p.categoria && <span style={{ fontWeight:600, fontSize:'.66rem', color:S.muted }}> · {p.categoria}</span>}</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Compra {fmtMoney(p.costo)} · Venta {fmtMoney(p.precio)}</div>
                 </div>
                 <div style={{ textAlign:'right' }}>

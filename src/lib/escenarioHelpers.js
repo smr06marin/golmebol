@@ -105,6 +105,63 @@ export function comprimirImagen(file, { maxDim = 500, calidad = 0.72 } = {}) {
   })
 }
 
+// Categorías sugeridas para el catálogo de la tienda del escenario — se
+// guardan como texto libre, así que el encargado puede escribir cualquier
+// otra si su negocio vende algo distinto.
+export const CATEGORIAS_PRODUCTO = ['Bebidas', 'Papas', 'Dulces', 'Galletas', 'Comidas', 'Otros']
+
+function cargarImagen(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')) }
+    img.src = url
+  })
+}
+
+// Prepara una foto de producto: la redimensiona y, si se pide, le quita el
+// fondo. No usa ninguna librería externa de IA (las que hay son de pago o
+// con licencia AGPL, que obligaría a liberar el código fuente de toda la
+// plataforma) — en vez de eso, estima el color del fondo muestreando las
+// esquinas de la foto y vuelve transparente todo lo que se le parezca, con
+// un borde suave para que el corte no se vea tan duro. Funciona bien con
+// fotos de producto sobre fondo liso (mesa, pared, blanco) — si el fondo es
+// muy complejo, conviene subir la foto sin esta opción.
+export async function prepararFotoProducto(file, { maxDim = 500, quitarFondo = false, tolerancia = 32, difuminado = 22 } = {}) {
+  const img = await cargarImagen(file)
+  let { width, height } = img
+  if (width > maxDim || height > maxDim) {
+    if (width > height) { height = Math.round(height * maxDim / width); width = maxDim }
+    else { width = Math.round(width * maxDim / height); height = maxDim }
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = width; canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(img, 0, 0, width, height)
+
+  if (quitarFondo && width > 4 && height > 4) {
+    const imageData = ctx.getImageData(0, 0, width, height)
+    const data = imageData.data
+    const muestra = (x, y) => { const i = (y * width + x) * 4; return [data[i], data[i + 1], data[i + 2]] }
+    const esquinas = [muestra(1, 1), muestra(width - 2, 1), muestra(1, height - 2), muestra(width - 2, height - 2)]
+    const bg = [0, 1, 2].map(c => Math.round(esquinas.reduce((a, e) => a + e[c], 0) / esquinas.length))
+    for (let i = 0; i < data.length; i += 4) {
+      const dist = Math.sqrt((data[i] - bg[0]) ** 2 + (data[i + 1] - bg[1]) ** 2 + (data[i + 2] - bg[2]) ** 2)
+      if (dist < tolerancia) data[i + 3] = 0
+      else if (dist < tolerancia + difuminado) data[i + 3] = Math.round(255 * (dist - tolerancia) / difuminado)
+    }
+    ctx.putImageData(imageData, 0, 0)
+  }
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => blob ? resolve(blob) : reject(new Error('No se pudo procesar la imagen')),
+      quitarFondo ? 'image/png' : 'image/jpeg', quitarFondo ? undefined : 0.72
+    )
+  })
+}
+
 // Mantiene generadas las próximas `semanas` ocurrencias de cada reserva fija
 // activa del escenario, como filas reales de escenario_reservas (para que
 // aparezcan en la agenda/disponibilidad igual que cualquier otra reserva).
