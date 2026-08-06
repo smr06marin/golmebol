@@ -152,8 +152,18 @@ export default function EscenarioPedidoPage() {
         <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Pedidos pendientes por entregar</div>
         {pedidos.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay pedidos remotos pendientes.</div> : pedidos.map(o => (
           <div key={o.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', marginBottom:'8px' }}>
-            <span style={{ fontSize:'.78rem' }}>{o.nombre} · {(o.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')} · {fmtMoney(o.total)}</span>
-            <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap' }}>Entregado</button>
+            <span style={{ fontSize:'.78rem' }}>
+              {o.nombre} · {(o.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')} · {fmtMoney(o.total)}
+              {o.metodo_pago === 'efectivo' && (
+                <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>
+                  💵 Efectivo{o.paga_con ? ` · paga con ${fmtMoney(o.paga_con)}` : ''}{o.devuelta!=null ? ` · devuelta ${fmtMoney(o.devuelta)}` : ''}
+                </span>
+              )}
+              {o.metodo_pago === 'transferencia' && (
+                <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>🏦 Transferencia</span>
+              )}
+            </span>
+            <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap', flexShrink:0 }}>Entregado</button>
           </div>
         ))}
       </div>

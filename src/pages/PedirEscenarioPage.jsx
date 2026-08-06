@@ -31,6 +31,8 @@ export default function PedirEscenarioPage() {
   const [cart,      setCart]      = useState({})
   const [nombre,    setNombre]    = useState('')
   const [telefono,  setTelefono]  = useState('')
+  const [metodoPago,setMetodoPago]= useState('') // '' | 'efectivo' | 'transferencia'
+  const [pagaCon,   setPagaCon]   = useState('')
   const [msg,       setMsg]       = useState('')
   const [buscar,    setBuscar]    = useState('')
   const [enviando,  setEnviando]  = useState(false)
@@ -83,6 +85,8 @@ export default function PedirEscenarioPage() {
 
   const items = Object.entries(cart).filter(([,q])=>q>0)
   const total = items.reduce((a,[id,q])=> a + q*getProduct(id).precio, 0)
+  const pagaConNum = Number(pagaCon) || 0
+  const devuelta = metodoPago === 'efectivo' && pagaConNum > 0 ? pagaConNum - total : null
 
   const visibles = useMemo(() => {
     let lista = productos
@@ -99,22 +103,28 @@ export default function PedirEscenarioPage() {
   }, [productos, buscar, ventasPorProducto])
 
   async function enviarPedido() {
-    if (items.length === 0) return
+    if (items.length === 0 || !metodoPago) return
     setEnviando(true)
     const pedidoItems = items.map(([id,q]) => { const p=getProduct(id); return { productId:id, nombre:p.nombre, cantidad:q, precio:p.precio } })
     const now = new Date()
     const { error } = await supabase.from('escenario_pedidos').insert({
       escenario_id: escenarioId, items: pedidoItems, nombre: nombre.trim()||'Cliente', telefono: telefono.trim(),
       total, fecha: todayStr(), hora: now.toTimeString().slice(0,5), estado:'pendiente',
+      metodo_pago: metodoPago, paga_con: metodoPago==='efectivo' ? (pagaConNum || null) : null,
+      devuelta: devuelta !== null && devuelta >= 0 ? devuelta : null,
     })
     setEnviando(false)
     if (error) { setMsg('Error al enviar el pedido: ' + error.message); return }
     if (escenario?.whatsapp) {
+      const lineaPago = metodoPago === 'efectivo'
+        ? `Pago: Efectivo${pagaConNum > 0 ? ` (pago con ${fmtMoney(pagaConNum)}${devuelta>=0 ? `, devuelta ${fmtMoney(devuelta)}` : ''})` : ''}`
+        : 'Pago: Transferencia'
       const wa = `Hola, quiero hacer un pedido:\n` + pedidoItems.map(it=>`- ${it.cantidad}x ${it.nombre} (${fmtMoney(it.precio*it.cantidad)})`).join('\n') +
-        `\nTotal: ${fmtMoney(total)}\nNombre: ${nombre.trim()||'Cliente'}\nEstoy en la cancha, ¿me lo pueden traer?`
+        `\nTotal: ${fmtMoney(total)}\n${lineaPago}\nNombre: ${nombre.trim()||'Cliente'}\nEstoy en la cancha, ¿me lo pueden traer?`
       window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(wa)}`, '_blank')
     }
     setCart({})
+    setMetodoPago(''); setPagaCon('')
     setMsg('📱 ¡Pedido enviado! Ya lo están viendo en la tienda.')
     setTimeout(()=>setMsg(''), 4000)
   }
@@ -130,7 +140,7 @@ export default function PedirEscenarioPage() {
   )
 
   return (
-    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom: items.length>0 ? '300px' : '40px' }}>
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom: items.length>0 ? '400px' : '40px' }}>
       {mostrarTutorial && <TutorialPedido onCerrar={cerrarTutorial}/>}
 
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px', position:'sticky', top:0, zIndex:40 }}>
@@ -203,17 +213,45 @@ export default function PedirEscenarioPage() {
                 </div>
               )})}
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'10px' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'8px' }}>
               <input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/>
-              <input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="Teléfono"/>
+              <input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="Teléfono (opcional, recomendado)"/>
             </div>
+
+            <div style={{ fontSize:'.72rem', fontWeight:700, color:S.muted, marginBottom:'6px' }}>¿Cómo vas a pagar?</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom: metodoPago==='efectivo' ? '8px' : '10px' }}>
+              <button type="button" onClick={()=>setMetodoPago('efectivo')}
+                style={{ padding:'10px', borderRadius:'10px', cursor:'pointer', fontWeight:800, fontSize:'.8rem',
+                  background: metodoPago==='efectivo' ? S.cyan : 'transparent', color: metodoPago==='efectivo' ? '#000' : S.text2,
+                  border:`1.5px solid ${metodoPago==='efectivo' ? S.cyan : S.border}` }}>
+                💵 Efectivo
+              </button>
+              <button type="button" onClick={()=>setMetodoPago('transferencia')}
+                style={{ padding:'10px', borderRadius:'10px', cursor:'pointer', fontWeight:800, fontSize:'.8rem',
+                  background: metodoPago==='transferencia' ? S.cyan : 'transparent', color: metodoPago==='transferencia' ? '#000' : S.text2,
+                  border:`1.5px solid ${metodoPago==='transferencia' ? S.cyan : S.border}` }}>
+                🏦 Transferencia
+              </button>
+            </div>
+
+            {metodoPago === 'efectivo' && (
+              <div style={{ marginBottom:'10px' }}>
+                <input value={pagaCon} onChange={e=>setPagaCon(e.target.value.replace(/[^0-9]/g,''))} inputMode="numeric" style={inp} placeholder="¿Con cuánto vas a pagar? (opcional)"/>
+                {devuelta !== null && (
+                  <div style={{ fontSize:'.78rem', fontWeight:700, marginTop:'6px', color: devuelta >= 0 ? S.cyan : S.loss }}>
+                    {devuelta >= 0 ? `Te devuelven: ${fmtMoney(devuelta)}` : `Con eso no alcanza — faltan ${fmtMoney(-devuelta)}`}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
               <span style={{ fontWeight:700, fontSize:'.9rem' }}>Total</span>
               <span style={{ fontWeight:900, fontSize:'1.3rem', color:S.gold }}>{fmtMoney(total)}</span>
             </div>
-            <button onClick={enviarPedido} disabled={enviando}
-              style={{ width:'100%', padding:'14px', background:S.cyan, border:'none', borderRadius:'12px', cursor: enviando ? 'default' : 'pointer', color:'#000', fontWeight:900, fontSize:'.92rem', opacity: enviando ? .6 : 1 }}>
-              {enviando ? 'Enviando...' : 'Enviar pedido por WhatsApp'}
+            <button onClick={enviarPedido} disabled={enviando || !metodoPago}
+              style={{ width:'100%', padding:'14px', background:S.cyan, border:'none', borderRadius:'12px', cursor: (enviando || !metodoPago) ? 'default' : 'pointer', color:'#000', fontWeight:900, fontSize:'.92rem', opacity: (enviando || !metodoPago) ? .5 : 1 }}>
+              {enviando ? 'Enviando...' : !metodoPago ? 'Elige cómo vas a pagar' : 'Enviar pedido por WhatsApp'}
             </button>
           </div>
         </div>
