@@ -11,6 +11,7 @@ import {
 import { GiSoccerBall, GiGoalKeeper, GiTShirt } from 'react-icons/gi'
 import { supabase } from '../lib/supabase'
 import TablaPosiciones from '../components/TablaPosiciones'
+import { PantallaCargando } from '../components/PantallaCargando'
 import { registrarVisita } from '../lib/visitas'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
@@ -802,11 +803,10 @@ export default function RecordsPage() {
   }
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: S.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px' }}>
+    <>
       {showSplash && campeones.length > 0 && <SplashCampeones campeones={campeones} onClose={cerrarSplash}/>}
-      <Trophy size={32} color={S.gold}/>
-      <div style={{ color: S.cyan, fontSize: '.9rem', fontWeight: '600' }}>Cargando récords...</div>
-    </div>
+      <PantallaCargando/>
+    </>
   )
 
   return (
@@ -977,7 +977,7 @@ export default function RecordsPage() {
               )}
             </div>
             {torneoTabla === 'cargando' ? (
-              <div style={{ textAlign: 'center', padding: '60px 0', color: S.cyan, fontWeight: '700', fontSize: '.85rem' }}>Cargando tabla...</div>
+              <PantallaCargando compact/>
             ) : (
               <>
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
