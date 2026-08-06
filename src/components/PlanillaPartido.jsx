@@ -4,6 +4,7 @@ import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../lib/p
 import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../lib/tarjetasDeuda'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -1487,7 +1488,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const golesLocalTotal = golesLocal.filter(Boolean).length
   const golesVisTotal   = golesVisitante.filter(Boolean).length
   const fecha    = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
-  const hora     = partido.played_at ? new Date(partido.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''
+  const hora     = partido.played_at ? fmtHoraDate(partido.played_at) : ''
   const etapaNombre = partido.matchday ? `Jornada ${partido.matchday}` : ''
   const B    = '1px solid #000'
   const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle' }
@@ -2121,7 +2122,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#d93025', marginBottom: '4px' }}>⚠️ Planilla cerrada editada después del cierre:</div>
               {logEdicion.map(l => (
                 <div key={l.id} style={{ fontSize: '.72rem', color: '#8c1d18' }}>
-                  {l.editor_name} · {new Date(l.edited_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})} {new Date(l.edited_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}
+                  {l.editor_name} · {new Date(l.edited_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})} {fmtHoraDate(l.edited_at)}
                 </div>
               ))}
             </div>

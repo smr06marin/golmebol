@@ -5,6 +5,7 @@ import { resolverPrediccionesPartido } from '../lib/predix'
 import PlanillaPartido from '../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../lib/planillaRecovery'
 import { ArrowLeft, Trophy, MapPin, Check, Filter, Scale, Calendar, Clock, ClipboardList } from 'lucide-react'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -193,7 +194,7 @@ export default function ArbitroPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
                         {p.played_at && (
                           <span style={{ fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 10px', fontWeight: '600' }}>
-                            <Calendar size={11} style={{verticalAlign:'-1px'}}/> {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })} · <Clock size={11} style={{verticalAlign:'-1px'}}/> {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                            <Calendar size={11} style={{verticalAlign:'-1px'}}/> {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })} · <Clock size={11} style={{verticalAlign:'-1px'}}/> {fmtHoraDate(p.played_at)}
                           </span>
                         )}
                         {p.location && <span style={{ fontSize: '.75rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '10px', padding: '2px 10px' }}><MapPin size={11} style={{verticalAlign:'-1px'}}/> {p.location}</span>}

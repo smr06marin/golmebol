@@ -6,6 +6,7 @@ import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp } from 'lucide-r
 import FlyerPartido from '../../components/FlyerPartido'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
+import { fmtHoraDate } from '../../lib/horaHelpers'
 
 function TeamLogo({ logo_url, name, size = 32 }) {
   if (logo_url) return <img src={logo_url} style={{ width: size, height: size, objectFit: 'contain' }}/>
@@ -221,7 +222,7 @@ export default function AdminCalendarioPage() {
                                     {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}
                                   </div>
                                   <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>
-                                    {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                                    {fmtHoraDate(p.played_at)}
                                   </div>
                                 </>
                               )}

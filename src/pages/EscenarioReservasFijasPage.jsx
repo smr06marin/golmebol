@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getHours, nombreCancha, fmtMoney, DIAS_SEMANA, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { fmtHora12 } from '../lib/horaHelpers'
 import { Plus, RotateCcw, Trash2 } from 'lucide-react'
 
 const S = {
@@ -106,7 +107,7 @@ export default function EscenarioReservasFijasPage() {
             <div>
               <label style={lbl}>Hora</label>
               <select value={form.hora} onChange={e=>setForm(f=>({...f,hora:e.target.value}))} style={inp}>
-                {horas.map(h => <option key={h} value={h}>{h}</option>)}
+                {horas.map(h => <option key={h} value={h}>{fmtHora12(h)}</option>)}
               </select>
             </div>
             <div>
@@ -136,7 +137,7 @@ export default function EscenarioReservasFijasPage() {
               <div>
                 <div style={{ fontSize:'.85rem', fontWeight:700 }}>{f.nombre}</div>
                 <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'2px' }}>
-                  {DIAS_SEMANA[f.dia_semana]} {f.hora} · {nombreCancha(canchas, f.cancha)} · {fmtMoney(f.monto)}
+                  {DIAS_SEMANA[f.dia_semana]} {fmtHora12(f.hora)} · {nombreCancha(canchas, f.cancha)} · {fmtMoney(f.monto)}
                   {!f.activa && ' · inactivo'}
                 </div>
               </div>

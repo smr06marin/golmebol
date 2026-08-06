@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ChevronDown, ChevronUp, Trophy, Calendar, BarChart3, User, Swords, Flame, Award, MapPin, Clock } from 'lucide-react'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -1268,7 +1269,7 @@ export default function PlayerApuestasPage() {
               <div style={{ fontSize:'.66rem', color:S.muted, marginTop:'1px' }}>
                 {rondaActual.tournaments?.name}
                 {rondaActualEstado === 'proxima'
-                  ? ` · abre el ${new Date(rondaActual.fecha_apertura).toLocaleDateString('es-CO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}`
+                  ? ` · abre el ${new Date(rondaActual.fecha_apertura).toLocaleDateString('es-CO', { day:'2-digit', month:'short' })} ${fmtHoraDate(rondaActual.fecha_apertura)}`
                   : ` · vuelve a abrir cuando el admin habilite la siguiente ronda`}
               </div>
             </div>
@@ -1340,7 +1341,7 @@ export default function PlayerApuestasPage() {
                               {p.played_at && (
                                 <>
                                   <span style={{ display:'flex', alignItems:'center', gap:'3px', fontSize:'.68rem', color:S.muted }}><Calendar size={11}/> {new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</span>
-                                  <span style={{ display:'flex', alignItems:'center', gap:'3px', fontSize:'.68rem', color:S.muted }}><Clock size={11}/> {new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+                                  <span style={{ display:'flex', alignItems:'center', gap:'3px', fontSize:'.68rem', color:S.muted }}><Clock size={11}/> {fmtHoraDate(p.played_at)}</span>
                                 </>
                               )}
                               {pred && <span style={{ fontSize:'.62rem', color:S.gold, background:S.goldDim, borderRadius:'6px', padding:'2px 7px', fontWeight:'700' }}>✓ Predicho</span>}

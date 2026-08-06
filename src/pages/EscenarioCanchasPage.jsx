@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
 const S = {
@@ -45,7 +46,7 @@ function ModalRevisar({ reserva, canchas, encargado, onClose, onResuelto }) {
           <div style={{ fontWeight:800, fontSize:'1rem' }}>Solicitud pendiente</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
         </div>
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{nombreCancha(canchas, reserva.cancha)} · {fmtDate(reserva.fecha)} — {reserva.hora}</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{nombreCancha(canchas, reserva.cancha)} · {fmtDate(reserva.fecha)} — {fmtHora12(reserva.hora)}</div>
         <div style={{ background:S.card2, borderRadius:'10px', padding:'14px', marginBottom:'18px' }}>
           <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:'8px' }}>Datos ya enviados por el cliente</div>
           <div style={{ fontSize:'.88rem', fontWeight:700, marginBottom:'4px' }}>{reserva.nombre}</div>
@@ -94,7 +95,7 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
           <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {nombreCancha(canchas, cancha)}</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
         </div>
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {hora}</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(hora)}</div>
         <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Nombre"/></div>
         <div style={{ marginBottom:'12px' }}><label style={lbl}>Teléfono</label><input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
         <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
@@ -213,7 +214,7 @@ export default function EscenarioCanchasPage() {
             return (
               <div key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' && abrirRevisar(cancha, fecha, h)}
                 style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor: est==='ocupado'?'default':'pointer' }}>
-                <span style={{ fontWeight:700, fontSize:'.85rem' }}>{h}</span>
+                <span style={{ fontWeight:700, fontSize:'.85rem' }}>{fmtHora12(h)}</span>
                 <span style={{ fontSize:'.78rem', color, fontWeight:600 }}>{label}{est==='pendiente' && ' · toca para revisar'}</span>
               </div>
             )

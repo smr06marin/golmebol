@@ -8,6 +8,7 @@ import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { hydratePlayersPublico } from '../lib/playersPublico'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
 // que usa el admin para armar el bracket real.
@@ -644,7 +645,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                           })}
                           <div style={{ padding: '5px 10px', background: '#f8f9fa', fontSize: '.62rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
                             {!ll.terminada
-                              ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + new Date(ll.matches[0].played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '📅 Por definir'}`
+                              ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + fmtHoraDate(ll.matches[0].played_at) : '📅 Por definir'}`
                               : !ll.ganador
                                 ? '⚠️ Empate — pendiente de penales'
                                 : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
@@ -765,7 +766,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                       <Calendar size={10} color="#1a73e8"/>
                       {new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}
                       {' · '}
-                      {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                      {fmtHoraDate(p.played_at)}
                     </span>
                   )}
                   {p.location && <span style={{ fontSize: '.72rem', color: '#9aa0a6', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10}/>{p.location}</span>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
 const S = {
@@ -84,7 +85,7 @@ export default function EscenarioAdminReservasPage() {
     // El navegador bloquea el window.open automático acá (pasa después de un
     // await) — se deja un botón para que el encargado lo abra él mismo.
     if (escenario?.whatsapp) {
-      const msgTxt = `Hola ${r.nombre}, tu reserva de ${nombreCancha(canchas, r.cancha)} el ${r.fecha} a las ${r.hora} fue confirmada. ¡Te esperamos!`
+      const msgTxt = `Hola ${r.nombre}, tu reserva de ${nombreCancha(canchas, r.cancha)} el ${r.fecha} a las ${fmtHora12(r.hora)} fue confirmada. ¡Te esperamos!`
       setWaConfirm({ link: `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, nombre: r.nombre })
     }
     showMsg(avisoDegradado || '✅ Reserva aceptada')
@@ -184,7 +185,7 @@ export default function EscenarioAdminReservasPage() {
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Solicitudes pendientes</div>
           {pendientes.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay solicitudes pendientes.</div> : pendientes.map(r => (
             <div key={r.id} style={rowItem}>
-              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
+              <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {fmtHora12(r.hora)} · {nombreCancha(canchas, r.cancha)} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
               <span style={{ display:'flex', gap:'6px' }}>
                 <button onClick={()=>aceptar(r)} style={{ padding:'5px 10px', background:S.cyan, border:'none', borderRadius:'6px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.72rem' }}>Aceptar</button>
                 <button onClick={()=>rechazar(r)} style={{ padding:'5px 10px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor:'pointer', color:S.loss, fontSize:'.72rem' }}>Rechazar</button>
@@ -199,7 +200,7 @@ export default function EscenarioAdminReservasPage() {
             <div key={r.id} style={{ ...rowItem, flexDirection:'column', alignItems:'stretch', gap:'8px' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px' }}>
                 <span style={{ fontSize:'.8rem' }}>
-                  {fmtDate(r.fecha)} {r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre}
+                  {fmtDate(r.fecha)} {fmtHora12(r.hora)} · {nombreCancha(canchas, r.cancha)} · {r.nombre}
                   {(r.recurrente || r.generada_de_recurrente || r.reserva_fija_id) ? ' 🔁' : ''}
                   {r.aceptada_por_nombre && <span style={{ display:'block', fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Aceptada por {r.aceptada_por_nombre}</span>}
                 </span>
@@ -220,7 +221,7 @@ export default function EscenarioAdminReservasPage() {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
             <div><label style={lbl}>Cancha</label><select value={mCancha||''} onChange={e=>setMCancha(e.target.value)} style={inp}>{canchas.map(c=><option key={c.id} value={c.slug}>{c.nombre}</option>)}</select></div>
             <div><label style={lbl}>Fecha</label><input type="date" value={mFecha} onChange={e=>setMFecha(e.target.value)} style={inp}/></div>
-            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Hora</label><select value={mHora} onChange={e=>setMHora(e.target.value)} style={inp}>{horas.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+            <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Hora</label><select value={mHora} onChange={e=>setMHora(e.target.value)} style={inp}>{horas.map(h=><option key={h} value={h}>{fmtHora12(h)}</option>)}</select></div>
           </div>
           <button onClick={bloquear} style={{ width:'100%', padding:'10px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text, fontWeight:700, fontSize:'.8rem' }}>Bloquear</button>
         </div>
@@ -249,7 +250,7 @@ export default function EscenarioAdminReservasPage() {
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>🚫 Canceladas recientes</div>
           {canceladas.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay reservas canceladas.</div> : canceladas.map(r => (
             <div key={r.id} style={rowItem}>
-              <span style={{fontSize:'.8rem'}}>{fmtDate(r.fecha)} {r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre}</span>
+              <span style={{fontSize:'.8rem'}}>{fmtDate(r.fecha)} {fmtHora12(r.hora)} · {nombreCancha(canchas, r.cancha)} · {r.nombre}</span>
               <span style={{fontSize:'.72rem', color:S.muted}}>{r.motivo_cancelacion === 'no_show' ? 'No llegó' : r.motivo_cancelacion === 'ultima_hora' ? 'Última hora' : 'Cancelada'}</span>
             </div>
           ))}
@@ -264,7 +265,7 @@ export default function EscenarioAdminReservasPage() {
               <button onClick={cerrarGestion} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
             </div>
             <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>
-              {gestionando.nombre} · {fmtDate(gestionando.fecha)} {gestionando.hora} · {nombreCancha(canchas, gestionando.cancha)}
+              {gestionando.nombre} · {fmtDate(gestionando.fecha)} {fmtHora12(gestionando.hora)} · {nombreCancha(canchas, gestionando.cancha)}
             </div>
 
             {modoGestion === 'cancelar' ? (
@@ -280,7 +281,7 @@ export default function EscenarioAdminReservasPage() {
                   <div><label style={lbl}>Cancha</label><select value={reForm.cancha} onChange={e=>setReForm(f=>({...f,cancha:e.target.value}))} style={inp}>{canchas.map(c=><option key={c.id} value={c.slug}>{c.nombre}</option>)}</select></div>
                   <div><label style={lbl}>Fecha</label><input type="date" value={reForm.fecha} onChange={e=>setReForm(f=>({...f,fecha:e.target.value}))} style={inp}/></div>
                 </div>
-                <div style={{ marginBottom:'14px' }}><label style={lbl}>Hora</label><select value={reForm.hora} onChange={e=>setReForm(f=>({...f,hora:e.target.value}))} style={inp}>{horas.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+                <div style={{ marginBottom:'14px' }}><label style={lbl}>Hora</label><select value={reForm.hora} onChange={e=>setReForm(f=>({...f,hora:e.target.value}))} style={inp}>{horas.map(h=><option key={h} value={h}>{fmtHora12(h)}</option>)}</select></div>
                 {errorGestion && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'12px' }}>{errorGestion}</div>}
                 <button onClick={confirmarReprogramar} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Confirmar nuevo horario</button>
               </>

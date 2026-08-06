@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, Ticket, Users, Search, Calendar, Send } from 'lucide-react'
+import { fmtHoraDate } from '../../lib/horaHelpers'
 
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
@@ -40,7 +41,7 @@ const RONDA_ESTADO_STYLE = {
 
 function fmtFechaHora(f) {
   if (!f) return '—'
-  return new Date(f).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(f).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + fmtHoraDate(f)
 }
 
 // Días que faltan para que abra una ronda que todavía no abrió; null si no aplica.

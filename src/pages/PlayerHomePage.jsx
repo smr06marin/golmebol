@@ -9,6 +9,7 @@ import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
 import PortalBanner from '../components/PortalBanner'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
@@ -250,7 +251,7 @@ export default function PlayerHomePage() {
       if (proximosPartidos && proximosPartidos.length > 0) {
         const partido   = proximosPartidos[0]
         const fecha     = new Date(partido.played_at)
-        const horaStr   = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+        const horaStr   = fmtHoraDate(fecha)
         const diffMs    = fecha - ahora
         const diffH     = Math.floor(diffMs / 3600000)
         const diffM     = Math.floor((diffMs % 3600000) / 60000)

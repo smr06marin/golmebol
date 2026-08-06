@@ -4,6 +4,7 @@ import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
 import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { fmtHora12 } from '../lib/horaHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
 // oscuro) porque esta es la página pública que un cliente cualquiera ve
@@ -16,14 +17,6 @@ const S = {
 }
 const inp = { width:'100%', background:'#fff', border:`1.5px solid ${S.border}`, borderRadius:'10px', padding:'11px 13px', color:S.text, fontSize:'.88rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.72rem', fontWeight:'700', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
-
-function fmtHora12(h) {
-  const n = parseInt(h, 10)
-  const ampm = n >= 12 ? 'PM' : 'AM'
-  let h12 = n % 12
-  if (h12 === 0) h12 = 12
-  return `${h12}:00 ${ampm}`
-}
 
 // Próximos días para la tira de fechas — Hoy / Mañana / día de semana + fecha.
 function proximosDias(n = 10) {

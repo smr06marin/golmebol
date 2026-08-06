@@ -11,6 +11,7 @@ import FlyerTorneo from '../../components/FlyerTorneo'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
+import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -3632,7 +3633,7 @@ export default function AdminTorneoDetallePage() {
                                 <div style={{ minWidth: '58px', flexShrink: 0 }}>
                                   {p.played_at && <>
                                     <div style={{ fontSize: '.65rem', color: '#5f6368', fontWeight: '600' }}>{new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</div>
-                                    <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{new Date(p.played_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
+                                    <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{fmtHoraDate(p.played_at)}</div>
                                   </>}
                                   {p.location && <div style={{ fontSize: '.6rem', color: '#1a73e8' }}>📍 {p.location}</div>}
                                 </div>
@@ -3766,7 +3767,7 @@ export default function AdminTorneoDetallePage() {
                                 </>
                               ) : (
                                 <>
-                                  <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {p.hora}</span>
+                                  <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {fmtHora12(p.hora)}</span>
                                   <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre || 'Sin cancha'}</span>
                                   <button onClick={() => setEditJornadaIdx(i)} title="Editar horario y cancha"
                                     style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem' }}>
@@ -4636,7 +4637,7 @@ export default function AdminTorneoDetallePage() {
                             })}
                             <div style={{ padding: '5px 12px', background: '#f8f9fa', fontSize: '.65rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
                               {!ll.terminada
-                                ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' ' + new Date(ll.matches[0].played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : 'Por jugar'}${ll.matches[0].location ? ' · 📍 ' + ll.matches[0].location : ''} · toca para planilla`
+                                ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' ' + fmtHoraDate(ll.matches[0].played_at) : 'Por jugar'}${ll.matches[0].location ? ' · 📍 ' + ll.matches[0].location : ''} · toca para planilla`
                                 : !ll.ganador
                                   ? '⚠️ Empate — toca aquí para registrar los penales'
                                   : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}

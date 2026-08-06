@@ -7,6 +7,7 @@ import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -935,7 +936,7 @@ export default function PlayerTorneoPage() {
                             <div style={{ textAlign: 'center', paddingBottom: '12px' }}>
                               {p.played_at ? (
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '.66rem', fontWeight: '800', color: '#5f6368', letterSpacing: '.4px', textTransform: 'uppercase', background: '#f1f3f4', padding: '5px 14px', borderRadius: '20px' }}>
-                                  📅 {new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })} · 🕐 {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                                  📅 {new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })} · 🕐 {fmtHoraDate(p.played_at)}
                                   {p.location && ` · 📍 ${p.location}`}
                                 </span>
                               ) : (
@@ -1090,7 +1091,7 @@ export default function PlayerTorneoPage() {
                           <div style={{ textAlign: 'center', paddingBottom: '12px' }}>
                             {p.played_at ? (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '.66rem', fontWeight: '800', color: '#5f6368', letterSpacing: '.4px', textTransform: 'uppercase', background: '#f1f3f4', padding: '5px 14px', borderRadius: '20px' }}>
-                                📅 {new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })} · 🕐 {new Date(p.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                                📅 {new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })} · 🕐 {fmtHoraDate(p.played_at)}
                                 {p.location && ` · 📍 ${p.location}`}
                               </span>
                             ) : (
@@ -1295,7 +1296,7 @@ export default function PlayerTorneoPage() {
                               if (!c?.fecha || !c?.hora) return '📅 Por definir'
                               const d = new Date(`${c.fecha}T${c.hora}:00`)
                               if (isNaN(d.getTime())) return '📅 Por definir'
-                              return `📅 ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} · ${d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`
+                              return `📅 ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} · ${fmtHoraDate(d)}`
                             })()}
                           </div>
                         </div>
@@ -1305,7 +1306,7 @@ export default function PlayerTorneoPage() {
                         let textoFecha = 'Por definir'
                         if (hayFecha) {
                           const d = new Date(`${c.fecha}T${c.hora}:00`)
-                          if (!isNaN(d.getTime())) textoFecha = `📅 ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} · ${d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`
+                          if (!isNaN(d.getTime())) textoFecha = `📅 ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} · ${fmtHoraDate(d)}`
                         }
                         return (
                           <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.7rem', fontWeight: '600', background: '#f1f3f4' }}>
@@ -1431,7 +1432,7 @@ export default function PlayerTorneoPage() {
                           })}
                           <div style={{ padding: '5px 10px', background: '#f8f9fa', fontSize: '.62rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
                             {!ll.terminada
-                              ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + new Date(ll.matches[0].played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '📅 Por definir'}`
+                              ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + fmtHoraDate(ll.matches[0].played_at) : '📅 Por definir'}`
                               : !ll.ganador
                                 ? '⚠️ Empate — pendiente de penales'
                                 : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}

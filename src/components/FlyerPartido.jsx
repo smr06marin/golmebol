@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 
 import { Shield, Download, X } from 'lucide-react'
+import { fmtHoraDate } from '../lib/horaHelpers'
 
 export default function FlyerPartido({ partido, onClose }) {
   const flyerRef = useRef(null)
@@ -26,9 +27,7 @@ export default function FlyerPartido({ partido, onClose }) {
   const fecha = partido.played_at
     ? new Date(partido.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     : ''
-  const hora = partido.played_at
-    ? new Date(partido.played_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
-    : ''
+  const hora = partido.played_at ? fmtHoraDate(partido.played_at) : ''
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
