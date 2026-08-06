@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
-import { idSesionLocal, guardarIdSesionLocal, limpiarSesionLocal } from '../lib/deviceSession'
+import { idSesionLocal, guardarIdSesionLocal, limpiarSesionLocal, seRegistroHacePoco } from '../lib/deviceSession'
 
 // Bloquea que la misma cuenta (jugador, profesor, árbitro, escuela,
 // acudiente...) esté abierta en dos dispositivos a la vez. Si entran con la
@@ -39,7 +39,14 @@ export default function SessionGuard() {
         if (p.session_id) guardarIdSesionLocal(p.session_id)
         return
       }
-      if (p.session_id && p.session_id !== local) await expulsar()
+      if (p.session_id && p.session_id !== local) {
+        // Si este dispositivo acaba de loguearse hace unos segundos, este
+        // desfase es la propia carrera contra su escritura, no otro
+        // dispositivo entrando — no lo expulsamos, solo esperamos a que se
+        // asiente (el próximo chequeo o el eco de Realtime ya van a calzar).
+        if (seRegistroHacePoco()) return
+        await expulsar()
+      }
     }
     chequearAlEntrar()
 
@@ -48,7 +55,7 @@ export default function SessionGuard() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'players', filter: `user_id=eq.${user.id}` }, (payload) => {
         const local = idSesionLocal()
         const nuevo = payload.new?.session_id
-        if (local && nuevo && nuevo !== local) expulsar()
+        if (local && nuevo && nuevo !== local && !seRegistroHacePoco()) expulsar()
       })
       .subscribe()
 
