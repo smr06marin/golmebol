@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Image as ImageIcon, Plus, Trash2, RotateCcw } from 'lucide-react'
-import { slugifyCancha } from '../lib/escenarioHelpers'
+import { slugifyCancha, registrarActividad } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -15,6 +15,7 @@ const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6p
 export default function EscenarioConfigPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
+  const [encargado, setEncargado] = useState(null)
   const [escenario, setEscenario] = useState(null)
   const [canchas,   setCanchas]   = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -35,6 +36,7 @@ export default function EscenarioConfigPage() {
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
     const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     if (esc) setForm({
@@ -51,12 +53,20 @@ export default function EscenarioConfigPage() {
   }
 
   async function guardarCancha(c) {
-    await supabase.from('escenario_canchas').update({ nombre: c.nombre.trim() || 'Cancha', precio_hora: Number(c.precio_hora) || 0 }).eq('id', c.id)
+    const original = (canchas.find(x => x.id === c.id)) || {}
+    const nombreNuevo = c.nombre.trim() || 'Cancha'
+    const precioNuevo = Number(c.precio_hora) || 0
+    await supabase.from('escenario_canchas').update({ nombre: nombreNuevo, precio_hora: precioNuevo }).eq('id', c.id)
+    const cambios = []
+    if (Number(original.precio_hora) !== precioNuevo) cambios.push(`precio de $${Number(original.precio_hora||0).toLocaleString('es-CO')} a $${precioNuevo.toLocaleString('es-CO')}`)
+    if (original.nombre !== nombreNuevo) cambios.push(`nombre de "${original.nombre}" a "${nombreNuevo}"`)
+    if (cambios.length > 0) registrarActividad(escenarioId, encargado, 'editar', 'cancha', `Editó la cancha "${nombreNuevo}": cambió ${cambios.join(', ')}`)
     fetchTodo()
   }
 
   async function toggleCancha(c) {
     await supabase.from('escenario_canchas').update({ activa: !c.activa }).eq('id', c.id)
+    registrarActividad(escenarioId, encargado, c.activa ? 'eliminar' : 'crear', 'cancha', `${c.activa ? 'Desactivó' : 'Reactivó'} la cancha "${c.nombre}"`)
     fetchTodo()
   }
 
@@ -70,6 +80,7 @@ export default function EscenarioConfigPage() {
     })
     setAgregando(false)
     if (error) { setMsg('Error al crear la cancha: ' + error.message); return }
+    registrarActividad(escenarioId, encargado, 'crear', 'cancha', `Creó la cancha "${nuevaCancha.nombre.trim()}" (precio ${Number(nuevaCancha.precio_hora)||0}/hora)`)
     setNuevaCancha({ nombre:'', precio_hora:'' })
     fetchTodo()
   }

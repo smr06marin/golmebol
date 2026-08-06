@@ -207,3 +207,20 @@ export function escenarioActivo(escenario) {
   if (escenario.fecha_vencimiento && new Date(escenario.fecha_vencimiento) < new Date()) return false
   return true
 }
+
+// Deja registrado quién hizo qué (precios que cambian, productos/canchas que
+// se crean o eliminan, ventas devueltas) — como varias personas pueden tener
+// acceso al mismo escenario, esto es lo que permite saber si hubo un cambio
+// y quién lo hizo. Si el insert falla (por ejemplo si todavía no se corrió
+// la migración), no debe tumbar la acción real que la persona sí quería
+// hacer — por eso el try/catch silencioso.
+export async function registrarActividad(escenarioId, encargado, accion, entidad, descripcion) {
+  try {
+    await supabase.from('escenario_actividad').insert({
+      escenario_id: escenarioId,
+      player_id: encargado?.id || null,
+      player_nombre: encargado?.name || 'Alguien',
+      accion, entidad, descripcion,
+    })
+  } catch {}
+}
