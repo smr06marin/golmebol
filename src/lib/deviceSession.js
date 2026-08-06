@@ -33,7 +33,19 @@ export function limpiarSesionLocal() {
 // tiempos, no porque haya entrado otro de verdad.
 let registradaEn = 0
 export function seRegistroHacePoco() {
-  return Date.now() - registradaEn < 6000
+  return Date.now() - registradaEn < 8000
+}
+
+// Se llama al arrancar un login/creación de cuenta, ANTES de llamar a
+// supabase.auth — en cuanto esa llamada tiene éxito, SessionGuard se entera
+// del usuario casi al instante (por el listener de auth) y hace su chequeo,
+// pero recién varios pasos (y awaits) después es que este dispositivo llega
+// a "reclamar" la sesión con registrarSesionDispositivo(). Si no se marca la
+// gracia desde ya, ese chequeo de por medio ve el session_id de OTRO
+// dispositivo (el dueño actual) contra el id local viejo de este navegador y
+// se auto-expulsa antes de terminar de entrar.
+export function marcarInicioLogin() {
+  registradaEn = Date.now()
 }
 
 // Se llama justo después de un login exitoso — este dispositivo "reclama" la
