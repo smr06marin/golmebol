@@ -59,13 +59,9 @@ export default function ReservarEscenarioPage() {
   const fechasRef = useRef(null)
 
   const [nombre, setNombre] = useState('')
-  const [telefono, setTelefono] = useState('')
   const [equipo, setEquipo] = useState('')
   const [duracion, setDuracion] = useState(60)
-  const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
-  const [exito, setExito] = useState(false)
-  const [waLink, setWaLink] = useState(null)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
   useEffect(() => { setHoraSel(null) }, [fecha, cancha])
@@ -82,33 +78,23 @@ export default function ReservarEscenarioPage() {
 
   function abrirSlot() {
     if (!horaSel) return
-    setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError(''); setExito(false); setWaLink(null)
+    setModalSlot(horaSel); setNombre(''); setEquipo(''); setDuracion(60); setError('')
   }
 
-  async function enviarReserva() {
-    if (!nombre.trim() || !telefono.trim()) { setError('Nombre y teléfono son obligatorios'); return }
-    setEnviando(true); setError('')
+  // No se pide teléfono: el mensaje llega al WhatsApp del escenario desde el
+  // número real de la persona, así que pedirlo aparte es redundante. Al
+  // hacer click se guarda la reserva en segundo plano (sin bloquear) y el
+  // click mismo, al ser un <a href> real, ya lleva a WhatsApp con los datos
+  // completados — no un window.open async que el navegador podría bloquear.
+  function handleReservar(e) {
+    if (!nombre.trim()) { e.preventDefault(); setError('Escribe tu nombre'); return }
+    setError('')
     const monto = precioCancha(escenario, cancha)
-    const { error: errIns } = await supabase.from('escenario_reservas').insert({
+    supabase.from('escenario_reservas').insert({
       escenario_id: escenario.id, cancha, fecha, hora: modalSlot, duracion,
-      nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
+      nombre: nombre.trim(), equipo: equipo.trim() || null,
       estado: 'pendiente', pago: 'pendiente', monto, monto_pagado: 0,
-    })
-    setEnviando(false)
-    if (errIns) { setError('No se pudo enviar la solicitud: ' + errIns.message); return }
-    // El navegador bloquea el window.open automático acá porque pasa después
-    // de un await (ya no cuenta como "click directo del usuario") — en vez de
-    // intentar abrirlo solo, se muestra un botón para que la persona lo abra
-    // ella misma con un click, así funciona siempre (celular y escritorio).
-    if (escenario.whatsapp) {
-      const msg = `Hola, quiero reservar la ${CANCHA_LABEL[cancha]}.\n` +
-        `Nombre: ${nombre}\nTeléfono: ${telefono}\nEquipo: ${equipo||'-'}\nFecha: ${fecha}\nHora: ${modalSlot}\nDuración: ${duracion} min`
-      setWaLink(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msg)}`)
-    } else {
-      setWaLink(null)
-    }
-    setExito(true)
-    fetchTodo()
+    }).then(() => fetchTodo())
   }
 
   if (loading) return (
@@ -148,7 +134,7 @@ export default function ReservarEscenarioPage() {
           {waHref && (
             <a href={waHref} target="_blank" rel="noreferrer"
               style={{ display:'flex', alignItems:'center', gap:7, border:`1.5px solid ${S.green}`, borderRadius:999, padding:'8px 16px', color:S.greenDark, fontWeight:800, fontSize:'.8rem', textDecoration:'none', whiteSpace:'nowrap', flexShrink:0 }}>
-              <FaWhatsapp size={15}/> Reservar por WhatsApp
+              <FaWhatsapp size={15}/> Quiero chatear con alguien
             </a>
           )}
         </div>
@@ -291,8 +277,8 @@ export default function ReservarEscenarioPage() {
         {waHref && (
           <div style={{ background:S.card, borderRadius:20, boxShadow:'0 4px 18px rgba(20,30,25,.06)', padding:'22px', marginTop:20, display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
             <div>
-              <div style={{ fontWeight:800, fontSize:'.95rem' }}>¿Listo para jugar?</div>
-              <div style={{ fontSize:'.78rem', color:S.muted, marginTop:2 }}>Reserva ahora por WhatsApp y asegura tu hora.</div>
+              <div style={{ fontWeight:800, fontSize:'.95rem' }}>¿Tienes dudas?</div>
+              <div style={{ fontSize:'.78rem', color:S.muted, marginTop:2 }}>Escríbenos y te ayudamos con tu reserva.</div>
             </div>
             <a href={waHref} target="_blank" rel="noreferrer"
               style={{ display:'flex', alignItems:'center', gap:8, background:S.green, borderRadius:12, padding:'12px 20px', color:'#fff', fontWeight:800, fontSize:'.85rem', textDecoration:'none', whiteSpace:'nowrap' }}>
@@ -302,52 +288,36 @@ export default function ReservarEscenarioPage() {
         )}
       </div>
 
-      {modalSlot && (
+      {modalSlot && (() => {
+        const mensajeWA = `Hola, quiero reservar la ${CANCHA_LABEL[cancha]}.\n` +
+          `Nombre: ${nombre.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}\nDuración: ${duracion} min`
+        const hrefReservar = escenario?.whatsapp ? `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(mensajeWA)}` : null
+        return (
         <div style={{ position:'fixed', inset:0, background:'rgba(10,15,13,.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
           <div style={{ background:'#fff', borderRadius:'18px', padding:'24px', width:'380px', maxWidth:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
-            {exito ? (
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:'2.2rem', marginBottom:10 }}>✅</div>
-                <div style={{ fontWeight:800, fontSize:'1rem', marginBottom:8 }}>¡Solicitud enviada!</div>
-                <div style={{ fontSize:'.82rem', color:S.text2, lineHeight:1.5, marginBottom:18 }}>
-                  Tu reserva de {CANCHA_LABEL[cancha]} el {fmtDate(fecha)} a las {fmtHora12(modalSlot)} quedó pendiente de aprobación del escenario.
-                </div>
-                {waLink && (
-                  <a href={waLink} target="_blank" rel="noreferrer"
-                    style={{ display:'block', width:'100%', padding:'13px', marginBottom:'10px', background:'#25D366', borderRadius:'10px', color:'#fff', fontWeight:800, fontSize:'.85rem', textDecoration:'none', boxSizing:'border-box' }}>
-                    📲 Confirmar por WhatsApp
-                  </a>
-                )}
-                <button onClick={()=>setModalSlot(null)} style={{ width:'100%', padding:'12px', background: waLink ? 'none' : S.green, border: waLink ? `1px solid ${S.border}` : 'none', borderRadius:'10px', cursor:'pointer', color: waLink ? S.muted : '#fff', fontWeight:800, fontSize:'.85rem' }}>
-                  {waLink ? 'Cerrar' : 'Listo'}
-                </button>
-              </div>
-            ) : (
-              <>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
-                  <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {CANCHA_LABEL[cancha]}</div>
-                  <button onClick={()=>setModalSlot(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
-                </div>
-                <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(escenario,cancha))}/h</div>
-                <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
-                <div style={{ marginBottom:'12px' }}><label style={lbl}>Teléfono *</label><input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
-                <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
-                <div style={{ marginBottom:'18px' }}>
-                  <label style={lbl}>Duración</label>
-                  <select value={duracion} onChange={e=>setDuracion(parseInt(e.target.value))} style={inp}>
-                    <option value={60}>1 hora</option><option value={90}>1.5 horas</option><option value={120}>2 horas</option>
-                  </select>
-                </div>
-                {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'14px' }}>{error}</div>}
-                <button onClick={enviarReserva} disabled={enviando}
-                  style={{ width:'100%', padding:'13px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.9rem', opacity:enviando?.7:1 }}>
-                  {enviando ? 'Enviando...' : 'Pedir reserva'}
-                </button>
-              </>
-            )}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+              <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {CANCHA_LABEL[cancha]}</div>
+              <button onClick={()=>setModalSlot(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+            </div>
+            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(escenario,cancha))}/h</div>
+            <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
+            <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
+            <div style={{ marginBottom:'18px' }}>
+              <label style={lbl}>Duración</label>
+              <select value={duracion} onChange={e=>setDuracion(parseInt(e.target.value))} style={inp}>
+                <option value={60}>1 hora</option><option value={90}>1.5 horas</option><option value={120}>2 horas</option>
+              </select>
+            </div>
+            {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'14px' }}>{error}</div>}
+            <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Al enviar, este mensaje se abre en tu WhatsApp para confirmar con el escenario.</div>
+            <a href={hrefReservar} target="_blank" rel="noreferrer" onClick={handleReservar}
+              style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, width:'100%', padding:'13px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.9rem', textDecoration:'none', boxSizing:'border-box' }}>
+              <FaWhatsapp size={17}/> Enviar reserva por WhatsApp
+            </a>
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
