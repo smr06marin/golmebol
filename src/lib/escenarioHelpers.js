@@ -108,12 +108,15 @@ export function comprimirImagen(file, { maxDim = 500, calidad = 0.72 } = {}) {
 // Mantiene generadas las próximas `semanas` ocurrencias de cada reserva fija
 // activa del escenario, como filas reales de escenario_reservas (para que
 // aparezcan en la agenda/disponibilidad igual que cualquier otra reserva).
-// Es una "ventana móvil": se puede llamar cada vez que se abre cualquier
-// pantalla que lea reservas, sin duplicar nada — cada ocurrencia queda
-// enlazada a su regla vía reserva_fija_id, así que si ya existe para esa
-// fecha no se vuelve a crear (y si el encargado canceló puntualmente una
-// fecha, esa cancelación queda como está, no se regenera).
-export async function asegurarReservasFijas(escenarioId, semanas = 8) {
+// Es una "ventana móvil" sin fecha de corte: cada vez que se abre cualquier
+// pantalla que lea reservas, se vuelve a completar la ventana desde HOY hacia
+// adelante — así el horario fijo dura para siempre, semana tras semana, hasta
+// que el encargado lo desactive manualmente (no hay que "renovarlo" nunca).
+// No duplica nada: cada ocurrencia queda enlazada a su regla vía
+// reserva_fija_id, así que si ya existe para esa fecha no se vuelve a crear
+// (y si el encargado canceló puntualmente una fecha, esa cancelación queda
+// como está, no se regenera).
+export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   const { data: fijas } = await supabase.from('escenario_reservas_fijas').select('*').eq('escenario_id', escenarioId).eq('activa', true)
   if (!fijas || fijas.length === 0) return
 

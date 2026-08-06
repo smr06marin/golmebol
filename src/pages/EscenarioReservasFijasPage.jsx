@@ -57,7 +57,7 @@ export default function EscenarioReservasFijasPage() {
     setGuardando(false)
     if (error) { setMsg('Error al crear: ' + error.message); return }
     setForm(f => ({ ...vacio, cancha: f.cancha, hora: f.hora }))
-    setMsg('✅ Horario fijo creado, ya se generaron las próximas semanas'); setTimeout(()=>setMsg(''),4000)
+    setMsg('✅ Horario fijo creado — se mantendrá reservado indefinidamente hasta que lo desactives'); setTimeout(()=>setMsg(''),4000)
     fetchTodo()
   }
 
@@ -88,7 +88,7 @@ export default function EscenarioReservasFijasPage() {
 
         <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'4px' }}>Nuevo horario fijo</div>
-          <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'14px' }}>Un cliente que juega siempre el mismo día y hora — el sistema mantiene las próximas 8 semanas reservadas automáticamente, sin que tengas que hacer nada cada semana.</div>
+          <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'14px' }}>Un cliente que juega siempre el mismo día y hora — queda reservado <b>para siempre</b>, semana tras semana, sin que tengas que hacer nada. Solo se detiene cuando lo desactivás manualmente.</div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
             <div>
