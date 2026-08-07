@@ -42,6 +42,36 @@ function fmtFecha(iso) {
   } catch { return null }
 }
 
+// Equipo campeón: sale de la(s) partido(s) de la GRAN FINAL (fase 'final',
+// sin contar el de tercer puesto) — suma goles si fue ida y vuelta, y si
+// empataron global usa penales. Misma lógica que usa el árbol público de
+// cada torneo (TorneoPublicoPage) para decidir el ganador de una llave.
+function calcularCampeon(mts) {
+  const finales = mts.filter(m => m.fase === 'final' && m.status === 'finished' && !(m.ronda || '').toLowerCase().includes('tercer'))
+  if (finales.length === 0) return null
+  const teamAId = finales[0].home_team_id, teamBId = finales[0].away_team_id
+  const partidosFinal = finales.filter(m => (m.home_team_id === teamAId || m.home_team_id === teamBId) && (m.away_team_id === teamAId || m.away_team_id === teamBId))
+  let golesA = 0, golesB = 0
+  partidosFinal.forEach(m => {
+    if (m.home_team_id === teamAId) { golesA += m.home_score || 0; golesB += m.away_score || 0 }
+    else { golesA += m.away_score || 0; golesB += m.home_score || 0 }
+  })
+  let ganadorId = null
+  if (golesA > golesB) ganadorId = teamAId
+  else if (golesB > golesA) ganadorId = teamBId
+  else {
+    const conPenales = [...partidosFinal].reverse().find(m => m.penales_ganador || (m.penales_local != null && m.penales_visitante != null && m.penales_local !== m.penales_visitante))
+    if (conPenales) {
+      const ganaHome = conPenales.penales_ganador ? conPenales.penales_ganador === 'home' : conPenales.penales_local > conPenales.penales_visitante
+      ganadorId = ganaHome ? conPenales.home_team_id : conPenales.away_team_id
+    }
+  }
+  if (!ganadorId) return null
+  const partidoGanador = partidosFinal.find(m => m.home_team_id === ganadorId || m.away_team_id === ganadorId)
+  const equipo = partidoGanador.home_team_id === ganadorId ? partidoGanador.home : partidoGanador.away
+  return equipo ? { id: ganadorId, name: equipo.name, logo_url: equipo.logo_url } : null
+}
+
 export default function LandingPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState({ torneos: 0, jugadores: 0, equipos: 0, goles: 0 })
@@ -93,7 +123,7 @@ export default function LandingPage() {
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season').eq('status', 'active')
     const [{ data: tts }, { data: ms }] = await Promise.all([
       supabase.from('tournament_teams').select('tournament_id'),
-      supabase.from('matches').select('tournament_id, matchday, fase, status'),
+      supabase.from('matches').select('tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'),
     ])
     const tors = torsRes.data
     const cuentaEq = {}
@@ -114,7 +144,8 @@ export default function LandingPage() {
       // 'finished' aunque el torneo siga en curso y no haya campeón todavía
       // (pasó con el Torneo Relámpago Municipal Córdoba).
       const finalizado = mts.some(m => m.fase === 'final' && m.status === 'finished')
-      return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado }
+      const campeon = finalizado ? calcularCampeon(mts) : null
+      return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado, campeon }
     }))
   }
 
@@ -262,9 +293,17 @@ export default function LandingPage() {
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
                 <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
-                  <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color, marginBottom: '12px' }}>
-                    {badge.txt}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                    <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
+                      {badge.txt}
+                    </span>
+                    {t.campeon && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.62rem', fontWeight: 800, color: S.gold, overflow: 'hidden' }}>
+                        🏆 <Escudo logo_url={t.campeon.logo_url} name={t.campeon.name} size={18} radius={5}/>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.campeon.name}</span>
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
                     <Escudo logo_url={t.logo_url} name={t.name} size={56} radius={14}/>
                   </div>
