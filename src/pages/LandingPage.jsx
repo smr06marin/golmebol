@@ -106,10 +106,14 @@ export default function LandingPage() {
       const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
       const estado = elim ? (FASES[elim.fase] || 'Eliminatorias') : maxFecha > 0 ? `Fecha ${maxFecha}` : 'Por comenzar'
       // El torneo no tiene un status "finalizado" en la base (nunca se marca
-      // así desde el admin) — se deduce de los partidos: si ya se jugó la
-      // gran final, o si no queda ningún partido por jugar, está terminado.
-      const finalJugada = mts.some(m => m.fase === 'final' && m.status === 'finished')
-      const finalizado = mts.length > 0 && (finalJugada || mts.every(m => m.status === 'finished'))
+      // así desde el admin) — se deduce de si ya se jugó la gran final. OJO:
+      // NO se puede usar "todos los partidos que existen están finalizados"
+      // como señal de torneo terminado — eso daba falsos positivos: cuando
+      // se juega toda una fecha (jornada) y el admin todavía no ha creado la
+      // siguiente, momentáneamente TODOS los partidos existentes quedan en
+      // 'finished' aunque el torneo siga en curso y no haya campeón todavía
+      // (pasó con el Torneo Relámpago Municipal Córdoba).
+      const finalizado = mts.some(m => m.fase === 'final' && m.status === 'finished')
       return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado }
     }))
   }
