@@ -74,6 +74,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const remoteTimer = useRef(null)
   const alarmaRef = useRef(null)
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
+  const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
 
   const nombreLocal = partido.home?.name || 'Local'
   const nombreVis = partido.away?.name || 'Visitante'
@@ -461,6 +462,37 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setArr([...arr, nueva])
     setModalFoto({ team, index, jugador: nueva })
   }
+  // Torneos de "registro simple" (los internacionales): apenas un jugador
+  // sin registro queda con nombre + número puestos en la planilla (no hay
+  // que esperar a que termine el partido), se crea de una en Golmebol y
+  // queda inscrito en el equipo/torneo — así ya sale identificado (no como
+  // "Jugador" genérico) en todo lo que se vea EN VIVO mientras se juega.
+  async function registrarSimpleSiFalta(team, nombre, numero) {
+    if (!registroSimple) return
+    const nombreLimpio = (nombre || '').trim()
+    if (!nombreLimpio || !(numero || '').trim()) return
+    const key = `${team}|${nombreLimpio.toLowerCase()}`
+    if (registroSimpleEnCursoRef.current.has(key)) return
+    registroSimpleEnCursoRef.current.add(key)
+    const team_id = team === 'local' ? partido.home_team_id : partido.away_team_id
+    try {
+      const { data: nuevo, error } = await supabase.from('players')
+        .insert({ name: nombreLimpio, activo_membresia: true, fecha_registro: new Date().toISOString() })
+        .select().single()
+      if (error || !nuevo) { registroSimpleEnCursoRef.current.delete(key); return }
+      await supabase.from('team_players').insert({ team_id, player_id: nuevo.id, activo: true })
+      await supabase.from('tournament_player_registrations').insert({ tournament_id: partido.tournament_id, team_id, player_id: nuevo.id, activo: true })
+      const setArr = team === 'local' ? setJugadoresLocal : setJugadoresVisitante
+      setArr(prev => prev.map(j => (!j.id && (j.nombre || '').trim().toLowerCase() === nombreLimpio.toLowerCase()) ? { ...j, id: nuevo.id } : j))
+      // Si ya había metido un gol/tarjeta antes de completar el registro, ese
+      // evento también queda con el id real (para que ya no salga como "sin registro").
+      setEventos(prev => prev.map(e => (!e.jugadorId && e.team === team && (e.jugadorNombre || '').trim().toLowerCase() === nombreLimpio.toLowerCase()) ? { ...e, jugadorId: nuevo.id } : e))
+    } catch (e) {
+      registroSimpleEnCursoRef.current.delete(key)
+      /* si falla, el jugador sigue sin registro (se reintenta en el guardado final) */
+    }
+  }
+
   function confirmarNumero(numero, nombre) {
     const { team, index } = modalFoto
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
@@ -468,9 +500,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const dup = arr.some((j, i) => i !== index && (j.numero || '').trim() === numero)
     if (dup) { alert(`El número ${numero} ya está asignado a otro jugador de este equipo.`); return }
     const nuevo = [...arr]
+    const eraSinRegistro = !nuevo[index].id
     nuevo[index] = { ...nuevo[index], numero, ...(nuevo[index].id ? {} : { nombre }) }
     setArr(nuevo)
     setModalFoto(null)
+    if (eraSinRegistro) registrarSimpleSiFalta(team, nombre, numero)
   }
   function quitarNumero() {
     const { team, index } = modalFoto
@@ -521,6 +555,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setArr([...arr, nuevoJugador])
     agregarEventoParaJugador(team, nuevoJugador, tipo)
     setAlertaNumero(null)
+    registrarSimpleSiFalta(team, nombreApellido, numero)
   }
 
   // ── Guardado final ─────────────────────────────────────────────────────
