@@ -377,6 +377,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const syncTimerRef = useRef(null) // debounce de la sincronización con el servidor
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el árbitro cambia de app y el navegador frena el setInterval, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const ultimoGuardadoSegRef = useRef(0) // último "segundos" que se alcanzó a guardar (evita depender de un múltiplo exacto de 8, que se puede saltar si el navegador frena el timer en 2do plano)
+  const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso/hechos de registro en vivo, para no duplicar el jugador
   const [cronoPos, setCronoPos] = useState({ x: typeof window !== 'undefined' ? window.innerWidth - 320 : 200, y: 20 })
   const dragStart = useRef(null)
 
@@ -577,6 +578,41 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   // periodo, tiempo agotado, etc.) se limpia el ancla de hora real para que al
   // reanudar se recalcule desde el segundo actual, no desde un punto viejo.
   useEffect(() => { if (!corriendo) inicioEpochRef.current = null }, [corriendo])
+
+  // Torneos de "registro simple" (los internacionales): apenas un jugador
+  // sin registro queda con nombre + número puestos en la planilla (no hace
+  // falta esperar a "guardar" al final del partido), se crea de una en
+  // Golmebol y queda inscrito en el equipo/torneo — así ya sale identificado
+  // (no como "Jugador #n") en todo lo que se vea EN VIVO mientras se juega.
+  // Debounced 1.2s para no disparar un insert por cada tecla mientras el
+  // árbitro está escribiendo el nombre.
+  useEffect(() => {
+    if (!torneo?.registro_simple) return
+    const timer = setTimeout(() => {
+      const registrarSiFalta = async (jugadores, setJugadores, team_id) => {
+        for (const j of jugadores) {
+          const nombre = (j.nombre || '').trim()
+          const numero = (j.numero ?? '').toString().trim()
+          if (j.id || !nombre || !numero) continue
+          const key = `${team_id}|${nombre.toLowerCase()}`
+          if (registroSimpleEnCursoRef.current.has(key)) continue
+          registroSimpleEnCursoRef.current.add(key)
+          try {
+            const { data: nuevo, error } = await supabase.from('players')
+              .insert({ name: nombre, activo_membresia: true, fecha_registro: new Date().toISOString() })
+              .select().single()
+            if (error || !nuevo) { registroSimpleEnCursoRef.current.delete(key); continue }
+            await supabase.from('team_players').insert({ team_id, player_id: nuevo.id, activo: true })
+            await supabase.from('tournament_player_registrations').insert({ tournament_id: partido.tournament_id, team_id, player_id: nuevo.id, activo: true })
+            setJugadores(prev => prev.map(jj => (!jj.id && (jj.nombre || '').trim().toLowerCase() === nombre.toLowerCase() && (jj.numero ?? '').toString().trim() === numero) ? { ...jj, id: nuevo.id } : jj))
+          } catch { registroSimpleEnCursoRef.current.delete(key) /* sigue sin registro, se reintenta en el guardado final */ }
+        }
+      }
+      registrarSiFalta(jugadoresLocal, setJugadoresLocal, partido.home_team_id)
+      registrarSiFalta(jugadoresVisitante, setJugadoresVisitante, partido.away_team_id)
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [jugadoresLocal, jugadoresVisitante, torneo?.registro_simple, partido.home_team_id, partido.away_team_id, partido.tournament_id])
 
   // El cronómetro se ancla a la hora real (Date.now), no a "ir sumando 1 cada
   // segundo": así, si el celular se bloquea o el árbitro cambia de app y el
