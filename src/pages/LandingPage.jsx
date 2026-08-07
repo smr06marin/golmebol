@@ -46,6 +46,7 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const [stats, setStats] = useState({ torneos: 0, jugadores: 0, equipos: 0, goles: 0 })
   const [torneos, setTorneos] = useState([])
+  const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [escenarios, setEscenarios] = useState([])
   const [escuelas, setEscuelas] = useState([])
@@ -55,16 +56,20 @@ export default function LandingPage() {
   const vivoRef = useRef(null)
 
   useEffect(() => {
-    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas()
+    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy()
     registrarVisita('inicio')
   }, [])
 
   // Reloj de los partidos en vivo: recalcula localmente cada segundo, y cada
-  // 20s refresca de verdad por si hubo un gol nuevo o cambió algo.
+  // 20s refresca de verdad por si hubo un gol nuevo o cambió algo. Cada 30s
+  // también se refresca el conteo de visitas del día, para que el orden de
+  // "torneos en juego" (los más consultados primero) se vaya actualizando
+  // solo, sin que nadie tenga que recargar la página.
   useEffect(() => {
     const tRelog = setInterval(() => setTick(x => x + 1), 1000)
     const tRefetch = setInterval(fetchPartidosVivo, 20000)
-    return () => { clearInterval(tRelog); clearInterval(tRefetch) }
+    const tVisitas = setInterval(fetchVisitasHoy, 30000)
+    return () => { clearInterval(tRelog); clearInterval(tRefetch); clearInterval(tVisitas) }
   }, [])
 
   const partidosVivo = useMemo(() => {
@@ -100,8 +105,26 @@ export default function LandingPage() {
       const elim = mts.filter(m => m.fase && m.fase !== 'grupo').sort((a, b) => (PESO[b.fase] || 0) - (PESO[a.fase] || 0))[0]
       const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
       const estado = elim ? (FASES[elim.fase] || 'Eliminatorias') : maxFecha > 0 ? `Fecha ${maxFecha}` : 'Por comenzar'
-      return { ...t, equipos: cuentaEq[t.id] || 0, estado }
+      // El torneo no tiene un status "finalizado" en la base (nunca se marca
+      // así desde el admin) — se deduce de los partidos: si ya se jugó la
+      // gran final, o si no queda ningún partido por jugar, está terminado.
+      const finalJugada = mts.some(m => m.fase === 'final' && m.status === 'finished')
+      const finalizado = mts.length > 0 && (finalJugada || mts.every(m => m.status === 'finished'))
+      return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado }
     }))
+  }
+
+  // Conteo público de visitas a la tabla de cada torneo, solo de hoy (ver
+  // migracion_visitas_torneos_publico.sql) — para ordenar "torneos en
+  // juego" poniendo primero los que más está consultando la gente. Si la
+  // migración todavía no se corrió, la vista no existe y esto simplemente
+  // no cambia el orden (se queda como venía).
+  async function fetchVisitasHoy() {
+    const { data, error } = await supabase.from('site_visitas_torneos_hoy').select('torneo_id, visitas')
+    if (error || !data) return
+    const mapa = {}
+    data.forEach(r => { mapa[r.torneo_id] = r.visitas })
+    setVisitasHoy(mapa)
   }
 
   async function fetchPartidosVivo() {
@@ -121,6 +144,17 @@ export default function LandingPage() {
     const { data } = await supabase.from('teams').select('id, name, logo_url, categoria').eq('tipo', 'escuela').limit(6)
     setEscuelas(data || [])
   }
+
+  // Torneos en juego primero (los más visitados hoy, de primero), y los ya
+  // finalizados de últimos en la fila — así se ven todos pero el orden
+  // premia lo que la gente está consultando en el momento.
+  const torneosOrdenados = useMemo(() => {
+    const enJuego = torneos.filter(t => !t.finalizado)
+      .sort((a, b) => (visitasHoy[b.id] || 0) - (visitasHoy[a.id] || 0) || b.equipos - a.equipos)
+    const finalizados = torneos.filter(t => t.finalizado)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+    return [...enJuego, ...finalizados]
+  }, [torneos, visitasHoy])
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
@@ -213,19 +247,22 @@ export default function LandingPage() {
             Ver todos <ChevronRight size={14}/>
           </button>
         </div>
-        {torneos.length === 0 ? (
+        {torneosOrdenados.length === 0 ? (
           <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
             No hay torneos activos en este momento.
           </div>
         ) : (
           <div className="gm-scrollx" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity' }}>
-            {torneos.map(t => {
+            {torneosOrdenados.map(t => {
               const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
               const inicio = fmtFecha(t.created_at)
+              const badge = t.finalizado ? { txt: 'FINALIZADO', bg: 'rgba(138,138,138,.18)', color: S.muted }
+                : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
+                : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
-                <button key={t.id} className="gm-hover" onClick={() => navigate('/records')} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text }}>
-                  <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: enVivo ? 'rgba(229,67,61,.15)' : 'rgba(111,207,61,.15)', color: enVivo ? S.red : S.green, marginBottom: '12px' }}>
-                    {enVivo ? '● EN VIVO' : 'EN JUEGO'}
+                <button key={t.id} className="gm-hover" onClick={() => navigate('/records?torneo=' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
+                  <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color, marginBottom: '12px' }}>
+                    {badge.txt}
                   </span>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
                     <Escudo logo_url={t.logo_url} name={t.name} size={56} radius={14}/>
@@ -234,9 +271,9 @@ export default function LandingPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '12px' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
                     {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> Inició: {inicio}</span>}
-                    <span style={{ color: S.green, fontWeight: 700 }}>{t.estado}</span>
+                    {!t.finalizado && <span style={{ color: S.green, fontWeight: 700 }}>{t.estado}</span>}
                   </div>
-                  <div style={{ width: '100%', textAlign: 'center', padding: '9px', borderRadius: '9px', background: S.card2, color: S.green, fontSize: '.75rem', fontWeight: 800 }}>VER TORNEO</div>
+                  <div style={{ width: '100%', textAlign: 'center', padding: '9px', borderRadius: '9px', background: S.card2, color: t.finalizado ? S.muted : S.green, fontSize: '.75rem', fontWeight: 800 }}>VER TORNEO</div>
                 </button>
               )
             })}

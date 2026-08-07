@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Menu, Search, User, X, ChevronRight, Calendar, Users, Shield, Trophy, BarChart3, Home, Radio,
   Target, Flame, Sparkles, Medal, Handshake, Zap, Rocket, Crown,
@@ -581,6 +581,7 @@ function SplashCampeones({ campeones, onClose }) {
 
 export default function RecordsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [loading,  setLoading]  = useState(true)
   const [records,  setRecords]  = useState([])
   const [campeones,  setCampeones]  = useState([])
@@ -608,6 +609,16 @@ export default function RecordsPage() {
     fetchTodo(); fetchCampeonesRecientes(); fetchTorneosActivos(); fetchStats(); fetchPartidosVivo()
     registrarVisita('inicio')
   }, [])
+
+  // Si llegan con ?torneo=<id> (ej. desde el botón "Ver torneo" de la
+  // portada), abrir directamente la tabla de ESE torneo en vez de dejarlos
+  // en la vitrina general — apenas carguen los torneos activos.
+  useEffect(() => {
+    const torneoId = searchParams.get('torneo')
+    if (!torneoId || torneoTabla) return
+    const t = torneosActivos.find(x => x.id === torneoId)
+    if (t) abrirTablaTorneo(t)
+  }, [searchParams, torneosActivos])
 
   // Reloj de los partidos en vivo: recalcula localmente cada segundo (sin
   // pegarle a la base de datos), y cada 20s sí refresca de verdad por si
