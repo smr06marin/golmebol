@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X } from 'lucide-react'
+import { GiSoccerBall } from 'react-icons/gi'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
@@ -42,6 +43,93 @@ function fmtFecha(iso) {
   } catch { return null }
 }
 
+// Etiqueta corta del momento del partido: "1T · 12:34" o "DESCANSO"
+function labelTiempoVivo(vivo) {
+  if (vivo.descanso) return 'DESCANSO'
+  const per = vivo.periodo === 2 ? '2T' : '1T'
+  return `${per} · ${vivo.reloj}`
+}
+
+const COLOR_TARJETA = { amarilla: '#f9c400', azul: '#1a73e8', roja: '#d93025' }
+function IconoTarjeta({ color }) {
+  return <span style={{ display: 'inline-block', width: '9px', height: '13px', borderRadius: '2px', background: COLOR_TARJETA[color] || '#999', flexShrink: 0 }}/>
+}
+
+// Detalle de un partido en vivo: marcador, reloj y lista de goles/tarjetas —
+// se lee del mismo snapshot que ya sube en tiempo real la planilla del
+// árbitro (matches.live_state / live_state_rapida), sin depender de que el
+// jugador quede registrado en el torneo.
+function LiveMatchDetalle({ m, onClose }) {
+  const goles = extraerGoles(m)
+  const golesLocal = goles.filter(g => g.equipo === 'local')
+  const golesVis    = goles.filter(g => g.equipo === 'visitante')
+  const tarjetas = extraerTarjetas(m)
+  const tarjetasLocal = tarjetas.filter(t => t.equipo === 'local')
+  const tarjetasVis    = tarjetas.filter(t => t.equipo === 'visitante')
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 560, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', padding: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <span style={{ fontWeight: 900, color: m.vivo.descanso ? S.gold : S.red, fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14}/> {m.vivo.descanso ? 'DESCANSO' : `EN VIVO · ${labelTiempoVivo(m.vivo)}`}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '18px' }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={46}/>
+            <div style={{ color: S.text, fontWeight: 800, fontSize: '.75rem', marginTop: '6px' }}>{m.home?.name}</div>
+          </div>
+          <div style={{ color: S.text, fontWeight: 900, fontSize: '1.6rem' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={46}/>
+            <div style={{ color: S.text, fontWeight: 800, fontSize: '.75rem', marginTop: '6px' }}>{m.away?.name}</div>
+          </div>
+        </div>
+
+        {goles.length === 0 ? (
+          <div style={{ textAlign: 'center', color: S.muted, fontSize: '.8rem', padding: '20px 0' }}>Aún no hay goles</div>
+        ) : (
+          <div>
+            <div style={{ fontSize: '.62rem', fontWeight: 800, color: S.muted, letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}><GiSoccerBall size={11} color={S.muted}/> GOLES</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                {golesLocal.length === 0 && <div style={{ color: S.muted, fontSize: '.72rem' }}>—</div>}
+                {golesLocal.map((g, i) => (
+                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', gap: '5px' }}><GiSoccerBall size={10} color={S.text}/> {g.jugador} {g.minuto ? <span style={{ color: S.muted }}>· {g.minuto}'</span> : null}</div>
+                ))}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {golesVis.length === 0 && <div style={{ color: S.muted, fontSize: '.72rem' }}>—</div>}
+                {golesVis.map((g, i) => (
+                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px' }}>{g.minuto ? <span style={{ color: S.muted }}>{g.minuto}' ·</span> : null} {g.jugador} <GiSoccerBall size={10} color={S.text}/></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tarjetas.length > 0 && (
+          <div style={{ marginTop: '18px' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 800, color: S.muted, letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}><IconoTarjeta color="amarilla"/> TARJETAS</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                {tarjetasLocal.map((t, i) => (
+                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><IconoTarjeta color={t.color}/> {t.jugador} {t.minuto ? <span style={{ color: S.muted }}>· {t.minuto}'</span> : null}</div>
+                ))}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {tarjetasVis.map((t, i) => (
+                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>{t.minuto ? <span style={{ color: S.muted }}>{t.minuto}' ·</span> : null} {t.jugador} <IconoTarjeta color={t.color}/></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Equipo campeón: sale de la(s) partido(s) de la GRAN FINAL (fase 'final',
 // sin contar el de tercer puesto) — suma goles si fue ida y vuelta, y si
 // empataron global usa penales. Misma lógica que usa el árbol público de
@@ -78,6 +166,7 @@ export default function LandingPage() {
   const [torneos, setTorneos] = useState([])
   const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
+  const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
   const [escenarios, setEscenarios] = useState([])
   const [escuelas, setEscuelas] = useState([])
   const [tick, setTick] = useState(0)
@@ -343,7 +432,7 @@ export default function LandingPage() {
                   </span>
                   <span style={{ fontSize: '.68rem', color: S.muted, fontWeight: 700 }}>{labelPartido(m)}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
                     <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={34}/>
                     <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.home?.name}</span>
@@ -356,6 +445,9 @@ export default function LandingPage() {
                     <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={34}/>
                     <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
                   </div>
+                </div>
+                <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', textAlign: 'center', color: S.muted, fontSize: '.62rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  Toca para ver quién anotó <GiSoccerBall size={10}/>
                 </div>
                 <button className="gm-hover" onClick={() => navigate('/t/' + m.tournament_id)} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
                   VER PARTIDO
@@ -409,6 +501,10 @@ export default function LandingPage() {
           <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Administrador</button>
         </div>
       </div>
+
+      {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && (
+        <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}/>
+      )}
     </div>
   )
 }
