@@ -1,4 +1,3 @@
-// force redeploy
 import { useEffect, useState, lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase, supabaseSilent } from './lib/supabase'
@@ -9,6 +8,7 @@ import SessionGuard from './components/SessionGuard'
 import MarcaGolmebol from './components/MarcaGolmebol'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
 import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
+import { PantallaCargando } from './components/PantallaCargando'
 
 // Carga diferida por página: el celular solo descarga el código de la página que visita
 const LoginPage               = lazy(() => import('./pages/LoginPage'))
@@ -129,14 +129,6 @@ class ErrorBoundary extends Component {
       </div>
     )
   }
-}
-
-function PantallaCargando() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: '1.1rem', color: '#1a73e8', fontWeight: '600', fontFamily: 'system-ui, sans-serif' }}>
-      Cargando...
-    </div>
-  )
 }
 
 function ProtectedRoute({ children }) {
