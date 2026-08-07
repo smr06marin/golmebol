@@ -292,15 +292,15 @@ export default function LandingPage() {
                 : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
-                <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
-                    <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
+                <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', height: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', minWidth: 0 }}>
+                    <span style={{ display: 'inline-block', flexShrink: 0, fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
                       {badge.txt}
                     </span>
                     {t.campeon && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.62rem', fontWeight: 800, color: S.gold, overflow: 'hidden' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '.62rem', fontWeight: 800, color: S.gold, minWidth: 0, overflow: 'hidden' }}>
                         🏆 <Escudo logo_url={t.campeon.logo_url} name={t.campeon.name} size={18} radius={5}/>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.campeon.name}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.campeon.name}</span>
                       </span>
                     )}
                   </div>
@@ -308,10 +308,10 @@ export default function LandingPage() {
                     <Escudo logo_url={t.logo_url} name={t.name} size={56} radius={14}/>
                   </div>
                   <div style={{ fontWeight: 800, fontSize: '.92rem', textAlign: 'center', marginBottom: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '12px' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '12px', overflow: 'hidden' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
                     {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> Inició: {inicio}</span>}
-                    {!t.finalizado && <span style={{ color: S.green, fontWeight: 700 }}>{t.estado}</span>}
+                    {!t.finalizado && <span style={{ color: S.green, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.estado}</span>}
                   </div>
                   <div style={{ width: '100%', textAlign: 'center', padding: '9px', borderRadius: '9px', background: S.card2, color: t.finalizado ? S.muted : S.green, fontSize: '.75rem', fontWeight: 800 }}>VER TORNEO</div>
                 </button>
