@@ -820,7 +820,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       // si la planilla ya tiene un nombre puesto, no se pisa.
       if (partido.arbitro1_id) { const a = (data||[]).find(x=>x.id===partido.arbitro1_id); if(a) { setArbitro1(prev => prev || a.name); setArbitroInput1(prev => prev || a.name) } }
       if (partido.arbitro2_id) { const a = (data||[]).find(x=>x.id===partido.arbitro2_id); if(a) { setArbitro2(prev => prev || a.name); setArbitroInput2(prev => prev || a.name) } }
-      if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) setArbitro3(prev => prev || a.name) }
+      // El 3er árbitro que asigna la coordinadora (Asistente 2) es, en la
+      // práctica, quien anota el partido — pero en la planilla impresa no
+      // hay una casilla "Árbitro 3" separada, solo "Anotador". Por eso su
+      // nombre se precarga ahí (no solo en el campo arbitro3, que no se
+      // muestra en ningún lado): si no, el 3ro asignado nunca aparecía.
+      if (partido.arbitro3_id) { const a = (data||[]).find(x=>x.id===partido.arbitro3_id); if(a) { setArbitro3(prev => prev || a.name); setAnotador(prev => prev || a.name) } }
     })()
   }, [])
 
