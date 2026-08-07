@@ -14,6 +14,7 @@ import { PantallaCargando } from './components/PantallaCargando'
 const LoginPage               = lazy(() => import('./pages/LoginPage'))
 const PlayerLoginPage         = lazy(() => import('./pages/PlayerLoginPage'))
 const RecordsPage             = lazy(() => import('./pages/RecordsPage'))
+const LandingPage             = lazy(() => import('./pages/LandingPage'))
 const PlayerHomePage          = lazy(() => import('./pages/PlayerHomePage'))
 const AdminLayout             = lazy(() => import('./pages/admin/AdminLayout'))
 const AdminDashboard          = lazy(() => import('./pages/admin/AdminDashboard'))
@@ -414,7 +415,7 @@ export default function App() {
         <Routes>
 
           {/* Inicio público */}
-          <Route path="/" element={<RecordsPage />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/records" element={<RecordsPage />} />
           <Route path="/test-tarjetas" element={<TestTarjetas/>}/>
 
