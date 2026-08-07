@@ -803,12 +803,12 @@ export default function RecordsPage() {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  if (loading) return (
-    <>
-      {showSplash && campeones.length > 0 && <SplashCampeones campeones={campeones} onClose={cerrarSplash}/>}
-      <PantallaCargando/>
-    </>
-  )
+  // OJO: antes esto bloqueaba TODA la página (header, botón de login, menú...)
+  // hasta que terminaran de calcularse los récords — que es lo más pesado de
+  // cargar de toda la página. La gente entraba, veía una pantalla de carga
+  // larga sin ni siquiera el botón para iniciar sesión, y se iba. Ahora el
+  // resto de la página (y el acceso a login) se muestra de una, y solo la
+  // sección de Récords (más abajo) espera con su propio indicador chiquito.
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, color: S.text, paddingBottom: '76px' }}>
@@ -914,13 +914,15 @@ export default function RecordsPage() {
           <div style={{ height: '2px', flex: 1, background: `linear-gradient(90deg, ${S.gold}, transparent)` }}/>
         </div>
         <div style={{ fontSize: '.62rem', color: S.muted, letterSpacing: '2px', fontWeight: '700' }}>
-          RÉCORDS GOLMEBOL · {records.length} REGISTRADOS
+          RÉCORDS GOLMEBOL{loading ? '' : ` · ${records.length} REGISTRADOS`}
         </div>
       </div>
 
       {/* Carrusel único */}
       <div style={{ padding: '8px 0 32px' }}>
-        <Carrusel records={records}/>
+        {loading
+          ? <div style={{ textAlign: 'center', color: S.muted, fontSize: '.78rem', padding: '20px 0' }}>Cargando récords...</div>
+          : <Carrusel records={records}/>}
       </div>
 
       {/* ── INICIA SESIÓN PARA DESBLOQUEAR ── */}
