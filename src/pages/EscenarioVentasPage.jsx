@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr, registrarActividad } from '../lib/escenarioHelpers'
-import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History } from 'lucide-react'
+import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2 } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -16,13 +16,19 @@ export default function EscenarioVentasPage() {
   const [encargado, setEncargado] = useState(null)
   const [escenario, setEscenario] = useState(null)
   const [productos, setProductos] = useState([])
+  const [canchas,   setCanchas]   = useState([])
   const [ventasPorProducto, setVentasPorProducto] = useState({})
   const [ventasHoy, setVentasHoy] = useState([])
+  const [deudas,    setDeudas]    = useState([])
   const [loading,   setLoading]   = useState(true)
   const [cart,      setCart]      = useState({})
   const [msg,       setMsg]       = useState('')
   const [buscar,    setBuscar]    = useState('')
   const [mostrarHistorial, setMostrarHistorial] = useState(false)
+  const [mostrarDeudas,    setMostrarDeudas]    = useState(false)
+  const [modalDebe, setModalDebe] = useState(false)
+  const [deudorNombre, setDeudorNombre] = useState('')
+  const [deudorCancha, setDeudorCancha] = useState('')
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -39,6 +45,8 @@ export default function EscenarioVentasPage() {
     setEscenario(esc || null)
     const { data: prods } = await supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre')
     setProductos(prods || [])
+    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
+    setCanchas(cs || [])
 
     // El orden de la vitrina se calcula solo de las ventas de los últimos 60
     // días — no es un campo que el encargado tenga que marcar a mano. Lo más
@@ -53,6 +61,11 @@ export default function EscenarioVentasPage() {
     // vuelta — la más reciente de primero.
     const { data: hoy } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', todayStr()).order('hora', { ascending: false })
     setVentasHoy(hoy || [])
+
+    // Deudas ("debe") sin pagar todavía — no se limitan a hoy, por si alguien
+    // se quedó debiendo de otro día.
+    const { data: pend } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('pago_estado', 'pendiente').eq('estado', 'completada').order('created_at', { ascending: false })
+    setDeudas(pend || [])
     setLoading(false)
   }
 
@@ -87,7 +100,7 @@ export default function EscenarioVentasPage() {
     setCart(c => { const cp = { ...c }; delete cp[id]; return cp })
   }
 
-  async function finalizarVenta() {
+  async function finalizarVenta(fiado) {
     const items = Object.entries(cart).filter(([,q])=>q>0).map(([id,q]) => {
       const p = getProduct(id); return { productId:id, nombre:p.nombre, cantidad:q, precio:p.precio, costo:p.costo }
     })
@@ -99,14 +112,42 @@ export default function EscenarioVentasPage() {
     const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
     const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
     const now = new Date()
-    const { error } = await supabase.from('escenario_ventas').insert({
+    const payload = {
       escenario_id: escenario.id, fecha: todayStr(), hora: now.toTimeString().slice(0,5),
       items, total, costo_total: costoTotal, ganancia: total-costoTotal,
-    })
+    }
+    if (fiado) {
+      payload.pago_estado = 'pendiente'
+      payload.deudor_nombre = fiado.nombre
+      payload.deudor_cancha = fiado.cancha
+    }
+    const { error } = await supabase.from('escenario_ventas').insert(payload)
     if (error) { setMsg('Error al registrar venta: ' + error.message); return }
     await Promise.all(items.map(it => supabase.from('escenario_productos').update({ cantidad: getProduct(it.productId).cantidad - it.cantidad }).eq('id', it.productId)))
     setCart({})
-    setMsg(`✅ Venta registrada: ${fmtMoney(total)}`); setTimeout(()=>setMsg(''),3000)
+    if (fiado) {
+      setMsg(`📝 Anotado: ${fiado.nombre} debe ${fmtMoney(total)}`); setTimeout(()=>setMsg(''),4000)
+      registrarActividad(escenarioId, encargado, 'crear', 'venta', `Anotó fiado a "${fiado.nombre}" (${fiado.cancha}) por ${fmtMoney(total)}`)
+    } else {
+      setMsg(`✅ Venta registrada: ${fmtMoney(total)}`); setTimeout(()=>setMsg(''),3000)
+    }
+    fetchTodo()
+  }
+
+  function abrirDebe() {
+    setDeudorNombre(''); setDeudorCancha(''); setModalDebe(true)
+  }
+
+  function confirmarDebe() {
+    if (!deudorNombre.trim() || !deudorCancha.trim()) return
+    setModalDebe(false)
+    finalizarVenta({ nombre: deudorNombre.trim(), cancha: deudorCancha.trim() })
+  }
+
+  async function marcarPagado(venta) {
+    await supabase.from('escenario_ventas').update({ pago_estado:'pagado', pagado_at: new Date().toISOString() }).eq('id', venta.id)
+    setMsg(`✅ ${venta.deudor_nombre} ya pagó ${fmtMoney(venta.total)}`); setTimeout(()=>setMsg(''),3000)
+    registrarActividad(escenarioId, encargado, 'editar', 'venta', `Marcó como pagada la deuda de "${venta.deudor_nombre}" (${fmtMoney(venta.total)})`)
     fetchTodo()
   }
 
@@ -154,10 +195,35 @@ export default function EscenarioVentasPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'16px 16px 0' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
-        <button onClick={()=>setMostrarHistorial(v=>!v)}
-          style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'7px', width:'100%', padding:'10px', background: mostrarHistorial ? S.cyanDim : S.card, border:`1px solid ${mostrarHistorial ? S.cyan : S.border}`, borderRadius:'10px', cursor:'pointer', color: mostrarHistorial ? S.cyan : S.text2, fontWeight:700, fontSize:'.78rem', marginBottom:'14px' }}>
-          <History size={14}/> Ventas de hoy {ventasHoy.length>0 ? `(${ventasHoy.length})` : ''} — devolver una venta
-        </button>
+        <div style={{ display:'grid', gridTemplateColumns: deudas.length>0 ? '1fr 1fr' : '1fr', gap:'8px', marginBottom:'14px' }}>
+          <button onClick={()=>setMostrarHistorial(v=>!v)}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background: mostrarHistorial ? S.cyanDim : S.card, border:`1px solid ${mostrarHistorial ? S.cyan : S.border}`, borderRadius:'10px', cursor:'pointer', color: mostrarHistorial ? S.cyan : S.text2, fontWeight:700, fontSize:'.74rem' }}>
+            <History size={13}/> Ventas de hoy {ventasHoy.length>0 ? `(${ventasHoy.length})` : ''}
+          </button>
+          {deudas.length > 0 && (
+            <button onClick={()=>setMostrarDeudas(v=>!v)}
+              style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background: mostrarDeudas ? 'rgba(249,168,37,.15)' : S.card, border:`1px solid ${mostrarDeudas ? S.gold : S.border}`, borderRadius:'10px', cursor:'pointer', color: mostrarDeudas ? S.gold : S.text2, fontWeight:700, fontSize:'.74rem' }}>
+              <NotebookPen size={13}/> Deben ({deudas.length})
+            </button>
+          )}
+        </div>
+
+        {mostrarDeudas && deudas.length > 0 && (
+          <div style={{ marginBottom:'16px' }}>
+            {deudas.map(v => (
+              <div key={v.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 12px', background:'rgba(249,168,37,.08)', border:`1px solid ${S.gold}`, borderRadius:'10px', marginBottom:'8px' }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:'.82rem', fontWeight:800 }}>{v.deudor_nombre} <span style={{ fontWeight:600, color:S.muted }}>· {v.deudor_cancha}</span></div>
+                  <div style={{ fontSize:'.76rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', color:S.text2 }}>{(v.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')}</div>
+                  <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>{fmtMoney(v.total)}</div>
+                </div>
+                <button onClick={()=>marcarPagado(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                  <CheckCircle2 size={12}/> Ya pagó
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {mostrarHistorial && (
           <div style={{ marginBottom:'16px' }}>
@@ -244,9 +310,43 @@ export default function EscenarioVentasPage() {
               <span style={{ fontWeight:700, fontSize:'.9rem' }}>Total</span>
               <span style={{ fontWeight:900, fontSize:'1.3rem', color:S.gold }}>{fmtMoney(total)}</span>
             </div>
-            <button onClick={finalizarVenta}
-              style={{ width:'100%', padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
-              <DollarSign size={17}/> COBRAR
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={abrirDebe}
+                style={{ flex:'0 0 auto', padding:'14px 16px', background:'none', border:`1.5px solid ${S.gold}`, borderRadius:'12px', cursor:'pointer', color:S.gold, fontWeight:800, fontSize:'.85rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px' }}>
+                <NotebookPen size={16}/> Debe
+              </button>
+              <button onClick={()=>finalizarVenta()}
+                style={{ flex:1, padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+                <DollarSign size={17}/> COBRAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalDebe && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'360px', maxWidth:'100%' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+              <div style={{ fontWeight:800, fontSize:'1rem' }}>📝 Anotar en cuenta</div>
+              <button onClick={()=>setModalDebe(false)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+            </div>
+            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>Total: <span style={{ color:S.gold, fontWeight:800 }}>{fmtMoney(total)}</span> — para saber a quién cobrarle después</div>
+            <div style={{ marginBottom:'12px' }}>
+              <label style={{ fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }}>Nombre</label>
+              <input value={deudorNombre} onChange={e=>setDeudorNombre(e.target.value)} autoFocus
+                style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }} placeholder="¿Quién debe?"/>
+            </div>
+            <div style={{ marginBottom:'18px' }}>
+              <label style={{ fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }}>Cancha en la que está jugando</label>
+              <input value={deudorCancha} onChange={e=>setDeudorCancha(e.target.value)}
+                style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }}
+                placeholder="Ej: Cancha 1" list="canchas-debe"/>
+              <datalist id="canchas-debe">{canchas.map(c => <option key={c.id} value={c.nombre}/>)}</datalist>
+            </div>
+            <button onClick={confirmarDebe} disabled={!deudorNombre.trim() || !deudorCancha.trim()}
+              style={{ width:'100%', padding:'13px', background:S.gold, border:'none', borderRadius:'12px', cursor:'pointer', color:'#1a1300', fontWeight:800, fontSize:'.88rem', opacity: (!deudorNombre.trim() || !deudorCancha.trim()) ? .5 : 1 }}>
+              Anotar deuda
             </button>
           </div>
         </div>

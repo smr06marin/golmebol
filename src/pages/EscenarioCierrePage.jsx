@@ -6,7 +6,7 @@ import { fmtMoney, fmtDate, todayStr } from '../lib/escenarioHelpers'
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
-  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5', loss: '#d93025',
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 
@@ -42,6 +42,8 @@ export default function EscenarioCierrePage() {
   const ventasCompletadas = ventas.filter(v => v.estado !== 'devuelta')
   const ventasDevueltas = ventas.filter(v => v.estado === 'devuelta')
   const totalDevuelto = ventasDevueltas.reduce((a,v)=>a+Number(v.total||0),0)
+  const ventasFiadas = ventasCompletadas.filter(v => v.pago_estado === 'pendiente')
+  const totalFiado = ventasFiadas.reduce((a,v)=>a+Number(v.total||0),0)
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
@@ -82,7 +84,10 @@ export default function EscenarioCierrePage() {
             {ventasDevueltas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Devuelto ({ventasDevueltas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>-{fmtMoney(totalDevuelto)}</div></div>
             )}
-            <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja esperada</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas)}</div></div>
+            {ventasFiadas.length > 0 && (
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Por cobrar ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiado)}</div></div>
+            )}
+            <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja esperada</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas - totalFiado)}</div></div>
           </div>
         </div>
 
