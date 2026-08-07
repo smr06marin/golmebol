@@ -2743,6 +2743,24 @@ export default function AdminTorneoDetallePage() {
   }
   const tablaOrdenada      = calcTablaGeneral()
 
+  // Valla menos vencida GLOBAL por equipo: a diferencia de la tabla general
+  // (que en fase de grupos ya no cuenta partidos de eliminación directa),
+  // los goles en contra acá deben seguir sumando aunque el torneo ya esté
+  // en eliminatorias.
+  function calcVallaEquipos() {
+    const gc = {}, pj = {}
+    partidos.filter(p => p.status === 'finished').forEach(p => {
+      gc[p.home_team_id] = (gc[p.home_team_id] || 0) + (p.away_score || 0); pj[p.home_team_id] = (pj[p.home_team_id] || 0) + 1
+      gc[p.away_team_id] = (gc[p.away_team_id] || 0) + (p.home_score || 0); pj[p.away_team_id] = (pj[p.away_team_id] || 0) + 1
+    })
+    return equipos.filter(e => pj[e.id] > 0)
+      .map(e => ({
+        equipo: e, gc: gc[e.id] || 0, pj: pj[e.id] || 0,
+        arqueros: arquerosEquipos.filter(a => a.team_id === e.id),
+      }))
+      .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
+  }
+
   const faseActual         = torneo.fase_actual || 'grupos'
   const gruposFinalizados  = faseActual === 'eliminatorias'
 
@@ -4080,10 +4098,7 @@ export default function AdminTorneoDetallePage() {
           <div>
             <VallaEquipos
               vacio="Sin resultados aún"
-              rows={tablaOrdenada.filter(r => r.pj > 0).map(r => ({
-                equipo: r.equipo, gc: r.gc, pj: r.pj,
-                arqueros: arquerosEquipos.filter(a => a.team_id === r.equipo.id),
-              }))}
+              rows={calcVallaEquipos()}
             />
           </div>
         </div>

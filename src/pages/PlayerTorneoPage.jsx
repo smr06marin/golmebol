@@ -765,14 +765,22 @@ export default function PlayerTorneoPage() {
   }
 
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
-  // los arqueros registrados de cada equipo (fotos y nombres)
-  const vallaEquiposRows = tablaOrdenada
-    .filter(r => r.pj > 0)
-    .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
-    .map(r => ({
-      equipo: r.equipo, gc: r.gc, pj: r.pj,
-      arqueros: arquerosEquipos.filter(a => a.team_id === r.equipo.id),
+  // los arqueros registrados de cada equipo (fotos y nombres). A diferencia
+  // de la tabla de posiciones (que en fase de grupos ya no cuenta partidos
+  // de eliminación directa), acá los goles en contra deben seguir sumando
+  // aunque el torneo ya esté en eliminatorias.
+  const gcVallaTotal = {}, pjVallaTotal = {}
+  partidos.filter(p => p.status === 'finished').forEach(p => {
+    if (tabla[p.home_team_id]) { gcVallaTotal[p.home_team_id] = (gcVallaTotal[p.home_team_id] || 0) + (p.away_score || 0); pjVallaTotal[p.home_team_id] = (pjVallaTotal[p.home_team_id] || 0) + 1 }
+    if (tabla[p.away_team_id]) { gcVallaTotal[p.away_team_id] = (gcVallaTotal[p.away_team_id] || 0) + (p.home_score || 0); pjVallaTotal[p.away_team_id] = (pjVallaTotal[p.away_team_id] || 0) + 1 }
+  })
+  const vallaEquiposRows = equipos
+    .filter(e => pjVallaTotal[e.id] > 0)
+    .map(e => ({
+      equipo: e, gc: gcVallaTotal[e.id] || 0, pj: pjVallaTotal[e.id] || 0,
+      arqueros: arquerosEquipos.filter(a => a.team_id === e.id),
     }))
+    .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   // "partidos" viene ordenado del más reciente al más antiguo (para que
   // Resultados muestre el último jugado primero). Los próximos necesitan el

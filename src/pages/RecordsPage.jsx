@@ -1036,7 +1036,19 @@ export default function RecordsPage() {
                     </div>
                   )
                 })() : (() => {
-                  const vallaMenosVencida = [...torneoTabla.filas].filter(f => f.pj > 0).sort((a, b) => a.gc - b.gc || b.pj - a.pj).slice(0, 5)
+                  // Goles en contra de TODOS los partidos jugados (grupos + eliminatorias)
+                  // — la tabla de posiciones en fase de grupos no cuenta los partidos de
+                  // eliminación directa, pero para la valla menos vencida sí deben sumar.
+                  const gcTotal = {}, pjTotal = {}
+                  torneoTabla.partidos.filter(m => m.status === 'finished').forEach(m => {
+                    if (torneoTabla.equiposMap[m.home_team_id]) { gcTotal[m.home_team_id] = (gcTotal[m.home_team_id] || 0) + (m.away_score || 0); pjTotal[m.home_team_id] = (pjTotal[m.home_team_id] || 0) + 1 }
+                    if (torneoTabla.equiposMap[m.away_team_id]) { gcTotal[m.away_team_id] = (gcTotal[m.away_team_id] || 0) + (m.home_score || 0); pjTotal[m.away_team_id] = (pjTotal[m.away_team_id] || 0) + 1 }
+                  })
+                  const vallaMenosVencida = Object.values(torneoTabla.equiposMap)
+                    .filter(eq => pjTotal[eq.id] > 0)
+                    .map(eq => ({ equipo: eq, gc: gcTotal[eq.id] || 0, pj: pjTotal[eq.id] || 0 }))
+                    .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
+                    .slice(0, 5)
                   return (
                     <div>
                       <div style={{ fontSize: '.68rem', fontWeight: '800', color: S.muted, letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
