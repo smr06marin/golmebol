@@ -333,6 +333,52 @@ function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
   )
 }
 
+// Lista de camisetas para elegir jugador (goles, faltas acumuladas,
+// capitán). Se define ACÁ AFUERA (no adentro de PlanillaPartido) a propósito:
+// si quedara anidada dentro del componente, React la trataría como un tipo
+// de componente NUEVO en cada render del padre (el cronómetro cambia el
+// estado "segundos" cada segundo mientras corre) y la desmontaría/montaría
+// de nuevo constantemente — eso es lo que hacía que la ventana de elegir
+// jugador "se subiera sola" y no dejara hacer scroll hasta el último de la
+// lista (se perdía el scroll cada vez que el padre volvía a renderizar).
+function DropdownCamisetas({ jugs, dropKey, onSelect, equipo, excluir = [], dropdownOpen, setDropdownOpen, colorLocal, colorVisitante, partido }) {
+  if (dropdownOpen !== dropKey) return null
+  const usados = new Set((excluir || []).filter(n => n !== '' && n !== null && n !== undefined).map(String))
+  const jugsConNumero = jugs.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined && !usados.has(String(j.numero)))
+  const arriba = equipo !== 'visitante'
+  return (
+    <>
+      {/* Fondo oscuro: enfoca la lista y al tocarlo se cierra */}
+      <div onClick={e => { e.stopPropagation(); setDropdownOpen(null) }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9490 }}/>
+      {/* Ocupa casi toda la altura de la pantalla (top y bottom chiquitos en
+          vez de un maxHeight fijo) para que la lista completa de jugadores
+          entre sin tener que hacer scroll para ver los últimos. */}
+      <div onClick={e => e.stopPropagation()}
+        style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)',
+          top: '14px', bottom: '14px',
+          zIndex: 9500, background: '#fff', border: '1px solid #dadce0', borderRadius: '14px',
+          boxShadow: '0 12px 40px rgba(0,0,0,.45)', width: 'min(92vw, 340px)',
+          overflowY: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '10px 14px', background: arriba ? colorLocal : colorVisitante, color: '#fff', fontWeight: 800, fontSize: '.82rem', position: 'sticky', top: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{arriba ? partido.home?.name : partido.away?.name}</span>
+          <span onClick={() => setDropdownOpen(null)} style={{ cursor: 'pointer', fontWeight: 900, padding: '0 4px' }}>✕</span>
+        </div>
+        {jugsConNumero.length === 0 && <div style={{ padding: '16px', fontSize: '.85rem', color: '#9aa0a6', textAlign: 'center' }}>Sin números disponibles</div>}
+        {jugsConNumero.map(j => (
+          <div key={j.numero} onClick={() => onSelect(j.numero)}
+            style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #f1f3f4' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
+            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+            <span style={{ fontWeight: 900, color: '#111', minWidth: '44px', background: '#e8f0fe', borderRadius: '8px', textAlign: 'center', padding: '6px 4px', fontSize: '1.05rem' }}>#{j.numero}</span>
+            <span style={{ fontSize: '.92rem', color: '#111', fontWeight: 600 }}>{j.nombre}</span>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 export default function PlanillaPartido({ partido, onClose, onGuardarResultado }) {
   const [loading,            setLoading]            = useState(true)
   const [arbitrosTorneo,     setArbitrosTorneo]     = useState([])
@@ -1565,44 +1611,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   // podía quedar fuera de la parte visible). El equipo de ARRIBA (local) la
   // despliega en la mitad superior; el de ABAJO (visitante) en la inferior.
   // `excluir`: números que ya fueron usados y no deben volver a salir.
-  function DropdownCamisetas({ jugs, dropKey, onSelect, equipo, excluir = [] }) {
-    if (dropdownOpen !== dropKey) return null
-    const usados = new Set((excluir || []).filter(n => n !== '' && n !== null && n !== undefined).map(String))
-    const jugsConNumero = jugs.filter(j => j.numero !== '' && j.numero !== null && j.numero !== undefined && !usados.has(String(j.numero)))
-    const arriba = equipo !== 'visitante'
-    return (
-      <>
-        {/* Fondo oscuro: enfoca la lista y al tocarlo se cierra */}
-        <div onClick={e => { e.stopPropagation(); setDropdownOpen(null) }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9490 }}/>
-        {/* Ocupa casi toda la altura de la pantalla (top y bottom chiquitos en
-            vez de un maxHeight fijo) para que la lista completa de jugadores
-            entre sin tener que hacer scroll para ver los últimos. */}
-        <div onClick={e => e.stopPropagation()}
-          style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)',
-            top: '14px', bottom: '14px',
-            zIndex: 9500, background: '#fff', border: '1px solid #dadce0', borderRadius: '14px',
-            boxShadow: '0 12px 40px rgba(0,0,0,.45)', width: 'min(92vw, 340px)',
-            overflowY: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '10px 14px', background: arriba ? colorLocal : colorVisitante, color: '#fff', fontWeight: 800, fontSize: '.82rem', position: 'sticky', top: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>{arriba ? partido.home?.name : partido.away?.name}</span>
-            <span onClick={() => setDropdownOpen(null)} style={{ cursor: 'pointer', fontWeight: 900, padding: '0 4px' }}>✕</span>
-          </div>
-          {jugsConNumero.length === 0 && <div style={{ padding: '16px', fontSize: '.85rem', color: '#9aa0a6', textAlign: 'center' }}>Sin números disponibles</div>}
-          {jugsConNumero.map(j => (
-            <div key={j.numero} onClick={() => onSelect(j.numero)}
-              style={{ padding: '13px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid #f1f3f4' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
-              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-              <span style={{ fontWeight: 900, color: '#111', minWidth: '44px', background: '#e8f0fe', borderRadius: '8px', textAlign: 'center', padding: '6px 4px', fontSize: '1.05rem' }}>#{j.numero}</span>
-              <span style={{ fontSize: '.92rem', color: '#111', fontWeight: 600 }}>{j.nombre}</span>
-            </div>
-          ))}
-        </div>
-      </>
-    )
-  }
-
   function SlotGol({ equipo, slotIdx, goles, jugs, colorEquipo }) {
     const gol = goles[slotIdx], num = slotIdx + 1, dropKey = `gol-${equipo}-${slotIdx}`
     const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1), esUl = ul === slotIdx
@@ -1620,7 +1628,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           ) : puedeClic ? (
             <div style={{ flex: 1, position: 'relative' }} onClick={e => { e.stopPropagation(); intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}>
               <span style={{ fontSize: '9px', color: equipoTieneArquero(equipo) ? '#555' : '#ccc', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
-              <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarGol(equipo, slotIdx, n)}/>
+              <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarGol(equipo, slotIdx, n)}
+                dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
             </div>
           ) : <span style={{ fontSize: '7px', color: '#bbb' }}>—</span>}
         </div>
@@ -1641,7 +1650,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         {val !== null ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>{val}<span style={{ fontSize: '6px', color: '#aaa' }}>2x</span></span>
           : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
           : <span style={{ color: bloqueadaPorPeriodo ? '#999' : '#ccc', fontSize: '8px' }}>{bloqueadaPorPeriodo ? '🔒' : '—'}</span>}
-        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}/>
+        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}
+          dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
       </td>
     )
   }
@@ -1668,7 +1678,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
           : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
           : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
         {/* excluir={valores}: un número ya elegido en esta lista no vuelve a salir */}
-        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} excluir={valores} onSelect={n => registrarSeleccion(setArr, valores, i, n)}/>
+        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} excluir={valores} onSelect={n => registrarSeleccion(setArr, valores, i, n)}
+          dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
       </div>
     )
   }
@@ -2278,7 +2289,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 <div style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ color: '#111', position: 'relative' }} onClick={e => { e.stopPropagation(); setDropdownOpen(dropdownOpen === 'capitan-local' ? null : 'capitan-local') }}>
                     <b>CAPITÁN N°:</b> <span style={{ display: 'inline-block', minWidth: '24px', borderBottom: '1px solid #000', fontWeight: '900', cursor: 'pointer', textAlign: 'center', background: capitanes.local ? '#e6f4ea' : '#fff3cd' }}>{capitanes.local ? `#${capitanes.local}` : '+'}</span>
-                    <DropdownCamisetas jugs={jugadoresLocal} dropKey="capitan-local" equipo="local" onSelect={n => { setCapitanes(prev => ({ ...prev, local: n })); setDropdownOpen(null) }}/>
+                    <DropdownCamisetas jugs={jugadoresLocal} dropKey="capitan-local" equipo="local" onSelect={n => { setCapitanes(prev => ({ ...prev, local: n })); setDropdownOpen(null) }}
+                      dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
                   </span>
                   <span style={{ color: '#111' }}><b>FIRMA:</b></span>
                   <FirmaSlot label="Capitán Local" firma={firmas.capitanLocal} onFirmar={() => setFirmaModal('principal-capitanLocal')}/>
@@ -2307,7 +2319,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 <div style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ color: '#111', position: 'relative' }} onClick={e => { e.stopPropagation(); setDropdownOpen(dropdownOpen === 'capitan-visitante' ? null : 'capitan-visitante') }}>
                     <b>CAPITÁN N°:</b> <span style={{ display: 'inline-block', minWidth: '24px', borderBottom: '1px solid #000', fontWeight: '900', cursor: 'pointer', textAlign: 'center', background: capitanes.visitante ? '#e6f4ea' : '#fff3cd' }}>{capitanes.visitante ? `#${capitanes.visitante}` : '+'}</span>
-                    <DropdownCamisetas jugs={jugadoresVisitante} dropKey="capitan-visitante" equipo="visitante" onSelect={n => { setCapitanes(prev => ({ ...prev, visitante: n })); setDropdownOpen(null) }}/>
+                    <DropdownCamisetas jugs={jugadoresVisitante} dropKey="capitan-visitante" equipo="visitante" onSelect={n => { setCapitanes(prev => ({ ...prev, visitante: n })); setDropdownOpen(null) }}
+                      dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
                   </span>
                   <span style={{ color: '#111' }}><b>FIRMA:</b></span>
                   <FirmaSlot label="Capitán Visitante" firma={firmas.capitanVisitante} onFirmar={() => setFirmaModal('principal-capitanVisitante')}/>
