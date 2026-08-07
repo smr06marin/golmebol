@@ -1,24 +1,27 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, ChevronRight } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, ChevronRight, Calendar, ArrowRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 
-// Misma paleta oscura que usa el resto de la plataforma (Récords, Escenarios,
-// etc.) — así la nueva portada se siente parte de la misma app, no un
-// mockup pegado encima.
+// Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
+// acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
+// portada tiene su propia identidad visual, más "marketing", que el resto
+// del sitio (que sigue siendo cyan/dorado sobre navy).
 const S = {
-  bg:     '#07070e',
-  bg2:    '#0b0e17',
-  card:   '#0f1623',
-  border: '#1e2d3d',
-  gold:   '#f9a825',
-  cyan:   '#00ddd0',
-  green:  '#22c55e',
-  red:    '#e53935',
-  text:   '#e8f4fd',
-  muted:  '#7a9ab5',
+  bg:      '#0a0a0a',
+  bg2:     '#111111',
+  card:    '#161616',
+  card2:   '#1c1c1c',
+  border:  '#2a2a2a',
+  green:   '#6fcf3d',
+  greenDk: '#4ca82a',
+  red:     '#e5433d',
+  gold:    '#f5a623',
+  text:    '#ffffff',
+  text2:   '#c9c9c9',
+  muted:   '#8a8a8a',
 }
 
 function Escudo({ logo_url, name, size = 40, radius = 10 }) {
@@ -30,6 +33,13 @@ function Escudo({ logo_url, name, size = 40, radius = 10 }) {
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
   )
+}
+
+function fmtFecha(iso) {
+  if (!iso) return null
+  try {
+    return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch { return null }
 }
 
 export default function LandingPage() {
@@ -74,7 +84,7 @@ export default function LandingPage() {
   }
 
   async function fetchTorneosActivos() {
-    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season').eq('status', 'active')
+    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at').eq('status', 'active')
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season').eq('status', 'active')
     const [{ data: tts }, { data: ms }] = await Promise.all([
       supabase.from('tournament_teams').select('tournament_id'),
@@ -96,14 +106,14 @@ export default function LandingPage() {
 
   async function fetchPartidosVivo() {
     const { data } = await supabase.from('matches')
-      .select('id, tournament_id, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad)')
+      .select('id, tournament_id, matchday, fase, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad)')
       .eq('status', 'scheduled')
       .or('live_state.not.is.null,live_state_rapida.not.is.null')
     setMatchesVivoRaw(data || [])
   }
 
   async function fetchEscenarios() {
-    const { data } = await supabase.from('escenarios').select('id, name, city, logo_url').eq('activo', true).limit(6)
+    const { data } = await supabase.from('escenarios').select('id, name, city, logo_url, imagen_fondo_url').eq('activo', true).limit(6)
     setEscenarios(data || [])
   }
 
@@ -114,95 +124,119 @@ export default function LandingPage() {
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
-  const btnGhost = { padding: '9px 16px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.82rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }
-  const btnPrimary = { padding: '11px 22px', borderRadius: '10px', border: 'none', background: `linear-gradient(135deg, ${S.gold}, #ffcc4d)`, color: '#1a1200', fontSize: '.9rem', fontWeight: 900, cursor: 'pointer', boxShadow: '0 4px 14px rgba(249,168,37,.35)', whiteSpace: 'nowrap' }
+  const FASES_LABEL = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: 'Gran final' }
+  function labelPartido(m) {
+    if (m.fase && m.fase !== 'grupo') return FASES_LABEL[m.fase] || 'Eliminatorias'
+    if (m.matchday) return `Fecha ${m.matchday}`
+    return m.tournaments?.name || ''
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: 'system-ui,sans-serif', color: S.text }}>
+      <style>{`
+        .gm-scrollx::-webkit-scrollbar { display: none }
+        .gm-scrollx { scrollbar-width: none; -ms-overflow-style: none }
+        .gm-hover:hover { filter: brightness(1.08) }
+      `}</style>
 
-      {/* ── Header ── */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(7,7,14,.92)', backdropFilter: 'blur(10px)', borderBottom: `1px solid ${S.border}` }}>
-        <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/marca/watermark-logo.png" alt="Golmebol" style={{ height: '26px' }}/>
-            <span style={{ fontWeight: 900, fontSize: '1.05rem', letterSpacing: '.02em' }}>GOLMEBOL</span>
+      {/* ── Header: fondo claro, como el mockup ── */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: '#ffffff', borderBottom: '1px solid #eaeaea' }}>
+        <div style={{ maxWidth: '1120px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+            <img src="/marca/watermark-logo.png" alt="Golmebol" style={{ height: '30px' }}/>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: '1.05rem', letterSpacing: '.01em', color: '#111', lineHeight: 1.1 }}>GOLMEBOL</div>
+              <div style={{ fontSize: '.6rem', fontWeight: 700, letterSpacing: '.08em', color: '#9a9a9a' }}>TORNEOS DE FÚTBOL</div>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button onClick={() => navigate('/login')} style={btnGhost}>Administrador</button>
-            <button onClick={() => navigate('/jugador/login')} style={btnPrimary}>Ingresar</button>
+            <button className="gm-hover" onClick={() => navigate('/jugador/login')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.85rem', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <ArrowRight size={15}/> INGRESAR
+            </button>
+            <button className="gm-hover" onClick={() => navigate('/login')} style={{ padding: '10px 16px', borderRadius: '10px', border: '1px solid #111', background: '#fff', color: '#111', fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              ADMIN
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ── Hero ── */}
-      <div style={{ position: 'relative', padding: '56px 16px 44px', textAlign: 'center', overflow: 'hidden', background: `radial-gradient(circle at 50% 0%, ${S.bg2}, ${S.bg} 70%)` }}>
-        <div style={{ position: 'absolute', inset: 0, opacity: .06, backgroundImage: `radial-gradient(${S.cyan} 1px, transparent 1px)`, backgroundSize: '22px 22px', pointerEvents: 'none' }}/>
+      {/* ── Hero: oscuro con acento verde ── */}
+      <div style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', background: `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
+        <div style={{ position: 'absolute', top: '-140px', right: '-100px', width: '420px', height: '420px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
+        <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '280px', height: '280px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
         <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto' }}>
-          <div style={{ display: 'inline-block', padding: '5px 14px', borderRadius: '999px', border: `1px solid ${S.border}`, color: S.cyan, fontSize: '.72rem', fontWeight: 700, letterSpacing: '.06em', marginBottom: '18px' }}>
-            LIGA AMATEUR DE FÚTBOL SALA — ARMENIA, QUINDÍO
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', border: `1px solid ${S.border}`, color: S.green, fontSize: '.68rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '20px' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.green, display: 'inline-block' }}/> LIGA AMATEUR · ARMENIA, QUINDÍO
           </div>
-          <h1 style={{ fontSize: 'clamp(1.7rem, 5vw, 2.5rem)', fontWeight: 900, lineHeight: 1.15, margin: '0 0 14px' }}>
-            Todos los torneos<br/>en un solo lugar
+          <h1 style={{ fontSize: 'clamp(1.9rem, 5.5vw, 2.7rem)', fontWeight: 900, lineHeight: 1.12, margin: '0 0 16px', letterSpacing: '-.01em' }}>
+            Todos los torneos en<br/>un <span style={{ color: S.green }}>solo lugar</span>
           </h1>
-          <p style={{ color: S.muted, fontSize: '.95rem', margin: '0 0 26px', lineHeight: 1.5 }}>
+          <p style={{ color: S.text2, fontSize: '.95rem', margin: '0 0 30px', lineHeight: 1.6 }}>
             Torneos en vivo, tablas de posiciones, récords, escenarios deportivos y escuelas de fútbol — todo en Golmebol.
           </p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => scrollA(torneosRef)} style={btnPrimary}>Ver torneos</button>
-            <button onClick={() => scrollA(vivoRef)} style={btnGhost}>Ver partidos en vivo</button>
+            <button className="gm-hover" onClick={() => scrollA(torneosRef)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
+              VER TORNEOS <ArrowRight size={16}/>
+            </button>
+            <button className="gm-hover" onClick={() => scrollA(vivoRef)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
+              <Radio size={15} color={S.red}/> VER EN VIVO
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ── Barra de stats ── */}
-      <div style={{ maxWidth: '1080px', margin: '-18px auto 0', padding: '0 16px 6px', position: 'relative', zIndex: 2 }}>
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '18px 10px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center' }}>
+      {/* ── Barra de stats (flotando sobre el hero, como el mockup) ── */}
+      <div style={{ maxWidth: '1120px', margin: '-42px auto 0', padding: '0 16px', position: 'relative', zIndex: 2 }}>
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '18px', padding: '22px 12px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
           {[
-            { label: 'Torneos', val: stats.torneos, icon: Trophy, color: S.gold },
-            { label: 'Equipos', val: stats.equipos, icon: Users, color: S.cyan },
-            { label: 'Jugadores', val: stats.jugadores, icon: Users, color: S.green },
-            { label: 'Goles', val: stats.goles, icon: Target, color: S.red },
+            { label: 'Torneos', val: stats.torneos, icon: Trophy },
+            { label: 'Equipos', val: stats.equipos, icon: Users },
+            { label: 'Jugadores', val: stats.jugadores, icon: Users },
+            { label: 'Goles', val: stats.goles, icon: Target },
           ].map((s, i) => (
             <div key={i}>
-              <s.icon size={16} color={s.color} style={{ marginBottom: '4px' }}/>
-              <div style={{ fontSize: '1.15rem', fontWeight: 900 }}>{s.val}</div>
-              <div style={{ fontSize: '.62rem', color: S.muted, textTransform: 'uppercase', letterSpacing: '.04em' }}>{s.label}</div>
+              <s.icon size={18} color={S.green} style={{ marginBottom: '6px' }}/>
+              <div style={{ fontSize: 'clamp(1.1rem, 4vw, 1.4rem)', fontWeight: 900 }}>{s.val.toLocaleString('es-CO')}</div>
+              <div style={{ fontSize: '.6rem', color: S.muted, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: '2px' }}>{s.label}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── Torneos en juego ── */}
-      <div ref={torneosRef} style={{ maxWidth: '1080px', margin: '0 auto', padding: '40px 16px 8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>Torneos en juego</h2>
-          <button onClick={() => navigate('/records')} style={{ background: 'none', border: 'none', color: S.cyan, fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+      {/* ── Torneos en juego (carrusel horizontal) ── */}
+      <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 0 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', padding: '0 16px' }}>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Trophy size={18} color={S.green}/> Torneos en juego
+          </h2>
+          <button onClick={() => navigate('/records')} style={{ background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
             Ver todos <ChevronRight size={14}/>
           </button>
         </div>
         {torneos.length === 0 ? (
-          <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
+          <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
             No hay torneos activos en este momento.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '12px' }}>
+          <div className="gm-scrollx" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity' }}>
             {torneos.map(t => {
               const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
+              const inicio = fmtFecha(t.created_at)
               return (
-                <button key={t.id} onClick={() => navigate('/records')} style={{ textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '14px', cursor: 'pointer', color: S.text }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                    <Escudo logo_url={t.logo_url} name={t.name} size={38}/>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, fontSize: '.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                      <div style={{ fontSize: '.7rem', color: S.muted }}>{t.modalidad || 'Fútbol sala'}{t.season ? ` · ${t.season}` : ''}</div>
-                    </div>
+                <button key={t.id} className="gm-hover" onClick={() => navigate('/records')} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text }}>
+                  <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: enVivo ? 'rgba(229,67,61,.15)' : 'rgba(111,207,61,.15)', color: enVivo ? S.red : S.green, marginBottom: '12px' }}>
+                    {enVivo ? '● EN VIVO' : 'EN JUEGO'}
+                  </span>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+                    <Escudo logo_url={t.logo_url} name={t.name} size={56} radius={14}/>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '.68rem', fontWeight: 800, padding: '3px 9px', borderRadius: '999px', background: enVivo ? 'rgba(229,57,53,.15)' : 'rgba(0,221,208,.12)', color: enVivo ? S.red : S.cyan }}>
-                      {enVivo ? '● EN VIVO' : t.estado}
-                    </span>
-                    <span style={{ fontSize: '.72rem', color: S.muted }}>{t.equipos} equipos</span>
+                  <div style={{ fontWeight: 800, fontSize: '.92rem', textAlign: 'center', marginBottom: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '12px' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
+                    {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> Inició: {inicio}</span>}
+                    <span style={{ color: S.green, fontWeight: 700 }}>{t.estado}</span>
                   </div>
+                  <div style={{ width: '100%', textAlign: 'center', padding: '9px', borderRadius: '9px', background: S.card2, color: S.green, fontSize: '.75rem', fontWeight: 800 }}>VER TORNEO</div>
                 </button>
               )
             })}
@@ -211,8 +245,8 @@ export default function LandingPage() {
       </div>
 
       {/* ── Partidos en vivo ── */}
-      <div ref={vivoRef} style={{ maxWidth: '1080px', margin: '0 auto', padding: '32px 16px 8px' }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div ref={vivoRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '44px 16px 8px' }}>
+        <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Radio size={17} color={S.red}/> Partidos en vivo
         </h2>
         {partidosVivo.length === 0 ? (
@@ -220,27 +254,32 @@ export default function LandingPage() {
             No hay partidos en vivo en este momento.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
             {partidosVivo.map(m => (
-              <div key={m.id} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '.68rem', fontWeight: 800, color: S.red, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
+              <div key={m.id} style={{ background: S.card, border: `1px solid ${S.red}55`, borderRadius: '16px', padding: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '.65rem', fontWeight: 900, padding: '4px 9px', borderRadius: '999px', background: 'rgba(229,67,61,.15)', color: S.red, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
                   </span>
-                  <span style={{ fontSize: '.7rem', color: S.muted }}>{m.vivo.descanso ? 'Descanso' : `${m.vivo.reloj} · P${m.vivo.periodo}`}</span>
+                  <span style={{ fontSize: '.68rem', color: S.muted, fontWeight: 700 }}>{labelPartido(m)}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                    <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={26}/>
-                    <span style={{ fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                    <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={34}/>
+                    <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.home?.name}</span>
                   </div>
-                  <div style={{ fontWeight: 900, fontSize: '1rem', flexShrink: 0 }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: 'flex-end' }}>
-                    <span style={{ fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'right' }}>{m.away?.name}</span>
-                    <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={26}/>
+                  <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: '1.3rem' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+                    <div style={{ fontSize: '.6rem', color: S.red, fontWeight: 800, marginTop: '2px' }}>{m.vivo.descanso ? 'DESCANSO' : m.vivo.reloj}</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                    <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={34}/>
+                    <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
                   </div>
                 </div>
-                <div style={{ fontSize: '.68rem', color: S.muted, marginTop: '8px', textAlign: 'center' }}>{m.tournaments?.name}</div>
+                <button className="gm-hover" onClick={() => navigate('/records')} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                  VER PARTIDO
+                </button>
               </div>
             ))}
           </div>
@@ -249,55 +288,43 @@ export default function LandingPage() {
 
       {/* ── Escenarios / Escuelas ── */}
       {(escenarios.length > 0 || escuelas.length > 0) && (
-        <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '32px 16px 8px', display: 'grid', gridTemplateColumns: escenarios.length > 0 && escuelas.length > 0 ? '1fr 1fr' : '1fr', gap: '20px' }}>
+        <div style={{ maxWidth: '1120px', margin: '0 auto', padding: '44px 16px 8px', display: 'grid', gridTemplateColumns: escenarios.length > 0 && escuelas.length > 0 ? 'repeat(auto-fit, minmax(260px, 1fr))' : '1fr', gap: '16px' }}>
           {escenarios.length > 0 && (
-            <div>
-              <h2 style={{ fontSize: '1.02rem', fontWeight: 800, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <Building2 size={16} color={S.cyan}/> Escenarios
-              </h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {escenarios.map(e => (
-                  <button key={e.id} onClick={() => navigate('/reservar/' + e.id)} style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '10px 12px', cursor: 'pointer', color: S.text }}>
-                    <Escudo logo_url={e.logo_url} name={e.name} size={32} radius={8}/>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '.83rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-                      {e.city && <div style={{ fontSize: '.68rem', color: S.muted }}>{e.city}</div>}
-                    </div>
-                    <ChevronRight size={15} color={S.muted}/>
-                  </button>
-                ))}
-              </div>
+            <div style={{ position: 'relative', borderRadius: '18px', overflow: 'hidden', border: `1px solid ${S.border}`, minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '20px',
+              backgroundImage: escenarios[0].imagen_fondo_url ? `linear-gradient(180deg, rgba(10,10,10,.2), rgba(10,10,10,.92)), url(${escenarios[0].imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
+              backgroundSize: 'cover', backgroundPosition: 'center' }}>
+              <Building2 size={20} color={S.green} style={{ marginBottom: '8px' }}/>
+              <div style={{ fontWeight: 900, fontSize: '1.02rem', marginBottom: '4px' }}>Escenarios</div>
+              <div style={{ fontSize: '.78rem', color: S.text2, marginBottom: '14px' }}>Los mejores escenarios deportivos para que vivas tu pasión.</div>
+              <button className="gm-hover" onClick={() => navigate('/reservar/' + escenarios[0].id)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
+                VER ESCENARIOS <ArrowRight size={14}/>
+              </button>
             </div>
           )}
           {escuelas.length > 0 && (
-            <div>
-              <h2 style={{ fontSize: '1.02rem', fontWeight: 800, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <GraduationCap size={16} color={S.gold}/> Escuelas de fútbol
-              </h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {escuelas.map(e => (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '10px 12px' }}>
-                    <Escudo logo_url={e.logo_url} name={e.name} size={32} radius={8}/>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '.83rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-                      {e.categoria && <div style={{ fontSize: '.68rem', color: S.muted }}>{e.categoria}</div>}
-                    </div>
-                  </div>
-                ))}
+            <div style={{ borderRadius: '18px', border: `1px solid ${S.border}`, background: S.card, padding: '20px', display: 'flex', flexDirection: 'column' }}>
+              <GraduationCap size={20} color={S.green} style={{ marginBottom: '8px' }}/>
+              <div style={{ fontWeight: 900, fontSize: '1.02rem', marginBottom: '4px' }}>Escuelas de fútbol</div>
+              <div style={{ fontSize: '.78rem', color: S.text2, marginBottom: '14px' }}>Formamos talentos, construimos sueños.</div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                {escuelas.slice(0, 5).map(e => <Escudo key={e.id} logo_url={e.logo_url} name={e.name} size={34} radius={9}/>)}
               </div>
+              <button className="gm-hover" onClick={() => navigate('/jugador/login')} style={{ alignSelf: 'flex-start', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
+                VER ESCUELAS <ArrowRight size={14}/>
+              </button>
             </div>
           )}
         </div>
       )}
 
       {/* ── Footer ── */}
-      <div style={{ borderTop: `1px solid ${S.border}`, marginTop: '44px', padding: '24px 16px', textAlign: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', marginBottom: '8px' }}>
-          <img src="/marca/watermark-logo.png" alt="Golmebol" style={{ height: '18px' }}/>
-          <span style={{ fontWeight: 800, fontSize: '.85rem' }}>GOLMEBOL</span>
+      <div style={{ borderTop: `1px solid ${S.border}`, marginTop: '54px', padding: '28px 16px', textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', marginBottom: '6px' }}>
+          <img src="/marca/watermark-logo.png" alt="Golmebol" style={{ height: '20px' }}/>
+          <span style={{ fontWeight: 900, fontSize: '.9rem' }}>GOLMEBOL</span>
         </div>
-        <div style={{ fontSize: '.72rem', color: S.muted, marginBottom: '10px' }}>Armenia, Quindío · Colombia</div>
-        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', fontSize: '.75rem' }}>
+        <div style={{ fontSize: '.68rem', color: S.muted, marginBottom: '14px' }}>© {new Date().getFullYear()} Golmebol · Armenia, Quindío · Todos los derechos reservados</div>
+        <div style={{ display: 'flex', gap: '18px', justifyContent: 'center', fontSize: '.75rem' }}>
           <button onClick={() => navigate('/records')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Récords</button>
           <button onClick={() => navigate('/jugador/login')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Ingresar</button>
           <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Administrador</button>
