@@ -1000,6 +1000,32 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       golesVisTotal   = golesVisitante.filter(Boolean).length
     }
 
+    // Torneos de "registro simple" (los internacionales): un jugador SIN
+    // registro en la planilla queda creado e inscrito de una en el equipo y
+    // el torneo (sin cédula) — así sus goles/tarjetas de este partido sí
+    // cuentan en goleadores/récords, no solo en el resultado. Se muta el
+    // objeto ya existente en jugadoresLocal/jugadoresVisitante (en vez de
+    // reasignar el array) para que todo el resto de guardarEnDB, que lee
+    // esos mismos arrays más abajo, vea el id nuevo sin más cambios.
+    if (torneo?.registro_simple) {
+      const registrarSiFalta = async (jugadores, team_id) => {
+        for (const j of jugadores) {
+          if (j.id || !(j.nombre || '').trim()) continue
+          try {
+            const { data: nuevo, error: errNuevo } = await supabase.from('players')
+              .insert({ name: j.nombre.trim(), activo_membresia: true, fecha_registro: new Date().toISOString() })
+              .select().single()
+            if (errNuevo || !nuevo) continue
+            await supabase.from('team_players').insert({ team_id, player_id: nuevo.id, activo: true })
+            await supabase.from('tournament_player_registrations').insert({ tournament_id: partido.tournament_id, team_id, player_id: nuevo.id, activo: true })
+            j.id = nuevo.id
+          } catch { /* si falla, el jugador sigue sin registro (como antes) */ }
+        }
+      }
+      await registrarSiFalta(jugadoresLocal, partido.home_team_id)
+      await registrarSiFalta(jugadoresVisitante, partido.away_team_id)
+    }
+
     const eventosGolLocal = golesLocal.filter(Boolean).map(g => { const jugador = jugadoresLocal.find(j => String(j.numero) === String(g.numero)); return { match_id: partido.id, tournament_id: partido.tournament_id, team_id: partido.home_team_id, player_id: jugador?.id || null, event_type: 'goal', minute: g.minuto, periodo: g.periodo } })
     const eventosGolVis   = golesVisitante.filter(Boolean).map(g => { const jugador = jugadoresVisitante.find(j => String(j.numero) === String(g.numero)); return { match_id: partido.id, tournament_id: partido.tournament_id, team_id: partido.away_team_id, player_id: jugador?.id || null, event_type: 'goal', minute: g.minuto, periodo: g.periodo } })
 

@@ -67,6 +67,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const [mostrarCierre, setMostrarCierre] = useState(false)
   const [guardandoDB, setGuardandoDB] = useState(false)
   const [finanzasConfig, setFinanzasConfig] = useState(null) // se guarda para poder recalcular la deuda en vivo
+  const [registroSimple, setRegistroSimple] = useState(false) // torneo con registro simple (ej. internacionales): jugadores sin registro en la planilla quedan inscritos solos al guardar
   const [deudaDetalle, setDeudaDetalle] = useState({}) // player_id -> [{tipo, cantidad, monto, fecha, home_team_id, away_team_id}]
   const [equiposNombre, setEquiposNombre] = useState({}) // team_id -> name
 
@@ -146,7 +147,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const [jugsL, jugsV, torn, liveDB, sancionesDB, tarjetasDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
-      supabase.from('tournaments').select('modalidad, finanzas_config').eq('id', partido.tournament_id).maybeSingle(),
+      supabase.from('tournaments').select('modalidad, finanzas_config, registro_simple').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
@@ -175,6 +176,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // por tarjetas) — con detalle (tipo, monto, partido) para el modal de asignar número.
     const fcTorneoDeuda = torn.data?.finanzas_config || {}
     setFinanzasConfig(fcTorneoDeuda)
+    setRegistroSimple(torn.data?.registro_simple === true)
     const matchesInfoDeuda = await fetchMatchesInfo((tarjetasDB?.data || []).map(s => s.match_id))
     const { idsDebenTarjeta, detallePorJugador, idsEquipos } = construirDeudaTarjetas(tarjetasDB?.data, fcTorneoDeuda, matchesInfoDeuda)
     setDeudaDetalle(detallePorJugador)
@@ -535,6 +537,47 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         if (user?.id) { const { data: pRow } = await supabase.from('players').select('name').eq('user_id', user.id).maybeSingle(); if (pRow?.name) editorName = pRow.name }
         await supabase.from('match_edit_log').insert({ match_id: partido.id, editor_user_id: user?.id || null, editor_name: editorName, editor_email: user?.email || null })
       } catch (e) { console.error('No se pudo registrar la edición post-cierre:', e) }
+    }
+
+    // Torneos de "registro simple" (los internacionales): un jugador SIN
+    // registro en la planilla queda creado e inscrito de una en el equipo y
+    // el torneo (sin cédula) — así sus goles/tarjetas de este partido sí
+    // cuentan en goleadores/récords, no solo en el resultado. Se mutan los
+    // objetos ya existentes (jugadoresLocal/Visitante, eventos, arqueros) en
+    // vez de disparar un re-render, para que todo lo que se arma más abajo
+    // en este mismo guardado ya vea el id nuevo.
+    if (registroSimple) {
+      const nombreKey = (team, nombre) => `${team}|${(nombre || '').trim().toLowerCase()}`
+      const idsNuevos = new Map()
+      const registrarSiFalta = async (jugadores, team, team_id) => {
+        for (const j of jugadores) {
+          if (j.id || !(j.nombre || '').trim()) continue
+          try {
+            const { data: nuevo, error: errNuevo } = await supabase.from('players')
+              .insert({ name: j.nombre.trim(), activo_membresia: true, fecha_registro: new Date().toISOString() })
+              .select().single()
+            if (errNuevo || !nuevo) continue
+            await supabase.from('team_players').insert({ team_id, player_id: nuevo.id, activo: true })
+            await supabase.from('tournament_player_registrations').insert({ tournament_id: partido.tournament_id, team_id, player_id: nuevo.id, activo: true })
+            j.id = nuevo.id
+            idsNuevos.set(nombreKey(team, j.nombre), nuevo.id)
+          } catch { /* si falla, el jugador sigue sin registro (como antes) */ }
+        }
+      }
+      await registrarSiFalta(jugadoresLocal, 'local', partido.home_team_id)
+      await registrarSiFalta(jugadoresVisitante, 'visitante', partido.away_team_id)
+      if (idsNuevos.size > 0) {
+        eventos.forEach(e => {
+          if (!e.jugadorId && e.jugadorNombre) {
+            const nuevoId = idsNuevos.get(nombreKey(e.team, e.jugadorNombre))
+            if (nuevoId) e.jugadorId = nuevoId
+          }
+        })
+        histArquerosLocal.forEach(a => { if (!a.id && a.nombre) { const nid = idsNuevos.get(nombreKey('local', a.nombre)); if (nid) a.id = nid } })
+        histArquerosVis.forEach(a => { if (!a.id && a.nombre) { const nid = idsNuevos.get(nombreKey('visitante', a.nombre)); if (nid) a.id = nid } })
+        if (arqueroLocal && !arqueroLocal.id && arqueroLocal.nombre) { const nid = idsNuevos.get(nombreKey('local', arqueroLocal.nombre)); if (nid) arqueroLocal.id = nid }
+        if (arqueroVis && !arqueroVis.id && arqueroVis.nombre) { const nid = idsNuevos.get(nombreKey('visitante', arqueroVis.nombre)); if (nid) arqueroVis.id = nid }
+      }
     }
 
     // Las faltas acumuladas (falta_acum) solo se guardan si el jugador está
