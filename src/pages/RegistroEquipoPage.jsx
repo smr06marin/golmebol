@@ -300,6 +300,9 @@ export default function RegistroEquipoPage() {
   function handleConfirmarExistente() {
     if (sancionJugador) return showMsg(`⛔ No puedes inscribirte: estás sancionado${sancionJugador.fecha_fin ? ` hasta el ${new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO')}` : ' de forma permanente'}.`, 'warning')
     if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
+    // Torneos de "registro simple" (ej. los internacionales): sin
+    // confirmación por WhatsApp, se inscribe directo.
+    if (torneo?.registro_simple) return registrarExistente()
     // Confirmación por WhatsApp: el jugador debe aceptar con el código que le llega
     if (iniciarVerificacion('existente')) return
     // Sin número registrado: continuar directo (no hay a dónde enviar el código)
@@ -328,7 +331,12 @@ export default function RegistroEquipoPage() {
   }
 
   async function handleCrearYRegistrar() {
-    if (!formNuevo.name)             return showMsg('El nombre es obligatorio')
+    if (!formNuevo.name) return showMsg('El nombre es obligatorio')
+
+    // Torneos de "registro simple" (ej. los internacionales): solo piden
+    // nombre y cédula, sin el resto de datos, fotos ni confirmación.
+    if (torneo?.registro_simple) return crearYRegistrarReal()
+
     if (!formNuevo.telefono)         return showMsg('El teléfono es obligatorio')
     if (!formNuevo.city)             return showMsg('La ciudad es obligatoria')
     if (!formNuevo.genero)           return showMsg('El género es obligatorio')
@@ -355,10 +363,10 @@ export default function RegistroEquipoPage() {
         p_tournament_id: tournamentId,
         p_cedula: cedula.trim(),
         p_name: formNuevo.name,
-        p_telefono: formNuevo.telefono,
-        p_city: formNuevo.city,
-        p_genero: formNuevo.genero,
-        p_fecha_nacimiento: formNuevo.fecha_nacimiento,
+        p_telefono: formNuevo.telefono || null,
+        p_city: formNuevo.city || null,
+        p_genero: formNuevo.genero || null,
+        p_fecha_nacimiento: formNuevo.fecha_nacimiento || null,
         p_posicion_futbol5: formNuevo.posicion_futbol5 || null,
         p_posicion_futbol7: formNuevo.posicion_futbol7 || null,
         p_posicion_futbol11: formNuevo.posicion_futbol11 || null,
@@ -571,8 +579,8 @@ export default function RegistroEquipoPage() {
               </div>
             )}
 
-            {/* Fotos cédula opcionales para jugadores existentes */}
-            {(!jugadorExiste.tiene_cedula_frontal || !jugadorExiste.tiene_cedula_trasera) && (
+            {/* Fotos cédula opcionales para jugadores existentes (no aplica en torneos de registro simple) */}
+            {!torneo?.registro_simple && (!jugadorExiste.tiene_cedula_frontal || !jugadorExiste.tiene_cedula_trasera) && (
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '12px', background: '#fff8e1', padding: '10px 12px', borderRadius: '8px', border: '1px solid #ffe082' }}>
                   📸 Aprovecha para subir tu foto de cédula si aún no la tienes registrada
@@ -639,67 +647,71 @@ export default function RegistroEquipoPage() {
                 <input value={formNuevo.name} onChange={e => setFormNuevo(f => ({ ...f, name: e.target.value }))} style={inputStyle} placeholder="Tu nombre completo"/>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={labelStyle}>Teléfono *</label>
-                  <input value={formNuevo.telefono} onChange={e => setFormNuevo(f => ({ ...f, telefono: e.target.value }))} style={inputStyle} placeholder="300 000 0000" type="tel"/>
-                  <div style={{ fontSize: '.68rem', color: '#5f6368', marginTop: '4px', lineHeight: 1.4 }}>
-                    📲 Debe ser tu WhatsApp real y activo: por ahí te enviamos el código para verificar tu registro.
+              {!torneo?.registro_simple && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Teléfono *</label>
+                      <input value={formNuevo.telefono} onChange={e => setFormNuevo(f => ({ ...f, telefono: e.target.value }))} style={inputStyle} placeholder="300 000 0000" type="tel"/>
+                      <div style={{ fontSize: '.68rem', color: '#5f6368', marginTop: '4px', lineHeight: 1.4 }}>
+                        📲 Debe ser tu WhatsApp real y activo: por ahí te enviamos el código para verificar tu registro.
+                      </div>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Ciudad *</label>
+                      <input value={formNuevo.city} onChange={e => setFormNuevo(f => ({ ...f, city: e.target.value }))} style={inputStyle} placeholder="Tu ciudad"/>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>Ciudad *</label>
-                  <input value={formNuevo.city} onChange={e => setFormNuevo(f => ({ ...f, city: e.target.value }))} style={inputStyle} placeholder="Tu ciudad"/>
-                </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={labelStyle}>Género *</label>
-                  <select value={formNuevo.genero} onChange={e => setFormNuevo(f => ({ ...f, genero: e.target.value }))} style={inputStyle}>
-                    <option value="">Seleccionar</option>
-                    <option value="Masculino">Masculino</option>
-                    <option value="Femenino">Femenino</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Fecha de nacimiento *</label>
-                  <input type="date" value={formNuevo.fecha_nacimiento} onChange={e => setFormNuevo(f => ({ ...f, fecha_nacimiento: e.target.value }))} style={inputStyle}/>
-                </div>
-              </div>
-
-              {/* Posiciones */}
-              <div>
-                <label style={{ ...labelStyle, marginBottom: '10px' }}>Posición *</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {Object.entries(POSICIONES).map(([mod, posiciones]) => (
-                    <div key={mod}>
-                      <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px', fontWeight: '500' }}>{mod}</div>
-                      <select
-                        value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
-                        onChange={e => setFormNuevo(f => ({ ...f, [`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
-                        style={inputStyle}>
-                        <option value="">No juego {mod}</option>
-                        {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Género *</label>
+                      <select value={formNuevo.genero} onChange={e => setFormNuevo(f => ({ ...f, genero: e.target.value }))} style={inputStyle}>
+                        <option value="">Seleccionar</option>
+                        <option value="Masculino">Masculino</option>
+                        <option value="Femenino">Femenino</option>
                       </select>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div>
+                      <label style={labelStyle}>Fecha de nacimiento *</label>
+                      <input type="date" value={formNuevo.fecha_nacimiento} onChange={e => setFormNuevo(f => ({ ...f, fecha_nacimiento: e.target.value }))} style={inputStyle}/>
+                    </div>
+                  </div>
 
-              {/* Fotos cédula — obligatorias para nuevos, salvo que el organizador las haya desactivado para este torneo */}
-              {torneo?.requiere_cedula !== false && (
-                <div>
-                  <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '10px' }}>📸 Fotos de la cédula</div>
-                  <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '12px' }}>Necesitamos ambas caras de tu cédula para verificar tu identidad</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
-                    <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                  {/* Posiciones */}
+                  <div>
+                    <label style={{ ...labelStyle, marginBottom: '10px' }}>Posición *</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {Object.entries(POSICIONES).map(([mod, posiciones]) => (
+                        <div key={mod}>
+                          <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px', fontWeight: '500' }}>{mod}</div>
+                          <select
+                            value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
+                            onChange={e => setFormNuevo(f => ({ ...f, [`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
+                            style={inputStyle}>
+                            <option value="">No juego {mod}</option>
+                            {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
-                    ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real de tu cédula</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu cédula real.
-                  </div>
-                </div>
+
+                  {/* Fotos cédula — obligatorias para nuevos, salvo que el organizador las haya desactivado para este torneo */}
+                  {torneo?.requiere_cedula !== false && (
+                    <div>
+                      <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '10px' }}>📸 Fotos de la cédula</div>
+                      <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '12px' }}>Necesitamos ambas caras de tu cédula para verificar tu identidad</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
+                        <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                      </div>
+                      <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
+                        ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real de tu cédula</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu cédula real.
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
             </div>

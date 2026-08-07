@@ -3008,6 +3008,15 @@ export default function AdminTorneoDetallePage() {
                   <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Si lo desactivas, los jugadores nuevos podrán registrarse en el link público sin subir la foto de la cédula (frontal y trasera).</div>
                 </div>
               )}
+              {(esOrganizador || esAdminRol) && (
+                <div>
+                  <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={formTorneo.registro_simple === true} onChange={e => setFormTorneo(p => ({ ...p, registro_simple: e.target.checked }))} style={{ width: '15px', height: '15px', cursor: 'pointer' }}/>
+                    Registro simple (solo nombre y cédula, sin confirmación)
+                  </label>
+                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Para torneos internacionales o de paso: en el link público, los jugadores nuevos solo llenan nombre y cédula — sin teléfono, ciudad, género, fecha de nacimiento, posición, fotos de cédula ni el código de confirmación por WhatsApp.</div>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleGuardarTorneo} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar</button>
@@ -3205,7 +3214,7 @@ export default function AdminTorneoDetallePage() {
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
             </div>
           </div>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0 }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0 }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>
