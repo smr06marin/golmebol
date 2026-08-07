@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, ChevronRight, Calendar, ArrowRight } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
@@ -243,9 +243,6 @@ export default function LandingPage() {
           <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Trophy size={18} color={S.green}/> Torneos en juego
           </h2>
-          <button onClick={() => navigate('/records')} style={{ background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-            Ver todos <ChevronRight size={14}/>
-          </button>
         </div>
         {torneosOrdenados.length === 0 ? (
           <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
@@ -260,7 +257,7 @@ export default function LandingPage() {
                 : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
-                <button key={t.id} className="gm-hover" onClick={() => navigate('/records?torneo=' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
+                <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
                   <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color, marginBottom: '12px' }}>
                     {badge.txt}
                   </span>
@@ -314,7 +311,7 @@ export default function LandingPage() {
                     <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
                   </div>
                 </div>
-                <button className="gm-hover" onClick={() => navigate('/records')} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                <button className="gm-hover" onClick={() => navigate('/t/' + m.tournament_id)} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
                   VER PARTIDO
                 </button>
               </div>
@@ -362,7 +359,6 @@ export default function LandingPage() {
         </div>
         <div style={{ fontSize: '.68rem', color: S.muted, marginBottom: '14px' }}>© {new Date().getFullYear()} Golmebol · Armenia, Quindío · Todos los derechos reservados</div>
         <div style={{ display: 'flex', gap: '18px', justifyContent: 'center', fontSize: '.75rem' }}>
-          <button onClick={() => navigate('/records')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Récords</button>
           <button onClick={() => navigate('/jugador/login')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Ingresar</button>
           <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer' }}>Administrador</button>
         </div>

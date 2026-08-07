@@ -24,10 +24,13 @@ create index if not exists site_visitas_torneo_created_idx on site_visitas (torn
 
 -- "Hoy" en hora de Colombia (America/Bogota), no en UTC — para que a la
 -- medianoche el conteo se reinicie cuando de verdad empieza el día acá.
+-- Cuenta visitas tanto a la página pública del torneo (/t/:id, la que se
+-- usa ahora desde la portada) como a la tabla dentro de /records (por si
+-- alguien todavía llega ahí de otra forma).
 create or replace view site_visitas_torneos_hoy as
 select torneo_id, count(*) as visitas
 from site_visitas
-where pagina = 'tabla_torneo'
+where pagina in ('torneo_publico', 'tabla_torneo')
   and torneo_id is not null
   and created_at >= (date_trunc('day', now() at time zone 'America/Bogota') at time zone 'America/Bogota')
 group by torneo_id;
