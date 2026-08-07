@@ -58,9 +58,11 @@ begin
   if v_cedula is null or v_cedula = '' then raise exception 'Cédula obligatoria'; end if;
   if p_tournament_id is null then raise exception 'Torneo obligatorio'; end if;
 
-  -- Equipo del link
+  -- Equipo del link (cast defensivo: teams.registro_token quedó creado
+  -- como uuid en la base, no como texto, así que hay que convertirlo
+  -- para poder compararlo contra el token que llega como texto en la URL)
   begin
-    select * into v_equipo from teams where registro_token = v_token limit 1;
+    select * into v_equipo from teams where registro_token::text = v_token limit 1;
   exception when others then
     raise exception 'Paso "buscar equipo": %', sqlerrm;
   end;
