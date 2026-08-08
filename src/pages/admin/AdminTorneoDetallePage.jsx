@@ -2237,11 +2237,12 @@ export default function AdminTorneoDetallePage() {
         }
 
         const proximaFase = getFaseValue(llaves.length)
-        // La FINAL se deja siempre para el flujo manual de siempre (el aviso
-        // de "ronda completa" con el botón) — así el admin sigue pudiendo
-        // elegir si se juega también el partido por el tercer puesto, tal
-        // como se pidió explícitamente que NO se resuelva solo.
-        if (proximaFase === 'final') continue
+        // La Final también se crea sola por casilla, igual que el resto de
+        // rondas — antes se dejaba siempre para el flujo manual para que el
+        // admin decidiera si se jugaba el 3°/4° puesto, pero esa decisión
+        // ahora se toma de antemano en la vista previa en vivo (botón "Abrir
+        // espacio para el 3° y 4° puesto", guardado en crearTercerPuesto) y
+        // ya no hace falta esperar a que el admin la tome acá.
         const rondaNombre = getRondaNombre(llaves.length)
         const conVuelta = llaves.some(l => l.matches.length > 1)
 
@@ -2250,15 +2251,37 @@ export default function AdminTorneoDetallePage() {
           if (!A.terminada || !B.terminada) continue
           if (!A.ganador || !B.ganador) continue // empate sin penales resueltos todavía
           const yaExiste = bracket.some(m => m.fase === proximaFase && m.slot_index === i)
-          if (yaExiste) continue
-          const c = previewCalendario?.[proximaFase]?.[i]
-          const fecha = c?.fecha || fechaRonda
-          const hora  = c?.hora  || horaRonda || '08:00'
-          if (!fecha) continue
-          const playedAt = `${fecha}T${hora}:00-05:00`
-          inserts.push({ tournament_id: id, home_team_id: A.ganador.id, away_team_id: B.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: rondaNombre, matchday: null, slot_index: i })
-          if (conVuelta) inserts.push({ tournament_id: id, home_team_id: B.ganador.id, away_team_id: A.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: `${rondaNombre} (vuelta)`, matchday: null, slot_index: i })
-          resumen.push(`${A.ganador.name} vs ${B.ganador.name}`)
+          if (!yaExiste) {
+            const c = previewCalendario?.[proximaFase]?.[i]
+            const fecha = c?.fecha || fechaRonda
+            const hora  = c?.hora  || horaRonda || '08:00'
+            if (fecha) {
+              const playedAt = `${fecha}T${hora}:00-05:00`
+              inserts.push({ tournament_id: id, home_team_id: A.ganador.id, away_team_id: B.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: rondaNombre, matchday: null, slot_index: i })
+              if (conVuelta) inserts.push({ tournament_id: id, home_team_id: B.ganador.id, away_team_id: A.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: `${rondaNombre} (vuelta)`, matchday: null, slot_index: i })
+              resumen.push(`${A.ganador.name} vs ${B.ganador.name}`)
+            }
+          }
+
+          // Junto con la Final, si se activó "3°/4° puesto" en la vista
+          // previa, se arma también ese partido con los dos perdedores de
+          // semifinal — usa la casilla 1 de la fase 'final' (la 0 es la
+          // final) para no chocar con ella.
+          if (proximaFase === 'final' && crearTercerPuesto) {
+            const perdedorA = A.ganador.id === A.teamA.id ? A.teamB : A.teamA
+            const perdedorB = B.ganador.id === B.teamA.id ? B.teamB : B.teamA
+            const yaExisteTercer = bracket.some(m => m.fase === 'final' && m.slot_index === 1)
+            if (!yaExisteTercer) {
+              const cTercer = previewCalendario?.final?.[1]
+              const fechaTercer = cTercer?.fecha || fechaRonda
+              const horaTercer  = cTercer?.hora  || horaRonda || '08:00'
+              if (fechaTercer) {
+                const playedAtTercer = `${fechaTercer}T${horaTercer}:00-05:00`
+                inserts.push({ tournament_id: id, home_team_id: perdedorA.id, away_team_id: perdedorB.id, played_at: playedAtTercer, status: 'scheduled', fase: 'final', ronda: 'Tercer puesto', matchday: null, slot_index: 1 })
+                resumen.push(`🥉 ${perdedorA.name} vs ${perdedorB.name}`)
+              }
+            }
+          }
         }
       }
 
