@@ -59,11 +59,22 @@ function TablaColapsable({ titulo, rows, defaultOpen = false }) {
 // este torneo — para que cualquiera pueda verificar en cancha quién sí está
 // inscrito.
 function RosterModal({ rosterModal, onClose, torneoNombre }) {
+  // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
+  // Android el gesto de scroll dentro del modal se "escapa" hacia la página
+  // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
+  // sensación de que no deja bajar a ver el resto de la lista.
+  useEffect(() => {
+    if (!rosterModal) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [!!rosterModal])
+
   if (!rosterModal) return null
   const { team, jugadores, loading } = rosterModal
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '20px 18px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '9px', overflow: 'hidden', flexShrink: 0 }}>
@@ -114,6 +125,17 @@ function PartidoDetalleModal({ partido, onClose }) {
   const [eventos, setEventos] = useState(null) // null = cargando
   const [errorCarga, setErrorCarga] = useState(null)
 
+  // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
+  // Android el gesto de scroll dentro del modal se "escapa" hacia la página
+  // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
+  // sensación de que no deja bajar a ver el resto (ej. las tarjetas).
+  useEffect(() => {
+    if (!partido) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [!!partido])
+
   useEffect(() => {
     if (!partido) return
     let activo = true
@@ -147,7 +169,7 @@ function PartidoDetalleModal({ partido, onClose }) {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 520, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '540px', maxHeight: '85vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '540px', maxHeight: '85vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '20px 18px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div>
             <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>Resumen del partido</div>

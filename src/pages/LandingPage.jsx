@@ -60,6 +60,16 @@ function IconoTarjeta({ color }) {
 // árbitro (matches.live_state / live_state_rapida), sin depender de que el
 // jugador quede registrado en el torneo.
 function LiveMatchDetalle({ m, onClose }) {
+  // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
+  // Android el gesto de scroll dentro del modal se "escapa" hacia la página
+  // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
+  // sensación de que no deja bajar a ver el resto (ej. las tarjetas).
+  useEffect(() => {
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [])
+
   const goles = extraerGoles(m)
   const golesLocal = goles.filter(g => g.equipo === 'local')
   const golesVis    = goles.filter(g => g.equipo === 'visitante')
@@ -68,7 +78,7 @@ function LiveMatchDetalle({ m, onClose }) {
   const tarjetasVis    = tarjetas.filter(t => t.equipo === 'visitante')
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 560, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', padding: '18px' }}>
+      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
           <span style={{ fontWeight: 900, color: m.vivo.descanso ? S.gold : S.red, fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14}/> {m.vivo.descanso ? 'DESCANSO' : `EN VIVO · ${labelTiempoVivo(m.vivo)}`}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
