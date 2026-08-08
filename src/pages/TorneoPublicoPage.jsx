@@ -112,16 +112,22 @@ function IconoTarjeta({ color }) {
 // disponible después, aunque hayan pasado semanas).
 function PartidoDetalleModal({ partido, onClose }) {
   const [eventos, setEventos] = useState(null) // null = cargando
+  const [errorCarga, setErrorCarga] = useState(null)
 
   useEffect(() => {
     if (!partido) return
     let activo = true
     setEventos(null)
+    setErrorCarga(null)
     supabase.from('match_events')
       .select('id, event_type, minute, periodo, team_id, player_id, player_nombre, players(name)')
       .eq('match_id', partido.id)
       .order('minute', { ascending: true })
-      .then(({ data }) => { if (activo) setEventos(data || []) })
+      .then(({ data, error }) => {
+        if (!activo) return
+        if (error) { setErrorCarga(error.message); setEventos([]); return }
+        setEventos(data || [])
+      })
     return () => { activo = false }
   }, [partido?.id])
 
@@ -169,6 +175,8 @@ function PartidoDetalleModal({ partido, onClose }) {
 
         {eventos === null ? (
           <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem', padding: '20px 0' }}>Cargando...</div>
+        ) : errorCarga ? (
+          <div style={{ textAlign: 'center', color: '#d93025', fontSize: '.8rem', padding: '20px 14px', background: '#fce8e6', borderRadius: '10px' }}>No se pudo cargar el detalle: {errorCarga}</div>
         ) : goles.length === 0 && tarjetas.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem', padding: '20px 0' }}>No quedó registrado el detalle de goles ni tarjetas de este partido</div>
         ) : (
