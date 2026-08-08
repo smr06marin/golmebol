@@ -119,8 +119,12 @@ function PartidoDetalleModal({ partido, onClose }) {
     let activo = true
     setEventos(null)
     setErrorCarga(null)
+    // players!player_id (no players(...) a secas): match_events tiene más de
+    // una relación hacia players, así que hay que decirle a PostgREST cuál
+    // columna usar para el embed — si no, tira "more than one relationship
+    // was found for match_events and players".
     supabase.from('match_events')
-      .select('id, event_type, minute, periodo, team_id, player_id, player_nombre, players(name)')
+      .select('id, event_type, minute, periodo, team_id, player_id, player_nombre, players!player_id(name)')
       .eq('match_id', partido.id)
       .order('minute', { ascending: true })
       .then(({ data, error }) => {

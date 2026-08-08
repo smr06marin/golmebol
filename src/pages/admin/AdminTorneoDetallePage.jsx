@@ -1641,7 +1641,11 @@ export default function AdminTorneoDetallePage() {
       // Tarjetas de DOS fuentes combinadas:
       // 1. Eventos del partido: incluyen jugadores sin registro (con su nombre)
       // 2. Estadísticas: respaldo para partidos viejos guardados sin eventos
-      supabase.from('match_events').select('match_id, player_id, team_id, event_type, player_nombre, players(name)')
+      // players!player_id (no players(...) a secas): match_events tiene más
+      // de una relación hacia players, así que hay que decirle a PostgREST
+      // cuál columna usar para el embed, si no tira "more than one
+      // relationship was found".
+      supabase.from('match_events').select('match_id, player_id, team_id, event_type, player_nombre, players!player_id(name)')
         .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']),
       supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid, players(name)')
         .eq('tournament_id', id),
@@ -1664,7 +1668,7 @@ export default function AdminTorneoDetallePage() {
     let eventos = evs
     if (!eventos) {
       // Respaldo si la columna player_nombre aún no existe (falta migración)
-      const { data: evs2 } = await supabase.from('match_events').select('match_id, player_id, team_id, event_type, players(name)')
+      const { data: evs2 } = await supabase.from('match_events').select('match_id, player_id, team_id, event_type, players!player_id(name)')
         .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card'])
       eventos = evs2 || []
     }
