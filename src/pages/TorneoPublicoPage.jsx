@@ -16,6 +16,23 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 const FASE_ORDEN_ELIM = ['octavos', 'cuartos', 'semifinal', 'final']
 const FASE_LABEL_ELIM = { octavos: '⚔️ Octavos', cuartos: '🔥 Cuartos', semifinal: '⚡ Semifinal', final: '🏆 Final' }
 
+// Nombre/fase de cada ronda de la VISTA PREVIA (antes de que existan
+// partidos reales de eliminatorias) — misma lógica que usa el admin en
+// AdminTorneoDetallePage para armar su vista previa en vivo.
+function getRondaNombrePreview(total) {
+  if (total === 16) return 'Octavos de final'
+  if (total === 8)  return 'Cuartos de final'
+  if (total === 4 || total === 3) return 'Semifinal'
+  if (total === 2)  return 'Final'
+  return `Ronda de ${total}`
+}
+function getFaseValuePreview(total) {
+  if (total > 8) return 'octavos'
+  if (total > 4) return 'cuartos'
+  if (total > 2) return 'semifinal'
+  return 'final'
+}
+
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
   if (logo_url) return <img src={logo_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
@@ -607,6 +624,88 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
   }
 
+  // Vista previa en vivo del árbol de eliminatorias: mientras el organizador
+  // todavía no crea las llaves reales (bracket.length === 0), se arma igual
+  // según la tabla de posiciones actual y la configuración que dejó guardada
+  // en el admin (tournaments.preview_config / preview_calendario) — así el
+  // hincha ve exactamente lo mismo que el organizador mientras se juega la
+  // fase de grupos, sin tener que esperar a que se "oficialice" el árbol.
+  // Misma lógica que usa AdminTorneoDetallePage para su propia vista previa.
+  function getClasificadosPreview() {
+    const porGrupo = torneo?.equipos_clasifican || 2
+    const clasificados = []
+    for (const grupo of grupos) {
+      const tg = getTablaGrupo(grupo.id)
+      tg.slice(0, porGrupo).forEach((row, pos) => {
+        if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc })
+      })
+    }
+    return clasificados.sort((a, b) => a.posicion - b.posicion || b.pts - a.pts || b.dg - a.dg)
+  }
+  function getParticipantesElimPreview(n) {
+    const directos = grupos.length > 0 ? getClasificadosPreview() : []
+    let lista = [...directos]
+    if (lista.length > n) lista = lista.slice(0, n)
+    if (lista.length < n) {
+      const idsYa = new Set(lista.map(e => e.id))
+      tablaOrdenada.forEach(row => {
+        if (lista.length >= n || !row.equipo || idsYa.has(row.equipo.id)) return
+        lista.push({ ...row.equipo, posicion: 99, grupo: directos.length > 0 ? 'Mejor perdedor' : null, pts: row.pts, dg: row.gf - row.gc, mejorPerdedor: directos.length > 0 })
+        idsYa.add(row.equipo.id)
+      })
+    }
+    return lista
+  }
+
+  const previewConfig = torneo?.preview_config || {}
+  const previewCalendario = torneo?.preview_calendario || {}
+  const numClasifElimPreview = previewConfig.numClasifElim || (grupos.length > 0 ? (torneo?.equipos_clasifican || 2) * grupos.length : Math.min(8, equipos.length))
+  const estiloLlavesPreview = previewConfig.estiloLlaves || 'consecutivo'
+  const modoImparPreview = previewConfig.modoImpar || 'mejor_perdedor'
+
+  function getParticipantesConImparPreview() {
+    const base = getParticipantesElimPreview(numClasifElimPreview)
+    if (base.length < 2 || base.length % 2 === 0) return { participantes: base, byeTeam: null }
+    if (modoImparPreview === 'mejor_perdedor') return { participantes: getParticipantesElimPreview(numClasifElimPreview + 1), byeTeam: null }
+    const idBye = previewConfig.equipoByeId && base.some(t => String(t.id) === String(previewConfig.equipoByeId)) ? previewConfig.equipoByeId : base[base.length - 1].id
+    const byeTeam = base.find(t => String(t.id) === String(idBye))
+    return { participantes: base.filter(t => String(t.id) !== String(idBye)), byeTeam }
+  }
+
+  const hayBasePreview = bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2)
+  const { participantes: participantesPreview, byeTeam: byeInicialPreview } = hayBasePreview
+    ? getParticipantesConImparPreview()
+    : { participantes: [], byeTeam: null }
+
+  const mapaPreview = new Map(participantesPreview.map(p => [String(p.id), p]))
+  const idsOrdenPreview = previewConfig.previewOrden && previewConfig.previewOrden.length === participantesPreview.length
+    ? previewConfig.previewOrden.map(String)
+    : participantesPreview.map(p => String(p.id))
+  const ordenPreview = idsOrdenPreview.map(pid => mapaPreview.get(pid)).filter(Boolean)
+
+  const parejasPreview = []
+  const totalOrdenPreview = ordenPreview.length
+  if (estiloLlavesPreview === 'cruzado') {
+    for (let i = 0; i < Math.floor(totalOrdenPreview / 2); i++) parejasPreview.push([ordenPreview[i], ordenPreview[totalOrdenPreview - 1 - i]])
+  } else {
+    for (let i = 0; i < totalOrdenPreview - 1; i += 2) parejasPreview.push([ordenPreview[i], ordenPreview[i + 1]])
+  }
+  const totalPreview = parejasPreview.length * 2 + (byeInicialPreview ? 1 : 0)
+
+  const columnasPreview = []
+  if (parejasPreview.length > 0 || byeInicialPreview) {
+    let llavesRonda = parejasPreview.map(([a, b]) => ({ a, b }))
+    let totalRonda = totalPreview
+    while (true) {
+      columnasPreview.push({ total: totalRonda, fase: getFaseValuePreview(totalRonda), llaves: llavesRonda })
+      if (llavesRonda.length <= 1) break
+      const siguienteN = Math.max(Math.floor(llavesRonda.length / 2), 1)
+      llavesRonda = Array.from({ length: siguienteN }, () => null)
+      totalRonda = Math.max(Math.floor(totalRonda / 2), 2)
+    }
+  }
+  const previewDisponible = hayBasePreview && (parejasPreview.length > 0 || byeInicialPreview)
+
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
   // los arqueros registrados de cada equipo (fotos y nombres). A diferencia
   // de la tabla de posiciones (que en fase de grupos ya no cuenta partidos
@@ -630,7 +729,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // arranca (antes una tapaba a la otra).
   const tabs = [
     { id: 'posiciones', label: 'Posiciones' },
-    ...(bracket.length > 0 ? [{ id: 'llaves', label: '🏆 Fase eliminatoria' }] : []),
+    ...(bracket.length > 0 || previewDisponible ? [{ id: 'llaves', label: bracket.length > 0 ? '🏆 Fase eliminatoria' : '🏆 Fase eliminatoria (vista previa)' }] : []),
     { id: 'resultados', label: 'Resultados' },
     { id: 'proximos',   label: 'Próximos' },
     { id: 'goleadores', label: 'Goleadores' },
@@ -883,6 +982,80 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
             </div>
           )
         })()}
+
+        {/* LLAVES — VISTA PREVIA (todavía no hay árbol real creado por el
+            organizador, pero ya se puede proyectar según la tabla actual) */}
+        {tab === 'llaves' && bracket.length === 0 && previewDisponible && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.66rem', fontWeight: '800', color: '#e8710a', background: '#fff4e5', borderRadius: '20px', padding: '3px 10px', letterSpacing: '.04em' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#e8710a', display: 'inline-block' }}/>
+                VISTA PREVIA
+              </span>
+              <span style={{ fontSize: '.75rem', color: '#5f6368' }}>
+                Así quedaría el árbol si la fase de grupos terminara ahora — se va actualizando solo con cada resultado. Todavía no está en firme.
+              </span>
+            </div>
+
+            {byeInicialPreview && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', padding: '8px 12px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
+                  {byeInicialPreview.logo_url ? <img src={byeInicialPreview.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
+                </div>
+                <span style={{ fontSize: '.76rem', fontWeight: '700', color: '#1e8e3e' }}>⏭️ {byeInicialPreview.name} pasaría directo a la siguiente ronda sin jugar (número impar de clasificados)</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
+              {columnasPreview.map((col, ci) => (
+                <div key={ci} style={{ minWidth: '210px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                    {getRondaNombrePreview(col.total).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
+                    {col.llaves.map((ll, i) => ll ? (
+                      <div key={i} style={{ background: '#fffaf3', border: '1.5px dashed #e8710a', borderLeft: '4px dashed #e8710a', borderRadius: '10px', overflow: 'hidden' }}>
+                        {[ll.a, ll.b].map((eq, ti) => (
+                          <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderBottom: ti === 0 ? '1px solid #f1e0c8' : 'none' }}>
+                            <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}>
+                              {eq?.logo_url ? <img src={eq.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '.78rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eq?.name || '— por definir —'}</div>
+                              {eq?.grupo && <div style={{ fontSize: '.6rem', color: '#9aa0a6' }}>{eq.grupo}</div>}
+                            </div>
+                            {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700', flexShrink: 0 }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
+                          </div>
+                        ))}
+                        {previewCalendario?.[col.fase]?.[i]?.fecha && (
+                          <div style={{ padding: '5px 10px', background: '#f8f9fa', fontSize: '.62rem', color: '#5f6368', fontWeight: '600' }}>
+                            📅 {new Date(previewCalendario[col.fase][i].fecha + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}{previewCalendario[col.fase][i].hora ? ` · ${previewCalendario[col.fase][i].hora}` : ''}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.7rem', fontWeight: '600', background: '#f1f3f4' }}>
+                        Por definir
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Columna campeón */}
+              <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
+                  🏆 CAMPEÓN
+                </div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                  <div style={{ width: '100%', border: '2px dashed #ffd66b', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#e8b93a', fontSize: '.72rem', fontWeight: '700', background: '#fffaf0' }}>
+                    Por definir
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* RESULTADOS */}
         {tab === 'resultados' && (
