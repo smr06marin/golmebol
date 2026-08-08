@@ -706,12 +706,12 @@ export default function AdminTorneoDetallePage() {
     clearTimeout(previewConfigTimer.current)
     previewConfigTimer.current = setTimeout(() => {
       supabase.from('tournaments').update({
-        preview_config: { numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden },
+        preview_config: { numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden, crearTercerPuesto },
       }).eq('id', id).then(() => {})
     }, 700)
     return () => clearTimeout(previewConfigTimer.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewConfigCargado, bracket.length, numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden])
+  }, [previewConfigCargado, bracket.length, numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden, crearTercerPuesto])
 
   // Calendario planeado por ronda (fecha/hora) — también en la BD.
   const previewCalendarioTimer = useRef(null)
@@ -963,6 +963,7 @@ export default function AdminTorneoDetallePage() {
       if (pc.modoImpar)              setModoImpar(pc.modoImpar)
       if (pc.equipoByeId !== undefined) setEquipoByeId(pc.equipoByeId)
       if (pc.previewOrden)           setPreviewOrden(pc.previewOrden)
+      if (pc.crearTercerPuesto)      setCrearTercerPuesto(true)
     }
     if (data?.preview_calendario) setPreviewCalendario(data.preview_calendario)
     setPreviewConfigCargado(true)
@@ -4203,6 +4204,12 @@ export default function AdminTorneoDetallePage() {
                       ↺ Deshacer orden movido a mano
                     </button>
                   )}
+                  {totalPreview >= 4 && (
+                    <button onClick={() => setCrearTercerPuesto(v => !v)}
+                      style={{ fontSize: '.72rem', fontWeight: '700', cursor: 'pointer', borderRadius: '20px', padding: '3px 10px', color: crearTercerPuesto ? '#1e8e3e' : '#9aa0a6', background: crearTercerPuesto ? '#e6f4ea' : '#f1f3f4', border: crearTercerPuesto ? '1px solid #a8dab5' : '1px solid #dadce0' }}>
+                      🥉 {crearTercerPuesto ? 'Se juega el 3° y 4° puesto' : 'Abrir espacio para el 3° y 4° puesto'}
+                    </button>
+                  )}
                   <button onClick={abrirWizardElim} style={{ marginLeft: 'auto', fontSize: '.72rem', color: '#1a73e8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
                     ⚙️ Ajustar cupos/formato
                   </button>
@@ -4274,6 +4281,18 @@ export default function AdminTorneoDetallePage() {
                       </div>
                     </div>
                   ))}
+                  {crearTercerPuesto && totalPreview >= 4 && (
+                    <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#cd7f32', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                        🥉 3° Y 4° PUESTO
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                        <div style={{ width: '100%', border: '2px dashed #d4a574', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#a5732f', fontSize: '.72rem', fontWeight: '700', background: '#fffaf3' }}>
+                          Por definir
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
                     <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
                       🏆 CAMPEÓN

@@ -1042,6 +1042,21 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                 </div>
               ))}
 
+              {/* Espacio reservado para 3° y 4° puesto — solo si el organizador
+                  activó esa opción en la vista previa en vivo */}
+              {previewConfig.crearTercerPuesto && totalPreview >= 4 && (
+                <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#cd7f32', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                    🥉 3° Y 4° PUESTO
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                    <div style={{ width: '100%', border: '2px dashed #d4a574', borderRadius: '10px', padding: '18px', textAlign: 'center', color: '#a5732f', fontSize: '.72rem', fontWeight: '700', background: '#fffaf3' }}>
+                      Por definir
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Columna campeón */}
               <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
