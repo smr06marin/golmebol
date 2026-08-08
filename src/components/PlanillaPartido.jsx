@@ -9,6 +9,19 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
 
+// Estilos de la tabla de jugadores — movidos acá afuera (antes vivían
+// adentro de PlanillaPartido) porque son constantes fijas, no dependen de
+// nada del componente.
+const B    = '1px solid #000'
+const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle' }
+const cellL = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'left',   verticalAlign: 'middle' }
+const inp   = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'center', background: 'transparent', color: '#111' }
+const inpL  = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'left',   background: 'transparent', color: '#111' }
+
+// Puras (sin depender de nada del componente) — se pueden evaluar acá afuera.
+function puedeAbrirFalta(fa, key, i) { return i === 0 ? fa[key][0] === null : fa[key][i-1] !== null && fa[key][i] === null }
+function puedeAbrirGol(goles, si) { return si === 0 ? goles[0] === null : goles[si-1] !== null && goles[si] === null }
+
 // La planilla física siempre trae 12 casillas por equipo. Las que sobran
 // (sin jugador de la nómina) quedan como filas en blanco que el árbitro
 // puede llenar a mano con alguien que no está registrado en el sistema
@@ -376,6 +389,80 @@ function DropdownCamisetas({ jugs, dropKey, onSelect, equipo, excluir = [], drop
         ))}
       </div>
     </>
+  )
+}
+
+// SlotGol/SlotFalta/SlotSeleccion — también afuera del componente por la
+// misma razón que DropdownCamisetas (ver comentario ahí arriba): si
+// quedaran anidadas adentro de PlanillaPartido, el cronómetro (que cambia
+// "segundos" cada segundo) las recrearía como componente nuevo en cada
+// render y React las desmontaría/montaría sin parar, rompiendo el scroll
+// de la tabla de jugadores — sobre todo notorio en Android. `ctx` trae lo
+// que antes tomaban directo del closure del componente (ver más abajo,
+// donde se arma `ctx` adentro de PlanillaPartido).
+function SlotGol({ equipo, slotIdx, goles, jugs, colorEquipo, ctx }) {
+  const { dropdownOpen, setDropdownOpen, colorLocal, colorVisitante, partido, intentarAccionConArquero, equipoTieneArquero, eliminarGol, registrarGol } = ctx
+  const gol = goles[slotIdx], num = slotIdx + 1, dropKey = `gol-${equipo}-${slotIdx}`
+  const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1), esUl = ul === slotIdx
+  const puedeClic = puedeAbrirGol(goles, slotIdx)
+  return (
+    <td style={{ border: B, padding: '1px 2px', position: 'relative', verticalAlign: 'middle', background: gol ? (gol.periodo === 2 ? ROJO + '45' : AZUL + '45') : (colorEquipo || '#1a3a8a') + '30' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
+        <span style={{ fontSize: '8px', color: '#111', minWidth: '9px', fontWeight: '700' }}>{num}</span>
+        {gol ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flex: 1 }} onDoubleClick={() => { if (esUl) eliminarGol(equipo, slotIdx) }} title={esUl ? 'Doble click para eliminar' : ''}>
+            <span style={{ fontWeight: '900', fontSize: '10px', color: '#111' }}>#{gol.numero}</span>
+            <span style={{ fontSize: '8px', color: '#111' }}>{gol.minuto}</span>
+            {esUl && <span style={{ marginLeft: 'auto', color: '#aaa', fontSize: '6px' }}>2x✕</span>}
+          </div>
+        ) : puedeClic ? (
+          <div style={{ flex: 1, position: 'relative' }} onClick={e => { e.stopPropagation(); intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}>
+            <span style={{ fontSize: '9px', color: equipoTieneArquero(equipo) ? '#555' : '#ccc', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
+            <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarGol(equipo, slotIdx, n)}
+              dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
+          </div>
+        ) : <span style={{ fontSize: '7px', color: '#bbb' }}>—</span>}
+      </div>
+    </td>
+  )
+}
+
+function SlotFalta({ equipo, per, i, faltasAcum, jugs, ctx }) {
+  const { dropdownOpen, setDropdownOpen, colorLocal, colorVisitante, partido, periodo, setAvisoPeriodo, intentarAccionConArquero, eliminarFaltaAcum, registrarFaltaAcum } = ctx
+  const key = `p${per}`, val = faltasAcum[key][i], dropKey = `falta-${equipo}-p${per}-${i}`
+  // En el 2do tiempo las casillas del 1er tiempo quedan BLOQUEADAS
+  const bloqueadaPorPeriodo = per < periodo
+  const puedeClic = !bloqueadaPorPeriodo && puedeAbrirFalta(faltasAcum, key, i)
+  return (
+    <td style={{ border: B, padding: '2px 1px', position: 'relative', textAlign: 'center', verticalAlign: 'middle', background: val !== null ? (per === 1 ? '#ddeeff' : '#ffdddd') : bloqueadaPorPeriodo ? '#e0e0e0' : puedeClic ? '#f8f9fa' : '#f1f3f4', cursor: 'pointer' }}
+      onClick={e => { e.stopPropagation(); if (bloqueadaPorPeriodo && val === null) { setAvisoPeriodo(true); return } if (puedeClic && val === null) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
+      onDoubleClick={e => { e.stopPropagation(); if (val !== null) { if (bloqueadaPorPeriodo) { setAvisoPeriodo(true); return } eliminarFaltaAcum(equipo, per, i) } }}
+      title={val !== null ? 'Doble click para eliminar' : ''}>
+      {val !== null ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>{val}<span style={{ fontSize: '6px', color: '#aaa' }}>2x</span></span>
+        : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
+        : <span style={{ color: bloqueadaPorPeriodo ? '#999' : '#ccc', fontSize: '8px' }}>{bloqueadaPorPeriodo ? '🔒' : '—'}</span>}
+      <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}
+        dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
+    </td>
+  )
+}
+
+function SlotSeleccion({ equipo, i, valores, setArr, jugs, dropKeyPrefix, ultimaCol, ctx }) {
+  const { dropdownOpen, setDropdownOpen, colorLocal, colorVisitante, partido, intentarAccionConArquero, registrarSeleccion, eliminarSeleccion } = ctx
+  const val = valores[i], dropKey = `${dropKeyPrefix}-${equipo}-${i}`
+  const puedeClic = i === 0 ? valores[0] === '' : valores[i - 1] !== '' && valores[i] === ''
+  return (
+    <div style={{ flex: 1, borderRight: ultimaCol ? 'none' : B, padding: '2px', textAlign: 'center', position: 'relative', cursor: 'pointer', background: val ? '#e6f4ea' : puedeClic ? '#f8f9fa' : '#f1f3f4' }}
+      onClick={e => { e.stopPropagation(); if (puedeClic && !val) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
+      onDoubleClick={e => { e.stopPropagation(); if (val) eliminarSeleccion(setArr, i) }}
+      title={val ? 'Doble click para borrar' : ''}>
+      {val ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>#{val}</span>
+        : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
+        : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
+      {/* excluir={valores}: un número ya elegido en esta lista no vuelve a salir */}
+      <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} excluir={valores} onSelect={n => registrarSeleccion(setArr, valores, i, n)}
+        dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
+    </div>
   )
 }
 
@@ -1526,8 +1613,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (equipo === 'local') setFaltasAcumLocal(prev => { const arr = [...prev[key]]; arr[slotIdx] = null; return { ...prev, [key]: arr } })
     else setFaltasAcumVis(prev => { const arr = [...prev[key]]; arr[slotIdx] = null; return { ...prev, [key]: arr } })
   }
-  function puedeAbrirFalta(fa, key, i) { return i === 0 ? fa[key][0] === null : fa[key][i-1] !== null && fa[key][i] === null }
-  function puedeAbrirGol(goles, si) { return si === 0 ? goles[0] === null : goles[si-1] !== null && goles[si] === null }
   // Arrastre del cronómetro: funciona tocando/clickeando en CUALQUIER parte del
   // widget (no solo en una barrita específica). Se distingue de un tap/click sobre
   // un botón interno (Play, Minimizar, etc.) con un umbral de movimiento: si el dedo
@@ -1603,63 +1688,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const fecha    = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
   const hora     = partido.played_at ? fmtHoraDate(partido.played_at) : ''
   const etapaNombre = partido.matchday ? `Jornada ${partido.matchday}` : ''
-  const B    = '1px solid #000'
-  const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle' }
-  const cellL = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'left',   verticalAlign: 'middle' }
-  const inp   = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'center', background: 'transparent', color: '#111' }
-  const inpL  = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'left',   background: 'transparent', color: '#111' }
   const progreso = Math.min(segundos / limiteSegundos, 1)
   const cronoBg  = tiempoAgotado ? '#b71c1c' : periodo === 1 ? AZUL : ROJO
-
-  // Lista de camisetas GRANDE y siempre visible: se pinta con position:fixed
-  // centrada en la pantalla (la hoja tiene scroll lateral y una lista absoluta
-  // podía quedar fuera de la parte visible). El equipo de ARRIBA (local) la
-  // despliega en la mitad superior; el de ABAJO (visitante) en la inferior.
-  // `excluir`: números que ya fueron usados y no deben volver a salir.
-  function SlotGol({ equipo, slotIdx, goles, jugs, colorEquipo }) {
-    const gol = goles[slotIdx], num = slotIdx + 1, dropKey = `gol-${equipo}-${slotIdx}`
-    const ul = goles.reduce((l, g, i) => g !== null ? i : l, -1), esUl = ul === slotIdx
-    const puedeClic = puedeAbrirGol(goles, slotIdx)
-    return (
-      <td style={{ border: B, padding: '1px 2px', position: 'relative', verticalAlign: 'middle', background: gol ? (gol.periodo === 2 ? ROJO + '45' : AZUL + '45') : (colorEquipo || '#1a3a8a') + '30' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
-          <span style={{ fontSize: '8px', color: '#111', minWidth: '9px', fontWeight: '700' }}>{num}</span>
-          {gol ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1px', flex: 1 }} onDoubleClick={() => { if (esUl) eliminarGol(equipo, slotIdx) }} title={esUl ? 'Doble click para eliminar' : ''}>
-              <span style={{ fontWeight: '900', fontSize: '10px', color: '#111' }}>#{gol.numero}</span>
-              <span style={{ fontSize: '8px', color: '#111' }}>{gol.minuto}</span>
-              {esUl && <span style={{ marginLeft: 'auto', color: '#aaa', fontSize: '6px' }}>2x✕</span>}
-            </div>
-          ) : puedeClic ? (
-            <div style={{ flex: 1, position: 'relative' }} onClick={e => { e.stopPropagation(); intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}>
-              <span style={{ fontSize: '9px', color: equipoTieneArquero(equipo) ? '#555' : '#ccc', cursor: 'pointer', fontWeight: '700' }}>+N°</span>
-              <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarGol(equipo, slotIdx, n)}
-                dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
-            </div>
-          ) : <span style={{ fontSize: '7px', color: '#bbb' }}>—</span>}
-        </div>
-      </td>
-    )
-  }
-
-  function SlotFalta({ equipo, per, i, faltasAcum, jugs }) {
-    const key = `p${per}`, val = faltasAcum[key][i], dropKey = `falta-${equipo}-p${per}-${i}`
-    // En el 2do tiempo las casillas del 1er tiempo quedan BLOQUEADAS
-    const bloqueadaPorPeriodo = per < periodo
-    const puedeClic = !bloqueadaPorPeriodo && puedeAbrirFalta(faltasAcum, key, i)
-    return (
-      <td style={{ border: B, padding: '2px 1px', position: 'relative', textAlign: 'center', verticalAlign: 'middle', background: val !== null ? (per === 1 ? '#ddeeff' : '#ffdddd') : bloqueadaPorPeriodo ? '#e0e0e0' : puedeClic ? '#f8f9fa' : '#f1f3f4', cursor: 'pointer' }}
-        onClick={e => { e.stopPropagation(); if (bloqueadaPorPeriodo && val === null) { setAvisoPeriodo(true); return } if (puedeClic && val === null) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
-        onDoubleClick={e => { e.stopPropagation(); if (val !== null) { if (bloqueadaPorPeriodo) { setAvisoPeriodo(true); return } eliminarFaltaAcum(equipo, per, i) } }}
-        title={val !== null ? 'Doble click para eliminar' : ''}>
-        {val !== null ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>{val}<span style={{ fontSize: '6px', color: '#aaa' }}>2x</span></span>
-          : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
-          : <span style={{ color: bloqueadaPorPeriodo ? '#999' : '#ccc', fontSize: '8px' }}>{bloqueadaPorPeriodo ? '🔒' : '—'}</span>}
-        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} onSelect={n => registrarFaltaAcum(equipo, per, i, n)}
-          dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
-      </td>
-    )
-  }
 
   // Casillas INICIALES e INGRESOS: mismo comportamiento que Faltas Acumulativas
   // (se hunden en orden y al click aparece la lista de jugadores del equipo).
@@ -1671,22 +1701,22 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   function eliminarSeleccion(setArr, i) {
     setArr(prev => { const n = [...prev]; n[i] = ''; return n })
   }
-  function SlotSeleccion({ equipo, i, valores, setArr, jugs, dropKeyPrefix, ultimaCol }) {
-    const val = valores[i], dropKey = `${dropKeyPrefix}-${equipo}-${i}`
-    const puedeClic = i === 0 ? valores[0] === '' : valores[i - 1] !== '' && valores[i] === ''
-    return (
-      <div style={{ flex: 1, borderRight: ultimaCol ? 'none' : B, padding: '2px', textAlign: 'center', position: 'relative', cursor: 'pointer', background: val ? '#e6f4ea' : puedeClic ? '#f8f9fa' : '#f1f3f4' }}
-        onClick={e => { e.stopPropagation(); if (puedeClic && !val) intentarAccionConArquero(equipo, () => setDropdownOpen(dropdownOpen === dropKey ? null : dropKey)) }}
-        onDoubleClick={e => { e.stopPropagation(); if (val) eliminarSeleccion(setArr, i) }}
-        title={val ? 'Doble click para borrar' : ''}>
-        {val ? <span style={{ fontWeight: '700', color: '#111', fontSize: '9px' }}>#{val}</span>
-          : puedeClic ? <span style={{ color: '#555', fontSize: '9px' }}>+</span>
-          : <span style={{ color: '#ccc', fontSize: '8px' }}>—</span>}
-        {/* excluir={valores}: un número ya elegido en esta lista no vuelve a salir */}
-        <DropdownCamisetas jugs={jugs} dropKey={dropKey} equipo={equipo} excluir={valores} onSelect={n => registrarSeleccion(setArr, valores, i, n)}
-          dropdownOpen={dropdownOpen} setDropdownOpen={setDropdownOpen} colorLocal={colorLocal} colorVisitante={colorVisitante} partido={partido}/>
-      </div>
-    )
+
+  // SlotGol/SlotFalta/SlotSeleccion viven AFUERA del componente (ver arriba
+  // de PlanillaPartido) por la misma razón que DropdownCamisetas: si quedaran
+  // anidadas acá adentro, React las trataría como un componente nuevo en
+  // cada render (el cronómetro cambia "segundos" cada segundo mientras
+  // corre) y las desmontaría/montaría de nuevo sin parar — eso rompía el
+  // scroll de toda la tabla de jugadores en Android (se "subía sola" y no
+  // dejaba ver lo de abajo). `ctx` les pasa lo que antes tomaban directo del
+  // closure del componente.
+  const ctx = {
+    dropdownOpen, setDropdownOpen, colorLocal, colorVisitante, partido,
+    periodo, setAvisoPeriodo,
+    intentarAccionConArquero, equipoTieneArquero,
+    eliminarGol, registrarGol,
+    eliminarFaltaAcum, registrarFaltaAcum,
+    registrarSeleccion, eliminarSeleccion,
   }
 
   function TablaJugadores({ jugs, equipo, goles, colorEquipo }) {
@@ -1837,9 +1867,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
               <tbody>
                 <tr>
                   <td style={{ ...cell, border: 'none', borderRight: B, fontWeight: '700', color: '#111', fontSize: '8px', background: '#eef', width: '24px' }}>1°P.</td>
-                  {[0,1,2,3,4].map(i => <SlotFalta key={i} equipo={equipo} per={1} i={i} faltasAcum={faltasAcum} jugs={jugs}/>)}
+                  {[0,1,2,3,4].map(i => <SlotFalta key={i} equipo={equipo} per={1} i={i} faltasAcum={faltasAcum} jugs={jugs} ctx={ctx}/>)}
                   <td style={{ ...cell, border: 'none', borderLeft: B, borderRight: B, fontWeight: '700', color: '#111', fontSize: '8px', background: '#fee', width: '24px' }}>2°P.</td>
-                  {[0,1,2,3,4].map(i => <SlotFalta key={i} equipo={equipo} per={2} i={i} faltasAcum={faltasAcum} jugs={jugs}/>)}
+                  {[0,1,2,3,4].map(i => <SlotFalta key={i} equipo={equipo} per={2} i={i} faltasAcum={faltasAcum} jugs={jugs} ctx={ctx}/>)}
                 </tr>
               </tbody>
             </table>
@@ -1859,13 +1889,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>INICIALES</div>
             <div style={{ display: 'flex', borderBottom: B }}>
               {[0,1,2,3,4].map(i => (
-                <SlotSeleccion key={i} equipo={equipo} i={i} valores={finalistas} setArr={setFinalistas} jugs={jugs} dropKeyPrefix="inicial" ultimaCol={i === 4}/>
+                <SlotSeleccion key={i} equipo={equipo} i={i} valores={finalistas} setArr={setFinalistas} jugs={jugs} dropKeyPrefix="inicial" ultimaCol={i === 4} ctx={ctx}/>
               ))}
             </div>
             <div style={{ background: '#ddd', borderBottom: B, padding: '2px 4px', fontWeight: '700', fontSize: '9px', textAlign: 'center', color: '#111' }}>INGRESOS</div>
             <div style={{ display: 'flex' }}>
               {[0,1,2,3,4,5,6].map(i => (
-                <SlotSeleccion key={i} equipo={equipo} i={i} valores={ingresos} setArr={setIngresos} jugs={jugs} dropKeyPrefix="ingreso" ultimaCol={i === 6}/>
+                <SlotSeleccion key={i} equipo={equipo} i={i} valores={ingresos} setArr={setIngresos} jugs={jugs} dropKeyPrefix="ingreso" ultimaCol={i === 6} ctx={ctx}/>
               ))}
             </div>
           </div>
@@ -1904,13 +1934,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <td title="Doble click para marcar/quitar" style={{ ...cell, background: m.amarilla?'#ffcc00':'transparent', cursor:'pointer' }} onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,amarilla:!mm.amarilla}:mm))}><span style={{ color: m.amarilla?'#111':'transparent' }}>✓</span></td>
                   <td title="Doble click para marcar/quitar" style={{ ...cell, background: m.azul?'#4488ff':'transparent', cursor:'pointer' }} onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,azul:!mm.azul}:mm))}><span style={{ color: m.azul?'#fff':'transparent' }}>✓</span></td>
                   <td title="Doble click para marcar/quitar" style={{ ...cell, background: m.roja?'#dd2211':'transparent', cursor:'pointer' }} onDoubleClick={() => setCuerpo(prev => prev.map((mm,i) => i===rowIdx?{...mm,roja:!mm.roja}:mm))}><span style={{ color: m.roja?'#fff':'transparent' }}>✓</span></td>
-                  {[0,1,2,3].map(ci => <SlotGol key={ci} equipo={equipo} slotIdx={rowIdx*4+ci} goles={goles} jugs={jugs} colorEquipo={colorEquipo}/>)}
+                  {[0,1,2,3].map(ci => <SlotGol key={ci} equipo={equipo} slotIdx={rowIdx*4+ci} goles={goles} jugs={jugs} colorEquipo={colorEquipo} ctx={ctx}/>)}
                 </tr>
               )
             })}
             <tr style={{ height: '20px' }}>
               <td colSpan={6} style={cell}></td>
-              {[20,21,22,23].map(si => <SlotGol key={si} equipo={equipo} slotIdx={si} goles={goles} jugs={jugs} colorEquipo={colorEquipo}/>)}
+              {[20,21,22,23].map(si => <SlotGol key={si} equipo={equipo} slotIdx={si} goles={goles} jugs={jugs} colorEquipo={colorEquipo} ctx={ctx}/>)}
             </tr>
           </tbody>
         </table>
