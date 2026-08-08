@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Trophy, MapPin, Calendar, ChevronDown, Shield } from 'lucide-react'
+import { Trophy, MapPin, Calendar, ChevronDown, Shield, X } from 'lucide-react'
+import { GiSoccerBall } from 'react-icons/gi'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
@@ -93,6 +94,123 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
               </div>
             ))}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const TIPOS_TARJETA = { yellow_card: 'amarilla', blue_card: 'azul', red_card: 'roja' }
+const COLOR_TARJETA = { amarilla: '#f9c400', azul: '#1a73e8', roja: '#d93025' }
+function IconoTarjeta({ color }) {
+  return <span style={{ display: 'inline-block', width: '9px', height: '13px', borderRadius: '2px', background: COLOR_TARJETA[color] || '#999', flexShrink: 0 }}/>
+}
+
+// Historial de un partido ya jugado: marcador + quién anotó cada gol y las
+// tarjetas, sacado de match_events (a diferencia del detalle "en vivo", este
+// se guarda en la base apenas se cierra el partido, así que sigue
+// disponible después, aunque hayan pasado semanas).
+function PartidoDetalleModal({ partido, onClose }) {
+  const [eventos, setEventos] = useState(null) // null = cargando
+
+  useEffect(() => {
+    if (!partido) return
+    let activo = true
+    setEventos(null)
+    supabase.from('match_events')
+      .select('id, event_type, minute, periodo, team_id, player_id, player_nombre, players(name)')
+      .eq('match_id', partido.id)
+      .order('minute', { ascending: true })
+      .then(({ data }) => { if (activo) setEventos(data || []) })
+    return () => { activo = false }
+  }, [partido?.id])
+
+  if (!partido) return null
+
+  const nombreDe = e => e.players?.name || e.player_nombre || 'Jugador'
+  const goles = (eventos || []).filter(e => e.event_type === 'goal')
+  const golesLocal = goles.filter(e => e.team_id === partido.home_team_id)
+  const golesVis   = goles.filter(e => e.team_id === partido.away_team_id)
+  const tarjetas = (eventos || []).filter(e => TIPOS_TARJETA[e.event_type])
+  const tarjetasLocal = tarjetas.filter(e => e.team_id === partido.home_team_id)
+  const tarjetasVis   = tarjetas.filter(e => e.team_id === partido.away_team_id)
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 520, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '540px', maxHeight: '85vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div>
+            <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>Resumen del partido</div>
+            <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>
+              {partido.played_at && new Date(partido.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+              {partido.matchday && ` · J${partido.matchday}`}
+              {partido.fase && partido.fase !== 'grupo' && ` · ${FASE_LABEL[partido.fase]}`}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={16}/></button>
+        </div>
+
+        {/* Marcador */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '20px', background: '#f8f9fa', borderRadius: '12px', padding: '16px' }}>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', overflow: 'hidden', margin: '0 auto' }}>
+              <TeamLogo logo_url={partido.home?.logo_url} name={partido.home?.name} size={42}/>
+            </div>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '.78rem', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{partido.home?.name}</div>
+          </div>
+          <div style={{ fontWeight: '900', fontSize: '1.5rem', color: '#202124', flexShrink: 0 }}>{partido.home_score} - {partido.away_score}</div>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', overflow: 'hidden', margin: '0 auto' }}>
+              <TeamLogo logo_url={partido.away?.logo_url} name={partido.away?.name} size={42}/>
+            </div>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '.78rem', marginTop: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{partido.away?.name}</div>
+          </div>
+        </div>
+
+        {eventos === null ? (
+          <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem', padding: '20px 0' }}>Cargando...</div>
+        ) : goles.length === 0 && tarjetas.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem', padding: '20px 0' }}>No quedó registrado el detalle de goles ni tarjetas de este partido</div>
+        ) : (
+          <>
+            {goles.length > 0 && (
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '.62rem', fontWeight: '800', color: '#9aa0a6', letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}><GiSoccerBall size={11} color="#9aa0a6"/> GOLES</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    {golesLocal.length === 0 && <div style={{ color: '#9aa0a6', fontSize: '.72rem' }}>—</div>}
+                    {golesLocal.map(e => (
+                      <div key={e.id} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '5px' }}><GiSoccerBall size={10} color="#202124"/> {nombreDe(e)} {e.minute ? <span style={{ color: '#9aa0a6' }}>· {e.minute}'</span> : null}</div>
+                    ))}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {golesVis.length === 0 && <div style={{ color: '#9aa0a6', fontSize: '.72rem' }}>—</div>}
+                    {golesVis.map(e => (
+                      <div key={e.id} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px' }}>{e.minute ? <span style={{ color: '#9aa0a6' }}>{e.minute}' ·</span> : null} {nombreDe(e)} <GiSoccerBall size={10} color="#202124"/></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tarjetas.length > 0 && (
+              <div>
+                <div style={{ fontSize: '.62rem', fontWeight: '800', color: '#9aa0a6', letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}><IconoTarjeta color="amarilla"/> TARJETAS</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    {tarjetasLocal.map(e => (
+                      <div key={e.id} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><IconoTarjeta color={TIPOS_TARJETA[e.event_type]}/> {nombreDe(e)} {e.minute ? <span style={{ color: '#9aa0a6' }}>· {e.minute}'</span> : null}</div>
+                    ))}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {tarjetasVis.map(e => (
+                      <div key={e.id} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>{e.minute ? <span style={{ color: '#9aa0a6' }}>{e.minute}' ·</span> : null} {nombreDe(e)} <IconoTarjeta color={TIPOS_TARJETA[e.event_type]}/></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -285,6 +403,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // verificar en cancha quién sí está inscrito y reportar si alguien juega
   // sin aparecer en esta lista.
   const [rosterModal, setRosterModal] = useState(null) // { team, jugadores, loading }
+  const [partidoDetalle, setPartidoDetalle] = useState(null) // partido (de Resultados) del que se está viendo el resumen (goles/tarjetas)
 
   useEffect(() => { registrarVisita('torneo_publico', id) }, [id])
 
@@ -719,7 +838,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
               const homeWin = p.home_score > p.away_score
               const awayWin = p.away_score > p.home_score
               return (
-                <div key={p.id} style={{ padding: '14px 18px', borderTop: i > 0 ? '1px solid #f1f3f4' : 'none' }}>
+                <div key={p.id} onClick={() => setPartidoDetalle(p)} style={{ padding: '14px 18px', borderTop: i > 0 ? '1px solid #f1f3f4' : 'none', cursor: 'pointer' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                     {p.matchday && <span style={{ fontSize: '.7rem', background: '#e8f0fe', color: '#1a73e8', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>J{p.matchday}</span>}
                     {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.7rem', background: '#fce8d9', color: '#e8710a', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
@@ -727,7 +846,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                     {p.location && <span style={{ fontSize: '.72rem', color: '#9aa0a6', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10}/>{p.location}</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })}
+                    <div onClick={e => { e.stopPropagation(); abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url }) }}
                       style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', cursor: 'pointer' }}>
                       <span style={{ fontWeight: homeWin ? '800' : '500', color: homeWin ? '#202124' : '#5f6368', fontSize: '.9rem', textAlign: 'right' }}>{p.home?.name}</span>
                       <div style={{ width: '28px', height: '28px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
@@ -739,13 +858,16 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                       <span style={{ color: '#9aa0a6', fontSize: '.85rem', fontWeight: '400' }}>-</span>
                       <span style={{ fontWeight: '800', fontSize: '1.15rem', color: awayWin ? 'var(--color-primario)' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.away_score}</span>
                     </div>
-                    <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })}
+                    <div onClick={e => { e.stopPropagation(); abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url }) }}
                       style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                       <div style={{ width: '28px', height: '28px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
                         <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={28}/>
                       </div>
                       <span style={{ fontWeight: awayWin ? '800' : '500', color: awayWin ? '#202124' : '#5f6368', fontSize: '.9rem' }}>{p.away?.name}</span>
                     </div>
+                  </div>
+                  <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                    <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>👆 Toca el partido para ver el resumen (goles y tarjetas)</span>
                   </div>
                 </div>
               )
@@ -864,6 +986,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       </div>
 
       <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name}/>
+      <PartidoDetalleModal partido={partidoDetalle} onClose={() => setPartidoDetalle(null)}/>
     </div>
   )
 }
