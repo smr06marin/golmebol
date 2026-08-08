@@ -1,9 +1,21 @@
 import { useRef, useState, useMemo } from 'react'
-import { Calendar, Clock, MapPin, Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
+import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 
-const POR_PAGINA = 10
-const VERDE = '#9ACD32'
-const VERDE_OSCURO = '#6b9c1f'
+// Tamaño fijo de "historia" de Instagram (1080x1920 = relación 9:16). Se
+// dibuja a mitad de escala (540x960) y se exporta con scale:2 en
+// html2canvas, así el PNG final da exactamente 1080x1920 sin importar
+// cuántos partidos tenga la página — el layout se acomoda dentro de ese
+// alto fijo (ver "flex + justify-content: space-evenly" en la lista de
+// partidos) en vez de crecer sin límite como antes.
+const ANCHO = 540
+const ALTO  = 960
+const POR_PAGINA = 6
+
+const ROJO_OSC = '#230404'
+const ROJO     = '#7a0f0f'
+const ROJO_CL  = '#a51e1e'
+const ORO      = '#e8b923'
+const ORO_SUAVE = '#f3d47a'
 
 // Deja primero los partidos sin jugar, ordenados por fecha/hora ascendente
 // (los sin fecha van al final); para los jugados, orden cronológico también.
@@ -29,65 +41,78 @@ async function esperarImagenes(container) {
   await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = res })))
 }
 
-function formatFecha(fecha) {
-  return fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' }).toUpperCase()
+function formatFechaCorta(fecha) {
+  return fecha.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase().replace('.', '')
 }
 function formatHora(fecha) {
   let h = fecha.getHours()
   const m = fecha.getMinutes()
-  const suf = h >= 12 ? 'P.M.' : 'A.M.'
+  const suf = h >= 12 ? 'PM' : 'AM'
   h = h % 12; if (h === 0) h = 12
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${suf}`
+  return `${h}:${String(m).padStart(2, '0')} ${suf}`
 }
 
-function EscudoCirculo({ logo_url, size = 30 }) {
+// Escudo circular con anillo dorado — pensado para verse bien sobre la
+// cinta roja (fondo blanco propio, así el logo del equipo siempre contrasta).
+function EscudoCirculo({ logo_url, size = 40 }) {
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: '#f1f1f1', border: '1.5px solid #ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', border: `2px solid ${ORO}`, boxShadow: '0 2px 5px rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
       {logo_url
-        ? <img src={logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
-        : <Trophy size={size * 0.45} color="#999"/>}
+        ? <img src={logo_url} crossOrigin="anonymous" style={{ width: '82%', height: '82%', objectFit: 'contain' }}/>
+        : <Trophy size={size * 0.42} color="#b0862a"/>}
     </div>
   )
 }
 
+// Una "cinta" diagonal por partido: fondo en forma de paralelogramo (rojo),
+// escudos + nombres a los lados, un rombo "VS" (o el marcador, si ya se
+// jugó) montado en el centro — inspirado en el flyer de referencia.
 function FilaPartido({ p }) {
   const esJugado = p.status === 'finished'
   const fechaObj = p.played_at ? new Date(p.played_at) : null
+  const marcador = esJugado ? `${p.home_score}-${p.away_score}` : null
 
   return (
-    <div style={{ position: 'relative', background: '#fff', border: '1px solid #ececec', borderRadius: '12px', padding: '14px 12px 10px', marginBottom: '14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
-      {/* Etiqueta FECHA — ribete superior izquierdo */}
-      <div style={{ position: 'absolute', top: '-9px', left: '10px', display: 'flex', alignItems: 'center', gap: '3px', background: '#111', borderRadius: '7px', padding: '3px 8px' }}>
-        <Calendar size={8} color={VERDE}/>
-        <span style={{ fontSize: '8px', fontWeight: '900', color: '#fff', letterSpacing: '.4px' }}>
-          {p.matchday ? `FECHA ${p.matchday}` : 'PARTIDO'}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-          <span style={{ color: '#111', fontWeight: '800', fontSize: '10.5px', textAlign: 'right', textTransform: 'uppercase', lineHeight: 1.15 }}>{p.home?.name || 'Por definir'}</span>
-          <EscudoCirculo logo_url={p.home?.logo_url}/>
-        </div>
-        {esJugado ? (
-          <div style={{ flexShrink: 0, background: VERDE, borderRadius: '7px', padding: '4px 10px', fontWeight: '900', fontSize: '12px', color: '#0d1a03' }}>
-            {p.home_score} - {p.away_score}
+    <div>
+      <div style={{ position: 'relative', height: '58px', margin: '0 22px' }}>
+        {/* Cinta de fondo — paralelogramo mediante skew, decorativa (sin texto
+            adentro) para que el contenido de arriba quede siempre derecho. */}
+        <div style={{ position: 'absolute', inset: '5px 0', transform: 'skewX(-9deg)', borderRadius: '5px', background: `linear-gradient(90deg, ${ROJO_CL}, ${ROJO})`, boxShadow: '0 4px 10px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.12)' }}/>
+        {/* Contenido: escudos + nombres, derechos */}
+        <div style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', zIndex: 2 }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+            <span style={{ color: '#fff', fontWeight: 900, fontSize: '12.5px', textAlign: 'right', textTransform: 'uppercase', lineHeight: 1.12, textShadow: '0 1px 3px rgba(0,0,0,.55)' }}>{p.home?.name || 'Por definir'}</span>
+            <EscudoCirculo logo_url={p.home?.logo_url}/>
           </div>
-        ) : (
-          <div style={{ flexShrink: 0, background: VERDE, borderRadius: '7px', padding: '4px 11px', fontWeight: '900', fontSize: '10.5px', color: '#0d1a03', letterSpacing: '.5px' }}>VS</div>
-        )}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <EscudoCirculo logo_url={p.away?.logo_url}/>
-          <span style={{ color: '#111', fontWeight: '800', fontSize: '10.5px', textTransform: 'uppercase', lineHeight: 1.15 }}>{p.away?.name || 'Por definir'}</span>
+          <div style={{ width: '56px', flexShrink: 0 }}/>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <EscudoCirculo logo_url={p.away?.logo_url}/>
+            <span style={{ color: '#fff', fontWeight: 900, fontSize: '12.5px', textTransform: 'uppercase', lineHeight: 1.12, textShadow: '0 1px 3px rgba(0,0,0,.55)' }}>{p.away?.name || 'Por definir'}</span>
+          </div>
+        </div>
+        {/* Rombo VS / marcador, montado en el centro de la cinta */}
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%) rotate(45deg)', width: '38px', height: '38px', background: '#fff', border: `3px solid ${ORO}`, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3, boxShadow: '0 3px 8px rgba(0,0,0,.5)' }}>
+          <span style={{ transform: 'rotate(-45deg)', color: ROJO, fontWeight: 900, fontSize: marcador ? '10.5px' : '12.5px', letterSpacing: marcador ? '0' : '.5px' }}>{marcador || 'VS'}</span>
         </div>
       </div>
-
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '8px' }}>
-        {fechaObj && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', fontWeight: '700', color: '#666' }}><Calendar size={9} color="#999"/>{formatFecha(fechaObj)}</span>}
-        {fechaObj && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', fontWeight: '700', color: '#666' }}><Clock size={9} color="#999"/>{formatHora(fechaObj)}</span>}
-        {p.location && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '8.5px', fontWeight: '700', color: '#666' }}><MapPin size={9} color="#999"/>{p.location}</span>}
+      {/* Línea de info debajo de la cinta */}
+      <div style={{ textAlign: 'center', marginTop: '5px', color: ORO_SUAVE, fontSize: '9.5px', fontWeight: 800, letterSpacing: '.6px' }}>
+        {[fechaObj && formatFechaCorta(fechaObj), fechaObj && formatHora(fechaObj), p.location].filter(Boolean).join('  ·  ')}
+        {!fechaObj && !p.location && <span style={{ opacity: .7 }}>Por confirmar</span>}
       </div>
     </div>
+  )
+}
+
+// Banda decorativa tipo "chevron" (rayas diagonales) — el mismo motivo que
+// usa el flyer de referencia arriba y abajo del todo.
+function BandaChevron({ arriba }) {
+  return (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, height: '9px', zIndex: 1,
+      [arriba ? 'top' : 'bottom']: 0,
+      background: `repeating-linear-gradient(135deg, ${ORO} 0px, ${ORO} 7px, ${ROJO_OSC} 7px, ${ROJO_OSC} 14px)`,
+    }}/>
   )
 }
 
@@ -111,7 +136,8 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   async function descargarPagina(idx) {
     await esperarImagenes(flyerRef.current)
     const { default: html2canvas } = await import('html2canvas')
-    const canvas = await html2canvas(flyerRef.current, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' })
+    // scale:2 sobre un lienzo de 540x960 = 1080x1920 exactos (historia de Instagram).
+    const canvas = await html2canvas(flyerRef.current, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: ROJO_OSC, width: ANCHO, height: ALTO })
     const link = document.createElement('a')
     const base = (torneo?.name || 'golmebol').replace(/\s+/g, '_')
     const tipo = modo === 'jugados' ? 'resultados' : 'programacion'
@@ -139,7 +165,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
     } finally { setDescargando(false) }
   }
 
-  const titulo = modo === 'jugados' ? 'PARTIDOS JUGADOS' : 'PRÓXIMOS PARTIDOS'
+  const titulo = modo === 'jugados' ? 'RESULTADOS' : 'PRÓXIMOS PARTIDOS'
   const subtitulo = [torneo?.modalidad, torneo?.season || torneo?.categoria].filter(Boolean).join(' · ')
 
   return (
@@ -148,7 +174,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
 
         {/* Controles */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Flyer de programación</span>
+          <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Flyer de programación · historia de Instagram (1080×1920)</span>
           <button onClick={onClose} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
             <X size={16}/>
           </button>
@@ -185,65 +211,70 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
               </div>
             )}
 
-            {/* FLYER — proporción tipo historia de Instagram (ancho fijo 540 -> 1080 al exportar con scale 2) */}
+            {/* FLYER — tamaño fijo de historia de Instagram (540x960 acá,
+                exporta 1080x1920). overflow:hidden para que nunca "se salga"
+                del lienzo — por eso la cantidad de partidos por página está
+                limitada (POR_PAGINA) y el resto queda en más páginas. */}
             <div ref={flyerRef} style={{
-              width: '540px', maxWidth: '100%', margin: '0 auto',
-              background: '#fff', fontFamily: "'Arial Black', 'Impact', sans-serif",
-              overflow: 'hidden', borderRadius: '4px',
+              width: `${ANCHO}px`, height: `${ALTO}px`, maxWidth: '100%', margin: '0 auto',
+              position: 'relative', overflow: 'hidden', borderRadius: '4px',
+              fontFamily: "'Arial Black', 'Impact', sans-serif",
+              background: `radial-gradient(ellipse at 50% 15%, ${ROJO_CL} 0%, ${ROJO} 42%, ${ROJO_OSC} 100%)`,
             }}>
-              {/* Header negro */}
-              <div style={{ background: '#0a0a0a', padding: '26px 26px 22px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '18px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#fff', border: `2.5px solid ${VERDE}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                      {torneo?.logo_url
-                        ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '86%', height: '86%', objectFit: 'contain' }}/>
-                        : <Trophy size={24} color="#1a3a8a"/>}
-                    </div>
-                    <span style={{ color: VERDE, fontSize: '13px', fontWeight: '900', letterSpacing: '1px' }}>GOLMEBOL</span>
-                  </div>
-                  <div style={{ background: '#111', border: `1.5px solid ${VERDE}`, borderRadius: '10px', padding: '6px 14px', textAlign: 'center', minWidth: '58px' }}>
-                    <div style={{ color: VERDE, fontSize: '17px', fontWeight: '900', lineHeight: 1 }}>{equipos.length}</div>
-                    <div style={{ color: '#fff', fontSize: '8px', fontWeight: '800', letterSpacing: '.5px', marginTop: '2px' }}>EQUIPO{equipos.length !== 1 ? 'S' : ''}</div>
-                  </div>
-                </div>
+              {/* Textura diagonal sutil de fondo */}
+              <div style={{ position: 'absolute', inset: 0, zIndex: 0, opacity: .5, background: 'repeating-linear-gradient(135deg, rgba(255,255,255,.045) 0px, rgba(255,255,255,.045) 16px, transparent 16px, transparent 32px)' }}/>
+              {/* Viñeta que oscurece bordes */}
+              <div style={{ position: 'absolute', inset: 0, zIndex: 0, background: 'radial-gradient(ellipse at 50% 40%, transparent 45%, rgba(0,0,0,.5) 100%)' }}/>
 
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ color: '#fff', fontSize: '26px', fontWeight: '900', letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.15, textShadow: `0 0 18px rgba(154,205,50,.35)` }}>
+              <BandaChevron arriba/>
+              <BandaChevron/>
+
+              <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                {/* Header */}
+                <div style={{ flexShrink: 0, textAlign: 'center', padding: '44px 30px 14px' }}>
+                  <div style={{ width: '86px', height: '86px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `3px solid ${ORO}`, boxShadow: '0 4px 14px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {torneo?.logo_url
+                      ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
+                      : <Trophy size={38} color={ROJO}/>}
+                  </div>
+                  <div style={{ color: ORO, fontSize: '12px', fontWeight: 900, letterSpacing: '3px', marginTop: '10px' }}>GOLMEBOL</div>
+                  <div style={{ color: '#fff', fontSize: '27px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.15, marginTop: '4px', textShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
                     {torneo?.name || 'Torneo'}
                   </div>
                   {subtitulo && (
-                    <div style={{ color: VERDE, fontSize: '11px', fontWeight: '800', letterSpacing: '2px', marginTop: '6px', textTransform: 'uppercase' }}>
+                    <div style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 800, letterSpacing: '2px', marginTop: '5px', textTransform: 'uppercase' }}>
                       {subtitulo}
                     </div>
                   )}
-                  <div style={{ width: '100px', height: '3px', background: `linear-gradient(90deg, transparent, ${VERDE}, transparent)`, margin: '12px auto 0' }}/>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '14px 0 12px' }}>
+                    <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, transparent, ${ORO})` }}/>
+                    <div style={{ width: '9px', height: '9px', background: ORO, transform: 'rotate(45deg)', flexShrink: 0 }}/>
+                    <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, ${ORO}, transparent)` }}/>
+                  </div>
+                  <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '20px', padding: '5px 18px' }}>
+                    <span style={{ color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '1.5px' }}>{titulo}</span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Título de sección */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px 4px' }}>
-                <div style={{ flex: 1, borderTop: `2px dashed ${VERDE_OSCURO}` }}/>
-                <span style={{ color: '#111', fontSize: '14px', fontWeight: '900', letterSpacing: '1px', whiteSpace: 'nowrap' }}>{titulo}</span>
-                <div style={{ flex: 1, borderTop: `2px dashed ${VERDE_OSCURO}` }}/>
-              </div>
+                {/* Partidos — reparte el espacio vertical restante en partes
+                    iguales (space-evenly), así siempre llena el lienzo fijo
+                    sin importar si la página trae 1 o los POR_PAGINA partidos. */}
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', padding: '2px 0' }}>
+                  {items.map(p => <FilaPartido key={p.id} p={p}/>)}
+                </div>
 
-              {/* Lista de partidos */}
-              <div style={{ padding: '14px 20px 4px', background: '#fafafa' }}>
-                {items.map(p => <FilaPartido key={p.id} p={p}/>)}
-              </div>
-
-              {/* Footer negro */}
-              <div style={{ background: '#0a0a0a', textAlign: 'center', padding: '18px 20px' }}>
-                <div style={{ color: '#fff', fontSize: '13px', fontWeight: '900', letterSpacing: '.5px' }}>golmebol.com</div>
-                <div style={{ color: 'rgba(255,255,255,.55)', fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', marginTop: '5px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '8px' }}>
-                  {['IG', 'FB', 'TT'].map(s => (
-                    <div key={s} style={{ width: '16px', height: '16px', borderRadius: '50%', border: `1px solid ${VERDE}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ color: VERDE, fontSize: '6px', fontWeight: '900' }}>{s}</span>
-                    </div>
-                  ))}
-                  <span style={{ color: 'rgba(255,255,255,.6)', fontSize: '9.5px', fontWeight: '700', marginLeft: '4px' }}>@golmebol</span>
+                {/* Footer */}
+                <div style={{ flexShrink: 0, textAlign: 'center', padding: '16px 20px 22px' }}>
+                  <div style={{ color: '#fff', fontSize: '14px', fontWeight: 900, letterSpacing: '.5px' }}>golmebol.com</div>
+                  <div style={{ color: ORO_SUAVE, fontSize: '9px', fontWeight: 700, letterSpacing: '2px', marginTop: '5px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '9px' }}>
+                    {['IG', 'FB', 'TT'].map(s => (
+                      <div key={s} style={{ width: '17px', height: '17px', borderRadius: '50%', border: `1px solid ${ORO}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ color: ORO, fontSize: '6.5px', fontWeight: 900 }}>{s}</span>
+                      </div>
+                    ))}
+                    <span style={{ color: 'rgba(255,255,255,.7)', fontSize: '10px', fontWeight: 700, marginLeft: '4px' }}>@golmebol</span>
+                  </div>
                 </div>
               </div>
             </div>
