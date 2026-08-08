@@ -117,6 +117,24 @@ function IconoTarjeta({ color }) {
   return <span style={{ display: 'inline-block', width: '9px', height: '13px', borderRadius: '2px', background: COLOR_TARJETA[color] || '#999', flexShrink: 0 }}/>
 }
 
+// Agrupa eventos de gol de un mismo jugador en una sola fila: en vez de
+// repetir el nombre una vez por gol, lo muestra una sola vez seguido de un
+// balón por cada gol que anotó (y la lista de minutos, si se conocen).
+// `nombreDe` resuelve el nombre a mostrar; se agrupa por player_id cuando
+// existe (más confiable que el nombre) y si no por el nombre mismo.
+function agruparGoles(eventosGol, nombreDe) {
+  const orden = []
+  const porJugador = new Map()
+  eventosGol.forEach(e => {
+    const key = e.player_id || nombreDe(e)
+    if (!porJugador.has(key)) { porJugador.set(key, { jugador: nombreDe(e), cantidad: 0, minutos: [] }); orden.push(key) }
+    const acc = porJugador.get(key)
+    acc.cantidad += 1
+    if (e.minute) acc.minutos.push(e.minute)
+  })
+  return orden.map(key => porJugador.get(key))
+}
+
 // Historial de un partido ya jugado: marcador + quién anotó cada gol y las
 // tarjetas, sacado de match_events (a diferencia del detalle "en vivo", este
 // se guarda en la base apenas se cierra el partido, así que sigue
@@ -213,14 +231,18 @@ function PartidoDetalleModal({ partido, onClose }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     {golesLocal.length === 0 && <div style={{ color: '#9aa0a6', fontSize: '.72rem' }}>—</div>}
-                    {golesLocal.map(e => (
-                      <div key={e.id} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '5px' }}><GiSoccerBall size={10} color="#202124"/> {nombreDe(e)} {e.minute ? <span style={{ color: '#9aa0a6' }}>· {e.minute}'</span> : null}</div>
+                    {agruparGoles(golesLocal, nombreDe).map((gg, i) => (
+                      <div key={i} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                        {gg.jugador} {Array.from({ length: gg.cantidad }).map((_, j) => <GiSoccerBall key={j} size={10} color="#202124"/>)} {gg.minutos.length > 0 ? <span style={{ color: '#9aa0a6' }}>· {gg.minutos.map(m => `${m}'`).join(', ')}</span> : null}
+                      </div>
                     ))}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     {golesVis.length === 0 && <div style={{ color: '#9aa0a6', fontSize: '.72rem' }}>—</div>}
-                    {golesVis.map(e => (
-                      <div key={e.id} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px' }}>{e.minute ? <span style={{ color: '#9aa0a6' }}>{e.minute}' ·</span> : null} {nombreDe(e)} <GiSoccerBall size={10} color="#202124"/></div>
+                    {agruparGoles(golesVis, nombreDe).map((gg, i) => (
+                      <div key={i} style={{ fontSize: '.78rem', color: '#202124', padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px', flexWrap: 'wrap' }}>
+                        {gg.minutos.length > 0 ? <span style={{ color: '#9aa0a6' }}>{gg.minutos.map(m => `${m}'`).join(', ')} ·</span> : null} {gg.jugador} {Array.from({ length: gg.cantidad }).map((_, j) => <GiSoccerBall key={j} size={10} color="#202124"/>)}
+                      </div>
                     ))}
                   </div>
                 </div>
