@@ -449,22 +449,16 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     }))
     .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
 
-  // Ya arrancaron las eliminatorias (hay árbol real) → la tabla de posiciones
-  // de grupos deja de ser lo relevante, se muestra el árbol en su lugar.
+  // "Fase eliminatoria" (el árbol de llaves) aparece como una pestaña MÁS,
+  // sin tapar Posiciones — así la gente puede seguir viendo la tabla de
+  // grupos y también, en vivo, cómo va el árbol de eliminación apenas
+  // arranca (antes una tapaba a la otra).
   const tabs = [
-    ...(bracket.length > 0
-      ? [
-          { id: 'llaves',     label: '🏆 Llaves' },
-          { id: 'resultados', label: 'Resultados' },
-          { id: 'proximos',   label: 'Próximos' },
-          { id: 'goleadores', label: 'Goleadores' },
-        ]
-      : [
-          { id: 'posiciones', label: 'Posiciones' },
-          { id: 'resultados', label: 'Resultados' },
-          { id: 'proximos',   label: 'Próximos' },
-          { id: 'goleadores', label: 'Goleadores' },
-        ]),
+    { id: 'posiciones', label: 'Posiciones' },
+    ...(bracket.length > 0 ? [{ id: 'llaves', label: '🏆 Fase eliminatoria' }] : []),
+    { id: 'resultados', label: 'Resultados' },
+    { id: 'proximos',   label: 'Próximos' },
+    { id: 'goleadores', label: 'Goleadores' },
     ...(sponsors.length > 0 ? [{ id: 'patrocinadores', label: 'Patrocinadores' }] : []),
   ]
 
