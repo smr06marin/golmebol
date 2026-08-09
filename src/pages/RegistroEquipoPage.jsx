@@ -332,17 +332,17 @@ export default function RegistroEquipoPage() {
 
   async function handleCrearYRegistrar() {
     if (!formNuevo.name) return showMsg('El nombre es obligatorio')
+    if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
+      return showMsg('Selecciona al menos una posición')
 
     // Torneos de "registro simple" (ej. los internacionales): solo piden
-    // nombre y cédula, sin el resto de datos, fotos ni confirmación.
+    // cédula, nombre y posición, sin el resto de datos, fotos ni confirmación.
     if (torneo?.registro_simple) return crearYRegistrarReal()
 
     if (!formNuevo.telefono)         return showMsg('El teléfono es obligatorio')
     if (!formNuevo.city)             return showMsg('La ciudad es obligatoria')
     if (!formNuevo.genero)           return showMsg('El género es obligatorio')
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria')
-    if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
-      return showMsg('Selecciona al menos una posición')
     // El organizador puede desactivar la obligatoriedad de la cédula para su torneo.
     if (torneo?.requiere_cedula !== false) {
       if (!fotoFrontal) return showMsg('La foto frontal de la cédula es obligatoria')
@@ -635,9 +635,9 @@ export default function RegistroEquipoPage() {
         {/* Jugador nuevo */}
         {mostrarNuevo && (
           <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e8eaed' }}>
-            <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '.8rem', color: '#d93025', fontWeight: '600' }}>⚠️ Cédula {cedula} no está registrada en Golmebol</div>
-              <div style={{ fontSize: '.75rem', color: '#d93025', marginTop: '3px' }}>Completa tus datos para registrarte por primera vez</div>
+            <div style={{ background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px' }}>
+              <div style={{ fontSize: '.8rem', color: '#1a73e8', fontWeight: '600' }}>👋 ¡Bienvenido a Golmebol!</div>
+              <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '3px' }}>Completa tus datos para registrarte por primera vez</div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -645,6 +645,26 @@ export default function RegistroEquipoPage() {
               <div>
                 <label style={labelStyle}>Nombre completo *</label>
                 <input value={formNuevo.name} onChange={e => setFormNuevo(f => ({ ...f, name: e.target.value }))} style={inputStyle} placeholder="Tu nombre completo"/>
+              </div>
+
+              {/* Posición — se pide siempre, incluso en registro simple (junto
+                  con cédula y nombre, es el mínimo para saber en qué puesto anotar al jugador) */}
+              <div>
+                <label style={{ ...labelStyle, marginBottom: '10px' }}>Posición *</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {Object.entries(POSICIONES).map(([mod, posiciones]) => (
+                    <div key={mod}>
+                      <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px', fontWeight: '500' }}>{mod}</div>
+                      <select
+                        value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
+                        onChange={e => setFormNuevo(f => ({ ...f, [`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
+                        style={inputStyle}>
+                        <option value="">No juego {mod}</option>
+                        {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {!torneo?.registro_simple && (
@@ -675,25 +695,6 @@ export default function RegistroEquipoPage() {
                     <div>
                       <label style={labelStyle}>Fecha de nacimiento *</label>
                       <input type="date" value={formNuevo.fecha_nacimiento} onChange={e => setFormNuevo(f => ({ ...f, fecha_nacimiento: e.target.value }))} style={inputStyle}/>
-                    </div>
-                  </div>
-
-                  {/* Posiciones */}
-                  <div>
-                    <label style={{ ...labelStyle, marginBottom: '10px' }}>Posición *</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {Object.entries(POSICIONES).map(([mod, posiciones]) => (
-                        <div key={mod}>
-                          <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px', fontWeight: '500' }}>{mod}</div>
-                          <select
-                            value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
-                            onChange={e => setFormNuevo(f => ({ ...f, [`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
-                            style={inputStyle}>
-                            <option value="">No juego {mod}</option>
-                            {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        </div>
-                      ))}
                     </div>
                   </div>
 
