@@ -2197,6 +2197,25 @@ export default function AdminTorneoDetallePage() {
     fetchPartidos(); fetchBracket()
   }
 
+  // Crea el partido de 3°/4° puesto DESPUÉS de que la Final ya existe — cubre
+  // el caso en que la Final se creó sola (avance por casilla) sin que el
+  // admin hubiera activado "3°/4° puesto" a tiempo en la vista previa. Usa
+  // los dos perdedores de semifinal, con casilla 1 (la 0 es la Final) para
+  // no chocar con ella.
+  async function handleCrearTercerPuestoRetroactivo(perdedorA, perdedorB) {
+    if (!fechaRonda) return showMsg('Selecciona una fecha arriba en "Generar siguiente ronda" o pon la fecha de hoy', 'error')
+    setGenerandoRonda(true)
+    const playedAt = `${fechaRonda}T${horaRonda || '08:00'}:00-05:00`
+    const { error } = await supabase.from('matches').insert({
+      tournament_id: id, home_team_id: perdedorA.id, away_team_id: perdedorB.id,
+      played_at: playedAt, status: 'scheduled', fase: 'final', ronda: 'Tercer puesto', matchday: null, slot_index: 1,
+    })
+    if (error) showMsg('Error al crear el partido de tercer puesto', 'error')
+    else showMsg(`Partido por el 3° y 4° puesto creado ✓: ${perdedorA.name} vs ${perdedorB.name}`)
+    setGenerandoRonda(false)
+    fetchPartidos(); fetchBracket()
+  }
+
   // Avance por CASILLA FIJA: el ganador de la casilla 0 y el de la casilla 1
   // arman la casilla 0 de la ronda siguiente, el de la 2 y la 3 arman la
   // casilla 1, etc. — apenas se conocen los DOS ganadores de esa pareja de
@@ -4565,6 +4584,17 @@ export default function AdminTorneoDetallePage() {
             const tercerPuestoEq = llaveTercer?.ganador || null
             const esImpar = !repechajePendiente && vivos.length % 2 !== 0 && vivos.length > 3
             const proximaEsFinal = !repechajePendiente && vivos.length === 2
+
+            // La Final ya existe (se creó sola por casilla) pero todavía no
+            // hay partido de 3°/4° puesto — pasa cuando no se activó a
+            // tiempo en la vista previa. Se puede crear igual acá, usando
+            // los dos perdedores de la semifinal (la fase justo antes de la final).
+            const idxFinalFase = fasesExist.indexOf('final')
+            const faseSemi = idxFinalFase > 0 ? fasesExist[idxFinalFase - 1] : null
+            const llavesSemi = faseSemi ? porFase[faseSemi] : null
+            const semisListas = llavesSemi && llavesSemi.length === 2 && llavesSemi.every(l => l.terminada && l.ganador)
+            const perdedoresSemis = semisListas ? llavesSemi.map(l => l.ganador.id === l.teamA.id ? l.teamB : l.teamA) : null
+            const faltaTercerPuesto = !!(llaveFinal && !llaveTercer && perdedoresSemis)
             const nombreSiguiente = repechajePendiente
               ? 'repechaje'
               : vivos.length === 3
@@ -4680,6 +4710,30 @@ export default function AdminTorneoDetallePage() {
                         🥉 Crear también el partido por el tercer puesto ({rankPorReclasificacion(est.perdedoresElegibles)[0]?.name} vs {rankPorReclasificacion(est.perdedoresElegibles)[1]?.name})
                       </label>
                     )}
+                  </div>
+                )}
+
+                {/* La Final ya existe pero falta el partido de 3°/4° puesto —
+                    pasa cuando no se activó a tiempo en la vista previa. Se
+                    puede crear igual acá, aunque la Final ya se haya jugado. */}
+                {faltaTercerPuesto && (
+                  <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '12px', padding: '14px 18px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: '220px' }}>
+                        <div style={{ fontWeight: '700', color: '#202124', fontSize: '.875rem' }}>🥉 Falta el partido por el 3° y 4° puesto</div>
+                        <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginTop: '2px' }}>
+                          {perdedoresSemis[0]?.name} vs {perdedoresSemis[1]?.name} — los dos perdedores de semifinal
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input type="date" value={fechaRonda} onChange={e => setFechaRonda(e.target.value)} style={{ ...inputStyle, width: 'auto' }}/>
+                        <input type="time" value={horaRonda} onChange={e => setHoraRonda(e.target.value)} style={{ ...inputStyle, width: 'auto' }}/>
+                        <button onClick={() => handleCrearTercerPuestoRetroactivo(perdedoresSemis[0], perdedoresSemis[1])} disabled={generandoRonda}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', background: generandoRonda ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: generandoRonda ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                          🥉 {generandoRonda ? 'Creando...' : 'Crear partido de 3° y 4° puesto'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
