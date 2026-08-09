@@ -520,6 +520,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [faltasAcumVis,   setFaltasAcumVis]   = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
   const [dropdownOpen,    setDropdownOpen]    = useState(null)
   const [tiroInicial,     setTiroInicial]     = useState(null)
+  // Saque inicial por periodo: quién lo tuvo en el 1er y en el 2do tiempo —
+  // se marca con doble click (igual que las tarjetas) y queda el equipo +
+  // la hora del cronómetro en la que se marcó. Al ser un solo valor
+  // compartido entre ambos equipos, marcar uno "desmarca" al otro solo.
+  const [tiroInicialP1,   setTiroInicialP1]   = useState(null) // { equipo: 'local'|'visitante', hora }
+  const [tiroInicialP2,   setTiroInicialP2]   = useState(null)
 
   const [finalistasLocal, setFinalistasLocal] = useState(Array(5).fill(''))
   const [finalistasVis,   setFinalistasVis]   = useState(Array(5).fill(''))
@@ -589,7 +595,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis,
       finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis,
       arbitro1, arbitro2, arbitro3, anotador, cronometroNombre, observaciones,
-      horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante,
+      horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, tiroInicialP1, tiroInicialP2, colorLocal, colorVisitante,
       duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante,
       periodo, segundos, corriendo, tiempoAgotado, tiempoExtra,
       arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis,
@@ -647,6 +653,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setAnotador(snap.anotador || ''); setCronometroNombre(snap.cronometroNombre || ''); setObservaciones(snap.observaciones || '')
     setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
     setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
+    setTiroInicialP1(snap.tiroInicialP1 || null); setTiroInicialP2(snap.tiroInicialP2 || null)
     if (snap.mvpId) setMvpId(snap.mvpId)
     // Arqueros ya marcados: se restauran para no volver a pedirlos.
     // (snapshots viejos no traen estos campos — en ese caso no se toca nada)
@@ -1873,16 +1880,21 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 </tr>
               </tbody>
             </table>
-            <div style={{ borderTop: B, padding: '3px 6px', background: '#f9f9f9' }}>
-              <span style={{ fontSize: '8px', fontWeight: '700', marginRight: '6px', color: '#111' }}>TIRO INICIAL:</span>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', marginRight: '8px' }}>
-                <input type="radio" name={`tiro-${equipo}`} checked={tiroInicial === 'local'} onChange={() => setTiroInicial('local')} style={{ accentColor: AZUL, width: '10px', height: '10px' }}/>
-                <span style={{ color: '#111', fontWeight: '600', fontSize: '8px' }}>Local</span>
-              </label>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
-                <input type="radio" name={`tiro-${equipo}`} checked={tiroInicial === 'visitante'} onChange={() => setTiroInicial('visitante')} style={{ accentColor: ROJO, width: '10px', height: '10px' }}/>
-                <span style={{ color: '#111', fontWeight: '600', fontSize: '8px' }}>Visitante</span>
-              </label>
+            <div style={{ borderTop: B, padding: '3px 6px', background: '#f9f9f9', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '8px', fontWeight: '700', color: '#111' }}>SAQUE INICIAL:</span>
+              {[{ per: 1, val: tiroInicialP1, set: setTiroInicialP1 }, { per: 2, val: tiroInicialP2, set: setTiroInicialP2 }].map(({ per, val, set }) => {
+                const marcado = val?.equipo === equipo
+                const colorEq = equipo === 'local' ? AZUL : ROJO
+                return (
+                  <label key={per}
+                    title={marcado ? 'Doble click para quitar' : 'Doble click para marcar con el tiempo del cronómetro'}
+                    onDoubleClick={() => { if (marcado) set(null); else set({ equipo, hora: formatTiempo(segundos) }) }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${marcado ? colorEq : '#ccc'}`, background: marcado ? colorEq : '#fff' }}>
+                    <span style={{ fontWeight: '700', fontSize: '7px', color: marcado ? '#fff' : '#555' }}>{per}°P</span>
+                    <span style={{ fontWeight: '800', fontSize: '7.5px', color: marcado ? '#fff' : '#999' }}>{marcado ? val.hora : '—'}</span>
+                  </label>
+                )
+              })}
             </div>
           </div>
           <div style={{ flex: '0 0 50%' }}>
@@ -2304,7 +2316,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <td colSpan={3} style={cell}>
                     <b>1°P</b> H.I.:<input value={horaInicio1} onChange={e=>setHoraInicio1(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.:<input value={horaFin1} onChange={e=>setHoraFin1(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/>
                     &nbsp;<b>2°P</b> H.I.:<input value={horaInicio2} onChange={e=>setHoraInicio2(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.:<input value={horaFin2} onChange={e=>setHoraFin2(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/>
-                    &nbsp;<b>HORA:</b> {hora}&nbsp;<b>TIRO INICIAL:</b> <span style={{ fontWeight:'700',color:'#111' }}>{tiroInicial==='local'?partido.home?.name:tiroInicial==='visitante'?partido.away?.name:'—'}</span>
+                    &nbsp;<b>HORA:</b> {hora}&nbsp;<b>SAQUE INICIAL:</b> <span style={{ fontWeight:'700',color:'#111' }}>
+                      {(tiroInicialP1 || tiroInicialP2)
+                        ? <>1°P: {tiroInicialP1 ? (tiroInicialP1.equipo==='local'?partido.home?.name:partido.away?.name) : '—'} · 2°P: {tiroInicialP2 ? (tiroInicialP2.equipo==='local'?partido.home?.name:partido.away?.name) : '—'}</>
+                        : (tiroInicial==='local'?partido.home?.name:tiroInicial==='visitante'?partido.away?.name:'—')}
+                    </span>
                     {hubopenales && penalesGanador && <>&nbsp;<b>PENALES:</b> <span style={{ fontWeight:'700',color:'#1a73e8' }}>{partido.home?.name} {penalesLocal} — {penalesVisitante} {partido.away?.name} · 🏆 {penalesGanador==='local'?partido.home?.name:partido.away?.name}</span></>}
                   </td>
                 </tr>
