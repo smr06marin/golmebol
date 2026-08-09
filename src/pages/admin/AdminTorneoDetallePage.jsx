@@ -2479,7 +2479,7 @@ export default function AdminTorneoDetallePage() {
       fase: formEditPartido.fase || 'grupo',
     }).eq('id', editandoPartidoForm.id)
     if (error) { showMsg(`Error al guardar: ${error.message}`, 'error'); return }
-    showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos()
+    showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos(); fetchBracket()
   }
 
   function generarJornada() {
