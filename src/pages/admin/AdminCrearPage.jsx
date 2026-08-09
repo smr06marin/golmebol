@@ -149,6 +149,11 @@ export default function AdminCrearPage() {
   const yaInscrito = jugadoresInscritos.find(j => j.player_id === jugador.id)
   if (yaInscrito) return showMsg('Jugador ya inscrito', 'error')
 
+  const limite = torneos.find(t => t.id === torneoSel)?.limite_jugadores_equipo
+  if (limite && jugadoresInscritos.length >= limite) {
+    return showMsg(`${equipoSel.name} ya llegó al límite de ${limite} jugadores para este torneo`, 'error')
+  }
+
   // 1. Inscribir al torneo
   const { error } = await supabase.from('tournament_player_registrations').insert({
     tournament_id: torneoSel,

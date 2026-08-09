@@ -67,6 +67,9 @@ export default function RegistroEquipoPage() {
   const [equipo,        setEquipo]        = useState(null)
   const [torneo,        setTorneo]        = useState(null)
   const [loading,       setLoading]       = useState(true)
+  // Cuántos jugadores activos tiene ya el equipo en este torneo, para poder
+  // avisar/bloquear si el organizador puso un límite (torneo.limite_jugadores_equipo).
+  const [rosterCount,   setRosterCount]   = useState(0)
   const [cedula,        setCedula]        = useState('')
   const [deudaJugador,  setDeudaJugador]  = useState(null) // deuda personal de tarjetas
   const [sancionJugador, setSancionJugador] = useState(null) // sanción activa
@@ -110,8 +113,18 @@ export default function RegistroEquipoPage() {
     ])
     setEquipo(eq)
     setTorneo(tor)
+    if (eq) {
+      const { count } = await supabase.from('tournament_player_registrations')
+        .select('id', { count: 'exact', head: true })
+        .eq('tournament_id', tournamentId).eq('team_id', eq.id).eq('activo', true)
+      setRosterCount(count || 0)
+    }
     setLoading(false)
   }
+
+  // true cuando el organizador puso un límite de jugadores para este torneo
+  // y el equipo ya lo alcanzó — bloquea nuevas inscripciones (no reactivaciones).
+  const limiteAlcanzado = torneo?.limite_jugadores_equipo != null && rosterCount >= torneo.limite_jugadores_equipo
 
   function showMsg(text, type = 'error') {
     setMsg({ text, type })
@@ -298,6 +311,7 @@ export default function RegistroEquipoPage() {
   }
 
   function handleConfirmarExistente() {
+    if (limiteAlcanzado) return showMsg(`🚫 ${equipo.name} ya llegó al límite de ${torneo.limite_jugadores_equipo} jugadores para este torneo. Comunícate con la organización si necesitas más cupo.`, 'warning')
     if (sancionJugador) return showMsg(`⛔ No puedes inscribirte: estás sancionado${sancionJugador.fecha_fin ? ` hasta el ${new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO')}` : ' de forma permanente'}.`, 'warning')
     if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
     // Torneos de "registro simple" (ej. los internacionales): sin
@@ -322,6 +336,7 @@ export default function RegistroEquipoPage() {
       await subirFotosCedula(data.player_id)
 
       limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
+      setRosterCount(c => c + 1)
       setExito(true)
     } catch (e) {
       showMsg(e.message || 'Error al registrarte. Intenta de nuevo.')
@@ -331,6 +346,7 @@ export default function RegistroEquipoPage() {
   }
 
   async function handleCrearYRegistrar() {
+    if (limiteAlcanzado) return showMsg(`🚫 ${equipo.name} ya llegó al límite de ${torneo.limite_jugadores_equipo} jugadores para este torneo. Comunícate con la organización si necesitas más cupo.`, 'warning')
     if (!formNuevo.name) return showMsg('El nombre es obligatorio')
     if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
       return showMsg('Selecciona al menos una posición')
@@ -376,6 +392,7 @@ export default function RegistroEquipoPage() {
       await subirFotosCedula(data.player_id)
 
       limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
+      setRosterCount(c => c + 1)
       setExito(true)
     } catch (e) {
       showMsg(e.message || 'Error al crear el jugador. Intenta de nuevo.')
@@ -533,6 +550,11 @@ export default function RegistroEquipoPage() {
         {/* PASO 1 — Cédula */}
         {!jugadorExiste && !mostrarNuevo && (
           <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e8eaed' }}>
+            {limiteAlcanzado && (
+              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '.8rem', color: '#d93025', fontWeight: '600' }}>
+                🚫 {equipo.name} ya llegó al límite de {torneo.limite_jugadores_equipo} jugadores para este torneo. Comunícate con la organización si necesitas más cupo.
+              </div>
+            )}
             <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>Ingresa tu número de cédula</div>
             <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginBottom: '20px' }}>Verificamos si ya estás registrado en Golmebol</div>
             <label style={labelStyle}>Número de cédula</label>

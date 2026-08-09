@@ -2421,7 +2421,8 @@ export default function AdminTorneoDetallePage() {
 
   async function handleGuardarTorneo() {
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
-    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0) }
+    const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? null : parseInt(v, 10)
+    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo) }
     let avisoDegradado = null
     let { data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id')
     if (error && (error.message?.includes('pts_victoria') || error.message?.includes('pts_empate') || error.message?.includes('pts_derrota'))) {
@@ -2429,6 +2430,13 @@ export default function AdminTorneoDetallePage() {
       const { pts_victoria, pts_empate, pts_derrota, ...resto } = payload
       payload = resto
       avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+      ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
+    }
+    if (error && error.message?.includes('limite_jugadores_equipo')) {
+      // Falta correr migracion_limite_jugadores_equipo.sql en Supabase: se reintenta sin ese campo
+      const { limite_jugadores_equipo, ...resto } = payload
+      payload = resto
+      avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al actualizar torneo: ${error.message || error.code || error.details || 'desconocido'}`, 'error'); return }
@@ -3020,6 +3028,13 @@ export default function AdminTorneoDetallePage() {
                 </div>
                 <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Cuánto suma cada equipo en la tabla de posiciones según el resultado (ej: 3-1-0 o 2-1-0)</div>
               </div>
+              {(esOrganizador || esAdminRol) && (
+                <div>
+                  <label style={labelStyle}>Límite de jugadores por equipo</label>
+                  <input type="number" min="1" value={formTorneo.limite_jugadores_equipo ?? ''} onChange={e => setFormTorneo(p => ({ ...p, limite_jugadores_equipo: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={inputStyle} placeholder="Sin límite"/>
+                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Máximo de jugadores por equipo en este torneo. Vacío = sin límite. Aplica igual para todos los equipos inscritos.</div>
+                </div>
+              )}
               {esAdminRol && torneo.organizador_id && (
                 <div>
                   <label style={labelStyle}>Cupo de equipos habilitados (organizador)</label>
@@ -3242,7 +3257,7 @@ export default function AdminTorneoDetallePage() {
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
             </div>
           </div>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0 }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '' }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>
@@ -3961,7 +3976,9 @@ export default function AdminTorneoDetallePage() {
                     const jugsDesact  = jugadores.filter(j => j.team_id === e.id && j.activo === false)
                     return (
                       <div style={{ borderTop:'1px solid #f1f3f4', background:'#f8f9fa', padding:'12px 20px 14px' }}>
-                        <div style={{ fontSize:'.72rem', fontWeight:'700', color:'#5f6368', marginBottom:'10px' }}>👥 Jugadores de {e.name}</div>
+                        <div style={{ fontSize:'.72rem', fontWeight:'700', color: torneo?.limite_jugadores_equipo && jugsActivos.length >= torneo.limite_jugadores_equipo ? '#d93025' : '#5f6368', marginBottom:'10px' }}>
+                          👥 Jugadores de {e.name} · {jugsActivos.length}/{torneo?.limite_jugadores_equipo || '∞'}
+                        </div>
                         {jugsActivos.length === 0 ? (
                           <div style={{ fontSize:'.78rem', color:'#9aa0a6', marginBottom:'8px' }}>Sin jugadores activos</div>
                         ) : (
@@ -3998,21 +4015,19 @@ export default function AdminTorneoDetallePage() {
                                       Suspender
                                     </button>
                                   )}
-                                  {!esOrganizador && (
-                                    <button onClick={async () => {
-                                      if (!confirm('¿Desactivar a ' + p.name + ' del equipo en este torneo? Sus estadísticas se conservan.')) return
-                                      await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
-                                      fetchJugadores()
-                                    }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
-                                      Desactivar
-                                    </button>
-                                  )}
+                                  <button onClick={async () => {
+                                    if (!confirm('¿Sacar a ' + p.name + ' del equipo en este torneo? Ya no hará parte del equipo, pero sus estadísticas se conservan.')) return
+                                    await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
+                                    fetchJugadores()
+                                  }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
+                                    Sacar del equipo
+                                  </button>
                                 </div>
                               )
                             })}
                           </div>
                         )}
-                        {jugsDesact.length > 0 && !esOrganizador && (
+                        {jugsDesact.length > 0 && (
                           <div>
                             <div style={{ fontSize:'.68rem', fontWeight:'700', color:'#9aa0a6', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }}>🚫 Desactivados</div>
                             <div style={{ display:'flex', flexDirection:'column', gap:'5px' }}>

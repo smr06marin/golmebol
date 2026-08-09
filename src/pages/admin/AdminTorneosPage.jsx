@@ -6,7 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star } from 'lucide-react'
 
 
-const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0 }
+const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '' }
 const FIN_EMPTY = {
   llevar_cuentas: false,
   precio_amarilla: '', precio_azul: '', precio_roja: '',
@@ -109,6 +109,8 @@ export default function AdminTorneosPage() {
       pts_victoria: numDef(form.pts_victoria, 3), pts_empate: numDef(form.pts_empate, 1), pts_derrota: numDef(form.pts_derrota, 0),
       fecha_inicio: form.fecha_inicio || null,
       fecha_fin:    form.fecha_fin || null,
+      // Vacío = sin límite (null), no 0 — 0 significaría "no puede haber jugadores".
+      limite_jugadores_equipo: (form.limite_jugadores_equipo === '' || form.limite_jugadores_equipo === null || form.limite_jugadores_equipo === undefined) ? null : (parseInt(form.limite_jugadores_equipo, 10) || null),
     }
     const finanzasConfig = {
       llevar_cuentas:       !!fin.llevar_cuentas,
@@ -128,8 +130,10 @@ export default function AdminTorneosPage() {
     // pts_victoria/pts_empate/pts_derrota — faltan sus migraciones), se
     // reintenta sin ese campo en vez de fallar todo el guardado.
     const sinPuntos = obj => { const { pts_victoria, pts_empate, pts_derrota, ...resto } = obj; return resto }
+    const sinLimite = obj => { const { limite_jugadores_equipo, ...resto } = obj; return resto }
     const esErrorFinanzas = error => error?.message?.includes('finanzas_config')
     const esErrorPuntos   = error => error?.message?.includes('pts_victoria') || error?.message?.includes('pts_empate') || error?.message?.includes('pts_derrota')
+    const esErrorLimite   = error => error?.message?.includes('limite_jugadores_equipo')
 
     let avisoDegradado = null // mensaje a mostrar si se guardó pero faltó algo por migración pendiente
 
@@ -144,6 +148,11 @@ export default function AdminTorneosPage() {
       if (error && esErrorPuntos(error)) {
         payload = sinPuntos(payload)
         avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
+      }
+      if (error && esErrorLimite(error)) {
+        payload = sinLimite(payload)
+        avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al guardar: ${error.message || error.code || 'desconocido'}`, 'error') }
@@ -171,6 +180,11 @@ export default function AdminTorneosPage() {
         avisoDegradado = 'Torneo creado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
+      if (error && esErrorLimite(error)) {
+        payload = sinLimite(payload)
+        avisoDegradado = 'Torneo creado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
       if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
       else showMsg(avisoDegradado || 'Torneo creado ✓', avisoDegradado ? 'error' : 'ok')
     }
@@ -182,7 +196,7 @@ export default function AdminTorneosPage() {
   }
 
   function handleEdit(t) {
-    setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0 })
+    setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, limite_jugadores_equipo: t.limite_jugadores_equipo ?? '' })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -310,6 +324,13 @@ export default function AdminTorneosPage() {
                   <input type="number" min="0" value={form.pts_derrota} onChange={e => setForm(f => ({ ...f, pts_derrota: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
                 </div>
               </div>
+            </div>
+
+            {/* Límite de jugadores por equipo */}
+            <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>Límite de jugadores por equipo</div>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Máximo de jugadores que puede tener cada equipo inscrito en este torneo. Déjalo vacío si no quieres límite — se puede cambiar después desde "Editar torneo".</div>
+              <input type="number" min="1" value={form.limite_jugadores_equipo} onChange={e => setForm(f => ({ ...f, limite_jugadores_equipo: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input} placeholder="Sin límite"/>
             </div>
 
             {/* Precios de tarjetas */}
