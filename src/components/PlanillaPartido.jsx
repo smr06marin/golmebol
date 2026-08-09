@@ -13,8 +13,8 @@ const ROJO = '#d93025'
 // adentro de PlanillaPartido) porque son constantes fijas, no dependen de
 // nada del componente.
 const B    = '1px solid #000'
-const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle' }
-const cellL = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'left',   verticalAlign: 'middle' }
+const cell  = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'center', verticalAlign: 'middle', color: '#111' }
+const cellL = { border: B, padding: '2px 3px', fontSize: '9px', textAlign: 'left',   verticalAlign: 'middle', color: '#111' }
 const inp   = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'center', background: 'transparent', color: '#111' }
 const inpL  = { border: 'none', outline: 'none', width: '100%', fontSize: '9px', textAlign: 'left',   background: 'transparent', color: '#111' }
 
@@ -1782,7 +1782,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   {sinRegistro && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                       <input value={j.nombre} onChange={e => updateJugador(equipo, idx, 'nombre', e.target.value)}
-                        placeholder="Jugador sin registrar..." style={{ ...inpL, fontWeight: '700', color: '#111', width: '100%' }}/>
+                        placeholder="Jugador sin registrar..." style={{ ...inpL, fontSize: '11px', fontWeight: '700', color: '#111', width: '100%' }}/>
                       {/* Un jugador sin registro también puede marcarse como arquero */}
                       {tieneNombreEscrito && !hayArqueroEquipo && (
                         <button onClick={() => { if (!j.numero) { alert('Primero escribe su número de camiseta para poder marcarlo como arquero 🧤'); return } seleccionarArquero(equipo, j) }}
@@ -1793,7 +1793,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                       )}
                     </div>
                   )}
-                  <span style={{ ...inpL, display: sinRegistro ? 'none' : 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#111' }}>{j.nombre}
+                  <span style={{ ...inpL, fontSize: '11px', display: sinRegistro ? 'none' : 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#111' }}>{j.nombre}
                     {esArqueroActual && <button onClick={() => liberarArquero(equipo)} title="Cambiar de arquero" style={{ background: '#fff', border: '1px solid #1e8e3e', borderRadius: '3px', cursor: 'pointer', fontSize: '8px', padding: '0 3px', color: '#1e8e3e' }}>🔄 cambiar</button>}
                     {esArqueroActual ? '' : ' '}
                   </span>
