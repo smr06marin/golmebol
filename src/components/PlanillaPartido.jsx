@@ -520,13 +520,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [faltasAcumVis,   setFaltasAcumVis]   = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
   const [dropdownOpen,    setDropdownOpen]    = useState(null)
   const [tiroInicial,     setTiroInicial]     = useState(null)
-  // Tiempo (timeout) pedido por un equipo en cada periodo — distinto del
+  // Tiempo (timeout) pedido por cada equipo en cada periodo — distinto del
   // saque inicial. Se marca con doble click (igual que las tarjetas) y
-  // queda el equipo + la hora del cronómetro en la que se marcó. Al ser un
-  // solo valor compartido entre ambos equipos por periodo, marcar el de un
-  // equipo "desmarca" el del otro solo (no pueden pedir tiempo los dos a la vez).
-  const [tiempoP1,        setTiempoP1]        = useState(null) // { equipo: 'local'|'visitante', hora }
-  const [tiempoP2,        setTiempoP2]        = useState(null)
+  // queda la hora del cronómetro en la que se marcó. A diferencia del saque
+  // inicial, acá SÍ pueden pedir tiempo los dos equipos en el mismo periodo
+  // (no son mutuamente excluyentes), así que cada equipo tiene su propia
+  // marca dentro del mismo objeto del periodo.
+  const [tiempoP1,        setTiempoP1]        = useState({ local: false, visitante: false }) // { local: false|hora, visitante: false|hora }
+  const [tiempoP2,        setTiempoP2]        = useState({ local: false, visitante: false })
 
   const [finalistasLocal, setFinalistasLocal] = useState(Array(5).fill(''))
   const [finalistasVis,   setFinalistasVis]   = useState(Array(5).fill(''))
@@ -654,7 +655,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setAnotador(snap.anotador || ''); setCronometroNombre(snap.cronometroNombre || ''); setObservaciones(snap.observaciones || '')
     setHoraInicio1(snap.horaInicio1 || ''); setHoraFin1(snap.horaFin1 || ''); setHoraInicio2(snap.horaInicio2 || ''); setHoraFin2(snap.horaFin2 || '')
     setTiroInicial(snap.tiroInicial || null); setColorLocal(snap.colorLocal || '#1a3a8a'); setColorVisitante(snap.colorVisitante || '#d93025')
-    setTiempoP1(snap.tiempoP1 || null); setTiempoP2(snap.tiempoP2 || null)
+    // Compatibilidad con snapshots viejos donde tiempoP1/P2 todavía tenían
+    // la forma { equipo, hora } (un solo equipo a la vez) en vez de
+    // { local, visitante } (cada equipo por separado).
+    const normalizarTiempo = v => !v ? { local: false, visitante: false } : v.equipo ? { local: v.equipo === 'local' ? v.hora : false, visitante: v.equipo === 'visitante' ? v.hora : false } : { local: v.local || false, visitante: v.visitante || false }
+    setTiempoP1(normalizarTiempo(snap.tiempoP1)); setTiempoP2(normalizarTiempo(snap.tiempoP2))
     if (snap.mvpId) setMvpId(snap.mvpId)
     // Arqueros ya marcados: se restauran para no volver a pedirlos.
     // (snapshots viejos no traen estos campos — en ese caso no se toca nada)
@@ -1895,15 +1900,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             <div style={{ borderTop: B, padding: '3px 6px', background: '#f9f9f9', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '8px', fontWeight: '700', color: '#111' }}>TIEMPO:</span>
               {[{ per: 1, val: tiempoP1, set: setTiempoP1 }, { per: 2, val: tiempoP2, set: setTiempoP2 }].map(({ per, val, set }) => {
-                const marcado = val?.equipo === equipo
+                const marcado = val?.[equipo] || false
                 const colorEq = equipo === 'local' ? AZUL : ROJO
                 return (
                   <label key={per}
                     title={marcado ? 'Doble click para quitar' : 'Doble click para marcar el tiempo pedido, con la hora del cronómetro'}
-                    onDoubleClick={() => { if (marcado) set(null); else set({ equipo, hora: formatTiempo(segundos) }) }}
+                    onDoubleClick={() => set(prev => ({ ...prev, [equipo]: marcado ? false : formatTiempo(segundos) }))}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${marcado ? colorEq : '#ccc'}`, background: marcado ? colorEq : '#fff' }}>
                     <span style={{ fontWeight: '700', fontSize: '7px', color: marcado ? '#fff' : '#555' }}>{per}°P</span>
-                    <span style={{ fontWeight: '800', fontSize: '7.5px', color: marcado ? '#fff' : '#999' }}>{marcado ? val.hora : '—'}</span>
+                    <span style={{ fontWeight: '800', fontSize: '7.5px', color: marcado ? '#fff' : '#999' }}>{marcado || '—'}</span>
                   </label>
                 )
               })}
@@ -2329,7 +2334,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                     <b>1°P</b> H.I.:<input value={horaInicio1} onChange={e=>setHoraInicio1(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.:<input value={horaFin1} onChange={e=>setHoraFin1(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/>
                     &nbsp;<b>2°P</b> H.I.:<input value={horaInicio2} onChange={e=>setHoraInicio2(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/> H.F.:<input value={horaFin2} onChange={e=>setHoraFin2(e.target.value)} style={{...inp,width:'34px',display:'inline',borderBottom:'1px solid #000'}}/>
                     &nbsp;<b>HORA:</b> {hora}&nbsp;<b>SAQUE INICIAL:</b> <span style={{ fontWeight:'700',color:'#111' }}>{tiroInicial==='local'?partido.home?.name:tiroInicial==='visitante'?partido.away?.name:'—'}</span>
-                    {(tiempoP1 || tiempoP2) && <>&nbsp;<b>TIEMPO:</b> <span style={{ fontWeight:'700',color:'#111' }}>1°P: {tiempoP1 ? `${tiempoP1.equipo==='local'?partido.home?.name:partido.away?.name} (${tiempoP1.hora})` : '—'} · 2°P: {tiempoP2 ? `${tiempoP2.equipo==='local'?partido.home?.name:partido.away?.name} (${tiempoP2.hora})` : '—'}</span></>}
+                    {(tiempoP1?.local || tiempoP1?.visitante || tiempoP2?.local || tiempoP2?.visitante) && (() => {
+                      const desc = (v) => [v?.local && `${partido.home?.name} (${v.local})`, v?.visitante && `${partido.away?.name} (${v.visitante})`].filter(Boolean).join(', ')
+                      const partes = [{ p: '1°P', v: tiempoP1 }, { p: '2°P', v: tiempoP2 }].filter(x => x.v?.local || x.v?.visitante)
+                      return <>&nbsp;<b>TIEMPO:</b> <span style={{ fontWeight:'700',color:'#111' }}>{partes.map(x => `${x.p}: ${desc(x.v)}`).join(' · ')}</span></>
+                    })()}
                     {hubopenales && penalesGanador && <>&nbsp;<b>PENALES:</b> <span style={{ fontWeight:'700',color:'#1a73e8' }}>{partido.home?.name} {penalesLocal} — {penalesVisitante} {partido.away?.name} · 🏆 {penalesGanador==='local'?partido.home?.name:partido.away?.name}</span></>}
                   </td>
                 </tr>
