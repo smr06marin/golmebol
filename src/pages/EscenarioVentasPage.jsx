@@ -10,6 +10,63 @@ const S = {
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5', loss: '#d93025',
   green: '#22c55e', greenDark: '#16a34a',
 }
+// Elegir cuánto se devuelve de cada producto de la venta — no toda la venta
+// a la fuerza (ej. pidieron 3 aguas, pagaron, y solo devuelven 1).
+function ModalDevolucion({ venta, onClose, onConfirmar }) {
+  const [cantidades, setCantidades] = useState({})
+
+  function set(productId, valor, max) {
+    const v = Math.max(0, Math.min(max, valor))
+    setCantidades(c => ({ ...c, [productId]: v }))
+  }
+
+  const totalDevolver = (venta.items||[]).reduce((a,it) => a + (cantidades[it.productId]||0) * it.precio, 0)
+  const hayAlgo = Object.values(cantidades).some(v => v > 0)
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+          <div style={{ fontWeight:800, fontSize:'1rem' }}>↩️ Devolución</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+        </div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>Elige cuántas unidades de cada producto se devuelven.</div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'18px' }}>
+          {(venta.items||[]).map(it => {
+            const val = cantidades[it.productId] || 0
+            return (
+              <div key={it.productId} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', background:S.card2, borderRadius:'10px', padding:'10px 12px' }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:'.82rem', fontWeight:700 }}>{it.nombre}</div>
+                  <div style={{ fontSize:'.7rem', color:S.muted }}>Vendidas: {it.cantidad}</div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0 }}>
+                  <button onClick={()=>set(it.productId, val-1, it.cantidad)} disabled={val<=0}
+                    style={{ width:'28px', height:'28px', borderRadius:'8px', border:`1px solid ${S.border}`, background:S.card, color:S.text, cursor:'pointer', fontWeight:800, opacity:val<=0?.4:1 }}>−</button>
+                  <span style={{ minWidth:'18px', textAlign:'center', fontWeight:800, fontSize:'.85rem' }}>{val}</span>
+                  <button onClick={()=>set(it.productId, val+1, it.cantidad)} disabled={val>=it.cantidad}
+                    style={{ width:'28px', height:'28px', borderRadius:'8px', border:`1px solid ${S.border}`, background:S.card, color:S.text, cursor:'pointer', fontWeight:800, opacity:val>=it.cantidad?.4:1 }}>+</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+          <span style={{ fontSize:'.8rem', color:S.text2 }}>Total a devolver</span>
+          <span style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>{fmtMoney(totalDevolver)}</span>
+        </div>
+
+        <button onClick={()=>onConfirmar(cantidades)} disabled={!hayAlgo}
+          style={{ width:'100%', padding:'13px', background:S.loss, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.88rem', opacity: hayAlgo ? 1 : .5 }}>
+          Confirmar devolución
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function EscenarioVentasPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
@@ -29,6 +86,7 @@ export default function EscenarioVentasPage() {
   const [modalDebe, setModalDebe] = useState(false)
   const [deudorNombre, setDeudorNombre] = useState('')
   const [deudorCancha, setDeudorCancha] = useState('')
+  const [devolviendo, setDevolviendo] = useState(null) // venta a la que se le está eligiendo qué devolver
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -69,17 +127,35 @@ export default function EscenarioVentasPage() {
     setLoading(false)
   }
 
-  async function devolverVenta(venta) {
-    if (venta.estado === 'devuelta') return
-    if (!window.confirm(`¿Confirmas la devolución de esta venta por ${fmtMoney(venta.total)}? El producto vuelve al inventario y deja de contar como ingreso.`)) return
-    await Promise.all((venta.items||[]).map(it => {
-      const p = getProduct(it.productId)
-      return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad + it.cantidad }).eq('id', it.productId) : null
+  // Devuelve solo las unidades que se elijan por producto (puede ser parte
+  // de la venta, ej. 1 de las 3 aguas que pidieron) — no toda la venta a la
+  // fuerza. `cantidades` es { productId: unidadesADevolver }.
+  async function devolverParcial(venta, cantidades) {
+    const aDevolver = Object.entries(cantidades).filter(([,c]) => c > 0)
+    if (aDevolver.length === 0) return
+
+    await Promise.all(aDevolver.map(([productId, cant]) => {
+      const p = getProduct(productId)
+      return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad + cant }).eq('id', productId) : null
     }).filter(Boolean))
-    await supabase.from('escenario_ventas').update({ estado:'devuelta', devuelta_at: new Date().toISOString() }).eq('id', venta.id)
-    setMsg('↩️ Venta devuelta — inventario repuesto'); setTimeout(()=>setMsg(''),3000)
-    const detalle = (venta.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')
-    registrarActividad(escenarioId, encargado, 'devolver', 'venta', `Devolvió una venta (${fmtMoney(venta.total)}): ${detalle}`)
+
+    const nuevosItems = (venta.items || [])
+      .map(it => aDevolver.some(([pid]) => pid === it.productId) ? { ...it, cantidad: it.cantidad - (cantidades[it.productId] || 0) } : it)
+      .filter(it => it.cantidad > 0)
+
+    const nuevoTotal = nuevosItems.reduce((a,it)=>a+it.cantidad*it.precio,0)
+    const nuevoCosto = nuevosItems.reduce((a,it)=>a+it.cantidad*it.costo,0)
+    const quedaAlgo = nuevosItems.length > 0
+
+    await supabase.from('escenario_ventas').update({
+      items: nuevosItems, total: nuevoTotal, costo_total: nuevoCosto, ganancia: nuevoTotal - nuevoCosto,
+      ...(quedaAlgo ? {} : { estado:'devuelta', devuelta_at: new Date().toISOString() }),
+    }).eq('id', venta.id)
+
+    const detalle = aDevolver.map(([pid,cant]) => `${cant}x ${getProduct(pid)?.nombre || (venta.items||[]).find(i=>i.productId===pid)?.nombre || '?'}`).join(', ')
+    setMsg(quedaAlgo ? `↩️ Devueltos: ${detalle}` : '↩️ Venta devuelta completa — inventario repuesto')
+    setTimeout(()=>setMsg(''),3000)
+    registrarActividad(escenarioId, encargado, 'devolver', 'venta', `Devolvió ${detalle} de una venta`)
     fetchTodo()
   }
 
@@ -238,7 +314,7 @@ export default function EscenarioVentasPage() {
                 </div>
                 {v.estado==='devuelta'
                   ? <span style={{ fontSize:'.7rem', fontWeight:700, color:S.loss, flexShrink:0 }}>Devuelta</span>
-                  : <button onClick={()=>devolverVenta(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(217,48,37,.12)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                  : <button onClick={()=>setDevolviendo(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(217,48,37,.12)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
                       <RotateCcw size={12}/> Devolver
                     </button>}
               </div>
@@ -252,6 +328,8 @@ export default function EscenarioVentasPage() {
             style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'11px 14px 11px 38px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }}/>
         </div>
 
+        {productos.length>0 && <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Toca dos veces un producto para agregarlo al carrito</div>}
+
         {productos.length===0 ? (
           <div style={{ textAlign:'center', color:S.muted, padding:'40px 0' }}>
             <ShoppingCart size={32} style={{ opacity:.3, marginBottom:'8px' }}/>
@@ -263,8 +341,8 @@ export default function EscenarioVentasPage() {
         ) : (
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
             {visibles.map(p => (
-              <div key={p.id} onClick={()=>addToCart(p.id)}
-                style={{ position:'relative', display:'flex', flexDirection:'column', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'14px', overflow:'hidden', cursor:'pointer', touchAction:'manipulation' }}>
+              <div key={p.id} onDoubleClick={()=>addToCart(p.id)}
+                style={{ position:'relative', display:'flex', flexDirection:'column', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'14px', overflow:'hidden', cursor:'pointer', touchAction:'manipulation', userSelect:'none' }}>
                 {cart[p.id] && (
                   <span onClick={e=>{e.stopPropagation(); quitarUno(p.id)}} style={{ position:'absolute', top:'6px', right:'6px', zIndex:2, background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>
                 )}
@@ -350,6 +428,11 @@ export default function EscenarioVentasPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {devolviendo && (
+        <ModalDevolucion venta={devolviendo} onClose={()=>setDevolviendo(null)}
+          onConfirmar={async (cantidades) => { const v = devolviendo; setDevolviendo(null); await devolverParcial(v, cantidades) }}/>
       )}
     </div>
   )
