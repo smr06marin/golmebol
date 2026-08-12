@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
 import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, CheckSquare, Settings, ArrowRight, ArrowLeftRight, Repeat, History } from 'lucide-react'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -114,7 +114,6 @@ export default function EscenarioDashboardPage() {
   const B = escenarioId
   const NAV = [
     { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente' },
-    { to: `/escenario/${B}/reservas`,   icon: CheckSquare,    label: 'Solicitudes',    desc: 'Aprobar/rechazar reservas, mantenimiento' },
     { to: `/escenario/${B}/fijas`,      icon: Repeat,         label: 'Reservas fijas', desc: 'Clientes que juegan el mismo día y hora' },
     { to: `/escenario/${B}/ventas`,     icon: ShoppingCart,   label: 'Ventas',         desc: 'Punto de venta de la tienda' },
     { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha' },

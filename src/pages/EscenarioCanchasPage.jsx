@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
@@ -88,6 +88,17 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
     onGuardado()
   }
 
+  async function handleBloquear() {
+    setGuardando(true); setError('')
+    const { error: errIns } = await supabase.from('escenario_reservas').insert({
+      escenario_id: escenario.id, cancha, fecha, hora, duracion: 60,
+      nombre: 'Mantenimiento', telefono: '', equipo: '', estado: 'mantenimiento', pago: 'pagado', monto: 0,
+    })
+    setGuardando(false)
+    if (errIns) { setError('Error al bloquear: ' + errIns.message); return }
+    onGuardado()
+  }
+
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
       <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
@@ -113,6 +124,111 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
           style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:guardando?.7:1 }}>
           {guardando ? 'Guardando...' : 'Reservar'}
         </button>
+        <button onClick={handleBloquear} disabled={guardando}
+          style={{ width:'100%', padding:'10px', marginTop:'8px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontWeight:700, fontSize:'.78rem', opacity:guardando?.7:1 }}>
+          🛠️ Bloquear este horario (mantenimiento)
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Cuando el horario ya está ocupado — muestra los datos de quien reservó
+// (o el bloqueo de mantenimiento) y permite marcar el pago, reprogramar o
+// cancelar sin tener que salir a otra pantalla.
+function ModalGestionar({ reserva, canchas, onClose, onResuelto }) {
+  const [modo, setModo] = useState(null) // null | 'cancelar' | 'reprogramar'
+  const [reForm, setReForm] = useState({ cancha: reserva.cancha, fecha: reserva.fecha, hora: reserva.hora })
+  const [error, setError] = useState('')
+  const [procesando, setProcesando] = useState(false)
+
+  const esMantenimiento = reserva.estado === 'mantenimiento'
+
+  async function cambiarPago(valor) {
+    const payload = { pago: valor }
+    if (valor === 'pagado') payload.monto_pagado = reserva.monto
+    await supabase.from('escenario_reservas').update(payload).eq('id', reserva.id)
+    onResuelto('✅ Pago actualizado')
+  }
+
+  async function desbloquear() {
+    setProcesando(true)
+    await supabase.from('escenario_reservas').delete().eq('id', reserva.id)
+    setProcesando(false)
+    onResuelto('Horario desbloqueado')
+  }
+
+  async function cancelar(motivo) {
+    setProcesando(true)
+    await supabase.from('escenario_reservas').update({ estado: 'cancelada', motivo_cancelacion: motivo }).eq('id', reserva.id)
+    setProcesando(false)
+    onResuelto('Reserva cancelada — el horario quedó libre')
+  }
+
+  async function confirmarReprogramar() {
+    if (!reForm.cancha || !reForm.fecha || !reForm.hora) { setError('Completa cancha, fecha y hora'); return }
+    await supabase.from('escenario_reservas').update({ cancha: reForm.cancha, fecha: reForm.fecha, hora: reForm.hora }).eq('id', reserva.id)
+    onResuelto('Reserva reprogramada')
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+          <div style={{ fontWeight:800, fontSize:'1rem' }}>{esMantenimiento ? 'Horario bloqueado' : 'Reserva'}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+        </div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{nombreCancha(canchas, reserva.cancha)} · {fmtDate(reserva.fecha)} — {fmtHora12(reserva.hora)}</div>
+
+        {esMantenimiento ? (
+          <>
+            <div style={{ fontSize:'.8rem', color:S.text2, marginBottom:'16px' }}>Este horario está marcado como mantenimiento, no acepta reservas.</div>
+            <button onClick={desbloquear} disabled={procesando} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
+              {procesando ? '...' : 'Desbloquear horario'}
+            </button>
+          </>
+        ) : modo === 'cancelar' ? (
+          <>
+            <div style={{ fontSize:'.8rem', color:S.text2, marginBottom:'14px' }}>¿Por qué se cancela? El horario queda libre para otra reserva.</div>
+            <button onClick={()=>cancelar('no_show')} disabled={procesando} style={{ width:'100%', padding:'12px', marginBottom:'8px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text, fontWeight:700, fontSize:'.82rem' }}>No llegó</button>
+            <button onClick={()=>cancelar('ultima_hora')} disabled={procesando} style={{ width:'100%', padding:'12px', marginBottom:'8px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text, fontWeight:700, fontSize:'.82rem' }}>Canceló a última hora</button>
+            <button onClick={()=>setModo(null)} style={{ width:'100%', padding:'10px', background:'none', border:'none', cursor:'pointer', color:S.muted, fontSize:'.78rem' }}>Volver</button>
+          </>
+        ) : modo === 'reprogramar' ? (
+          <>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+              <div><label style={lbl}>Cancha</label><select value={reForm.cancha} onChange={e=>setReForm(f=>({...f,cancha:e.target.value}))} style={inp}>{canchas.map(c=><option key={c.id} value={c.slug}>{c.nombre}</option>)}</select></div>
+              <div><label style={lbl}>Fecha</label><input type="date" value={reForm.fecha} onChange={e=>setReForm(f=>({...f,fecha:e.target.value}))} style={inp}/></div>
+            </div>
+            <div style={{ marginBottom:'14px' }}><label style={lbl}>Hora</label><input type="text" value={reForm.hora} onChange={e=>setReForm(f=>({...f,hora:e.target.value}))} style={inp} placeholder="HH:00"/></div>
+            {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'12px' }}>{error}</div>}
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={()=>setModo(null)} style={{ padding:'12px 16px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.muted, fontSize:'.85rem' }}>Volver</button>
+              <button onClick={confirmarReprogramar} style={{ flex:1, padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Confirmar nuevo horario</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ background:S.card2, borderRadius:'10px', padding:'14px', marginBottom:'16px' }}>
+              <div style={{ fontSize:'.68rem', color:S.muted, textTransform:'uppercase', letterSpacing:'.05em', marginBottom:'8px' }}>Datos de quien reservó</div>
+              <div style={{ fontSize:'.88rem', fontWeight:700, marginBottom:'4px' }}>{reserva.nombre}</div>
+              {reserva.telefono && <div style={{ fontSize:'.8rem', color:S.text2 }}>{reserva.telefono}</div>}
+              {reserva.equipo && <div style={{ fontSize:'.8rem', color:S.text2 }}>Equipo: {reserva.equipo}</div>}
+              <div style={{ fontSize:'.8rem', color:S.text2 }}>Duración: {reserva.duracion} min</div>
+              <div style={{ fontSize:'.8rem', color:S.text2, marginTop:'6px' }}>Valor: {fmtMoney(reserva.monto)}{reserva.monto_pagado ? ` · pagado ${fmtMoney(reserva.monto_pagado)}` : ''}</div>
+            </div>
+            <div style={{ marginBottom:'16px' }}>
+              <label style={lbl}>Estado del pago</label>
+              <select value={reserva.pago} onChange={e=>cambiarPago(e.target.value)} style={inp}>
+                <option value="pendiente">Pendiente</option><option value="anticipo">Anticipo</option><option value="pagado">Pagado</option>
+              </select>
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={()=>setModo('reprogramar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontWeight:700, fontSize:'.78rem' }}>Reprogramar</button>
+              <button onClick={()=>setModo('cancelar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.78rem' }}>Cancelar reserva</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -130,6 +246,7 @@ export default function EscenarioCanchasPage() {
   const [fecha,     setFecha]     = useState(todayStr())
   const [modalSlot, setModalSlot] = useState(null)
   const [revisando, setRevisando] = useState(null)
+  const [gestionando, setGestionando] = useState(null)
   const [msg,       setMsg]       = useState('')
 
   useEffect(() => { fetchTodo() }, [escenarioId])
@@ -164,6 +281,13 @@ export default function EscenarioCanchasPage() {
   }
   function resuelto(texto) { setRevisando(null); setMsg(texto); setTimeout(()=>setMsg(''),3000); fetchTodo() }
 
+  function abrirGestionar(cancha, fecha, hora) {
+    const r = reservas.find(x => x.cancha === cancha && x.fecha === fecha && (x.estado === 'aceptada' || x.estado === 'mantenimiento')
+      && parseInt(hora,10) >= parseInt(x.hora,10) && parseInt(hora,10) < parseInt(x.hora,10) + Math.ceil((x.duracion||60)/60))
+    if (r) setGestionando(r)
+  }
+  function resueltoGestion(texto) { setGestionando(null); setMsg(texto); setTimeout(()=>setMsg(''),3000); fetchTodo() }
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
@@ -179,6 +303,10 @@ export default function EscenarioCanchasPage() {
       {revisando && (
         <ModalRevisar reserva={revisando} canchas={canchas} encargado={encargado}
           onClose={()=>setRevisando(null)} onResuelto={resuelto}/>
+      )}
+      {gestionando && (
+        <ModalGestionar reserva={gestionando} canchas={canchas}
+          onClose={()=>setGestionando(null)} onResuelto={resueltoGestion}/>
       )}
 
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
@@ -212,10 +340,10 @@ export default function EscenarioCanchasPage() {
             const label = est==='libre' ? '🟢 Disponible' : est==='pendiente' ? '🟡 Solicitud pendiente' : '🔴 Ocupado'
             const color = est==='libre' ? S.win : est==='pendiente' ? S.warn : S.loss
             return (
-              <div key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' && abrirRevisar(cancha, fecha, h)}
-                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor: est==='ocupado'?'default':'pointer' }}>
+              <div key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' ? abrirRevisar(cancha, fecha, h) : abrirGestionar(cancha, fecha, h)}
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer' }}>
                 <span style={{ fontWeight:700, fontSize:'.85rem' }}>{fmtHora12(h)}</span>
-                <span style={{ fontSize:'.78rem', color, fontWeight:600 }}>{label}{est==='pendiente' && ' · toca para revisar'}</span>
+                <span style={{ fontSize:'.78rem', color, fontWeight:600 }}>{label}{est!=='libre' && ' · toca para ver'}</span>
               </div>
             )
           })}
