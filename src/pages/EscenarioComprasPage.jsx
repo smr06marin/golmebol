@@ -2,18 +2,24 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr, comprimirImagen, registrarActividad } from '../lib/escenarioHelpers'
-import { Camera, Receipt } from 'lucide-react'
+import { Camera, Receipt, NotebookPen, CheckCircle2 } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+  green: '#22c55e',
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }
 
 function horaAhora() {
   return new Date().toTimeString().slice(0, 5)
+}
+// Valor total de una compra ya guardada: si se registró el total de la
+// factura se usa ese, si no se estima como costo unitario x cantidad.
+function totalDe(c) {
+  return c.factura_total != null ? Number(c.factura_total) : Number(c.costo || 0) * Number(c.cantidad || 0)
 }
 
 export default function EscenarioComprasPage() {
@@ -23,9 +29,11 @@ export default function EscenarioComprasPage() {
   const [encargado, setEncargado] = useState(null)
   const [productos, setProductos] = useState([])
   const [compras,   setCompras]   = useState([])
+  const [deudas,    setDeudas]    = useState([])
   const [loading,   setLoading]   = useState(true)
   const [msg,       setMsg]       = useState('')
   const [avisoStock, setAvisoStock] = useState(false)
+  const [mostrarDeudas, setMostrarDeudas] = useState(false)
 
   const [proveedor, setProveedor] = useState('')
   const [productId, setProductId] = useState('')
@@ -35,6 +43,8 @@ export default function EscenarioComprasPage() {
   const [facturaTotal, setFacturaTotal] = useState('')
   const [facturaFoto,  setFacturaFoto]  = useState(null)
   const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const [pagoEstado, setPagoEstado] = useState('pagado') // pagado | parcial | pendiente
+  const [montoParcial, setMontoParcial] = useState('')
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -56,6 +66,9 @@ export default function EscenarioComprasPage() {
     setProductos(prods || [])
     if (prods?.length && !productId) setProductId(prods[0].id)
     setCompras(comp || [])
+    // Deudas con proveedores (compras no pagadas del todo) — no se limitan
+    // al día de hoy, por si algo quedó debiendo de antes.
+    setDeudas((comp || []).filter(c => c.pago_estado && c.pago_estado !== 'pagado'))
     setLoading(false)
   }
 
@@ -78,6 +91,9 @@ export default function EscenarioComprasPage() {
     if (!productId || cantidad<=0) { setMsg('Ingresa una cantidad válida'); setTimeout(()=>setMsg(''),3000); return }
     const p = productos.find(x=>x.id===productId)
     const costoNum = Number(costo) || 0
+    const totalCompra = facturaTotal !== '' ? Number(facturaTotal) : costoNum * Number(cantidad)
+    const montoPagado = pagoEstado === 'pagado' ? totalCompra : pagoEstado === 'parcial' ? (Number(montoParcial) || 0) : 0
+
     await supabase.from('escenario_productos').update({ cantidad: p.cantidad + Number(cantidad), ...(costoNum>0?{costo:costoNum}:{}) }).eq('id', productId)
 
     const payload = {
@@ -85,10 +101,12 @@ export default function EscenarioComprasPage() {
       cantidad: Number(cantidad), costo: costoNum, fecha, hora: horaAhora(),
       factura_total: facturaTotal !== '' ? Number(facturaTotal) : null,
       factura_foto_url: facturaFoto || null,
+      pago_estado: pagoEstado, monto_pagado: montoPagado,
     }
     let { error } = await supabase.from('escenario_compras').insert(payload)
-    // Si aún no se corrió la migración de foto/total de factura u hora,
-    // reintenta sin esos campos en vez de perder todo el registro.
+    // Si aún no se corrió alguna migración de compras (foto/total de
+    // factura, hora, deuda con proveedor), reintenta sin esos campos en
+    // vez de perder todo el registro.
     const camposOmitidos = []
     let restante = payload
     while (error && /Could not find the .* column/.test(error.message || '')) {
@@ -101,15 +119,29 @@ export default function EscenarioComprasPage() {
     }
     if (error) { setMsg('❌ ' + error.message); setTimeout(()=>setMsg(''),5000); return }
 
-    registrarActividad(escenarioId, encargado, 'crear', 'compra',
-      `Registró una compra de ${p.nombre} x${cantidad}${payload.factura_total ? ` (factura ${fmtMoney(payload.factura_total)})` : ''}`)
+    if (pagoEstado !== 'pagado') {
+      registrarActividad(escenarioId, encargado, 'crear', 'compra',
+        `Registró una compra de ${p.nombre} x${cantidad} — quedó debiendo ${fmtMoney(totalCompra - montoPagado)} a ${payload.proveedor}`)
+    } else {
+      registrarActividad(escenarioId, encargado, 'crear', 'compra',
+        `Registró una compra de ${p.nombre} x${cantidad}${payload.factura_total ? ` (factura ${fmtMoney(payload.factura_total)})` : ''}`)
+    }
 
     setMsg(camposOmitidos.length
       ? `✅ Compra guardada, pero falta correr una migración para: ${camposOmitidos.join(', ')}`
-      : `✅ Inventario de ${p.nombre} actualizado (+${cantidad})`)
+      : pagoEstado !== 'pagado'
+        ? `📝 Inventario actualizado (+${cantidad}) — quedaste debiendo ${fmtMoney(totalCompra - montoPagado)} a ${payload.proveedor}`
+        : `✅ Inventario de ${p.nombre} actualizado (+${cantidad})`)
     setAvisoStock(true)
     setTimeout(()=>{ setMsg(''); setAvisoStock(false) }, 7000)
-    setProveedor(''); setCantidad(1); setCosto(0); setFacturaTotal(''); setFacturaFoto(null)
+    setProveedor(''); setCantidad(1); setCosto(0); setFacturaTotal(''); setFacturaFoto(null); setPagoEstado('pagado'); setMontoParcial('')
+    fetchTodo()
+  }
+
+  async function marcarPagado(c) {
+    await supabase.from('escenario_compras').update({ pago_estado:'pagado', monto_pagado: totalDe(c), pagado_at: new Date().toISOString() }).eq('id', c.id)
+    setMsg(`✅ Le pagaste a ${c.proveedor} ${fmtMoney(totalDe(c))}`); setTimeout(()=>setMsg(''),3000)
+    registrarActividad(escenarioId, encargado, 'editar', 'compra', `Marcó como pagada la deuda con "${c.proveedor}" (${fmtMoney(totalDe(c) - (c.monto_pagado||0))})`)
     fetchTodo()
   }
 
@@ -137,6 +169,30 @@ export default function EscenarioComprasPage() {
                 📦 Ver en Inventario →
               </button>
             )}
+          </div>
+        )}
+
+        {deudas.length > 0 && (
+          <button onClick={()=>setMostrarDeudas(v=>!v)}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', width:'100%', padding:'10px', marginBottom:'14px', background: mostrarDeudas ? 'rgba(249,168,37,.15)' : S.card, border:`1px solid ${mostrarDeudas ? S.gold : S.border}`, borderRadius:'10px', cursor:'pointer', color: mostrarDeudas ? S.gold : S.text2, fontWeight:700, fontSize:'.78rem' }}>
+            <NotebookPen size={14}/> Debes a proveedores ({deudas.length})
+          </button>
+        )}
+
+        {mostrarDeudas && deudas.length > 0 && (
+          <div style={{ marginBottom:'16px' }}>
+            {deudas.map(c => (
+              <div key={c.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 12px', background:'rgba(249,168,37,.08)', border:`1px solid ${S.gold}`, borderRadius:'10px', marginBottom:'8px' }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:'.82rem', fontWeight:800 }}>{c.proveedor}</div>
+                  <div style={{ fontSize:'.76rem', color:S.text2 }}>{c.nombre} x{c.cantidad} · {c.fecha}</div>
+                  <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>Debes {fmtMoney(totalDe(c) - (c.monto_pagado||0))}</div>
+                </div>
+                <button onClick={()=>marcarPagado(c)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                  <CheckCircle2 size={12}/> Ya pagué
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -176,6 +232,21 @@ export default function EscenarioComprasPage() {
             </div>
           </div>
 
+          <div style={{ marginBottom:'14px' }}>
+            <label style={lbl}>Pago al proveedor</label>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px' }}>
+              {[['pagado','Pagué todo'],['parcial','Pagué parte'],['pendiente','Debo todo']].map(([v,l]) => (
+                <button key={v} onClick={()=>setPagoEstado(v)}
+                  style={{ padding:'9px 4px', borderRadius:'8px', border:`1px solid ${pagoEstado===v ? S.gold : S.border}`, cursor:'pointer', fontWeight:700, fontSize:'.7rem', background: pagoEstado===v ? 'rgba(249,168,37,.15)' : S.card2, color: pagoEstado===v ? S.gold : S.text2 }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {pagoEstado === 'parcial' && (
+              <input type="number" value={montoParcial} onChange={e=>setMontoParcial(e.target.value)} style={{ ...inp, marginTop:'8px' }} placeholder="¿Cuánto pagaste?"/>
+            )}
+          </div>
+
           <button onClick={registrarCompra} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Registrar compra</button>
         </div>
 
@@ -189,6 +260,9 @@ export default function EscenarioComprasPage() {
               : null}
             <div style={{ flex:1, minWidth:0 }}>
               <div>{c.fecha}{c.hora ? ` · ${c.hora}` : ''} · {c.nombre} x{c.cantidad} · {c.proveedor}</div>
+              {c.pago_estado && c.pago_estado !== 'pagado' && (
+                <div style={{ fontSize:'.68rem', color:S.gold, fontWeight:700 }}>Debes {fmtMoney(totalDe(c) - (c.monto_pagado||0))}</div>
+              )}
             </div>
             <div style={{ textAlign:'right' }}>
               <div style={{ fontWeight:700 }}>{fmtMoney(c.costo*c.cantidad)}</div>

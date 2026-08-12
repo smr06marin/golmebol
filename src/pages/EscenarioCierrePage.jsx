@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, fmtDate, todayStr } from '../lib/escenarioHelpers'
+import { fmtMoney, fmtDate, todayStr, nombreCancha } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -9,6 +9,14 @@ const S = {
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5', loss: '#d93025',
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 13px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }
+const seccion = { fontWeight:800, fontSize:'.85rem', margin:'18px 0 8px' }
+const rowItem = { display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'7px 0', borderBottom:`1px solid ${S.border}`, fontSize:'.78rem' }
+
+// Valor total de una compra: el de la factura si se guardó, si no costo x cantidad.
+function totalCompra(c) {
+  return c.factura_total != null ? Number(c.factura_total) : Number(c.costo || 0) * Number(c.cantidad || 0)
+}
+function compraDebe(c) { return !!(c.pago_estado && c.pago_estado !== 'pagado') }
 
 export default function EscenarioCierrePage() {
   const navigate = useNavigate()
@@ -17,9 +25,15 @@ export default function EscenarioCierrePage() {
   const [loading,   setLoading]   = useState(true)
   const [fecha,     setFecha]     = useState(todayStr())
   const [ventas,    setVentas]    = useState([])
+  const [reservas,  setReservas]  = useState([])
+  const [canchas,   setCanchas]   = useState([])
+  const [compras,   setCompras]   = useState([])
+  const [productos, setProductos] = useState([])
+  const [deudasClientes,   setDeudasClientes]   = useState([])
+  const [deudasProveedores, setDeudasProveedores] = useState([])
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
-  useEffect(() => { if (escenario) fetchVentas() }, [fecha, escenario])
+  useEffect(() => { if (escenario) fetchDia() }, [fecha, escenario])
 
   async function fetchEscenario() {
     setLoading(true)
@@ -31,19 +45,33 @@ export default function EscenarioCierrePage() {
     if (!acceso) { navigate('/escenario'); return }
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
+    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId)
+    setCanchas(cs || [])
     setLoading(false)
   }
 
-  async function fetchVentas() {
-    const { data } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha)
-    setVentas(data || [])
+  async function fetchDia() {
+    const [{ data: v }, { data: r }, { data: c }, { data: prods }, { data: dc }, { data: dp }] = await Promise.all([
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha).order('hora'),
+      supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha).order('hora'),
+      supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
+      supabase.from('escenario_productos').select('*').eq('escenario_id', escenario.id).order('nombre'),
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('pago_estado', 'pendiente').eq('estado', 'completada'),
+      supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id),
+    ])
+    setVentas(v || [])
+    setReservas(r || [])
+    setCompras(c || [])
+    setProductos(prods || [])
+    setDeudasClientes(dc || [])
+    setDeudasProveedores((dp || []).filter(compraDebe))
   }
 
   const ventasCompletadas = ventas.filter(v => v.estado !== 'devuelta')
   const ventasDevueltas = ventas.filter(v => v.estado === 'devuelta')
   const totalDevuelto = ventasDevueltas.reduce((a,v)=>a+Number(v.total||0),0)
   const ventasFiadas = ventasCompletadas.filter(v => v.pago_estado === 'pendiente')
-  const totalFiado = ventasFiadas.reduce((a,v)=>a+Number(v.total||0),0)
+  const totalFiadoHoy = ventasFiadas.reduce((a,v)=>a+Number(v.total||0),0)
 
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
@@ -53,6 +81,18 @@ export default function EscenarioCierrePage() {
   const costoTotal = ventasCompletadas.reduce((a,v)=>a+Number(v.costo_total||0),0)
   const ganancia = totalVentas - costoTotal
   const productosVendidos = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).reduce((b,i)=>b+i.cantidad,0),0)
+  const ingresoTienda = totalVentas - totalFiadoHoy
+
+  const ingresoCanchas = reservas.reduce((a,r)=>a+Number(r.monto_pagado||0),0)
+  const totalCanchas = reservas.reduce((a,r)=>a+Number(r.monto||0),0)
+
+  const gastoCompras = compras.reduce((a,c)=>a+totalCompra(c),0)
+  const pagadoCompras = compras.reduce((a,c)=>a+Number(c.monto_pagado ?? totalCompra(c)),0)
+
+  const cajaNeta = ingresoTienda + ingresoCanchas - pagadoCompras
+
+  const totalDeudaClientes = deudasClientes.reduce((a,v)=>a+Number(v.total||0),0)
+  const totalDeudaProveedores = deudasProveedores.reduce((a,c)=>a+(totalCompra(c)-(c.monto_pagado||0)),0)
 
   const stat = { background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }
 
@@ -63,35 +103,78 @@ export default function EscenarioCierrePage() {
       <div className="no-print" style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto' }}>
           <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'5px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'10px' }}>← Escenario</button>
-          <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>🧾 Cierre diario</div>
+          <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>🧾 Informe diario</div>
           <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
         </div>
       </div>
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         <div className="no-print" style={{ marginBottom:'16px' }}>
-          <label style={{ fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase' }}>Fecha del cierre</label>
+          <label style={{ fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase' }}>Fecha del informe</label>
           <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inp}/>
         </div>
 
         <div id="print-area" style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px' }}>
-          <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'14px' }}>🧾 Cierre diario — {fmtDate(fecha)}</div>
+          <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'14px' }}>🧾 Informe diario — {fmtDate(fecha)}</div>
+
+          {/* Resumen general */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ventas del día</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Costo de productos vendidos</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(costoTotal)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ganancia</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(ganancia)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Productos vendidos</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{productosVendidos}</div></div>
+            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ventas tienda</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas)}</div></div>
+            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ganancia tienda</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(ganancia)}</div></div>
+            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Cobrado en canchas</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(ingresoCanchas)}</div></div>
+            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Pagado en compras</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(pagadoCompras)}</div></div>
             {ventasDevueltas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Devuelto ({ventasDevueltas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>-{fmtMoney(totalDevuelto)}</div></div>
             )}
             {ventasFiadas.length > 0 && (
-              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Por cobrar ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiado)}</div></div>
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Fiado hoy ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiadoHoy)}</div></div>
             )}
-            <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja esperada</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas - totalFiado)}</div></div>
+            <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja neta del día (tienda + canchas − compras)</div><div style={{ fontWeight:900, fontSize:'1.3rem', color:S.cyan }}>{fmtMoney(cajaNeta)}</div></div>
           </div>
+
+          {/* Canchas del día */}
+          <div style={seccion}>🏟️ Canchas — {reservas.length} reserva(s), {fmtMoney(totalCanchas)} en total</div>
+          {reservas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin reservas este día.</div> : reservas.map(r => (
+            <div key={r.id} style={rowItem}>
+              <span>{r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre || 'Sin nombre'}</span>
+              <span style={{ fontWeight:700, color: r.pago==='pagado' ? S.cyan : S.gold }}>{fmtMoney(r.monto_pagado||0)}/{fmtMoney(r.monto||0)}</span>
+            </div>
+          ))}
+
+          {/* Ventas del día (detalle) */}
+          <div style={seccion}>🛒 Ventas — {ventasCompletadas.length} venta(s), {productosVendidos} producto(s)</div>
+          {ventasCompletadas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin ventas este día.</div> : ventasCompletadas.map(v => (
+            <div key={v.id} style={rowItem}>
+              <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{v.hora} · {(v.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')}{v.pago_estado==='pendiente' ? ' · fiado' : ''}</span>
+              <span style={{ fontWeight:700 }}>{fmtMoney(v.total)}</span>
+            </div>
+          ))}
+
+          {/* Compras del día */}
+          <div style={seccion}>🚚 Compras — {compras.length} compra(s), {fmtMoney(gastoCompras)} en total</div>
+          {compras.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin compras este día.</div> : compras.map(c => (
+            <div key={c.id} style={rowItem}>
+              <span>{c.hora ? c.hora+' · ' : ''}{c.nombre} x{c.cantidad} · {c.proveedor}</span>
+              <span style={{ fontWeight:700, color: compraDebe(c) ? S.gold : S.text }}>{fmtMoney(totalCompra(c))}{compraDebe(c) ? ' (debe)' : ''}</span>
+            </div>
+          ))}
+
+          {/* Deudas pendientes (a hoy, no solo de este día) */}
+          <div style={seccion}>📝 Deudas pendientes (a la fecha de hoy)</div>
+          <div style={rowItem}><span>Por cobrar a clientes ({deudasClientes.length})</span><span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(totalDeudaClientes)}</span></div>
+          <div style={rowItem}><span>Por pagar a proveedores ({deudasProveedores.length})</span><span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(totalDeudaProveedores)}</span></div>
+
+          {/* Stock actual */}
+          <div style={seccion}>📦 Stock actual del inventario</div>
+          {productos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin productos.</div> : productos.map(p => (
+            <div key={p.id} style={rowItem}>
+              <span>{p.emoji || '📦'} {p.nombre}</span>
+              <span style={{ fontWeight:700, color: p.cantidad<=p.stock_minimo ? S.loss : S.text }}>{p.cantidad} und</span>
+            </div>
+          ))}
         </div>
 
-        <button className="no-print" onClick={()=>window.print()} style={{ width:'100%', padding:'13px', marginTop:'16px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem' }}>Generar / imprimir PDF del cierre</button>
+        <button className="no-print" onClick={()=>window.print()} style={{ width:'100%', padding:'13px', marginTop:'16px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem' }}>Generar / imprimir PDF del informe</button>
         <div className="no-print" style={{ fontSize:'.72rem', color:S.muted, marginTop:'8px', textAlign:'center' }}>Se abre el diálogo de impresión del navegador — elige "Guardar como PDF".</div>
       </div>
     </div>

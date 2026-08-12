@@ -120,7 +120,7 @@ export default function EscenarioDashboardPage() {
     { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha' },
     { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock' },
     { to: `/escenario/${B}/compras`,    icon: Truck,          label: 'Compras',        desc: 'Registro de compras a proveedores' },
-    { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Cierre diario',  desc: 'Cierre e imprimir PDF' },
+    { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Informe diario', desc: 'Canchas, ventas, compras, deudas y stock — imprimir PDF' },
     { to: `/escenario/${B}/reportes`,   icon: BarChart3,      label: 'Reportes',       desc: 'Más vendidos, ganancia por producto' },
     { to: `/escenario/${B}/actividad`,  icon: History,        label: 'Actividad',      desc: 'Quién cambió precios, agregó o eliminó algo' },
     { to: `/escenario/${B}/config`,     icon: Settings,       label: 'Configuración',  desc: 'Datos, WhatsApp, horarios, precios, fondo' },
