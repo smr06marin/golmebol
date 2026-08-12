@@ -358,6 +358,9 @@ export default function EscenarioVentasPage() {
                       ? <img src={p.foto_url} style={{ maxWidth:'85%', maxHeight:'85%', width:'auto', height:'auto', objectFit:'contain' }}/>
                       : <span style={{ fontSize:'2.4rem' }}>{p.emoji || '📦'}</span>}
                   </div>
+                  <span style={{ position:'absolute', bottom:'4px', left:'4px', zIndex:2, background: p.cantidad<=p.stock_minimo ? S.loss : 'rgba(0,0,0,.6)', color:'#fff', borderRadius:'6px', padding:'2px 6px', fontSize:'.65rem', fontWeight:800 }}>
+                    {p.cantidad} und
+                  </span>
                 </div>
                 <div style={{ padding:'8px 9px' }}>
                   <div style={{ fontSize:'.75rem', fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.nombre}</div>
