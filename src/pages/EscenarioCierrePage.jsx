@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, fmtDate, todayStr, nombreCancha } from '../lib/escenarioHelpers'
+import { fmtMoney, fmtDate, todayStr, nombreCancha, registrarActividad } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -22,6 +22,7 @@ export default function EscenarioCierrePage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
   const [escenario, setEscenario] = useState(null)
+  const [encargado, setEncargado] = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [fecha,     setFecha]     = useState(todayStr())
   const [ventas,    setVentas]    = useState([])
@@ -31,6 +32,10 @@ export default function EscenarioCierrePage() {
   const [productos, setProductos] = useState([])
   const [deudasClientes,   setDeudasClientes]   = useState([])
   const [deudasProveedores, setDeudasProveedores] = useState([])
+  const [conteos,      setConteos]      = useState({}) // product_id -> fila de escenario_conteos_stock
+  const [inputFisico,  setInputFisico]  = useState({}) // product_id -> texto que se está escribiendo
+  const [guardandoConteo, setGuardandoConteo] = useState(false)
+  const [msgConteo, setMsgConteo] = useState('')
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
   useEffect(() => { if (escenario) fetchDia() }, [fecha, escenario])
@@ -45,19 +50,21 @@ export default function EscenarioCierrePage() {
     if (!acceso) { navigate('/escenario'); return }
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
+    setEncargado(p)
     const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId)
     setCanchas(cs || [])
     setLoading(false)
   }
 
   async function fetchDia() {
-    const [{ data: v }, { data: r }, { data: c }, { data: prods }, { data: dc }, { data: dp }] = await Promise.all([
+    const [{ data: v }, { data: r }, { data: c }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }] = await Promise.all([
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha).order('hora'),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha).order('hora'),
       supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenario.id).order('nombre'),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('pago_estado', 'pendiente').eq('estado', 'completada'),
       supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id),
+      supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
     ])
     setVentas(v || [])
     setReservas(r || [])
@@ -65,6 +72,43 @@ export default function EscenarioCierrePage() {
     setProductos(prods || [])
     setDeudasClientes(dc || [])
     setDeudasProveedores((dp || []).filter(compraDebe))
+    const mapaConteos = {}
+    ;(cnt || []).forEach(row => { if (row.product_id) mapaConteos[row.product_id] = row })
+    setConteos(mapaConteos)
+    setInputFisico({})
+  }
+
+  // Guarda el conteo físico de todos los productos en los que se escribió
+  // algo, y calcula la diferencia contra lo que dice el sistema en este
+  // momento — así queda anotado si faltó o sobró algo ese día.
+  async function guardarConteo() {
+    const filas = productos.map(p => {
+      const texto = inputFisico[p.id]
+      if (texto === undefined || texto === '') return null
+      const fisica = parseInt(texto) || 0
+      return {
+        escenario_id: escenario.id, fecha, product_id: p.id, nombre: p.nombre,
+        cantidad_sistema: p.cantidad, cantidad_fisica: fisica, diferencia: fisica - p.cantidad,
+        player_id: encargado?.id || null,
+      }
+    }).filter(Boolean)
+    if (filas.length === 0) return
+    setGuardandoConteo(true)
+    const { error } = await supabase.from('escenario_conteos_stock').upsert(filas, { onConflict: 'escenario_id,fecha,product_id' })
+    setGuardandoConteo(false)
+    if (error) {
+      setMsgConteo(/does not exist/.test(error.message||'') ? '⚠️ Falta correr la migración migracion_escenario_conteo_stock.sql' : '❌ ' + error.message)
+      setTimeout(()=>setMsgConteo(''),5000)
+      return
+    }
+    const conDiferencia = filas.filter(f => f.diferencia !== 0)
+    setMsgConteo(conDiferencia.length ? `⚠️ Guardado — ${conDiferencia.length} producto(s) con diferencia` : '✅ Conteo guardado, todo coincide')
+    setTimeout(()=>setMsgConteo(''),5000)
+    if (conDiferencia.length) {
+      registrarActividad(escenarioId, encargado, 'crear', 'conteo',
+        `Conteo físico del ${fecha}: ${conDiferencia.map(f=>`${f.nombre} ${f.diferencia>0?'+':''}${f.diferencia}`).join(', ')}`)
+    }
+    fetchDia()
   }
 
   const ventasCompletadas = ventas.filter(v => v.estado !== 'devuelta')
@@ -176,14 +220,45 @@ export default function EscenarioCierrePage() {
             </div>
           ))}
 
-          {/* Stock actual */}
-          <div style={seccion}>📦 Stock actual del inventario</div>
-          {productos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin productos.</div> : productos.map(p => (
-            <div key={p.id} style={rowItem}>
-              <span>{p.emoji || '📦'} {p.nombre}</span>
-              <span style={{ fontWeight:700, color: p.cantidad<=p.stock_minimo ? S.loss : S.text }}>{p.cantidad} und</span>
-            </div>
-          ))}
+          {/* Stock actual — sistema vs. físico contado, si ya se verificó ese día */}
+          <div style={seccion}>📦 Stock — lo que quedó (sistema vs. conteo físico)</div>
+          {productos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin productos.</div> : productos.map(p => {
+            const cnt = conteos[p.id]
+            return (
+              <div key={p.id} style={rowItem}>
+                <span>{p.emoji || '📦'} {p.nombre}</span>
+                {cnt ? (
+                  <span style={{ fontWeight:700, textAlign:'right' }}>
+                    <span style={{ color:S.text }}>{cnt.cantidad_sistema} sist. → {cnt.cantidad_fisica} físico</span>{' '}
+                    <span style={{ color: cnt.diferencia===0 ? '#22c55e' : cnt.diferencia<0 ? S.loss : S.gold }}>
+                      ({cnt.diferencia===0 ? '✓ coincide' : (cnt.diferencia>0?'+':'')+cnt.diferencia})
+                    </span>
+                  </span>
+                ) : (
+                  <span style={{ fontWeight:700, color: p.cantidad<=p.stock_minimo ? S.loss : S.text }}>{p.cantidad} und <span style={{ color:S.muted, fontWeight:400 }}>(sin verificar)</span></span>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Verificación física — solo interactivo, no sale impreso hasta guardarse */}
+          <div className="no-print" style={{ marginTop:'16px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
+            <div style={{ fontWeight:800, fontSize:'.82rem', marginBottom:'4px' }}>🔍 Verificar stock físico de este día</div>
+            <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'12px' }}>Cuenta lo que realmente queda de cada producto y compáralo con lo que dice el sistema.</div>
+            {productos.map(p => (
+              <div key={p.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'6px 0' }}>
+                <span style={{ flex:1, fontSize:'.8rem' }}>{p.emoji || '📦'} {p.nombre} <span style={{ color:S.muted, fontSize:'.72rem' }}>(sistema: {p.cantidad})</span></span>
+                <input type="number" placeholder={String(p.cantidad)}
+                  value={inputFisico[p.id] ?? (conteos[p.id]?.cantidad_fisica ?? '')}
+                  onChange={e=>setInputFisico(m=>({...m,[p.id]:e.target.value}))}
+                  style={{ width:'70px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 8px', color:S.text, fontSize:'.8rem', outline:'none', boxSizing:'border-box' }}/>
+              </div>
+            ))}
+            {msgConteo && <div style={{ fontSize:'.76rem', color:S.cyan, textAlign:'center', margin:'10px 0' }}>{msgConteo}</div>}
+            <button onClick={guardarConteo} disabled={guardandoConteo} style={{ width:'100%', padding:'11px', marginTop:'8px', background:S.gold, border:'none', borderRadius:'10px', cursor:'pointer', color:'#1a1300', fontWeight:800, fontSize:'.8rem', opacity:guardandoConteo?.7:1 }}>
+              {guardandoConteo ? 'Guardando...' : 'Guardar conteo físico'}
+            </button>
+          </div>
         </div>
 
         <button className="no-print" onClick={()=>window.print()} style={{ width:'100%', padding:'13px', marginTop:'16px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem' }}>Generar / imprimir PDF del informe</button>
