@@ -219,7 +219,15 @@ export default function AdminTorneosPage() {
 
   async function handleDelete(id) {
     if (!confirm('¿Eliminar torneo?')) return
-    await supabase.from('tournaments').delete().eq('id', id)
+    const { error } = await supabase.from('tournaments').delete().eq('id', id)
+    if (error) {
+      if (error.code === '23503') {
+        showMsg('No se puede eliminar: este torneo ya tiene partidos, equipos u otros datos asociados. Elimina primero esos datos.', 'error')
+      } else {
+        showMsg(`Error al eliminar: ${error.message}`, 'error')
+      }
+      return
+    }
     fetchTorneos()
     showMsg('Eliminado')
   }
