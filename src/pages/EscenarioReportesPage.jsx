@@ -27,6 +27,7 @@ export default function EscenarioReportesPage() {
   const [loading,   setLoading]   = useState(true)
   const [periodo,   setPeriodo]   = useState('semana')
   const [ventas,    setVentas]    = useState([])
+  const [compras,   setCompras]   = useState([])
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
   useEffect(() => { if (escenario) fetchVentas() }, [periodo, escenario])
@@ -50,6 +51,8 @@ export default function EscenarioReportesPage() {
     const desde = rangoPeriodo(periodo)
     const { data } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('estado', 'completada').gte('fecha', desde)
     setVentas(data || [])
+    const { data: comp } = await supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).order('fecha', { ascending: false })
+    setCompras(comp || [])
   }
 
   if (loading) return (
@@ -106,10 +109,28 @@ export default function EscenarioReportesPage() {
           ))}
         </div>
 
-        <div style={{...card, marginBottom:0}}>
+        <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Ganancia por producto</div>
           {lista.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin datos.</div> : lista.map((p,i) => (
             <div key={i} style={rowItem}><span style={{fontSize:'.82rem'}}>{p.nombre}</span><span style={{fontSize:'.82rem', fontWeight:700, color:S.gold}}>{fmtMoney(p.ganancia)}</span></div>
+          ))}
+        </div>
+
+        <div style={{...card, marginBottom:0}}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Compras y facturas del periodo</div>
+          {compras.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin compras registradas en este periodo.</div> : compras.map(c => (
+            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'8px 0', borderBottom:`1px solid ${S.border}` }}>
+              {c.factura_foto_url
+                ? <a href={c.factura_foto_url} target="_blank" rel="noreferrer" style={{ flexShrink:0 }}>
+                    <img src={c.factura_foto_url} style={{ width:'34px', height:'34px', borderRadius:'8px', objectFit:'cover', border:`1px solid ${S.border}` }}/>
+                  </a>
+                : <div style={{ width:'34px', height:'34px', borderRadius:'8px', flexShrink:0, background:S.card2 }}/>}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:'.82rem' }}>{c.nombre} x{c.cantidad}</div>
+                <div style={{ fontSize:'.68rem', color:S.muted }}>{c.fecha}{c.hora ? ` · ${c.hora}` : ''} · {c.proveedor}</div>
+              </div>
+              {c.factura_total ? <div style={{ fontSize:'.82rem', fontWeight:700, color:S.gold }}>{fmtMoney(c.factura_total)}</div> : null}
+            </div>
           ))}
         </div>
       </div>
