@@ -51,6 +51,7 @@ export default function ReservarEscenarioPage() {
   const fechasRef = useRef(null)
 
   const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
   const [equipo, setEquipo] = useState('')
   const [duracion, setDuracion] = useState(60)
   const [error, setError] = useState('')
@@ -76,21 +77,24 @@ export default function ReservarEscenarioPage() {
 
   function abrirSlot() {
     if (!horaSel) return
-    setModalSlot(horaSel); setNombre(''); setEquipo(''); setDuracion(60); setError('')
+    setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError('')
   }
 
-  // No se pide teléfono: el mensaje llega al WhatsApp del escenario desde el
-  // número real de la persona, así que pedirlo aparte es redundante. Al
-  // hacer click se guarda la reserva en segundo plano (sin bloquear) y el
-  // click mismo, al ser un <a href> real, ya lleva a WhatsApp con los datos
-  // completados — no un window.open async que el navegador podría bloquear.
+  // El número de WhatsApp queda guardado en la reserva (además de que el
+  // mensaje llega desde ese mismo número) para que el encargado lo vea en
+  // el detalle de la reserva sin tener que ir a buscar la conversación de
+  // WhatsApp. Al hacer click se guarda la reserva en segundo plano (sin
+  // bloquear) y el click mismo, al ser un <a href> real, ya lleva a
+  // WhatsApp con los datos completados — no un window.open async que el
+  // navegador podría bloquear.
   function handleReservar(e) {
     if (!nombre.trim()) { e.preventDefault(); setError('Escribe tu nombre'); return }
+    if (!telefono.trim()) { e.preventDefault(); setError('Escribe tu número de WhatsApp'); return }
     setError('')
     const monto = precioCancha(canchas, cancha)
     supabase.from('escenario_reservas').insert({
       escenario_id: escenario.id, cancha, fecha, hora: modalSlot, duracion,
-      nombre: nombre.trim(), equipo: equipo.trim() || null,
+      nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
       estado: 'pendiente', pago: 'pendiente', monto, monto_pagado: 0,
     }).then(() => fetchTodo())
   }
@@ -307,7 +311,7 @@ export default function ReservarEscenarioPage() {
 
       {modalSlot && (() => {
         const mensajeWA = `Hola, quiero reservar la ${nombreCancha(canchas, cancha)}.\n` +
-          `Nombre: ${nombre.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}\nDuración: ${duracion} min`
+          `Nombre: ${nombre.trim() || '-'}\nWhatsApp: ${telefono.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}\nDuración: ${duracion} min`
         const hrefReservar = escenario?.whatsapp ? `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(mensajeWA)}` : null
         return (
         <div style={{ position:'fixed', inset:0, background:'rgba(10,15,13,.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
@@ -318,6 +322,7 @@ export default function ReservarEscenarioPage() {
             </div>
             <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(canchas,cancha))}/h</div>
             <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
+            <div style={{ marginBottom:'12px' }}><label style={lbl}>WhatsApp *</label><input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
             <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
             <div style={{ marginBottom:'18px' }}>
               <label style={lbl}>Duración</label>
