@@ -160,9 +160,21 @@ export default function EscenarioCierrePage() {
           ))}
 
           {/* Deudas pendientes (a hoy, no solo de este día) */}
-          <div style={seccion}>📝 Deudas pendientes (a la fecha de hoy)</div>
-          <div style={rowItem}><span>Por cobrar a clientes ({deudasClientes.length})</span><span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(totalDeudaClientes)}</span></div>
-          <div style={rowItem}><span>Por pagar a proveedores ({deudasProveedores.length})</span><span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(totalDeudaProveedores)}</span></div>
+          <div style={seccion}>📝 Por cobrar a clientes — {deudasClientes.length} deuda(s), {fmtMoney(totalDeudaClientes)} en total</div>
+          {deudasClientes.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Nadie debe en la tienda.</div> : deudasClientes.map(v => (
+            <div key={v.id} style={rowItem}>
+              <span>{v.deudor_nombre || 'Sin nombre'}{v.deudor_cancha ? ` · ${v.deudor_cancha}` : ''} <span style={{ color:S.muted }}>({v.fecha})</span></span>
+              <span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(v.total)}</span>
+            </div>
+          ))}
+
+          <div style={seccion}>📝 Por pagar a proveedores — {deudasProveedores.length} deuda(s), {fmtMoney(totalDeudaProveedores)} en total</div>
+          {deudasProveedores.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>No se debe nada a proveedores.</div> : deudasProveedores.map(c => (
+            <div key={c.id} style={rowItem}>
+              <span>{c.proveedor} · {c.nombre} x{c.cantidad} <span style={{ color:S.muted }}>({c.fecha})</span></span>
+              <span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(totalCompra(c)-(c.monto_pagado||0))}</span>
+            </div>
+          ))}
 
           {/* Stock actual */}
           <div style={seccion}>📦 Stock actual del inventario</div>
