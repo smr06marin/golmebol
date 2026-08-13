@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney } from '../lib/escenarioHelpers'
+import { fmtMoney, fechaLocalStr } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -16,7 +16,7 @@ function rangoPeriodo(periodo) {
   if (periodo === 'semana') d.setDate(d.getDate() - 7)
   else if (periodo === 'mes') d.setMonth(d.getMonth() - 1)
   else d.setFullYear(d.getFullYear() - 1)
-  return d.toISOString().slice(0, 10)
+  return fechaLocalStr(d)
 }
 
 export default function EscenarioReportesPage() {

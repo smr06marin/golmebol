@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, todayStr, registrarActividad } from '../lib/escenarioHelpers'
+import { fmtMoney, todayStr, registrarActividad, fechaLocalStr } from '../lib/escenarioHelpers'
 import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2 } from 'lucide-react'
 
 const S = {
@@ -110,7 +110,7 @@ export default function EscenarioVentasPage() {
     // días — no es un campo que el encargado tenga que marcar a mano. Lo más
     // vendido queda de primero, sin pestañas ni que separar nada.
     const desde = new Date(); desde.setDate(desde.getDate() - 60)
-    const { data: ventas } = await supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', desde.toISOString().slice(0,10))
+    const { data: ventas } = await supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', fechaLocalStr(desde))
     const conteo = {}
     ;(ventas || []).forEach(v => (v.items || []).forEach(it => { conteo[it.productId] = (conteo[it.productId] || 0) + it.cantidad }))
     setVentasPorProducto(conteo)

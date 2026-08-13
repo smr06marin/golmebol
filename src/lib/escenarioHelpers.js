@@ -8,7 +8,19 @@ export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves'
 
 export function fmtMoney(n) { return '$' + Math.round(n || 0).toLocaleString('es-CO') }
 
-export function todayStr() { return new Date().toISOString().slice(0, 10) }
+// Fecha calendario LOCAL en formato YYYY-MM-DD — a propósito NO usa
+// toISOString(), porque esa conversión pasa por UTC y en Colombia
+// (UTC-5) desde las 7pm ya es "mañana" en UTC. Usar toISOString() para
+// sacar "la fecha de hoy" corre el reloj una hora de más cada tarde/noche
+// — fue justo el bug que hizo que una reserva fija de las 7pm no
+// apareciera ocupada: la página pensaba que "hoy" ya era el día
+// siguiente. Todo lo que necesite "la fecha de hoy" (o de cualquier otro
+// Date) debe pasar por acá.
+export function fechaLocalStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function todayStr() { return fechaLocalStr() }
 
 export function fmtDate(d) {
   const dt = new Date(d + 'T00:00:00')
@@ -27,7 +39,7 @@ export function proximosDias(n = 14) {
     const d = new Date(hoy)
     d.setDate(hoy.getDate() + i)
     dias.push({
-      iso: d.toISOString().slice(0, 10),
+      iso: fechaLocalStr(d),
       etiqueta: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : cap(d.toLocaleDateString('es-CO', { weekday: 'short' })),
       num: d.getDate(),
       mes: cap(d.toLocaleDateString('es-CO', { month: 'short' })),
@@ -199,7 +211,7 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   if (!fijas || fijas.length === 0) return
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-  const desde = hoy.toISOString().slice(0, 10)
+  const desde = fechaLocalStr(hoy)
   const { data: existentes, error: errSelect } = await supabase.from('escenario_reservas').select('reserva_fija_id, fecha')
     .eq('escenario_id', escenarioId).not('reserva_fija_id', 'is', null).gte('fecha', desde)
   if (errSelect) console.error('asegurarReservasFijas: no se pudo leer reservas existentes —', errSelect.message)
@@ -210,7 +222,7 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
     for (let i = 0; i < semanas * 7; i++) {
       const d = new Date(hoy); d.setDate(d.getDate() + i)
       if (d.getDay() !== f.dia_semana) continue
-      const fecha = d.toISOString().slice(0, 10)
+      const fecha = fechaLocalStr(d)
       if (yaExiste.has(`${f.id}_${fecha}`)) continue
       filas.push({
         escenario_id: escenarioId, cancha: f.cancha, fecha, hora: f.hora, duracion: f.duracion,

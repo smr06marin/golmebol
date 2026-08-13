@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha, asegurarReservasFijas, fechaLocalStr } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
@@ -75,7 +75,7 @@ export default function EscenarioAdminReservasPage() {
       for (let i=1;i<=8;i++) {
         const d = new Date(r.fecha+'T00:00:00'); d.setDate(d.getDate()+7*i)
         filas.push({
-          escenario_id: r.escenario_id, cancha: r.cancha, fecha: d.toISOString().slice(0,10), hora: r.hora, duracion: r.duracion,
+          escenario_id: r.escenario_id, cancha: r.cancha, fecha: fechaLocalStr(d), hora: r.hora, duracion: r.duracion,
           nombre: r.nombre, telefono: r.telefono, equipo: r.equipo, estado:'aceptada', pago:'pendiente', monto:r.monto, monto_pagado:0,
           recurrente:false, generada_de_recurrente:true,
         })
@@ -153,7 +153,7 @@ export default function EscenarioAdminReservasPage() {
   const hoy = new Date()
   for (let i=0;i<7;i++) {
     const d = new Date(hoy); d.setDate(d.getDate()+i)
-    const f = d.toISOString().slice(0,10)
+    const f = fechaLocalStr(d)
     canchas.forEach(c => { horas.forEach(h => { if (slotEstado(reservas,c.slug,f,h)==='ocupado') ocupacion[c.slug]++ }) })
   }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtDate } from '../lib/escenarioHelpers'
+import { fmtDate, fechaLocalStr } from '../lib/escenarioHelpers'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { PlusCircle, Pencil, Trash2, RotateCcw, History } from 'lucide-react'
 
@@ -18,8 +18,8 @@ const COLOR = { crear: S.win, editar: S.gold, eliminar: S.loss, devolver: S.loss
 // Agrupa por fecha (Hoy / Ayer / fecha) para que el historial sea fácil de
 // leer en vez de una lista plana sin fin.
 function etiquetaDia(fecha) {
-  const hoy = new Date().toISOString().slice(0,10)
-  const ayer = new Date(Date.now() - 86400000).toISOString().slice(0,10)
+  const hoy = fechaLocalStr()
+  const ayer = fechaLocalStr(new Date(Date.now() - 86400000))
   if (fecha === hoy) return 'Hoy'
   if (fecha === ayer) return 'Ayer'
   return fmtDate(fecha)
@@ -58,7 +58,11 @@ export default function EscenarioActividadPage() {
   // Agrupar por día (created_at ya viene en orden descendente)
   const grupos = []
   actividad.forEach(a => {
-    const dia = (a.created_at || '').slice(0,10)
+    // created_at es un timestamptz en UTC — hay que pasarlo a la fecha
+    // calendario LOCAL (no cortar el string tal cual), si no la actividad
+    // de la noche (después de las 7pm en Colombia) queda agrupada como si
+    // fuera del día siguiente.
+    const dia = a.created_at ? fechaLocalStr(new Date(a.created_at)) : ''
     let g = grupos.find(x => x.dia === dia)
     if (!g) { g = { dia, items: [] }; grupos.push(g) }
     g.items.push(a)
