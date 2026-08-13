@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, nombreCancha, fmtMoney, DIAS_SEMANA, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { getHours, nombreCancha, fmtMoney, DIAS_SEMANA, asegurarReservasFijas, todayStr } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
-import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { Plus, RotateCcw, Trash2, Pencil, X } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -25,6 +25,7 @@ export default function EscenarioReservasFijasPage() {
   const [guardando, setGuardando] = useState(false)
   const vacio = { cancha:'', dia_semana:1, hora:'', duracion:60, nombre:'', telefono:'', equipo:'', monto:'' }
   const [form, setForm] = useState(vacio)
+  const [editId, setEditId] = useState(null) // id de la fija que se está editando, o null si es "nuevo"
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -46,14 +47,49 @@ export default function EscenarioReservasFijasPage() {
     setLoading(false)
   }
 
-  async function crear() {
+  function abrirEditar(f) {
+    setEditId(f.id)
+    setForm({
+      cancha: f.cancha, dia_semana: f.dia_semana, hora: f.hora, duracion: f.duracion,
+      nombre: f.nombre || '', telefono: f.telefono || '', equipo: f.equipo || '', monto: f.monto ?? '',
+    })
+    setMsg('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function cancelarEdicion() {
+    setEditId(null)
+    setForm(f => ({ ...vacio, cancha: f.cancha, hora: f.hora }))
+  }
+
+  async function guardar() {
     if (!form.nombre.trim() || !form.cancha || !form.hora) { setMsg('Completa cancha, día, hora y nombre del cliente'); return }
     setGuardando(true); setMsg('')
-    const { error } = await supabase.from('escenario_reservas_fijas').insert({
+    const payload = {
       escenario_id: escenarioId, cancha: form.cancha, dia_semana: Number(form.dia_semana), hora: form.hora,
       duracion: Number(form.duracion) || 60, nombre: form.nombre.trim(), telefono: form.telefono.trim() || null,
-      equipo: form.equipo.trim() || null, monto: Number(form.monto) || 0, activa: true,
-    })
+      equipo: form.equipo.trim() || null, monto: Number(form.monto) || 0,
+    }
+
+    if (editId) {
+      const { error } = await supabase.from('escenario_reservas_fijas').update(payload).eq('id', editId)
+      if (error) { setGuardando(false); setMsg('Error al guardar: ' + error.message); return }
+      // Como cambió el día/hora/cancha (o cualquier dato), las ocurrencias
+      // futuras que ya se habían generado con los datos viejos quedan
+      // desactualizadas — se borran (solo las que todavía no pasaron) y se
+      // vuelven a generar ya con los datos nuevos.
+      await supabase.from('escenario_reservas').delete()
+        .eq('reserva_fija_id', editId).eq('estado', 'aceptada').gte('fecha', todayStr())
+      await asegurarReservasFijas(escenarioId)
+      setGuardando(false)
+      setEditId(null)
+      setForm(f => ({ ...vacio, cancha: f.cancha, hora: f.hora }))
+      setMsg('✅ Horario fijo actualizado — se reprogramaron las próximas fechas'); setTimeout(()=>setMsg(''),4000)
+      fetchTodo()
+      return
+    }
+
+    const { error } = await supabase.from('escenario_reservas_fijas').insert({ ...payload, activa: true })
     if (!error) await asegurarReservasFijas(escenarioId)
     setGuardando(false)
     if (error) { setMsg('Error al crear: ' + error.message); return }
@@ -88,8 +124,15 @@ export default function EscenarioReservasFijasPage() {
         {msg && <div style={{ background: msg.startsWith('✅')?S.cyanDim:'rgba(217,48,37,.12)', color: msg.startsWith('✅')?S.cyan:'#ff6b6b', borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
         <div style={card}>
-          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'4px' }}>Nuevo horario fijo</div>
-          <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'14px' }}>Un cliente que juega siempre el mismo día y hora — queda reservado <b>para siempre</b>, semana tras semana, sin que tengas que hacer nada. Solo se detiene cuando lo desactivás manualmente.</div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+            <div style={{ fontWeight:800, fontSize:'.9rem' }}>{editId ? 'Editar horario fijo' : 'Nuevo horario fijo'}</div>
+            {editId && <button onClick={cancelarEdicion} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={16}/></button>}
+          </div>
+          <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'14px' }}>
+            {editId
+              ? 'Al guardar, las próximas fechas ya generadas con los datos anteriores se reprogramarán con los nuevos.'
+              : <>Un cliente que juega siempre el mismo día y hora — queda reservado <b>para siempre</b>, semana tras semana, sin que tengas que hacer nada. Solo se detiene cuando lo desactivás manualmente.</>}
+          </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
             <div>
@@ -124,9 +167,9 @@ export default function EscenarioReservasFijasPage() {
           </div>
           <div style={{ marginBottom:'14px' }}><label style={lbl}>Equipo (opcional)</label><input value={form.equipo} onChange={e=>setForm(f=>({...f,equipo:e.target.value}))} style={inp}/></div>
 
-          <button onClick={crear} disabled={guardando}
+          <button onClick={guardar} disabled={guardando}
             style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', opacity:guardando?.7:1 }}>
-            <Plus size={15}/> {guardando ? 'Creando...' : 'Crear horario fijo'}
+            <Plus size={15}/> {guardando ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear horario fijo'}
           </button>
         </div>
 
@@ -141,10 +184,16 @@ export default function EscenarioReservasFijasPage() {
                   {!f.activa && ' · inactivo'}
                 </div>
               </div>
-              <button onClick={()=>toggle(f)} title={f.activa ? 'Desactivar' : 'Reactivar'}
-                style={{ flexShrink:0, width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: f.activa ? '#ff6b6b' : S.cyan }}>
-                {f.activa ? <Trash2 size={13}/> : <RotateCcw size={13}/>}
-              </button>
+              <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+                <button onClick={()=>abrirEditar(f)} title="Editar"
+                  style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.text2 }}>
+                  <Pencil size={13}/>
+                </button>
+                <button onClick={()=>toggle(f)} title={f.activa ? 'Desactivar' : 'Reactivar'}
+                  style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: f.activa ? '#ff6b6b' : S.cyan }}>
+                  {f.activa ? <Trash2 size={13}/> : <RotateCcw size={13}/>}
+                </button>
+              </div>
             </div>
           ))}
         </div>
