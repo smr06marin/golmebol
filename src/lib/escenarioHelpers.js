@@ -200,8 +200,9 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
   const desde = hoy.toISOString().slice(0, 10)
-  const { data: existentes } = await supabase.from('escenario_reservas').select('reserva_fija_id, fecha')
+  const { data: existentes, error: errSelect } = await supabase.from('escenario_reservas').select('reserva_fija_id, fecha')
     .eq('escenario_id', escenarioId).not('reserva_fija_id', 'is', null).gte('fecha', desde)
+  if (errSelect) console.error('asegurarReservasFijas: no se pudo leer reservas existentes —', errSelect.message)
   const yaExiste = new Set((existentes || []).map(r => `${r.reserva_fija_id}_${r.fecha}`))
 
   const filas = []
@@ -219,7 +220,19 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
       })
     }
   })
-  if (filas.length > 0) await supabase.from('escenario_reservas').insert(filas)
+  if (filas.length === 0) return
+
+  let { error } = await supabase.from('escenario_reservas').insert(filas)
+  // Si todavía falta correr migracion_escenario_reservas_fijas.sql (columna
+  // reserva_fija_id inexistente), no se pierde la reserva — se guarda sin
+  // ese campo, aunque entonces esa ocurrencia puede volver a generarse la
+  // próxima vez hasta que se corra la migración completa.
+  if (error && /Could not find the .* column/.test(error.message || '')) {
+    const sinFijaId = filas.map(({ reserva_fija_id, ...resto }) => resto)
+    ;({ error } = await supabase.from('escenario_reservas').insert(sinFijaId))
+  }
+  if (error) console.error('asegurarReservasFijas: no se pudieron crear las reservas fijas —', error.message)
+  return error || null
 }
 
 export function escenarioActivo(escenario) {
