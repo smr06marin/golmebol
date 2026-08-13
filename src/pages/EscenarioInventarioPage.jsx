@@ -226,9 +226,15 @@ export default function EscenarioInventarioPage() {
       : supabase.from('escenario_productos').insert({ ...payload, escenario_id: escenario.id })
 
     const { id, escenario_id, created_at, ...payload } = data
-    // El stock inicial queda fijo desde el momento en que se crea el
-    // producto — es el punto de partida para el kardex de movimientos.
-    if (esNuevo) payload.stock_inicial = payload.cantidad
+    // El stock inicial es el punto de partida del kardex de movimientos.
+    // Se fija al crear el producto, y también cada vez que se edita la
+    // cantidad a mano desde este formulario (eso cuenta como "aquí
+    // arranco de nuevo", no como una entrada o salida más).
+    if (esNuevo) {
+      payload.stock_inicial = payload.cantidad
+    } else if (original && Number(original.cantidad) !== Number(payload.cantidad)) {
+      payload.stock_inicial = payload.cantidad
+    }
     let { error } = await intentar(payload)
     // Si faltan correr las migraciones de foto_url o categoria, se
     // reintenta sin esos campos en vez de perder todo el cambio.
