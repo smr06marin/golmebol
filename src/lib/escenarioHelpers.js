@@ -20,7 +20,19 @@ export function fechaLocalStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function todayStr() { return fechaLocalStr() }
+// El negocio cierra a las 5am, no a la medianoche — así que una venta,
+// compra o gasto que pase entre las 12:00am y las 4:59am todavía cuenta
+// para el día anterior (el que se sigue cerrando), no para el día que
+// recién arrancó en el calendario. Esto es lo que usa todo el módulo de
+// Escenarios como "hoy" — para la fecha exacta de un Date puntual (no "en
+// este momento") seguí usando fechaLocalStr().
+const HORA_CIERRE_DIA_NEGOCIO = 5
+
+export function todayStr() {
+  const ahora = new Date()
+  if (ahora.getHours() < HORA_CIERRE_DIA_NEGOCIO) ahora.setDate(ahora.getDate() - 1)
+  return fechaLocalStr(ahora)
+}
 
 export function fmtDate(d) {
   const dt = new Date(d + 'T00:00:00')
