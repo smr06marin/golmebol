@@ -204,7 +204,7 @@ export default function EscenarioCierrePage() {
           <div style={seccion}>🏟️ Canchas — {reservas.length} reserva(s), {fmtMoney(totalCanchas)} en total</div>
           {reservas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin reservas este día.</div> : reservas.map(r => (
             <div key={r.id} style={rowItem}>
-              <span>{r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre || 'Sin nombre'}</span>
+              <span>{r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre || 'Sin nombre'}{r.motivo_pago ? ` · pagó menos (${r.motivo_pago})` : ''}</span>
               <span style={{ fontWeight:700, color: r.pago==='pagado' ? S.cyan : S.gold }}>{fmtMoney(r.monto_pagado||0)}/{fmtMoney(r.monto||0)}</span>
             </div>
           ))}

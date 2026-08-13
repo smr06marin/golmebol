@@ -141,13 +141,23 @@ function ModalGestionar({ reserva, canchas, onClose, onResuelto }) {
   const [reForm, setReForm] = useState({ cancha: reserva.cancha, fecha: reserva.fecha, hora: reserva.hora })
   const [error, setError] = useState('')
   const [procesando, setProcesando] = useState(false)
+  const [montoPagadoInput, setMontoPagadoInput] = useState(String(reserva.monto_pagado ?? 0))
+  const [motivoInput, setMotivoInput] = useState(reserva.motivo_pago || '')
+  const [guardandoPago, setGuardandoPago] = useState(false)
 
   const esMantenimiento = reserva.estado === 'mantenimiento'
+  const pagoMenor = Number(montoPagadoInput) > 0 && Number(montoPagadoInput) < Number(reserva.monto)
 
-  async function cambiarPago(valor) {
-    const payload = { pago: valor }
-    if (valor === 'pagado') payload.monto_pagado = reserva.monto
-    await supabase.from('escenario_reservas').update(payload).eq('id', reserva.id)
+  async function guardarPago() {
+    const monto = Number(reserva.monto) || 0
+    const pagadoNum = Number(montoPagadoInput) || 0
+    const pago = pagadoNum <= 0 ? 'pendiente' : pagadoNum >= monto ? 'pagado' : 'anticipo'
+    setGuardandoPago(true)
+    await supabase.from('escenario_reservas').update({
+      pago, monto_pagado: pagadoNum,
+      motivo_pago: pago === 'anticipo' ? (motivoInput.trim() || null) : null,
+    }).eq('id', reserva.id)
+    setGuardandoPago(false)
     onResuelto('✅ Pago actualizado')
   }
 
@@ -216,12 +226,21 @@ function ModalGestionar({ reserva, canchas, onClose, onResuelto }) {
               {reserva.equipo && <div style={{ fontSize:'.8rem', color:S.text2 }}>Equipo: {reserva.equipo}</div>}
               <div style={{ fontSize:'.8rem', color:S.text2 }}>Duración: {reserva.duracion} min</div>
               <div style={{ fontSize:'.8rem', color:S.text2, marginTop:'6px' }}>Valor: {fmtMoney(reserva.monto)}{reserva.monto_pagado ? ` · pagado ${fmtMoney(reserva.monto_pagado)}` : ''}</div>
+              {reserva.motivo_pago && <div style={{ fontSize:'.74rem', color:S.gold, marginTop:'4px' }}>Pagó menos por: {reserva.motivo_pago}</div>}
             </div>
             <div style={{ marginBottom:'16px' }}>
-              <label style={lbl}>Estado del pago</label>
-              <select value={reserva.pago} onChange={e=>cambiarPago(e.target.value)} style={inp}>
-                <option value="pendiente">Pendiente</option><option value="anticipo">Anticipo</option><option value="pagado">Pagado</option>
-              </select>
+              <label style={lbl}>Monto pagado</label>
+              <input type="number" value={montoPagadoInput} onChange={e=>setMontoPagadoInput(e.target.value)} style={inp}/>
+              <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'4px' }}>Valor de la cancha: {fmtMoney(reserva.monto)}</div>
+              {pagoMenor && (
+                <div style={{ marginTop:'10px' }}>
+                  <label style={lbl}>¿Por qué pagó menos?</label>
+                  <input value={motivoInput} onChange={e=>setMotivoInput(e.target.value)} style={inp} placeholder="Ej: descuento, cliente frecuente, lluvia..."/>
+                </div>
+              )}
+              <button onClick={guardarPago} disabled={guardandoPago} style={{ width:'100%', padding:'10px', marginTop:'10px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.8rem', opacity:guardandoPago?.7:1 }}>
+                {guardandoPago ? 'Guardando...' : 'Guardar pago'}
+              </button>
             </div>
             <div style={{ display:'flex', gap:'8px' }}>
               <button onClick={()=>setModo('reprogramar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontWeight:700, fontSize:'.78rem' }}>Reprogramar</button>
@@ -382,10 +401,12 @@ export default function EscenarioCanchasPage() {
             const est = slotEstado(reservas, cancha, fecha, h)
             const r = est==='ocupado' ? reservaDeSlot(cancha, fecha, h) : null
             const pagado = r && r.pago === 'pagado'
-            const label = est==='libre' ? '🟢 Disponible' : est==='pendiente' ? '🟡 Solicitud pendiente' : pagado ? '✅ Pagado' : '🔴 Ocupado'
-            const color = est==='libre' ? S.win : est==='pendiente' ? S.warn : pagado ? S.win : S.loss
-            const bg = pagado ? 'rgba(30,142,62,.12)' : S.card
-            const border = pagado ? S.win : S.border
+            const pagoParcial = r && r.pago === 'anticipo'
+            const label = est==='libre' ? '🟢 Disponible' : est==='pendiente' ? '🟡 Solicitud pendiente'
+              : pagado ? '✅ Pagado' : pagoParcial ? '🟠 Pagó menos' : '🔴 Ocupado'
+            const color = est==='libre' ? S.win : est==='pendiente' ? S.warn : pagado ? S.win : pagoParcial ? S.gold : S.loss
+            const bg = pagado ? 'rgba(30,142,62,.12)' : pagoParcial ? 'rgba(249,168,37,.1)' : S.card
+            const border = pagado ? S.win : pagoParcial ? S.gold : S.border
             return (
               <div key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' ? abrirRevisar(cancha, fecha, h) : abrirGestionar(cancha, fecha, h)}
                 style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:bg, border:`1px solid ${border}`, borderRadius:'10px', cursor:'pointer' }}>
