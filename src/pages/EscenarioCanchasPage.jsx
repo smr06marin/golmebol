@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
@@ -293,6 +293,15 @@ export default function EscenarioCanchasPage() {
   )
 
   const horas = escenario ? getHours(escenario) : []
+  const dias = proximosDias()
+
+  // Solicitudes pendientes de TODAS las canchas y fechas, no solo la que se
+  // está viendo — para que el aviso de arriba avise aunque estés parado en
+  // otro día u otra cancha.
+  const pendientesTodas = reservas.filter(r => r.estado === 'pendiente').sort((a,b) => (a.fecha+a.hora).localeCompare(b.fecha+b.hora))
+  const fechasPendientes = new Set(pendientesTodas.map(r => r.fecha))
+
+  function irAPendiente(r) { setCancha(r.cancha); setFecha(r.fecha); setRevisando(r) }
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
@@ -320,6 +329,19 @@ export default function EscenarioCanchasPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
+        {pendientesTodas.length > 0 && (
+          <div style={{ background:'rgba(232,113,14,.1)', border:`1px solid ${S.warn}`, borderRadius:'12px', padding:'12px 14px', marginBottom:'14px' }}>
+            <div style={{ fontWeight:800, fontSize:'.82rem', color:S.warn, marginBottom:'6px' }}>🔔 {pendientesTodas.length} solicitud{pendientesTodas.length>1?'es':''} por confirmar</div>
+            {pendientesTodas.map((r,i) => (
+              <button key={r.id} onClick={()=>irAPendiente(r)}
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%', textAlign:'left', background:'none', border:'none', borderTop: i>0 ? `1px solid rgba(232,113,14,.25)` : 'none', padding:'8px 0', cursor:'pointer', color:S.text }}>
+                <span style={{ fontSize:'.78rem' }}>{fmtDate(r.fecha)} · {fmtHora12(r.hora)} · {nombreCancha(canchas, r.cancha)}</span>
+                <span style={{ fontSize:'.76rem', fontWeight:700, color:S.warn, flexShrink:0, marginLeft:'8px' }}>{r.nombre}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display:'flex', gap:'8px', marginBottom:'14px', flexWrap:'wrap' }}>
           {canchas.map(c => (
             <button key={c.id} onClick={()=>setCancha(c.slug)}
@@ -329,9 +351,26 @@ export default function EscenarioCanchasPage() {
           ))}
           {canchas.length === 0 && <div style={{ fontSize:'.8rem', color:S.muted }}>No hay canchas creadas — agrégalas en Configuración.</div>}
         </div>
+
         <div style={{ marginBottom:'14px' }}>
           <label style={lbl}>Fecha</label>
-          <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inp}/>
+          <div style={{ display:'flex', gap:'7px', overflowX:'auto', paddingBottom:'4px' }}>
+            {dias.map(d => {
+              const sel = d.iso === fecha
+              const pendiente = fechasPendientes.has(d.iso)
+              return (
+                <button key={d.iso} onClick={()=>setFecha(d.iso)}
+                  style={{ position:'relative', flexShrink:0, minWidth:'52px', textAlign:'center', padding:'8px 6px', borderRadius:'10px', cursor:'pointer',
+                    border: sel ? `2px solid ${S.cyan}` : `1px solid ${S.border}`, background: sel ? S.cyanDim : S.card }}>
+                  {pendiente && <span style={{ position:'absolute', top:'4px', right:'4px', width:'7px', height:'7px', borderRadius:'50%', background:S.warn }}/>}
+                  <div style={{ fontSize:'.6rem', fontWeight:700, color: sel?S.cyan:S.muted }}>{d.etiqueta}</div>
+                  <div style={{ fontSize:'.95rem', fontWeight:900, color: sel?S.cyan:S.text, margin:'2px 0' }}>{d.num}</div>
+                  <div style={{ fontSize:'.58rem', color:S.muted }}>{d.mes}</div>
+                </button>
+              )
+            })}
+          </div>
+          <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{ ...inp, marginTop:'8px' }}/>
         </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>

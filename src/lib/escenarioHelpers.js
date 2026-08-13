@@ -15,6 +15,27 @@ export function fmtDate(d) {
   return dt.toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })
 }
 
+// Tira de próximos días para navegar fecha por fecha con un toque (Hoy /
+// Mañana / día de semana + número) en vez de tener que abrir el selector
+// nativo de fecha del celular cada vez. Usado en la página pública de
+// reservas y en el panel de Canchas del encargado.
+export function proximosDias(n = 14) {
+  const dias = []
+  const hoy = new Date()
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1).replace('.', '')
+  for (let i = 0; i < n; i++) {
+    const d = new Date(hoy)
+    d.setDate(hoy.getDate() + i)
+    dias.push({
+      iso: d.toISOString().slice(0, 10),
+      etiqueta: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : cap(d.toLocaleDateString('es-CO', { weekday: 'short' })),
+      num: d.getDate(),
+      mes: cap(d.toLocaleDateString('es-CO', { month: 'short' })),
+    })
+  }
+  return dias
+}
+
 // Horas del día según la config de apertura/cierre del escenario (default 8-22 si aún no tiene config).
 export function getHours(escenario) {
   const apertura = escenario?.hora_apertura ?? 8

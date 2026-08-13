@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
@@ -17,25 +17,6 @@ const S = {
 }
 const inp = { width:'100%', background:'#fff', border:`1.5px solid ${S.border}`, borderRadius:'10px', padding:'11px 13px', color:S.text, fontSize:'.88rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.72rem', fontWeight:'700', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
-
-// Próximos días para la tira de fechas — Hoy / Mañana / día de semana + fecha.
-function proximosDias(n = 10) {
-  const dias = []
-  const hoy = new Date()
-  for (let i = 0; i < n; i++) {
-    const d = new Date(hoy)
-    d.setDate(hoy.getDate() + i)
-    const iso = d.toISOString().slice(0, 10)
-    const cap = s => s.charAt(0).toUpperCase() + s.slice(1).replace('.', '')
-    dias.push({
-      iso,
-      etiqueta: i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : cap(d.toLocaleDateString('es-CO', { weekday: 'short' })),
-      num: d.getDate(),
-      mes: cap(d.toLocaleDateString('es-CO', { month: 'short' })),
-    })
-  }
-  return dias
-}
 
 export default function ReservarEscenarioPage() {
   const { escenarioId } = useParams()
