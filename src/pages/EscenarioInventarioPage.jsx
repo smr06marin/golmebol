@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, prepararFotoProducto, CATEGORIAS_PRODUCTO, registrarActividad } from '../lib/escenarioHelpers'
-import { Plus, X, Package, Camera, Wand2 } from 'lucide-react'
+import { fmtMoney, fmtDate, prepararFotoProducto, CATEGORIAS_PRODUCTO, registrarActividad } from '../lib/escenarioHelpers'
+import { Plus, X, Package, Camera, Wand2, History } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -92,6 +92,102 @@ function ModalProducto({ producto, escenarioId, onClose, onGuardar, onEliminar }
   )
 }
 
+// Muestra el "kardex" de un producto: cuánto había al empezar, todo lo que
+// fue entrando (compras, por fecha) y todo lo que se fue vendiendo (por
+// fecha), para llegar al stock actual.
+function ModalMovimientos({ producto, escenarioId, onClose }) {
+  const [cargando, setCargando] = useState(true)
+  const [entradas, setEntradas] = useState([])
+  const [salidas,  setSalidas]  = useState([])
+
+  useEffect(() => { fetchMovimientos() }, [producto.id])
+
+  async function fetchMovimientos() {
+    setCargando(true)
+    const [{ data: compras }, { data: ventas }] = await Promise.all([
+      supabase.from('escenario_compras').select('*').eq('escenario_id', escenarioId).eq('product_id', producto.id).order('fecha'),
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('estado', 'completada').order('fecha'),
+    ])
+    setEntradas((compras || []).map(c => ({ fecha: c.fecha, hora: c.hora, cantidad: Number(c.cantidad||0), detalle: c.proveedor })))
+    const porFecha = {}
+    ;(ventas || []).forEach(v => (v.items || []).forEach(it => {
+      if (it.productId !== producto.id) return
+      porFecha[v.fecha] = (porFecha[v.fecha] || 0) + Number(it.cantidad || 0)
+    }))
+    setSalidas(Object.entries(porFecha).map(([fecha, cantidad]) => ({ fecha, cantidad })).sort((a,b)=>a.fecha.localeCompare(b.fecha)))
+    setCargando(false)
+  }
+
+  const stockInicial = Number(producto.stock_inicial || 0)
+  const totalEntradas = entradas.reduce((a,e)=>a+e.cantidad, 0)
+  const totalSalidas = salidas.reduce((a,s)=>a+s.cantidad, 0)
+  const stockCalculado = stockInicial + totalEntradas - totalSalidas
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'420px', maxWidth:'100%', maxHeight:'85vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+          <div style={{ fontWeight:800, fontSize:'1rem' }}>📊 {producto.nombre}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+        </div>
+
+        {cargando ? <div style={{ color:S.muted, fontSize:'.8rem', textAlign:'center', padding:'20px 0' }}>Cargando...</div> : (
+          <>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'16px' }}>
+              <div style={{ background:S.card2, borderRadius:'10px', padding:'10px', textAlign:'center' }}>
+                <div style={{ fontSize:'.65rem', color:S.muted }}>Stock inicial</div>
+                <div style={{ fontWeight:900, fontSize:'1.05rem' }}>{stockInicial}</div>
+              </div>
+              <div style={{ background:S.card2, borderRadius:'10px', padding:'10px', textAlign:'center' }}>
+                <div style={{ fontSize:'.65rem', color:S.muted }}>Stock actual</div>
+                <div style={{ fontWeight:900, fontSize:'1.05rem', color:S.cyan }}>{producto.cantidad}</div>
+              </div>
+              <div style={{ background:'rgba(30,142,62,.1)', border:'1px solid #1e8e3e', borderRadius:'10px', padding:'10px', textAlign:'center' }}>
+                <div style={{ fontSize:'.65rem', color:S.muted }}>Total ingresado</div>
+                <div style={{ fontWeight:900, fontSize:'1.05rem', color:'#1e8e3e' }}>+{totalEntradas}</div>
+              </div>
+              <div style={{ background:'rgba(217,48,37,.1)', border:`1px solid ${S.loss}`, borderRadius:'10px', padding:'10px', textAlign:'center' }}>
+                <div style={{ fontSize:'.65rem', color:S.muted }}>Total vendido</div>
+                <div style={{ fontWeight:900, fontSize:'1.05rem', color:S.loss }}>-{totalSalidas}</div>
+              </div>
+            </div>
+
+            {stockCalculado !== Number(producto.cantidad) && (
+              <div style={{ fontSize:'.7rem', color:S.gold, marginBottom:'14px', textAlign:'center' }}>
+                ⚠️ El cálculo (inicial + entradas − ventas = {stockCalculado}) no coincide con el stock actual ({producto.cantidad}) — puede ser por ediciones manuales de cantidad, devoluciones o ajustes de conteo físico.
+              </div>
+            )}
+
+            <div style={{ fontWeight:800, fontSize:'.8rem', marginBottom:'8px' }}>Entradas (compras)</div>
+            {entradas.length===0 ? <div style={{ color:S.muted, fontSize:'.76rem', marginBottom:'14px' }}>Sin compras registradas.</div> : (
+              <div style={{ marginBottom:'14px' }}>
+                {entradas.map((e,i) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'.76rem', padding:'5px 0', borderBottom:`1px solid ${S.border}` }}>
+                    <span style={{ color:S.text2 }}>{fmtDate(e.fecha)}{e.hora ? ` · ${e.hora}` : ''}{e.detalle ? ` · ${e.detalle}` : ''}</span>
+                    <span style={{ fontWeight:700, color:'#1e8e3e' }}>+{e.cantidad}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ fontWeight:800, fontSize:'.8rem', marginBottom:'8px' }}>Salidas (vendido)</div>
+            {salidas.length===0 ? <div style={{ color:S.muted, fontSize:'.76rem' }}>Sin ventas registradas.</div> : (
+              <div>
+                {salidas.map((s,i) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'.76rem', padding:'5px 0', borderBottom:`1px solid ${S.border}` }}>
+                    <span style={{ color:S.text2 }}>{fmtDate(s.fecha)}</span>
+                    <span style={{ fontWeight:700, color:S.loss }}>-{s.cantidad}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function EscenarioInventarioPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
@@ -101,6 +197,7 @@ export default function EscenarioInventarioPage() {
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null) // null | {} (nuevo) | producto (editar)
   const [msg,       setMsg]       = useState('')
+  const [viendoMovimientos, setViendoMovimientos] = useState(null) // producto o null
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -129,6 +226,9 @@ export default function EscenarioInventarioPage() {
       : supabase.from('escenario_productos').insert({ ...payload, escenario_id: escenario.id })
 
     const { id, escenario_id, created_at, ...payload } = data
+    // El stock inicial queda fijo desde el momento en que se crea el
+    // producto — es el punto de partida para el kardex de movimientos.
+    if (esNuevo) payload.stock_inicial = payload.cantidad
     let { error } = await intentar(payload)
     // Si faltan correr las migraciones de foto_url o categoria, se
     // reintenta sin esos campos en vez de perder todo el cambio.
@@ -176,6 +276,7 @@ export default function EscenarioInventarioPage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       {modal && <ModalProducto producto={modal.id ? modal : null} escenarioId={escenarioId} onClose={()=>setModal(null)} onGuardar={guardarProducto} onEliminar={eliminarProducto}/>}
+      {viendoMovimientos && <ModalMovimientos producto={viendoMovimientos} escenarioId={escenarioId} onClose={()=>setViendoMovimientos(null)}/>}
 
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
@@ -199,7 +300,7 @@ export default function EscenarioInventarioPage() {
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             {productos.map(p => (
-              <button key={p.id} onClick={()=>setModal(p)}
+              <div key={p.id} onClick={()=>setModal(p)}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text, textAlign:'left' }}>
                 {p.foto_url
                   ? <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0, background:S.card2 }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/></div>
@@ -208,11 +309,15 @@ export default function EscenarioInventarioPage() {
                   <div style={{ fontWeight:700, fontSize:'.85rem' }}>{p.nombre}{p.categoria && <span style={{ fontWeight:600, fontSize:'.66rem', color:S.muted }}> · {p.categoria}</span>}</div>
                   <div style={{ fontSize:'.72rem', color:S.muted }}>Compra {fmtMoney(p.costo)} · Venta {fmtMoney(p.precio)}</div>
                 </div>
-                <div style={{ textAlign:'right' }}>
+                <button onClick={e=>{ e.stopPropagation(); setViendoMovimientos(p) }} title="Ver movimientos de stock"
+                  style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px', cursor:'pointer', color:S.cyan, display:'flex', flexShrink:0 }}>
+                  <History size={15}/>
+                </button>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
                   <div style={{ fontWeight:800, fontSize:'.9rem', color: p.cantidad<=p.stock_minimo?S.loss:S.cyan }}>{p.cantidad}</div>
                   <div style={{ fontSize:'.65rem', color:S.muted }}>und. (mín {p.stock_minimo})</div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
