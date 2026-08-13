@@ -17,6 +17,15 @@ function totalCompra(c) {
   return c.factura_total != null ? Number(c.factura_total) : Number(c.costo || 0) * Number(c.cantidad || 0)
 }
 function compraDebe(c) { return !!(c.pago_estado && c.pago_estado !== 'pagado') }
+// Cuánto se le pagó realmente al proveedor por esta compra. Si quedó
+// marcada como "pagado" siempre es el total (aunque monto_pagado haya
+// quedado en 0 por una migración vieja que backfillea con default 0 en
+// compras registradas antes de correrla) — si no, se usa lo que sí quedó
+// guardado (0 para pendiente, lo abonado para parcial).
+function pagadoDe(c) {
+  if (c.pago_estado === 'pagado') return totalCompra(c)
+  return Number(c.monto_pagado || 0)
+}
 
 export default function EscenarioCierrePage() {
   const navigate = useNavigate()
@@ -138,7 +147,7 @@ export default function EscenarioCierrePage() {
   const totalCanchas = reservas.reduce((a,r)=>a+Number(r.monto||0),0)
 
   const gastoCompras = compras.reduce((a,c)=>a+totalCompra(c),0)
-  const pagadoCompras = compras.reduce((a,c)=>a+Number(c.monto_pagado ?? totalCompra(c)),0)
+  const pagadoCompras = compras.reduce((a,c)=>a+pagadoDe(c),0)
   const totalGastos = gastos.reduce((a,g)=>a+Number(g.monto||0),0)
 
   const montoBase = Number(baseActual?.monto || 0)
