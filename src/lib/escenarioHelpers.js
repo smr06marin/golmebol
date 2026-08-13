@@ -143,6 +143,10 @@ export function comprimirImagen(file, { maxDim = 500, calidad = 0.72 } = {}) {
 // otra si su negocio vende algo distinto.
 export const CATEGORIAS_PRODUCTO = ['Bebidas', 'Papas', 'Dulces', 'Galletas', 'Comidas', 'Otros']
 
+// Categorías sugeridas para gastos generales del negocio (no ligados a un
+// producto de la tienda) — igual que con productos, es texto libre.
+export const CATEGORIAS_GASTO = ['Arriendo', 'Servicios', 'Nómina', 'Mantenimiento', 'Aseo', 'Transporte', 'Otro']
+
 function cargarImagen(file) {
   return new Promise((resolve, reject) => {
     const img = new Image()

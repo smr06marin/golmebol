@@ -73,6 +73,7 @@ const EscenarioVentasPage         = lazy(() => import('./pages/EscenarioVentasPa
 const EscenarioPedidoPage         = lazy(() => import('./pages/EscenarioPedidoPage'))
 const EscenarioInventarioPage     = lazy(() => import('./pages/EscenarioInventarioPage'))
 const EscenarioComprasPage        = lazy(() => import('./pages/EscenarioComprasPage'))
+const EscenarioGastosPage         = lazy(() => import('./pages/EscenarioGastosPage'))
 const EscenarioCierrePage         = lazy(() => import('./pages/EscenarioCierrePage'))
 const EscenarioReportesPage       = lazy(() => import('./pages/EscenarioReportesPage'))
 const EscenarioActividadPage      = lazy(() => import('./pages/EscenarioActividadPage'))
@@ -495,6 +496,7 @@ export default function App() {
           <Route path="/escenario/:escenarioId/pedido"      element={<EscenarioRoute><EscenarioPedidoPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/inventario"  element={<EscenarioRoute><EscenarioInventarioPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/compras"     element={<EscenarioRoute><EscenarioComprasPage/></EscenarioRoute>}/>
+          <Route path="/escenario/:escenarioId/gastos"      element={<EscenarioRoute><EscenarioGastosPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/cierre"      element={<EscenarioRoute><EscenarioCierrePage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/reportes"    element={<EscenarioRoute><EscenarioReportesPage/></EscenarioRoute>}/>
           <Route path="/escenario/:escenarioId/actividad"   element={<EscenarioRoute><EscenarioActividadPage/></EscenarioRoute>}/>

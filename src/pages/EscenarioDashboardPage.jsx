@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
 import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History } from 'lucide-react'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -119,6 +119,7 @@ export default function EscenarioDashboardPage() {
     { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha' },
     { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock' },
     { to: `/escenario/${B}/compras`,    icon: Truck,          label: 'Compras',        desc: 'Registro de compras a proveedores' },
+    { to: `/escenario/${B}/gastos`,     icon: Wallet,         label: 'Gastos',         desc: 'Arriendo, servicios, nómina y otros gastos' },
     { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Informe diario', desc: 'Canchas, ventas, compras, deudas y stock — imprimir PDF' },
     { to: `/escenario/${B}/reportes`,   icon: BarChart3,      label: 'Reportes',       desc: 'Más vendidos, ganancia por producto' },
     { to: `/escenario/${B}/actividad`,  icon: History,        label: 'Actividad',      desc: 'Quién cambió precios, agregó o eliminó algo' },
