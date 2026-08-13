@@ -281,9 +281,13 @@ export default function EscenarioCanchasPage() {
   }
   function resuelto(texto) { setRevisando(null); setMsg(texto); setTimeout(()=>setMsg(''),3000); fetchTodo() }
 
-  function abrirGestionar(cancha, fecha, hora) {
-    const r = reservas.find(x => x.cancha === cancha && x.fecha === fecha && (x.estado === 'aceptada' || x.estado === 'mantenimiento')
+  function reservaDeSlot(cancha, fecha, hora) {
+    return reservas.find(x => x.cancha === cancha && x.fecha === fecha && (x.estado === 'aceptada' || x.estado === 'mantenimiento')
       && parseInt(hora,10) >= parseInt(x.hora,10) && parseInt(hora,10) < parseInt(x.hora,10) + Math.ceil((x.duracion||60)/60))
+  }
+
+  function abrirGestionar(cancha, fecha, hora) {
+    const r = reservaDeSlot(cancha, fecha, hora)
     if (r) setGestionando(r)
   }
   function resueltoGestion(texto) { setGestionando(null); setMsg(texto); setTimeout(()=>setMsg(''),3000); fetchTodo() }
@@ -376,11 +380,15 @@ export default function EscenarioCanchasPage() {
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           {horas.map(h => {
             const est = slotEstado(reservas, cancha, fecha, h)
-            const label = est==='libre' ? '🟢 Disponible' : est==='pendiente' ? '🟡 Solicitud pendiente' : '🔴 Ocupado'
-            const color = est==='libre' ? S.win : est==='pendiente' ? S.warn : S.loss
+            const r = est==='ocupado' ? reservaDeSlot(cancha, fecha, h) : null
+            const pagado = r && r.pago === 'pagado'
+            const label = est==='libre' ? '🟢 Disponible' : est==='pendiente' ? '🟡 Solicitud pendiente' : pagado ? '✅ Pagado' : '🔴 Ocupado'
+            const color = est==='libre' ? S.win : est==='pendiente' ? S.warn : pagado ? S.win : S.loss
+            const bg = pagado ? 'rgba(30,142,62,.12)' : S.card
+            const border = pagado ? S.win : S.border
             return (
               <div key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' ? abrirRevisar(cancha, fecha, h) : abrirGestionar(cancha, fecha, h)}
-                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer' }}>
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px', background:bg, border:`1px solid ${border}`, borderRadius:'10px', cursor:'pointer' }}>
                 <span style={{ fontWeight:700, fontSize:'.85rem' }}>{fmtHora12(h)}</span>
                 <span style={{ fontSize:'.78rem', color, fontWeight:600 }}>{label}{est!=='libre' && ' · toca para ver'}</span>
               </div>
