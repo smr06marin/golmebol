@@ -33,6 +33,7 @@ export default function EscenarioCierrePage() {
   const [productos, setProductos] = useState([])
   const [deudasClientes,   setDeudasClientes]   = useState([])
   const [deudasProveedores, setDeudasProveedores] = useState([])
+  const [baseActual, setBaseActual] = useState(null)
   const [conteos,      setConteos]      = useState({}) // product_id -> fila de escenario_conteos_stock
   const [inputFisico,  setInputFisico]  = useState({}) // product_id -> texto que se está escribiendo
   const [guardandoConteo, setGuardandoConteo] = useState(false)
@@ -54,6 +55,9 @@ export default function EscenarioCierrePage() {
     setEncargado(p)
     const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId)
     setCanchas(cs || [])
+    const { data: bs } = await supabase.from('escenario_base_caja').select('*').eq('escenario_id', escenarioId)
+      .order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(1)
+    setBaseActual(bs?.[0] || null)
     setLoading(false)
   }
 
@@ -137,7 +141,8 @@ export default function EscenarioCierrePage() {
   const pagadoCompras = compras.reduce((a,c)=>a+Number(c.monto_pagado ?? totalCompra(c)),0)
   const totalGastos = gastos.reduce((a,g)=>a+Number(g.monto||0),0)
 
-  const cajaNeta = ingresoTienda + ingresoCanchas - pagadoCompras - totalGastos
+  const montoBase = Number(baseActual?.monto || 0)
+  const cajaNeta = montoBase + ingresoTienda + ingresoCanchas - pagadoCompras - totalGastos
 
   const totalDeudaClientes = deudasClientes.reduce((a,v)=>a+Number(v.total||0),0)
   const totalDeudaProveedores = deudasProveedores.reduce((a,c)=>a+(totalCompra(c)-(c.monto_pagado||0)),0)
@@ -172,13 +177,18 @@ export default function EscenarioCierrePage() {
             <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Cobrado en canchas</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(ingresoCanchas)}</div></div>
             <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Pagado en compras</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(pagadoCompras)}</div></div>
             <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Gastos</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>{fmtMoney(totalGastos)}</div></div>
+            <div style={stat}>
+              <div style={{ fontSize:'.68rem', color:S.muted }}>Base de caja</div>
+              <div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(montoBase)}</div>
+              {baseActual && <div style={{ fontSize:'.62rem', color:S.muted }}>puesta el {fmtDate(baseActual.fecha)}</div>}
+            </div>
             {ventasDevueltas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Devuelto ({ventasDevueltas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>-{fmtMoney(totalDevuelto)}</div></div>
             )}
             {ventasFiadas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Fiado hoy ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiadoHoy)}</div></div>
             )}
-            <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja neta del día (tienda + canchas − compras − gastos)</div><div style={{ fontWeight:900, fontSize:'1.3rem', color:S.cyan }}>{fmtMoney(cajaNeta)}</div></div>
+            <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja neta del día (base + tienda + canchas − compras − gastos)</div><div style={{ fontWeight:900, fontSize:'1.3rem', color:S.cyan }}>{fmtMoney(cajaNeta)}</div></div>
           </div>
 
           {/* Canchas del día */}
