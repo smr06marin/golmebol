@@ -157,31 +157,36 @@ function ModalGestionar({ reserva, canchas, soloLectura, onClose, onResuelto }) 
     const pagadoNum = Number(montoPagadoInput) || 0
     const pago = pagadoNum <= 0 ? 'pendiente' : pagadoNum >= monto ? 'pagado' : 'anticipo'
     setGuardandoPago(true)
-    await supabase.from('escenario_reservas').update({
+    const { error } = await supabase.from('escenario_reservas').update({
       pago, monto_pagado: pagadoNum,
       motivo_pago: pago === 'anticipo' ? (motivoInput.trim() || null) : null,
     }).eq('id', reserva.id)
     setGuardandoPago(false)
+    if (error) {
+      onResuelto(/does not exist/.test(error.message||'') ? '⚠️ Falta correr la migración migracion_escenario_motivo_pago.sql en Supabase' : '❌ ' + error.message)
+      return
+    }
     onResuelto('✅ Pago actualizado')
   }
 
   async function desbloquear() {
     setProcesando(true)
-    await supabase.from('escenario_reservas').delete().eq('id', reserva.id)
+    const { error } = await supabase.from('escenario_reservas').delete().eq('id', reserva.id)
     setProcesando(false)
-    onResuelto('Horario desbloqueado')
+    onResuelto(error ? '❌ ' + error.message : 'Horario desbloqueado')
   }
 
   async function cancelar(motivo) {
     setProcesando(true)
-    await supabase.from('escenario_reservas').update({ estado: 'cancelada', motivo_cancelacion: motivo }).eq('id', reserva.id)
+    const { error } = await supabase.from('escenario_reservas').update({ estado: 'cancelada', motivo_cancelacion: motivo }).eq('id', reserva.id)
     setProcesando(false)
-    onResuelto('Reserva cancelada — el horario quedó libre')
+    onResuelto(error ? '❌ ' + error.message : 'Reserva cancelada — el horario quedó libre')
   }
 
   async function confirmarReprogramar() {
     if (!reForm.cancha || !reForm.fecha || !reForm.hora) { setError('Completa cancha, fecha y hora'); return }
-    await supabase.from('escenario_reservas').update({ cancha: reForm.cancha, fecha: reForm.fecha, hora: reForm.hora }).eq('id', reserva.id)
+    const { error } = await supabase.from('escenario_reservas').update({ cancha: reForm.cancha, fecha: reForm.fecha, hora: reForm.hora }).eq('id', reserva.id)
+    if (error) { setError(error.message); return }
     onResuelto('Reserva reprogramada')
   }
 
