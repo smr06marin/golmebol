@@ -26,6 +26,7 @@ export default function EscenarioGastosPage() {
   const [descripcion, setDescripcion] = useState('')
   const [monto,       setMonto]       = useState('')
   const [fecha,       setFecha]       = useState(todayStr())
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -35,8 +36,9 @@ export default function EscenarioGastosPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -91,6 +93,7 @@ export default function EscenarioGastosPage() {
           <div style={{ fontWeight:900, fontSize:'1.4rem', color:S.loss }}>{fmtMoney(totalMes)}</div>
         </div>
 
+        {!soloLectura && (
         <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'16px', marginBottom:'16px' }}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'12px' }}>Agregar gasto</div>
           <div style={{ marginBottom:'10px' }}>
@@ -105,6 +108,7 @@ export default function EscenarioGastosPage() {
           </div>
           <button onClick={registrarGasto} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Registrar gasto</button>
         </div>
+        )}
 
         <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Historial de gastos</div>
         {gastos.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin gastos registrados.</div> : gastos.map(g => (
@@ -114,7 +118,7 @@ export default function EscenarioGastosPage() {
               {g.categoria && <div style={{ fontSize:'.7rem', color:S.muted }}>{g.categoria}</div>}
             </div>
             <span style={{ fontWeight:700, color:S.loss }}>{fmtMoney(g.monto)}</span>
-            <button onClick={()=>eliminarGasto(g)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, fontSize:'.9rem', flexShrink:0 }}>✕</button>
+            {!soloLectura && <button onClick={()=>eliminarGasto(g)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted, fontSize:'.9rem', flexShrink:0 }}>✕</button>}
           </div>
         ))}
       </div>

@@ -65,6 +65,7 @@ export default function EscenarioComprasPage() {
   const [tempProductId, setTempProductId] = useState('')
   const [tempCantidad,  setTempCantidad]  = useState(1)
   const [tempTotalLinea, setTempTotalLinea] = useState('')
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -74,8 +75,9 @@ export default function EscenarioComprasPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -245,15 +247,18 @@ export default function EscenarioComprasPage() {
                     <div style={{ fontSize:'.76rem', color:S.text2 }}>{grupo.items.map(c=>`${c.nombre} x${c.cantidad}`).join(', ')} · {grupo.fecha}</div>
                     <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>Debes {fmtMoney(debeGrupo)}</div>
                   </div>
-                  <button onClick={()=>marcarGrupoPagado(grupo)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
-                    <CheckCircle2 size={12}/> Ya pagué
-                  </button>
+                  {!soloLectura && (
+                    <button onClick={()=>marcarGrupoPagado(grupo)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                      <CheckCircle2 size={12}/> Ya pagué
+                    </button>
+                  )}
                 </div>
               )
             })}
           </div>
         )}
 
+        {!soloLectura && (
         <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'16px', marginBottom:'16px' }}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'12px' }}>Agregar compra</div>
           <div style={{ marginBottom:'10px' }}><label style={lbl}>Proveedor</label><input value={proveedor} onChange={e=>setProveedor(e.target.value)} style={inp} placeholder="Nombre del proveedor"/></div>
@@ -335,6 +340,7 @@ export default function EscenarioComprasPage() {
 
           <button onClick={registrarCompra} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Registrar compra</button>
         </div>
+        )}
 
         <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Historial de compras</div>
         {compras.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>Sin compras registradas.</div> : agruparPorFactura(compras).map(grupo => {
