@@ -87,6 +87,7 @@ export default function EscenarioVentasPage() {
   const [deudorNombre, setDeudorNombre] = useState('')
   const [deudorCancha, setDeudorCancha] = useState('')
   const [devolviendo, setDevolviendo] = useState(null) // venta a la que se le está eligiendo qué devolver
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -96,8 +97,9 @@ export default function EscenarioVentasPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -293,9 +295,11 @@ export default function EscenarioVentasPage() {
                   <div style={{ fontSize:'.76rem', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', color:S.text2 }}>{(v.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')}</div>
                   <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>{fmtMoney(v.total)}</div>
                 </div>
-                <button onClick={()=>marcarPagado(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
-                  <CheckCircle2 size={12}/> Ya pagó
-                </button>
+                {!soloLectura && (
+                  <button onClick={()=>marcarPagado(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                    <CheckCircle2 size={12}/> Ya pagó
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -314,7 +318,7 @@ export default function EscenarioVentasPage() {
                 </div>
                 {v.estado==='devuelta'
                   ? <span style={{ fontSize:'.7rem', fontWeight:700, color:S.loss, flexShrink:0 }}>Devuelta</span>
-                  : <button onClick={()=>setDevolviendo(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(217,48,37,.12)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                  : !soloLectura && <button onClick={()=>setDevolviendo(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(217,48,37,.12)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
                       <RotateCcw size={12}/> Devolver
                     </button>}
               </div>
@@ -328,7 +332,11 @@ export default function EscenarioVentasPage() {
             style={{ width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'11px 14px 11px 38px', color:S.text, fontSize:'.85rem', outline:'none', boxSizing:'border-box' }}/>
         </div>
 
-        {productos.length>0 && <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Toca dos veces un producto para agregarlo al carrito</div>}
+        {productos.length>0 && (
+          <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>
+            {soloLectura ? '👁️ Modo solo lectura — no podés registrar ventas' : 'Toca dos veces un producto para agregarlo al carrito'}
+          </div>
+        )}
 
         {productos.length===0 ? (
           <div style={{ textAlign:'center', color:S.muted, padding:'40px 0' }}>
@@ -341,7 +349,7 @@ export default function EscenarioVentasPage() {
         ) : (
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
             {visibles.map(p => (
-              <div key={p.id} onDoubleClick={()=>addToCart(p.id)}
+              <div key={p.id} onDoubleClick={soloLectura ? undefined : ()=>addToCart(p.id)}
                 style={{ position:'relative', display:'flex', flexDirection:'column', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'14px', overflow:'hidden', cursor:'pointer', touchAction:'manipulation', userSelect:'none' }}>
                 {cart[p.id] && (
                   <span onClick={e=>{e.stopPropagation(); quitarUno(p.id)}} style={{ position:'absolute', top:'6px', right:'6px', zIndex:2, background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>

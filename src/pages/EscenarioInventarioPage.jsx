@@ -198,6 +198,7 @@ export default function EscenarioInventarioPage() {
   const [modal,     setModal]     = useState(null) // null | {} (nuevo) | producto (editar)
   const [msg,       setMsg]       = useState('')
   const [viendoMovimientos, setViendoMovimientos] = useState(null) // producto o null
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -207,8 +208,9 @@ export default function EscenarioInventarioPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -291,7 +293,9 @@ export default function EscenarioInventarioPage() {
             <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>📦 Inventario</div>
             <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
           </div>
-          <button onClick={()=>setModal({})} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.78rem' }}><Plus size={14}/> Agregar</button>
+          {!soloLectura && (
+            <button onClick={()=>setModal({})} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.78rem' }}><Plus size={14}/> Agregar</button>
+          )}
         </div>
       </div>
 
@@ -306,7 +310,7 @@ export default function EscenarioInventarioPage() {
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             {productos.map(p => (
-              <div key={p.id} onClick={()=>setModal(p)}
+              <div key={p.id} onClick={soloLectura ? undefined : ()=>setModal(p)}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'12px', cursor:'pointer', color:S.text, textAlign:'left' }}>
                 {p.foto_url
                   ? <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0, background:S.card2 }}><img src={p.foto_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/></div>
