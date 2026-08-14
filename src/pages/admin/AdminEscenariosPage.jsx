@@ -6,16 +6,27 @@ const EMPTY = { name: '', telefono: '', numero_cedula: '', city: '', genero: '' 
 const inp = { width:'100%', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'8px 12px', color:'#202124', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'block', marginBottom:'4px' }
 
-function SelectorEscenarios({ escenarios, seleccionados, onToggle }) {
+function SelectorEscenarios({ escenarios, seleccionados, onToggle, soloLecturaMap = {}, onToggleSoloLectura }) {
   if (escenarios.length === 0) return <div style={{ fontSize:'.78rem', color:'#9aa0a6' }}>Todavía no hay escenarios creados.</div>
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'160px', overflowY:'auto', border:'1px solid #dadce0', borderRadius:'8px', padding:'10px' }}>
-      {escenarios.map(e => (
-        <label key={e.id} style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'.82rem', color:'#202124', cursor:'pointer' }}>
-          <input type="checkbox" checked={seleccionados.includes(e.id)} onChange={() => onToggle(e.id)}/>
-          🏟️ {e.name}{e.city ? ` · ${e.city}` : ''}
-        </label>
-      ))}
+    <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'220px', overflowY:'auto', border:'1px solid #dadce0', borderRadius:'8px', padding:'10px' }}>
+      {escenarios.map(e => {
+        const sel = seleccionados.includes(e.id)
+        return (
+          <div key={e.id}>
+            <label style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'.82rem', color:'#202124', cursor:'pointer' }}>
+              <input type="checkbox" checked={sel} onChange={() => onToggle(e.id)}/>
+              🏟️ {e.name}{e.city ? ` · ${e.city}` : ''}
+            </label>
+            {sel && onToggleSoloLectura && (
+              <label style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'.74rem', color:'#5f6368', cursor:'pointer', marginLeft:'22px', marginTop:'3px' }}>
+                <input type="checkbox" checked={!!soloLecturaMap[e.id]} onChange={() => onToggleSoloLectura(e.id)}/>
+                👁️ Solo lectura (puede ver todo, no editar nada)
+              </label>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -136,6 +147,7 @@ export default function AdminEscenariosPage() {
   const [personaEncontrada,  setPersonaEncontrada]  = useState(null)
   const [mostrarCamposNuevo, setMostrarCamposNuevo] = useState(false)
   const [escenariosAsignados, setEscenariosAsignados] = useState([]) // array de escenario_id — un encargado puede tener varios
+  const [soloLecturaMap, setSoloLecturaMap] = useState({}) // escenario_id -> true si esa asignación es solo lectura
 
   useEffect(() => { fetchEscenarios(); fetchEncargados() }, [])
 
@@ -149,12 +161,12 @@ export default function AdminEscenariosPage() {
       .select('*')
       .eq('es_encargado_escenario', true)
       .order('name')
-    const { data: asignaciones } = await supabase.from('escenario_encargados').select('player_id, escenarios(id, name, city)')
+    const { data: asignaciones } = await supabase.from('escenario_encargados').select('player_id, solo_lectura, escenarios(id, name, city)')
     const porPlayer = {}
     ;(asignaciones || []).forEach(a => {
       if (!a.escenarios) return
       porPlayer[a.player_id] = porPlayer[a.player_id] || []
-      porPlayer[a.player_id].push(a.escenarios)
+      porPlayer[a.player_id].push({ ...a.escenarios, solo_lectura: !!a.solo_lectura })
     })
     setEncargados((players || []).map(p => ({ ...p, escenarios: porPlayer[p.id] || [] })))
   }
@@ -163,11 +175,15 @@ export default function AdminEscenariosPage() {
     setEscenariosAsignados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  async function sincronizarAsignaciones(playerId, ids) {
+  function toggleSoloLectura(id) {
+    setSoloLecturaMap(m => ({ ...m, [id]: !m[id] }))
+  }
+
+  async function sincronizarAsignaciones(playerId, ids, soloLecturaMap = {}) {
     const { error: errDel } = await supabase.from('escenario_encargados').delete().eq('player_id', playerId)
     if (errDel) return 'Error al actualizar asignaciones: ' + errDel.message
     if (ids.length > 0) {
-      const { error: errIns } = await supabase.from('escenario_encargados').insert(ids.map(escenario_id => ({ escenario_id, player_id: playerId })))
+      const { error: errIns } = await supabase.from('escenario_encargados').insert(ids.map(escenario_id => ({ escenario_id, player_id: playerId, solo_lectura: !!soloLecturaMap[escenario_id] })))
       if (errIns) return 'Error al asignar escenario(s): ' + errIns.message
     }
     return null
@@ -180,7 +196,7 @@ export default function AdminEscenariosPage() {
 
   function cerrarFormNuevo() {
     setShowForm(false); setForm(EMPTY); setEditId(null)
-    setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenariosAsignados([])
+    setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false); setEscenariosAsignados([]); setSoloLecturaMap({})
   }
 
   async function handleCrearEscenario() {
@@ -254,9 +270,10 @@ export default function AdminEscenariosPage() {
       // seleccionados para no perderlos al guardar (un encargado puede
       // tener varios escenarios a la vez).
       if (data.es_encargado_escenario) {
-        const { data: asign } = await supabase.from('escenario_encargados').select('escenario_id').eq('player_id', data.id)
+        const { data: asign } = await supabase.from('escenario_encargados').select('escenario_id, solo_lectura').eq('player_id', data.id)
         const yaAsignados = (asign || []).map(a => a.escenario_id)
         setEscenariosAsignados(prev => Array.from(new Set([...prev, ...yaAsignados])))
+        setSoloLecturaMap(m => { const n = { ...m }; (asign || []).forEach(a => { n[a.escenario_id] = !!a.solo_lectura }); return n })
       }
     }
     else { setMostrarCamposNuevo(true); setForm(f => ({ ...f, numero_cedula: cedulaBuscar.trim() })) }
@@ -271,7 +288,7 @@ export default function AdminEscenariosPage() {
       : { es_encargado_escenario: true, activo_membresia: true, fecha_vencimiento: null }
     const { error } = await supabase.from('players').update(payload).eq('id', existente.id)
     if (error) { setLoading(false); return showMsgFn('Error al habilitar como encargado: ' + error.message, 'error') }
-    const errSync = await sincronizarAsignaciones(existente.id, escenariosAsignados)
+    const errSync = await sincronizarAsignaciones(existente.id, escenariosAsignados, soloLecturaMap)
     setLoading(false)
     if (errSync) return showMsgFn(errSync, 'error')
     showMsgFn(`${existente.name} ahora es encargado de ${escenariosAsignados.length} escenario${escenariosAsignados.length===1?'':'s'} ✓`)
@@ -286,7 +303,7 @@ export default function AdminEscenariosPage() {
     if (editId) {
       const { error } = await supabase.from('players').update(form).eq('id', editId)
       if (error) { setLoading(false); return showMsgFn('Error al guardar: ' + error.message, 'error') }
-      const errSync = await sincronizarAsignaciones(editId, escenariosAsignados)
+      const errSync = await sincronizarAsignaciones(editId, escenariosAsignados, soloLecturaMap)
       if (errSync) showMsgFn(errSync, 'error')
       else { showMsgFn('Encargado actualizado ✓'); setEditId(null) }
     } else {
@@ -296,7 +313,7 @@ export default function AdminEscenariosPage() {
       }
       const { data: nuevo, error } = await supabase.from('players').insert(payload).select().single()
       let errSync = null
-      if (!error && nuevo) errSync = await sincronizarAsignaciones(nuevo.id, escenariosAsignados)
+      if (!error && nuevo) errSync = await sincronizarAsignaciones(nuevo.id, escenariosAsignados, soloLecturaMap)
       if (error) showMsgFn('Error al crear: ' + error.message, 'error')
       else if (errSync) showMsgFn(errSync, 'error')
       else showMsgFn('Encargado creado ✓ — ya puede entrar con su cédula en /jugador/login')
@@ -485,7 +502,7 @@ export default function AdminEscenariosPage() {
             <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
             <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Escenarios asignados</label>
-              <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado}/>
+              <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado} soloLecturaMap={soloLecturaMap} onToggleSoloLectura={toggleSoloLectura}/>
             </div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
@@ -550,7 +567,7 @@ export default function AdminEscenariosPage() {
             <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
             <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Escenarios asignados</label>
-              <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado}/>
+              <SelectorEscenarios escenarios={escenarios} seleccionados={escenariosAsignados} onToggle={toggleEscenarioAsignado} soloLecturaMap={soloLecturaMap} onToggleSoloLectura={toggleSoloLectura}/>
             </div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
@@ -594,7 +611,9 @@ export default function AdminEscenariosPage() {
                 <div style={{ display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
                   <div style={{ fontWeight:'700', fontSize:'.95rem', color:'#202124' }}>{a.name}</div>
                   {(a.escenarios||[]).map(e => (
-                    <span key={e.id} style={{ fontSize:'.65rem', color:'#1e8e3e', background:'#e6f4ea', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>🏟️ {e.name}</span>
+                    <span key={e.id} style={{ fontSize:'.65rem', color: e.solo_lectura ? '#5f6368' : '#1e8e3e', background: e.solo_lectura ? '#f1f3f4' : '#e6f4ea', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>
+                      🏟️ {e.name}{e.solo_lectura ? ' · 👁️ solo lectura' : ''}
+                    </span>
                   ))}
                   {(!a.escenarios || a.escenarios.length===0) && <span style={{ fontSize:'.65rem', color:'#e8710a', background:'#fce8d9', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>Sin escenario asignado</span>}
                 </div>
@@ -619,7 +638,7 @@ export default function AdminEscenariosPage() {
               </div>
 
               <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
-                <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEscenariosAsignados((a.escenarios||[]).map(e=>e.id)); setEditId(a.id); setShowForm(true) }}
+                <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEscenariosAsignados((a.escenarios||[]).map(e=>e.id)); const nuevoMapa={}; (a.escenarios||[]).forEach(e=>{ nuevoMapa[e.id]=!!e.solo_lectura }); setSoloLecturaMap(nuevoMapa); setEditId(a.id); setShowForm(true) }}
                   style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem' }}>✏️</button>
                 {!activo && (
                   <button onClick={() => a.user_id ? setModalMem(a) : handleActivarGratis(a)}
