@@ -17,7 +17,7 @@ const lbl = { fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6p
 // Cuando el horario ya tiene una solicitud pendiente, es porque el cliente
 // ya llenó sus datos desde la página pública — acá no se le vuelven a pedir,
 // solo se muestran para revisar y aceptar/rechazar con un click.
-function ModalRevisar({ reserva, canchas, encargado, onClose, onResuelto }) {
+function ModalRevisar({ reserva, canchas, encargado, soloLectura, onClose, onResuelto }) {
   const [procesando, setProcesando] = useState(false)
 
   async function aceptar() {
@@ -54,12 +54,16 @@ function ModalRevisar({ reserva, canchas, encargado, onClose, onResuelto }) {
           {reserva.equipo && <div style={{ fontSize:'.8rem', color:S.text2 }}>Equipo: {reserva.equipo}</div>}
           <div style={{ fontSize:'.8rem', color:S.text2 }}>Duración: {reserva.duracion} min</div>
         </div>
-        <div style={{ display:'flex', gap:'8px' }}>
-          <button onClick={rechazar} disabled={procesando} style={{ flex:1, padding:'12px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.85rem', opacity:procesando?.7:1 }}>Rechazar</button>
-          <button onClick={aceptar} disabled={procesando} style={{ flex:1, padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
-            {procesando ? '...' : 'Aceptar'}
-          </button>
-        </div>
+        {soloLectura ? (
+          <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no podés aceptar ni rechazar.</div>
+        ) : (
+          <div style={{ display:'flex', gap:'8px' }}>
+            <button onClick={rechazar} disabled={procesando} style={{ flex:1, padding:'12px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.85rem', opacity:procesando?.7:1 }}>Rechazar</button>
+            <button onClick={aceptar} disabled={procesando} style={{ flex:1, padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
+              {procesando ? '...' : 'Aceptar'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -136,7 +140,7 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
 // Cuando el horario ya está ocupado — muestra los datos de quien reservó
 // (o el bloqueo de mantenimiento) y permite marcar el pago, reprogramar o
 // cancelar sin tener que salir a otra pantalla.
-function ModalGestionar({ reserva, canchas, onClose, onResuelto }) {
+function ModalGestionar({ reserva, canchas, soloLectura, onClose, onResuelto }) {
   const [modo, setModo] = useState(null) // null | 'cancelar' | 'reprogramar'
   const [reForm, setReForm] = useState({ cancha: reserva.cancha, fecha: reserva.fecha, hora: reserva.hora })
   const [error, setError] = useState('')
@@ -193,9 +197,13 @@ function ModalGestionar({ reserva, canchas, onClose, onResuelto }) {
         {esMantenimiento ? (
           <>
             <div style={{ fontSize:'.8rem', color:S.text2, marginBottom:'16px' }}>Este horario está marcado como mantenimiento, no acepta reservas.</div>
-            <button onClick={desbloquear} disabled={procesando} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
-              {procesando ? '...' : 'Desbloquear horario'}
-            </button>
+            {soloLectura ? (
+              <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no podés desbloquearlo.</div>
+            ) : (
+              <button onClick={desbloquear} disabled={procesando} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
+                {procesando ? '...' : 'Desbloquear horario'}
+              </button>
+            )}
           </>
         ) : modo === 'cancelar' ? (
           <>
@@ -228,24 +236,30 @@ function ModalGestionar({ reserva, canchas, onClose, onResuelto }) {
               <div style={{ fontSize:'.8rem', color:S.text2, marginTop:'6px' }}>Valor: {fmtMoney(reserva.monto)}{reserva.monto_pagado ? ` · pagado ${fmtMoney(reserva.monto_pagado)}` : ''}</div>
               {reserva.motivo_pago && <div style={{ fontSize:'.74rem', color:S.gold, marginTop:'4px' }}>Pagó menos por: {reserva.motivo_pago}</div>}
             </div>
-            <div style={{ marginBottom:'16px' }}>
-              <label style={lbl}>Monto pagado</label>
-              <input type="number" value={montoPagadoInput} onChange={e=>setMontoPagadoInput(e.target.value)} style={inp}/>
-              <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'4px' }}>Valor de la cancha: {fmtMoney(reserva.monto)}</div>
-              {pagoMenor && (
-                <div style={{ marginTop:'10px' }}>
-                  <label style={lbl}>¿Por qué pagó menos?</label>
-                  <input value={motivoInput} onChange={e=>setMotivoInput(e.target.value)} style={inp} placeholder="Ej: descuento, cliente frecuente, lluvia..."/>
+            {soloLectura ? (
+              <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no podés cambiar el pago, reprogramar ni cancelar.</div>
+            ) : (
+              <>
+                <div style={{ marginBottom:'16px' }}>
+                  <label style={lbl}>Monto pagado</label>
+                  <input type="number" value={montoPagadoInput} onChange={e=>setMontoPagadoInput(e.target.value)} style={inp}/>
+                  <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'4px' }}>Valor de la cancha: {fmtMoney(reserva.monto)}</div>
+                  {pagoMenor && (
+                    <div style={{ marginTop:'10px' }}>
+                      <label style={lbl}>¿Por qué pagó menos?</label>
+                      <input value={motivoInput} onChange={e=>setMotivoInput(e.target.value)} style={inp} placeholder="Ej: descuento, cliente frecuente, lluvia..."/>
+                    </div>
+                  )}
+                  <button onClick={guardarPago} disabled={guardandoPago} style={{ width:'100%', padding:'10px', marginTop:'10px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.8rem', opacity:guardandoPago?.7:1 }}>
+                    {guardandoPago ? 'Guardando...' : 'Guardar pago'}
+                  </button>
                 </div>
-              )}
-              <button onClick={guardarPago} disabled={guardandoPago} style={{ width:'100%', padding:'10px', marginTop:'10px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.8rem', opacity:guardandoPago?.7:1 }}>
-                {guardandoPago ? 'Guardando...' : 'Guardar pago'}
-              </button>
-            </div>
-            <div style={{ display:'flex', gap:'8px' }}>
-              <button onClick={()=>setModo('reprogramar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontWeight:700, fontSize:'.78rem' }}>Reprogramar</button>
-              <button onClick={()=>setModo('cancelar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.78rem' }}>Cancelar reserva</button>
-            </div>
+                <div style={{ display:'flex', gap:'8px' }}>
+                  <button onClick={()=>setModo('reprogramar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontWeight:700, fontSize:'.78rem' }}>Reprogramar</button>
+                  <button onClick={()=>setModo('cancelar')} style={{ flex:1, padding:'11px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.78rem' }}>Cancelar reserva</button>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
@@ -267,6 +281,7 @@ export default function EscenarioCanchasPage() {
   const [revisando, setRevisando] = useState(null)
   const [gestionando, setGestionando] = useState(null)
   const [msg,       setMsg]       = useState('')
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -276,8 +291,9 @@ export default function EscenarioCanchasPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -290,7 +306,7 @@ export default function EscenarioCanchasPage() {
     setLoading(false)
   }
 
-  function abrir(cancha, fecha, hora) { setModalSlot({ cancha, fecha, hora }) }
+  function abrir(cancha, fecha, hora) { if (!soloLectura) setModalSlot({ cancha, fecha, hora }) }
   function guardado() { setModalSlot(null); setMsg('✅ Reserva registrada'); setTimeout(()=>setMsg(''),3000); fetchTodo() }
 
   function abrirRevisar(cancha, fecha, hora) {
@@ -333,11 +349,11 @@ export default function EscenarioCanchasPage() {
           onClose={()=>setModalSlot(null)} onGuardado={guardado}/>
       )}
       {revisando && (
-        <ModalRevisar reserva={revisando} canchas={canchas} encargado={encargado}
+        <ModalRevisar reserva={revisando} canchas={canchas} encargado={encargado} soloLectura={soloLectura}
           onClose={()=>setRevisando(null)} onResuelto={resuelto}/>
       )}
       {gestionando && (
-        <ModalGestionar reserva={gestionando} canchas={canchas}
+        <ModalGestionar reserva={gestionando} canchas={canchas} soloLectura={soloLectura}
           onClose={()=>setGestionando(null)} onResuelto={resueltoGestion}/>
       )}
 

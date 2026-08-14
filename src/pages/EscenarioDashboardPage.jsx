@@ -30,6 +30,7 @@ export default function EscenarioDashboardPage() {
   const [actividadReciente, setActividadReciente] = useState([])
   const [mostrarAviso, setMostrarAviso] = useState(false)
   const [expandirActividad, setExpandirActividad] = useState(false)
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -41,8 +42,9 @@ export default function EscenarioDashboardPage() {
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
     setEncargado(p)
 
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { setNotFound(true); setLoading(false); return }
+    setSoloLectura(!!acceso.solo_lectura)
 
     const { data: asignaciones } = await supabase.from('escenario_encargados').select('escenarios(id, name, logo_url)').eq('player_id', p.id)
     setOtros((asignaciones || []).map(a => a.escenarios).filter(Boolean))
@@ -71,7 +73,7 @@ export default function EscenarioDashboardPage() {
     // que cualquiera que use el escenario tenga presente que los cambios
     // quedan anotados con su nombre.
     const keyAviso = `escenario_aviso_${escenarioId}_${p.id}_${hoy}`
-    if (!localStorage.getItem(keyAviso)) setMostrarAviso(true)
+    if (!acceso.solo_lectura && !localStorage.getItem(keyAviso)) setMostrarAviso(true)
 
     setLoading(false)
   }
@@ -174,9 +176,9 @@ export default function EscenarioDashboardPage() {
 
       <PortalBanner theme="dark" sticky
         avatarUrl={escenario.logo_url} avatarEmoji={<Building2 size={22}/>} avatarShape="rounded"
-        onAvatarUpload={handleLogo} uploadingAvatar={subiendoLogo}
+        onAvatarUpload={soloLectura ? undefined : handleLogo} uploadingAvatar={subiendoLogo}
         kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Building2 size={11}/> Escenario deportivo</span>} title={escenario.name}
-        subtitle={<span>🏟️ Encargado · {encargado.name?.split(' ')[0]}</span>}
+        subtitle={<span>🏟️ {soloLectura ? '👁️ Solo lectura' : 'Encargado'} · {encargado.name?.split(' ')[0]}</span>}
         subtitleColor={S.gold}
         usuario={encargado} actual="escenario" onLogout={handleLogout}
       />
