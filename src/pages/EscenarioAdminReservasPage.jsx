@@ -34,6 +34,7 @@ export default function EscenarioAdminReservasPage() {
   const [modoGestion, setModoGestion] = useState(null) // 'cancelar' | 'reprogramar'
   const [reForm, setReForm] = useState({ cancha:'', fecha:'', hora:'' })
   const [errorGestion, setErrorGestion] = useState('')
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -43,8 +44,9 @@ export default function EscenarioAdminReservasPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -186,10 +188,12 @@ export default function EscenarioAdminReservasPage() {
           {pendientes.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay solicitudes pendientes.</div> : pendientes.map(r => (
             <div key={r.id} style={rowItem}>
               <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {fmtHora12(r.hora)} · {nombreCancha(canchas, r.cancha)} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
+              {!soloLectura && (
               <span style={{ display:'flex', gap:'6px' }}>
                 <button onClick={()=>aceptar(r)} style={{ padding:'5px 10px', background:S.cyan, border:'none', borderRadius:'6px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.72rem' }}>Aceptar</button>
                 <button onClick={()=>rechazar(r)} style={{ padding:'5px 10px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor:'pointer', color:S.loss, fontSize:'.72rem' }}>Rechazar</button>
               </span>
+              )}
             </div>
           ))}
         </div>
@@ -204,18 +208,25 @@ export default function EscenarioAdminReservasPage() {
                   {(r.recurrente || r.generada_de_recurrente || r.reserva_fija_id) ? ' 🔁' : ''}
                   {r.aceptada_por_nombre && <span style={{ display:'block', fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Aceptada por {r.aceptada_por_nombre}</span>}
                 </span>
+                {soloLectura ? (
+                  <span style={{ fontSize:'.72rem', color:S.text2, fontWeight:700 }}>{r.pago === 'pagado' ? 'Pagado' : r.pago === 'anticipo' ? 'Anticipo' : 'Pendiente'}</span>
+                ) : (
                 <select value={r.pago} onChange={e=>cambiarPago(r,e.target.value)} style={{ ...inp, width:'auto', padding:'5px 8px', fontSize:'.72rem' }}>
                   <option value="pendiente">Pendiente</option><option value="anticipo">Anticipo</option><option value="pagado">Pagado</option>
                 </select>
+                )}
               </div>
+              {!soloLectura && (
               <div style={{ display:'flex', gap:'6px' }}>
                 <button onClick={()=>abrirReprogramar(r)} style={{ flex:1, padding:'5px 8px', background:'none', border:`1px solid ${S.border}`, borderRadius:'6px', cursor:'pointer', color:S.text2, fontSize:'.7rem', fontWeight:600 }}>Reprogramar</button>
                 <button onClick={()=>abrirCancelar(r)} style={{ flex:1, padding:'5px 8px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor:'pointer', color:S.loss, fontSize:'.7rem', fontWeight:600 }}>Cancelar</button>
               </div>
+              )}
             </div>
           ))}
         </div>
 
+        {!soloLectura && (
         <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>🛠️ Bloquear horario (mantenimiento)</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
@@ -225,6 +236,7 @@ export default function EscenarioAdminReservasPage() {
           </div>
           <button onClick={bloquear} style={{ width:'100%', padding:'10px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text, fontWeight:700, fontSize:'.8rem' }}>Bloquear</button>
         </div>
+        )}
 
         <div style={card}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>📊 Ocupación de la semana</div>

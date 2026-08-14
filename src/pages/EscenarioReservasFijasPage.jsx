@@ -26,6 +26,7 @@ export default function EscenarioReservasFijasPage() {
   const vacio = { cancha:'', dia_semana:1, hora:'', duracion:60, nombre:'', telefono:'', equipo:'', monto:'' }
   const [form, setForm] = useState(vacio)
   const [editId, setEditId] = useState(null) // id de la fija que se está editando, o null si es "nuevo"
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -35,8 +36,9 @@ export default function EscenarioReservasFijasPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
@@ -123,6 +125,7 @@ export default function EscenarioReservasFijasPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         {msg && <div style={{ background: msg.startsWith('✅')?S.cyanDim:'rgba(217,48,37,.12)', color: msg.startsWith('✅')?S.cyan:'#ff6b6b', borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
+        {!soloLectura && (
         <div style={card}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
             <div style={{ fontWeight:800, fontSize:'.9rem' }}>{editId ? 'Editar horario fijo' : 'Nuevo horario fijo'}</div>
@@ -172,6 +175,7 @@ export default function EscenarioReservasFijasPage() {
             <Plus size={15}/> {guardando ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear horario fijo'}
           </button>
         </div>
+        )}
 
         <div style={{...card, marginBottom:0}}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Horarios fijos activos</div>
@@ -184,16 +188,18 @@ export default function EscenarioReservasFijasPage() {
                   {!f.activa && ' · inactivo'}
                 </div>
               </div>
-              <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
-                <button onClick={()=>abrirEditar(f)} title="Editar"
-                  style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.text2 }}>
-                  <Pencil size={13}/>
-                </button>
-                <button onClick={()=>toggle(f)} title={f.activa ? 'Desactivar' : 'Reactivar'}
-                  style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: f.activa ? '#ff6b6b' : S.cyan }}>
-                  {f.activa ? <Trash2 size={13}/> : <RotateCcw size={13}/>}
-                </button>
-              </div>
+              {!soloLectura && (
+                <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+                  <button onClick={()=>abrirEditar(f)} title="Editar"
+                    style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.text2 }}>
+                    <Pencil size={13}/>
+                  </button>
+                  <button onClick={()=>toggle(f)} title={f.activa ? 'Desactivar' : 'Reactivar'}
+                    style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: f.activa ? '#ff6b6b' : S.cyan }}>
+                    {f.activa ? <Trash2 size={13}/> : <RotateCcw size={13}/>}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
