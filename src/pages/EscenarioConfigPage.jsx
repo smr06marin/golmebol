@@ -25,6 +25,7 @@ export default function EscenarioConfigPage() {
   const [msg,       setMsg]       = useState('')
   const [nuevaCancha, setNuevaCancha] = useState({ nombre:'', precio_hora:'' })
   const [agregando, setAgregando] = useState(false)
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -34,8 +35,9 @@ export default function EscenarioConfigPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -133,15 +135,15 @@ export default function EscenarioConfigPage() {
 
         <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px', marginBottom:'16px' }}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'14px' }}>Datos del escenario</div>
-          <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp}/></div>
-          <div style={{ marginBottom:'12px' }}><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp}/></div>
+          <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp} disabled={soloLectura}/></div>
+          <div style={{ marginBottom:'12px' }}><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp} disabled={soloLectura}/></div>
           <div style={{ marginBottom:'12px' }}>
             <label style={lbl}>WhatsApp del negocio (sin + ni espacios, con código de país)</label>
-            <input value={form.whatsapp} onChange={e=>setForm(f=>({...f,whatsapp:e.target.value}))} style={inp} placeholder="573001234567"/>
+            <input value={form.whatsapp} onChange={e=>setForm(f=>({...f,whatsapp:e.target.value}))} style={inp} placeholder="573001234567" disabled={soloLectura}/>
           </div>
           <div style={{ marginBottom:'0' }}>
             <label style={lbl}>Dirección</label>
-            <input value={form.direccion} onChange={e=>setForm(f=>({...f,direccion:e.target.value}))} style={inp} placeholder="Ej: Barrio Puerto Espejo, Armenia, Quindío"/>
+            <input value={form.direccion} onChange={e=>setForm(f=>({...f,direccion:e.target.value}))} style={inp} placeholder="Ej: Barrio Puerto Espejo, Armenia, Quindío" disabled={soloLectura}/>
             <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'6px' }}>Se usa para mostrar el mapa en la página pública de reservas.</div>
           </div>
         </div>
@@ -149,8 +151,8 @@ export default function EscenarioConfigPage() {
         <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px', marginBottom:'16px' }}>
           <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'14px' }}>Horario</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <div><label style={lbl}>Hora de apertura</label><input type="number" value={form.hora_apertura} onChange={e=>setForm(f=>({...f,hora_apertura:e.target.value}))} style={inp}/></div>
-            <div><label style={lbl}>Hora de cierre</label><input type="number" value={form.hora_cierre} onChange={e=>setForm(f=>({...f,hora_cierre:e.target.value}))} style={inp}/></div>
+            <div><label style={lbl}>Hora de apertura</label><input type="number" value={form.hora_apertura} onChange={e=>setForm(f=>({...f,hora_apertura:e.target.value}))} style={inp} disabled={soloLectura}/></div>
+            <div><label style={lbl}>Hora de cierre</label><input type="number" value={form.hora_cierre} onChange={e=>setForm(f=>({...f,hora_cierre:e.target.value}))} style={inp} disabled={soloLectura}/></div>
           </div>
           <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'8px' }}>Aplica para todas las canchas del escenario.</div>
         </div>
@@ -162,17 +164,20 @@ export default function EscenarioConfigPage() {
           {canchas.map(c => (
             <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'10px', opacity: c.activa ? 1 : .5 }}>
               <input value={c.nombre} onChange={e=>editarCanchaLocal(c.id,'nombre',e.target.value)} onBlur={()=>guardarCancha(c)}
-                style={{ ...inp, flex:'1 1 auto' }} placeholder="Nombre de la cancha"/>
+                style={{ ...inp, flex:'1 1 auto' }} placeholder="Nombre de la cancha" disabled={soloLectura}/>
               <input type="number" value={c.precio_hora} onChange={e=>editarCanchaLocal(c.id,'precio_hora',e.target.value)} onBlur={()=>guardarCancha(c)}
-                style={{ ...inp, width:'110px', flex:'0 0 auto' }} placeholder="$/hora"/>
+                style={{ ...inp, width:'110px', flex:'0 0 auto' }} placeholder="$/hora" disabled={soloLectura}/>
+              {!soloLectura && (
               <button onClick={()=>toggleCancha(c)} title={c.activa ? 'Desactivar cancha' : 'Reactivar cancha'}
                 style={{ flexShrink:0, width:'36px', height:'36px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: c.activa ? '#ff6b6b' : S.cyan }}>
                 {c.activa ? <Trash2 size={14}/> : <RotateCcw size={14}/>}
               </button>
+              )}
             </div>
           ))}
           {canchas.length === 0 && <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'12px' }}>Todavía no tienes canchas creadas.</div>}
 
+          {!soloLectura && (
           <div style={{ display:'flex', gap:'8px', marginTop:'14px', paddingTop:'14px', borderTop:`1px solid ${S.border}` }}>
             <input value={nuevaCancha.nombre} onChange={e=>setNuevaCancha(f=>({...f,nombre:e.target.value}))}
               style={{ ...inp, flex:'1 1 auto' }} placeholder="Ej: Cancha 3"/>
@@ -183,6 +188,7 @@ export default function EscenarioConfigPage() {
               <Plus size={16}/>
             </button>
           </div>
+          )}
         </div>
 
         <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px', marginBottom:'16px' }}>
@@ -193,10 +199,12 @@ export default function EscenarioConfigPage() {
               <img src={escenario.imagen_fondo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
             </div>
           )}
+          {!soloLectura && (
           <label style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:S.card2, border:`1px dashed ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text2, fontSize:'.8rem', fontWeight:'600' }}>
             <ImageIcon size={14}/> {subiendoFondo ? 'Subiendo...' : escenario?.imagen_fondo_url ? 'Cambiar imagen de fondo' : 'Subir imagen de fondo'}
             <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoFondo} onChange={e=>handleFondo(e.target.files[0])}/>
           </label>
+          )}
           {escenario && (
             <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'10px' }}>
               Link público para reservar: <a href={`/reservar/${escenario.id}`} target="_blank" rel="noreferrer" style={{ color:S.cyan }}>golmebol.com/reservar/{escenario.id}</a>
@@ -204,10 +212,12 @@ export default function EscenarioConfigPage() {
           )}
         </div>
 
+        {!soloLectura && (
         <button onClick={guardar} disabled={guardando}
           style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem', opacity:guardando?.7:1 }}>
           {guardando ? 'Guardando...' : 'Guardar configuración'}
         </button>
+        )}
       </div>
     </div>
   )

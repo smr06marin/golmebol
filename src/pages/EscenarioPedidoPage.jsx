@@ -26,6 +26,7 @@ export default function EscenarioPedidoPage() {
   const [msg,       setMsg]       = useState('')
   const [copiado,   setCopiado]   = useState(false)
   const [mostrarQR, setMostrarQR] = useState(false)
+  const [soloLectura, setSoloLectura] = useState(false)
 
   function copiarLinkClientes() {
     const link = `${window.location.origin}/pedir/${escenarioId}`
@@ -42,8 +43,9 @@ export default function EscenarioPedidoPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -134,6 +136,8 @@ export default function EscenarioPedidoPage() {
           </button>
         </div>
 
+        {!soloLectura && (
+        <>
         <div style={{ fontWeight:800, fontSize:'.85rem', marginBottom:'10px' }}>Armar pedido manual (por teléfono)</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'16px' }}>
           {productos.map(p => (
@@ -160,6 +164,8 @@ export default function EscenarioPedidoPage() {
           style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem', opacity:items.length===0?.5:1, marginBottom:'22px' }}>
           Enviar pedido por WhatsApp
         </button>
+        </>
+        )}
 
         <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'10px' }}>Pedidos pendientes por entregar</div>
         {pedidos.length===0 ? <div style={{ color:S.muted, fontSize:'.8rem' }}>No hay pedidos remotos pendientes.</div> : pedidos.map(o => (
@@ -176,7 +182,7 @@ export default function EscenarioPedidoPage() {
                 <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>🏦 Transferencia</span>
               )}
             </span>
-            <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap', flexShrink:0 }}>Entregado</button>
+            {!soloLectura && <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap', flexShrink:0 }}>Entregado</button>}
           </div>
         ))}
       </div>
