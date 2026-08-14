@@ -47,6 +47,7 @@ export default function EscenarioCierrePage() {
   const [inputFisico,  setInputFisico]  = useState({}) // product_id -> texto que se está escribiendo
   const [guardandoConteo, setGuardandoConteo] = useState(false)
   const [msgConteo, setMsgConteo] = useState('')
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
   useEffect(() => { if (escenario) fetchDia() }, [fecha, escenario])
@@ -57,8 +58,9 @@ export default function EscenarioCierrePage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
     setEncargado(p)
@@ -275,6 +277,7 @@ export default function EscenarioCierrePage() {
           })}
 
           {/* Verificación física — solo interactivo, no sale impreso hasta guardarse */}
+          {!soloLectura && (
           <div className="no-print" style={{ marginTop:'16px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
             <div style={{ fontWeight:800, fontSize:'.82rem', marginBottom:'4px' }}>🔍 Verificar stock físico de este día</div>
             <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'12px' }}>Cuenta lo que realmente queda de cada producto y compáralo con lo que dice el sistema.</div>
@@ -292,6 +295,7 @@ export default function EscenarioCierrePage() {
               {guardandoConteo ? 'Guardando...' : 'Guardar conteo físico'}
             </button>
           </div>
+          )}
         </div>
 
         <button className="no-print" onClick={()=>window.print()} style={{ width:'100%', padding:'13px', marginTop:'16px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem' }}>Generar / imprimir PDF del informe</button>

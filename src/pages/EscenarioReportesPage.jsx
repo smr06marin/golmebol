@@ -35,6 +35,7 @@ export default function EscenarioReportesPage() {
   const [montoBase, setMontoBase] = useState('')
   const [fechaBase, setFechaBase] = useState(todayStr())
   const [msgBase, setMsgBase] = useState('')
+  const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
   useEffect(() => { if (escenario) fetchVentas() }, [periodo, escenario])
@@ -45,8 +46,9 @@ export default function EscenarioReportesPage() {
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
     if (!acceso) { navigate('/escenario'); return }
+    setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
     const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
     setEscenario(esc || null)
@@ -118,9 +120,11 @@ export default function EscenarioReportesPage() {
         <div style={card}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: baseActual || mostrarFormBase ? '10px' : 0 }}>
             <div style={{ fontWeight:800, fontSize:'.9rem' }}>💰 Base de caja</div>
-            <button onClick={()=>setMostrarFormBase(v=>!v)} style={{ padding:'6px 12px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.72rem' }}>
-              {mostrarFormBase ? 'Cancelar' : 'Poner base'}
-            </button>
+            {!soloLectura && (
+              <button onClick={()=>setMostrarFormBase(v=>!v)} style={{ padding:'6px 12px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontWeight:700, fontSize:'.72rem' }}>
+                {mostrarFormBase ? 'Cancelar' : 'Poner base'}
+              </button>
+            )}
           </div>
           {msgBase && <div style={{ color:S.cyan, fontSize:'.75rem', marginBottom:'8px' }}>{msgBase}</div>}
           {baseActual && !mostrarFormBase && (
