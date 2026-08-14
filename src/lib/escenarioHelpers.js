@@ -263,6 +263,23 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   return error || null
 }
 
+// asegurarReservasFijas hace 2-3 consultas a Supabase cada vez que se llama
+// (lee las reglas fijas activas, lee lo ya generado, e inserta lo que falte)
+// — como esto casi nunca cambia de un momento a otro, no hace falta repetirlo
+// cada vez que el encargado entra y sale de la pestaña de Canchas mientras
+// está atendiendo. Se vuelve a chequear como mucho cada 10 minutos por
+// escenario; el resto de las veces no hace ninguna consulta.
+const _reservasFijasUltimoChequeo = new Map() // escenarioId -> timestamp
+const RESERVAS_FIJAS_THROTTLE_MS = 10 * 60 * 1000
+
+export function asegurarReservasFijasThrottled(escenarioId, semanas = 12) {
+  const ahora = Date.now()
+  const ultima = _reservasFijasUltimoChequeo.get(escenarioId)
+  if (ultima && ahora - ultima < RESERVAS_FIJAS_THROTTLE_MS) return Promise.resolve(null)
+  _reservasFijasUltimoChequeo.set(escenarioId, ahora)
+  return asegurarReservasFijas(escenarioId, semanas)
+}
+
 export function escenarioActivo(escenario) {
   if (!escenario) return false
   if (escenario.activo === false) return false

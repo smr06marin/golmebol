@@ -101,30 +101,33 @@ export default function EscenarioVentasPage() {
     if (!acceso) { navigate('/escenario'); return }
     setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
-    setEscenario(esc || null)
-    const { data: prods } = await supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre')
-    setProductos(prods || [])
-    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
-    setCanchas(cs || [])
 
     // El orden de la vitrina se calcula solo de las ventas de los últimos 60
     // días — no es un campo que el encargado tenga que marcar a mano. Lo más
     // vendido queda de primero, sin pestañas ni que separar nada.
     const desde = new Date(); desde.setDate(desde.getDate() - 60)
-    const { data: ventas } = await supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', fechaLocalStr(desde))
+    // Ninguna de estas seis consultas depende de otra — se piden todas en
+    // paralelo en vez de una detrás de otra para que la pantalla cargue
+    // rápido (esto es lo que se usa para registrar ventas al momento).
+    const [{ data: esc }, { data: prods }, { data: cs }, { data: ventas }, { data: hoy }, { data: pend }] = await Promise.all([
+      supabase.from('escenarios').select('*').eq('id', escenarioId).single(),
+      supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre'),
+      supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
+      supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', fechaLocalStr(desde)),
+      // Ventas de hoy, para poder devolver alguna si el cliente trae algo de
+      // vuelta — la más reciente de primero.
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', todayStr()).order('hora', { ascending: false }),
+      // Deudas ("debe") sin pagar todavía — no se limitan a hoy, por si
+      // alguien se quedó debiendo de otro día.
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('pago_estado', 'pendiente').eq('estado', 'completada').order('created_at', { ascending: false }),
+    ])
+    setEscenario(esc || null)
+    setProductos(prods || [])
+    setCanchas(cs || [])
     const conteo = {}
     ;(ventas || []).forEach(v => (v.items || []).forEach(it => { conteo[it.productId] = (conteo[it.productId] || 0) + it.cantidad }))
     setVentasPorProducto(conteo)
-
-    // Ventas de hoy, para poder devolver alguna si el cliente trae algo de
-    // vuelta — la más reciente de primero.
-    const { data: hoy } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', todayStr()).order('hora', { ascending: false })
     setVentasHoy(hoy || [])
-
-    // Deudas ("debe") sin pagar todavía — no se limitan a hoy, por si alguien
-    // se quedó debiendo de otro día.
-    const { data: pend } = await supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('pago_estado', 'pendiente').eq('estado', 'completada').order('created_at', { ascending: false })
     setDeudas(pend || [])
     setLoading(false)
   }

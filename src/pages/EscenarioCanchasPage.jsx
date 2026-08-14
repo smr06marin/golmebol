@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
@@ -300,12 +300,17 @@ export default function EscenarioCanchasPage() {
     if (!acceso) { navigate('/escenario'); return }
     setSoloLectura(!!acceso.solo_lectura)
     setEncargado(p)
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
+    // esc, cs y el chequeo de reservas fijas no dependen entre sí — se piden
+    // en paralelo en vez de una detrás de otra para que la pantalla cargue
+    // más rápido (antes esto era ~4 viajes al servidor seguidos).
+    const [{ data: esc }, { data: cs }] = await Promise.all([
+      supabase.from('escenarios').select('*').eq('id', escenarioId).single(),
+      supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
+      asegurarReservasFijasThrottled(escenarioId),
+    ])
     setEscenario(esc || null)
-    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
     setCanchas(cs || [])
     setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
-    await asegurarReservasFijas(escenarioId)
     const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
     setReservas(rsvs || [])
     setLoading(false)
