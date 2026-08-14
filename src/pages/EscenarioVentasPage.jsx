@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, todayStr, registrarActividad, fechaLocalStr } from '../lib/escenarioHelpers'
+import { fmtMoney, todayStr, registrarActividad, fechaLocalStr, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
 import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2 } from 'lucide-react'
 
 const S = {
@@ -93,24 +93,25 @@ export default function EscenarioVentasPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { navigate('/jugador/login'); return }
-    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
-    if (!acceso) { navigate('/escenario'); return }
-    setSoloLectura(!!acceso.solo_lectura)
-    setEncargado(p)
+    // La identidad + acceso + datos del escenario vienen de un cache
+    // compartido (dura 3 minutos) — así no se repiten esas consultas cada
+    // vez que se entra y sale de esta pestaña.
+    const r = await obtenerAccesoEscenario(escenarioId)
+    if (r.estado === 'sin_sesion') { navigate('/jugador/login'); return }
+    if (r.estado === 'sin_rol') { navigate('/jugador'); return }
+    if (r.estado === 'sin_acceso') { navigate('/escenario'); return }
+    setSoloLectura(!!r.acceso.solo_lectura)
+    setEncargado(r.encargado)
+    setEscenario(r.escenario)
 
     // El orden de la vitrina se calcula solo de las ventas de los últimos 60
     // días — no es un campo que el encargado tenga que marcar a mano. Lo más
     // vendido queda de primero, sin pestañas ni que separar nada.
     const desde = new Date(); desde.setDate(desde.getDate() - 60)
-    // Ninguna de estas seis consultas depende de otra — se piden todas en
+    // Ninguna de estas cinco consultas depende de otra — se piden todas en
     // paralelo en vez de una detrás de otra para que la pantalla cargue
     // rápido (esto es lo que se usa para registrar ventas al momento).
-    const [{ data: esc }, { data: prods }, { data: cs }, { data: ventas }, { data: hoy }, { data: pend }] = await Promise.all([
-      supabase.from('escenarios').select('*').eq('id', escenarioId).single(),
+    const [{ data: prods }, { data: cs }, { data: ventas }, { data: hoy }, { data: pend }] = await Promise.all([
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre'),
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
       supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', fechaLocalStr(desde)),
@@ -121,7 +122,6 @@ export default function EscenarioVentasPage() {
       // alguien se quedó debiendo de otro día.
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('pago_estado', 'pendiente').eq('estado', 'completada').order('created_at', { ascending: false }),
     ])
-    setEscenario(esc || null)
     setProductos(prods || [])
     setCanchas(cs || [])
     const conteo = {}

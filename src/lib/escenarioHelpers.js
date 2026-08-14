@@ -263,6 +263,38 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   return error || null
 }
 
+// Cache en memoria (dura mientras la pestaña del navegador esté abierta) de
+// quién es el encargado + si tiene acceso a este escenario + los datos del
+// escenario. Esto casi nunca cambia mientras la persona está atendiendo
+// (registrando ventas, gestionando canchas), así que no tiene sentido volver
+// a pedir user+player+acceso+escenario cada vez que entra y sale de una
+// pestaña — eso son 4 viajes al servidor que se pueden evitar casi siempre.
+// Se refresca solo al pasar 3 minutos, o si algo la invalida a mano (p.ej.
+// después de cambiar el nombre del escenario en Configuración).
+const _accesoEscenarioCache = new Map() // escenarioId -> { estado, encargado, acceso, escenario, timestamp }
+const ACCESO_ESCENARIO_CACHE_MS = 3 * 60 * 1000
+
+export function invalidarAccesoEscenario(escenarioId) {
+  if (escenarioId) _accesoEscenarioCache.delete(escenarioId)
+  else _accesoEscenarioCache.clear()
+}
+
+export async function obtenerAccesoEscenario(escenarioId) {
+  const cacheado = _accesoEscenarioCache.get(escenarioId)
+  if (cacheado && Date.now() - cacheado.timestamp < ACCESO_ESCENARIO_CACHE_MS) return cacheado
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { estado: 'sin_sesion' }
+  const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
+  if (!p || !p.es_encargado_escenario) return { estado: 'sin_rol' }
+  const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+  if (!acceso) return { estado: 'sin_acceso', encargado: p }
+  const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
+  const resultado = { estado: 'ok', encargado: p, acceso, escenario: esc || null, timestamp: Date.now() }
+  _accesoEscenarioCache.set(escenarioId, resultado)
+  return resultado
+}
+
 // asegurarReservasFijas hace 2-3 consultas a Supabase cada vez que se llama
 // (lee las reglas fijas activas, lee lo ya generado, e inserta lo que falte)
 // — como esto casi nunca cambia de un momento a otro, no hace falta repetirlo

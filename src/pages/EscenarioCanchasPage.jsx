@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
@@ -292,23 +292,20 @@ export default function EscenarioCanchasPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { navigate('/jugador/login'); return }
-    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
-    if (!acceso) { navigate('/escenario'); return }
-    setSoloLectura(!!acceso.solo_lectura)
-    setEncargado(p)
-    // esc, cs y el chequeo de reservas fijas no dependen entre sí — se piden
-    // en paralelo en vez de una detrás de otra para que la pantalla cargue
-    // más rápido (antes esto era ~4 viajes al servidor seguidos).
-    const [{ data: esc }, { data: cs }] = await Promise.all([
-      supabase.from('escenarios').select('*').eq('id', escenarioId).single(),
+    // La identidad + acceso + datos del escenario vienen de un cache
+    // compartido (dura 3 minutos) — así no se repiten esas consultas cada
+    // vez que se entra y sale de esta pestaña.
+    const r = await obtenerAccesoEscenario(escenarioId)
+    if (r.estado === 'sin_sesion') { navigate('/jugador/login'); return }
+    if (r.estado === 'sin_rol') { navigate('/jugador'); return }
+    if (r.estado === 'sin_acceso') { navigate('/escenario'); return }
+    setSoloLectura(!!r.acceso.solo_lectura)
+    setEncargado(r.encargado)
+    setEscenario(r.escenario)
+    const [{ data: cs }] = await Promise.all([
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
       asegurarReservasFijasThrottled(escenarioId),
     ])
-    setEscenario(esc || null)
     setCanchas(cs || [])
     setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
     const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
+import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijasThrottled, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History, AlertTriangle } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
@@ -36,32 +36,30 @@ export default function EscenarioDashboardPage() {
 
   async function fetchTodo() {
     setLoading(true); setNotFound(false)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { navigate('/jugador/login'); return }
-    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    setEncargado(p)
-
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
-    if (!acceso) { setNotFound(true); setLoading(false); return }
-    setSoloLectura(!!acceso.solo_lectura)
-
-    const { data: asignaciones } = await supabase.from('escenario_encargados').select('escenarios(id, name, logo_url)').eq('player_id', p.id)
-    setOtros((asignaciones || []).map(a => a.escenarios).filter(Boolean))
-
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
-    setEscenario(esc || null)
+    // La identidad + acceso + datos del escenario vienen de un cache
+    // compartido (dura 3 minutos) — así no se repiten esas consultas cada
+    // vez que se vuelve a este panel desde Canchas, Ventas, etc.
+    const r = await obtenerAccesoEscenario(escenarioId)
+    if (r.estado === 'sin_sesion') { navigate('/jugador/login'); return }
+    if (r.estado === 'sin_rol') { navigate('/jugador'); return }
+    if (r.estado === 'sin_acceso') { setNotFound(true); setLoading(false); return }
+    setEncargado(r.encargado)
+    setSoloLectura(!!r.acceso.solo_lectura)
+    setEscenario(r.escenario)
+    const p = r.encargado
 
     const hoy = todayStr()
-    await asegurarReservasFijas(escenarioId)
-    const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }, { data: act }] = await Promise.all([
+    const [{ data: asignaciones }, { data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }, { data: act }] = await Promise.all([
+      supabase.from('escenario_encargados').select('escenarios(id, name, logo_url)').eq('player_id', p.id),
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy).eq('estado', 'completada'),
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy),
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
       supabase.from('escenario_actividad').select('*').eq('escenario_id', escenarioId).order('created_at', { ascending: false }).limit(8),
+      asegurarReservasFijasThrottled(escenarioId),
     ])
+    setOtros((asignaciones || []).map(a => a.escenarios).filter(Boolean))
     setProductos(prods || [])
     setVentasHoy(ventas || [])
     setCanchas(cs || [])
@@ -73,7 +71,7 @@ export default function EscenarioDashboardPage() {
     // que cualquiera que use el escenario tenga presente que los cambios
     // quedan anotados con su nombre.
     const keyAviso = `escenario_aviso_${escenarioId}_${p.id}_${hoy}`
-    if (!acceso.solo_lectura && !localStorage.getItem(keyAviso)) setMostrarAviso(true)
+    if (!r.acceso.solo_lectura && !localStorage.getItem(keyAviso)) setMostrarAviso(true)
 
     setLoading(false)
   }
@@ -106,6 +104,7 @@ export default function EscenarioDashboardPage() {
     if (!errUp) {
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
       await supabase.from('escenarios').update({ logo_url: urlData.publicUrl }).eq('id', escenario.id)
+      invalidarAccesoEscenario(escenario.id)
       setEscenario(e => ({ ...e, logo_url: urlData.publicUrl }))
     }
     setSubiendoLogo(false)

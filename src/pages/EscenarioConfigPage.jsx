@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Image as ImageIcon, Plus, Trash2, RotateCcw } from 'lucide-react'
-import { slugifyCancha, registrarActividad } from '../lib/escenarioHelpers'
+import { slugifyCancha, registrarActividad, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -96,6 +96,7 @@ export default function EscenarioConfigPage() {
     if (!errUp) {
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
       await supabase.from('escenarios').update({ imagen_fondo_url: urlData.publicUrl }).eq('id', escenario.id)
+      invalidarAccesoEscenario(escenario.id)
       setEscenario(e => ({ ...e, imagen_fondo_url: urlData.publicUrl }))
     }
     setSubiendoFondo(false)
@@ -112,6 +113,7 @@ export default function EscenarioConfigPage() {
     const { error } = await supabase.from('escenarios').update(payload).eq('id', escenario.id)
     setGuardando(false)
     if (error) { setMsg('Error al guardar: ' + error.message); return }
+    invalidarAccesoEscenario(escenario.id)
     setEscenario(e => ({ ...e, ...payload }))
     setMsg('✅ Configuración guardada'); setTimeout(()=>setMsg(''),3000)
   }
