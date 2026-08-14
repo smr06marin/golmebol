@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
 import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijas } from '../lib/escenarioHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History } from 'lucide-react'
+import { fmtHoraDate } from '../lib/horaHelpers'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History, AlertTriangle } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
 const S = {
@@ -26,6 +27,9 @@ export default function EscenarioDashboardPage() {
   const [loading,    setLoading]    = useState(true)
   const [notFound,   setNotFound]   = useState(false)
   const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const [actividadReciente, setActividadReciente] = useState([])
+  const [mostrarAviso, setMostrarAviso] = useState(false)
+  const [expandirActividad, setExpandirActividad] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -48,19 +52,43 @@ export default function EscenarioDashboardPage() {
 
     const hoy = todayStr()
     await asegurarReservasFijas(escenarioId)
-    const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }] = await Promise.all([
+    const [{ data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }, { data: act }] = await Promise.all([
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy).eq('estado', 'completada'),
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy),
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
+      supabase.from('escenario_actividad').select('*').eq('escenario_id', escenarioId).order('created_at', { ascending: false }).limit(8),
     ])
     setProductos(prods || [])
     setVentasHoy(ventas || [])
     setCanchas(cs || [])
     setReservas(rsvs || [])
     setPedidosPend(cPed || 0)
+    setActividadReciente(act || [])
+
+    // Recordatorio de responsabilidad: una vez por día por persona, para
+    // que cualquiera que use el escenario tenga presente que los cambios
+    // quedan anotados con su nombre.
+    const keyAviso = `escenario_aviso_${escenarioId}_${p.id}_${hoy}`
+    if (!localStorage.getItem(keyAviso)) setMostrarAviso(true)
+
     setLoading(false)
+  }
+
+  function cerrarAviso() {
+    localStorage.setItem(`escenario_aviso_${escenarioId}_${encargado.id}_${todayStr()}`, '1')
+    setMostrarAviso(false)
+  }
+
+  function toggleActividad() {
+    setExpandirActividad(v => {
+      const abriendo = !v
+      if (abriendo && actividadReciente[0]) {
+        localStorage.setItem(`escenario_actividad_visto_${escenarioId}_${encargado.id}`, actividadReciente[0].created_at)
+      }
+      return abriendo
+    })
   }
 
   async function handleLogout() {
@@ -111,6 +139,9 @@ export default function EscenarioDashboardPage() {
   const libres = slotsHoy.filter(s => s.estado === 'libre').length
   const ocupados = slotsHoy.filter(s => s.estado !== 'libre').length
 
+  const ultimoVisto = localStorage.getItem(`escenario_actividad_visto_${escenarioId}_${encargado.id}`)
+  const hayActividadNueva = actividadReciente.some(a => !ultimoVisto || a.created_at > ultimoVisto)
+
   const B = escenarioId
   const NAV = [
     { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente' },
@@ -128,6 +159,19 @@ export default function EscenarioDashboardPage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
+      {mostrarAviso && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+          <div style={{ background:S.card, border:`1px solid ${S.gold}`, borderRadius:'16px', padding:'24px', maxWidth:'360px', textAlign:'center' }}>
+            <div style={{ fontSize:'2rem', marginBottom:'10px' }}>⚠️</div>
+            <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'8px' }}>Recordatorio</div>
+            <div style={{ fontSize:'.82rem', color:S.text2, lineHeight:1.5, marginBottom:'18px' }}>
+              Recuerda que cualquier modificación que hagas acá — ventas, precios, cancelaciones, pagos, lo que sea — queda registrada con tu nombre, la fecha y la hora. Todos los que tienen acceso a este escenario van a poder ver que fuiste vos quien lo hizo.
+            </div>
+            <button onClick={cerrarAviso} style={{ width:'100%', padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Entendido</button>
+          </div>
+        </div>
+      )}
+
       <PortalBanner theme="dark" sticky
         avatarUrl={escenario.logo_url} avatarEmoji={<Building2 size={22}/>} avatarShape="rounded"
         onAvatarUpload={handleLogo} uploadingAvatar={subiendoLogo}
@@ -169,6 +213,27 @@ export default function EscenarioDashboardPage() {
           <div style={{ background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'12px', padding:'12px 14px', marginBottom:'16px', fontSize:'.78rem', color:S.cyan, display:'flex', flexDirection:'column', gap:'4px' }}>
             {bajoStock.length > 0 && <div>📦 {bajoStock.length} producto{bajoStock.length===1?'':'s'} con poco stock</div>}
             {pedidosPend > 0 && <div>📱 {pedidosPend} pedido{pedidosPend===1?'':'s'} remoto{pedidosPend===1?'':'s'} pendiente{pedidosPend===1?'':'s'}</div>}
+          </div>
+        )}
+
+        {actividadReciente.length > 0 && (
+          <div style={{ marginBottom:'16px' }}>
+            <button onClick={toggleActividad}
+              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', background: hayActividadNueva ? 'rgba(249,168,37,.1)' : S.card, border:`1px solid ${hayActividadNueva ? S.gold : S.border}`, borderRadius:'12px', padding:'12px 14px', cursor:'pointer', color: hayActividadNueva ? S.gold : S.text2, fontWeight:700, fontSize:'.8rem' }}>
+              <span style={{ display:'flex', alignItems:'center', gap:'7px' }}><AlertTriangle size={14}/> {hayActividadNueva ? 'Hay movimientos nuevos en el sistema' : 'Actividad reciente'}</span>
+              <span style={{ fontSize:'.7rem' }}>{expandirActividad ? 'Ocultar' : 'Ver'}</span>
+            </button>
+            {expandirActividad && (
+              <div style={{ marginTop:'8px', display:'flex', flexDirection:'column', gap:'6px' }}>
+                {actividadReciente.map(a => (
+                  <div key={a.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 12px' }}>
+                    <div style={{ fontSize:'.8rem' }}>{a.descripcion}</div>
+                    <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'2px' }}>{a.player_nombre || 'Alguien'} · {fmtHoraDate(a.created_at)}</div>
+                  </div>
+                ))}
+                <button onClick={()=>navigate(`/escenario/${escenarioId}/actividad`)} style={{ background:'none', border:'none', color:S.cyan, fontSize:'.76rem', cursor:'pointer', padding:'6px 0', textAlign:'left' }}>Ver todo el historial →</button>
+              </div>
+            )}
           </div>
         )}
 
