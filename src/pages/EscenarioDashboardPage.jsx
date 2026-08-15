@@ -4,14 +4,25 @@ import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
 import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijasThrottled, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowRight, ArrowLeftRight, Repeat, History, AlertTriangle } from 'lucide-react'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowLeftRight, Repeat, History, AlertTriangle, Pencil } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
+import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+  green: '#22c55e', loss: '#d93025',
 }
+
+// Mismas fotos de fondo (tenues, solo de ambiente) que ya se usan en el
+// portal de escuela — así las tarjetas de Escenario quedan con el mismo
+// look sin depender de subir imágenes nuevas.
+const IMG_CANCHA      = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
+const IMG_TIENDA      = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
+const IMG_EQUIPO      = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
+const IMG_CLIPBOARD   = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
+const IMG_TROFEO      = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
 
 export default function EscenarioDashboardPage() {
   const navigate = useNavigate()
@@ -145,17 +156,17 @@ export default function EscenarioDashboardPage() {
 
   const B = escenarioId
   const NAV = [
-    { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente' },
-    { to: `/escenario/${B}/fijas`,      icon: Repeat,         label: 'Reservas fijas', desc: 'Clientes que juegan el mismo día y hora' },
-    { to: `/escenario/${B}/ventas`,     icon: ShoppingCart,   label: 'Ventas',         desc: 'Punto de venta de la tienda' },
-    { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha' },
-    { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock' },
-    { to: `/escenario/${B}/compras`,    icon: Truck,          label: 'Compras',        desc: 'Registro de compras a proveedores' },
-    { to: `/escenario/${B}/gastos`,     icon: Wallet,         label: 'Gastos',         desc: 'Arriendo, servicios, nómina y otros gastos' },
-    { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Informe diario', desc: 'Canchas, ventas, compras, deudas y stock — imprimir PDF' },
-    { to: `/escenario/${B}/reportes`,   icon: BarChart3,      label: 'Reportes',       desc: 'Más vendidos, ganancia por producto' },
-    { to: `/escenario/${B}/actividad`,  icon: History,        label: 'Actividad',      desc: 'Quién cambió precios, agregó o eliminó algo' },
-    { to: `/escenario/${B}/config`,     icon: Settings,       label: 'Configuración',  desc: 'Datos, WhatsApp, horarios, precios, fondo' },
+    { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente', bg: IMG_CANCHA },
+    { to: `/escenario/${B}/fijas`,      icon: Repeat,         label: 'Reservas fijas', desc: 'Clientes que juegan el mismo día y hora', bg: IMG_CLIPBOARD },
+    { to: `/escenario/${B}/ventas`,     icon: ShoppingCart,   label: 'Ventas',         desc: 'Punto de venta de la tienda', bg: IMG_TIENDA },
+    { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha', bg: IMG_EQUIPO, badge: pedidosPend, warn: pedidosPend > 0 },
+    { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock', bg: IMG_TIENDA, badge: bajoStock.length, warn: bajoStock.length > 0 },
+    { to: `/escenario/${B}/compras`,    icon: Truck,          label: 'Compras',        desc: 'Registro de compras a proveedores', bg: IMG_CLIPBOARD },
+    { to: `/escenario/${B}/gastos`,     icon: Wallet,         label: 'Gastos',         desc: 'Arriendo, servicios, nómina y otros gastos', bg: IMG_TROFEO },
+    { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Informe diario', desc: 'Canchas, ventas, compras, deudas y stock — imprimir PDF', bg: IMG_EQUIPO },
+    { to: `/escenario/${B}/reportes`,   icon: BarChart3,      label: 'Reportes',       desc: 'Más vendidos, ganancia por producto', bg: IMG_TROFEO },
+    { to: `/escenario/${B}/actividad`,  icon: History,        label: 'Actividad',      desc: 'Quién cambió precios, agregó o eliminó algo', bg: IMG_CANCHA },
+    { to: `/escenario/${B}/config`,     icon: Settings,       label: 'Configuración',  desc: 'Datos, WhatsApp, horarios, precios, fondo', bg: IMG_CLIPBOARD },
   ]
 
   return (
@@ -191,22 +202,35 @@ export default function EscenarioDashboardPage() {
           </button>
         )}
 
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
-          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.cyan }}>{fmtMoney(totalVentasHoy)}</div>
-            <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Ventas hoy</div>
+        {!soloLectura && (
+          <button onClick={()=>navigate(`/escenario/${B}/config`)}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', width:'100%', padding:'10px', marginBottom:'14px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontSize:'.8rem', fontWeight:'700' }}>
+            <Pencil size={13}/> Editar escenario y página pública
+          </button>
+        )}
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
+          <div style={{ background:S.card, border:`1px solid ${S.cyan}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><ShoppingCart size={18} color={S.cyan}/></div>
+            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.cyan, lineHeight:1 }}>{fmtMoney(totalVentasHoy)}</div>
+            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Ventas hoy</div>
           </div>
-          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.gold }}>{fmtMoney(gananciaHoy)}</div>
-            <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Ganancia hoy</div>
+          <div style={{ background:S.card, border:`1px solid ${S.gold}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><Wallet size={18} color={S.gold}/></div>
+            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{fmtMoney(gananciaHoy)}</div>
+            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Ganancia hoy</div>
           </div>
-          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:'#3ddc84' }}>{libres}</div>
-            <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Horarios libres hoy</div>
+          <div style={{ background:S.card, border:`1px solid ${S.green}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><GiSoccerBall size={18} color={S.green}/></div>
+            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.green, lineHeight:1 }}>{libres}</div>
+            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Horarios libres</div>
+            <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>Hoy</div>
           </div>
-          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:'#ff6b6b' }}>{ocupados}</div>
-            <div style={{ fontSize:'.68rem', color:S.muted, marginTop:'2px' }}>Horarios ocupados hoy</div>
+          <div style={{ background:S.card, border:`1px solid ${S.loss}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><GiSoccerBall size={18} color={S.loss}/></div>
+            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.loss, lineHeight:1 }}>{ocupados}</div>
+            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Horarios ocupados</div>
+            <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>Hoy</div>
           </div>
         </div>
 
@@ -238,17 +262,11 @@ export default function EscenarioDashboardPage() {
           </div>
         )}
 
-        <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'10px' }}>
           {NAV.map(n => (
-            <button key={n.to} onClick={() => navigate(n.to)}
-              style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>
-              <n.icon size={22} color={S.cyan}/>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:'700', fontSize:'.9rem' }}>{n.label}</div>
-                <div style={{ fontSize:'.72rem', color:S.muted }}>{n.desc}</div>
-              </div>
-              <ArrowRight size={15} color={S.muted}/>
-            </button>
+            <EscuelaFeatureCard key={n.to} onClick={() => navigate(n.to)} bg={n.bg}
+              icon={<n.icon size={24} color={S.green}/>} title={n.label} desc={n.desc}
+              badge={n.badge} warn={n.warn}/>
           ))}
         </div>
       </div>
