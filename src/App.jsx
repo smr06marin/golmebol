@@ -64,6 +64,7 @@ const EscuelaRankingsPage       = lazy(() => import('./pages/EscuelaRankingsPage
 
 // Escenarios Deportivos (tienda + canchas)
 const AdminEscenariosPage         = lazy(() => import('./pages/admin/AdminEscenariosPage'))
+const AdminConfigSitioPage        = lazy(() => import('./pages/admin/AdminConfigSitioPage'))
 const EscenarioHomePage           = lazy(() => import('./pages/EscenarioHomePage'))
 const EscenarioDashboardPage      = lazy(() => import('./pages/EscenarioDashboardPage'))
 const EscenarioCanchasPage        = lazy(() => import('./pages/EscenarioCanchasPage'))
@@ -440,6 +441,7 @@ export default function App() {
             <Route path="arbitros"      element={<AdminArbitrosPage/>}/>
             <Route path="escuelas"      element={<AdminEscuelasPage/>}/>
             <Route path="escenarios"    element={<AdminEscenariosPage/>}/>
+            <Route path="config-sitio"  element={<AdminConfigSitioPage/>}/>
             <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
             <Route path="predix"        element={<AdminPredixPage/>}/>
           </Route>

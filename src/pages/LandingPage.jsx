@@ -5,6 +5,7 @@ import { GiSoccerBall } from 'react-icons/gi'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
+import LiveEmbed from '../components/LiveEmbed'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
@@ -200,12 +201,13 @@ export default function LandingPage() {
   const [escenarios, setEscenarios] = useState([])
   const [escuelas, setEscuelas] = useState([])
   const [tick, setTick] = useState(0)
+  const [siteConfig, setSiteConfig] = useState(null)
 
   const torneosRef = useRef(null)
   const vivoRef = useRef(null)
 
   useEffect(() => {
-    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy()
+    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig()
     registrarVisita('inicio')
   }, [])
 
@@ -299,6 +301,16 @@ export default function LandingPage() {
     setEscuelas(data || [])
   }
 
+  // Link de "en vivo" (YouTube/Facebook/Instagram) que se configura desde
+  // /admin/config-sitio — si la tabla todavía no existe (falta correr
+  // migracion_site_config.sql) simplemente no se muestra nada, sin romper
+  // el resto de la página.
+  async function fetchSiteConfig() {
+    const { data, error } = await supabase.from('site_config').select('en_vivo_activo, en_vivo_url, en_vivo_titulo').eq('id', true).maybeSingle()
+    if (error) return
+    setSiteConfig(data || null)
+  }
+
   // Torneos en juego primero (los más visitados hoy, de primero), y los ya
   // finalizados de últimos en la fila — así se ven todos pero el orden
   // premia lo que la gente está consultando en el momento.
@@ -390,6 +402,19 @@ export default function LandingPage() {
           ))}
         </div>
       </div>
+
+      {/* ── En vivo (YouTube/Facebook/Instagram) — configurable desde /admin/config-sitio ── */}
+      {siteConfig?.en_vivo_activo && siteConfig?.en_vivo_url && (
+        <div style={{ maxWidth: '860px', margin: '44px auto 0', padding: '0 16px' }}>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: S.red }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
+            </span>
+            {siteConfig.en_vivo_titulo && <span style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem' }}>· {siteConfig.en_vivo_titulo}</span>}
+          </h2>
+          <LiveEmbed url={siteConfig.en_vivo_url} titulo={siteConfig.en_vivo_titulo} S={S}/>
+        </div>
+      )}
 
       {/* ── Torneos en juego (carrusel horizontal) ── */}
       <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 0 8px' }}>
