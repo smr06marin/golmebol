@@ -33,7 +33,10 @@ export default function EscenarioCierrePage() {
   const [escenario, setEscenario] = useState(null)
   const [encargado, setEncargado] = useState(null)
   const [loading,   setLoading]   = useState(true)
+  const [modo,      setModo]      = useState('dia') // 'dia' | 'rango'
   const [fecha,     setFecha]     = useState(todayStr())
+  const [fechaDesde, setFechaDesde] = useState(todayStr())
+  const [fechaHasta, setFechaHasta] = useState(todayStr())
   const [ventas,    setVentas]    = useState([])
   const [reservas,  setReservas]  = useState([])
   const [canchas,   setCanchas]   = useState([])
@@ -50,7 +53,7 @@ export default function EscenarioCierrePage() {
   const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
-  useEffect(() => { if (escenario) fetchDia() }, [fecha, escenario])
+  useEffect(() => { if (escenario) fetchDia() }, [modo, fecha, fechaDesde, fechaHasta, escenario])
 
   async function fetchEscenario() {
     setLoading(true)
@@ -73,15 +76,24 @@ export default function EscenarioCierrePage() {
   }
 
   async function fetchDia() {
+    // En modo "rango" se filtra entre fechaDesde y fechaHasta; en modo "día"
+    // se usan los mismos límites pero iguales a `fecha`, así el resto de la
+    // función (y todos los cálculos de más abajo) no necesitan dos caminos
+    // distintos. Si alguien invierte las fechas del rango, se corrige solo.
+    const enRango = modo === 'rango'
+    const desde = enRango ? (fechaDesde <= fechaHasta ? fechaDesde : fechaHasta) : fecha
+    const hasta = enRango ? (fechaDesde <= fechaHasta ? fechaHasta : fechaDesde) : fecha
     const [{ data: v }, { data: r }, { data: c }, { data: g }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }] = await Promise.all([
-      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha).order('hora'),
-      supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha).order('hora'),
-      supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
-      supabase.from('escenario_gastos').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
+      supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
+      supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+      supabase.from('escenario_gastos').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenario.id).order('nombre'),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).eq('pago_estado', 'pendiente').eq('estado', 'completada'),
       supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id),
-      supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
+      // El conteo físico es una foto de UN día puntual — en modo rango no
+      // aplica, así que no se pide (queda vacío y esa sección se oculta).
+      enRango ? Promise.resolve({ data: [] }) : supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
     ])
     setVentas(v || [])
     setReservas(r || [])
@@ -174,12 +186,33 @@ export default function EscenarioCierrePage() {
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'18px 16px' }}>
         <div className="no-print" style={{ marginBottom:'16px' }}>
-          <label style={{ fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase' }}>Fecha del informe</label>
-          <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inp}/>
+          <label style={{ fontSize:'.7rem', color:S.muted, display:'block', marginBottom:'6px', textTransform:'uppercase' }}>Periodo del informe</label>
+          <div style={{ display:'flex', gap:'8px', marginBottom:'10px' }}>
+            <button onClick={()=>setModo('dia')}
+              style={{ flex:1, padding:'9px', borderRadius:'8px', border:`1px solid ${modo==='dia'?S.cyan:S.border}`, background: modo==='dia'?S.cyanDim:'none', color: modo==='dia'?S.cyan:S.text2, cursor:'pointer', fontWeight:700, fontSize:'.78rem' }}>Un día</button>
+            <button onClick={()=>setModo('rango')}
+              style={{ flex:1, padding:'9px', borderRadius:'8px', border:`1px solid ${modo==='rango'?S.cyan:S.border}`, background: modo==='rango'?S.cyanDim:'none', color: modo==='rango'?S.cyan:S.text2, cursor:'pointer', fontWeight:700, fontSize:'.78rem' }}>Rango de fechas</button>
+          </div>
+          {modo === 'dia' ? (
+            <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inp}/>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+              <div>
+                <label style={{ fontSize:'.66rem', color:S.muted, display:'block', marginBottom:'4px' }}>Desde</label>
+                <input type="date" value={fechaDesde} onChange={e=>setFechaDesde(e.target.value)} style={inp}/>
+              </div>
+              <div>
+                <label style={{ fontSize:'.66rem', color:S.muted, display:'block', marginBottom:'4px' }}>Hasta</label>
+                <input type="date" value={fechaHasta} onChange={e=>setFechaHasta(e.target.value)} style={inp}/>
+              </div>
+            </div>
+          )}
         </div>
 
         <div id="print-area" style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px' }}>
-          <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'14px' }}>🧾 Informe diario — {fmtDate(fecha)}</div>
+          <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'14px' }}>
+            🧾 Informe {modo==='dia' ? `diario — ${fmtDate(fecha)}` : `del ${fmtDate(fechaDesde<=fechaHasta?fechaDesde:fechaHasta)} al ${fmtDate(fechaDesde<=fechaHasta?fechaHasta:fechaDesde)}`}
+          </div>
 
           {/* Resumen general */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
@@ -204,36 +237,36 @@ export default function EscenarioCierrePage() {
 
           {/* Canchas del día */}
           <div style={seccion}>🏟️ Canchas — {reservas.length} reserva(s), {fmtMoney(totalCanchas)} en total</div>
-          {reservas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin reservas este día.</div> : reservas.map(r => (
+          {reservas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin reservas {modo==='dia'?'este día':'en el periodo'}.</div> : reservas.map(r => (
             <div key={r.id} style={rowItem}>
-              <span>{r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre || 'Sin nombre'}{r.motivo_pago ? ` · pagó menos (${r.motivo_pago})` : ''}</span>
+              <span>{modo==='rango' ? fmtDate(r.fecha)+' · ' : ''}{r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre || 'Sin nombre'}{r.motivo_pago ? ` · pagó menos (${r.motivo_pago})` : ''}</span>
               <span style={{ fontWeight:700, color: r.pago==='pagado' ? S.cyan : S.gold }}>{fmtMoney(r.monto_pagado||0)}/{fmtMoney(r.monto||0)}</span>
             </div>
           ))}
 
           {/* Ventas del día (detalle) */}
           <div style={seccion}>🛒 Ventas — {ventasCompletadas.length} venta(s), {productosVendidos} producto(s)</div>
-          {ventasCompletadas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin ventas este día.</div> : ventasCompletadas.map(v => (
+          {ventasCompletadas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin ventas {modo==='dia'?'este día':'en el periodo'}.</div> : ventasCompletadas.map(v => (
             <div key={v.id} style={rowItem}>
-              <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{v.hora} · {(v.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')}{v.pago_estado==='pendiente' ? ' · fiado' : ''}</span>
+              <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{modo==='rango' ? fmtDate(v.fecha)+' · ' : ''}{v.hora} · {(v.items||[]).map(i=>i.cantidad+'x '+i.nombre).join(', ')}{v.pago_estado==='pendiente' ? ' · fiado' : ''}</span>
               <span style={{ fontWeight:700 }}>{fmtMoney(v.total)}</span>
             </div>
           ))}
 
           {/* Compras del día */}
           <div style={seccion}>🚚 Compras — {compras.length} compra(s), {fmtMoney(gastoCompras)} en total</div>
-          {compras.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin compras este día.</div> : compras.map(c => (
+          {compras.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin compras {modo==='dia'?'este día':'en el periodo'}.</div> : compras.map(c => (
             <div key={c.id} style={rowItem}>
-              <span>{c.hora ? c.hora+' · ' : ''}{c.nombre} x{c.cantidad} · {c.proveedor}</span>
+              <span>{modo==='rango' ? fmtDate(c.fecha)+' · ' : ''}{c.hora ? c.hora+' · ' : ''}{c.nombre} x{c.cantidad} · {c.proveedor}</span>
               <span style={{ fontWeight:700, color: compraDebe(c) ? S.gold : S.text }}>{fmtMoney(totalCompra(c))}{compraDebe(c) ? ' (debe)' : ''}</span>
             </div>
           ))}
 
           {/* Gastos del día */}
           <div style={seccion}>💸 Gastos — {gastos.length} gasto(s), {fmtMoney(totalGastos)} en total</div>
-          {gastos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin gastos este día.</div> : gastos.map(g => (
+          {gastos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin gastos {modo==='dia'?'este día':'en el periodo'}.</div> : gastos.map(g => (
             <div key={g.id} style={rowItem}>
-              <span>{g.hora ? g.hora+' · ' : ''}{g.descripcion}{g.categoria ? ` · ${g.categoria}` : ''}</span>
+              <span>{modo==='rango' ? fmtDate(g.fecha)+' · ' : ''}{g.hora ? g.hora+' · ' : ''}{g.descripcion}{g.categoria ? ` · ${g.categoria}` : ''}</span>
               <span style={{ fontWeight:700, color:S.loss }}>{fmtMoney(g.monto)}</span>
             </div>
           ))}
@@ -276,8 +309,10 @@ export default function EscenarioCierrePage() {
             )
           })}
 
-          {/* Verificación física — solo interactivo, no sale impreso hasta guardarse */}
-          {!soloLectura && (
+          {/* Verificación física — solo interactivo, no sale impreso hasta guardarse.
+              Solo aplica a modo "día": el conteo físico es una foto de un momento
+              puntual, no tiene sentido "contar" a lo largo de un rango. */}
+          {!soloLectura && modo==='dia' && (
           <div className="no-print" style={{ marginTop:'16px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
             <div style={{ fontWeight:800, fontSize:'.82rem', marginBottom:'4px' }}>🔍 Verificar stock físico de este día</div>
             <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'12px' }}>Cuenta lo que realmente queda de cada producto y compáralo con lo que dice el sistema.</div>
