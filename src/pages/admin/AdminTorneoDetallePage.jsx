@@ -827,6 +827,7 @@ export default function AdminTorneoDetallePage() {
   const [guardandoFin,     setGuardandoFin]     = useState(false)
   const [pagoModal,        setPagoModal]        = useState(null) // equipo al que se registra pago
   const [pagoForm,         setPagoForm]         = useState({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
+  const [tarjetasAPagar,   setTarjetasAPagar]   = useState([]) // [{player_id, color, nombre}] a marcar pagadas junto con este pago
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
 
@@ -1780,6 +1781,27 @@ export default function AdminTorneoDetallePage() {
     return { fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos, ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos }
   }
 
+  // yellow_paid/blue_paid/red_paid es lo único que revisa la planilla para
+  // saber si un jugador "debe tarjeta" — columnasTarjeta() centraliza el
+  // mapeo color → columnas para no repetirlo en cada función que las toca.
+  function columnasTarjeta(color) {
+    return color === 'am' ? { pagado: 'yellow_paid', cantidad: 'yellow_cards' }
+      : color === 'az' ? { pagado: 'blue_paid', cantidad: 'blue_cards' }
+      : { pagado: 'red_paid', cantidad: 'red_cards' }
+  }
+
+  async function marcarTarjetaPagada(playerId, color) {
+    const { pagado, cantidad } = columnasTarjeta(color)
+    return supabase.from('player_match_stats').update({ [pagado]: true })
+      .eq('tournament_id', id).eq('player_id', playerId).gt(cantidad, 0)
+  }
+
+  function toggleTarjetaAPagar(playerId, color, nombre) {
+    setTarjetasAPagar(prev => prev.some(t => t.player_id === playerId && t.color === color)
+      ? prev.filter(t => !(t.player_id === playerId && t.color === color))
+      : [...prev, { player_id: playerId, color, nombre }])
+  }
+
   async function handleRegistrarPago() {
     const monto = parseFloat(pagoForm.monto)
     const esDeuda = pagoForm.tipo === 'cargo_manual'
@@ -1789,10 +1811,18 @@ export default function AdminTorneoDetallePage() {
       tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
       concepto: pagoForm.concepto || (esDeuda ? 'Deuda anotada' : pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos'),
     })
+    if (error) { setGuardandoPago(false); return showMsg('Error al registrar (¿ejecutaste migracion_finanzas.sql?)', 'error') }
+
+    // Si al registrar el pago se marcaron tarjetas puntuales como pagadas
+    // (checklist del modal), eso es lo que de verdad desbloquea al jugador
+    // en la planilla — el pago de arriba solo mueve el saldo del equipo.
+    if (!esDeuda && tarjetasAPagar.length > 0) {
+      await Promise.all(tarjetasAPagar.map(t => marcarTarjetaPagada(t.player_id, t.color)))
+    }
     setGuardandoPago(false)
-    if (error) return showMsg('Error al registrar (¿ejecutaste migracion_finanzas.sql?)', 'error')
-    showMsg(esDeuda ? 'Deuda anotada ✓ — sumada al saldo del equipo' : 'Pago registrado ✓')
-    setPagoModal(null); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
+    showMsg(esDeuda ? 'Deuda anotada ✓ — sumada al saldo del equipo'
+      : tarjetasAPagar.length > 0 ? `Pago registrado ✓ — ${tarjetasAPagar.length} tarjeta(s) desbloqueada(s) en la planilla` : 'Pago registrado ✓')
+    setPagoModal(null); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setTarjetasAPagar([])
     fetchFinanzas()
   }
 
@@ -1807,10 +1837,7 @@ export default function AdminTorneoDetallePage() {
   // tarjeta" en la planilla del próximo partido. No toca el saldo del
   // equipo (eso lo sigue manejando el botón "💵 Pago" de arriba).
   async function handlePagarTarjetaJugador(playerId, color, nombre) {
-    const columnaPagado = color === 'am' ? 'yellow_paid' : color === 'az' ? 'blue_paid' : 'red_paid'
-    const columnaCantidad = color === 'am' ? 'yellow_cards' : color === 'az' ? 'blue_cards' : 'red_cards'
-    const { error } = await supabase.from('player_match_stats').update({ [columnaPagado]: true })
-      .eq('tournament_id', id).eq('player_id', playerId).gt(columnaCantidad, 0)
+    const { error } = await marcarTarjetaPagada(playerId, color)
     if (error) return showMsg('Error al marcar como pagada', 'error')
     showMsg(`Tarjeta de ${nombre || 'jugador'} marcada como pagada ✓`)
     fetchFinanzas()
@@ -4984,11 +5011,11 @@ export default function AdminTorneoDetallePage() {
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
                     <div style={{ textAlign: 'right', display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setPagoModal(r.equipo) }}
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '600' }}>
                         💵 Pago
                       </button>
-                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'cargo_manual', monto: '', concepto: '' }); setPagoModal(r.equipo) }}
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'cargo_manual', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         title="Anotar una deuda del equipo (ej: quedó debiendo arbitraje)"
                         style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.7rem', fontWeight: '700' }}>
                         ➖ Deuda
@@ -5295,6 +5322,35 @@ export default function AdminTorneoDetallePage() {
                 </div>
               </div>
               )}
+              {pagoForm.tipo === 'pago_tarjetas' && (() => {
+                // Lista de tarjetas sin pagar de este equipo (de pendientesTarjetas,
+                // que sí refleja yellow_paid/blue_paid/red_paid en vivo) — marcar
+                // una acá es lo que de verdad la desbloquea en la planilla; el
+                // pago en sí solo mueve el saldo del equipo.
+                const pendientesDelEquipo = (pagoModal.tarjetasDetalle || []).flatMap(j => {
+                  const pend = (j.player_id && pendientesTarjetas[j.player_id]) || { am: 0, az: 0, rj: 0 }
+                  const items = []
+                  if (pend.am > 0) items.push({ player_id: j.player_id, color: 'am', nombre: j.nombre, emoji: '🟨' })
+                  if (pend.az > 0) items.push({ player_id: j.player_id, color: 'az', nombre: j.nombre, emoji: '🟦' })
+                  if (pend.rj > 0) items.push({ player_id: j.player_id, color: 'rj', nombre: j.nombre, emoji: '🟥' })
+                  return items
+                })
+                if (pendientesDelEquipo.length === 0) return null
+                return (
+                  <div style={{ marginBottom: '12px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '8px' }}>¿Qué tarjetas cubre este pago? (las que marques quedan desbloqueadas en la planilla)</div>
+                    {pendientesDelEquipo.map(t => {
+                      const marcada = tarjetasAPagar.some(x => x.player_id === t.player_id && x.color === t.color)
+                      return (
+                        <label key={t.player_id + t.color} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', cursor: 'pointer', fontSize: '.78rem', color: '#202124' }}>
+                          <input type="checkbox" checked={marcada} onChange={() => toggleTarjetaAPagar(t.player_id, t.color, t.nombre)}/>
+                          {t.emoji} {t.nombre}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Monto ($) *</label>
                 <input type="number" min="0" value={pagoForm.monto} onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
