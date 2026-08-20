@@ -228,10 +228,24 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
 
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
   const desde = fechaLocalStr(hoy)
-  const { data: existentes, error: errSelect } = await supabase.from('escenario_reservas').select('reserva_fija_id, fecha')
-    .eq('escenario_id', escenarioId).not('reserva_fija_id', 'is', null).gte('fecha', desde)
+  // Se traen TODAS las reservas del rango (no solo las que ya tienen
+  // reserva_fija_id) para poder revisar si el horario ya está ocupado por
+  // CUALQUIER reserva — manual o de otra regla fija — antes de generar una
+  // nueva. Si solo se comparara contra la misma regla, una reserva manual
+  // o una regla fija distinta que caiga en el mismo cancha+fecha+hora
+  // terminaría duplicando la cancha ese día (dos reservas "aceptada" para
+  // el mismo cupo, sumando plata de más en los informes).
+  const { data: existentes, error: errSelect } = await supabase.from('escenario_reservas')
+    .select('reserva_fija_id, fecha, cancha, hora, estado')
+    .eq('escenario_id', escenarioId).gte('fecha', desde)
   if (errSelect) console.error('asegurarReservasFijas: no se pudo leer reservas existentes —', errSelect.message)
-  const yaExiste = new Set((existentes || []).map(r => `${r.reserva_fija_id}_${r.fecha}`))
+  const filasExistentes = existentes || []
+  const yaExistePorRegla = new Set(filasExistentes.filter(r => r.reserva_fija_id).map(r => `${r.reserva_fija_id}_${r.fecha}`))
+  const ocupados = new Set(
+    filasExistentes
+      .filter(r => r.estado !== 'cancelada' && r.estado !== 'rechazada')
+      .map(r => `${r.cancha}_${r.fecha}_${r.hora}`)
+  )
 
   const filas = []
   fijas.forEach(f => {
@@ -239,13 +253,16 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
       const d = new Date(hoy); d.setDate(d.getDate() + i)
       if (d.getDay() !== f.dia_semana) continue
       const fecha = fechaLocalStr(d)
-      if (yaExiste.has(`${f.id}_${fecha}`)) continue
+      if (yaExistePorRegla.has(`${f.id}_${fecha}`)) continue
+      const claveSlot = `${f.cancha}_${fecha}_${f.hora}`
+      if (ocupados.has(claveSlot)) continue
       filas.push({
         escenario_id: escenarioId, cancha: f.cancha, fecha, hora: f.hora, duracion: f.duracion,
         nombre: f.nombre, telefono: f.telefono || '', equipo: f.equipo || null,
         estado: 'aceptada', pago: 'pendiente', monto: f.monto, monto_pagado: 0,
         reserva_fija_id: f.id,
       })
+      ocupados.add(claveSlot) // evita que dos reglas fijas activas choquen entre sí en esta misma corrida
     }
   })
   if (filas.length === 0) return
