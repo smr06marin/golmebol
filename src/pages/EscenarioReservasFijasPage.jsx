@@ -106,6 +106,14 @@ export default function EscenarioReservasFijasPage() {
     fetchTodo()
   }
 
+  async function eliminar(f) {
+    if (!window.confirm(`¿Eliminar "${f.nombre}" (${DIAS_SEMANA[f.dia_semana]} ${fmtHora12(f.hora)}) definitivamente?\n\nEsto no se puede deshacer. Las reservas que ya se generaron con este horario fijo no se borran, solo dejan de estar vinculadas a él.`)) return
+    const { error } = await supabase.from('escenario_reservas_fijas').delete().eq('id', f.id)
+    if (error) { setMsg('❌ ' + error.message); return }
+    setMsg('✅ Horario fijo eliminado'); setTimeout(()=>setMsg(''),4000)
+    fetchTodo()
+  }
+
   if (loading) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando...</div>
   )
@@ -197,6 +205,10 @@ export default function EscenarioReservasFijasPage() {
                   <button onClick={()=>toggle(f)} title={f.activa ? 'Desactivar' : 'Reactivar'}
                     style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color: f.activa ? '#ff6b6b' : S.cyan }}>
                     {f.activa ? <Trash2 size={13}/> : <RotateCcw size={13}/>}
+                  </button>
+                  <button onClick={()=>eliminar(f)} title="Eliminar definitivamente"
+                    style={{ width:'32px', height:'32px', display:'flex', alignItems:'center', justifyContent:'center', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#ff6b6b' }}>
+                    <X size={15}/>
                   </button>
                 </div>
               )}
