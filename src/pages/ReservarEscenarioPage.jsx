@@ -366,7 +366,7 @@ export default function ReservarEscenarioPage() {
                   </div>
                 )}
                 <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
-                <div style={{ marginBottom:'12px' }}><label style={lbl}>WhatsApp *</label><input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
+                <div style={{ marginBottom:'12px' }}><label style={lbl}>Número de WhatsApp real para confirmar la reserva *</label><input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
                 <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
                 <div style={{ marginBottom:'18px' }}>
                   <label style={lbl}>Duración</label>
