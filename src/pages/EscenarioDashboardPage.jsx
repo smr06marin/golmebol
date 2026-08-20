@@ -147,6 +147,11 @@ export default function EscenarioDashboardPage() {
   const totalVentasHoy = ventasHoy.reduce((a, v) => a + Number(v.total || 0), 0)
   const gananciaHoy = ventasHoy.reduce((a, v) => a + Number(v.ganancia || 0), 0)
   const bajoStock = productos.filter(p => p.cantidad <= p.stock_minimo)
+  // El cliente pide la cancha desde el link público y la solicitud queda
+  // guardada aquí igual, así el WhatsApp con el mensaje nunca le llegue al
+  // encargado (a veces la persona abre WhatsApp y no le da enviar). Este
+  // aviso no depende de WhatsApp — se ve apenas se entra al panel.
+  const reservasPendientes = reservas.filter(r => r.estado === 'pendiente')
   const slotsHoy = allSlotsForDate(escenario, canchas, reservas, todayStr())
   const libres = slotsHoy.filter(s => s.estado === 'libre').length
   const ocupados = slotsHoy.filter(s => s.estado !== 'libre').length
@@ -234,10 +239,15 @@ export default function EscenarioDashboardPage() {
           </div>
         </div>
 
-        {(bajoStock.length > 0 || pedidosPend > 0) && (
+        {(bajoStock.length > 0 || pedidosPend > 0 || reservasPendientes.length > 0) && (
           <div style={{ background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'12px', padding:'12px 14px', marginBottom:'16px', fontSize:'.78rem', color:S.cyan, display:'flex', flexDirection:'column', gap:'4px' }}>
             {bajoStock.length > 0 && <div>📦 {bajoStock.length} producto{bajoStock.length===1?'':'s'} con poco stock</div>}
             {pedidosPend > 0 && <div>📱 {pedidosPend} pedido{pedidosPend===1?'':'s'} remoto{pedidosPend===1?'':'s'} pendiente{pedidosPend===1?'':'s'}</div>}
+            {reservasPendientes.length > 0 && (
+              <div onClick={() => navigate(`/escenario/${escenarioId}/canchas`)} style={{ cursor:'pointer', textDecoration:'underline' }}>
+                🏟️ {reservasPendientes.length} solicitud{reservasPendientes.length===1?'':'es'} de reserva pendiente{reservasPendientes.length===1?'':'s'} de confirmar (aunque no haya llegado el WhatsApp) — toca para revisar
+              </div>
+            )}
           </div>
         )}
 
