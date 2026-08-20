@@ -36,6 +36,8 @@ export default function ReservarEscenarioPage() {
   const [equipo, setEquipo] = useState('')
   const [duracion, setDuracion] = useState(60)
   const [error, setError] = useState('')
+  const [estadoEnvio, setEstadoEnvio] = useState('idle') // idle | esperando | ok | timeout
+  const waLimpiarRef = useRef(null)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
   useEffect(() => { setHoraSel(null) }, [fecha, cancha])
@@ -56,28 +58,68 @@ export default function ReservarEscenarioPage() {
     setLoading(false)
   }
 
-  function abrirSlot() {
-    if (!horaSel) return
-    setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError('')
+  function limpiarEsperaWA() {
+    if (waLimpiarRef.current) { waLimpiarRef.current(); waLimpiarRef.current = null }
   }
 
-  // El número de WhatsApp queda guardado en la reserva (además de que el
-  // mensaje llega desde ese mismo número) para que el encargado lo vea en
-  // el detalle de la reserva sin tener que ir a buscar la conversación de
-  // WhatsApp. Al hacer click se guarda la reserva en segundo plano (sin
-  // bloquear) y el click mismo, al ser un <a href> real, ya lleva a
-  // WhatsApp con los datos completados — no un window.open async que el
-  // navegador podría bloquear.
+  function abrirSlot() {
+    if (!horaSel) return
+    limpiarEsperaWA()
+    setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError(''); setEstadoEnvio('idle')
+  }
+
+  function cerrarModal() {
+    limpiarEsperaWA()
+    setModalSlot(null); setEstadoEnvio('idle')
+  }
+
+  // El número de WhatsApp es el único dato que de verdad se puede confiar
+  // (nombre y equipo se los puede inventar cualquiera) — pero solo si el
+  // mensaje efectivamente sale desde ese número real. Por eso la reserva
+  // YA NO se guarda apenas se hace click: se guarda solo cuando esta
+  // pestaña detecta que el navegador salió hacia WhatsApp (se puso en
+  // segundo plano — visibilitychange), que es la señal más fuerte que se
+  // puede detectar desde acá de que el link realmente se abrió. No hay
+  // forma de confirmar desde el navegador si además le dieron "enviar"
+  // dentro de WhatsApp — eso ya no lo puede ver esta página — pero esto
+  // evita reservas de alguien que nunca llegó a abrir WhatsApp.
   function handleReservar(e) {
     if (!nombre.trim()) { e.preventDefault(); setError('Escribe tu nombre'); return }
     if (!telefono.trim()) { e.preventDefault(); setError('Escribe tu número de WhatsApp'); return }
     setError('')
-    const monto = precioCancha(canchas, cancha)
-    supabase.from('escenario_reservas').insert({
+    limpiarEsperaWA()
+    setEstadoEnvio('esperando')
+
+    const datos = {
       escenario_id: escenario.id, cancha, fecha, hora: modalSlot, duracion,
       nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
-      estado: 'pendiente', pago: 'pendiente', monto, monto_pagado: 0,
-    }).then(() => fetchTodo())
+      estado: 'pendiente', pago: 'pendiente', monto: precioCancha(canchas, cancha), monto_pagado: 0,
+    }
+
+    let resuelto = false
+    const onVisibility = () => {
+      if (resuelto || !document.hidden) return
+      resuelto = true
+      limpiar()
+      supabase.from('escenario_reservas').insert(datos).then(({ error }) => {
+        setEstadoEnvio(error ? 'timeout' : 'ok')
+        if (!error) fetchTodo()
+      })
+    }
+    const timer = setTimeout(() => {
+      if (resuelto) return
+      resuelto = true
+      limpiar()
+      setEstadoEnvio('timeout')
+    }, 15000)
+    function limpiar() {
+      document.removeEventListener('visibilitychange', onVisibility)
+      clearTimeout(timer)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    waLimpiarRef.current = limpiar
+    // El <a href target="_blank"> sigue su curso normal y abre WhatsApp —
+    // este handler no bloquea esa navegación.
   }
 
   if (loading) return (
@@ -299,24 +341,47 @@ export default function ReservarEscenarioPage() {
           <div style={{ background:'#fff', borderRadius:'18px', padding:'24px', width:'380px', maxWidth:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
               <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {nombreCancha(canchas, cancha)}</div>
-              <button onClick={()=>setModalSlot(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+              <button onClick={cerrarModal} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
             </div>
             <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(canchas,cancha))}/h</div>
-            <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
-            <div style={{ marginBottom:'12px' }}><label style={lbl}>WhatsApp *</label><input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
-            <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
-            <div style={{ marginBottom:'18px' }}>
-              <label style={lbl}>Duración</label>
-              <select value={duracion} onChange={e=>setDuracion(parseInt(e.target.value))} style={inp}>
-                <option value={60}>1 hora</option><option value={90}>1.5 horas</option><option value={120}>2 horas</option>
-              </select>
-            </div>
-            {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'14px' }}>{error}</div>}
-            <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Al enviar, este mensaje se abre en tu WhatsApp para confirmar con el escenario.</div>
-            <a href={hrefReservar} target="_blank" rel="noreferrer" onClick={handleReservar}
-              style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, width:'100%', padding:'13px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.9rem', textDecoration:'none', boxSizing:'border-box' }}>
-              <FaWhatsapp size={17}/> Enviar reserva por WhatsApp
-            </a>
+
+            {estadoEnvio === 'ok' ? (
+              <div style={{ textAlign:'center', padding:'10px 0 4px' }}>
+                <div style={{ fontSize:'2rem', marginBottom:8 }}>✅</div>
+                <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:6 }}>¡Solicitud registrada!</div>
+                <div style={{ fontSize:'.8rem', color:S.muted, marginBottom:18 }}>Ya quedó pendiente de confirmar. Si no le diste enviar al mensaje en WhatsApp, hazlo para que te confirmen.</div>
+                <button onClick={cerrarModal} style={{ width:'100%', padding:'12px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.85rem' }}>Listo</button>
+              </div>
+            ) : estadoEnvio === 'esperando' ? (
+              <div style={{ textAlign:'center', padding:'10px 0 4px' }}>
+                <div style={{ fontSize:'2rem', marginBottom:8 }}>📲</div>
+                <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:6 }}>Termina de enviar el mensaje en WhatsApp</div>
+                <div style={{ fontSize:'.8rem', color:S.muted }}>La reserva se confirma acá apenas se abra WhatsApp con el mensaje.</div>
+              </div>
+            ) : (
+              <>
+                {estadoEnvio === 'timeout' && (
+                  <div style={{ background:'rgba(220,38,38,.08)', color:S.loss, borderRadius:8, padding:'8px 12px', fontSize:'.75rem', marginBottom:14, textAlign:'center' }}>
+                    No se detectó que se abriera WhatsApp. Intenta de nuevo — la reserva solo queda pendiente si el mensaje llega a abrirse.
+                  </div>
+                )}
+                <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
+                <div style={{ marginBottom:'12px' }}><label style={lbl}>WhatsApp *</label><input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
+                <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
+                <div style={{ marginBottom:'18px' }}>
+                  <label style={lbl}>Duración</label>
+                  <select value={duracion} onChange={e=>setDuracion(parseInt(e.target.value))} style={inp}>
+                    <option value={60}>1 hora</option><option value={90}>1.5 horas</option><option value={120}>2 horas</option>
+                  </select>
+                </div>
+                {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'14px' }}>{error}</div>}
+                <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Tu reserva solo queda registrada si el mensaje se abre en tu WhatsApp.</div>
+                <a href={hrefReservar} target="_blank" rel="noreferrer" onClick={handleReservar}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, width:'100%', padding:'13px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.9rem', textDecoration:'none', boxSizing:'border-box' }}>
+                  <FaWhatsapp size={17}/> Enviar reserva por WhatsApp
+                </a>
+              </>
+            )}
           </div>
         </div>
         )
