@@ -157,8 +157,15 @@ export default function EscenarioCierrePage() {
   const productosVendidos = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).reduce((b,i)=>b+i.cantidad,0),0)
   const ingresoTienda = totalVentas - totalFiadoHoy
 
-  const ingresoCanchas = reservas.reduce((a,r)=>a+Number(r.monto_pagado||0),0)
-  const totalCanchas = reservas.reduce((a,r)=>a+Number(r.monto||0),0)
+  // Una reserva cancelada no debe contar en la caja aunque haya quedado con
+  // monto_pagado>0 de antes de cancelarse (cancelar no borra ese campo, solo
+  // marca estado:'cancelada' — si no se filtra acá, el informe suma plata de
+  // una reserva que ya no cuenta, y el total no cuadra contra lo que de
+  // verdad se cobró ese día).
+  const reservasValidas = reservas.filter(r => r.estado !== 'cancelada')
+  const reservasCanceladas = reservas.filter(r => r.estado === 'cancelada')
+  const ingresoCanchas = reservasValidas.reduce((a,r)=>a+Number(r.monto_pagado||0),0)
+  const totalCanchas = reservasValidas.reduce((a,r)=>a+Number(r.monto||0),0)
 
   const gastoCompras = compras.reduce((a,c)=>a+totalCompra(c),0)
   const pagadoCompras = compras.reduce((a,c)=>a+pagadoDe(c),0)
@@ -232,17 +239,26 @@ export default function EscenarioCierrePage() {
             {ventasFiadas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Fiado hoy ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiadoHoy)}</div></div>
             )}
+            {reservasCanceladas.length > 0 && (
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Reservas canceladas ({reservasCanceladas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.muted }}>No suman a la caja</div></div>
+            )}
             <div style={{...stat, gridColumn:'1/-1'}}><div style={{ fontSize:'.68rem', color:S.muted }}>Caja neta del día (base + tienda + canchas − compras − gastos)</div><div style={{ fontWeight:900, fontSize:'1.3rem', color:S.cyan }}>{fmtMoney(cajaNeta)}</div></div>
           </div>
 
-          {/* Canchas del día */}
-          <div style={seccion}>🏟️ Canchas — {reservas.length} reserva(s), {fmtMoney(totalCanchas)} en total</div>
-          {reservas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin reservas {modo==='dia'?'este día':'en el periodo'}.</div> : reservas.map(r => (
+          {/* Canchas del día — no incluye las canceladas (aunque hayan quedado
+              con un monto_pagado de antes de cancelarse, no cuentan en la caja) */}
+          <div style={seccion}>🏟️ Canchas — {reservasValidas.length} reserva(s), {fmtMoney(totalCanchas)} en total</div>
+          {reservasValidas.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin reservas {modo==='dia'?'este día':'en el periodo'}.</div> : reservasValidas.map(r => (
             <div key={r.id} style={rowItem}>
               <span>{modo==='rango' ? fmtDate(r.fecha)+' · ' : ''}{r.hora} · {nombreCancha(canchas, r.cancha)} · {r.nombre || 'Sin nombre'}{r.motivo_pago ? ` · pagó menos (${r.motivo_pago})` : ''}</span>
               <span style={{ fontWeight:700, color: r.pago==='pagado' ? S.cyan : S.gold }}>{fmtMoney(r.monto_pagado||0)}/{fmtMoney(r.monto||0)}</span>
             </div>
           ))}
+          {reservasCanceladas.length > 0 && (
+            <div style={{ ...rowItem, color:S.muted, fontSize:'.72rem', fontStyle:'italic' }}>
+              {reservasCanceladas.length} reserva(s) cancelada(s) este {modo==='dia'?'día':'periodo'} — no se cuentan en el total.
+            </div>
+          )}
 
           {/* Ventas del día (detalle) */}
           <div style={seccion}>🛒 Ventas — {ventasCompletadas.length} venta(s), {productosVendidos} producto(s)</div>
