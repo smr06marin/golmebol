@@ -2,6 +2,7 @@ import { useEffect, useState, lazy, Suspense } from 'react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import MarcaGolmebol from './MarcaGolmebol'
+import BotonVolverInicio from './BotonVolverInicio'
 
 const TorneoPublicoPage      = lazy(() => import('../pages/TorneoPublicoPage'))
 const OrganizadorVitrinaPage = lazy(() => import('../pages/OrganizadorVitrinaPage'))
@@ -130,6 +131,7 @@ export default function DominioPersonalizadoGate({ children }) {
           <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>} />
           <Route path="*" element={<OrganizadorVitrinaPage organizadorId={organizadorId} />} />
         </Routes>
+        <BotonVolverInicio/>
       </MemoryRouter>
       <MarcaGolmebol/>
     </Suspense>
