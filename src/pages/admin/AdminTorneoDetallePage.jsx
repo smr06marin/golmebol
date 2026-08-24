@@ -941,6 +941,30 @@ export default function AdminTorneoDetallePage() {
     })()
   }
 
+  // El botón derecho / mantener presionado sobre el <img> del escudo no
+  // siempre deja "Guardar imagen" (depende del navegador/celular), así que
+  // se ofrece una descarga explícita: se trae la imagen como blob y se
+  // dispara la descarga con un link temporal — funciona igual en
+  // computador y celular sin depender del menú nativo del navegador.
+  async function descargarEscudo(equipo) {
+    if (!equipo.logo_url) { showMsg('Este equipo todavía no tiene escudo'); return }
+    try {
+      const resp = await fetch(equipo.logo_url)
+      const blob = await resp.blob()
+      const ext = (equipo.logo_url.split('.').pop() || 'png').split('?')[0].slice(0, 4)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `escudo-${equipo.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${ext}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      showMsg('No se pudo descargar el escudo: ' + err.message)
+    }
+  }
+
   // Desactiva al equipo en este torneo: sus jugadores quedan inactivos y el equipo sale del torneo
   async function handleDesactivarEquipo(equipo) {
     if (!confirm(`¿Desactivar a "${equipo.name}" de este torneo? Sus jugadores quedarán inactivos y el equipo saldrá del torneo. Sus partidos y estadísticas se conservan.`)) return
@@ -3988,6 +4012,7 @@ export default function AdminTorneoDetallePage() {
                           {[
                             { label: 'Ver jugadores',     icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
                             { label: 'Editar equipo',     icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
+                            { label: 'Descargar escudo',  icon: '⬇️', action: () => { descargarEscudo(e); setMenuEquipoId(null) } },
                             { label: 'Compartir link',    icon: '🔗', action: () => {
                                 const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
                                 const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por 24 horas desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
