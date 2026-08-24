@@ -45,13 +45,17 @@ export default function DominioPersonalizadoGate({ children }) {
     if (hostPropio) return
     let cancelado = false
     async function resolver() {
+      // hostname (window.location.hostname) siempre llega en minúsculas —
+      // ilike en vez de eq para que un dominio guardado con mayúsculas por
+      // error igual haga match (además de que el formulario ya lo guarda
+      // en minúsculas de por sí).
       // 1. ¿El dominio es de UN torneo puntual? (feature original)
-      const { data: t } = await supabase.from('tournaments').select('id').eq('custom_domain', hostname).maybeSingle()
+      const { data: t } = await supabase.from('tournaments').select('id').ilike('custom_domain', hostname).maybeSingle()
       if (cancelado) return
       if (t?.id) { setTorneoId(t.id); setEstado('torneo'); return }
 
       // 2. ¿El dominio es la vitrina de un organizador (varios torneos)?
-      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').eq('custom_domain', hostname).maybeSingle()
+      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').ilike('custom_domain', hostname).maybeSingle()
       if (cancelado) return
       if (o?.organizador_id) { setOrganizadorId(o.organizador_id); setEstado('organizador'); return }
 

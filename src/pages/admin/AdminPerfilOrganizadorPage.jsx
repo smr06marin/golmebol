@@ -111,7 +111,10 @@ export default function AdminPerfilOrganizadorPage() {
     // El dominio solo lo toca el admin — si lo guarda el organizador, ni
     // siquiera se manda esa columna (así no se pisa lo que haya puesto el
     // admin, ni se puede poner uno el organizador por su cuenta).
-    if (esAdmin) payload.custom_domain = form.custom_domain.trim() || null
+    // En minúsculas siempre: el navegador busca el dominio en minúsculas
+    // (window.location.hostname), así que si acá quedara con mayúsculas la
+    // vitrina nunca hace match y no se ve nada.
+    if (esAdmin) payload.custom_domain = form.custom_domain.trim().toLowerCase() || null
     const { data, error } = await supabase.from('organizador_perfiles').upsert(payload, { onConflict: 'organizador_id' }).select().single()
     setGuardando(false)
     if (error) return showMsg('Error al guardar: ' + error.message, 'error')

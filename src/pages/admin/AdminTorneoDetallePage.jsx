@@ -1919,7 +1919,7 @@ export default function AdminTorneoDetallePage() {
   async function handleGuardarMarca() {
     setGuardandoMarca(true)
     const payload = {
-      custom_domain:    formMarca.custom_domain?.trim() || null,
+      custom_domain:    formMarca.custom_domain?.trim().toLowerCase() || null, // en minúsculas — el navegador compara el hostname en minúsculas
       color_primario:   formMarca.color_primario?.trim() || null,
       color_secundario: formMarca.color_secundario?.trim() || null,
       favicon_url:      formMarca.favicon_url || null,
