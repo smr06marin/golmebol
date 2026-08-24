@@ -1,9 +1,10 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import MarcaGolmebol from './MarcaGolmebol'
 
-const TorneoPublicoPage = lazy(() => import('../pages/TorneoPublicoPage'))
+const TorneoPublicoPage      = lazy(() => import('../pages/TorneoPublicoPage'))
+const OrganizadorVitrinaPage = lazy(() => import('../pages/OrganizadorVitrinaPage'))
 
 function esHostPropio(hostname) {
   const h = (hostname || '').toLowerCase()
@@ -36,25 +37,25 @@ export default function DominioPersonalizadoGate({ children }) {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
   const hostPropio = esHostPropio(hostname)
 
-  const [estado, setEstado] = useState(hostPropio ? 'ok' : 'cargando') // ok | cargando | torneo | sin_vincular
+  const [estado, setEstado] = useState(hostPropio ? 'ok' : 'cargando') // ok | cargando | torneo | organizador | sin_vincular
   const [torneoId, setTorneoId] = useState(null)
+  const [organizadorId, setOrganizadorId] = useState(null)
 
   useEffect(() => {
     if (hostPropio) return
     let cancelado = false
     async function resolver() {
-      const { data, error } = await supabase
-        .from('tournaments')
-        .select('id')
-        .eq('custom_domain', hostname)
-        .maybeSingle()
+      // 1. ¿El dominio es de UN torneo puntual? (feature original)
+      const { data: t } = await supabase.from('tournaments').select('id').eq('custom_domain', hostname).maybeSingle()
       if (cancelado) return
-      if (error || !data?.id) {
-        setEstado('sin_vincular')
-        return
-      }
-      setTorneoId(data.id)
-      setEstado('torneo')
+      if (t?.id) { setTorneoId(t.id); setEstado('torneo'); return }
+
+      // 2. ¿El dominio es la vitrina de un organizador (varios torneos)?
+      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').eq('custom_domain', hostname).maybeSingle()
+      if (cancelado) return
+      if (o?.organizador_id) { setOrganizadorId(o.organizador_id); setEstado('organizador'); return }
+
+      setEstado('sin_vincular')
     }
     resolver()
     return () => { cancelado = true }
@@ -82,18 +83,36 @@ export default function DominioPersonalizadoGate({ children }) {
           Este dominio todavía no está vinculado a ningún torneo
         </div>
         <div style={{ fontSize: '.85rem', maxWidth: '360px', lineHeight: 1.5 }}>
-          Configurá el dominio en la pestaña Personalización del torneo y apuntá el DNS a Golmebol.
+          Configurá el dominio en la pestaña Personalización del torneo (o en "Mi dominio" si es la vitrina de un organizador) y apuntá el DNS a Golmebol.
         </div>
       </div>
     )
   }
 
-  // Dominio custom → página pública del torneo (MemoryRouter para contexto de
-  // router fuera del BrowserRouter; el id llega por prop)
+  if (estado === 'torneo') {
+    // Dominio de UN torneo puntual → página pública de ese torneo directo
+    // (MemoryRouter para contexto de router fuera del BrowserRouter; el id
+    // llega por prop).
+    return (
+      <Suspense fallback={<div style={loadingStyle}>CARGANDO...</div>}>
+        <MemoryRouter initialEntries={[`/t/${torneoId}`]}>
+          <TorneoPublicoPage tournamentId={torneoId} />
+        </MemoryRouter>
+        <MarcaGolmebol/>
+      </Suspense>
+    )
+  }
+
+  // Dominio de un ORGANIZADOR → vitrina con todos sus torneos como página
+  // de inicio, y cada torneo individual como ruta hermana dentro del mismo
+  // dominio (así el visitante nunca sale del dominio propio del organizador).
   return (
     <Suspense fallback={<div style={loadingStyle}>CARGANDO...</div>}>
-      <MemoryRouter initialEntries={[`/t/${torneoId}`]}>
-        <TorneoPublicoPage tournamentId={torneoId} />
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<OrganizadorVitrinaPage organizadorId={organizadorId} />} />
+          <Route path="/t/:id" element={<TorneoPublicoPage />} />
+        </Routes>
       </MemoryRouter>
       <MarcaGolmebol/>
     </Suspense>

@@ -1,11 +1,12 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio } from 'lucide-react'
+import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 
 const MENU_COMPLETO = [
   { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos' },
+  { icon: <Globe size={22}/>,        label: 'MI DOMINIO', ruta: '/admin/perfil-organizador' },
   { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true },
   { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true },
   { icon: <CalendarDays size={22}/>, label: 'CALENDARIO', ruta: '/admin/calendario' },

@@ -39,6 +39,8 @@ const PlayerApuestasPage      = lazy(() => import('./pages/PlayerApuestasPage'))
 const PlayerNoticiasPage      = lazy(() => import('./pages/PlayerNoticiasPage'))
 const PlayerHistorialPage     = lazy(() => import('./pages/PlayerHistorialPage'))
 const TorneoPublicoPage       = lazy(() => import('./pages/TorneoPublicoPage'))
+const OrganizadorVitrinaPage  = lazy(() => import('./pages/OrganizadorVitrinaPage'))
+const AdminPerfilOrganizadorPage = lazy(() => import('./pages/admin/AdminPerfilOrganizadorPage'))
 const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
 const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
 const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
@@ -442,12 +444,15 @@ export default function App() {
             <Route path="escuelas"      element={<AdminEscuelasPage/>}/>
             <Route path="escenarios"    element={<AdminEscenariosPage/>}/>
             <Route path="config-sitio"  element={<AdminConfigSitioPage/>}/>
+            <Route path="perfil-organizador" element={<AdminPerfilOrganizadorPage/>}/>
             <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
             <Route path="predix"        element={<AdminPredixPage/>}/>
           </Route>
 
           {/* Página pública de torneo — sin login */}
           <Route path="/t/:id" element={<TorneoPublicoPage/>}/>
+          {/* Vitrina pública de un organizador (todos sus torneos) — sin login */}
+          <Route path="/organizador/:organizadorId" element={<OrganizadorVitrinaPage/>}/>
           {/* Registro público de jugadores por equipo */}
           <Route path="/registro/equipo/:token/:tournamentId" element={<RegistroEquipoPage/>}/>
           {/* Registro público de jugadores de escuela (acudiente) */}
