@@ -942,25 +942,36 @@ export default function AdminTorneoDetallePage() {
   }
 
   // El botón derecho / mantener presionado sobre el <img> del escudo no
-  // siempre deja "Guardar imagen" (depende del navegador/celular), así que
-  // se ofrece una descarga explícita: se trae la imagen como blob y se
-  // dispara la descarga con un link temporal — funciona igual en
-  // computador y celular sin depender del menú nativo del navegador.
+  // siempre deja "Guardar imagen" (depende del navegador/celular). En
+  // celular, un <a download> normal casi nunca guarda en la galería de
+  // fotos (sobre todo en iPhone: abre la imagen o la manda a Archivos) —
+  // por eso primero se intenta con el share nativo (navigator.share), que
+  // sí ofrece la opción "Guardar en Fotos"/"Guardar imagen" y ahí queda en
+  // la galería de verdad. En computador (donde no existe galería) se cae
+  // al download normal de toda la vida.
   async function descargarEscudo(equipo) {
     if (!equipo.logo_url) { showMsg('Este equipo todavía no tiene escudo'); return }
     try {
       const resp = await fetch(equipo.logo_url)
       const blob = await resp.blob()
       const ext = (equipo.logo_url.split('.').pop() || 'png').split('?')[0].slice(0, 4)
+      const nombreArchivo = `escudo-${equipo.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${ext}`
+      const file = new File([blob], nombreArchivo, { type: blob.type || 'image/png' })
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: nombreArchivo })
+        return
+      }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `escudo-${equipo.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${ext}`
+      a.download = nombreArchivo
       document.body.appendChild(a)
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
+      if (err?.name === 'AbortError') return // el usuario cerró el cuadro de compartir sin elegir nada
       showMsg('No se pudo descargar el escudo: ' + err.message)
     }
   }
