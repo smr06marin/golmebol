@@ -36,6 +36,12 @@ const loadingStyle = {
 export default function DominioPersonalizadoGate({ children }) {
   const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
   const hostPropio = esHostPropio(hostname)
+  // En Vercel, cuando se agregan el dominio raíz y el "www" juntos, uno
+  // queda como producción y el otro redirige (308) hacia ese — así que el
+  // visitante puede terminar en "www.miliga.com" aunque haya entrado a
+  // "miliga.com" (o al revés). Se guarda/compara siempre sin "www." para
+  // que no importe cuál de los dos haya quedado como el real.
+  const hostnameBase = hostname.replace(/^www\./, '')
 
   const [estado, setEstado] = useState(hostPropio ? 'ok' : 'cargando') // ok | cargando | torneo | organizador | sin_vincular
   const [torneoId, setTorneoId] = useState(null)
@@ -45,17 +51,15 @@ export default function DominioPersonalizadoGate({ children }) {
     if (hostPropio) return
     let cancelado = false
     async function resolver() {
-      // hostname (window.location.hostname) siempre llega en minúsculas —
-      // ilike en vez de eq para que un dominio guardado con mayúsculas por
-      // error igual haga match (además de que el formulario ya lo guarda
-      // en minúsculas de por sí).
+      // ilike (no eq) para que un dominio guardado con mayúsculas por error
+      // igual haga match, además de compararlo ya sin "www.".
       // 1. ¿El dominio es de UN torneo puntual? (feature original)
-      const { data: t } = await supabase.from('tournaments').select('id').ilike('custom_domain', hostname).maybeSingle()
+      const { data: t } = await supabase.from('tournaments').select('id').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
       if (t?.id) { setTorneoId(t.id); setEstado('torneo'); return }
 
       // 2. ¿El dominio es la vitrina de un organizador (varios torneos)?
-      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').ilike('custom_domain', hostname).maybeSingle()
+      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
       if (o?.organizador_id) { setOrganizadorId(o.organizador_id); setEstado('organizador'); return }
 
