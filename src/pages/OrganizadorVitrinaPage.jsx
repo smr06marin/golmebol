@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Globe, Trophy, MapPin, Calendar, ChevronRight } from 'lucide-react'
+import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck } from 'lucide-react'
 
 // Vitrina pública de un organizador: junta TODOS sus torneos (tournaments
 // donde organizador_id = este organizador) en una sola página, servida
@@ -81,6 +81,18 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
       </div>
 
       <div style={s.body}>
+        {perfil?.escenario_id && (
+          <Link to={`/reservar/${perfil.escenario_id}`} style={{ ...s.card, display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', textDecoration: 'none', color: 'inherit', marginBottom: '16px', border: '1.5px solid var(--color-primario)' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'var(--color-primario)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <CalendarCheck size={24} color="#fff"/>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>Reservar cancha</div>
+              <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>Ver horarios disponibles y reservar</div>
+            </div>
+            <ChevronRight size={18} color="#9aa0a6" style={{ flexShrink: 0 }}/>
+          </Link>
+        )}
         {torneos.length === 0 ? (
           <div style={{ ...s.card, padding: '48px 20px', textAlign: 'center', color: '#9aa0a6' }}>
             <Trophy size={36} style={{ opacity: .3, marginBottom: '8px' }}/>

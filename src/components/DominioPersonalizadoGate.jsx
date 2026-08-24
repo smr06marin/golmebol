@@ -5,6 +5,8 @@ import MarcaGolmebol from './MarcaGolmebol'
 
 const TorneoPublicoPage      = lazy(() => import('../pages/TorneoPublicoPage'))
 const OrganizadorVitrinaPage = lazy(() => import('../pages/OrganizadorVitrinaPage'))
+const ReservarEscenarioPage  = lazy(() => import('../pages/ReservarEscenarioPage'))
+const PedirEscenarioPage     = lazy(() => import('../pages/PedirEscenarioPage'))
 
 function esHostPropio(hostname) {
   const h = (hostname || '').toLowerCase()
@@ -112,14 +114,21 @@ export default function DominioPersonalizadoGate({ children }) {
   }
 
   // Dominio de un ORGANIZADOR → vitrina con todos sus torneos como página
-  // de inicio, y cada torneo individual como ruta hermana dentro del mismo
-  // dominio (así el visitante nunca sale del dominio propio del organizador).
+  // de inicio, y cada torneo/reserva de cancha como ruta hermana dentro del
+  // mismo dominio (así el visitante nunca sale del dominio propio). Se
+  // arranca en el pathname real (no siempre en "/") para que un link
+  // directo a /reservar/:escenarioId (compartido, o guardado en favoritos)
+  // también funcione, no solo los links que salen desde la vitrina.
+  const pathnameActual = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/'
   return (
     <Suspense fallback={<div style={loadingStyle}>CARGANDO...</div>}>
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={[pathnameActual]}>
         <Routes>
           <Route path="/" element={<OrganizadorVitrinaPage organizadorId={organizadorId} />} />
           <Route path="/t/:id" element={<TorneoPublicoPage />} />
+          <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>} />
+          <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>} />
+          <Route path="*" element={<OrganizadorVitrinaPage organizadorId={organizadorId} />} />
         </Routes>
       </MemoryRouter>
       <MarcaGolmebol/>

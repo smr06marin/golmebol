@@ -39,9 +39,10 @@ export default function AdminPerfilOrganizadorPage() {
   const targetId = esAdmin ? organizadorSel : user?.id
 
   const [perfil, setPerfil] = useState(null) // fila de organizador_perfiles (o null si aún no existe)
-  const [form, setForm] = useState({ nombre_publico: '', custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', logo_url: '', favicon_url: '' })
+  const [form, setForm] = useState({ nombre_publico: '', custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', logo_url: '', favicon_url: '', escenario_id: '' })
   const [torneos, setTorneos] = useState([])
   const [sponsors, setSponsors] = useState([])
+  const [escenariosDisponibles, setEscenariosDisponibles] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingSponsors, setLoadingSponsors] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -54,6 +55,7 @@ export default function AdminPerfilOrganizadorPage() {
   useEffect(() => {
     if (esAdmin) fetchListaOrganizadores()
     else if (user?.id) setOrganizadorSel(user.id) // no se usa (targetId = user.id directo) pero deja todo consistente
+    fetchEscenarios()
   }, [esAdmin, user?.id])
 
   useEffect(() => {
@@ -68,6 +70,15 @@ export default function AdminPerfilOrganizadorPage() {
     if (!error) setListaOrganizadores(data || [])
   }
 
+  // No hay ninguna relación automática entre una cuenta de organizador
+  // (torneos) y un escenario (canchas) — los encargados de escenario se
+  // identifican por cédula, no por esta cuenta. Por eso se elige a mano de
+  // la lista completa de escenarios.
+  async function fetchEscenarios() {
+    const { data, error } = await supabase.from('escenarios').select('id, name, city').order('name')
+    if (!error) setEscenariosDisponibles(data || [])
+  }
+
   async function fetchPerfil() {
     setLoading(true)
     const { data, error } = await supabase.from('organizador_perfiles').select('*').eq('organizador_id', targetId).maybeSingle()
@@ -80,7 +91,7 @@ export default function AdminPerfilOrganizadorPage() {
     setForm({
       nombre_publico: data?.nombre_publico || '', custom_domain: data?.custom_domain || '',
       color_primario: data?.color_primario || '#1a73e8', color_secundario: data?.color_secundario || '#202124',
-      logo_url: data?.logo_url || '', favicon_url: data?.favicon_url || '',
+      logo_url: data?.logo_url || '', favicon_url: data?.favicon_url || '', escenario_id: data?.escenario_id || '',
     })
     setLoading(false)
   }
@@ -106,6 +117,7 @@ export default function AdminPerfilOrganizadorPage() {
       color_secundario: form.color_secundario?.trim() || null,
       logo_url: form.logo_url || null,
       favicon_url: form.favicon_url || null,
+      escenario_id: form.escenario_id || null,
       updated_at: new Date().toISOString(),
     }
     // El dominio solo lo toca el admin — si lo guarda el organizador, ni
@@ -310,6 +322,17 @@ export default function AdminPerfilOrganizadorPage() {
                 <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingFavicon} onChange={e => { handleUploadFavicon(e.target.files[0]); e.target.value = '' }}/>
               </label>
             </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '18px' }}>
+          <label style={labelStyle}>Escenario para reservar cancha (opcional)</label>
+          <select value={form.escenario_id} onChange={e => setForm(f => ({ ...f, escenario_id: e.target.value }))} style={inputStyle}>
+            <option value="">— Sin escenario vinculado —</option>
+            {escenariosDisponibles.map(e => <option key={e.id} value={e.id}>{e.name}{e.city ? ` — ${e.city}` : ''}</option>)}
+          </select>
+          <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>
+            Si el organizador también tiene canchas en Escenarios Deportivos, elegí cuál acá y la vitrina muestra un botón "Reservar cancha". Si todavía no existe, creálo primero en ESCENARIOS.
           </div>
         </div>
 
