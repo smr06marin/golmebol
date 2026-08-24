@@ -28,6 +28,15 @@ function hexValido(v, fallback) {
 export default function AdminPerfilOrganizadorPage() {
   const { user, rol } = useAuthStore()
   const esOrganizador = rol?.rol === 'organizador'
+  const esAdmin = rol?.rol ? rol.rol === 'admin' : true // sin sistema de roles cargado, todo usuario del admin es admin
+
+  // El admin puede elegir A CUÁL organizador le está editando el perfil —
+  // solo él puede asignar el dominio propio. El organizador solo ve/edita
+  // el suyo (targetId = user.id) y el campo de dominio queda de solo
+  // lectura para él.
+  const [listaOrganizadores, setListaOrganizadores] = useState([]) // [{user_id, email}]
+  const [organizadorSel, setOrganizadorSel] = useState('')
+  const targetId = esAdmin ? organizadorSel : user?.id
 
   const [perfil, setPerfil] = useState(null) // fila de organizador_perfiles (o null si aún no existe)
   const [form, setForm] = useState({ nombre_publico: '', custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', logo_url: '', favicon_url: '' })
@@ -42,35 +51,48 @@ export default function AdminPerfilOrganizadorPage() {
   const [savingSponsorId, setSavingSponsorId] = useState(null)
   const [msg, setMsg] = useState(null)
 
-  useEffect(() => { if (user?.id) { fetchPerfil(); fetchTorneos(); fetchSponsors() } }, [user?.id])
+  useEffect(() => {
+    if (esAdmin) fetchListaOrganizadores()
+    else if (user?.id) setOrganizadorSel(user.id) // no se usa (targetId = user.id directo) pero deja todo consistente
+  }, [esAdmin, user?.id])
+
+  useEffect(() => {
+    if (targetId) { fetchPerfil(); fetchTorneos(); fetchSponsors() }
+    else { setLoading(false); setPerfil(null); setTorneos([]); setSponsors([]) }
+  }, [targetId])
 
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 4000) }
 
+  async function fetchListaOrganizadores() {
+    const { data, error } = await supabase.from('roles_plataforma').select('user_id, email').eq('rol', 'organizador').not('user_id', 'is', null)
+    if (!error) setListaOrganizadores(data || [])
+  }
+
   async function fetchPerfil() {
     setLoading(true)
-    const { data, error } = await supabase.from('organizador_perfiles').select('*').eq('organizador_id', user.id).maybeSingle()
+    const { data, error } = await supabase.from('organizador_perfiles').select('*').eq('organizador_id', targetId).maybeSingle()
     if (error) {
       showMsg(/does not exist/.test(error.message || '') ? '⚠️ Falta correr migracion_organizador_perfil.sql en Supabase' : 'Error: ' + error.message, 'error')
       setLoading(false)
       return
     }
     setPerfil(data)
-    if (data) setForm({
-      nombre_publico: data.nombre_publico || '', custom_domain: data.custom_domain || '',
-      color_primario: data.color_primario || '#1a73e8', color_secundario: data.color_secundario || '#202124',
-      logo_url: data.logo_url || '', favicon_url: data.favicon_url || '',
+    setForm({
+      nombre_publico: data?.nombre_publico || '', custom_domain: data?.custom_domain || '',
+      color_primario: data?.color_primario || '#1a73e8', color_secundario: data?.color_secundario || '#202124',
+      logo_url: data?.logo_url || '', favicon_url: data?.favicon_url || '',
     })
     setLoading(false)
   }
 
   async function fetchTorneos() {
-    const { data } = await supabase.from('tournaments').select('id, name, logo_url, fecha_inicio, fecha_fin').eq('organizador_id', user.id).order('created_at', { ascending: false })
+    const { data } = await supabase.from('tournaments').select('id, name, logo_url, fecha_inicio, fecha_fin').eq('organizador_id', targetId).order('created_at', { ascending: false })
     setTorneos(data || [])
   }
 
   async function fetchSponsors() {
     setLoadingSponsors(true)
-    const { data, error } = await supabase.from('organizador_sponsors').select('*').eq('organizador_id', user.id).order('orden', { ascending: true })
+    const { data, error } = await supabase.from('organizador_sponsors').select('*').eq('organizador_id', targetId).order('orden', { ascending: true })
     setLoadingSponsors(false)
     if (!error) setSponsors(data || [])
   }
@@ -78,27 +100,31 @@ export default function AdminPerfilOrganizadorPage() {
   async function guardar() {
     setGuardando(true)
     const payload = {
-      organizador_id: user.id,
+      organizador_id: targetId,
       nombre_publico: form.nombre_publico.trim() || null,
-      custom_domain: form.custom_domain.trim() || null,
       color_primario: form.color_primario?.trim() || null,
       color_secundario: form.color_secundario?.trim() || null,
       logo_url: form.logo_url || null,
       favicon_url: form.favicon_url || null,
       updated_at: new Date().toISOString(),
     }
+    // El dominio solo lo toca el admin — si lo guarda el organizador, ni
+    // siquiera se manda esa columna (así no se pisa lo que haya puesto el
+    // admin, ni se puede poner uno el organizador por su cuenta).
+    if (esAdmin) payload.custom_domain = form.custom_domain.trim() || null
     const { data, error } = await supabase.from('organizador_perfiles').upsert(payload, { onConflict: 'organizador_id' }).select().single()
     setGuardando(false)
     if (error) return showMsg('Error al guardar: ' + error.message, 'error')
     setPerfil(data)
+    setForm(f => ({ ...f, custom_domain: data.custom_domain || '' }))
     showMsg('✅ Vitrina guardada')
   }
 
   async function handleUploadLogo(file) {
-    if (!file || !user?.id) return
+    if (!file || !targetId) return
     setUploadingLogo(true)
     const ext = file.name.split('.').pop()
-    const path = `${user.id}/logo.${ext}`
+    const path = `${targetId}/logo.${ext}`
     const { error: uploadError } = await supabase.storage.from('organizador-branding').upload(path, file, { upsert: true })
     if (uploadError) { setUploadingLogo(false); return showMsg('Error al subir logo: ' + uploadError.message, 'error') }
     const { data: urlData } = supabase.storage.from('organizador-branding').getPublicUrl(path)
@@ -108,10 +134,10 @@ export default function AdminPerfilOrganizadorPage() {
   }
 
   async function handleUploadFavicon(file) {
-    if (!file || !user?.id) return
+    if (!file || !targetId) return
     setUploadingFavicon(true)
     const ext = file.name.split('.').pop()
-    const path = `${user.id}/favicon.${ext}`
+    const path = `${targetId}/favicon.${ext}`
     const { error: uploadError } = await supabase.storage.from('organizador-branding').upload(path, file, { upsert: true })
     if (uploadError) { setUploadingFavicon(false); return showMsg('Error al subir favicon: ' + uploadError.message, 'error') }
     const { data: urlData } = supabase.storage.from('organizador-branding').getPublicUrl(path)
@@ -122,7 +148,7 @@ export default function AdminPerfilOrganizadorPage() {
 
   async function handleAgregarSponsor() {
     const orden = sponsors.length > 0 ? Math.max(...sponsors.map(s => s.orden || 0)) + 1 : 0
-    const { data, error } = await supabase.from('organizador_sponsors').insert({ organizador_id: user.id, nombre: '', logo_url: null, link: null, orden }).select().single()
+    const { data, error } = await supabase.from('organizador_sponsors').insert({ organizador_id: targetId, nombre: '', logo_url: null, link: null, orden }).select().single()
     if (error) return showMsg('Error al agregar patrocinador: ' + error.message, 'error')
     setSponsors(prev => [...prev, data])
   }
@@ -142,7 +168,7 @@ export default function AdminPerfilOrganizadorPage() {
     if (!file) return
     setUploadingSponsorId(sponsor.id)
     const ext = file.name.split('.').pop()
-    const path = `${user.id}/sponsors/${sponsor.id}.${ext}`
+    const path = `${targetId}/sponsors/${sponsor.id}.${ext}`
     const { error: uploadError } = await supabase.storage.from('organizador-branding').upload(path, file, { upsert: true })
     if (uploadError) { setUploadingSponsorId(null); return showMsg('Error al subir logo', 'error') }
     const { data: urlData } = supabase.storage.from('organizador-branding').getPublicUrl(path)
@@ -161,6 +187,23 @@ export default function AdminPerfilOrganizadorPage() {
     showMsg('Patrocinador eliminado')
   }
 
+  if (esAdmin && !targetId) return (
+    <div style={{ maxWidth: '520px' }}>
+      <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Globe size={20} color="#1a73e8"/> Mi dominio / vitrina
+      </h1>
+      <p style={{ color: '#5f6368', margin: '0 0 20px', fontSize: '.875rem' }}>Elegí a qué organizador le vas a asignar dominio y branding.</p>
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+        <label style={labelStyle}>Organizador</label>
+        <select value={organizadorSel} onChange={e => setOrganizadorSel(e.target.value)} style={inputStyle}>
+          <option value="">— Elegir organizador —</option>
+          {listaOrganizadores.map(o => <option key={o.user_id} value={o.user_id}>{o.email}</option>)}
+        </select>
+        {listaOrganizadores.length === 0 && <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '8px' }}>No hay ningún usuario con rol "organizador" todavía.</div>}
+      </div>
+    </div>
+  )
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
 
   return (
@@ -171,6 +214,16 @@ export default function AdminPerfilOrganizadorPage() {
       <p style={{ color: '#5f6368', margin: '0 0 20px', fontSize: '.875rem' }}>
         Un dominio propio que junta {esOrganizador ? 'todos tus torneos' : 'todos los torneos de un organizador'} en una sola página pública, con tu logo, favicon y patrocinadores — todo lo administras acá, en Golmebol.
       </p>
+
+      {esAdmin && (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 18px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <label style={{ ...labelStyle, marginBottom: 0, flexShrink: 0 }}>Editando a:</label>
+          <select value={organizadorSel} onChange={e => setOrganizadorSel(e.target.value)} style={{ ...inputStyle, maxWidth: '320px' }}>
+            <option value="">— Elegir organizador —</option>
+            {listaOrganizadores.map(o => <option key={o.user_id} value={o.user_id}>{o.email}</option>)}
+          </select>
+        </div>
+      )}
 
       {msg && (
         <div style={{ padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '.85rem', background: msg.type === 'ok' ? '#e6f4ea' : '#fce8e6', color: msg.type === 'ok' ? '#1e8e3e' : '#d93025' }}>
@@ -186,7 +239,7 @@ export default function AdminPerfilOrganizadorPage() {
             <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Nombre público, colores, dominio, logo y favicon de tu vitrina</div>
           </div>
           {perfil?.id && (
-            <a href={`/organizador/${user.id}`} target="_blank" rel="noreferrer" title="Vista previa tal cual la ve el público, aunque el dominio propio aún no esté vinculado"
+            <a href={`/organizador/${targetId}`} target="_blank" rel="noreferrer" title="Vista previa tal cual la ve el público, aunque el dominio propio aún no esté vinculado"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0, padding: '8px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', color: '#1a73e8', fontSize: '.78rem', fontWeight: '600', textDecoration: 'none', whiteSpace: 'nowrap' }}>
               <ExternalLink size={14}/> Ver vitrina
             </a>
@@ -200,9 +253,12 @@ export default function AdminPerfilOrganizadorPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
           <div style={{ gridColumn: '1 / -1' }}>
-            <label style={labelStyle}>Dominio propio</label>
-            <input value={form.custom_domain} onChange={e => setForm(f => ({ ...f, custom_domain: e.target.value }))} style={inputStyle} placeholder="miliga.com"/>
-            <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Ej: miliga.com — después hay que apuntar el DNS a Golmebol (avísale a Sebas por WhatsApp para que te diga a qué apuntar)</div>
+            <label style={labelStyle}>Dominio propio {!esAdmin && '(solo lo asigna el administrador)'}</label>
+            <input value={form.custom_domain} onChange={e => setForm(f => ({ ...f, custom_domain: e.target.value }))} style={{ ...inputStyle, ...(esAdmin ? {} : { background: '#f1f3f4', color: '#5f6368', cursor: 'not-allowed' }) }}
+              placeholder={esAdmin ? 'miliga.com' : 'Todavía no tienes uno asignado'} disabled={!esAdmin} readOnly={!esAdmin}/>
+            <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>
+              {esAdmin ? 'Ej: miliga.com — después hay que apuntar el DNS a Golmebol' : 'Escríbele al administrador por WhatsApp para que te asigne tu dominio propio.'}
+            </div>
           </div>
 
           <div>

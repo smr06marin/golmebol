@@ -170,3 +170,39 @@ drop policy if exists "organizador_branding_delete" on storage.objects;
 create policy "organizador_branding_delete"
 on storage.objects for delete
 using (bucket_id = 'organizador-branding' and auth.role() = 'authenticated');
+
+-- 5. Blindaje extra sobre custom_domain: aunque la app ya no muestra ese
+--    campo editable al organizador, este trigger asegura a nivel de base
+--    de datos que SOLO el admin puede ponerlo/cambiarlo — si alguien más
+--    intenta cambiarlo (aunque sea llamando a la API directo), el trigger
+--    lo revierte en silencio al valor que ya tenía (o a null si es una
+--    fila nueva).
+create or replace function organizador_perfiles_bloquear_domain_no_admin()
+returns trigger as $$
+begin
+  if tg_op = 'UPDATE' and new.custom_domain is distinct from old.custom_domain then
+    if not exists (
+      select 1 from roles_plataforma rp
+      where rp.activo is not false and rp.rol = 'admin'
+        and (rp.user_id = auth.uid() or lower(rp.email) = lower(coalesce(auth.jwt() ->> 'email', '')))
+    ) then
+      new.custom_domain := old.custom_domain;
+    end if;
+  end if;
+  if tg_op = 'INSERT' and new.custom_domain is not null then
+    if not exists (
+      select 1 from roles_plataforma rp
+      where rp.activo is not false and rp.rol = 'admin'
+        and (rp.user_id = auth.uid() or lower(rp.email) = lower(coalesce(auth.jwt() ->> 'email', '')))
+    ) then
+      new.custom_domain := null;
+    end if;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists trg_organizador_perfiles_bloquear_domain on organizador_perfiles;
+create trigger trg_organizador_perfiles_bloquear_domain
+before insert or update on organizador_perfiles
+for each row execute function organizador_perfiles_bloquear_domain_no_admin();
