@@ -39,7 +39,7 @@ export default function AdminPerfilOrganizadorPage() {
   const targetId = esAdmin ? organizadorSel : user?.id
 
   const [perfil, setPerfil] = useState(null) // fila de organizador_perfiles (o null si aún no existe)
-  const [form, setForm] = useState({ nombre_publico: '', custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', logo_url: '', favicon_url: '', escenario_id: '' })
+  const [form, setForm] = useState({ nombre_publico: '', custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', logo_url: '', favicon_url: '', escenario_id: '', descripcion: '', whatsapp: '', email: '', direccion: '', facebook_url: '', instagram_url: '', tiktok_url: '' })
   const [torneos, setTorneos] = useState([])
   const [sponsors, setSponsors] = useState([])
   const [escenariosDisponibles, setEscenariosDisponibles] = useState([])
@@ -92,6 +92,8 @@ export default function AdminPerfilOrganizadorPage() {
       nombre_publico: data?.nombre_publico || '', custom_domain: data?.custom_domain || '',
       color_primario: data?.color_primario || '#1a73e8', color_secundario: data?.color_secundario || '#202124',
       logo_url: data?.logo_url || '', favicon_url: data?.favicon_url || '', escenario_id: data?.escenario_id || '',
+      descripcion: data?.descripcion || '', whatsapp: data?.whatsapp || '', email: data?.email || '', direccion: data?.direccion || '',
+      facebook_url: data?.facebook_url || '', instagram_url: data?.instagram_url || '', tiktok_url: data?.tiktok_url || '',
     })
     setLoading(false)
   }
@@ -118,6 +120,13 @@ export default function AdminPerfilOrganizadorPage() {
       logo_url: form.logo_url || null,
       favicon_url: form.favicon_url || null,
       escenario_id: form.escenario_id || null,
+      descripcion: form.descripcion.trim() || null,
+      whatsapp: form.whatsapp.trim() || null,
+      email: form.email.trim() || null,
+      direccion: form.direccion.trim() || null,
+      facebook_url: form.facebook_url.trim() || null,
+      instagram_url: form.instagram_url.trim() || null,
+      tiktok_url: form.tiktok_url.trim() || null,
       updated_at: new Date().toISOString(),
     }
     // El dominio solo lo toca el admin — si lo guarda el organizador, ni
@@ -266,6 +275,11 @@ export default function AdminPerfilOrganizadorPage() {
           <input value={form.nombre_publico} onChange={e => setForm(f => ({ ...f, nombre_publico: e.target.value }))} style={inputStyle} placeholder="Ej: Liga Relámpago Armenia"/>
         </div>
 
+        <div style={{ marginBottom: '14px' }}>
+          <label style={labelStyle}>Descripción corta (aparece debajo del título)</label>
+          <input value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} style={inputStyle} placeholder="Ej: Organizamos los mejores torneos de fútbol en Armenia"/>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={labelStyle}>Dominio propio {!esAdmin && '(solo lo asigna el administrador)'}</label>
@@ -336,11 +350,48 @@ export default function AdminPerfilOrganizadorPage() {
           </div>
         </div>
 
-        <button onClick={guardar} disabled={guardando}
-          style={{ padding: '10px 22px', background: guardando ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardando ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
-          {guardando ? 'Guardando...' : '✓ Guardar vitrina'}
-        </button>
       </div>
+
+      {/* Contacto y redes — se usan en el pie de página de la vitrina */}
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+        <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>📞 Contacto y redes</div>
+        <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '16px' }}>Aparecen en el pie de página de la vitrina — dejá vacío lo que no quieras mostrar.</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '14px' }}>
+          <div>
+            <label style={labelStyle}>WhatsApp</label>
+            <input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))} style={inputStyle} placeholder="3001234567"/>
+          </div>
+          <div>
+            <label style={labelStyle}>Correo</label>
+            <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inputStyle} placeholder="info@miliga.com"/>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Dirección / ciudad</label>
+            <input value={form.direccion} onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} style={inputStyle} placeholder="Armenia, Quindío"/>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+          <div>
+            <label style={labelStyle}>Facebook</label>
+            <input value={form.facebook_url} onChange={e => setForm(f => ({ ...f, facebook_url: e.target.value }))} style={inputStyle} placeholder="https://facebook.com/..."/>
+          </div>
+          <div>
+            <label style={labelStyle}>Instagram</label>
+            <input value={form.instagram_url} onChange={e => setForm(f => ({ ...f, instagram_url: e.target.value }))} style={inputStyle} placeholder="https://instagram.com/..."/>
+          </div>
+          <div>
+            <label style={labelStyle}>TikTok</label>
+            <input value={form.tiktok_url} onChange={e => setForm(f => ({ ...f, tiktok_url: e.target.value }))} style={inputStyle} placeholder="https://tiktok.com/@..."/>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={guardar} disabled={guardando}
+        style={{ padding: '10px 22px', background: guardando ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardando ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700', marginBottom: '16px' }}>
+        {guardando ? 'Guardando...' : '✓ Guardar vitrina'}
+      </button>
 
       {/* Torneos que se ven en la vitrina */}
       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
