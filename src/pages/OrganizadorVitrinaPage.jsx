@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone } from 'lucide-react'
+import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone, ArrowRight, Tag } from 'lucide-react'
 import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
 import { PantallaCargando } from '../components/PantallaCargando'
 
-const IMG_CTA = 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=900&q=60'
+const IMG_HERO   = 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1600&q=70'
+const IMG_CANCHA = 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=900&q=60'
 
 // CSS con media queries reales (no se puede hacer con style={{}} inline) —
 // es lo que faltaba antes: la barra de navegación y las dos grillas de dos
@@ -16,16 +17,25 @@ const IMG_CTA = 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=
 const CSS_RESPONSIVO = `
   .gm-vit-navlinks { display: flex; }
   .gm-vit-card { transition: transform .15s ease, box-shadow .15s ease; }
-  .gm-vit-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.1); }
+  .gm-vit-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.1); }
+  .gm-vit-badges { grid-template-columns: repeat(3, 1fr); }
   @media (max-width: 720px) {
     .gm-vit-navlinks { display: none; }
     .gm-vit-hero-grid { grid-template-columns: 1fr !important; }
-    .gm-vit-hero-sponsor { margin-top: 8px; }
+    .gm-vit-hero-side { margin-top: 22px; }
     .gm-vit-cta-grid { grid-template-columns: 1fr !important; }
     .gm-vit-cta-image { display: none; }
     .gm-vit-title { font-size: 2rem !important; }
+    .gm-vit-badges { grid-template-columns: 1fr !important; }
   }
 `
+
+function formatearFecha(iso) {
+  if (!iso) return null
+  try {
+    return new Date(iso + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
+  } catch { return iso }
+}
 
 // Vitrina pública de un organizador: junta TODOS sus torneos (tournaments
 // donde organizador_id = este organizador) en una sola página de tipo
@@ -41,6 +51,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
 
   const [perfil, setPerfil] = useState(null)
   const [torneos, setTorneos] = useState([])
+  const [equiposPorTorneo, setEquiposPorTorneo] = useState({})
   const [sponsors, setSponsors] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -50,12 +61,22 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
     setLoading(true)
     const [{ data: p }, { data: ts }, { data: sp }] = await Promise.all([
       supabase.from('organizador_perfiles').select('*').eq('organizador_id', id).maybeSingle(),
-      supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, city, season').eq('organizador_id', id).order('created_at', { ascending: false }),
+      supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, categoria, city, season, fecha_inicio').eq('organizador_id', id).order('created_at', { ascending: false }),
       supabase.from('organizador_sponsors').select('*').eq('organizador_id', id).order('orden', { ascending: true }),
     ])
     setPerfil(p)
     setTorneos(ts || [])
     setSponsors(sp || [])
+
+    // Conteo de equipos inscritos por torneo (para el detalle de cada
+    // tarjeta) — una sola consulta extra en vez de una por torneo.
+    if (ts?.length) {
+      const { data: tt } = await supabase.from('tournament_teams').select('tournament_id').in('tournament_id', ts.map(t => t.id))
+      const conteo = {}
+      for (const row of (tt || [])) conteo[row.tournament_id] = (conteo[row.tournament_id] || 0) + 1
+      setEquiposPorTorneo(conteo)
+    }
+
     setLoading(false)
   }
 
@@ -84,12 +105,15 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
   const hayContacto = perfil?.whatsapp || perfil?.email || perfil?.direccion
   const hayRedes = perfil?.facebook_url || perfil?.instagram_url || perfil?.tiktok_url
   const waHref = perfil?.whatsapp ? `https://wa.me/${perfil.whatsapp.replace(/\D/g, '')}` : null
+  const hayEscenario = !!perfil?.escenario_id
 
   const s = {
     page: { minHeight: '100vh', maxWidth: '100vw', overflowX: 'hidden', background: '#fff', fontFamily: 'system-ui, sans-serif', color: '#0f172a', ['--color-primario']: colorPrimario, ['--color-secundario']: colorSecundario },
     section: { maxWidth: '1100px', margin: '0 auto', padding: '48px 20px' },
-    pill: { display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', borderRadius: '999px', border: 'none', cursor: 'pointer', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', whiteSpace: 'nowrap' },
-    card: { background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.06)' },
+    pill: { display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '10px 20px', borderRadius: '999px', border: 'none', cursor: 'pointer', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', whiteSpace: 'nowrap' },
+    card: { background: '#fff', border: '1px solid #eef0f3', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.05)' },
+    eyebrow: { display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '22px' },
+    eyebrowText: { fontWeight: '800', fontSize: '.92rem', letterSpacing: '.06em', color: '#5f6368' },
   }
 
   return (
@@ -97,67 +121,89 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
       <style>{CSS_RESPONSIVO}</style>
 
       {/* NAV */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: '#fff', borderBottom: '1px solid #eef0f3' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(6px)', borderBottom: '1px solid #eef0f3' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, minWidth: 0 }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#f1f3f4', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-              {perfil?.logo_url ? <img src={perfil.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Globe size={19} color={colorPrimario}/>}
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#f1f3f4', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+              {perfil?.logo_url ? <img src={perfil.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Globe size={18} color={colorPrimario}/>}
             </div>
-            <div style={{ fontWeight: '900', fontSize: '.95rem', lineHeight: 1.15, letterSpacing: '.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
+            <div style={{ fontWeight: '800', fontSize: '.92rem', lineHeight: 1.15, letterSpacing: '.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
           </div>
-          <div className="gm-vit-navlinks" style={{ flex: 1, justifyContent: 'center', gap: '24px', fontSize: '.78rem', fontWeight: '700', color: '#5f6368' }}>
+          <div className="gm-vit-navlinks" style={{ flex: 1, justifyContent: 'center', gap: '26px', fontSize: '.76rem', fontWeight: '700', color: '#5f6368', letterSpacing: '.02em' }}>
             <a href="#inicio" style={{ color: colorPrimario, textDecoration: 'none' }}>INICIO</a>
             <a href="#torneos" style={{ color: 'inherit', textDecoration: 'none' }}>TORNEOS</a>
             {hayContacto && <a href="#contacto" style={{ color: 'inherit', textDecoration: 'none' }}>CONTACTO</a>}
           </div>
-          {perfil?.escenario_id && (
-            <Link to={`/reservar/${perfil.escenario_id}`} style={{ ...s.pill, background: colorPrimario, color: '#fff', flexShrink: 0 }}>
-              <CalendarCheck size={14}/> <span className="gm-vit-navlinks" style={{ display: 'inline' }}>Reservar cancha</span>
+          {hayEscenario && (
+            <Link to={`/reservar/${perfil.escenario_id}`} style={{ ...s.pill, padding: '9px 16px', background: colorPrimario, color: '#fff', flexShrink: 0 }}>
+              <CalendarCheck size={14}/> Reservar cancha
             </Link>
           )}
         </div>
       </div>
 
       {/* HERO */}
-      <div id="inicio" style={{ background: `linear-gradient(120deg, ${colorSecundario} 0%, #111827 100%)`, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: 0, opacity: .08, backgroundImage: 'radial-gradient(circle at 15% 30%, #fff 1px, transparent 1px), radial-gradient(circle at 85% 70%, #fff 1px, transparent 1px)', backgroundSize: '38px 38px' }}/>
-        <div className="gm-vit-hero-grid" style={{ maxWidth: '1100px', margin: '0 auto', padding: '48px 20px', position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: '32px', alignItems: 'center' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: colorPrimario, fontWeight: '800', fontSize: '.85rem', letterSpacing: '.04em', marginBottom: '6px' }}>Bienvenido a</div>
-            <h1 className="gm-vit-title" style={{ margin: 0, fontSize: 'clamp(1.9rem, 7vw, 3.2rem)', fontWeight: '900', color: '#fff', lineHeight: 1.08, letterSpacing: '-.01em', wordBreak: 'break-word' }}>{nombre.toUpperCase()}</h1>
-            {perfil?.descripcion && <p style={{ color: '#cbd5e1', fontSize: '1rem', lineHeight: 1.6, maxWidth: '480px', marginTop: '16px' }}>{perfil.descripcion}</p>}
-            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '26px' }}>
-              {[
-                { icon: <ShieldCheck size={18} color={colorPrimario}/>, texto: 'Torneos seguros y organizados' },
-                { icon: <Users size={18} color={colorPrimario}/>, texto: 'Pasión por el fútbol amateur' },
-                ...(perfil?.escenario_id ? [{ icon: <CalendarCheck size={18} color={colorPrimario}/>, texto: 'Canchas de calidad' }] : []),
-              ].map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', maxWidth: '160px' }}>
-                  {f.icon}
-                  <span style={{ color: '#e5e7eb', fontSize: '.78rem', fontWeight: '600', lineHeight: 1.3 }}>{f.texto}</span>
+      <div id="inicio" style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', overflow: 'hidden', backgroundImage: `linear-gradient(105deg, ${colorSecundario}f2 20%, ${colorSecundario}b3 55%, ${colorSecundario}66 100%), url(${IMG_HERO})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+          <div className="gm-vit-hero-grid" style={{ maxWidth: '1100px', margin: '0 auto', padding: '64px 20px 90px', position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0,1.25fr) minmax(0,1fr)', gap: '36px', alignItems: 'center' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: colorPrimario, fontWeight: '700', fontSize: '.82rem', letterSpacing: '.08em', marginBottom: '10px' }}>BIENVENIDO A</div>
+              <h1 className="gm-vit-title" style={{ margin: 0, fontSize: 'clamp(2rem, 6vw, 3rem)', fontWeight: '800', color: '#fff', lineHeight: 1.1, letterSpacing: '-.01em', wordBreak: 'break-word' }}>{nombre.toUpperCase()}</h1>
+              <div style={{ width: '46px', height: '3px', background: colorPrimario, borderRadius: '2px', margin: '18px 0' }}/>
+              {perfil?.descripcion && <p style={{ color: '#dbe1e8', fontSize: '.98rem', lineHeight: 1.65, maxWidth: '460px', fontWeight: '400' }}>{perfil.descripcion}</p>}
+            </div>
+
+            <div className="gm-vit-hero-side">
+              {hayEscenario ? (
+                <Link to={`/reservar/${perfil.escenario_id}`} style={{ display: 'block', textDecoration: 'none', borderRadius: '18px', overflow: 'hidden', background: `linear-gradient(155deg, ${colorPrimario}, ${colorPrimario}cc)`, boxShadow: '0 16px 40px rgba(0,0,0,.28)' }}>
+                  <div style={{ padding: '30px 26px', textAlign: 'center' }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'rgba(255,255,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                      {perfil?.logo_url ? <img src={perfil.logo_url} style={{ width: '38px', height: '38px', objectFit: 'contain' }}/> : <CalendarCheck size={30} color="#fff"/>}
+                    </div>
+                    <div style={{ color: '#fff', fontWeight: '800', fontSize: '1.5rem', letterSpacing: '-.01em', lineHeight: 1.15 }}>RESERVAR<br/>CANCHA</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: 'rgba(255,255,255,.92)', fontSize: '.82rem', fontWeight: '600', marginTop: '14px' }}>
+                      Haz tu reserva en segundos <ArrowRight size={15}/>
+                    </div>
+                  </div>
+                </Link>
+              ) : (
+                <div style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.14)', borderRadius: '18px', padding: '30px 24px', textAlign: 'center' }}>
+                  <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: `${colorPrimario}26`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                    <Handshake size={24} color={colorPrimario}/>
+                  </div>
+                  <div style={{ color: colorPrimario, fontWeight: '800', fontSize: '1.1rem', letterSpacing: '.01em' }}>TU MARCA AQUÍ</div>
+                  <div style={{ color: '#dbe1e8', fontSize: '.82rem', fontWeight: '500', marginTop: '4px' }}>Apoya el deporte local</div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
+        </div>
 
-          <div className="gm-vit-hero-sponsor" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', borderRadius: '18px', padding: '28px 22px', textAlign: 'center' }}>
-            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: `${colorPrimario}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
-              <Handshake size={26} color={colorPrimario}/>
-            </div>
-            <div style={{ color: colorPrimario, fontWeight: '900', fontSize: '1.2rem', letterSpacing: '.01em' }}>TU MARCA AQUÍ</div>
-            <div style={{ color: '#e5e7eb', fontSize: '.83rem', fontWeight: '600', marginTop: '4px' }}>Apoya el deporte local</div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '16px', fontSize: '.68rem', color: '#9ca3af' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: colorPrimario, display: 'inline-block', flexShrink: 0 }}/> Espacio disponible para patrocinadores
-            </div>
+        {/* Franja de confianza — superpuesta sobre el borde del hero, en
+            tarjeta blanca elevada, como el resto de secciones "claras". */}
+        <div style={{ maxWidth: '1020px', margin: '-56px auto 0', padding: '0 20px', position: 'relative', zIndex: 5 }}>
+          <div className="gm-vit-badges" style={{ display: 'grid', gap: '1px', background: '#eef0f3', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 12px 32px rgba(15,23,42,.12)' }}>
+            {[
+              { icon: <ShieldCheck size={19} color={colorPrimario}/>, texto: 'Torneos seguros y organizados' },
+              { icon: <Users size={19} color={colorPrimario}/>, texto: 'Pasión por el fútbol amateur' },
+              { icon: <MapPin size={19} color={colorPrimario}/>, texto: hayEscenario ? 'Canchas de calidad' : 'Comunidad futbolera local' },
+            ].map((f, i) => (
+              <div key={i} style={{ background: '#fff', padding: '18px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: `${colorPrimario}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{f.icon}</div>
+                <span style={{ color: '#374151', fontSize: '.82rem', fontWeight: '600', lineHeight: 1.3 }}>{f.texto}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* TORNEOS */}
-      <div id="torneos" style={s.section}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '22px' }}>
-          <Trophy size={20} color={colorPrimario}/>
-          <div style={{ fontWeight: '900', fontSize: '1.05rem', letterSpacing: '.03em' }}>TORNEOS {torneos.length > 0 ? 'ACTIVOS' : ''}</div>
+      <div id="torneos" style={{ ...s.section, paddingTop: '64px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={s.eyebrow}>
+            <Trophy size={19} color={colorPrimario}/>
+            <span style={s.eyebrowText}>TORNEOS {torneos.length > 0 ? 'ACTIVOS' : ''}</span>
+          </div>
         </div>
 
         {torneos.length === 0 ? (
@@ -166,21 +212,25 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
             <div>Todavía no hay torneos publicados acá</div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '18px' }}>
             {torneos.map(t => (
               <Link key={t.id} to={`/t/${t.id}`} className="gm-vit-card" style={{ ...s.card, display: 'flex', flexDirection: 'column', textDecoration: 'none', color: 'inherit' }}>
-                <div style={{ height: '88px', background: `linear-gradient(135deg, ${colorSecundario}, ${colorPrimario})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {t.logo_url ? <img src={t.logo_url} style={{ width: '52px', height: '52px', objectFit: 'contain' }}/> : <Trophy size={28} color="#fff"/>}
+                <div style={{ height: '96px', background: `linear-gradient(135deg, ${colorSecundario}, ${colorPrimario})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {t.logo_url ? <img src={t.logo_url} style={{ width: '56px', height: '56px', objectFit: 'contain' }}/> : <Trophy size={30} color="#fff"/>}
                 </div>
-                <div style={{ padding: '14px 16px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <span style={{ alignSelf: 'flex-start', fontSize: '.62rem', fontWeight: '800', color: colorPrimario, background: `${colorPrimario}18`, borderRadius: '999px', padding: '2px 9px', marginBottom: '8px', letterSpacing: '.03em' }}>TORNEO</span>
-                  <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '.92rem', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
-                  <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', fontSize: '.7rem', color: '#5f6368', marginBottom: '12px' }}>
+                <div style={{ padding: '16px 18px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <span style={{ alignSelf: 'flex-start', fontSize: '.62rem', fontWeight: '800', color: colorPrimario, background: `${colorPrimario}16`, borderRadius: '999px', padding: '3px 10px', marginBottom: '10px', letterSpacing: '.04em' }}>TORNEO ACTIVO</span>
+                  <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '.95rem', marginBottom: '10px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                  <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', fontSize: '.7rem', color: '#5f6368', marginBottom: '10px' }}>
                     {t.modalidad && <span>⚽ {t.modalidad}</span>}
                     {t.city && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={11}/>{t.city}</span>}
-                    {t.season && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Calendar size={11}/>{t.season}</span>}
                   </div>
-                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: colorPrimario, fontWeight: '700', fontSize: '.76rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '.72rem', color: '#5f6368', paddingTop: '10px', borderTop: '1px solid #f1f3f4', marginBottom: '4px' }}>
+                    {equiposPorTorneo[t.id] != null && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {equiposPorTorneo[t.id]} equipos inscritos</span>}
+                    {t.fecha_inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> {formatearFecha(t.fecha_inicio)}</span>}
+                    {t.categoria && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Tag size={12}/> {t.categoria}</span>}
+                  </div>
+                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: colorPrimario, fontWeight: '700', fontSize: '.78rem', paddingTop: '6px' }}>
                     Ver detalles <ChevronRight size={14}/>
                   </div>
                 </div>
@@ -194,9 +244,9 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
       {sponsors.length > 0 && (
         <div style={{ background: '#f8f9fa' }}>
           <div style={s.section}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '22px' }}>
-              <ShieldCheck size={20} color={colorPrimario}/>
-              <div style={{ fontWeight: '900', fontSize: '1.05rem', letterSpacing: '.03em' }}>PATROCINADORES OFICIALES</div>
+            <div style={s.eyebrow}>
+              <ShieldCheck size={19} color={colorPrimario}/>
+              <span style={s.eyebrowText}>PATROCINADORES OFICIALES</span>
             </div>
             {/* Todos los logos van en una caja del MISMO tamaño (contain, no
                 crop) para que ningún logo — cuadrado, ancho, alto — desarme
@@ -205,7 +255,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '14px' }}>
               {sponsors.map(sp => {
                 const contenido = (
-                  <div className="gm-vit-card" style={{ width: '100%', height: '76px', background: '#fff', border: '1px solid #eef0f3', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '10px' }}>
+                  <div className="gm-vit-card" style={{ width: '100%', height: '78px', background: '#fff', border: '1px solid #eef0f3', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '10px' }}>
                     {sp.logo_url ? <img src={sp.logo_url} alt={sp.nombre} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}/> : <span style={{ fontSize: '.76rem', fontWeight: '700', color: '#5f6368', textAlign: 'center' }}>{sp.nombre}</span>}
                   </div>
                 )
@@ -218,23 +268,36 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
         </div>
       )}
 
-      {/* CTA patrocinio */}
+      {/* CTA — reserva de cancha si hay escenario vinculado; si no, invitación
+          a patrocinar (para organizadores que todavía no tienen cancha). */}
       <div style={s.section}>
-        <div className="gm-vit-cta-grid" style={{ borderRadius: '18px', overflow: 'hidden', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,240px)', background: colorSecundario }}>
-          <div style={{ padding: '30px 28px' }}>
-            <div style={{ color: '#fff', fontWeight: '900', fontSize: '1.2rem' }}>¿Quieres patrocinar nuestros torneos?</div>
-            <div style={{ color: '#cbd5e1', fontSize: '.85rem', marginTop: '6px', marginBottom: '18px' }}>Asocia tu marca con el deporte y llega a más personas.</div>
-            {waHref ? (
-              <a href={`${waHref}?text=${encodeURIComponent(`Hola, quiero patrocinar los torneos de ${nombre}`)}`} target="_blank" rel="noreferrer"
-                style={{ ...s.pill, background: colorPrimario, color: '#fff' }}>
-                <FaWhatsapp size={14}/> Conoce nuestros planes
-              </a>
-            ) : (
-              <span style={{ ...s.pill, background: 'rgba(255,255,255,.12)', color: '#fff' }}>Conoce nuestros planes</span>
-            )}
+        {hayEscenario ? (
+          <div className="gm-vit-cta-grid" style={{ borderRadius: '18px', overflow: 'hidden', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,260px)', background: colorSecundario }}>
+            <div style={{ padding: '34px 30px' }}>
+              <div style={{ color: '#fff', fontWeight: '800', fontSize: '1.25rem', letterSpacing: '-.005em' }}>¿Ya tienes con quién jugar?</div>
+              <div style={{ color: '#cbd5e1', fontSize: '.87rem', marginTop: '7px', marginBottom: '20px' }}>Reserva tu cancha en minutos y asegura tu horario.</div>
+              <Link to={`/reservar/${perfil.escenario_id}`} style={{ ...s.pill, background: colorPrimario, color: '#fff' }}>
+                <CalendarCheck size={15}/> Reservar cancha
+              </Link>
+            </div>
+            <div className="gm-vit-cta-image" style={{ backgroundImage: `linear-gradient(90deg, ${colorSecundario} 0%, transparent 45%), url(${IMG_CANCHA})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
           </div>
-          <div className="gm-vit-cta-image" style={{ backgroundImage: `linear-gradient(90deg, ${colorSecundario} 0%, transparent 45%), url(${IMG_CTA})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
-        </div>
+        ) : (
+          <div className="gm-vit-cta-grid" style={{ borderRadius: '18px', overflow: 'hidden', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,260px)', background: colorSecundario }}>
+            <div style={{ padding: '34px 30px' }}>
+              <div style={{ color: '#fff', fontWeight: '800', fontSize: '1.25rem', letterSpacing: '-.005em' }}>¿Quieres patrocinar nuestros torneos?</div>
+              <div style={{ color: '#cbd5e1', fontSize: '.87rem', marginTop: '7px', marginBottom: '20px' }}>Asocia tu marca con el deporte y llega a más personas.</div>
+              {waHref ? (
+                <a href={`${waHref}?text=${encodeURIComponent(`Hola, quiero patrocinar los torneos de ${nombre}`)}`} target="_blank" rel="noreferrer" style={{ ...s.pill, background: colorPrimario, color: '#fff' }}>
+                  <FaWhatsapp size={14}/> Conoce nuestros planes
+                </a>
+              ) : (
+                <span style={{ ...s.pill, background: 'rgba(255,255,255,.12)', color: '#fff' }}>Conoce nuestros planes</span>
+              )}
+            </div>
+            <div className="gm-vit-cta-image" style={{ backgroundImage: `linear-gradient(90deg, ${colorSecundario} 0%, transparent 45%), url(${IMG_CANCHA})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+          </div>
+        )}
       </div>
 
       {/* FOOTER */}
