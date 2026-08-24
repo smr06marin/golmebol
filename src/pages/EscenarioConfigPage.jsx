@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Image as ImageIcon, Plus, Trash2, RotateCcw } from 'lucide-react'
+import { Image as ImageIcon, Plus, Trash2, RotateCcw, Upload, Globe } from 'lucide-react'
 import { slugifyCancha, registrarActividad, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 
 const S = {
@@ -26,6 +26,15 @@ export default function EscenarioConfigPage() {
   const [nuevaCancha, setNuevaCancha] = useState({ nombre:'', precio_hora:'' })
   const [agregando, setAgregando] = useState(false)
   const [soloLectura, setSoloLectura] = useState(false)
+  // Vitrina pública (organizador_perfiles) — solo existe si un admin u
+  // organizador ya vinculó este escenario desde "Mi dominio". El encargado
+  // puede editar los datos (logo, descripción, contacto, redes) pero no el
+  // dominio propio ni desvincular el escenario, eso lo controla el admin.
+  const [vitrina,   setVitrina]   = useState(null)
+  const [formVitrina, setFormVitrina] = useState(null)
+  const [guardandoVitrina, setGuardandoVitrina] = useState(false)
+  const [subiendoLogoVitrina, setSubiendoLogoVitrina] = useState(false)
+  const [subiendoFaviconVitrina, setSubiendoFaviconVitrina] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -47,7 +56,67 @@ export default function EscenarioConfigPage() {
     })
     const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).order('orden')
     setCanchas(cs || [])
+    const { data: vit } = await supabase.from('organizador_perfiles').select('*').eq('escenario_id', escenarioId).maybeSingle()
+    setVitrina(vit || null)
+    if (vit) setFormVitrina({
+      nombre_publico: vit.nombre_publico || '', descripcion: vit.descripcion || '',
+      color_primario: vit.color_primario || '#22c55e', color_secundario: vit.color_secundario || '#0f172a',
+      logo_url: vit.logo_url || '', favicon_url: vit.favicon_url || '',
+      whatsapp: vit.whatsapp || '', email: vit.email || '', direccion: vit.direccion || '',
+      facebook_url: vit.facebook_url || '', instagram_url: vit.instagram_url || '', tiktok_url: vit.tiktok_url || '',
+    })
     setLoading(false)
+  }
+
+  async function guardarVitrina() {
+    if (!vitrina) return
+    setGuardandoVitrina(true)
+    const payload = {
+      nombre_publico: formVitrina.nombre_publico.trim() || null,
+      descripcion: formVitrina.descripcion.trim() || null,
+      color_primario: formVitrina.color_primario?.trim() || null,
+      color_secundario: formVitrina.color_secundario?.trim() || null,
+      logo_url: formVitrina.logo_url || null,
+      favicon_url: formVitrina.favicon_url || null,
+      whatsapp: formVitrina.whatsapp.trim() || null,
+      email: formVitrina.email.trim() || null,
+      direccion: formVitrina.direccion.trim() || null,
+      facebook_url: formVitrina.facebook_url.trim() || null,
+      instagram_url: formVitrina.instagram_url.trim() || null,
+      tiktok_url: formVitrina.tiktok_url.trim() || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { data, error } = await supabase.from('organizador_perfiles').update(payload).eq('id', vitrina.id).select().single()
+    setGuardandoVitrina(false)
+    if (error) { setMsg('Error al guardar la vitrina: ' + error.message); return }
+    setVitrina(data)
+    setMsg('✅ Vitrina guardada'); setTimeout(()=>setMsg(''),3000)
+  }
+
+  async function handleLogoVitrina(file) {
+    if (!file || !vitrina) return
+    setSubiendoLogoVitrina(true)
+    const ext = file.name.split('.').pop()
+    const path = `${vitrina.organizador_id}/logo.${ext}`
+    const { error: errUp } = await supabase.storage.from('organizador-branding').upload(path, file, { upsert: true })
+    if (errUp) { setSubiendoLogoVitrina(false); setMsg('Error al subir logo: ' + errUp.message); return }
+    const { data: urlData } = supabase.storage.from('organizador-branding').getPublicUrl(path)
+    setFormVitrina(f => ({ ...f, logo_url: urlData.publicUrl }))
+    setSubiendoLogoVitrina(false)
+    setMsg('Logo subido — recuerda guardar la vitrina'); setTimeout(()=>setMsg(''),3500)
+  }
+
+  async function handleFaviconVitrina(file) {
+    if (!file || !vitrina) return
+    setSubiendoFaviconVitrina(true)
+    const ext = file.name.split('.').pop()
+    const path = `${vitrina.organizador_id}/favicon.${ext}`
+    const { error: errUp } = await supabase.storage.from('organizador-branding').upload(path, file, { upsert: true })
+    if (errUp) { setSubiendoFaviconVitrina(false); setMsg('Error al subir favicon: ' + errUp.message); return }
+    const { data: urlData } = supabase.storage.from('organizador-branding').getPublicUrl(path)
+    setFormVitrina(f => ({ ...f, favicon_url: urlData.publicUrl }))
+    setSubiendoFaviconVitrina(false)
+    setMsg('Favicon subido — recuerda guardar la vitrina'); setTimeout(()=>setMsg(''),3500)
   }
 
   function editarCanchaLocal(id, campo, valor) {
@@ -220,6 +289,75 @@ export default function EscenarioConfigPage() {
           {guardando ? 'Guardando...' : 'Guardar configuración'}
         </button>
         )}
+
+        {/* Vitrina pública — solo si un admin/organizador ya vinculó este
+            escenario a un dominio propio desde "Mi dominio". */}
+        <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px', marginTop:'16px' }}>
+          <div style={{ fontWeight:800, fontSize:'.9rem', marginBottom:'4px', display:'flex', alignItems:'center', gap:'6px' }}><Globe size={16} color={S.cyan}/> Vitrina pública</div>
+          {!vitrina ? (
+            <div style={{ fontSize:'.78rem', color:S.muted, marginTop:'10px' }}>
+              Este escenario todavía no está vinculado a ningún dominio propio. Pídele al administrador que lo cree y vincule en "Mi dominio" — después vas a poder editar acá el logo, la descripción, el contacto y las redes que se ven ahí.
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'14px' }}>Estos datos se ven en {vitrina.custom_domain || 'el dominio propio del organizador'} — el dominio en sí solo lo cambia el administrador.</div>
+
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre público</label><input value={formVitrina.nombre_publico} onChange={e=>setFormVitrina(f=>({...f,nombre_publico:e.target.value}))} style={inp} disabled={soloLectura}/></div>
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>Descripción corta</label><input value={formVitrina.descripcion} onChange={e=>setFormVitrina(f=>({...f,descripcion:e.target.value}))} style={inp} disabled={soloLectura}/></div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+                <div>
+                  <label style={lbl}>Logo</label>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                    <div style={{ width:'44px', height:'44px', borderRadius:'8px', background:S.card2, border:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
+                      {formVitrina.logo_url ? <img src={formVitrina.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/> : <Globe size={18} color={S.muted}/>}
+                    </div>
+                    {!soloLectura && (
+                    <label style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'.7rem', color:S.cyan, border:`1px solid ${S.cyan}`, borderRadius:'6px', padding:'6px 10px', cursor:'pointer' }}>
+                      <Upload size={11}/> {subiendoLogoVitrina ? '...' : 'Subir'}
+                      <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoLogoVitrina} onChange={e=>{ handleLogoVitrina(e.target.files[0]); e.target.value='' }}/>
+                    </label>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Favicon</label>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                    <div style={{ width:'44px', height:'44px', borderRadius:'8px', background:S.card2, border:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
+                      {formVitrina.favicon_url ? <img src={formVitrina.favicon_url} style={{ width:'28px', height:'28px', objectFit:'contain' }}/> : <ImageIcon size={16} color={S.muted}/>}
+                    </div>
+                    {!soloLectura && (
+                    <label style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'.7rem', color:S.cyan, border:`1px solid ${S.cyan}`, borderRadius:'6px', padding:'6px 10px', cursor:'pointer' }}>
+                      <Upload size={11}/> {subiendoFaviconVitrina ? '...' : 'Subir'}
+                      <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoFaviconVitrina} onChange={e=>{ handleFaviconVitrina(e.target.files[0]); e.target.value='' }}/>
+                    </label>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+                <div><label style={lbl}>Color primario</label><input type="color" value={formVitrina.color_primario} onChange={e=>setFormVitrina(f=>({...f,color_primario:e.target.value}))} style={{ ...inp, padding:'2px', height:'40px', cursor:'pointer' }} disabled={soloLectura}/></div>
+                <div><label style={lbl}>Color secundario</label><input type="color" value={formVitrina.color_secundario} onChange={e=>setFormVitrina(f=>({...f,color_secundario:e.target.value}))} style={{ ...inp, padding:'2px', height:'40px', cursor:'pointer' }} disabled={soloLectura}/></div>
+              </div>
+
+              <div style={{ fontWeight:700, fontSize:'.78rem', color:S.text2, margin:'16px 0 10px' }}>Contacto y redes (en el pie de página)</div>
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>WhatsApp</label><input value={formVitrina.whatsapp} onChange={e=>setFormVitrina(f=>({...f,whatsapp:e.target.value}))} style={inp} placeholder="3001234567" disabled={soloLectura}/></div>
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>Correo</label><input value={formVitrina.email} onChange={e=>setFormVitrina(f=>({...f,email:e.target.value}))} style={inp} disabled={soloLectura}/></div>
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>Dirección / ciudad</label><input value={formVitrina.direccion} onChange={e=>setFormVitrina(f=>({...f,direccion:e.target.value}))} style={inp} disabled={soloLectura}/></div>
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>Facebook</label><input value={formVitrina.facebook_url} onChange={e=>setFormVitrina(f=>({...f,facebook_url:e.target.value}))} style={inp} placeholder="https://facebook.com/..." disabled={soloLectura}/></div>
+              <div style={{ marginBottom:'12px' }}><label style={lbl}>Instagram</label><input value={formVitrina.instagram_url} onChange={e=>setFormVitrina(f=>({...f,instagram_url:e.target.value}))} style={inp} placeholder="https://instagram.com/..." disabled={soloLectura}/></div>
+              <div style={{ marginBottom:'16px' }}><label style={lbl}>TikTok</label><input value={formVitrina.tiktok_url} onChange={e=>setFormVitrina(f=>({...f,tiktok_url:e.target.value}))} style={inp} placeholder="https://tiktok.com/@..." disabled={soloLectura}/></div>
+
+              {!soloLectura && (
+              <button onClick={guardarVitrina} disabled={guardandoVitrina}
+                style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:guardandoVitrina?.7:1 }}>
+                {guardandoVitrina ? 'Guardando...' : '✓ Guardar vitrina'}
+              </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
