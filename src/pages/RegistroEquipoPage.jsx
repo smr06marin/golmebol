@@ -71,7 +71,7 @@ export default function RegistroEquipoPage() {
   // avisar/bloquear si el organizador puso un límite (torneo.limite_jugadores_equipo).
   const [rosterCount,   setRosterCount]   = useState(0)
   const [cedula,        setCedula]        = useState('')
-  const [deudaJugador,  setDeudaJugador]  = useState(null) // deuda personal de tarjetas
+  const [deudaJugador,  setDeudaJugador]  = useState(null) // deuda personal (inscripción sin pagar de otro torneo del mismo organizador)
   const [sancionJugador, setSancionJugador] = useState(null) // sanción activa
   const [verificacion,  setVerificacion]  = useState(null) // { codigo, telefono, tipo, nombre }
   const [codigoInput,   setCodigoInput]   = useState('')
@@ -265,11 +265,14 @@ export default function RegistroEquipoPage() {
     }
 
     const [{ data: deuda }, { data: sanc }] = await Promise.all([
-      supabase.rpc('jugador_tiene_deuda', { p_player_id: res.id }),
+      // p_tournament_id: la deuda personal solo bloquea si viene de OTRO
+      // torneo del MISMO organizador que este torneo (ver jugador_tiene_deuda
+      // en la BD) — no de torneos de otros organizadores.
+      supabase.rpc('jugador_tiene_deuda', { p_player_id: res.id, p_tournament_id: tournamentId }),
       supabase.rpc('jugador_sancion_activa', { p_player_id: res.id }),
     ])
     if (deuda?.tiene_deuda) {
-      setDeudaJugador({ total: deuda.total, concepto: deuda.concepto || 'tarjetas de torneos anteriores' })
+      setDeudaJugador({ total: deuda.total, concepto: deuda.concepto || 'un torneo anterior de este organizador' })
     }
     if (sanc?.sancionado) {
       setSancionJugador({ motivo: sanc.motivo, fecha_fin: sanc.fecha_fin })
@@ -630,7 +633,7 @@ export default function RegistroEquipoPage() {
             )}
             {deudaJugador && (
               <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '4px' }}>🚫 NO PUEDES INSCRIBIRTE POR DEUDA DE TARJETAS</div>
+                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '4px' }}>🚫 NO PUEDES INSCRIBIRTE POR DEUDA PENDIENTE</div>
                 <div style={{ fontSize: '.8rem', color: '#5f6368' }}>
                   Debes <strong style={{ color: '#d93025' }}>${Math.round(deudaJugador.total).toLocaleString('es-CO')}</strong> de {deudaJugador.concepto}.
                   Comunícate con la organización para ponerte al día y poder inscribirte.

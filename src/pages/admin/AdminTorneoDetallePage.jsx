@@ -1674,7 +1674,7 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchFinanzas() {
     const [{ data: movs }, { data: evs }, { data: st }] = await Promise.all([
-      supabase.from('torneo_finanzas').select('*, teams(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
+      supabase.from('torneo_finanzas').select('*, teams(name), players(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
       // Tarjetas de DOS fuentes combinadas:
       // 1. Eventos del partido: incluyen jugadores sin registro (con su nombre)
       // 2. Estadísticas: respaldo para partidos viejos guardados sin eventos
@@ -1864,6 +1864,17 @@ export default function AdminTorneoDetallePage() {
   async function handleEliminarPago(mv) {
     if (!confirm('¿Eliminar este pago?')) return
     await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    fetchFinanzas()
+  }
+
+  // Deuda personal (inscripción sin pagar x2, repartida entre jugadores) —
+  // es lo único que sigue a un jugador a los próximos torneos del MISMO
+  // organizador. Se marca pagada acá cuando el jugador se pone al día.
+  async function handleMarcarDeudaPersonalPagada(mv) {
+    if (!confirm(`¿Marcar como pagada la deuda de ${mv.players?.name || 'este jugador'} (${fmt(mv.monto)})?`)) return
+    const { error } = await supabase.from('torneo_finanzas').update({ pagado: true }).eq('id', mv.id)
+    if (error) return showMsg('Error al marcar como pagada', 'error')
+    showMsg('Deuda personal marcada como pagada ✓ — ya puede inscribirse en próximos torneos de este organizador')
     fetchFinanzas()
   }
 
@@ -2079,46 +2090,50 @@ export default function AdminTorneoDetallePage() {
     setGuardandoLogros(false)
     if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
 
-    // Tarjetas sin pagar al cierre del torneo → deuda personal de cada jugador
+    // Al cerrar el torneo: las tarjetas sin pagar quedan así (ya NO generan
+    // deuda personal ni se cobran en otros torneos). Lo ÚNICO que sigue al
+    // jugador a futuros torneos es la inscripción que su equipo dejó sin
+    // pagar: se DUPLICA y se reparte entre los jugadores inscritos de ese
+    // equipo, como deuda personal. Esa deuda solo bloquea inscripciones en
+    // torneos del MISMO organizador (ver jugador_tiene_deuda en la BD) — si
+    // quedó debiendo en un torneo de Golmebol, solo le sale ese cobro en
+    // otros torneos de Golmebol, no en los de otro organizador.
     let deudoresPersonales = 0
     try {
       const fc = torneo?.finanzas_config || {}
-      const pA = fc.precio_amarilla || 0, pZ = fc.precio_azul || 0, pR = fc.precio_roja || 0
-      if (pA + pZ + pR > 0) {
-        const [{ data: st }, { data: pagos }] = await Promise.all([
-          supabase.from('player_match_stats').select('player_id, team_id, yellow_cards, blue_cards, red_cards').eq('tournament_id', id),
-          supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_tarjetas'),
-        ])
-        const cargoEq = {}, pagosEq = {}, valorJug = {}
-        ;(st || []).forEach(s => {
-          // Cada fila es un jugador en UN partido: si tiene varias tarjetas
-          // ese partido, solo se cobra la de mayor valor (no la suma de todas).
-          const v = Math.max(s.yellow_cards > 0 ? pA : 0, s.blue_cards > 0 ? pZ : 0, s.red_cards > 0 ? pR : 0)
-          if (v === 0) return
-          cargoEq[s.team_id] = (cargoEq[s.team_id] || 0) + v
-          const k = `${s.team_id}|${s.player_id}`
-          valorJug[k] = (valorJug[k] || 0) + v
-        })
-        ;(pagos || []).forEach(p => { pagosEq[p.team_id] = (pagosEq[p.team_id] || 0) + (p.monto || 0) })
+      const inscripcionFee = fc.inscripcion || 0
+      // Se limpian las deudas personales de este torneo en cualquier caso
+      // (por si se corrige un pago y se vuelve a guardar logros).
+      await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('tipo', 'deuda_personal')
+
+      if (fc.llevar_cuentas && inscripcionFee > 0) {
+        const { data: pagosCargos } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_cargos')
+        const pagadoPorEquipo = {}
+        ;(pagosCargos || []).forEach(p => { pagadoPorEquipo[p.team_id] = (pagadoPorEquipo[p.team_id] || 0) + (p.monto || 0) })
 
         const deudas = []
-        Object.entries(valorJug).forEach(([k, valor]) => {
-          const [team_id, player_id] = k.split('|')
-          const cargo = cargoEq[team_id] || 0
-          const saldo = Math.max(0, cargo - (pagosEq[team_id] || 0))
-          if (cargo === 0 || saldo === 0) return
-          const monto = Math.round(valor * (saldo / cargo))
-          if (monto > 0) deudas.push({ tournament_id: id, team_id, player_id, tipo: 'deuda_personal', monto, concepto: `Tarjetas del torneo ${torneo?.name || ''}`.trim(), pagado: false })
+        equipos.forEach(eq => {
+          const pagado = pagadoPorEquipo[eq.id] || 0
+          const deudaInscripcion = Math.max(0, inscripcionFee - pagado)
+          if (deudaInscripcion <= 0) return
+          const montoDoble = deudaInscripcion * 2
+          const jugadoresEquipo = jugadores.filter(j => j.team_id === eq.id && j.player_id)
+          if (jugadoresEquipo.length === 0) return
+          const montoPorJugador = Math.round(montoDoble / jugadoresEquipo.length)
+          if (montoPorJugador <= 0) return
+          jugadoresEquipo.forEach(j => deudas.push({
+            tournament_id: id, team_id: eq.id, player_id: j.player_id, tipo: 'deuda_personal', monto: montoPorJugador,
+            concepto: `Inscripción sin pagar (x2) de ${eq.name} en ${torneo?.name || 'el torneo'}`.trim(), pagado: false,
+          }))
         })
 
-        await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('tipo', 'deuda_personal')
         if (deudas.length > 0) await supabase.from('torneo_finanzas').insert(deudas)
         deudoresPersonales = deudas.length
       }
     } catch (e) { console.error('deuda personal:', e) }
 
     const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
-    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${deudoresPersonales > 0 ? ` · 💳 ${deudoresPersonales} jugadores quedaron con deuda personal de tarjetas` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${deudoresPersonales > 0 ? ` · 💳 ${deudoresPersonales} jugadores quedaron con deuda personal por inscripción sin pagar` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
   }
 
   // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
@@ -5101,6 +5116,37 @@ export default function AdminTorneoDetallePage() {
               {fin.filas.length === 0 && <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Sin equipos en el torneo</div>}
              </div>
             </div>
+
+            {/* Deudas personales — inscripción sin pagar (x2), repartida entre
+                jugadores. Es lo único que se genera al guardar los logros del
+                torneo (los botones "Guardar logros" de Eliminatorias) y lo
+                único que sigue al jugador a próximos torneos del MISMO
+                organizador — las tarjetas sin pagar ya no bloquean nada. */}
+            {(() => {
+              const deudasPersonales = movimientos.filter(m => m.tipo === 'deuda_personal' && !m.pagado)
+              if (deudasPersonales.length === 0) return null
+              return (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🚫 Deudas personales pendientes ({deudasPersonales.length})</div>
+                  <div style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ padding: '10px 16px', background: '#fce8e6', fontSize: '.72rem', color: '#a30000' }}>
+                      Bloquean la inscripción del jugador en próximos torneos de este mismo organizador, hasta que se marquen pagadas.
+                    </div>
+                    {deudasPersonales.map((mv, i) => (
+                      <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < deudasPersonales.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                        <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '600' }}>{mv.players?.name || 'Jugador'} <span style={{ fontWeight: '400', color: '#5f6368' }}>· {mv.teams?.name || ''}</span></span>
+                        <span style={{ fontSize: '.75rem', color: '#5f6368' }}>{mv.concepto}</span>
+                        <span style={{ fontSize: '.85rem', fontWeight: '800', color: '#d93025' }}>{fmt(mv.monto)}</span>
+                        <button onClick={() => handleMarcarDeudaPersonalPagada(mv)}
+                          style={{ background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '700' }}>
+                          ✓ Marcar pagada
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Movimientos registrados (pagos y deudas) */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Movimientos registrados</div>
