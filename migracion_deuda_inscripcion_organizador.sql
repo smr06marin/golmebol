@@ -119,7 +119,10 @@ begin
   if p_tournament_id is null then raise exception 'Torneo obligatorio'; end if;
 
   -- Equipo del link
-  select * into v_equipo from teams where registro_token = v_token limit 1;
+  -- teams.registro_token quedó creado como uuid en la base, no como texto,
+  -- así que hay que convertirlo para poder compararlo contra el token que
+  -- llega como texto en la URL (ver migracion_fix_deuda_uuid.sql).
+  select * into v_equipo from teams where registro_token::text = v_token limit 1;
   if not found then raise exception 'Link de registro inválido (equipo)'; end if;
 
   -- Torneo abierto / existente

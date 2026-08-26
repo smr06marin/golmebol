@@ -1,15 +1,22 @@
 -- ============================================================
--- FIX: error "operator does not exist: uuid = text" al registrarse
--- (botón "Registrarme en Golmebol")
+-- FIX DEFINITIVO: "operator does not exist: uuid = text" al registrarse
 -- Cómo ejecutar: Supabase → SQL Editor → pegar todo → RUN
 -- Es seguro ejecutarlo más de una vez.
 --
--- Causa probable: al agregar el segundo parámetro (p_tournament_id) a
--- jugador_tiene_deuda con "create or replace", Postgres NO reemplaza la
--- función vieja de 1 solo parámetro — la deja viva al lado de la nueva
--- (dos funciones con el mismo nombre y distinta firma). Este archivo borra
--- la vieja explícitamente y vuelve a crear todo con casts explícitos a
--- uuid, para no dejar ninguna ambigüedad.
+-- Causa real (confirmada con el diagnóstico "begin; select
+-- registrar_equipo(...); rollback;" que devolvió el CONTEXT exacto):
+--   select * from teams where registro_token = v_token limit 1
+-- teams.registro_token está creado como uuid en la base, pero v_token es
+-- text — Postgres no compara uuid = text sin cast explícito.
+--
+-- Esto YA se había arreglado antes en migracion_fix_registrar_equipo_uuid.sql
+-- (con registro_token::text = v_token, más manejo defensivo de todos los
+-- otros pasos y soporte de "registro_simple"). El problema fue que la
+-- migración de la deuda por inscripción (migracion_deuda_inscripcion_organizador.sql)
+-- se armó copiando la versión VIEJA de registrar_equipo sin ese fix, y lo
+-- pisó sin querer. Este archivo deja UNA sola versión, con todo junto:
+-- el fix del token + el soporte de registro_simple + la deuda personal
+-- ahora filtrada por organizador.
 -- ============================================================
 
 drop function if exists public.jugador_tiene_deuda(uuid);
@@ -64,8 +71,7 @@ $$;
 revoke all on function public.jugador_tiene_deuda(uuid, uuid) from public;
 grant execute on function public.jugador_tiene_deuda(uuid, uuid) to anon, authenticated;
 
--- Se vuelve a crear registrar_equipo también, por si el script anterior se
--- había cortado a mitad de camino y esta parte no llegó a aplicarse.
+
 create or replace function public.registrar_equipo(
   p_token text,
   p_tournament_id uuid,
@@ -100,99 +106,176 @@ begin
   if v_cedula is null or v_cedula = '' then raise exception 'Cédula obligatoria'; end if;
   if p_tournament_id is null then raise exception 'Torneo obligatorio'; end if;
 
-  select * into v_equipo from teams where registro_token = v_token limit 1;
+  -- Equipo del link (cast defensivo: teams.registro_token quedó creado
+  -- como uuid en la base, no como texto, así que hay que convertirlo
+  -- para poder compararlo contra el token que llega como texto en la URL)
+  begin
+    select * into v_equipo from teams where registro_token::text = v_token limit 1;
+  exception when others then
+    raise exception 'Paso "buscar equipo": %', sqlerrm;
+  end;
   if not found then raise exception 'Link de registro inválido (equipo)'; end if;
 
-  select * into v_torneo from tournaments where id = p_tournament_id limit 1;
+  -- Torneo abierto / existente
+  begin
+    select * into v_torneo from tournaments where id = p_tournament_id limit 1;
+  exception when others then
+    raise exception 'Paso "buscar torneo": %', sqlerrm;
+  end;
   if not found then raise exception 'Torneo no encontrado'; end if;
 
-  if not exists (
-    select 1 from tournament_teams
-    where tournament_id = p_tournament_id and team_id = v_equipo.id
-  ) then
-    raise exception 'El equipo no pertenece a este torneo';
-  end if;
+  -- Equipo debe estar inscrito en ese torneo (cast defensivo)
+  begin
+    if not exists (
+      select 1 from tournament_teams
+      where tournament_id::text = p_tournament_id::text and team_id::text = v_equipo.id::text
+    ) then
+      raise exception 'El equipo no pertenece a este torneo';
+    end if;
+  exception when others then
+    if sqlerrm like 'El equipo no pertenece%' then raise; end if;
+    raise exception 'Paso "verificar equipo en torneo": %', sqlerrm;
+  end;
 
+  -- Link vencido (24h desde registro_token_generado_en)
   if v_equipo.registro_token_generado_en is not null
      and v_equipo.registro_token_generado_en < now() - interval '24 hours' then
     raise exception 'Link de registro vencido';
   end if;
 
-  select * into v_player from players where numero_cedula = v_cedula limit 1;
+  -- Buscar o crear jugador
+  begin
+    select * into v_player from players where numero_cedula = v_cedula limit 1;
+  exception when others then
+    raise exception 'Paso "buscar jugador por cédula": %', sqlerrm;
+  end;
 
   if not found then
-    if nullif(trim(p_name), '') is null then raise exception 'El nombre es obligatorio'; end if;
-    if nullif(trim(p_telefono), '') is null then raise exception 'El teléfono es obligatorio'; end if;
-    if nullif(trim(p_city), '') is null then raise exception 'La ciudad es obligatoria'; end if;
-    if nullif(trim(p_genero), '') is null then raise exception 'El género es obligatorio'; end if;
-    if p_fecha_nacimiento is null then raise exception 'La fecha de nacimiento es obligatoria'; end if;
-    if coalesce(p_posicion_futbol5, '') = ''
-       and coalesce(p_posicion_futbol7, '') = ''
-       and coalesce(p_posicion_futbol11, '') = '' then
-      raise exception 'Selecciona al menos una posición';
-    end if;
-
-    v_digitos := right(regexp_replace(p_telefono, '\D', '', 'g'), 10);
-    if length(v_digitos) = 10 then
-      select id, name into v_choque
-      from players
-      where right(regexp_replace(coalesce(telefono, ''), '\D', '', 'g'), 10) = v_digitos
-         or right(regexp_replace(coalesce(whatsapp, ''), '\D', '', 'g'), 10) = v_digitos
-      limit 1;
-      if found then
-        raise exception 'Ese número de WhatsApp ya está registrado con otro jugador (%).', v_choque.name;
+    if coalesce(v_torneo.registro_simple, false) then
+      -- Registro simple (torneos internacionales/de paso): solo nombre y
+      -- cédula son obligatorios.
+      if nullif(trim(p_name), '') is null then raise exception 'El nombre es obligatorio'; end if;
+    else
+      -- Alta nueva: campos obligatorios (flujo completo)
+      if nullif(trim(p_name), '') is null then raise exception 'El nombre es obligatorio'; end if;
+      if nullif(trim(p_telefono), '') is null then raise exception 'El teléfono es obligatorio'; end if;
+      if nullif(trim(p_city), '') is null then raise exception 'La ciudad es obligatoria'; end if;
+      if nullif(trim(p_genero), '') is null then raise exception 'El género es obligatorio'; end if;
+      if p_fecha_nacimiento is null then raise exception 'La fecha de nacimiento es obligatoria'; end if;
+      if coalesce(p_posicion_futbol5, '') = ''
+         and coalesce(p_posicion_futbol7, '') = ''
+         and coalesce(p_posicion_futbol11, '') = '' then
+        raise exception 'Selecciona al menos una posición';
       end if;
     end if;
 
-    insert into players (
-      name, telefono, city, genero, fecha_nacimiento,
-      posicion_futbol5, posicion_futbol7, posicion_futbol11,
-      numero_cedula, activo_membresia, fecha_registro
-    ) values (
-      trim(p_name), trim(p_telefono), trim(p_city), trim(p_genero), p_fecha_nacimiento,
-      nullif(p_posicion_futbol5, ''), nullif(p_posicion_futbol7, ''), nullif(p_posicion_futbol11, ''),
-      v_cedula, true, now()
-    )
-    returning * into v_player;
+    -- WhatsApp único (últimos 10 dígitos) — solo si vino teléfono
+    if nullif(trim(coalesce(p_telefono, '')), '') is not null then
+      begin
+        v_digitos := right(regexp_replace(p_telefono, '\D', '', 'g'), 10);
+        if length(v_digitos) = 10 then
+          select id, name into v_choque
+          from players
+          where right(regexp_replace(coalesce(telefono, ''), '\D', '', 'g'), 10) = v_digitos
+             or right(regexp_replace(coalesce(whatsapp, ''), '\D', '', 'g'), 10) = v_digitos
+          limit 1;
+          if found then
+            raise exception 'Ese número de WhatsApp ya está registrado con otro jugador (%).', v_choque.name;
+          end if;
+        end if;
+      exception when others then
+        if sqlerrm like 'Ese número de WhatsApp%' then raise; end if;
+        raise exception 'Paso "verificar whatsapp duplicado": %', sqlerrm;
+      end;
+    end if;
+
+    begin
+      insert into players (
+        name, telefono, city, genero, fecha_nacimiento,
+        posicion_futbol5, posicion_futbol7, posicion_futbol11,
+        numero_cedula, activo_membresia, fecha_registro
+      ) values (
+        trim(p_name),
+        nullif(trim(coalesce(p_telefono, '')), ''),
+        nullif(trim(coalesce(p_city, '')), ''),
+        nullif(trim(coalesce(p_genero, '')), ''),
+        p_fecha_nacimiento,
+        nullif(p_posicion_futbol5, ''), nullif(p_posicion_futbol7, ''), nullif(p_posicion_futbol11, ''),
+        v_cedula, true, now()
+      )
+      returning * into v_player;
+    exception when others then
+      raise exception 'Paso "insertar jugador nuevo": %', sqlerrm;
+    end;
 
     v_creado := true;
   end if;
 
-  if exists (
-    select 1 from tournament_player_registrations
-    where tournament_id = p_tournament_id
-      and player_id = v_player.id
-      and activo = true
-  ) then
-    raise exception 'Ya estás registrado en este torneo';
-  end if;
+  -- Ya en este torneo (cast defensivo)
+  begin
+    if exists (
+      select 1 from tournament_player_registrations
+      where tournament_id::text = p_tournament_id::text
+        and player_id::text = v_player.id::text
+        and activo = true
+    ) then
+      raise exception 'Ya estás registrado en este torneo';
+    end if;
+  exception when others then
+    if sqlerrm like 'Ya estás registrado%' then raise; end if;
+    raise exception 'Paso "verificar ya inscrito": %', sqlerrm;
+  end;
 
-  v_sanc := public.jugador_sancion_activa(v_player.id);
-  if (v_sanc->>'sancionado')::boolean then
-    raise exception 'Jugador sancionado: no puede inscribirse';
-  end if;
+  -- Sanción / deuda bloquean inscripción
+  begin
+    v_sanc := public.jugador_sancion_activa(v_player.id);
+    if (v_sanc->>'sancionado')::boolean then
+      raise exception 'Jugador sancionado: no puede inscribirse';
+    end if;
+  exception when others then
+    if sqlerrm like 'Jugador sancionado%' then raise; end if;
+    raise exception 'Paso "verificar sanción": %', sqlerrm;
+  end;
 
-  v_deuda := public.jugador_tiene_deuda(v_player.id, p_tournament_id);
-  if (v_deuda->>'tiene_deuda')::boolean then
-    raise exception 'Jugador con deuda pendiente en este organizador: no puede inscribirse';
-  end if;
+  -- Deuda personal: solo bloquea si viene de un torneo del MISMO organizador
+  -- que este torneo (jugador_tiene_deuda ya filtra por p_tournament_id).
+  begin
+    v_deuda := public.jugador_tiene_deuda(v_player.id, p_tournament_id);
+    if (v_deuda->>'tiene_deuda')::boolean then
+      raise exception 'Jugador con deuda pendiente en este organizador: no puede inscribirse';
+    end if;
+  exception when others then
+    if sqlerrm like 'Jugador con deuda%' then raise; end if;
+    raise exception 'Paso "verificar deuda": %', sqlerrm;
+  end;
 
-  insert into tournament_player_registrations (tournament_id, team_id, player_id, activo)
-  values (p_tournament_id, v_equipo.id, v_player.id, true);
+  -- Inscripción al torneo
+  begin
+    insert into tournament_player_registrations (tournament_id, team_id, player_id, activo)
+    values (p_tournament_id, v_equipo.id, v_player.id, true);
+  exception when others then
+    raise exception 'Paso "inscribir en torneo": %', sqlerrm;
+  end;
 
-  if not exists (
-    select 1 from team_players
-    where team_id = v_equipo.id and player_id = v_player.id
-  ) then
-    insert into team_players (team_id, player_id, activo)
-    values (v_equipo.id, v_player.id, true);
-  end if;
+  -- Relación base equipo ↔ jugador (cast defensivo)
+  begin
+    if not exists (
+      select 1 from team_players
+      where team_id::text = v_equipo.id::text and player_id::text = v_player.id::text
+    ) then
+      insert into team_players (team_id, player_id, activo)
+      values (v_equipo.id, v_player.id, true);
+    end if;
+  exception when others then
+    raise exception 'Paso "vincular jugador al equipo": %', sqlerrm;
+  end;
 
   return jsonb_build_object(
     'player_id', v_player.id,
     'creado', v_creado,
     'name', v_player.name,
     'requiere_cedula', coalesce(v_torneo.requiere_cedula, true),
+    'registro_simple', coalesce(v_torneo.registro_simple, false),
     'tiene_cedula_frontal', v_player.cedula_frontal_url is not null,
     'tiene_cedula_trasera', v_player.cedula_trasera_url is not null
   );
