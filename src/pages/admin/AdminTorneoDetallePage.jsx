@@ -1882,6 +1882,21 @@ export default function AdminTorneoDetallePage() {
   // jugador en este torneo — así deja de salirle la advertencia "debe
   // tarjeta" en la planilla del próximo partido. No toca el saldo del
   // equipo (eso lo sigue manejando el botón "💵 Pago" de arriba).
+  // Abre el modal de pago con el monto YA calculado para ese jugador (la
+  // regla de "solo se cobra la tarjeta más cara del partido" ya está
+  // aplicada en j.valor, que viene de calcFinanzas) y con sus tarjetas
+  // pendientes pre-marcadas, para no tener que escribir el monto a mano.
+  function abrirPagoJugador(equipo, j) {
+    const pend = (j.player_id && pendientesTarjetas[j.player_id]) || { am: 0, az: 0, rj: 0 }
+    const marcar = []
+    if (pend.am > 0) marcar.push({ player_id: j.player_id, color: 'am', nombre: j.nombre })
+    if (pend.az > 0) marcar.push({ player_id: j.player_id, color: 'az', nombre: j.nombre })
+    if (pend.rj > 0) marcar.push({ player_id: j.player_id, color: 'rj', nombre: j.nombre })
+    setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(j.valor || 0)), concepto: `Tarjeta(s) de ${j.nombre}` })
+    setTarjetasAPagar(marcar)
+    setPagoModal({ ...equipo, tarjetasDetalle: [j] })
+  }
+
   async function handlePagarTarjetaJugador(playerId, color, nombre) {
     const { error } = await marcarTarjetaPagada(playerId, color)
     if (error) return showMsg('Error al marcar como pagada', 'error')
@@ -5085,6 +5100,12 @@ export default function AdminTorneoDetallePage() {
                           {j.az > 0 && <span>🟦 ×{j.az}</span>}
                           {j.rj > 0 && <span>🟥 ×{j.rj}</span>}
                           <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(j.valor)}</span>
+                          {j.player_id && (pend.am > 0 || pend.az > 0 || pend.rj > 0) && (
+                            <button onClick={() => abrirPagoJugador(r.equipo, j)} title="Registrar el pago de este jugador con el monto ya calculado"
+                              style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
+                              💵 Cobrar {fmt(j.valor)}
+                            </button>
+                          )}
                           {j.player_id && pend.am > 0 && (
                             <button onClick={() => handlePagarTarjetaJugador(j.player_id, 'am', j.nombre)} title="Marcar tarjetas amarillas como pagadas (quita la advertencia en la planilla)"
                               style={{ background: '#fff8e1', border: '1px solid #f9d874', borderRadius: '6px', padding: '3px 7px', cursor: 'pointer', color: '#8a6d00', fontSize: '.68rem', fontWeight: '700' }}>
