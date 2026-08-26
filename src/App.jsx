@@ -82,6 +82,7 @@ const EscenarioReportesPage       = lazy(() => import('./pages/EscenarioReportes
 const EscenarioActividadPage      = lazy(() => import('./pages/EscenarioActividadPage'))
 const EscenarioConfigPage         = lazy(() => import('./pages/EscenarioConfigPage'))
 const ReservarEscenarioPage       = lazy(() => import('./pages/ReservarEscenarioPage'))
+const EscenariosPublicoPage       = lazy(() => import('./pages/EscenariosPublicoPage'))
 const PedirEscenarioPage          = lazy(() => import('./pages/PedirEscenarioPage'))
 
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
@@ -457,6 +458,10 @@ export default function App() {
           <Route path="/registro/equipo/:token/:tournamentId" element={<RegistroEquipoPage/>}/>
           {/* Registro público de jugadores de escuela (acudiente) */}
           <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
+          {/* Listado público de escenarios (antes la landing solo llevaba al
+              primer escenario que trajera la consulta, así que con más de
+              uno creado los demás no se veían) */}
+          <Route path="/escenarios" element={<EscenariosPublicoPage/>}/>
           {/* Reserva pública de cancha — sin login */}
           <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>}/>
           <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>}/>

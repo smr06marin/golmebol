@@ -523,7 +523,7 @@ export default function LandingPage() {
               <Building2 size={20} color={S.green} style={{ marginBottom: '8px' }}/>
               <div style={{ fontWeight: 900, fontSize: '1.02rem', marginBottom: '4px' }}>Escenarios</div>
               <div style={{ fontSize: '.78rem', color: S.text2, marginBottom: '14px' }}>Los mejores escenarios deportivos para que vivas tu pasión.</div>
-              <button className="gm-hover" onClick={() => navigate('/reservar/' + escenarios[0].id)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
+              <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
                 VER ESCENARIOS <ArrowRight size={14}/>
               </button>
             </div>
