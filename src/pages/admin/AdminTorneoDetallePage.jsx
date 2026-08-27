@@ -2685,24 +2685,75 @@ export default function AdminTorneoDetallePage() {
         else sinCoincidencia = true
       }
       const fechaElegida = candidatas[Math.floor(Math.random() * candidatas.length)].iso
-      const horaPreferida = (p.local.hora_preferida && p.local.hora_preferida === p.visitante.hora_preferida)
-        ? p.local.hora_preferida
-        : (p.local.hora_preferida || p.visitante.hora_preferida || null)
-      return { ...p, fecha: fechaElegida, horaPreferida, sinCoincidencia }
+      return { ...p, fecha: fechaElegida, sinCoincidencia }
     })
 
-    // Cancha + hora: por cada fecha se reparten las canchas en ronda y la
-    // hora sube de a 1 por vuelta completa (igual que antes), salvo que el
-    // cruce tenga hora preferida (de alguno de los dos equipos) — ahí se
-    // respeta esa hora en vez de la que le tocaría por turno.
+    // Historial de a qué hora ha jugado cada equipo hasta ahora en este
+    // torneo (partidos ya jugados o programados) — para repartir bien los
+    // horarios entre jornadas: que no le toque siempre el mismo horario al
+    // mismo equipo, sobre todo el que menos les guste.
+    const historialHora = {}
+    function sumarHistorial(teamId, horaStr) {
+      if (!teamId || !horaStr) return
+      historialHora[teamId] = historialHora[teamId] || {}
+      historialHora[teamId][horaStr] = (historialHora[teamId][horaStr] || 0) + 1
+    }
+    partidos.forEach(m => {
+      if (!m.played_at) return
+      const horaStr = `${String(new Date(m.played_at).getHours()).padStart(2, '0')}:00`
+      sumarHistorial(m.home_team_id, horaStr)
+      sumarHistorial(m.away_team_id, horaStr)
+    })
+
+    // Cancha + hora, por cada fecha por separado. Se arman los horarios
+    // posibles de ese día (uno por "ronda" de canchas, empezando en la hora
+    // por defecto) y se reparten así:
+    //  1) primero los cruces con hora mínima ("no antes de") de alguno de
+    //     los dos equipos, para asegurarles un cupo que sí les sirva;
+    //  2) el resto, en orden al azar;
+    //  3) a cada cruce se le da, entre los horarios que le sirven y todavía
+    //     tienen cupo, el que MENOS veces hayan jugado esos dos equipos
+    //     combinados (así no se repite siempre el mismo horario para el
+    //     mismo equipo semana a semana).
     const porFecha = {}
     conFecha.forEach(p => { if (!p.descanso) (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
     const [hIniDefault] = configJornada.hora_inicio.split(':').map(Number)
     Object.values(porFecha).forEach(lista => {
-      lista.forEach((p, idx) => {
-        p.cancha = canchas[idx % canchas.length]
-        p.hora = p.horaPreferida || `${String(hIniDefault + Math.floor(idx / canchas.length)).padStart(2, '0')}:00`
+      const rondas = Math.max(1, Math.ceil(lista.length / canchas.length))
+      const slots = Array.from({ length: rondas }, (_, r) => `${String(hIniDefault + r).padStart(2, '0')}:00`)
+      const cupo = {}
+      slots.forEach(s => { cupo[s] = canchas.length })
+
+      lista.forEach(p => {
+        const minA = p.local.hora_preferida ? parseInt(p.local.hora_preferida.split(':')[0], 10) : -1
+        const minB = p.visitante.hora_preferida ? parseInt(p.visitante.hora_preferida.split(':')[0], 10) : -1
+        p._minHora = Math.max(minA, minB)
       })
+      const conRestriccion = lista.filter(p => p._minHora > -1)
+      const sinRestriccion = lista.filter(p => p._minHora === -1).sort(() => Math.random() - 0.5)
+
+      ;[...conRestriccion, ...sinRestriccion].forEach(p => {
+        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora))
+        let sinHorarioDisponible = false
+        if (candidatos.length === 0) {
+          candidatos = slots.filter(s => cupo[s] > 0)
+          sinHorarioDisponible = true
+          if (candidatos.length === 0) candidatos = slots
+        }
+        const elegido = candidatos
+          .map(s => ({ s, peso: (historialHora[p.local.id]?.[s] || 0) + (historialHora[p.visitante.id]?.[s] || 0) + Math.random() * 0.001 }))
+          .sort((a, b) => a.peso - b.peso)[0].s
+        cupo[elegido] = Math.max(0, (cupo[elegido] || 0) - 1)
+        p.hora = elegido
+        p.sinHorarioDisponible = sinHorarioDisponible
+        delete p._minHora
+        sumarHistorial(p.local.id, elegido)
+        sumarHistorial(p.visitante.id, elegido)
+      })
+
+      const porHora = {}
+      lista.forEach(p => { (porHora[p.hora] = porHora[p.hora] || []).push(p) })
+      Object.values(porHora).forEach(grupo => { grupo.forEach((p, idx) => { p.cancha = canchas[idx % canchas.length] }) })
     })
 
     setJornadaGenerada(conFecha)
@@ -3944,7 +3995,7 @@ export default function AdminTorneoDetallePage() {
             <div style={{ marginTop: '16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}><Calendar size={18} color="#1a73e8"/> Preferencias de días y hora por equipo</div>
-                <div style={{ fontSize: '.78rem', color: '#9aa0a6', marginBottom: '14px' }}>Opcional — el sorteo intenta programar cada cruce en un día que les sirva a los dos equipos, dentro del rango de fechas que definas abajo. Se guarda solo, no hace falta botón.</div>
+                <div style={{ fontSize: '.78rem', color: '#9aa0a6', marginBottom: '14px' }}>Opcional — el sorteo intenta programar cada cruce en un día que les sirva a los dos equipos (dentro del rango de fechas de abajo) y respeta el "no antes de" de cada uno. Además reparte los horarios entre jornadas para que no le toque siempre el mismo horario al mismo equipo. Se guarda solo, no hace falta botón.</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '10px' }}>
                   {equipos.map(e => (
                     <div key={e.tournament_team_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '4px 0' }}>
@@ -3961,8 +4012,9 @@ export default function AdminTorneoDetallePage() {
                           )
                         })}
                       </div>
+                      <span style={{ fontSize: '.7rem', color: '#9aa0a6' }}>no antes de</span>
                       <input type="time" value={e.hora_preferida || ''} onChange={ev => guardarPreferenciaEquipo(e, { hora_preferida: ev.target.value })}
-                        title="Hora preferida (opcional)"
+                        title="No programar antes de esta hora (opcional) — ej: 19:00 si prefieren jugar después de las 7pm"
                         style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124', width: '90px' }}/>
                       {guardandoPref === e.tournament_team_id && <span style={{ fontSize: '.68rem', color: '#9aa0a6' }}>guardando...</span>}
                     </div>
@@ -4090,6 +4142,11 @@ export default function AdminTorneoDetallePage() {
                         {!p.descanso && p.sinCoincidencia && (
                           <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
                             ⚠️ {p.local?.name} y {p.visitante?.name} no comparten ningún día preferido — se le puso una fecha cualquiera del rango, revisala.
+                          </div>
+                        )}
+                        {!p.descanso && p.sinHorarioDisponible && (
+                          <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
+                            ⚠️ No había ningún horario libre ese día que cumpliera el "no antes de" de {p.local?.name} y/o {p.visitante?.name} — se le puso el horario disponible más cercano, revisalo.
                           </div>
                         )}
                         {veces > 0 && (
