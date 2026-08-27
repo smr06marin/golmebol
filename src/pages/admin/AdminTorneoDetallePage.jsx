@@ -2729,6 +2729,19 @@ export default function AdminTorneoDetallePage() {
     grupoEquipos.forEach(ge => { grupoDe[ge.team_id] = ge.grupo_id })
     const hayGrupos = grupos.length > 1
 
+    // Dos equipos son "compatibles" en día si al menos uno de los dos no
+    // marcó preferencia, o si sus días preferidos se cruzan en algo. Se
+    // intenta emparejar primero equipos compatibles entre sí — así un
+    // equipo que "solo juega sábado" no termina cruzado con uno que "solo
+    // juega domingo" (cruce que después no tiene ninguna fecha que le
+    // sirva a los dos).
+    function diasCompatibles(a, b) {
+      const da = a.dias_preferidos || []
+      const db = b.dias_preferidos || []
+      if (da.length === 0 || db.length === 0) return true
+      return da.some(d => db.includes(d))
+    }
+
     const eq = [...equipos].sort(() => Math.random() - 0.5)
     const usados = new Set()
     const pares = []
@@ -2737,9 +2750,17 @@ export default function AdminTorneoDetallePage() {
     for (const a of eq) {
       if (usados.has(a.id)) continue
       usados.add(a.id)
-      // 1) Rival del mismo grupo con el que no haya jugado
-      let rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
-      // 2) Si no hay y está permitido, rival de otro grupo con el que no haya jugado
+      // 1) Rival del mismo grupo, compatible en día, con el que no haya jugado
+      let rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]) && diasCompatibles(a, b))
+      // 2) Si no hay, mismo grupo pero sin exigir compatibilidad de día
+      if (!rival) {
+        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
+      }
+      // 3) Si no hay y está permitido, rival de otro grupo compatible en día
+      if (!rival && hayGrupos && permitirIntergrupo) {
+        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && diasCompatibles(a, b))
+      }
+      // 4) Último recurso: rival de otro grupo sin exigir nada más
       if (!rival && hayGrupos && permitirIntergrupo) {
         rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`))
       }
@@ -2840,21 +2861,16 @@ export default function AdminTorneoDetallePage() {
       const diaKey = DIAS_SEMANA[new Date(fechaIso + 'T00:00:00').getDay()].key
       const horariosDia = (configJornada.horarios_por_dia || {})[diaKey]
       const usaHorarioEspecifico = !!(horariosDia && horariosDia.length > 0)
-      const slotsMarcados = usaHorarioEspecifico ? [...horariosDia] : []
       let slots = usaHorarioEspecifico ? [...horariosDia].sort() : []
       if (slots.length === 0) {
         const rondas = Math.max(1, Math.ceil(lista.length / canchasDia.length))
         slots = Array.from({ length: rondas }, (_, r) => `${String(hIniDefault + r).padStart(2, '0')}:00`)
       }
       // Si los horarios marcados para ese día no alcanzan (más partidos que
-      // horarios × canchas disponibles), se agregan horas extra después de
-      // la última marcada, para no dejar partidos sin programar — quedan
-      // avisados con sinHorarioDisponible para revisar a mano.
-      let horaExtra = parseInt(slots[slots.length - 1].split(':')[0], 10) + 1
-      while (slots.length * canchasDia.length < lista.length) {
-        slots.push(`${String(horaExtra).padStart(2, '0')}:00`)
-        horaExtra++
-      }
+      // horarios × canchas disponibles), NO se inventan horas nuevas fuera
+      // de lo que marcaste — esos partidos quedan sin hora/cancha y
+      // avisados con "sinCupo" para que los ubiques vos a mano (otra
+      // fecha, otra cancha u otra hora).
       const cupo = {}
       slots.forEach(s => { cupo[s] = canchasDia.length })
 
@@ -2880,7 +2896,16 @@ export default function AdminTorneoDetallePage() {
         if (candidatos.length === 0) {
           candidatos = slots.filter(s => cupo[s] > 0)
         }
-        if (candidatos.length === 0) candidatos = slots
+        if (candidatos.length === 0) {
+          // Ya no queda ningún horario/cancha libre ese día con lo que
+          // marcaste — no se inventa una hora nueva, queda sin programar
+          // para ubicarlo a mano.
+          p.hora = null
+          p.cancha = null
+          p.sinCupo = true
+          delete p._minHora
+          return
+        }
         const elegido = candidatos
           .map(s => ({ s, peso: (historialHora[p.local.id]?.[s] || 0) + (historialHora[p.visitante.id]?.[s] || 0) + Math.random() * 0.001 }))
           .sort((a, b) => a.peso - b.peso)[0].s
@@ -2888,14 +2913,13 @@ export default function AdminTorneoDetallePage() {
         p.hora = elegido
         p.sinHorarioDisponible = sinHorarioDisponible
         p.usoHoraDefault = !usaHorarioEspecifico
-        p.usoHoraExtra = usaHorarioEspecifico && !slotsMarcados.includes(elegido)
         delete p._minHora
         sumarHistorial(p.local.id, elegido)
         sumarHistorial(p.visitante.id, elegido)
       })
 
       const porHora = {}
-      lista.forEach(p => { (porHora[p.hora] = porHora[p.hora] || []).push(p) })
+      lista.forEach(p => { if (p.hora) (porHora[p.hora] = porHora[p.hora] || []).push(p) })
       Object.values(porHora).forEach(grupo => { grupo.forEach((p, idx) => { p.cancha = canchasDia[idx % canchasDia.length] }) })
     })
 
@@ -2918,6 +2942,8 @@ export default function AdminTorneoDetallePage() {
 
   async function handleGuardarJornada() {
     if (jornadaGenerada.length === 0) return
+    const sinHora = jornadaGenerada.filter(p => !p.descanso && p.visitante && !p.hora)
+    if (sinHora.length > 0) return showMsg(`${sinHora.length} partido(s) quedaron sin hora/cancha por falta de cupo ese día — edítalos a mano (✏️ Editar) antes de guardar`, 'error')
     setLoadingPartido(true)
     // fecha_inicio de la jornada = la más temprana entre todos los partidos
     // generados (pueden quedar repartidos en varios días si se puso un
@@ -4381,7 +4407,11 @@ export default function AdminTorneoDetallePage() {
                                   {p.fecha && (
                                     <span style={{ fontSize: '.72rem', color: '#5f6368' }}>📅 {new Date(p.fecha + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
                                   )}
-                                  <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {fmtHora12(p.hora)}</span>
+                                  {p.hora ? (
+                                    <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {fmtHora12(p.hora)}</span>
+                                  ) : (
+                                    <span style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '700' }}>🕐 Sin hora</span>
+                                  )}
                                   <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha ? `${p.cancha.escenario ? p.cancha.escenario + ' · ' : ''}${p.cancha.nombre}` : 'Sin cancha'}</span>
                                   <button onClick={() => setEditJornadaIdx(i)} title="Editar fecha, horario y cancha"
                                     style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem' }}>
@@ -4411,9 +4441,9 @@ export default function AdminTorneoDetallePage() {
                             ⚠️ Ese día no tiene horarios marcados en "Horarios específicos por día" — se usó "Hora desde" ({configJornada.hora_inicio ? fmtHora12(configJornada.hora_inicio) : 'vacía'}) como horario por defecto. Marca las horas de ese día arriba, o edita el horario acá con "✏️ Editar".
                           </div>
                         )}
-                        {!p.descanso && p.usoHoraExtra && (
-                          <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
-                            ⚠️ Los horarios marcados para ese día no alcanzaban para todos los partidos (faltaba cupo) — se agregó una hora extra fuera de las que marcaste. Marca más horas para ese día, agrega otra cancha/escenario, o edita el horario acá con "✏️ Editar".
+                        {!p.descanso && p.sinCupo && (
+                          <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600', paddingLeft: '10px' }}>
+                            ⚠️ No alcanzó cupo (horarios × canchas) ese día para este partido — quedó SIN hora ni cancha. Marca más horas para ese día, agrega otra cancha/escenario, o edita el horario acá con "✏️ Editar" para ponerlo en otro momento.
                           </div>
                         )}
                         {veces > 0 && (
