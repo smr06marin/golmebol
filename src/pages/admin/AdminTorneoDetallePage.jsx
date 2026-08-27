@@ -2669,7 +2669,13 @@ export default function AdminTorneoDetallePage() {
   function generarJornada() {
     setEditJornadaIdx(null)
     if (!configJornada.fecha) return showMsg('Selecciona la fecha de inicio', 'error')
-    if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
+    // "Hora desde" solo es obligatoria si falta marcar horarios específicos
+    // para alguno de los días que se van a jugar — si YA marcaste horas
+    // para todos esos días (ej: sábado 8 y 9, domingo 5-6-7-8), no hace
+    // falta llenarla.
+    const diasCheck = configJornada.dias_semana || DIAS_SEMANA.map(d => d.key)
+    const faltaHorarioEnAlgunDia = diasCheck.some(k => !(((configJornada.horarios_por_dia || {})[k] || []).length > 0))
+    if (!configJornada.hora_inicio && faltaHorarioEnAlgunDia) return showMsg('Ingresa la hora de inicio, o marca horarios específicos para todos los días que vas a jugar', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
 
