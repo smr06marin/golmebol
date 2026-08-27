@@ -2860,6 +2860,7 @@ export default function AdminTorneoDetallePage() {
         cupo[elegido] = Math.max(0, (cupo[elegido] || 0) - 1)
         p.hora = elegido
         p.sinHorarioDisponible = sinHorarioDisponible
+        p.usoHoraDefault = !usaHorarioEspecifico
         delete p._minHora
         sumarHistorial(p.local.id, elegido)
         sumarHistorial(p.visitante.id, elegido)
@@ -4349,8 +4350,8 @@ export default function AdminTorneoDetallePage() {
                                 </>
                               ) : (
                                 <>
-                                  {p.fecha && p.fecha !== configJornada.fecha && (
-                                    <span style={{ fontSize: '.72rem', color: '#5f6368' }}>📅 {new Date(p.fecha + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                                  {p.fecha && (
+                                    <span style={{ fontSize: '.72rem', color: '#5f6368' }}>📅 {new Date(p.fecha + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
                                   )}
                                   <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {fmtHora12(p.hora)}</span>
                                   <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre || 'Sin cancha'}</span>
@@ -4375,6 +4376,11 @@ export default function AdminTorneoDetallePage() {
                         {!p.descanso && p.sinHorarioDisponible && (
                           <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
                             ⚠️ No había ningún horario libre ese día que cumpliera el "no antes de" de {p.local?.name} y/o {p.visitante?.name} — se le puso el horario disponible más cercano, revisalo.
+                          </div>
+                        )}
+                        {!p.descanso && p.usoHoraDefault && (
+                          <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
+                            ⚠️ Ese día no tiene horarios marcados en "Horarios específicos por día" — se usó "Hora desde" ({configJornada.hora_inicio ? fmtHora12(configJornada.hora_inicio) : 'vacía'}) como horario por defecto. Marca las horas de ese día arriba, o edita el horario acá con "✏️ Editar".
                           </div>
                         )}
                         {veces > 0 && (
