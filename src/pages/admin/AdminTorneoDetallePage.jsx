@@ -1087,8 +1087,18 @@ export default function AdminTorneoDetallePage() {
   function toggleDiaEscenario(escenarioKey, diaKey) {
     setConfigJornada(f => {
       const actual = (f.dias_por_escenario || {})[escenarioKey] || []
-      const nuevo = actual.includes(diaKey) ? actual.filter(d => d !== diaKey) : [...actual, diaKey]
-      return { ...f, dias_por_escenario: { ...(f.dias_por_escenario || {}), [escenarioKey]: nuevo } }
+      const activando = !actual.includes(diaKey)
+      const nuevo = activando ? [...actual, diaKey] : actual.filter(d => d !== diaKey)
+      const cambios = { ...f, dias_por_escenario: { ...(f.dias_por_escenario || {}), [escenarioKey]: nuevo } }
+      // Si marcás un día para un escenario (ej: domingo para El Gol), ese
+      // día tiene que estar habilitado también arriba en "¿Qué días de esa
+      // semana se juega?" — si no, de nada sirve marcarlo acá. Se activa
+      // solo, para no tener que tocar los dos selectores por separado.
+      if (activando) {
+        const diasActuales = f.dias_semana || DIAS_SEMANA.map(d => d.key)
+        if (!diasActuales.includes(diaKey)) cambios.dias_semana = [...diasActuales, diaKey]
+      }
+      return cambios
     })
   }
 
@@ -2703,7 +2713,12 @@ export default function AdminTorneoDetallePage() {
     // hay al menos una cancha disponible ese día según los escenarios.
     const fechaIni = configJornada.fecha
     const fechaFin = configJornada.fecha_fin || configJornada.fecha
-    const diasPermitidos = configJornada.dias_semana || DIAS_SEMANA.map(d => d.key)
+    // Si algún escenario tiene marcado un día que no está prendido arriba
+    // en "¿Qué días de esa semana se juega?" (ej: quedó un borrador viejo
+    // desincronizado), ese día igual cuenta como permitido — si lo
+    // marcaste para un escenario es porque sí se juega ese día.
+    const diasDeEscenarios = Object.values(configJornada.dias_por_escenario || {}).flat()
+    const diasPermitidos = Array.from(new Set([...(configJornada.dias_semana || DIAS_SEMANA.map(d => d.key)), ...diasDeEscenarios]))
     let fechasDisponibles = []
     const d0 = new Date(fechaIni + 'T00:00:00')
     const d1 = new Date(fechaFin + 'T00:00:00')
