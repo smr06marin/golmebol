@@ -214,6 +214,21 @@ const COLORES_GRUPO = ['#1a73e8','#e8710a','#1e8e3e','#9955ff','#d93025','#00a89
 
 const FASE_ORDEN = ['octavos', 'cuartos', 'semifinal', 'final']
 
+// Días de la semana en el mismo orden que Date.getDay() (0=domingo), para
+// cruzar la fecha real de un partido con las preferencias de días guardadas
+// por equipo (tournament_teams.dias_preferidos).
+const DIAS_SEMANA = [
+  { key: 'domingo',   corta: 'D' },
+  { key: 'lunes',     corta: 'L' },
+  { key: 'martes',    corta: 'M' },
+  { key: 'miercoles', corta: 'X' },
+  { key: 'jueves',    corta: 'J' },
+  { key: 'viernes',   corta: 'V' },
+  { key: 'sabado',    corta: 'S' },
+]
+// Se muestran en el orden habitual lunes→domingo (distinto al índice de getDay)
+const DIAS_SEMANA_UI = [1, 2, 3, 4, 5, 6, 0].map(i => DIAS_SEMANA[i])
+
 function getRondaNombre(total) {
   if (total === 16) return 'Octavos de final'
   if (total === 8)  return 'Cuartos de final'
@@ -572,7 +587,8 @@ export default function AdminTorneoDetallePage() {
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
   const [nuevaCancha,     setNuevaCancha]     = useState('')
 
-  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', hora_inicio: '', numero: '' })
+  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', fecha_fin: '', hora_inicio: '', numero: '' })
+  const [guardandoPref,   setGuardandoPref]   = useState(null) // tournament_team_id que se está guardando
   const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
   const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
   const [editJornadaIdx,  setEditJornadaIdx]  = useState(null) // índice del partido generado en edición (hora/cancha)
@@ -906,7 +922,7 @@ export default function AdminTorneoDetallePage() {
   function salirJornada() {
     localStorage.removeItem(draftJornadaKey)
     setJornadaGenerada([])
-    setConfigJornada({ fecha: '', hora_inicio: '', numero: '' })
+    setConfigJornada({ fecha: '', fecha_fin: '', hora_inicio: '', numero: '' })
     setEditJornadaIdx(null)
   }
 
@@ -1007,7 +1023,27 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchEquipos() {
     const { data } = await supabase.from('tournament_teams').select('*, teams(id, name, city, logo_url, modalidad, genero, registro_token)').eq('tournament_id', id)
-    setEquipos((data || []).map(d => ({ ...d.teams, tournament_team_id: d.id })))
+    setEquipos((data || []).map(d => ({ ...d.teams, tournament_team_id: d.id, dias_preferidos: d.dias_preferidos || [], hora_preferida: d.hora_preferida ? d.hora_preferida.slice(0, 5) : '' })))
+  }
+
+  // Preferencia de días/hora de un equipo PARA ESTE TORNEO — se usa al
+  // generar la jornada automática, para que el sorteo intente programar los
+  // partidos de ese equipo en los días/hora que indicó (si no hay
+  // coincidencia entre los dos rivales, se usa cualquier día del rango).
+  function toggleDiaPreferido(equipo, diaKey) {
+    const actuales = equipo.dias_preferidos || []
+    const nuevos = actuales.includes(diaKey) ? actuales.filter(d => d !== diaKey) : [...actuales, diaKey]
+    guardarPreferenciaEquipo(equipo, { dias_preferidos: nuevos })
+  }
+
+  async function guardarPreferenciaEquipo(equipo, cambios) {
+    setGuardandoPref(equipo.tournament_team_id)
+    setEquipos(prev => prev.map(e => e.tournament_team_id === equipo.tournament_team_id ? { ...e, ...cambios } : e))
+    const payload = {}
+    if ('dias_preferidos' in cambios) payload.dias_preferidos = cambios.dias_preferidos.length > 0 ? cambios.dias_preferidos : null
+    if ('hora_preferida' in cambios) payload.hora_preferida = cambios.hora_preferida || null
+    await supabase.from('tournament_teams').update(payload).eq('id', equipo.tournament_team_id)
+    setGuardandoPref(null)
   }
 
   async function fetchFinalizado() {
@@ -2576,10 +2612,25 @@ export default function AdminTorneoDetallePage() {
 
   function generarJornada() {
     setEditJornadaIdx(null)
-    if (!configJornada.fecha) return showMsg('Selecciona la fecha', 'error')
+    if (!configJornada.fecha) return showMsg('Selecciona la fecha de inicio', 'error')
     if (!configJornada.hora_inicio) return showMsg('Ingresa la hora de inicio', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
+
+    // Rango de fechas disponible para programar esta jornada. Si no se puso
+    // "Fecha fin" queda como antes: un solo día.
+    const fechaIni = configJornada.fecha
+    const fechaFin = configJornada.fecha_fin || configJornada.fecha
+    const fechasDisponibles = []
+    const d0 = new Date(fechaIni + 'T00:00:00')
+    const d1 = new Date(fechaFin + 'T00:00:00')
+    if (d1 >= d0) {
+      for (let d = new Date(d0); d <= d1 && fechasDisponibles.length < 60; d.setDate(d.getDate() + 1)) {
+        fechasDisponibles.push({ iso: d.toISOString().slice(0, 10), dow: d.getDay() })
+      }
+    } else {
+      fechasDisponibles.push({ iso: fechaIni, dow: d0.getDay() })
+    }
 
     // Cruces que ya existen en el torneo (jugados o programados)
     const yaJugaron = new Set()
@@ -2617,14 +2668,44 @@ export default function AdminTorneoDetallePage() {
     // 3) Ya sin rivales nuevos: descansan
     descansan.forEach(a => pares.push({ local: a, visitante: null, descanso: true }))
 
-    const [hIni] = configJornada.hora_inicio.split(':').map(Number)
-    let idx = 0
-    setJornadaGenerada(pares.map(p => {
+    // Fecha (dentro del rango) según lo que hayan marcado los dos equipos —
+    // se cruzan sus días preferidos; si ninguno coincide (o ninguno marcó
+    // nada) se usa cualquier fecha del rango, al azar, y se avisa con
+    // "sinCoincidencia" para que el admin lo revise si quiere.
+    const conFecha = pares.map(p => {
       if (p.descanso) return p
-      const asignado = { ...p, cancha: canchas[idx % canchas.length], hora: `${String(hIni + Math.floor(idx / canchas.length)).padStart(2, '0')}:00` }
-      idx++
-      return asignado
-    }))
+      const diasA = p.local.dias_preferidos || []
+      const diasB = p.visitante.dias_preferidos || []
+      let candidatas = fechasDisponibles
+      let sinCoincidencia = false
+      if (diasA.length > 0 || diasB.length > 0) {
+        const validos = diasA.length > 0 && diasB.length > 0 ? diasA.filter(d => diasB.includes(d)) : (diasA.length > 0 ? diasA : diasB)
+        const filtradas = fechasDisponibles.filter(f => validos.includes(DIAS_SEMANA[f.dow].key))
+        if (filtradas.length > 0) candidatas = filtradas
+        else sinCoincidencia = true
+      }
+      const fechaElegida = candidatas[Math.floor(Math.random() * candidatas.length)].iso
+      const horaPreferida = (p.local.hora_preferida && p.local.hora_preferida === p.visitante.hora_preferida)
+        ? p.local.hora_preferida
+        : (p.local.hora_preferida || p.visitante.hora_preferida || null)
+      return { ...p, fecha: fechaElegida, horaPreferida, sinCoincidencia }
+    })
+
+    // Cancha + hora: por cada fecha se reparten las canchas en ronda y la
+    // hora sube de a 1 por vuelta completa (igual que antes), salvo que el
+    // cruce tenga hora preferida (de alguno de los dos equipos) — ahí se
+    // respeta esa hora en vez de la que le tocaría por turno.
+    const porFecha = {}
+    conFecha.forEach(p => { if (!p.descanso) (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
+    const [hIniDefault] = configJornada.hora_inicio.split(':').map(Number)
+    Object.values(porFecha).forEach(lista => {
+      lista.forEach((p, idx) => {
+        p.cancha = canchas[idx % canchas.length]
+        p.hora = p.horaPreferida || `${String(hIniDefault + Math.floor(idx / canchas.length)).padStart(2, '0')}:00`
+      })
+    })
+
+    setJornadaGenerada(conFecha)
   }
 
   function actualizarPartidoJornada(i, cambios) {
@@ -2644,14 +2725,19 @@ export default function AdminTorneoDetallePage() {
   async function handleGuardarJornada() {
     if (jornadaGenerada.length === 0) return
     setLoadingPartido(true)
+    // fecha_inicio de la jornada = la más temprana entre todos los partidos
+    // generados (pueden quedar repartidos en varios días si se puso un
+    // rango de fechas).
+    const fechasPartidos = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => p.fecha || configJornada.fecha)
+    const fechaInicioJornada = fechasPartidos.length > 0 ? fechasPartidos.reduce((a, b) => a < b ? a : b) : configJornada.fecha
     const { data: fechaData, error: fechaErr } = await supabase.from('fechas').insert({
       tournament_id: id, numero: parseInt(configJornada.numero) || (fechas.length + 1),
-      nombre: `Jornada ${configJornada.numero || fechas.length + 1}`, fecha_inicio: configJornada.fecha,
+      nombre: `Jornada ${configJornada.numero || fechas.length + 1}`, fecha_inicio: fechaInicioJornada,
     }).select().single()
     if (fechaErr) { showMsg('Error al crear jornada', 'error'); setLoadingPartido(false); return }
     const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
       tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
-      played_at: `${configJornada.fecha}T${p.hora || configJornada.hora_inicio}:00-05:00`, location: p.cancha?.nombre || null,
+      played_at: `${p.fecha || configJornada.fecha}T${p.hora || configJornada.hora_inicio}:00-05:00`, location: p.cancha?.nombre || null,
       matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id,
       status: 'scheduled', fase: 'grupo',
     }))
@@ -3857,11 +3943,44 @@ export default function AdminTorneoDetallePage() {
           {subTab === 'jornada' && (
             <div style={{ marginTop: '16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}><Calendar size={18} color="#1a73e8"/> Preferencias de días y hora por equipo</div>
+                <div style={{ fontSize: '.78rem', color: '#9aa0a6', marginBottom: '14px' }}>Opcional — el sorteo intenta programar cada cruce en un día que les sirva a los dos equipos, dentro del rango de fechas que definas abajo. Se guarda solo, no hace falta botón.</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '10px' }}>
+                  {equipos.map(e => (
+                    <div key={e.tournament_team_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '4px 0' }}>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={22}/></div>
+                      <span style={{ fontSize: '.78rem', fontWeight: '600', color: '#202124', minWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                      <div style={{ display: 'flex', gap: '3px' }}>
+                        {DIAS_SEMANA_UI.map(d => {
+                          const activo = (e.dias_preferidos || []).includes(d.key)
+                          return (
+                            <button key={d.key} onClick={() => toggleDiaPreferido(e, d.key)} title={d.key}
+                              style={{ width: '24px', height: '24px', borderRadius: '6px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1a73e8' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.68rem', fontWeight: '700', cursor: 'pointer' }}>
+                              {d.corta}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <input type="time" value={e.hora_preferida || ''} onChange={ev => guardarPreferenciaEquipo(e, { hora_preferida: ev.target.value })}
+                        title="Hora preferida (opcional)"
+                        style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124', width: '90px' }}/>
+                      {guardandoPref === e.tournament_team_id && <span style={{ fontSize: '.68rem', color: '#9aa0a6' }}>guardando...</span>}
+                    </div>
+                  ))}
+                  {equipos.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>Agrega equipos al torneo primero.</div>}
+                </div>
+              </div>
+
+              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><Shuffle size={18} color="#1a73e8"/> Configurar jornada automática</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px' }}>
                   <div><label style={labelStyle}>Número de jornada</label><input type="number" value={configJornada.numero} onChange={e => setConfigJornada(f => ({ ...f, numero: e.target.value }))} style={inputStyle} placeholder={fechas.length + 1}/></div>
-                  <div><label style={labelStyle}>Fecha *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
-                  <div><label style={labelStyle}>Hora inicio *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
+                  <div><label style={labelStyle}>Fecha inicio *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
+                  <div><label style={labelStyle}>Fecha fin</label><input type="date" value={configJornada.fecha_fin} min={configJornada.fecha || undefined} onChange={e => setConfigJornada(f => ({ ...f, fecha_fin: e.target.value }))} style={inputStyle} placeholder="Igual a fecha inicio"/></div>
+                  <div><label style={labelStyle}>Hora por defecto *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
+                </div>
+                <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
+                  📅 Si dejas "Fecha fin" vacía, todos los partidos quedan en un solo día como antes. Si le pones un rango, el sorteo reparte los cruces entre esas fechas según la preferencia de días de cada equipo (si la marcaste arriba).
                 </div>
                 {grupos.length > 1 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
@@ -3934,6 +4053,8 @@ export default function AdminTorneoDetallePage() {
                               {p.intergrupo && <span style={{ fontSize: '.65rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>Intergrupo</span>}
                               {editJornadaIdx === i ? (
                                 <>
+                                  <input type="date" value={p.fecha || configJornada.fecha} onChange={e => actualizarPartidoJornada(i, { fecha: e.target.value })}
+                                    style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124' }}/>
                                   <input type="time" value={p.hora || ''} onChange={e => actualizarPartidoJornada(i, { hora: e.target.value })}
                                     style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124' }}/>
                                   <select value={p.cancha ? String(p.cancha.id) : ''} onChange={e => actualizarPartidoJornada(i, { cancha: canchas.find(c => String(c.id) === e.target.value) || null })}
@@ -3948,9 +4069,12 @@ export default function AdminTorneoDetallePage() {
                                 </>
                               ) : (
                                 <>
+                                  {p.fecha && p.fecha !== configJornada.fecha && (
+                                    <span style={{ fontSize: '.72rem', color: '#5f6368' }}>📅 {new Date(p.fecha + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                                  )}
                                   <span style={{ fontSize: '.72rem', color: '#5f6368' }}>🕐 {fmtHora12(p.hora)}</span>
                                   <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>📍 {p.cancha?.nombre || 'Sin cancha'}</span>
-                                  <button onClick={() => setEditJornadaIdx(i)} title="Editar horario y cancha"
+                                  <button onClick={() => setEditJornadaIdx(i)} title="Editar fecha, horario y cancha"
                                     style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem' }}>
                                     ✏️ Editar
                                   </button>
@@ -3962,6 +4086,11 @@ export default function AdminTorneoDetallePage() {
                               </button>
                           </div>
                           </>
+                        )}
+                        {!p.descanso && p.sinCoincidencia && (
+                          <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
+                            ⚠️ {p.local?.name} y {p.visitante?.name} no comparten ningún día preferido — se le puso una fecha cualquiera del rango, revisala.
+                          </div>
                         )}
                         {veces > 0 && (
                           <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '600', paddingLeft: '10px' }}>
