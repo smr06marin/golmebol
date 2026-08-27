@@ -586,8 +586,9 @@ export default function AdminTorneoDetallePage() {
   const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '' })
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
   const [nuevaCancha,     setNuevaCancha]     = useState('')
+  const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
 
-  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', fecha_fin: '', hora_inicio: '', numero: '' })
+  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null })
   const [guardandoPref,   setGuardandoPref]   = useState(null) // tournament_team_id que se está guardando
   const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
   const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
@@ -922,7 +923,7 @@ export default function AdminTorneoDetallePage() {
   function salirJornada() {
     localStorage.removeItem(draftJornadaKey)
     setJornadaGenerada([])
-    setConfigJornada({ fecha: '', fecha_fin: '', hora_inicio: '', numero: '' })
+    setConfigJornada({ fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null })
     setEditJornadaIdx(null)
   }
 
@@ -1034,6 +1035,35 @@ export default function AdminTorneoDetallePage() {
     const actuales = equipo.dias_preferidos || []
     const nuevos = actuales.includes(diaKey) ? actuales.filter(d => d !== diaKey) : [...actuales, diaKey]
     guardarPreferenciaEquipo(equipo, { dias_preferidos: nuevos })
+  }
+
+  // Días de la semana y canchas/escenarios habilitados para ESTA jornada
+  // (distinto de la preferencia por equipo) — si no se toca nada, se
+  // comportan como "todos" (mismo resultado que antes de este selector).
+  function toggleDiaSemanaJornada(key) {
+    setConfigJornada(f => {
+      const actuales = f.dias_semana || DIAS_SEMANA.map(d => d.key)
+      const nuevos = actuales.includes(key) ? actuales.filter(d => d !== key) : [...actuales, key]
+      return { ...f, dias_semana: nuevos }
+    })
+  }
+
+  function toggleCanchaJornada(canchaId) {
+    setConfigJornada(f => {
+      const actuales = f.cancha_ids || canchas.map(c => c.id)
+      const nuevos = actuales.includes(canchaId) ? actuales.filter(x => x !== canchaId) : [...actuales, canchaId]
+      return { ...f, cancha_ids: nuevos }
+    })
+  }
+
+  function toggleEscenarioJornada(canchasDelEscenario) {
+    setConfigJornada(f => {
+      const actuales = f.cancha_ids || canchas.map(c => c.id)
+      const idsEsc = canchasDelEscenario.map(c => c.id)
+      const todasMarcadas = idsEsc.every(id => actuales.includes(id))
+      const nuevos = todasMarcadas ? actuales.filter(id => !idsEsc.includes(id)) : Array.from(new Set([...actuales, ...idsEsc]))
+      return { ...f, cancha_ids: nuevos }
+    })
   }
 
   async function guardarPreferenciaEquipo(equipo, cambios) {
@@ -2510,7 +2540,7 @@ export default function AdminTorneoDetallePage() {
 
   async function handleAgregarCancha() {
     if (!nuevaCancha.trim()) return
-    const { data, error } = await supabase.from('canchas').insert({ tournament_id: id, nombre: nuevaCancha.trim() }).select().single()
+    const { data, error } = await supabase.from('canchas').insert({ tournament_id: id, nombre: nuevaCancha.trim(), escenario: nuevaCanchaEscenario.trim() || null }).select().single()
     if (error) return showMsg('Error al agregar cancha', 'error')
     setCanchas(prev => [...prev, data]); setNuevaCancha(''); showMsg('Cancha agregada ✓')
   }
@@ -2617,11 +2647,18 @@ export default function AdminTorneoDetallePage() {
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
 
+    // Canchas a usar en ESTA jornada (checkboxes de arriba) — si no se tocó
+    // nada, se usan todas como antes.
+    const canchasUsadas = canchas.filter(c => (configJornada.cancha_ids || canchas.map(x => x.id)).includes(c.id))
+    if (canchasUsadas.length === 0) return showMsg('Selecciona al menos una cancha/escenario para esta jornada', 'error')
+
     // Rango de fechas disponible para programar esta jornada. Si no se puso
-    // "Fecha fin" queda como antes: un solo día.
+    // "Fecha fin" queda como antes: un solo día. Se filtra además por los
+    // días de la semana marcados arriba (si se tocó ese selector).
     const fechaIni = configJornada.fecha
     const fechaFin = configJornada.fecha_fin || configJornada.fecha
-    const fechasDisponibles = []
+    const diasPermitidos = configJornada.dias_semana || DIAS_SEMANA.map(d => d.key)
+    let fechasDisponibles = []
     const d0 = new Date(fechaIni + 'T00:00:00')
     const d1 = new Date(fechaFin + 'T00:00:00')
     if (d1 >= d0) {
@@ -2631,6 +2668,8 @@ export default function AdminTorneoDetallePage() {
     } else {
       fechasDisponibles.push({ iso: fechaIni, dow: d0.getDay() })
     }
+    fechasDisponibles = fechasDisponibles.filter(f => diasPermitidos.includes(DIAS_SEMANA[f.dow].key))
+    if (fechasDisponibles.length === 0) return showMsg('Ningún día del rango de fechas coincide con los días marcados para jugar', 'error')
 
     // Cruces que ya existen en el torneo (jugados o programados)
     const yaJugaron = new Set()
@@ -2718,11 +2757,12 @@ export default function AdminTorneoDetallePage() {
     const porFecha = {}
     conFecha.forEach(p => { if (!p.descanso) (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
     const [hIniDefault] = configJornada.hora_inicio.split(':').map(Number)
+    const hFinLimite = configJornada.hora_fin ? parseInt(configJornada.hora_fin.split(':')[0], 10) : null
     Object.values(porFecha).forEach(lista => {
-      const rondas = Math.max(1, Math.ceil(lista.length / canchas.length))
+      const rondas = Math.max(1, Math.ceil(lista.length / canchasUsadas.length))
       const slots = Array.from({ length: rondas }, (_, r) => `${String(hIniDefault + r).padStart(2, '0')}:00`)
       const cupo = {}
-      slots.forEach(s => { cupo[s] = canchas.length })
+      slots.forEach(s => { cupo[s] = canchasUsadas.length })
 
       lista.forEach(p => {
         const minA = p.local.hora_preferida ? parseInt(p.local.hora_preferida.split(':')[0], 10) : -1
@@ -2733,13 +2773,20 @@ export default function AdminTorneoDetallePage() {
       const sinRestriccion = lista.filter(p => p._minHora === -1).sort(() => Math.random() - 0.5)
 
       ;[...conRestriccion, ...sinRestriccion].forEach(p => {
-        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora))
+        // 1) ideal: dentro del "no antes de" del equipo Y del "hasta" de la
+        //    jornada. 2) si no hay, se relaja el "hasta". 3) si tampoco, se
+        //    relaja todo (cualquier slot con cupo) — siempre se avisa con
+        //    sinHorarioDisponible para que se revise a mano.
+        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora) && (hFinLimite == null || parseInt(s, 10) <= hFinLimite))
         let sinHorarioDisponible = false
         if (candidatos.length === 0) {
-          candidatos = slots.filter(s => cupo[s] > 0)
+          candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora))
           sinHorarioDisponible = true
-          if (candidatos.length === 0) candidatos = slots
         }
+        if (candidatos.length === 0) {
+          candidatos = slots.filter(s => cupo[s] > 0)
+        }
+        if (candidatos.length === 0) candidatos = slots
         const elegido = candidatos
           .map(s => ({ s, peso: (historialHora[p.local.id]?.[s] || 0) + (historialHora[p.visitante.id]?.[s] || 0) + Math.random() * 0.001 }))
           .sort((a, b) => a.peso - b.peso)[0].s
@@ -2753,7 +2800,7 @@ export default function AdminTorneoDetallePage() {
 
       const porHora = {}
       lista.forEach(p => { (porHora[p.hora] = porHora[p.hora] || []).push(p) })
-      Object.values(porHora).forEach(grupo => { grupo.forEach((p, idx) => { p.cancha = canchas[idx % canchas.length] }) })
+      Object.values(porHora).forEach(grupo => { grupo.forEach((p, idx) => { p.cancha = canchasUsadas[idx % canchasUsadas.length] }) })
     })
 
     setJornadaGenerada(conFecha)
@@ -3795,16 +3842,31 @@ export default function AdminTorneoDetallePage() {
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <MapPin size={15} color="#1a73e8"/> Canchas
             </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-              {canchas.map(c => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#e8f0fe', borderRadius: '20px', padding: '3px 6px 3px 12px' }}>
-                  <span style={{ fontSize: '.8rem', color: '#1a73e8' }}>{c.nombre}</span>
-                  <button onClick={() => handleEliminarCancha(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.75rem', padding: '0 3px', lineHeight: 1 }}>✕</button>
+            {(() => {
+              const grupos_ = {}
+              canchas.forEach(c => { const k = c.escenario || 'Sin sede'; (grupos_[k] = grupos_[k] || []).push(c) })
+              const entradas = Object.entries(grupos_)
+              if (entradas.length === 0) return <div style={{ fontSize: '.8rem', color: '#9aa0a6', marginBottom: '10px' }}>Sin canchas</div>
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                  {entradas.map(([esc, lista]) => (
+                    <div key={esc}>
+                      <div style={{ fontSize: '.7rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '4px' }}>🏟️ {esc} · {lista.length} cancha{lista.length !== 1 ? 's' : ''}</div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {lista.map(c => (
+                          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#e8f0fe', borderRadius: '20px', padding: '3px 6px 3px 12px' }}>
+                            <span style={{ fontSize: '.8rem', color: '#1a73e8' }}>{c.nombre}</span>
+                            <button onClick={() => handleEliminarCancha(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.75rem', padding: '0 3px', lineHeight: 1 }}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {canchas.length === 0 && <span style={{ fontSize: '.8rem', color: '#9aa0a6' }}>Sin canchas</span>}
-            </div>
+              )
+            })()}
             <div style={{ display: 'flex', gap: '8px' }}>
+              <input value={nuevaCanchaEscenario} onChange={e => setNuevaCanchaEscenario(e.target.value)} placeholder="Sede/escenario (opcional, ej: Centegol)..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleAgregarCancha()}/>
               <input value={nuevaCancha} onChange={e => setNuevaCancha(e.target.value)} placeholder="Nombre de la cancha..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleAgregarCancha()}/>
               <button onClick={handleAgregarCancha} style={{ padding: '8px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem' }}>+ Agregar</button>
             </div>
@@ -4029,10 +4091,65 @@ export default function AdminTorneoDetallePage() {
                   <div><label style={labelStyle}>Número de jornada</label><input type="number" value={configJornada.numero} onChange={e => setConfigJornada(f => ({ ...f, numero: e.target.value }))} style={inputStyle} placeholder={fechas.length + 1}/></div>
                   <div><label style={labelStyle}>Fecha inicio *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
                   <div><label style={labelStyle}>Fecha fin</label><input type="date" value={configJornada.fecha_fin} min={configJornada.fecha || undefined} onChange={e => setConfigJornada(f => ({ ...f, fecha_fin: e.target.value }))} style={inputStyle} placeholder="Igual a fecha inicio"/></div>
-                  <div><label style={labelStyle}>Hora por defecto *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
+                  <div/>
                 </div>
+
+                <div style={{ marginTop: '14px' }}>
+                  <label style={labelStyle}>¿Qué días de esa semana se juega?</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {DIAS_SEMANA_UI.map(d => {
+                      const activo = (configJornada.dias_semana || DIAS_SEMANA.map(x => x.key)).includes(d.key)
+                      return (
+                        <button key={d.key} onClick={() => toggleDiaSemanaJornada(d.key)} title={d.key}
+                          style={{ width: '30px', height: '30px', borderRadius: '7px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1a73e8' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.72rem', fontWeight: '700', cursor: 'pointer' }}>
+                          {d.corta}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '14px' }}>
+                  <div><label style={labelStyle}>Hora desde *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
+                  <div><label style={labelStyle}>Hora hasta</label><input type="time" value={configJornada.hora_fin} onChange={e => setConfigJornada(f => ({ ...f, hora_fin: e.target.value }))} style={inputStyle} placeholder="Sin límite"/></div>
+                </div>
+
+                <div style={{ marginTop: '14px' }}>
+                  <label style={labelStyle}>Escenarios y canchas a usar en esta jornada</label>
+                  {(() => {
+                    const grupos_ = {}
+                    canchas.forEach(c => { const k = c.escenario || 'Sin sede'; (grupos_[k] = grupos_[k] || []).push(c) })
+                    const entradas = Object.entries(grupos_)
+                    const seleccionadas = configJornada.cancha_ids || canchas.map(c => c.id)
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '10px' }}>
+                        {entradas.map(([esc, lista]) => {
+                          const todasMarcadas = lista.every(c => seleccionadas.includes(c.id))
+                          return (
+                            <div key={esc}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '4px' }}>
+                                <input type="checkbox" checked={todasMarcadas} onChange={() => toggleEscenarioJornada(lista)}/>
+                                🏟️ {esc} · {lista.length} cancha{lista.length !== 1 ? 's' : ''}
+                              </label>
+                              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginLeft: '22px' }}>
+                                {lista.map(c => (
+                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '.75rem', color: '#5f6368' }}>
+                                    <input type="checkbox" checked={seleccionadas.includes(c.id)} onChange={() => toggleCanchaJornada(c.id)}/>
+                                    {c.nombre}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {entradas.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>Agrega canchas en la sección "Canchas" primero.</div>}
+                      </div>
+                    )
+                  })()}
+                </div>
+
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
-                  📅 Si dejas "Fecha fin" vacía, todos los partidos quedan en un solo día como antes. Si le pones un rango, el sorteo reparte los cruces entre esas fechas según la preferencia de días de cada equipo (si la marcaste arriba).
+                  📅 Si dejas "Fecha fin" vacía, todos los partidos quedan en un solo día como antes. Si le pones un rango, el sorteo reparte los cruces entre esas fechas según los días marcados arriba y la preferencia de días de cada equipo. La hora "hasta" es un tope para todos los partidos de esta jornada (además del "no antes de" de cada equipo).
                 </div>
                 {grupos.length > 1 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
