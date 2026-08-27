@@ -2815,16 +2815,30 @@ export default function AdminTorneoDetallePage() {
       if (p.descanso) return p
       const diasA = p.local.dias_preferidos || []
       const diasB = p.visitante.dias_preferidos || []
-      let candidatas = fechasDisponibles
+      let preferidas = null
       let sinCoincidencia = false
       if (diasA.length > 0 || diasB.length > 0) {
         const validos = diasA.length > 0 && diasB.length > 0 ? diasA.filter(d => diasB.includes(d)) : (diasA.length > 0 ? diasA : diasB)
-        const filtradas = fechasDisponibles.filter(f => validos.includes(DIAS_SEMANA[f.dow].key))
-        if (filtradas.length > 0) candidatas = filtradas
-        else sinCoincidencia = true
+        if (validos.length > 0) {
+          preferidas = fechasDisponibles.filter(f => validos.includes(DIAS_SEMANA[f.dow].key))
+        } else {
+          sinCoincidencia = true // los dos equipos piden días que no se cruzan entre sí
+        }
       }
-      const conCupo = candidatas.filter(f => capacidadFecha[f.iso] == null || usoFecha[f.iso] < capacidadFecha[f.iso])
-      const pool = conCupo.length > 0 ? conCupo : candidatas
+      // El día preferido del equipo es eso, preferido — NO obligatorio. Si
+      // ese día ya no tiene cupo, se programa en cualquier otro día que sí
+      // se esté programando (no se deja el partido esperando un día que
+      // ya no da abasto).
+      const preferidasConCupo = preferidas ? preferidas.filter(f => capacidadFecha[f.iso] == null || usoFecha[f.iso] < capacidadFecha[f.iso]) : null
+      let pool
+      let sinCupoPreferencia = false
+      if (preferidasConCupo && preferidasConCupo.length > 0) {
+        pool = preferidasConCupo
+      } else {
+        if (preferidas && preferidas.length > 0) sinCupoPreferencia = true
+        const conCupoGeneral = fechasDisponibles.filter(f => capacidadFecha[f.iso] == null || usoFecha[f.iso] < capacidadFecha[f.iso])
+        pool = conCupoGeneral.length > 0 ? conCupoGeneral : fechasDisponibles
+      }
       const minUso = Math.min(...pool.map(f => usoFecha[f.iso]))
       const empatadas = pool.filter(f => usoFecha[f.iso] === minUso)
       // Entre las que empatan en uso, se prefiere la fecha más próxima —
@@ -2832,7 +2846,7 @@ export default function AdminTorneoDetallePage() {
       // esparcir partidos a semanas futuras que también tenían cupo.
       const elegida = [...empatadas].sort((a, b) => a.iso.localeCompare(b.iso))[0]
       usoFecha[elegida.iso] = (usoFecha[elegida.iso] || 0) + 1
-      return { ...p, fecha: elegida.iso, sinCoincidencia }
+      return { ...p, fecha: elegida.iso, sinCoincidencia, sinCupoPreferencia }
     })
 
     // Historial de a qué hora ha jugado cada equipo hasta ahora en este
@@ -4444,6 +4458,11 @@ export default function AdminTorneoDetallePage() {
                         {!p.descanso && p.sinCoincidencia && (
                           <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
                             ⚠️ {p.local?.name} y {p.visitante?.name} no comparten ningún día preferido — se le puso una fecha cualquiera del rango, revisala.
+                          </div>
+                        )}
+                        {!p.descanso && p.sinCupoPreferencia && (
+                          <div style={{ fontSize: '.72rem', color: '#5f6368', fontWeight: '600', paddingLeft: '10px' }}>
+                            ℹ️ El día preferido de {p.local?.name} y/o {p.visitante?.name} ya no tenía cupo — se programó en otro día disponible.
                           </div>
                         )}
                         {!p.descanso && p.sinHorarioDisponible && (
