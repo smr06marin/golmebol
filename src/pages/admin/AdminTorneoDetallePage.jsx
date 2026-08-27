@@ -218,16 +218,19 @@ const FASE_ORDEN = ['octavos', 'cuartos', 'semifinal', 'final']
 // cruzar la fecha real de un partido con las preferencias de días guardadas
 // por equipo (tournament_teams.dias_preferidos).
 const DIAS_SEMANA = [
-  { key: 'domingo',   corta: 'D' },
-  { key: 'lunes',     corta: 'L' },
-  { key: 'martes',    corta: 'M' },
-  { key: 'miercoles', corta: 'X' },
-  { key: 'jueves',    corta: 'J' },
-  { key: 'viernes',   corta: 'V' },
-  { key: 'sabado',    corta: 'S' },
+  { key: 'domingo',   corta: 'D', label: 'Domingo' },
+  { key: 'lunes',     corta: 'L', label: 'Lunes' },
+  { key: 'martes',    corta: 'M', label: 'Martes' },
+  { key: 'miercoles', corta: 'X', label: 'Miércoles' },
+  { key: 'jueves',    corta: 'J', label: 'Jueves' },
+  { key: 'viernes',   corta: 'V', label: 'Viernes' },
+  { key: 'sabado',    corta: 'S', label: 'Sábado' },
 ]
 // Se muestran en el orden habitual lunes→domingo (distinto al índice de getDay)
 const DIAS_SEMANA_UI = [1, 2, 3, 4, 5, 6, 0].map(i => DIAS_SEMANA[i])
+// Horas que se pueden marcar como horario específico de un día (5am–11pm,
+// suficiente para torneos amateur de fútbol 5/7/11).
+const HORAS_CHIP = Array.from({ length: 19 }, (_, i) => `${String(i + 5).padStart(2, '0')}:00`)
 
 function getRondaNombre(total) {
   if (total === 16) return 'Octavos de final'
@@ -588,7 +591,7 @@ export default function AdminTorneoDetallePage() {
   const [nuevaCancha,     setNuevaCancha]     = useState('')
   const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
 
-  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null })
+  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null, horarios_por_dia: {} })
   const [guardandoPref,   setGuardandoPref]   = useState(null) // tournament_team_id que se está guardando
   const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
   const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
@@ -923,7 +926,7 @@ export default function AdminTorneoDetallePage() {
   function salirJornada() {
     localStorage.removeItem(draftJornadaKey)
     setJornadaGenerada([])
-    setConfigJornada({ fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null })
+    setConfigJornada({ fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null, horarios_por_dia: {} })
     setEditJornadaIdx(null)
   }
 
@@ -1045,6 +1048,17 @@ export default function AdminTorneoDetallePage() {
       const actuales = f.dias_semana || DIAS_SEMANA.map(d => d.key)
       const nuevos = actuales.includes(key) ? actuales.filter(d => d !== key) : [...actuales, key]
       return { ...f, dias_semana: nuevos }
+    })
+  }
+
+  // Horarios específicos por día (ej: sábado 8 y 9, domingo 5-6-7-8, lunes
+  // 9-10) — si un día no tiene horas marcadas acá, usa "Hora desde/hasta"
+  // como antes.
+  function toggleHorarioDia(diaKey, horaStr) {
+    setConfigJornada(f => {
+      const actual = (f.horarios_por_dia || {})[diaKey] || []
+      const nuevo = actual.includes(horaStr) ? actual.filter(h => h !== horaStr) : [...actual, horaStr].sort()
+      return { ...f, horarios_por_dia: { ...(f.horarios_por_dia || {}), [diaKey]: nuevo } }
     })
   }
 
@@ -2758,9 +2772,27 @@ export default function AdminTorneoDetallePage() {
     conFecha.forEach(p => { if (!p.descanso) (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
     const [hIniDefault] = configJornada.hora_inicio.split(':').map(Number)
     const hFinLimite = configJornada.hora_fin ? parseInt(configJornada.hora_fin.split(':')[0], 10) : null
-    Object.values(porFecha).forEach(lista => {
-      const rondas = Math.max(1, Math.ceil(lista.length / canchasUsadas.length))
-      const slots = Array.from({ length: rondas }, (_, r) => `${String(hIniDefault + r).padStart(2, '0')}:00`)
+    Object.entries(porFecha).forEach(([fechaIso, lista]) => {
+      // Horarios específicos de ESE día de la semana (ej: domingo 5,6,7,8) —
+      // si no se marcó ninguno, se cae al comportamiento de antes (Hora
+      // desde + una ronda por cada tanda de canchas, tope en Hora hasta).
+      const diaKey = DIAS_SEMANA[new Date(fechaIso + 'T00:00:00').getDay()].key
+      const horariosDia = (configJornada.horarios_por_dia || {})[diaKey]
+      const usaHorarioEspecifico = !!(horariosDia && horariosDia.length > 0)
+      let slots = usaHorarioEspecifico ? [...horariosDia].sort() : []
+      if (slots.length === 0) {
+        const rondas = Math.max(1, Math.ceil(lista.length / canchasUsadas.length))
+        slots = Array.from({ length: rondas }, (_, r) => `${String(hIniDefault + r).padStart(2, '0')}:00`)
+      }
+      // Si los horarios marcados para ese día no alcanzan (más partidos que
+      // horarios × canchas disponibles), se agregan horas extra después de
+      // la última marcada, para no dejar partidos sin programar — quedan
+      // avisados con sinHorarioDisponible para revisar a mano.
+      let horaExtra = parseInt(slots[slots.length - 1].split(':')[0], 10) + 1
+      while (slots.length * canchasUsadas.length < lista.length) {
+        slots.push(`${String(horaExtra).padStart(2, '0')}:00`)
+        horaExtra++
+      }
       const cupo = {}
       slots.forEach(s => { cupo[s] = canchasUsadas.length })
 
@@ -2777,7 +2809,7 @@ export default function AdminTorneoDetallePage() {
         //    jornada. 2) si no hay, se relaja el "hasta". 3) si tampoco, se
         //    relaja todo (cualquier slot con cupo) — siempre se avisa con
         //    sinHorarioDisponible para que se revise a mano.
-        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora) && (hFinLimite == null || parseInt(s, 10) <= hFinLimite))
+        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora) && (usaHorarioEspecifico || hFinLimite == null || parseInt(s, 10) <= hFinLimite))
         let sinHorarioDisponible = false
         if (candidatos.length === 0) {
           candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora))
@@ -4112,6 +4144,33 @@ export default function AdminTorneoDetallePage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '14px' }}>
                   <div><label style={labelStyle}>Hora desde *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
                   <div><label style={labelStyle}>Hora hasta</label><input type="time" value={configJornada.hora_fin} onChange={e => setConfigJornada(f => ({ ...f, hora_fin: e.target.value }))} style={inputStyle} placeholder="Sin límite"/></div>
+                </div>
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>"Hora desde/hasta" es el horario por defecto — para un día en particular podés marcar horarios distintos abajo (ej: sábado solo 8 y 9, domingo 5-6-7-8).</div>
+
+                <div style={{ marginTop: '14px' }}>
+                  <label style={labelStyle}>Horarios específicos por día (opcional)</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {DIAS_SEMANA_UI.filter(d => (configJornada.dias_semana || DIAS_SEMANA.map(x => x.key)).includes(d.key)).map(d => {
+                      const marcadas = (configJornada.horarios_por_dia || {})[d.key] || []
+                      return (
+                        <div key={d.key}>
+                          <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#202124', marginBottom: '4px' }}>{d.label}{marcadas.length === 0 && <span style={{ fontWeight: '400', color: '#9aa0a6' }}> — usa Hora desde/hasta</span>}</div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {HORAS_CHIP.map(h => {
+                              const activo = marcadas.includes(h)
+                              return (
+                                <button key={h} onClick={() => toggleHorarioDia(d.key, h)}
+                                  style={{ padding: '4px 8px', borderRadius: '6px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1e8e3e' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '600', cursor: 'pointer' }}>
+                                  {fmtHora12(h)}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {(configJornada.dias_semana || DIAS_SEMANA.map(x => x.key)).length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>Marca primero qué días se juega, arriba.</div>}
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '14px' }}>
