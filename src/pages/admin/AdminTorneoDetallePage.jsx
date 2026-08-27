@@ -2791,7 +2791,10 @@ export default function AdminTorneoDetallePage() {
       const pool = conCupo.length > 0 ? conCupo : candidatas
       const minUso = Math.min(...pool.map(f => usoFecha[f.iso]))
       const empatadas = pool.filter(f => usoFecha[f.iso] === minUso)
-      const elegida = empatadas[Math.floor(Math.random() * empatadas.length)]
+      // Entre las que empatan en uso, se prefiere la fecha más próxima —
+      // así se llena primero el fin de semana más cercano en vez de
+      // esparcir partidos a semanas futuras que también tenían cupo.
+      const elegida = [...empatadas].sort((a, b) => a.iso.localeCompare(b.iso))[0]
       usoFecha[elegida.iso] = (usoFecha[elegida.iso] || 0) + 1
       return { ...p, fecha: elegida.iso, sinCoincidencia }
     })
