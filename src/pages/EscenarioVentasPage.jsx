@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr, registrarActividad, fechaLocalStr, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
+import { useAccionUnica } from '../lib/useAccionUnica'
 import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2 } from 'lucide-react'
 
 const S = {
@@ -87,6 +88,8 @@ export default function EscenarioVentasPage() {
   const [deudorNombre, setDeudorNombre] = useState('')
   const [deudorCancha, setDeudorCancha] = useState('')
   const [devolviendo, setDevolviendo] = useState(null) // venta a la que se le está eligiendo qué devolver
+  const [enviandoVenta, conVentaUnica] = useAccionUnica()
+  const [pagandoId, setPagandoId] = useState(null) // id de la venta que se está marcando como pagada, para no duplicar el clic
   const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
@@ -181,7 +184,7 @@ export default function EscenarioVentasPage() {
     setCart(c => { const cp = { ...c }; delete cp[id]; return cp })
   }
 
-  async function finalizarVenta(fiado) {
+  const finalizarVenta = conVentaUnica(async function finalizarVentaInner(fiado) {
     const items = Object.entries(cart).filter(([,q])=>q>0).map(([id,q]) => {
       const p = getProduct(id); return { productId:id, nombre:p.nombre, cantidad:q, precio:p.precio, costo:p.costo }
     })
@@ -213,7 +216,7 @@ export default function EscenarioVentasPage() {
       setMsg(`✅ Venta registrada: ${fmtMoney(total)}`); setTimeout(()=>setMsg(''),3000)
     }
     fetchTodo()
-  }
+  })
 
   function abrirDebe() {
     setDeudorNombre(''); setDeudorCancha(''); setModalDebe(true)
@@ -226,10 +229,16 @@ export default function EscenarioVentasPage() {
   }
 
   async function marcarPagado(venta) {
-    await supabase.from('escenario_ventas').update({ pago_estado:'pagado', pagado_at: new Date().toISOString() }).eq('id', venta.id)
-    setMsg(`✅ ${venta.deudor_nombre} ya pagó ${fmtMoney(venta.total)}`); setTimeout(()=>setMsg(''),3000)
-    registrarActividad(escenarioId, encargado, 'editar', 'venta', `Marcó como pagada la deuda de "${venta.deudor_nombre}" (${fmtMoney(venta.total)})`)
-    fetchTodo()
+    if (pagandoId) return // ya se está guardando otra — evita doble clic
+    setPagandoId(venta.id)
+    try {
+      await supabase.from('escenario_ventas').update({ pago_estado:'pagado', pagado_at: new Date().toISOString() }).eq('id', venta.id)
+      setMsg(`✅ ${venta.deudor_nombre} ya pagó ${fmtMoney(venta.total)}`); setTimeout(()=>setMsg(''),3000)
+      registrarActividad(escenarioId, encargado, 'editar', 'venta', `Marcó como pagada la deuda de "${venta.deudor_nombre}" (${fmtMoney(venta.total)})`)
+      await fetchTodo()
+    } finally {
+      setPagandoId(null)
+    }
   }
 
   const items = Object.entries(cart).filter(([,q])=>q>0)
@@ -299,8 +308,8 @@ export default function EscenarioVentasPage() {
                   <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>{fmtMoney(v.total)}</div>
                 </div>
                 {!soloLectura && (
-                  <button onClick={()=>marcarPagado(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
-                    <CheckCircle2 size={12}/> Ya pagó
+                  <button onClick={()=>marcarPagado(v)} disabled={pagandoId===v.id} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor: pagandoId===v.id ? 'default' : 'pointer', opacity: pagandoId===v.id ? .6 : 1, color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                    <CheckCircle2 size={12}/> {pagandoId===v.id ? 'Guardando...' : 'Ya pagó'}
                   </button>
                 )}
               </div>
@@ -403,13 +412,13 @@ export default function EscenarioVentasPage() {
               <span style={{ fontWeight:900, fontSize:'1.3rem', color:S.gold }}>{fmtMoney(total)}</span>
             </div>
             <div style={{ display:'flex', gap:'8px' }}>
-              <button onClick={abrirDebe}
-                style={{ flex:'0 0 auto', padding:'14px 16px', background:'none', border:`1.5px solid ${S.gold}`, borderRadius:'12px', cursor:'pointer', color:S.gold, fontWeight:800, fontSize:'.85rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px' }}>
+              <button onClick={abrirDebe} disabled={enviandoVenta}
+                style={{ flex:'0 0 auto', padding:'14px 16px', background:'none', border:`1.5px solid ${S.gold}`, borderRadius:'12px', cursor: enviandoVenta ? 'default' : 'pointer', opacity: enviandoVenta ? .6 : 1, color:S.gold, fontWeight:800, fontSize:'.85rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px' }}>
                 <NotebookPen size={16}/> Debe
               </button>
-              <button onClick={()=>finalizarVenta()}
-                style={{ flex:1, padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
-                <DollarSign size={17}/> COBRAR
+              <button onClick={()=>finalizarVenta()} disabled={enviandoVenta}
+                style={{ flex:1, padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor: enviandoVenta ? 'default' : 'pointer', opacity: enviandoVenta ? .7 : 1, color:'#fff', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+                <DollarSign size={17}/> {enviandoVenta ? 'Procesando...' : 'COBRAR'}
               </button>
             </div>
           </div>
@@ -436,7 +445,7 @@ export default function EscenarioVentasPage() {
                 placeholder="Ej: Cancha 1" list="canchas-debe"/>
               <datalist id="canchas-debe">{canchas.map(c => <option key={c.id} value={c.nombre}/>)}</datalist>
             </div>
-            <button onClick={confirmarDebe} disabled={!deudorNombre.trim() || !deudorCancha.trim()}
+            <button onClick={confirmarDebe} disabled={!deudorNombre.trim() || !deudorCancha.trim() || enviandoVenta}
               style={{ width:'100%', padding:'13px', background:S.gold, border:'none', borderRadius:'12px', cursor:'pointer', color:'#1a1300', fontWeight:800, fontSize:'.88rem', opacity: (!deudorNombre.trim() || !deudorCancha.trim()) ? .5 : 1 }}>
               Anotar deuda
             </button>

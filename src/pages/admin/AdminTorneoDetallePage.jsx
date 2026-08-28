@@ -618,6 +618,8 @@ export default function AdminTorneoDetallePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nuevoEquipoForm.name])
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
+  const creandoEquipoRef = useRef(false) // bloqueo inmediato (sin esperar al re-render) para que doble clic no cree el equipo dos veces
+  const agregandoEquipoRef = useRef(false)
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
 
@@ -3088,10 +3090,16 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleAgregarEquipo(equipo) {
+    if (agregandoEquipoRef.current) return // ya se está agregando — evita doble clic
     if (cupoEquiposAlcanzado()) return avisarCupoEquipos()
-    const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: equipo.id })
-    if (error) return showMsg('Error al agregar equipo', 'error')
-    showMsg(`${equipo.name} agregado al torneo ✓`); cerrarModalEquipo(); fetchEquipos()
+    agregandoEquipoRef.current = true
+    try {
+      const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: equipo.id })
+      if (error) return showMsg('Error al agregar equipo', 'error')
+      showMsg(`${equipo.name} agregado al torneo ✓`); cerrarModalEquipo(); fetchEquipos()
+    } finally {
+      agregandoEquipoRef.current = false
+    }
   }
 
   function abrirCrearEquipo() {
@@ -3115,57 +3123,70 @@ export default function AdminTorneoDetallePage() {
   // Crea el equipo (con su representante y escudo) y lo inscribe en el torneo en el mismo paso
   // Inscribir al torneo un equipo que YA existe (evita duplicarlo y conserva su historia)
   async function usarEquipoExistente(e) {
+    if (agregandoEquipoRef.current) return
     if (cupoEquiposAlcanzado()) return avisarCupoEquipos()
-    const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: e.id })
-    if (error) return showMsg('No se pudo inscribir (¿ya está en el torneo?)', 'error')
-    showMsg(`${e.name} inscrito en el torneo ✓ — se conserva toda su historia`)
-    setParecidosCrear([]); cerrarModalEquipo(); fetchEquipos()
+    agregandoEquipoRef.current = true
+    try {
+      const { error } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: e.id })
+      if (error) return showMsg('No se pudo inscribir (¿ya está en el torneo?)', 'error')
+      showMsg(`${e.name} inscrito en el torneo ✓ — se conserva toda su historia`)
+      setParecidosCrear([]); cerrarModalEquipo(); fetchEquipos()
+    } finally {
+      agregandoEquipoRef.current = false
+    }
   }
 
   async function handleCrearEquipoYAgregar(forzar = false) {
+    if (creandoEquipoRef.current) return // ya se está creando — evita doble clic
     if (cupoEquiposAlcanzado()) return avisarCupoEquipos()
     if (!nuevoEquipoForm.name.trim())                   return showMsg('El nombre del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_nombre.trim())   return showMsg('El dueño/representante del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_cedula.trim())   return showMsg('La cédula del dueño es obligatoria', 'error')
     if (!nuevoEquipoForm.representante_telefono.trim()) return showMsg('El teléfono del dueño es obligatorio', 'error')
-    // Antes de crear: ¿ya existe un equipo con nombre igual o parecido?
-    // Crear un duplicado hace que la historia anterior (partidos, palmarés,
-    // jugadores) quede huérfana en el equipo viejo.
-    if (!forzar) {
-      const parecidos = await buscarEquiposParecidos(nuevoEquipoForm.name)
-      if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
-    }
-    setParecidosCrear([])
-    setCreandoEquipo(true)
-    let { data: nuevo, error } = await supabase.from('teams').insert({
-      name: nuevoEquipoForm.name.trim(),
-      city: nuevoEquipoForm.city.trim() || null,
-      representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
-      representante_cedula: nuevoEquipoForm.representante_cedula.trim(),
-      representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
-    }).select().single()
-    if (error && (error.message || '').includes('representante_cedula')) {
-      // BD sin la migración de la cédula: crear sin ella para no bloquear
-      ;({ data: nuevo, error } = await supabase.from('teams').insert({
-        name: nuevoEquipoForm.name.trim(), city: nuevoEquipoForm.city.trim() || null,
-        representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
-        representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
-      }).select().single())
-    }
-    if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
-    if (nuevoEquipoLogo) {
-      const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
-      const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
-      if (!errorLogo) {
-        const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
-        await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
+    creandoEquipoRef.current = true
+    try {
+      // Antes de crear: ¿ya existe un equipo con nombre igual o parecido?
+      // Crear un duplicado hace que la historia anterior (partidos, palmarés,
+      // jugadores) quede huérfana en el equipo viejo.
+      if (!forzar) {
+        const parecidos = await buscarEquiposParecidos(nuevoEquipoForm.name)
+        if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
       }
+      setParecidosCrear([])
+      setCreandoEquipo(true)
+      let { data: nuevo, error } = await supabase.from('teams').insert({
+        name: nuevoEquipoForm.name.trim(),
+        city: nuevoEquipoForm.city.trim() || null,
+        representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+        representante_cedula: nuevoEquipoForm.representante_cedula.trim(),
+        representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+      }).select().single()
+      if (error && (error.message || '').includes('representante_cedula')) {
+        // BD sin la migración de la cédula: crear sin ella para no bloquear
+        ;({ data: nuevo, error } = await supabase.from('teams').insert({
+          name: nuevoEquipoForm.name.trim(), city: nuevoEquipoForm.city.trim() || null,
+          representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+          representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+        }).select().single())
+      }
+      if (error) { showMsg('Error al crear el equipo', 'error'); return }
+      if (nuevoEquipoLogo) {
+        const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
+        const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
+        if (!errorLogo) {
+          const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+          await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
+        }
+      }
+      const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
+      if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); return }
+      showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
+      limpiarBorrador('draft_crear_equipo_torneo')
+      cerrarModalEquipo(); fetchEquipos()
+    } finally {
+      creandoEquipoRef.current = false
+      setCreandoEquipo(false)
     }
-    const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
-    if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
-    showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
-    limpiarBorrador('draft_crear_equipo_torneo')
-    setCreandoEquipo(false); cerrarModalEquipo(); fetchEquipos()
   }
 
   async function handleQuitarEquipo(equipo) {
