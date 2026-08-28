@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, todayStr, registrarActividad, fechaLocalStr, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
+import { fmtMoney, todayStr, registrarActividad, fechaLocalStr, fmtDate, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
 import { useAccionUnica } from '../lib/useAccionUnica'
-import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2 } from 'lucide-react'
+import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2, CalendarClock } from 'lucide-react'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -91,8 +91,14 @@ export default function EscenarioVentasPage() {
   const [enviandoVenta, conVentaUnica] = useAccionUnica()
   const [pagandoId, setPagandoId] = useState(null) // id de la venta que se está marcando como pagada, para no duplicar el clic
   const [soloLectura, setSoloLectura] = useState(false)
+  // Día para el que se están registrando/viendo las ventas — por defecto
+  // hoy, pero se puede retroceder para anotar ventas de ayer o de días
+  // anteriores (ej. lo que quedó apuntado a mano en el cuaderno). Nunca
+  // hacia el futuro.
+  const [fechaVenta, setFechaVenta] = useState(todayStr())
+  const esHoy = fechaVenta === todayStr()
 
-  useEffect(() => { fetchTodo() }, [escenarioId])
+  useEffect(() => { fetchTodo() }, [escenarioId, fechaVenta])
 
   async function fetchTodo() {
     setLoading(true)
@@ -118,9 +124,10 @@ export default function EscenarioVentasPage() {
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId).order('nombre'),
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
       supabase.from('escenario_ventas').select('items').eq('escenario_id', escenarioId).eq('estado', 'completada').gte('fecha', fechaLocalStr(desde)),
-      // Ventas de hoy, para poder devolver alguna si el cliente trae algo de
-      // vuelta — la más reciente de primero.
-      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', todayStr()).order('hora', { ascending: false }),
+      // Ventas del día que se está viendo (hoy por defecto, o el día al que
+      // se retrocedió), para poder devolver alguna si el cliente trae algo
+      // de vuelta — la más reciente de primero.
+      supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', fechaVenta).order('hora', { ascending: false }),
       // Deudas ("debe") sin pagar todavía — no se limitan a hoy, por si
       // alguien se quedó debiendo de otro día.
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('pago_estado', 'pendiente').eq('estado', 'completada').order('created_at', { ascending: false }),
@@ -197,7 +204,11 @@ export default function EscenarioVentasPage() {
     const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
     const now = new Date()
     const payload = {
-      escenario_id: escenario.id, fecha: todayStr(), hora: now.toTimeString().slice(0,5),
+      escenario_id: escenario.id, fecha: fechaVenta,
+      // Si es una venta de HOY se guarda la hora real; si es de un día
+      // anterior (anotada del cuaderno) no tiene sentido ponerle la hora
+      // actual — queda sin hora para no mentir el dato.
+      hora: esHoy ? now.toTimeString().slice(0,5) : null,
       items, total, costo_total: costoTotal, ganancia: total-costoTotal,
     }
     if (fiado) {
@@ -209,11 +220,12 @@ export default function EscenarioVentasPage() {
     if (error) { setMsg('Error al registrar venta: ' + error.message); return }
     await Promise.all(items.map(it => supabase.from('escenario_productos').update({ cantidad: getProduct(it.productId).cantidad - it.cantidad }).eq('id', it.productId)))
     setCart({})
+    const sufijoFecha = esHoy ? '' : ` (${fmtDate(fechaVenta)})`
     if (fiado) {
-      setMsg(`📝 Anotado: ${fiado.nombre} debe ${fmtMoney(total)}`); setTimeout(()=>setMsg(''),4000)
-      registrarActividad(escenarioId, encargado, 'crear', 'venta', `Anotó fiado a "${fiado.nombre}" (${fiado.cancha}) por ${fmtMoney(total)}`)
+      setMsg(`📝 Anotado: ${fiado.nombre} debe ${fmtMoney(total)}${sufijoFecha}`); setTimeout(()=>setMsg(''),4000)
+      registrarActividad(escenarioId, encargado, 'crear', 'venta', `Anotó fiado a "${fiado.nombre}" (${fiado.cancha}) por ${fmtMoney(total)}${sufijoFecha}`)
     } else {
-      setMsg(`✅ Venta registrada: ${fmtMoney(total)}`); setTimeout(()=>setMsg(''),3000)
+      setMsg(`✅ Venta registrada: ${fmtMoney(total)}${sufijoFecha}`); setTimeout(()=>setMsg(''),3000)
     }
     fetchTodo()
   })
@@ -285,10 +297,30 @@ export default function EscenarioVentasPage() {
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'16px 16px 0' }}>
         {msg && <div style={{ background:S.cyanDim, color:S.cyan, borderRadius:8, padding:'8px 12px', fontSize:'.78rem', marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
+        {/* Día para el que se registra/ve la venta — por defecto hoy, pero
+            se puede retroceder para anotar lo que quedó en el cuaderno de
+            un día anterior. */}
+        <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom: esHoy ? '14px' : '8px' }}>
+          <CalendarClock size={14} color={S.muted} style={{ flexShrink:0 }}/>
+          <button onClick={()=>{ const d=new Date(fechaVenta+'T00:00:00'); d.setDate(d.getDate()-1); setFechaVenta(fechaLocalStr(d)) }}
+            style={{ padding:'6px 10px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:S.text2, fontSize:'.72rem', fontWeight:700, flexShrink:0 }}>← Ayer</button>
+          <input type="date" value={fechaVenta} max={todayStr()} onChange={e=>e.target.value && setFechaVenta(e.target.value)}
+            style={{ flex:1, minWidth:0, background:S.card, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 8px', color:S.text, fontSize:'.72rem', outline:'none', colorScheme:'dark' }}/>
+          {!esHoy && (
+            <button onClick={()=>setFechaVenta(todayStr())}
+              style={{ padding:'6px 10px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'8px', cursor:'pointer', color:S.cyan, fontSize:'.72rem', fontWeight:700, flexShrink:0, whiteSpace:'nowrap' }}>Hoy</button>
+          )}
+        </div>
+        {!esHoy && (
+          <div style={{ background:'rgba(249,168,37,.1)', border:`1px solid ${S.gold}`, borderRadius:'10px', padding:'8px 12px', fontSize:'.75rem', color:S.gold, fontWeight:600, marginBottom:'14px', textAlign:'center' }}>
+            📅 Estás registrando ventas del {fmtDate(fechaVenta)}, no de hoy.
+          </div>
+        )}
+
         <div style={{ display:'grid', gridTemplateColumns: deudas.length>0 ? '1fr 1fr' : '1fr', gap:'8px', marginBottom:'14px' }}>
           <button onClick={()=>setMostrarHistorial(v=>!v)}
             style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background: mostrarHistorial ? S.cyanDim : S.card, border:`1px solid ${mostrarHistorial ? S.cyan : S.border}`, borderRadius:'10px', cursor:'pointer', color: mostrarHistorial ? S.cyan : S.text2, fontWeight:700, fontSize:'.74rem' }}>
-            <History size={13}/> Ventas de hoy {ventasHoy.length>0 ? `(${ventasHoy.length})` : ''}
+            <History size={13}/> {esHoy ? 'Ventas de hoy' : `Ventas del ${fmtDate(fechaVenta)}`} {ventasHoy.length>0 ? `(${ventasHoy.length})` : ''}
           </button>
           {deudas.length > 0 && (
             <button onClick={()=>setMostrarDeudas(v=>!v)}
@@ -320,7 +352,7 @@ export default function EscenarioVentasPage() {
         {mostrarHistorial && (
           <div style={{ marginBottom:'16px' }}>
             {ventasHoy.length===0 ? (
-              <div style={{ textAlign:'center', color:S.muted, fontSize:'.8rem', padding:'14px 0' }}>Todavía no hay ventas hoy.</div>
+              <div style={{ textAlign:'center', color:S.muted, fontSize:'.8rem', padding:'14px 0' }}>Todavía no hay ventas {esHoy ? 'hoy' : `el ${fmtDate(fechaVenta)}`}.</div>
             ) : ventasHoy.map(v => (
               <div key={v.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px', padding:'10px 12px', background:S.card, border:`1px solid ${v.estado==='devuelta'?S.loss:S.border}`, borderRadius:'10px', marginBottom:'8px', opacity: v.estado==='devuelta' ? .55 : 1 }}>
                 <div style={{ minWidth:0 }}>
@@ -411,6 +443,9 @@ export default function EscenarioVentasPage() {
               <span style={{ fontWeight:700, fontSize:'.9rem' }}>Total</span>
               <span style={{ fontWeight:900, fontSize:'1.3rem', color:S.gold }}>{fmtMoney(total)}</span>
             </div>
+            {!esHoy && (
+              <div style={{ textAlign:'center', fontSize:'.72rem', color:S.gold, fontWeight:700, marginBottom:'8px' }}>📅 Se va a registrar con fecha {fmtDate(fechaVenta)}</div>
+            )}
             <div style={{ display:'flex', gap:'8px' }}>
               <button onClick={abrirDebe} disabled={enviandoVenta}
                 style={{ flex:'0 0 auto', padding:'14px 16px', background:'none', border:`1.5px solid ${S.gold}`, borderRadius:'12px', cursor: enviandoVenta ? 'default' : 'pointer', opacity: enviandoVenta ? .6 : 1, color:S.gold, fontWeight:800, fontSize:'.85rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'7px' }}>
@@ -418,7 +453,7 @@ export default function EscenarioVentasPage() {
               </button>
               <button onClick={()=>finalizarVenta()} disabled={enviandoVenta}
                 style={{ flex:1, padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor: enviandoVenta ? 'default' : 'pointer', opacity: enviandoVenta ? .7 : 1, color:'#fff', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
-                <DollarSign size={17}/> {enviandoVenta ? 'Procesando...' : 'COBRAR'}
+                <DollarSign size={17}/> {enviandoVenta ? 'Procesando...' : esHoy ? 'COBRAR' : `COBRAR (${fmtDate(fechaVenta)})`}
               </button>
             </div>
           </div>
