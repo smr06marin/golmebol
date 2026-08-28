@@ -2,42 +2,29 @@
 -- FIX: "new row violates row-level security policy for table
 -- escenario_gastos" al registrar un gasto
 --
--- Cómo pasó: migracion_rls_seguridad_tanda1.sql activó RLS (seguridad
--- por fila) en escenario_ventas, escenario_compras y escenario_pedidos
--- con sus políticas — pero se quedó por fuera escenario_gastos. Si en
--- algún momento se activó RLS en esa tabla (a mano, o desde el aviso de
--- seguridad de Supabase) sin política, TODO insert queda bloqueado por
--- defecto — de ahí el error.
+-- El error "function public.es_encargado_escenario(uuid) does not
+-- exist" confirma que la migración que crea esa función
+-- (migracion_rls_seguridad_tanda1.sql) todavía no se corrió en esta
+-- base de datos — por eso no se puede usar acá. En algún momento se
+-- activó RLS (seguridad por fila) en escenario_gastos sin ninguna
+-- política (a mano, o desde el aviso de seguridad de Supabase), y sin
+-- política ninguna, TODO insert queda bloqueado por defecto — de ahí
+-- el error original.
 --
--- Esta migración le pone a escenario_gastos exactamente las mismas
--- reglas que ya tienen ventas/compras: solo el encargado de ESE
--- escenario (o el admin de la plataforma) puede ver/crear/editar/borrar
--- sus gastos.
+-- El control de acceso de este módulo (Escenarios) ya se hace en la
+-- app (se revisa quién es encargado antes de dejar entrar a la
+-- pantalla) — igual que en escenario_ventas y escenario_compras, que
+-- hoy NO tienen RLS activado. Esta migración deja escenario_gastos
+-- igual que esas dos: RLS desactivado, tal como estaba pensada
+-- originalmente en migracion_escenario_gastos.sql.
 --
 -- Cómo ejecutar: Supabase → SQL Editor → pegar todo → RUN
 -- Es seguro ejecutarlo más de una vez.
 -- ============================================================
-
-alter table escenario_gastos enable row level security;
 
 drop policy if exists "escenario_gastos_select" on escenario_gastos;
 drop policy if exists "escenario_gastos_insert" on escenario_gastos;
 drop policy if exists "escenario_gastos_update" on escenario_gastos;
 drop policy if exists "escenario_gastos_delete" on escenario_gastos;
 
-create policy "escenario_gastos_select"
-on escenario_gastos for select
-using (public.es_encargado_escenario(escenario_id));
-
-create policy "escenario_gastos_insert"
-on escenario_gastos for insert
-with check (public.es_encargado_escenario(escenario_id));
-
-create policy "escenario_gastos_update"
-on escenario_gastos for update
-using (public.es_encargado_escenario(escenario_id))
-with check (public.es_encargado_escenario(escenario_id));
-
-create policy "escenario_gastos_delete"
-on escenario_gastos for delete
-using (public.es_encargado_escenario(escenario_id));
+alter table escenario_gastos disable row level security;
