@@ -68,6 +68,35 @@ if (error) {
 
 - Usa `.select()` con columnas explícitas, nunca `select('*')` en producción.
 - Para realtime, siempre limpiar subscripción en el cleanup del useEffect.
+- **Todo botón que crea o guarda algo (insert/update) debe bloquearse mientras la
+  acción está en curso, para que un doble clic (o un clic mientras carga por
+  internet lento) NO dispare la acción dos veces.** El bloqueo tiene que ser
+  inmediato (con un `useRef`, no solo `useState`), porque el estado de React
+  no se actualiza sincrónicamente y un segundo clic puede colarse antes del
+  primer re-render. Patrón mínimo:
+
+```javascript
+const guardandoRef = useRef(false)
+async function handleGuardar() {
+  if (guardandoRef.current) return
+  guardandoRef.current = true
+  setGuardando(true)
+  try {
+    await supabase.from('tabla').insert(payload)
+  } finally {
+    guardandoRef.current = false
+    setGuardando(false)
+  }
+}
+// <button onClick={handleGuardar} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
+```
+
+  Para casos simples ya existe el hook `useAccionUnica` en `src/lib/useAccionUnica.js`
+  (`const [enviando, conGuardaUnica] = useAccionUnica()`, y envolver el handler con
+  `conGuardaUnica(fn)`). El `guardandoRef.current = true` debe ponerse ANTES de
+  cualquier `await` (incluyendo validaciones async, `window.confirm`, etc.), nunca
+  después — si se pone después de un `await`, queda una ventana donde un segundo
+  clic sí alcanza a duplicar el registro.
 
 ---
 
