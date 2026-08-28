@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Globe, Upload, Image as ImageIcon, Plus, X, ExternalLink, Trophy } from 'lucide-react'
@@ -42,6 +42,7 @@ export default function AdminPerfilOrganizadorPage() {
   const [form, setForm] = useState({ nombre_publico: '', custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', logo_url: '', favicon_url: '', escenario_id: '', descripcion: '', whatsapp: '', email: '', direccion: '', facebook_url: '', instagram_url: '', tiktok_url: '' })
   const [torneos, setTorneos] = useState([])
   const [sponsors, setSponsors] = useState([])
+  const agregandoSponsorRef = useRef(false)
   const [escenariosDisponibles, setEscenariosDisponibles] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadingSponsors, setLoadingSponsors] = useState(true)
@@ -171,10 +172,16 @@ export default function AdminPerfilOrganizadorPage() {
   }
 
   async function handleAgregarSponsor() {
-    const orden = sponsors.length > 0 ? Math.max(...sponsors.map(s => s.orden || 0)) + 1 : 0
-    const { data, error } = await supabase.from('organizador_sponsors').insert({ organizador_id: targetId, nombre: '', logo_url: null, link: null, orden }).select().single()
-    if (error) return showMsg('Error al agregar patrocinador: ' + error.message, 'error')
-    setSponsors(prev => [...prev, data])
+    if (agregandoSponsorRef.current) return // evita doble clic
+    agregandoSponsorRef.current = true
+    try {
+      const orden = sponsors.length > 0 ? Math.max(...sponsors.map(s => s.orden || 0)) + 1 : 0
+      const { data, error } = await supabase.from('organizador_sponsors').insert({ organizador_id: targetId, nombre: '', logo_url: null, link: null, orden }).select().single()
+      if (error) return showMsg('Error al agregar patrocinador: ' + error.message, 'error')
+      setSponsors(prev => [...prev, data])
+    } finally {
+      agregandoSponsorRef.current = false
+    }
   }
 
   function updateSponsorLocal(sponsorId, field, value) {
