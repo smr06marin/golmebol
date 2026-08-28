@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import EscuelaPageHeader from '../components/EscuelaPageHeader'
@@ -24,6 +24,8 @@ export default function EscuelaTorneoDetallePage() {
 
   const [showPremioForm, setShowPremioForm] = useState(false)
   const [nuevoPremio, setNuevoPremio] = useState({ jugador_id:'', nombre:'', emoji:'🏆', descripcion:'' })
+  const [creandoPremio, setCreandoPremio] = useState(false)
+  const creandoPremioRef = useRef(false)
 
   useEffect(() => { fetchTodo() }, [id])
 
@@ -62,14 +64,22 @@ export default function EscuelaTorneoDetallePage() {
   }
 
   async function handleCrearPremio() {
+    if (creandoPremioRef.current) return // ya se está creando — evita doble clic
     if (!nuevoPremio.jugador_id || !nuevoPremio.nombre.trim()) return
-    const { data, error } = await supabase.from('escuela_torneo_premios')
-      .insert({ torneo_id:id, ...nuevoPremio })
-      .select('*, jugador:jugador_id(name)').single()
-    if (!error && data) {
-      setPremios(p => [data, ...p])
-      setNuevoPremio({ jugador_id:'', nombre:'', emoji:'🏆', descripcion:'' })
-      setShowPremioForm(false)
+    creandoPremioRef.current = true
+    setCreandoPremio(true)
+    try {
+      const { data, error } = await supabase.from('escuela_torneo_premios')
+        .insert({ torneo_id:id, ...nuevoPremio })
+        .select('*, jugador:jugador_id(name)').single()
+      if (!error && data) {
+        setPremios(p => [data, ...p])
+        setNuevoPremio({ jugador_id:'', nombre:'', emoji:'🏆', descripcion:'' })
+        setShowPremioForm(false)
+      }
+    } finally {
+      creandoPremioRef.current = false
+      setCreandoPremio(false)
     }
   }
 
@@ -180,7 +190,7 @@ export default function EscuelaTorneoDetallePage() {
                 <input value={nuevoPremio.nombre} onChange={e => setNuevoPremio(p => ({ ...p, nombre:e.target.value }))} style={inp} placeholder="Ej: Goleador del torneo"/>
               </div>
               <input value={nuevoPremio.descripcion} onChange={e => setNuevoPremio(p => ({ ...p, descripcion:e.target.value }))} style={{ ...inp, marginBottom:10 }} placeholder="Descripción (opcional)"/>
-              <button onClick={handleCrearPremio} style={{ width:'100%', padding:'9px', background:S.cyan, border:'none', borderRadius:8, cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.8rem' }}>Agregar premio</button>
+              <button onClick={handleCrearPremio} disabled={creandoPremio} style={{ width:'100%', padding:'9px', background:S.cyan, border:'none', borderRadius:8, cursor: creandoPremio ? 'default' : 'pointer', opacity: creandoPremio ? .6 : 1, color:'#000', fontWeight:800, fontSize:'.8rem' }}>{creandoPremio ? 'Guardando...' : 'Agregar premio'}</button>
             </div>
           )}
 

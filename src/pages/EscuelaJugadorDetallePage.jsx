@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
@@ -51,6 +51,8 @@ export default function EscuelaJugadorDetallePage() {
 
   const [showPremioForm, setShowPremioForm] = useState(false)
   const [nuevoPremio, setNuevoPremio] = useState({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'', card_type:'' })
+  const [creandoPremio, setCreandoPremio] = useState(false)
+  const creandoPremioRef = useRef(false)
   const [modalAbierto, setModalAbierto] = useState(null) // 'acceso' | 'fotos' | 'datos' | 'stats' | 'premios' | null
 
   useEffect(() => { fetchTodo() }, [id])
@@ -139,14 +141,22 @@ export default function EscuelaJugadorDetallePage() {
   }
 
   async function handleCrearPremio() {
+    if (creandoPremioRef.current) return // ya se está creando — evita doble clic
     if (!nuevoPremio.nombre.trim()) return
-    const { data, error } = await supabase.from('escuela_premios')
-      .insert({ escuela_id: escuela.id, ...nuevoPremio, umbral: Number(nuevoPremio.umbral) || 1, card_type: nuevoPremio.card_type || null })
-      .select().single()
-    if (!error && data) {
-      setPremios(p => [...p, data].sort((a,b) => a.umbral - b.umbral))
-      setNuevoPremio({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'', card_type:'' })
-      setShowPremioForm(false)
+    creandoPremioRef.current = true
+    setCreandoPremio(true)
+    try {
+      const { data, error } = await supabase.from('escuela_premios')
+        .insert({ escuela_id: escuela.id, ...nuevoPremio, umbral: Number(nuevoPremio.umbral) || 1, card_type: nuevoPremio.card_type || null })
+        .select().single()
+      if (!error && data) {
+        setPremios(p => [...p, data].sort((a,b) => a.umbral - b.umbral))
+        setNuevoPremio({ nombre:'', emoji:'🏆', tipo_stat:'goles_escuela', umbral:5, descripcion:'', card_type:'' })
+        setShowPremioForm(false)
+      }
+    } finally {
+      creandoPremioRef.current = false
+      setCreandoPremio(false)
     }
   }
 
@@ -334,7 +344,7 @@ export default function EscuelaJugadorDetallePage() {
                       <option value="">Ninguno — solo insignia</option>
                       {CARD_DESIGNS.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
                     </select>
-                    <button onClick={handleCrearPremio} style={{ width:'100%', padding:'9px', background:S.cyan, border:'none', borderRadius:8, cursor:'pointer', color:'#07240f', fontWeight:800, fontSize:'.8rem' }}>Crear premio</button>
+                    <button onClick={handleCrearPremio} disabled={creandoPremio} style={{ width:'100%', padding:'9px', background:S.cyan, border:'none', borderRadius:8, cursor: creandoPremio ? 'default' : 'pointer', opacity: creandoPremio ? .6 : 1, color:'#07240f', fontWeight:800, fontSize:'.8rem' }}>{creandoPremio ? 'Guardando...' : 'Crear premio'}</button>
                   </div>
                 )}
 
