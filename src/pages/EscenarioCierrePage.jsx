@@ -223,21 +223,28 @@ export default function EscenarioCierrePage() {
 
           {/* Resumen general */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ventas tienda</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ganancia tienda</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(ganancia)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Cobrado en canchas</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(ingresoCanchas)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Pagado en compras</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(pagadoCompras)}</div></div>
-            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Gastos</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>{fmtMoney(totalGastos)}</div></div>
-            <div style={stat}>
-              <div style={{ fontSize:'.68rem', color:S.muted }}>Base de caja</div>
-              <div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(montoBase)}</div>
-              {baseActual && <div style={{ fontSize:'.62rem', color:S.muted }}>puesta el {fmtDate(baseActual.fecha)}</div>}
+            <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ventas tienda</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(totalVentas)}</div></div>
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Pagado en compras</div><div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(pagadoCompras)}</div></div>
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Gastos</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>{fmtMoney(totalGastos)}</div></div>
             </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Cobrado en canchas</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.cyan }}>{fmtMoney(ingresoCanchas)}</div></div>
+              {ventasFiadas.length > 0 && (
+                <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Fiado hoy ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiadoHoy)}</div></div>
+              )}
+              <div style={stat}>
+                <div style={{ fontSize:'.68rem', color:S.muted }}>Base de caja</div>
+                <div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(montoBase)}</div>
+                {baseActual && <div style={{ fontSize:'.62rem', color:S.muted }}>puesta el {fmtDate(baseActual.fecha)}</div>}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginTop:'10px' }}>
+            <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Ganancia tienda</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(ganancia)}</div></div>
             {ventasDevueltas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Devuelto ({ventasDevueltas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>-{fmtMoney(totalDevuelto)}</div></div>
-            )}
-            {ventasFiadas.length > 0 && (
-              <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Fiado hoy ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiadoHoy)}</div></div>
             )}
             {reservasCanceladas.length > 0 && (
               <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Canceladas/rechazadas ({reservasCanceladas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.muted }}>No suman a la caja</div></div>
