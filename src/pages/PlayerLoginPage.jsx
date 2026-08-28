@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { registrarSesionDispositivo, marcarInicioLogin } from '../lib/deviceSession'
+import { conTimeout } from '../lib/conTimeout'
+
+const MSG_TIMEOUT = 'Esto está tardando demasiado. Revisa tu internet e intenta de nuevo.'
+const MSG_CONEXION = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'
+const msgFalla = (err) => (err?.message === 'TIMEOUT' ? MSG_TIMEOUT : MSG_CONEXION)
 import SponsorSplash from '../components/card/SponsorSplash'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
@@ -36,14 +41,21 @@ function ModalCambiarPass({ cedula, onCambiada }) {
     if (pass !== pass2)           { setError('Las contraseñas no coinciden'); return }
     if (pass === cedula)          { setError('La nueva contraseña no puede ser tu cédula'); return }
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.updateUser({ password: pass })
-    if (err) { setError('Error: ' + err.message); setLoading(false); return }
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await supabase.from('players').update({ primer_ingreso: false }).eq('user_id', user.id)
+    try {
+      await conTimeout((async () => {
+        const { error: err } = await supabase.auth.updateUser({ password: pass })
+        if (err) { setError('Error: ' + err.message); return }
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await supabase.from('players').update({ primer_ingreso: false }).eq('user_id', user.id)
+        }
+        onCambiada()
+      })())
+    } catch (e2) {
+      setError(msgFalla(e2))
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-    onCambiada()
   }
 
   return (
@@ -88,11 +100,16 @@ function ModalRecuperarPass({ onClose }) {
     e.preventDefault()
     if (!cedula.trim()) { setError('Ingresa tu cédula'); return }
     setLoading(true); setError('')
-    await supabase.auth.resetPasswordForEmail(`${cedula.trim()}@golmebol.com`, {
-      redirectTo: `${window.location.origin}/jugador/login?reset=true`,
-    })
-    setLoading(false)
-    setEnviado(true)
+    try {
+      await conTimeout(supabase.auth.resetPasswordForEmail(`${cedula.trim()}@golmebol.com`, {
+        redirectTo: `${window.location.origin}/jugador/login?reset=true`,
+      }))
+      setEnviado(true)
+    } catch (err) {
+      setError(msgFalla(err))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -168,43 +185,50 @@ export default function PlayerLoginPage() {
     e.preventDefault()
     if (!cedula.trim()) { setError('Ingresa tu número de cédula'); return }
     setLoading(true); setError('')
-    // OJO: no usamos .single() acá — si por algún motivo quedaron dos filas con
-    // la misma cédula (bug conocido, ver migracion_fusionar_cedulas_duplicadas.sql),
-    // .single() revienta con 0 resultados y la persona ve "cédula no registrada"
-    // aunque sí exista. Con una lista simple tomamos la fila correcta a mano:
-    // la que ya tenga cuenta de acceso creada manda; si ninguna la tiene, la más
-    // completa (más roles marcados).
-    // es_encargado_escenario es columna nueva (migracion_escenarios.sql); si
-    // todavía no se corrió esa migración en Supabase, este select fallaría
-    // para TODO el login de la plataforma — se reintenta sin esa columna.
-    let { data: filas, error: errFilas } = await supabase
-      .from('players')
-      .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_encargado_escenario, es_acudiente, es_jugador_escuela, equipo_deseado')
-      .eq('numero_cedula', cedula.trim())
-    if (errFilas) {
-      ;({ data: filas } = await supabase
+    try {
+      await conTimeout((async () => {
+      // OJO: no usamos .single() acá — si por algún motivo quedaron dos filas con
+      // la misma cédula (bug conocido, ver migracion_fusionar_cedulas_duplicadas.sql),
+      // .single() revienta con 0 resultados y la persona ve "cédula no registrada"
+      // aunque sí exista. Con una lista simple tomamos la fila correcta a mano:
+      // la que ya tenga cuenta de acceso creada manda; si ninguna la tiene, la más
+      // completa (más roles marcados).
+      // es_encargado_escenario es columna nueva (migracion_escenarios.sql); si
+      // todavía no se corrió esa migración en Supabase, este select fallaría
+      // para TODO el login de la plataforma — se reintenta sin esa columna.
+      let { data: filas, error: errFilas } = await supabase
         .from('players')
-        .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_acudiente, es_jugador_escuela, equipo_deseado')
-        .eq('numero_cedula', cedula.trim()))
-    }
-    setLoading(false)
-    const candidatas = filas || []
-    let p = null
-    if (candidatas.length === 1) {
-      p = candidatas[0]
-    } else if (candidatas.length > 1) {
-      const puntaje = (x) => (x.user_id ? 100 : 0) + Number(!!x.es_arbitro) + Number(!!x.es_arbitro_lider) + Number(!!x.es_profesor) + Number(!!x.es_profesor_coordinador) + Number(!!x.es_encargado_escenario) + Number(!!x.es_acudiente) + Number(!!x.es_jugador_escuela)
-      p = [...candidatas].sort((a, b) => puntaje(b) - puntaje(a))[0]
-    }
-    // Si el jugador existe pero aún no tiene cuenta, NO se muestra su nombre de
-    // una vez: primero debe demostrar que es él escribiendo nombre y primer
-    // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).
-    if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('verificar_nombre') }
-    else {
-      // Golmebol es gratis y no pide autorización — pero solo puede entrar
-      // quien YA está registrado como jugador (por su equipo o por Golmebol).
-      // Si la cédula no existe en players, no se deja crear cuenta desde acá.
-      setStep('no_registrado')
+        .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_encargado_escenario, es_acudiente, es_jugador_escuela, equipo_deseado')
+        .eq('numero_cedula', cedula.trim())
+      if (errFilas) {
+        ;({ data: filas } = await supabase
+          .from('players')
+          .select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_acudiente, es_jugador_escuela, equipo_deseado')
+          .eq('numero_cedula', cedula.trim()))
+      }
+      const candidatas = filas || []
+      let p = null
+      if (candidatas.length === 1) {
+        p = candidatas[0]
+      } else if (candidatas.length > 1) {
+        const puntaje = (x) => (x.user_id ? 100 : 0) + Number(!!x.es_arbitro) + Number(!!x.es_arbitro_lider) + Number(!!x.es_profesor) + Number(!!x.es_profesor_coordinador) + Number(!!x.es_encargado_escenario) + Number(!!x.es_acudiente) + Number(!!x.es_jugador_escuela)
+        p = [...candidatas].sort((a, b) => puntaje(b) - puntaje(a))[0]
+      }
+      // Si el jugador existe pero aún no tiene cuenta, NO se muestra su nombre de
+      // una vez: primero debe demostrar que es él escribiendo nombre y primer
+      // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).
+      if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('verificar_nombre') }
+      else {
+        // Golmebol es gratis y no pide autorización — pero solo puede entrar
+        // quien YA está registrado como jugador (por su equipo o por Golmebol).
+        // Si la cédula no existe en players, no se deja crear cuenta desde acá.
+        setStep('no_registrado')
+      }
+      })())
+    } catch (err) {
+      setError(msgFalla(err))
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -226,20 +250,30 @@ export default function PlayerLoginPage() {
     if (!pass.trim()) { setError('Ingresa tu contraseña'); return }
     setLoading(true); setError('')
     marcarInicioLogin()
-    const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
-    if (authError) { setError('Contraseña incorrecta'); setLoading(false); return }
-    // Golmebol es gratis: ya no se revisa membresía activa ni verificación
-    // manual — con contraseña correcta y cédula ya registrada, entra directo.
-    const { data: pActual } = await supabase.from('players').select('primer_ingreso').eq('id', player.id).single()
-    if (pActual?.primer_ingreso !== false) {
+    try {
+      // Cualquier falla de red/conexión a mitad de camino (o una conexión
+      // muy lenta que se queda colgada) no puede dejar el botón trabado en
+      // "Ingresando..." para siempre — por eso todo esto va con un límite de
+      // tiempo (conTimeout): si pasa, se avisa y se libera el botón.
+      await conTimeout((async () => {
+        const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
+        if (authError) { setError('Contraseña incorrecta'); return }
+        // Golmebol es gratis: ya no se revisa membresía activa ni verificación
+        // manual — con contraseña correcta y cédula ya registrada, entra directo.
+        const { data: pActual } = await supabase.from('players').select('primer_ingreso').eq('id', player.id).single()
+        if (pActual?.primer_ingreso !== false) {
+          setShowCambiarPass(true)
+          return
+        }
+        await registrarSesionDispositivo(player.id)
+        const splashData = await fetchSplashData(player.id)
+        setSplash(splashData)
+      })())
+    } catch (err) {
+      setError(msgFalla(err))
+    } finally {
       setLoading(false)
-      setShowCambiarPass(true)
-      return
     }
-    await registrarSesionDispositivo(player.id)
-    const splashData = await fetchSplashData(player.id)
-    setLoading(false)
-    setSplash(splashData)
   }
 
   async function handleCrearCuenta(e) {
@@ -249,38 +283,42 @@ export default function PlayerLoginPage() {
     setLoading(true); setError('')
     marcarInicioLogin()
     const email = `${cedula.trim()}@golmebol.com`
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass })
-    if (authError) {
-      // "User already registered" pasa cuando quedó una cuenta huérfana de un
-      // intento anterior (por ejemplo si algo falló justo después de crearla
-      // y nunca se vinculó a este jugador). En vez de dejar a la persona
-      // atascada pidiendo lo mismo una y otra vez, probamos iniciar sesión
-      // con la misma contraseña que acaba de escribir — si es la cuenta que
-      // ella misma creó antes, entra directo y queda vinculada.
-      const msg = (authError.message || '').toLowerCase()
-      if (msg.includes('already registered') || msg.includes('ya existe') || msg.includes('already exists')) {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password: pass })
-        if (signInError || !signInData?.user) {
-          setError('Ya existe una cuenta con esta cédula pero no coincide con esta contraseña. Si ya la habías creado antes, usa esa contraseña, o escríbenos por WhatsApp para restablecerla.')
-          setLoading(false)
+    try {
+      await conTimeout((async () => {
+      const { data: authData, error: authError } = await supabase.auth.signUp({ email, password: pass })
+      if (authError) {
+        // "User already registered" pasa cuando quedó una cuenta huérfana de un
+        // intento anterior (por ejemplo si algo falló justo después de crearla
+        // y nunca se vinculó a este jugador). En vez de dejar a la persona
+        // atascada pidiendo lo mismo una y otra vez, probamos iniciar sesión
+        // con la misma contraseña que acaba de escribir — si es la cuenta que
+        // ella misma creó antes, entra directo y queda vinculada.
+        const msg = (authError.message || '').toLowerCase()
+        if (msg.includes('already registered') || msg.includes('ya existe') || msg.includes('already exists')) {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password: pass })
+          if (signInError || !signInData?.user) {
+            setError('Ya existe una cuenta con esta cédula pero no coincide con esta contraseña. Si ya la habías creado antes, usa esa contraseña, o escríbenos por WhatsApp para restablecerla.')
+            return
+          }
+          if (!player.user_id) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', player.id)
+          await registrarSesionDispositivo(player.id)
+          const splashData = await fetchSplashData(player.id)
+          setSplash(splashData)
           return
         }
-        if (!player.user_id) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', player.id)
-        await registrarSesionDispositivo(player.id)
-        const splashData = await fetchSplashData(player.id)
-        setLoading(false)
-        setSplash(splashData)
+        setError('Error: ' + authError.message)
         return
       }
-      setError('Error: ' + authError.message)
+      await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
+      await registrarSesionDispositivo(player.id)
+      const splashData = await fetchSplashData(player.id)
+      setSplash(splashData)
+      })())
+    } catch (err) {
+      setError(msgFalla(err))
+    } finally {
       setLoading(false)
-      return
     }
-    await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
-    await registrarSesionDispositivo(player.id)
-    const splashData = await fetchSplashData(player.id)
-    setLoading(false)
-    setSplash(splashData)
   }
 
   const volver = () => {
