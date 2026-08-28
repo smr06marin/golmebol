@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr } from '../lib/escenarioHelpers'
@@ -27,6 +27,10 @@ export default function EscenarioPedidoPage() {
   const [copiado,   setCopiado]   = useState(false)
   const [mostrarQR, setMostrarQR] = useState(false)
   const [soloLectura, setSoloLectura] = useState(false)
+  const [entregandoId, setEntregandoId] = useState(null) // id del pedido que se está entregando, para no duplicar la venta
+  const entregandoRef = useRef(false)
+  const [enviandoPedido, setEnviandoPedido] = useState(false)
+  const enviandoPedidoRef = useRef(false)
 
   function copiarLinkClientes() {
     const link = `${window.location.origin}/pedir/${escenarioId}`
@@ -62,46 +66,62 @@ export default function EscenarioPedidoPage() {
   function addToCart(id) { setCart(c => ({ ...c, [id]: (c[id]||0)+1 })) }
 
   async function enviarPedido() {
+    if (enviandoPedidoRef.current) return
     const items = Object.entries(cart).filter(([,q])=>q>0).map(([id,q]) => { const p=getProduct(id); return { productId:id, nombre:p.nombre, cantidad:q, precio:p.precio } })
     if (items.length===0) return
-    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
-    const now = new Date()
-    const { error } = await supabase.from('escenario_pedidos').insert({
-      escenario_id: escenario.id, items, nombre: nombre.trim()||'Cliente', telefono: telefono.trim(),
-      total, fecha: todayStr(), hora: now.toTimeString().slice(0,5), estado:'pendiente',
-    })
-    if (error) { setMsg('Error: ' + error.message); return }
-    if (escenario?.whatsapp) {
-      const wa = `Hola, quiero hacer un pedido:\n` + items.map(it=>`- ${it.cantidad}x ${it.nombre} (${fmtMoney(it.precio*it.cantidad)})`).join('\n') +
-        `\nTotal: ${fmtMoney(total)}\nNombre: ${nombre||'Cliente'}\nEstoy en la cancha, ¿me lo pueden traer?`
-      window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(wa)}`, '_blank')
+    enviandoPedidoRef.current = true
+    setEnviandoPedido(true)
+    try {
+      const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
+      const now = new Date()
+      const { error } = await supabase.from('escenario_pedidos').insert({
+        escenario_id: escenario.id, items, nombre: nombre.trim()||'Cliente', telefono: telefono.trim(),
+        total, fecha: todayStr(), hora: now.toTimeString().slice(0,5), estado:'pendiente',
+      })
+      if (error) { setMsg('Error: ' + error.message); return }
+      if (escenario?.whatsapp) {
+        const wa = `Hola, quiero hacer un pedido:\n` + items.map(it=>`- ${it.cantidad}x ${it.nombre} (${fmtMoney(it.precio*it.cantidad)})`).join('\n') +
+          `\nTotal: ${fmtMoney(total)}\nNombre: ${nombre||'Cliente'}\nEstoy en la cancha, ¿me lo pueden traer?`
+        window.open(`https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(wa)}`, '_blank')
+      }
+      setCart({}); setNombre(''); setTelefono('')
+      setMsg('📱 Pedido enviado'); setTimeout(()=>setMsg(''),3000)
+      fetchTodo()
+    } finally {
+      enviandoPedidoRef.current = false
+      setEnviandoPedido(false)
     }
-    setCart({}); setNombre(''); setTelefono('')
-    setMsg('📱 Pedido enviado'); setTimeout(()=>setMsg(''),3000)
-    fetchTodo()
   }
 
   async function entregarPedido(pedido) {
-    const items = pedido.items.map(it => {
-      const p = getProduct(it.productId)
-      const cantidad = p ? Math.min(it.cantidad, p.cantidad) : it.cantidad
-      return { productId: it.productId, nombre: it.nombre, cantidad, precio: it.precio, costo: p?.costo || 0 }
-    })
-    await Promise.all(items.map(it => { const p=getProduct(it.productId); return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad - it.cantidad }).eq('id', it.productId) : null }).filter(Boolean))
-    // El domicilio ($1.000 que cobra la página pública por llevar el pedido)
-    // no viene en "items" — hay que sumarlo aparte para que la venta quede
-    // completa (es ganancia pura, no tiene costo asociado).
-    const domicilio = pedido.domicilio || 0
-    const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0) + domicilio
-    const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
-    const now = new Date()
-    await supabase.from('escenario_ventas').insert({
-      escenario_id: escenario.id, fecha: todayStr(), hora: now.toTimeString().slice(0,5),
-      items, total, costo_total: costoTotal, ganancia: total-costoTotal, origen_pedido: true,
-    })
-    await supabase.from('escenario_pedidos').update({ estado:'completado' }).eq('id', pedido.id)
-    setMsg('✅ Pedido entregado y registrado como venta'); setTimeout(()=>setMsg(''),3000)
-    fetchTodo()
+    if (entregandoRef.current) return // ya se está entregando otro — evita registrar la venta dos veces
+    entregandoRef.current = true
+    setEntregandoId(pedido.id)
+    try {
+      const items = pedido.items.map(it => {
+        const p = getProduct(it.productId)
+        const cantidad = p ? Math.min(it.cantidad, p.cantidad) : it.cantidad
+        return { productId: it.productId, nombre: it.nombre, cantidad, precio: it.precio, costo: p?.costo || 0 }
+      })
+      await Promise.all(items.map(it => { const p=getProduct(it.productId); return p ? supabase.from('escenario_productos').update({ cantidad: p.cantidad - it.cantidad }).eq('id', it.productId) : null }).filter(Boolean))
+      // El domicilio ($1.000 que cobra la página pública por llevar el pedido)
+      // no viene en "items" — hay que sumarlo aparte para que la venta quede
+      // completa (es ganancia pura, no tiene costo asociado).
+      const domicilio = pedido.domicilio || 0
+      const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0) + domicilio
+      const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
+      const now = new Date()
+      await supabase.from('escenario_ventas').insert({
+        escenario_id: escenario.id, fecha: todayStr(), hora: now.toTimeString().slice(0,5),
+        items, total, costo_total: costoTotal, ganancia: total-costoTotal, origen_pedido: true,
+      })
+      await supabase.from('escenario_pedidos').update({ estado:'completado' }).eq('id', pedido.id)
+      setMsg('✅ Pedido entregado y registrado como venta'); setTimeout(()=>setMsg(''),3000)
+      fetchTodo()
+    } finally {
+      entregandoRef.current = false
+      setEntregandoId(null)
+    }
   }
 
   if (loading) return (
@@ -160,9 +180,9 @@ export default function EscenarioPedidoPage() {
         <div style={{ display:'flex', justifyContent:'space-between', fontWeight:800, fontSize:'1rem', marginBottom:'10px' }}>
           <span>Total</span><span style={{ color:S.cyan }}>{fmtMoney(total)}</span>
         </div>
-        <button onClick={enviarPedido} disabled={items.length===0}
-          style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem', opacity:items.length===0?.5:1, marginBottom:'22px' }}>
-          Enviar pedido por WhatsApp
+        <button onClick={enviarPedido} disabled={items.length===0 || enviandoPedido}
+          style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.9rem', opacity:(items.length===0||enviandoPedido)?.5:1, marginBottom:'22px' }}>
+          {enviandoPedido ? 'Enviando...' : 'Enviar pedido por WhatsApp'}
         </button>
         </>
         )}
@@ -182,7 +202,7 @@ export default function EscenarioPedidoPage() {
                 <span style={{ display:'block', color:S.gold, fontWeight:700, marginTop:'2px' }}>🏦 Transferencia</span>
               )}
             </span>
-            {!soloLectura && <button onClick={()=>entregarPedido(o)} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap', flexShrink:0 }}>Entregado</button>}
+            {!soloLectura && <button onClick={()=>entregarPedido(o)} disabled={!!entregandoId} style={{ padding:'6px 12px', background:S.cyan, border:'none', borderRadius:'8px', cursor: entregandoId ? 'default' : 'pointer', opacity: entregandoId ? .6 : 1, color:'#000', fontWeight:700, fontSize:'.75rem', whiteSpace:'nowrap', flexShrink:0 }}>{entregandoId===o.id ? 'Guardando...' : 'Entregado'}</button>}
           </div>
         ))}
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha, asegurarReservasFijas, fechaLocalStr } from '../lib/escenarioHelpers'
@@ -25,6 +25,9 @@ export default function EscenarioAdminReservasPage() {
   const [reservas,  setReservas]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [msg,       setMsg]       = useState('')
+  const [procesandoId, setProcesandoId] = useState(null) // id de la reserva que se está aceptando/rechazando, para no duplicar el clic
+  const [bloqueando, setBloqueando] = useState(false)
+  const bloqueandoRef = useRef(false)
   const [mCancha,   setMCancha]   = useState(null)
   const [mFecha,    setMFecha]    = useState(todayStr())
   const [mHora,     setMHora]     = useState('')
@@ -63,39 +66,51 @@ export default function EscenarioAdminReservasPage() {
   function showMsg(t) { setMsg(t); setTimeout(()=>setMsg(''),3000) }
 
   async function aceptar(r) {
-    let payload = { estado:'aceptada', aceptada_por: encargado?.id || null, aceptada_por_nombre: encargado?.name || null }
-    let { error } = await supabase.from('escenario_reservas').update(payload).eq('id', r.id)
-    let avisoDegradado = null
-    if (error && (error.message?.includes('aceptada_por'))) {
-      // Falta correr migracion_escenario_reservas_aceptada_por.sql en Supabase
-      payload = { estado:'aceptada' }
-      ;({ error } = await supabase.from('escenario_reservas').update(payload).eq('id', r.id))
-      avisoDegradado = 'Aceptada, pero no se guardó quién la aceptó: ejecuta migracion_escenario_reservas_aceptada_por.sql en Supabase'
-    }
-    if (r.recurrente) {
-      const filas = []
-      for (let i=1;i<=8;i++) {
-        const d = new Date(r.fecha+'T00:00:00'); d.setDate(d.getDate()+7*i)
-        filas.push({
-          escenario_id: r.escenario_id, cancha: r.cancha, fecha: fechaLocalStr(d), hora: r.hora, duracion: r.duracion,
-          nombre: r.nombre, telefono: r.telefono, equipo: r.equipo, estado:'aceptada', pago:'pendiente', monto:r.monto, monto_pagado:0,
-          recurrente:false, generada_de_recurrente:true,
-        })
+    if (procesandoId) return // ya se está procesando otra — evita doble clic
+    setProcesandoId(r.id)
+    try {
+      let payload = { estado:'aceptada', aceptada_por: encargado?.id || null, aceptada_por_nombre: encargado?.name || null }
+      let { error } = await supabase.from('escenario_reservas').update(payload).eq('id', r.id)
+      let avisoDegradado = null
+      if (error && (error.message?.includes('aceptada_por'))) {
+        // Falta correr migracion_escenario_reservas_aceptada_por.sql en Supabase
+        payload = { estado:'aceptada' }
+        ;({ error } = await supabase.from('escenario_reservas').update(payload).eq('id', r.id))
+        avisoDegradado = 'Aceptada, pero no se guardó quién la aceptó: ejecuta migracion_escenario_reservas_aceptada_por.sql en Supabase'
       }
-      await supabase.from('escenario_reservas').insert(filas)
+      if (r.recurrente) {
+        const filas = []
+        for (let i=1;i<=8;i++) {
+          const d = new Date(r.fecha+'T00:00:00'); d.setDate(d.getDate()+7*i)
+          filas.push({
+            escenario_id: r.escenario_id, cancha: r.cancha, fecha: fechaLocalStr(d), hora: r.hora, duracion: r.duracion,
+            nombre: r.nombre, telefono: r.telefono, equipo: r.equipo, estado:'aceptada', pago:'pendiente', monto:r.monto, monto_pagado:0,
+            recurrente:false, generada_de_recurrente:true,
+          })
+        }
+        await supabase.from('escenario_reservas').insert(filas)
+      }
+      // El navegador bloquea el window.open automático acá (pasa después de un
+      // await) — se deja un botón para que el encargado lo abra él mismo.
+      if (escenario?.whatsapp) {
+        const msgTxt = `Hola ${r.nombre}, tu reserva de ${nombreCancha(canchas, r.cancha)} el ${r.fecha} a las ${fmtHora12(r.hora)} fue confirmada. ¡Te esperamos!`
+        setWaConfirm({ link: `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, nombre: r.nombre })
+      }
+      showMsg(avisoDegradado || '✅ Reserva aceptada')
+      fetchTodo()
+    } finally {
+      setProcesandoId(null)
     }
-    // El navegador bloquea el window.open automático acá (pasa después de un
-    // await) — se deja un botón para que el encargado lo abra él mismo.
-    if (escenario?.whatsapp) {
-      const msgTxt = `Hola ${r.nombre}, tu reserva de ${nombreCancha(canchas, r.cancha)} el ${r.fecha} a las ${fmtHora12(r.hora)} fue confirmada. ¡Te esperamos!`
-      setWaConfirm({ link: `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(msgTxt)}`, nombre: r.nombre })
-    }
-    showMsg(avisoDegradado || '✅ Reserva aceptada')
-    fetchTodo()
   }
   async function rechazar(r) {
-    await supabase.from('escenario_reservas').update({ estado:'rechazada' }).eq('id', r.id)
-    showMsg('Solicitud rechazada'); fetchTodo()
+    if (procesandoId) return
+    setProcesandoId(r.id)
+    try {
+      await supabase.from('escenario_reservas').update({ estado:'rechazada' }).eq('id', r.id)
+      showMsg('Solicitud rechazada'); fetchTodo()
+    } finally {
+      setProcesandoId(null)
+    }
   }
   async function cambiarPago(r, valor) {
     const payload = { pago: valor }
@@ -104,12 +119,20 @@ export default function EscenarioAdminReservasPage() {
     fetchTodo()
   }
   async function bloquear() {
+    if (bloqueandoRef.current) return
     if (!escenario) return
-    await supabase.from('escenario_reservas').insert({
-      escenario_id: escenario.id, cancha: mCancha, fecha: mFecha, hora: mHora, duracion:60,
-      nombre:'Mantenimiento', telefono:'', equipo:'', estado:'mantenimiento', pago:'pagado', monto:0,
-    })
-    showMsg('Horario bloqueado'); fetchTodo()
+    bloqueandoRef.current = true
+    setBloqueando(true)
+    try {
+      await supabase.from('escenario_reservas').insert({
+        escenario_id: escenario.id, cancha: mCancha, fecha: mFecha, hora: mHora, duracion:60,
+        nombre:'Mantenimiento', telefono:'', equipo:'', estado:'mantenimiento', pago:'pagado', monto:0,
+      })
+      showMsg('Horario bloqueado'); fetchTodo()
+    } finally {
+      bloqueandoRef.current = false
+      setBloqueando(false)
+    }
   }
 
   function abrirCancelar(r) { setGestionando(r); setModoGestion('cancelar'); setErrorGestion('') }
@@ -190,8 +213,8 @@ export default function EscenarioAdminReservasPage() {
               <span style={{ fontSize:'.8rem' }}>{fmtDate(r.fecha)} {fmtHora12(r.hora)} · {nombreCancha(canchas, r.cancha)} · {r.nombre} ({r.telefono}){r.recurrente?' 🔁':''}</span>
               {!soloLectura && (
               <span style={{ display:'flex', gap:'6px' }}>
-                <button onClick={()=>aceptar(r)} style={{ padding:'5px 10px', background:S.cyan, border:'none', borderRadius:'6px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.72rem' }}>Aceptar</button>
-                <button onClick={()=>rechazar(r)} style={{ padding:'5px 10px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor:'pointer', color:S.loss, fontSize:'.72rem' }}>Rechazar</button>
+                <button onClick={()=>aceptar(r)} disabled={!!procesandoId} style={{ padding:'5px 10px', background:S.cyan, border:'none', borderRadius:'6px', cursor: procesandoId ? 'default' : 'pointer', opacity: procesandoId ? .6 : 1, color:'#000', fontWeight:700, fontSize:'.72rem' }}>{procesandoId===r.id ? '...' : 'Aceptar'}</button>
+                <button onClick={()=>rechazar(r)} disabled={!!procesandoId} style={{ padding:'5px 10px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'6px', cursor: procesandoId ? 'default' : 'pointer', opacity: procesandoId ? .6 : 1, color:S.loss, fontSize:'.72rem' }}>Rechazar</button>
               </span>
               )}
             </div>
@@ -234,7 +257,7 @@ export default function EscenarioAdminReservasPage() {
             <div><label style={lbl}>Fecha</label><input type="date" value={mFecha} onChange={e=>setMFecha(e.target.value)} style={inp}/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Hora</label><select value={mHora} onChange={e=>setMHora(e.target.value)} style={inp}>{horas.map(h=><option key={h} value={h}>{fmtHora12(h)}</option>)}</select></div>
           </div>
-          <button onClick={bloquear} style={{ width:'100%', padding:'10px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor:'pointer', color:S.text, fontWeight:700, fontSize:'.8rem' }}>Bloquear</button>
+          <button onClick={bloquear} disabled={bloqueando} style={{ width:'100%', padding:'10px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'10px', cursor: bloqueando ? 'default' : 'pointer', opacity: bloqueando ? .6 : 1, color:S.text, fontWeight:700, fontSize:'.8rem' }}>{bloqueando ? 'Bloqueando...' : 'Bloquear'}</button>
         </div>
         )}
 
