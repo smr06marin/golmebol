@@ -267,6 +267,7 @@ export default function AdminEquiposPage() {
   const [editId,    setEditId]    = useState(null)
   const [showForm,  setShowForm]  = useState(false)
   const [loading,   setLoading]   = useState(false)
+  const guardandoEquipoRef = useRef(false) // bloqueo inmediato para que doble clic no cree el equipo dos veces
   const [uploading, setUploading] = useState(null)
   const [msg,       setMsg]       = useState(null)
   const [search,    setSearch]    = useState('')
@@ -315,6 +316,7 @@ export default function AdminEquiposPage() {
   }
 
   async function handleSave() {
+    if (guardandoEquipoRef.current) return // ya se está guardando — evita doble clic
     if (!form.name) return showMsgFn('El nombre es obligatorio', 'error')
     // Todo equipo debe tener un DUEÑO identificado con cédula y teléfono
     if (!editId) {
@@ -322,40 +324,46 @@ export default function AdminEquiposPage() {
       if (!(form.representante_cedula || '').trim())   return showMsgFn('La cédula del dueño es obligatoria', 'error')
       if (!(form.representante_telefono || '').trim()) return showMsgFn('El teléfono del dueño es obligatorio', 'error')
     }
-    // Al CREAR (no al editar): avisar si ya existe un equipo con nombre
-    // parecido — duplicarlo hace que la historia quede huérfana en el viejo
-    if (!editId) {
-      const parecidos = await buscarEquiposParecidos(form.name)
-      if (parecidos.length > 0) {
-        const ok = window.confirm(
-          `⚠️ YA EXISTE un equipo con nombre parecido:\n\n${parecidos.map(p => `• ${p.name}${p.city ? ` (${p.city})` : ''} — Dueño: ${p.representante_nombre || 'sin registrar'}`).join('\n')}\n\n` +
-          `Si es el MISMO equipo, NO lo crees de nuevo: usa el existente para conservar su historia (partidos, palmarés, jugadores).\n\n` +
-          `¿Es un equipo DISTINTO y quieres crearlo de todas formas?`
-        )
-        if (!ok) return
+    guardandoEquipoRef.current = true
+    try {
+      // Al CREAR (no al editar): avisar si ya existe un equipo con nombre
+      // parecido — duplicarlo hace que la historia quede huérfana en el viejo
+      if (!editId) {
+        const parecidos = await buscarEquiposParecidos(form.name)
+        if (parecidos.length > 0) {
+          const ok = window.confirm(
+            `⚠️ YA EXISTE un equipo con nombre parecido:\n\n${parecidos.map(p => `• ${p.name}${p.city ? ` (${p.city})` : ''} — Dueño: ${p.representante_nombre || 'sin registrar'}`).join('\n')}\n\n` +
+            `Si es el MISMO equipo, NO lo crees de nuevo: usa el existente para conservar su historia (partidos, palmarés, jugadores).\n\n` +
+            `¿Es un equipo DISTINTO y quieres crearlo de todas formas?`
+          )
+          if (!ok) return
+        }
       }
+      setLoading(true)
+      const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_cedula: form.representante_cedula || null, representante_telefono: form.representante_telefono || null }
+      // El DUEÑO solo lo puede modificar el admin principal: al editar, los
+      // demás no envían esos campos (quedan como estaban)
+      if (editId && !esPrincipal) {
+        delete payload.representante_nombre
+        delete payload.representante_cedula
+        delete payload.representante_telefono
+      }
+      const guardar = async pl => editId
+        ? supabase.from('teams').update(pl).eq('id', editId)
+        : supabase.from('teams').insert(pl)
+      let { error } = await guardar(payload)
+      if (error && (error.message || '').includes('representante_cedula')) {
+        // BD sin la migración de la cédula: guardar sin ella
+        const { representante_cedula, ...sinCedula } = payload
+        ;({ error } = await guardar(sinCedula))
+      }
+      if (error) showMsgFn(editId ? 'Error al guardar' : 'Error al crear', 'error')
+      else { showMsgFn(editId ? 'Equipo actualizado ✓' : 'Equipo creado ✓'); setEditId(null); if (!editId) limpiarBorrador('draft_crear_equipo') }
+      setShowForm(false); setForm(EMPTY); fetchEquipos()
+    } finally {
+      guardandoEquipoRef.current = false
+      setLoading(false)
     }
-    setLoading(true)
-    const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_cedula: form.representante_cedula || null, representante_telefono: form.representante_telefono || null }
-    // El DUEÑO solo lo puede modificar el admin principal: al editar, los
-    // demás no envían esos campos (quedan como estaban)
-    if (editId && !esPrincipal) {
-      delete payload.representante_nombre
-      delete payload.representante_cedula
-      delete payload.representante_telefono
-    }
-    const guardar = async pl => editId
-      ? supabase.from('teams').update(pl).eq('id', editId)
-      : supabase.from('teams').insert(pl)
-    let { error } = await guardar(payload)
-    if (error && (error.message || '').includes('representante_cedula')) {
-      // BD sin la migración de la cédula: guardar sin ella
-      const { representante_cedula, ...sinCedula } = payload
-      ;({ error } = await guardar(sinCedula))
-    }
-    if (error) showMsgFn(editId ? 'Error al guardar' : 'Error al crear', 'error')
-    else { showMsgFn(editId ? 'Equipo actualizado ✓' : 'Equipo creado ✓'); setEditId(null); if (!editId) limpiarBorrador('draft_crear_equipo') }
-    setShowForm(false); setForm(EMPTY); setLoading(false); fetchEquipos()
   }
 
   async function handleLogo(equipo, file) {

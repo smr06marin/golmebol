@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
@@ -118,6 +118,9 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [mostrarFormNuevo,  setMostrarFormNuevo]  = useState(false)
   const [formNuevo,         setFormNuevo]         = useState(EMPTY_NUEVO)
   const [guardando,         setGuardando]         = useState(false)
+  const guardandoCrearRef = useRef(false) // bloqueo inmediato para "Crear y agregar" jugador
+  const [agregandoGlobal,  setAgregandoGlobal]    = useState(false)
+  const agregandoGlobalRef = useRef(false) // bloqueo inmediato para "Agregar al equipo"
   const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
   const [mostrarInscribir, setMostrarInscribir] = useState(null) // tournament_id del torneo con el picker abierto
 
@@ -484,24 +487,32 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   }
 
   async function handleAgregarJugadorGlobal() {
-    const { error } = await supabase.from('team_players').insert({ team_id: id, player_id: jugadorEncontrado.id })
-    if (error && error.code === '23505') return showMsg('El jugador ya está en este equipo', 'error')
-    if (error) return showMsg('Error al agregar jugador', 'error')
+    if (agregandoGlobalRef.current) return // ya se está agregando — evita doble clic
+    agregandoGlobalRef.current = true
+    setAgregandoGlobal(true)
+    try {
+      const { error } = await supabase.from('team_players').insert({ team_id: id, player_id: jugadorEncontrado.id })
+      if (error && error.code === '23505') return showMsg('El jugador ya está en este equipo', 'error')
+      if (error) return showMsg('Error al agregar jugador', 'error')
 
-    // Agregar al equipo (team_players) NO lo inscribe automáticamente en un
-    // torneo — eso es lo que hace que luego no aparezca en "jugadores
-    // registrados" de la programación pública. Si el equipo está en un solo
-    // torneo activo lo inscribimos de una vez ahí; si está en varios, queda
-    // pendiente de inscribir manualmente en la pestaña "Torneos".
-    if (torneos.length === 1) {
-      await supabase.from('tournament_player_registrations').insert({ tournament_id: torneos[0].tournament_id, team_id: id, player_id: jugadorEncontrado.id, activo: true })
-      showMsg(`Jugador agregado e inscrito en ${torneos[0].tournaments?.name || 'el torneo'} ✓`)
-    } else if (torneos.length > 1) {
-      showMsg('Jugador agregado al equipo — falta inscribirlo en el torneo correspondiente (pestaña Torneos)', 'ok')
-    } else {
-      showMsg('Jugador agregado ✓')
+      // Agregar al equipo (team_players) NO lo inscribe automáticamente en un
+      // torneo — eso es lo que hace que luego no aparezca en "jugadores
+      // registrados" de la programación pública. Si el equipo está en un solo
+      // torneo activo lo inscribimos de una vez ahí; si está en varios, queda
+      // pendiente de inscribir manualmente en la pestaña "Torneos".
+      if (torneos.length === 1) {
+        await supabase.from('tournament_player_registrations').insert({ tournament_id: torneos[0].tournament_id, team_id: id, player_id: jugadorEncontrado.id, activo: true })
+        showMsg(`Jugador agregado e inscrito en ${torneos[0].tournaments?.name || 'el torneo'} ✓`)
+      } else if (torneos.length > 1) {
+        showMsg('Jugador agregado al equipo — falta inscribirlo en el torneo correspondiente (pestaña Torneos)', 'ok')
+      } else {
+        showMsg('Jugador agregado ✓')
+      }
+      setJugadorEncontrado(null); setCedulaBuscar(''); fetchJugadoresGlobal()
+    } finally {
+      agregandoGlobalRef.current = false
+      setAgregandoGlobal(false)
     }
-    setJugadorEncontrado(null); setCedulaBuscar(''); fetchJugadoresGlobal()
   }
 
   async function handleInscribirEnTorneo(tournamentId, tournamentName, playerId) {
@@ -521,6 +532,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   }
 
   async function handleCrearYAgregar() {
+    if (guardandoCrearRef.current) return // ya se está creando — evita doble clic
     if (!formNuevo.name)             return showMsg('El nombre es obligatorio', 'error')
     if (!formNuevo.telefono)         return showMsg('El teléfono es obligatorio', 'error')
     if (!formNuevo.city)             return showMsg('La ciudad es obligatoria', 'error')
@@ -529,30 +541,36 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
       return showMsg('Selecciona al menos una posición', 'error')
 
-    // Un mismo WhatsApp no puede quedar en dos jugadores distintos: por ahí
-    // se verifica la identidad, así que un número repetido no sirve para
-    // confirmar a ninguno de los dos.
-    const digitos = formNuevo.telefono.replace(/\D/g, '').slice(-10)
-    if (digitos.length === 10) {
-      const { data: repetidos } = await supabase
-        .from('players')
-        .select('id, name, telefono, whatsapp')
-        .or(`telefono.ilike.%${digitos}%,whatsapp.ilike.%${digitos}%`)
-      const choque = (repetidos || []).find(p => {
-        const t = (p.telefono || '').replace(/\D/g, '').slice(-10)
-        const w = (p.whatsapp || '').replace(/\D/g, '').slice(-10)
-        return t === digitos || w === digitos
-      })
-      if (choque) return showMsg(`⚠️ Ese número ya está registrado con otro jugador (${choque.name})`, 'error')
-    }
+    guardandoCrearRef.current = true
+    try {
+      // Un mismo WhatsApp no puede quedar en dos jugadores distintos: por ahí
+      // se verifica la identidad, así que un número repetido no sirve para
+      // confirmar a ninguno de los dos.
+      const digitos = formNuevo.telefono.replace(/\D/g, '').slice(-10)
+      if (digitos.length === 10) {
+        const { data: repetidos } = await supabase
+          .from('players')
+          .select('id, name, telefono, whatsapp')
+          .or(`telefono.ilike.%${digitos}%,whatsapp.ilike.%${digitos}%`)
+        const choque = (repetidos || []).find(p => {
+          const t = (p.telefono || '').replace(/\D/g, '').slice(-10)
+          const w = (p.whatsapp || '').replace(/\D/g, '').slice(-10)
+          return t === digitos || w === digitos
+        })
+        if (choque) return showMsg(`⚠️ Ese número ya está registrado con otro jugador (${choque.name})`, 'error')
+      }
 
-    setGuardando(true)
-    const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString() }).select().single()
-    if (error) { showMsg('Error al crear jugador', 'error'); setGuardando(false); return }
-    if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); setGuardando(false); return }
-    const torneo = torneos[0]
-    await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id })
-    showMsg('Jugador creado y agregado ✓'); setMostrarFormNuevo(false); setCedulaBuscar(''); setFormNuevo(EMPTY_NUEVO); setGuardando(false); fetchJugadoresGlobal()
+      setGuardando(true)
+      const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString() }).select().single()
+      if (error) { showMsg('Error al crear jugador', 'error'); return }
+      if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); return }
+      const torneo = torneos[0]
+      await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id })
+      showMsg('Jugador creado y agregado ✓'); setMostrarFormNuevo(false); setCedulaBuscar(''); setFormNuevo(EMPTY_NUEVO); fetchJugadoresGlobal()
+    } finally {
+      guardandoCrearRef.current = false
+      setGuardando(false)
+    }
   }
 
   function getResultado(partido) {
@@ -877,7 +895,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleAgregarJugadorGlobal} style={{ ...glassBtn('#51cf66'), padding: '10px 18px' }}>+ Agregar al equipo</button>
+                    <button onClick={handleAgregarJugadorGlobal} disabled={agregandoGlobal} style={{ ...glassBtn('#51cf66'), padding: '10px 18px', opacity: agregandoGlobal ? .7 : 1 }}>{agregandoGlobal ? 'Agregando...' : '+ Agregar al equipo'}</button>
                     <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Buscar otro</button>
                   </div>
                 </div>
