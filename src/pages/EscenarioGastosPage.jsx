@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr, fmtDate, CATEGORIAS_GASTO, registrarActividad } from '../lib/escenarioHelpers'
@@ -27,6 +27,8 @@ export default function EscenarioGastosPage() {
   const [monto,       setMonto]       = useState('')
   const [fecha,       setFecha]       = useState(todayStr())
   const [soloLectura, setSoloLectura] = useState(false)
+  const [guardandoGasto, setGuardandoGasto] = useState(false)
+  const guardandoGastoRef = useRef(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
@@ -49,17 +51,25 @@ export default function EscenarioGastosPage() {
   }
 
   async function registrarGasto() {
+    if (guardandoGastoRef.current) return // ya se está guardando — evita doble clic
     const montoNum = Number(monto) || 0
     if (!descripcion.trim() || montoNum <= 0) { setMsg('Escribe qué fue y un monto válido'); setTimeout(()=>setMsg(''),3000); return }
-    const { error } = await supabase.from('escenario_gastos').insert({
-      escenario_id: escenario.id, categoria: categoria.trim() || 'Otro', descripcion: descripcion.trim(),
-      monto: montoNum, fecha, hora: horaAhora(),
-    })
-    if (error) { setMsg('❌ ' + error.message); setTimeout(()=>setMsg(''),5000); return }
-    registrarActividad(escenarioId, encargado, 'crear', 'gasto', `Registró un gasto de ${fmtMoney(montoNum)}: ${descripcion.trim()}`)
-    setMsg(`✅ Gasto registrado: ${fmtMoney(montoNum)}`); setTimeout(()=>setMsg(''),3000)
-    setCategoria(''); setDescripcion(''); setMonto('')
-    fetchTodo()
+    guardandoGastoRef.current = true
+    setGuardandoGasto(true)
+    try {
+      const { error } = await supabase.from('escenario_gastos').insert({
+        escenario_id: escenario.id, categoria: categoria.trim() || 'Otro', descripcion: descripcion.trim(),
+        monto: montoNum, fecha, hora: horaAhora(),
+      })
+      if (error) { setMsg('❌ ' + error.message); setTimeout(()=>setMsg(''),5000); return }
+      registrarActividad(escenarioId, encargado, 'crear', 'gasto', `Registró un gasto de ${fmtMoney(montoNum)}: ${descripcion.trim()}`)
+      setMsg(`✅ Gasto registrado: ${fmtMoney(montoNum)}`); setTimeout(()=>setMsg(''),3000)
+      setCategoria(''); setDescripcion(''); setMonto('')
+      fetchTodo()
+    } finally {
+      guardandoGastoRef.current = false
+      setGuardandoGasto(false)
+    }
   }
 
   async function eliminarGasto(g) {
@@ -106,7 +116,7 @@ export default function EscenarioGastosPage() {
             <div><label style={lbl}>Monto</label><input type="number" value={monto} onChange={e=>setMonto(e.target.value)} style={inp} placeholder="$"/></div>
             <div><label style={lbl}>Fecha</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={inp}/></div>
           </div>
-          <button onClick={registrarGasto} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Registrar gasto</button>
+          <button onClick={registrarGasto} disabled={guardandoGasto} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor: guardandoGasto ? 'default' : 'pointer', opacity: guardandoGasto ? .6 : 1, color:'#000', fontWeight:800, fontSize:'.85rem' }}>{guardandoGasto ? 'Guardando...' : 'Registrar gasto'}</button>
         </div>
         )}
 

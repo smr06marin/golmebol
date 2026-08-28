@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr, comprimirImagen, registrarActividad } from '../lib/escenarioHelpers'
@@ -62,6 +62,8 @@ export default function EscenarioComprasPage() {
   // pagado por esa línea (no el precio unitario) — el costo unitario se
   // calcula solo dividiendo ese total entre la cantidad.
   const [itemsFactura, setItemsFactura] = useState([])
+  const [guardandoCompra, setGuardandoCompra] = useState(false)
+  const guardandoCompraRef = useRef(false) // bloqueo inmediato para que doble clic no registre la compra dos veces
   const [tempProductId, setTempProductId] = useState('')
   const [tempCantidad,  setTempCantidad]  = useState(1)
   const [tempTotalLinea, setTempTotalLinea] = useState('')
@@ -125,7 +127,19 @@ export default function EscenarioComprasPage() {
   }
 
   async function registrarCompra() {
+    if (guardandoCompraRef.current) return // ya se está guardando — evita doble clic
     if (itemsFactura.length === 0) { setMsg('Agrega al menos un producto a la factura'); setTimeout(()=>setMsg(''),3000); return }
+    guardandoCompraRef.current = true
+    setGuardandoCompra(true)
+    try {
+      await registrarCompraInner()
+    } finally {
+      guardandoCompraRef.current = false
+      setGuardandoCompra(false)
+    }
+  }
+
+  async function registrarCompraInner() {
     const proveedorFinal = proveedor.trim() || 'Sin especificar'
     const hora = horaAhora()
     const facturaTotalGlobal = itemsFactura.reduce((a,it)=>a+it.totalLinea, 0)
@@ -338,7 +352,7 @@ export default function EscenarioComprasPage() {
             )}
           </div>
 
-          <button onClick={registrarCompra} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Registrar compra</button>
+          <button onClick={registrarCompra} disabled={guardandoCompra} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor: guardandoCompra ? 'default' : 'pointer', opacity: guardandoCompra ? .6 : 1, color:'#000', fontWeight:800, fontSize:'.85rem' }}>{guardandoCompra ? 'Guardando...' : 'Registrar compra'}</button>
         </div>
         )}
 

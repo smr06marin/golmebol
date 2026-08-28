@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { comprimirImagen } from '../lib/imageCompress'
 import { createClient } from '@supabase/supabase-js'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { Shield, Check, Users, Upload } from 'lucide-react'
 import { useFormDraft, limpiarBorrador } from '../hooks/useFormDraft'
@@ -84,6 +84,7 @@ export default function RegistroEquipoPage() {
   // llena el registro del jugador, esto lo recupera solo al volver.
   useFormDraft(`draft_registro_equipo_${token || 'x'}`, formNuevo, setFormNuevo)
   const [guardando,     setGuardando]     = useState(false)
+  const guardandoRegistroRef = useRef(false) // bloqueo inmediato para que doble clic no registre al jugador dos veces
   const [msg,           setMsg]           = useState(null)
   const [exito,         setExito]         = useState(false)
 
@@ -327,6 +328,8 @@ export default function RegistroEquipoPage() {
   }
 
   async function registrarExistente() {
+    if (guardandoRegistroRef.current) return
+    guardandoRegistroRef.current = true
     setGuardando(true)
     try {
       const { data, error } = await supabase.rpc('registrar_equipo', {
@@ -344,6 +347,7 @@ export default function RegistroEquipoPage() {
     } catch (e) {
       showMsg(e.message || 'Error al registrarte. Intenta de nuevo.')
     } finally {
+      guardandoRegistroRef.current = false
       setGuardando(false)
     }
   }
@@ -374,6 +378,8 @@ export default function RegistroEquipoPage() {
   }
 
   async function crearYRegistrarReal() {
+    if (guardandoRegistroRef.current) return
+    guardandoRegistroRef.current = true
     setGuardando(true)
     setSubiendoFotos(true)
     try {
@@ -400,6 +406,7 @@ export default function RegistroEquipoPage() {
     } catch (e) {
       showMsg(e.message || 'Error al crear el jugador. Intenta de nuevo.')
     } finally {
+      guardandoRegistroRef.current = false
       setSubiendoFotos(false)
       setGuardando(false)
     }
