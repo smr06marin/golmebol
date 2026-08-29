@@ -14,7 +14,7 @@ const FIN_EMPTY = {
   inscripcion: '', pago_cancha_partido: '', pago_cancha_w: '',
   pago_arbitro_partido: '', pago_arbitro_w: '',
 }
-const MODALIDADES = ['Fútbol 5', 'Fútbol 7', 'Fútbol 11']
+const MODALIDADES = Array.from({ length: 10 }, (_, i) => `Fútbol ${i + 2}`) // Fútbol 2 al 11
 const GENEROS = ['Masculino', 'Femenino', 'Mixto']
 const FORMATOS = ['Todos contra todos', 'Eliminación directa', 'Grupos + Eliminación']
 
@@ -87,7 +87,7 @@ export default function AdminTorneosPage() {
     if (!form.name) return showMsg('El nombre del torneo es obligatorio', 'error')
     if (!form.season) return showMsg('La temporada es obligatoria', 'error')
     if (!form.city) return showMsg('La ciudad es obligatoria', 'error')
-    if (!form.modalidad) return showMsg('La modalidad es obligatoria (Fútbol 5, 7 u 11)', 'error')
+    if (!form.modalidad) return showMsg('La modalidad es obligatoria', 'error')
     if (!form.genero) return showMsg('El género es obligatorio', 'error')
     if (!form.categoria) return showMsg('La categoría es obligatoria (ej: Senior, Sub-20)', 'error')
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
