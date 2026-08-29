@@ -124,7 +124,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
 
   const [editandoTagsId, setEditandoTagsId] = useState(null) // id del jugador cuyas etiquetas se están editando
-  const [tagsForm,       setTagsForm]       = useState({ es_mayor_35: false, es_elite: false, es_profesional: false })
+  const [tagsForm,       setTagsForm]       = useState({ es_mayor_35: false, es_elite: false, es_profesional: false, etiqueta_personalizada: '' })
   const [guardandoTags,  setGuardandoTags]  = useState(false)
   const guardandoTagsRef = useRef(false) // bloqueo inmediato para "Guardar" etiquetas
   const [mostrarInscribir, setMostrarInscribir] = useState(null) // tournament_id del torneo con el picker abierto
@@ -538,7 +538,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   function abrirEditarTags(j) {
     setEditandoTagsId(j.id)
-    setTagsForm({ es_mayor_35: !!j.es_mayor_35, es_elite: !!j.es_elite, es_profesional: !!j.es_profesional })
+    setTagsForm({ es_mayor_35: !!j.es_mayor_35, es_elite: !!j.es_elite, es_profesional: !!j.es_profesional, etiqueta_personalizada: j.etiqueta_personalizada || '' })
   }
 
   async function guardarTags(playerId) {
@@ -546,9 +546,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     guardandoTagsRef.current = true
     setGuardandoTags(true)
     try {
-      const { error } = await supabase.from('players').update(tagsForm).eq('id', playerId)
+      const payload = { ...tagsForm, etiqueta_personalizada: tagsForm.etiqueta_personalizada.trim() || null }
+      const { error } = await supabase.from('players').update(payload).eq('id', playerId)
       if (error) { showMsg('Error al guardar las etiquetas', 'error'); return }
-      setJugadoresEquipoGlobal(prev => prev.map(j => j.id === playerId ? { ...j, ...tagsForm } : j))
+      setJugadoresEquipoGlobal(prev => prev.map(j => j.id === playerId ? { ...j, ...payload } : j))
       setEditandoTagsId(null)
       showMsg('Etiquetas guardadas ✓')
     } finally {
@@ -1054,6 +1055,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                         {j.es_elite       && <span style={{ fontSize: '.7rem', color: '#1a1305', background: '#f5c542', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>💎 Élite</span>}
                         {j.es_profesional && <span style={{ fontSize: '.7rem', color: '#fff', background: '#7b3ff2', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>🎓 Profesional</span>}
                         {j.es_mayor_35    && <span style={{ fontSize: '.7rem', color: '#dfe8ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>🕒 Mayor de 35</span>}
+                        {j.etiqueta_personalizada && <span style={{ fontSize: '.7rem', color: '#0a1a3f', background: '#5b9dff', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>⭐ {j.etiqueta_personalizada}</span>}
                         {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#8ec3ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F5: {j.posicion_futbol5}</span>}
                         {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#8ef0a8', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F7: {j.posicion_futbol7}</span>}
                         {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#ffc078', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F11: {j.posicion_futbol11}</span>}
@@ -1084,6 +1086,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                             {op.label}
                           </label>
                         ))}
+                      </div>
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ display: 'block', fontSize: '.7rem', color: TXT_MUTED, marginBottom: '5px' }}>⭐ Otra etiqueta (opcional) — ej: Capitán, Goleador histórico...</label>
+                        <input value={tagsForm.etiqueta_personalizada} onChange={e => setTagsForm(prev => ({ ...prev, etiqueta_personalizada: e.target.value }))}
+                          placeholder="Escribe una etiqueta propia" maxLength={30}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: '9px', border: '1px solid rgba(255,255,255,.2)', background: 'rgba(0,0,0,.18)', color: TXT, fontSize: '.82rem', boxSizing: 'border-box' }}/>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => guardarTags(j.id)} disabled={guardandoTags}

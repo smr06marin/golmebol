@@ -626,6 +626,7 @@ export default function EquipoHistorialPage() {
                           {j.es_elite       && <span style={{ fontSize:'.66rem', color:'#1a1305', background:'#f5c542', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>💎 Élite</span>}
                           {j.es_profesional && <span style={{ fontSize:'.66rem', color:'#fff', background:'#7b3ff2', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>🎓 Profesional</span>}
                           {j.es_mayor_35    && <span style={{ fontSize:'.66rem', color:S.text, background:S.card2, borderRadius:'10px', padding:'2px 8px', fontWeight:'700' }}>🕒 Mayor de 35</span>}
+                          {j.etiqueta_personalizada && <span style={{ fontSize:'.66rem', color:'#0a1a3f', background:'#5b9dff', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>⭐ {j.etiqueta_personalizada}</span>}
                           {j.posicion_futbol5  && <span style={{ fontSize:'.66rem', color:S.cyan, background:S.cyanDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F5: {j.posicion_futbol5}</span>}
                           {j.posicion_futbol7  && <span style={{ fontSize:'.66rem', color:S.win, background:S.winDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F7: {j.posicion_futbol7}</span>}
                           {j.posicion_futbol11 && <span style={{ fontSize:'.66rem', color:S.gold, background:S.goldDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F11: {j.posicion_futbol11}</span>}
