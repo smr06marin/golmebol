@@ -623,6 +623,9 @@ export default function EquipoHistorialPage() {
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontWeight:'700', color:S.text, fontSize:'.84rem' }}>{j.name}</div>
                         <div style={{ display:'flex', gap:'6px', marginTop:'5px', flexWrap:'wrap' }}>
+                          {j.es_elite       && <span style={{ fontSize:'.66rem', color:'#1a1305', background:'#f5c542', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>💎 Élite</span>}
+                          {j.es_profesional && <span style={{ fontSize:'.66rem', color:'#fff', background:'#7b3ff2', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>🎓 Profesional</span>}
+                          {j.es_mayor_35    && <span style={{ fontSize:'.66rem', color:S.text, background:S.card2, borderRadius:'10px', padding:'2px 8px', fontWeight:'700' }}>🕒 Mayor de 35</span>}
                           {j.posicion_futbol5  && <span style={{ fontSize:'.66rem', color:S.cyan, background:S.cyanDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F5: {j.posicion_futbol5}</span>}
                           {j.posicion_futbol7  && <span style={{ fontSize:'.66rem', color:S.win, background:S.winDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F7: {j.posicion_futbol7}</span>}
                           {j.posicion_futbol11 && <span style={{ fontSize:'.66rem', color:S.gold, background:S.goldDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F11: {j.posicion_futbol11}</span>}

@@ -122,6 +122,11 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [agregandoGlobal,  setAgregandoGlobal]    = useState(false)
   const agregandoGlobalRef = useRef(false) // bloqueo inmediato para "Agregar al equipo"
   const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
+
+  const [editandoTagsId, setEditandoTagsId] = useState(null) // id del jugador cuyas etiquetas se están editando
+  const [tagsForm,       setTagsForm]       = useState({ es_mayor_35: false, es_elite: false, es_profesional: false })
+  const [guardandoTags,  setGuardandoTags]  = useState(false)
+  const guardandoTagsRef = useRef(false) // bloqueo inmediato para "Guardar" etiquetas
   const [mostrarInscribir, setMostrarInscribir] = useState(null) // tournament_id del torneo con el picker abierto
 
   useEffect(() => { fetchTodo() }, [id])
@@ -529,6 +534,27 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (error) { showMsg('Error al inscribir en el torneo', 'error'); return }
     showMsg(`Inscrito en ${tournamentName} ✓`)
     fetchTorneos()
+  }
+
+  function abrirEditarTags(j) {
+    setEditandoTagsId(j.id)
+    setTagsForm({ es_mayor_35: !!j.es_mayor_35, es_elite: !!j.es_elite, es_profesional: !!j.es_profesional })
+  }
+
+  async function guardarTags(playerId) {
+    if (guardandoTagsRef.current) return // ya se está guardando — evita doble clic
+    guardandoTagsRef.current = true
+    setGuardandoTags(true)
+    try {
+      const { error } = await supabase.from('players').update(tagsForm).eq('id', playerId)
+      if (error) { showMsg('Error al guardar las etiquetas', 'error'); return }
+      setJugadoresEquipoGlobal(prev => prev.map(j => j.id === playerId ? { ...j, ...tagsForm } : j))
+      setEditandoTagsId(null)
+      showMsg('Etiquetas guardadas ✓')
+    } finally {
+      guardandoTagsRef.current = false
+      setGuardandoTags(false)
+    }
   }
 
   async function handleCrearYAgregar() {
@@ -1013,25 +1039,64 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {jugadoresFiltrados.map((j, i) => (
-                <div key={j.id} style={{ ...GLASS_SM, borderRadius: '18px', display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', color: TXT, fontSize: '.875rem' }}>{j.name}</div>
-                    <div style={{ fontSize: '.72rem', color: TXT_MUTED, display: 'flex', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
-                      <span>🪪 {j.numero_cedula}</span>
-                      {j.city && <span>📍 {j.city}</span>}
+                <div key={j.id} style={{ ...GLASS_SM, borderRadius: '18px', padding: '14px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                      {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#8ec3ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F5: {j.posicion_futbol5}</span>}
-                      {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#8ef0a8', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F7: {j.posicion_futbol7}</span>}
-                      {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#ffc078', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F11: {j.posicion_futbol11}</span>}
-                      <span style={{ fontSize: '.68rem', fontWeight: '700', color: jugadoresActivos.includes(j.id) ? '#8ef0a8' : TXT_MUTED, ...GLASS_INSET, borderRadius: '20px', padding: '2px 9px' }}>
-  {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
-</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: TXT, fontSize: '.875rem' }}>{j.name}</div>
+                      <div style={{ fontSize: '.72rem', color: TXT_MUTED, display: 'flex', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                        <span>🪪 {j.numero_cedula}</span>
+                        {j.city && <span>📍 {j.city}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        {j.es_elite       && <span style={{ fontSize: '.7rem', color: '#1a1305', background: '#f5c542', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>💎 Élite</span>}
+                        {j.es_profesional && <span style={{ fontSize: '.7rem', color: '#fff', background: '#7b3ff2', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>🎓 Profesional</span>}
+                        {j.es_mayor_35    && <span style={{ fontSize: '.7rem', color: '#dfe8ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>🕒 Mayor de 35</span>}
+                        {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#8ec3ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F5: {j.posicion_futbol5}</span>}
+                        {j.posicion_futbol7  && <span style={{ fontSize: '.7rem', color: '#8ef0a8', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F7: {j.posicion_futbol7}</span>}
+                        {j.posicion_futbol11 && <span style={{ fontSize: '.7rem', color: '#ffc078', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F11: {j.posicion_futbol11}</span>}
+                        <span style={{ fontSize: '.68rem', fontWeight: '700', color: jugadoresActivos.includes(j.id) ? '#8ef0a8' : TXT_MUTED, ...GLASS_INSET, borderRadius: '20px', padding: '2px 9px' }}>
+    {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
+  </span>
+                      </div>
                     </div>
+                    <button onClick={() => editandoTagsId === j.id ? setEditandoTagsId(null) : abrirEditarTags(j)} title="Marcar jugador referente (élite, profesional, +35)"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.5)', padding: '6px', flexShrink: 0 }}>
+                      <Pencil size={15}/>
+                    </button>
                   </div>
+
+                  {editandoTagsId === j.id && (
+                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,.12)' }}>
+                      <div style={{ fontSize: '.68rem', color: TXT_MUTED, marginBottom: '8px', fontWeight: '700' }}>¿QUÉ DIFERENCIA A ESTE JUGADOR?</div>
+                      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                        {[
+                          { key: 'es_elite',       label: '💎 Élite' },
+                          { key: 'es_profesional', label: '🎓 Profesional' },
+                          { key: 'es_mayor_35',    label: '🕒 Mayor de 35' },
+                        ].map(op => (
+                          <label key={op.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.8rem', color: TXT, cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!tagsForm[op.key]}
+                              onChange={e => setTagsForm(prev => ({ ...prev, [op.key]: e.target.checked }))}
+                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}/>
+                            {op.label}
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => guardarTags(j.id)} disabled={guardandoTags}
+                          style={{ padding: '7px 16px', borderRadius: '9px', border: 'none', background: guardandoTags ? 'rgba(255,255,255,.15)' : '#5b9dff', color: '#0a1a3f', fontWeight: '800', fontSize: '.78rem', cursor: guardandoTags ? 'not-allowed' : 'pointer' }}>
+                          {guardandoTags ? 'Guardando...' : 'Guardar'}
+                        </button>
+                        <button onClick={() => setEditandoTagsId(null)} disabled={guardandoTags}
+                          style={{ padding: '7px 16px', borderRadius: '9px', border: '1px solid rgba(255,255,255,.2)', background: 'none', color: TXT_MUTED, fontWeight: '700', fontSize: '.78rem', cursor: guardandoTags ? 'not-allowed' : 'pointer' }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
