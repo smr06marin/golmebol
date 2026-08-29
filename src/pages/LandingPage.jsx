@@ -56,20 +56,22 @@ function IconoTarjeta({ color }) {
   return <span style={{ display: 'inline-block', width: '9px', height: '13px', borderRadius: '2px', background: COLOR_TARJETA[color] || '#999', flexShrink: 0 }}/>
 }
 
-// Agrupa los goles de un mismo jugador en una sola fila: en vez de repetir
-// el nombre una vez por gol, lo muestra una sola vez seguido de un balón
-// por cada gol que anotó (y la lista de minutos, si se conocen).
-function agruparGoles(goles) {
-  const orden = []
-  const porJugador = new Map()
-  goles.forEach(g => {
-    const key = g.jugador || 'Jugador'
-    if (!porJugador.has(key)) { porJugador.set(key, { jugador: key, cantidad: 0, minutos: [] }); orden.push(key) }
-    const acc = porJugador.get(key)
-    acc.cantidad += 1
-    if (g.minuto) acc.minutos.push(g.minuto)
-  })
-  return orden.map(key => porJugador.get(key))
+// Con qué torneo/fase/fecha se identifica un partido — se usa tanto en las
+// tarjetas de "Partidos en vivo" como en el detalle al tocarlas.
+const FASES_LABEL = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: 'Gran final' }
+function labelPartido(m) {
+  if (m.fase && m.fase !== 'grupo') return FASES_LABEL[m.fase] || 'Eliminatorias'
+  if (m.matchday) return `Fecha ${m.matchday}`
+  return m.tournaments?.name || ''
+}
+
+// Une goles y tarjetas en una sola línea de tiempo, ordenada minuto a
+// minuto, para que el detalle del partido se lea como un relato (en vez de
+// dos listas separadas que hay que cruzar mentalmente por minuto).
+function eventosDelPartido(m) {
+  const goles    = extraerGoles(m).map(g => ({ ...g, tipoEvento: 'gol' }))
+  const tarjetas = extraerTarjetas(m).map(t => ({ ...t, tipoEvento: 'tarjeta' }))
+  return [...goles, ...tarjetas].sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
 }
 
 // Detalle de un partido en vivo: marcador, reloj y lista de goles/tarjetas —
@@ -87,75 +89,70 @@ function LiveMatchDetalle({ m, onClose }) {
     return () => { document.body.style.overflow = original }
   }, [])
 
-  const goles = extraerGoles(m)
-  const golesLocal = goles.filter(g => g.equipo === 'local')
-  const golesVis    = goles.filter(g => g.equipo === 'visitante')
-  const tarjetas = extraerTarjetas(m)
-  const tarjetasLocal = tarjetas.filter(t => t.equipo === 'local')
-  const tarjetasVis    = tarjetas.filter(t => t.equipo === 'visitante')
+  const eventos = eventosDelPartido(m)
+  const torneoNombre = m.tournaments?.name
+  const torneoFase = labelPartido(m)
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 560, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '18px' }}>
+      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '22px 20px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
           <span style={{ fontWeight: 900, color: m.vivo.descanso ? S.gold : S.red, fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14}/> {m.vivo.descanso ? 'DESCANSO' : `EN VIVO · ${labelTiempoVivo(m.vivo)}`}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex', padding: '4px' }}><X size={20}/></button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '18px' }}>
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={46}/>
-            <div style={{ color: S.text, fontWeight: 800, fontSize: '.75rem', marginTop: '6px' }}>{m.home?.name}</div>
-          </div>
-          <div style={{ color: S.text, fontWeight: 900, fontSize: '1.6rem' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={46}/>
-            <div style={{ color: S.text, fontWeight: 800, fontSize: '.75rem', marginTop: '6px' }}>{m.away?.name}</div>
-          </div>
-        </div>
-
-        {goles.length === 0 ? (
-          <div style={{ textAlign: 'center', color: S.muted, fontSize: '.8rem', padding: '20px 0' }}>Aún no hay goles</div>
-        ) : (
-          <div>
-            <div style={{ fontSize: '.62rem', fontWeight: 800, color: S.muted, letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}><GiSoccerBall size={11} color={S.muted}/> GOLES</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                {golesLocal.length === 0 && <div style={{ color: S.muted, fontSize: '.72rem' }}>—</div>}
-                {agruparGoles(golesLocal).map((gg, i) => (
-                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                    {gg.jugador} {Array.from({ length: gg.cantidad }).map((_, j) => <GiSoccerBall key={j} size={10} color={S.text}/>)} {gg.minutos.length > 0 ? <span style={{ color: S.muted }}>· {gg.minutos.map(m => `${m}'`).join(', ')}</span> : null}
-                  </div>
-                ))}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                {golesVis.length === 0 && <div style={{ color: S.muted, fontSize: '.72rem' }}>—</div>}
-                {agruparGoles(golesVis).map((gg, i) => (
-                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px', flexWrap: 'wrap' }}>
-                    {gg.minutos.length > 0 ? <span style={{ color: S.muted }}>{gg.minutos.map(m => `${m}'`).join(', ')} ·</span> : null} {gg.jugador} {Array.from({ length: gg.cantidad }).map((_, j) => <GiSoccerBall key={j} size={10} color={S.text}/>)}
-                  </div>
-                ))}
-              </div>
-            </div>
+        {(torneoNombre || torneoFase) && (
+          <div style={{ textAlign: 'center', marginBottom: '10px', color: S.text2, fontSize: '.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            {torneoNombre && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: S.green }}><Trophy size={11}/> {torneoNombre}</span>}
+            {torneoNombre && torneoFase && torneoFase !== torneoNombre && <span style={{ color: S.muted }}>·</span>}
+            {torneoFase && torneoFase !== torneoNombre && <span>{torneoFase}</span>}
           </div>
         )}
 
-        {tarjetas.length > 0 && (
-          <div style={{ marginTop: '18px' }}>
-            <div style={{ fontSize: '.62rem', fontWeight: 800, color: S.muted, letterSpacing: '.08em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}><IconoTarjeta color="amarilla"/> TARJETAS</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                {tarjetasLocal.map((t, i) => (
-                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}><IconoTarjeta color={t.color}/> {t.jugador} {t.minuto ? <span style={{ color: S.muted }}>· {t.minuto}'</span> : null}</div>
-                ))}
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                {tarjetasVis.map((t, i) => (
-                  <div key={i} style={{ fontSize: '.78rem', color: S.text, padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>{t.minuto ? <span style={{ color: S.muted }}>{t.minuto}' ·</span> : null} {t.jugador} <IconoTarjeta color={t.color}/></div>
-                ))}
-              </div>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '22px', margin: '18px 0 22px' }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={56}/>
+            <div style={{ color: S.text, fontWeight: 800, fontSize: '.82rem', marginTop: '8px' }}>{m.home?.name}</div>
           </div>
-        )}
+          <div style={{ color: S.text, fontWeight: 900, fontSize: '2rem', letterSpacing: '.02em' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={56}/>
+            <div style={{ color: S.text, fontWeight: 800, fontSize: '.82rem', marginTop: '8px' }}>{m.away?.name}</div>
+          </div>
+        </div>
+
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '16px' }}>
+          <div style={{ fontSize: '.66rem', fontWeight: 800, color: S.muted, letterSpacing: '.08em', marginBottom: '10px', textAlign: 'center' }}>MINUTO A MINUTO</div>
+          {eventos.length === 0 ? (
+            <div style={{ textAlign: 'center', color: S.muted, fontSize: '.8rem', padding: '18px 0' }}>Aún no hay goles ni tarjetas</div>
+          ) : (
+            <div>
+              {eventos.map((ev, i) => {
+                const esLocal = ev.equipo === 'local'
+                const icono = ev.tipoEvento === 'gol' ? <GiSoccerBall size={13} color={S.text}/> : <IconoTarjeta color={ev.color}/>
+                return (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 48px 1fr', alignItems: 'center', gap: '6px', padding: '8px 0', borderTop: i > 0 ? `1px solid ${S.border}` : 'none' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px', textAlign: 'right', minWidth: 0 }}>
+                      {esLocal && <>
+                        <span style={{ fontWeight: 700, fontSize: '.8rem', color: S.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.jugador}</span>
+                        <span style={{ flexShrink: 0, display: 'flex' }}>{icono}</span>
+                      </>}
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <span style={{ background: S.card2, border: `1px solid ${S.border}`, borderRadius: '999px', padding: '3px 8px', fontSize: '.64rem', fontWeight: 800, color: S.text2, whiteSpace: 'nowrap' }}>{ev.minuto ? `${ev.minuto}'` : '—'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                      {!esLocal && <>
+                        <span style={{ flexShrink: 0, display: 'flex' }}>{icono}</span>
+                        <span style={{ fontWeight: 700, fontSize: '.8rem', color: S.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.jugador}</span>
+                      </>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -323,13 +320,6 @@ export default function LandingPage() {
   }, [torneos, visitasHoy])
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-
-  const FASES_LABEL = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: 'Gran final' }
-  function labelPartido(m) {
-    if (m.fase && m.fase !== 'grupo') return FASES_LABEL[m.fase] || 'Eliminatorias'
-    if (m.matchday) return `Fecha ${m.matchday}`
-    return m.tournaments?.name || ''
-  }
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: 'system-ui,sans-serif', color: S.text }}>
@@ -510,7 +500,7 @@ export default function LandingPage() {
                   Toca para ver quién anotó <GiSoccerBall size={10}/>
                 </div>
                 <button className="gm-hover" onClick={() => navigate('/t/' + m.tournament_id)} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
-                  VER PARTIDO
+                  VER TORNEO
                 </button>
               </div>
             ))}
