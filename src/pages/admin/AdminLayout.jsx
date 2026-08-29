@@ -1,5 +1,5 @@
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe } from 'lucide-react'
+import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -18,6 +18,7 @@ const MENU_COMPLETO = [
   { icon: <GraduationCap size={22}/>,label: 'ESCUELAS',   ruta: '/admin/escuelas',  soloAdmin: true },
   { icon: <Building2 size={22}/>,    label: 'ESCENARIOS', ruta: '/admin/escenarios',soloAdmin: true },
   { icon: <Radio size={22}/>,        label: 'EN VIVO',    ruta: '/admin/config-sitio', soloAdmin: true },
+  { icon: <Megaphone size={22}/>,    label: 'PATROCINADORES', ruta: '/admin/patrocinadores', soloAdmin: true },
   { icon: <UserCog size={22}/>,      label: 'USUARIOS',   ruta: '/admin/usuarios',  soloAdmin: true },
 ]
 

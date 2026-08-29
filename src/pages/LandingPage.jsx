@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X, MapPin, Megaphone } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
+import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
@@ -158,6 +159,72 @@ function LiveMatchDetalle({ m, onClose }) {
   )
 }
 
+// Enlace directo de WhatsApp — acepta el número con o sin indicativo, con
+// espacios/guiones/paréntesis, y arma el link con un mensaje ya escrito.
+function linkWhatsapp(numero, texto) {
+  const digitos = (numero || '').replace(/\D/g, '')
+  if (!digitos) return null
+  return `https://wa.me/${digitos}?text=${encodeURIComponent(texto)}`
+}
+
+// Detalle de un patrocinador oficial al tocar su banner: info de contacto,
+// botón directo a WhatsApp y redes sociales.
+function PatrocinadorDetalleModal({ p, onClose }) {
+  useEffect(() => {
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [])
+
+  const waLink = linkWhatsapp(p.whatsapp, `Hola! Vi a ${p.nombre} como patrocinador de Golmebol y quería escribirles 🙂`)
+  const redes = [
+    p.facebook  && { href: p.facebook,  icon: <FaFacebook size={16}/>,  label: 'Facebook',  color: '#1877f2' },
+    p.instagram && { href: p.instagram, icon: <FaInstagram size={16}/>, label: 'Instagram', color: '#e1306c' },
+    p.tiktok    && { href: p.tiktok,    icon: <FaTiktok size={16}/>,    label: 'TikTok',     color: '#fff' },
+  ].filter(Boolean)
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 560, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: S.bg, border: `1px solid ${S.border}`, borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '22px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+          <span style={{ fontWeight: 900, color: S.green, fontSize: '.78rem', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: '6px' }}><Megaphone size={14}/> PATROCINADOR OFICIAL</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: S.muted, cursor: 'pointer', display: 'flex', padding: '4px' }}><X size={20}/></button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ width: '100px', height: '100px', borderRadius: '18px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: '12px' }}>
+            {p.logo_url ? <img src={p.logo_url} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '8px' }}/> : <Megaphone size={30} color="#1a3a8a"/>}
+          </div>
+          <div style={{ fontWeight: 900, fontSize: '1.15rem' }}>{p.nombre}</div>
+          {p.direccion && (
+            <div style={{ fontSize: '.8rem', color: S.text2, marginTop: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <MapPin size={13} color={S.muted}/> {p.direccion}
+            </div>
+          )}
+        </div>
+
+        {waLink && (
+          <a href={waLink} target="_blank" rel="noopener noreferrer" className="gm-hover"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25d366', borderRadius: '12px', color: '#fff', fontWeight: '800', fontSize: '.92rem', textDecoration: 'none', marginBottom: '12px' }}>
+            <FaWhatsapp size={18}/> Escribir a {p.nombre}
+          </a>
+        )}
+
+        {redes.length > 0 && (
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            {redes.map(r => (
+              <a key={r.label} href={r.href} target="_blank" rel="noopener noreferrer" title={r.label} className="gm-hover"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '42px', height: '42px', borderRadius: '50%', background: S.card, border: `1px solid ${S.border}`, color: r.color }}>
+                {r.icon}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Equipo campeón: sale de la(s) partido(s) de la GRAN FINAL (fase 'final',
 // sin contar el de tercer puesto) — suma goles si fue ida y vuelta, y si
 // empataron global usa penales. Misma lógica que usa el árbol público de
@@ -196,15 +263,19 @@ export default function LandingPage() {
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
   const [escenarios, setEscenarios] = useState([])
+  const [escenarioIdx, setEscenarioIdx] = useState(0) // qué foto de escenario se muestra ahora en el carrusel
   const [escuelas, setEscuelas] = useState([])
   const [tick, setTick] = useState(0)
   const [siteConfig, setSiteConfig] = useState(null)
+  const [patrocinadores, setPatrocinadores] = useState([])
+  const [patroIdx, setPatroIdx] = useState(0) // qué patrocinador se muestra ahora en el banner
+  const [patroDetalle, setPatroDetalle] = useState(null) // patrocinador abierto en el modal de detalle
 
   const torneosRef = useRef(null)
   const vivoRef = useRef(null)
 
   useEffect(() => {
-    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig()
+    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores()
     registrarVisita('inicio')
   }, [])
 
@@ -218,6 +289,15 @@ export default function LandingPage() {
     const tRefetch = setInterval(fetchPartidosVivo, 20000)
     const tVisitas = setInterval(fetchVisitasHoy, 30000)
     return () => { clearInterval(tRelog); clearInterval(tRefetch); clearInterval(tVisitas) }
+  }, [])
+
+  // Carrusel de fotos de escenarios y banner de patrocinadores: cada uno
+  // avanza solo cada 5 segundos, para que se vean todos sin que nadie tenga
+  // que hacer nada.
+  useEffect(() => {
+    const tEsc = setInterval(() => setEscenarioIdx(i => i + 1), 5000)
+    const tPatro = setInterval(() => setPatroIdx(i => i + 1), 5000)
+    return () => { clearInterval(tEsc); clearInterval(tPatro) }
   }, [])
 
   const partidosVivo = useMemo(() => {
@@ -289,8 +369,20 @@ export default function LandingPage() {
   }
 
   async function fetchEscenarios() {
-    const { data } = await supabase.from('escenarios').select('id, name, city, logo_url, imagen_fondo_url').eq('activo', true).limit(6)
+    // Sin límite: el carrusel de fotos de abajo tiene que poder mostrar
+    // TODOS los escenarios activos, no solo los primeros 6.
+    const { data } = await supabase.from('escenarios').select('id, name, city, logo_url, imagen_fondo_url').eq('activo', true)
     setEscenarios(data || [])
+  }
+
+  // Patrocinadores oficiales de Golmebol — banner que rota cada 5s en la
+  // portada pública (se gestionan desde /admin/patrocinadores). Si la tabla
+  // todavía no existe (falta correr migracion_patrocinadores_golmebol.sql),
+  // simplemente no se muestra nada, sin romper el resto de la página.
+  async function fetchPatrocinadores() {
+    const { data, error } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden').order('created_at')
+    if (error) return
+    setPatrocinadores(data || [])
   }
 
   async function fetchEscuelas() {
@@ -327,6 +419,8 @@ export default function LandingPage() {
         .gm-scrollx::-webkit-scrollbar { display: none }
         .gm-scrollx { scrollbar-width: none; -ms-overflow-style: none }
         .gm-hover:hover { filter: brightness(1.08) }
+        @keyframes gm-fadein { from { opacity: 0 } to { opacity: 1 } }
+        .gm-fade { animation: gm-fadein 1s ease }
       `}</style>
 
       {/* ── Header: fondo claro, como el mockup ── */}
@@ -511,18 +605,33 @@ export default function LandingPage() {
       {/* ── Escenarios / Escuelas ── */}
       {(escenarios.length > 0 || escuelas.length > 0) && (
         <div style={{ maxWidth: '1120px', margin: '0 auto', padding: '44px 16px 8px', display: 'grid', gridTemplateColumns: escenarios.length > 0 && escuelas.length > 0 ? 'repeat(auto-fit, minmax(260px, 1fr))' : '1fr', gap: '16px' }}>
-          {escenarios.length > 0 && (
-            <div style={{ position: 'relative', borderRadius: '18px', overflow: 'hidden', border: `1px solid ${S.border}`, minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '20px',
-              backgroundImage: escenarios[0].imagen_fondo_url ? `linear-gradient(180deg, rgba(10,10,10,.2), rgba(10,10,10,.92)), url(${escenarios[0].imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
-              backgroundSize: 'cover', backgroundPosition: 'center' }}>
-              <Building2 size={20} color={S.green} style={{ marginBottom: '8px' }}/>
-              <div style={{ fontWeight: 900, fontSize: '1.02rem', marginBottom: '4px' }}>Escenarios</div>
-              <div style={{ fontSize: '.78rem', color: S.text2, marginBottom: '14px' }}>Los mejores escenarios deportivos para que vivas tu pasión.</div>
-              <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
-                VER ESCENARIOS <ArrowRight size={14}/>
-              </button>
-            </div>
-          )}
+          {escenarios.length > 0 && (() => {
+            const fotos = escenarios.filter(e => e.imagen_fondo_url)
+            const actual = fotos.length > 0 ? fotos[escenarioIdx % fotos.length] : null
+            return (
+              <div style={{ position: 'relative', borderRadius: '18px', overflow: 'hidden', border: `1px solid ${S.border}`, minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '20px' }}>
+                <div key={actual?.id || 'sin-foto'} className="gm-fade"
+                  style={{ position: 'absolute', inset: 0, zIndex: 0,
+                    backgroundImage: actual ? `linear-gradient(180deg, rgba(10,10,10,.2), rgba(10,10,10,.92)), url(${actual.imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
+                    backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                  <Building2 size={20} color={S.green} style={{ marginBottom: '8px' }}/>
+                  <div style={{ fontWeight: 900, fontSize: '1.02rem', marginBottom: '4px' }}>Escenarios{actual?.name ? ` · ${actual.name}` : ''}</div>
+                  <div style={{ fontSize: '.78rem', color: S.text2, marginBottom: '14px' }}>Los mejores escenarios deportivos para que vivas tu pasión.</div>
+                  <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
+                    VER ESCENARIOS <ArrowRight size={14}/>
+                  </button>
+                  {fotos.length > 1 && (
+                    <div style={{ display: 'flex', gap: '5px', marginTop: '12px' }}>
+                      {fotos.map((f, i) => (
+                        <span key={f.id} style={{ width: '6px', height: '6px', borderRadius: '50%', background: i === escenarioIdx % fotos.length ? S.green : 'rgba(255,255,255,.35)' }}/>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
           {escuelas.length > 0 && (
             <div style={{ borderRadius: '18px', border: `1px solid ${S.border}`, background: S.card, padding: '20px', display: 'flex', flexDirection: 'column' }}>
               <GraduationCap size={20} color={S.green} style={{ marginBottom: '8px' }}/>
@@ -539,6 +648,35 @@ export default function LandingPage() {
         </div>
       )}
 
+      {/* ── Patrocinadores oficiales ── */}
+      {patrocinadores.length > 0 && (() => {
+        const actual = patrocinadores[patroIdx % patrocinadores.length]
+        return (
+          <div style={{ maxWidth: '780px', margin: '48px auto 0', padding: '0 16px' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 900, margin: '0 0 14px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+              <Megaphone size={17} color={S.green}/> Patrocinadores oficiales Golmebol
+            </h2>
+            <div onClick={() => setPatroDetalle(actual)} className="gm-hover"
+              style={{ cursor: 'pointer', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '110px' }}>
+              <div key={actual.id} className="gm-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '14px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {actual.logo_url ? <img src={actual.logo_url} alt={actual.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }}/> : <Megaphone size={22} color="#1a3a8a"/>}
+                </div>
+                <div style={{ fontWeight: 800, fontSize: '.85rem' }}>{actual.nombre}</div>
+                <div style={{ fontSize: '.68rem', color: S.muted }}>Toca para ver más</div>
+              </div>
+            </div>
+            {patrocinadores.length > 1 && (
+              <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', marginTop: '10px' }}>
+                {patrocinadores.map((pp, i) => (
+                  <span key={pp.id} style={{ width: '6px', height: '6px', borderRadius: '50%', background: i === patroIdx % patrocinadores.length ? S.green : S.border }}/>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {/* ── Footer ── */}
       <div style={{ borderTop: `1px solid ${S.border}`, marginTop: '54px', padding: '28px 16px', textAlign: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', marginBottom: '6px' }}>
@@ -554,6 +692,10 @@ export default function LandingPage() {
 
       {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && (
         <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}/>
+      )}
+
+      {patroDetalle && (
+        <PatrocinadorDetalleModal p={patroDetalle} onClose={() => setPatroDetalle(null)}/>
       )}
     </div>
   )

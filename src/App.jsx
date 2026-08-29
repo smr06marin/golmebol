@@ -24,6 +24,7 @@ const AdminJugadoresPage      = lazy(() => import('./pages/admin/AdminJugadoresP
 const AdminJugadorDetallePage = lazy(() => import('./pages/admin/AdminJugadorDetallePage'))
 const AdminCalendarioPage     = lazy(() => import('./pages/admin/AdminCalendarioPage'))
 const AdminSponsorsPage       = lazy(() => import('./pages/admin/AdminSponsorsPage'))
+const AdminPatrocinadoresPage = lazy(() => import('./pages/admin/AdminPatrocinadoresPage'))
 const AdminEquipoDetallePage  = lazy(() => import('./pages/admin/AdminEquipoDetallePage'))
 const EquipoHistorialPage     = lazy(() => import('./pages/EquipoHistorialPage'))
 const AdminTorneoDetallePage  = lazy(() => import('./pages/admin/AdminTorneoDetallePage'))
@@ -445,6 +446,7 @@ export default function App() {
             <Route path="escuelas"      element={<AdminEscuelasPage/>}/>
             <Route path="escenarios"    element={<AdminEscenariosPage/>}/>
             <Route path="config-sitio"  element={<AdminConfigSitioPage/>}/>
+            <Route path="patrocinadores" element={<AdminPatrocinadoresPage/>}/>
             <Route path="perfil-organizador" element={<AdminPerfilOrganizadorPage/>}/>
             <Route path="usuarios"      element={<AdminUsuariosPage/>}/>
             <Route path="predix"        element={<AdminPredixPage/>}/>
