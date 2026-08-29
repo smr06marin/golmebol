@@ -148,7 +148,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const [jugsL, jugsV, torn, liveDB, sancionesDB, tarjetasDB] = await Promise.all([
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
-      supabase.from('tournaments').select('modalidad, finanzas_config, registro_simple').eq('id', partido.tournament_id).maybeSingle(),
+      supabase.from('tournaments').select('modalidad, finanzas_config, registro_simple, duracion_tiempo_min').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
@@ -157,7 +157,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       supabase.from('player_match_stats').select('player_id, match_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid').eq('tournament_id', partido.tournament_id),
     ])
     const modalidadDB = torn.data?.modalidad
-    const dur = modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
+    // La duración propia del torneo (si el organizador la configuró al
+    // crear/editar el torneo) manda sobre el valor por defecto de la modalidad.
+    const duracionPropia = Number(torn.data?.duracion_tiempo_min)
+    const dur = duracionPropia > 0 ? duracionPropia : modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
     setModalidad(modalidadDB)
 
     // Un partido ya jugado conserva su alineación histórica tal cual —

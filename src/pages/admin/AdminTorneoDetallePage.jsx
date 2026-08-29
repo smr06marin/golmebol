@@ -2637,7 +2637,7 @@ export default function AdminTorneoDetallePage() {
   async function handleGuardarTorneo() {
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
     const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? null : parseInt(v, 10)
-    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo) }
+    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min) }
     let avisoDegradado = null
     let { data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id')
     if (error && (error.message?.includes('pts_victoria') || error.message?.includes('pts_empate') || error.message?.includes('pts_derrota'))) {
@@ -2652,6 +2652,13 @@ export default function AdminTorneoDetallePage() {
       const { limite_jugadores_equipo, ...resto } = payload
       payload = resto
       avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
+      ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
+    }
+    if (error && error.message?.includes('duracion_tiempo_min')) {
+      // Falta correr migracion_duracion_tiempo.sql en Supabase: se reintenta sin ese campo
+      const { duracion_tiempo_min, ...resto } = payload
+      payload = resto
+      avisoDegradado = 'Torneo actualizado, pero la duración de cada tiempo NO se guardó: ejecuta migracion_duracion_tiempo.sql en Supabase'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al actualizar torneo: ${error.message || error.code || error.details || 'desconocido'}`, 'error'); return }
@@ -3485,6 +3492,11 @@ export default function AdminTorneoDetallePage() {
                 <div key={f.key}><label style={labelStyle}>{f.label}</label><input value={formTorneo[f.key] || ''} onChange={e => setFormTorneo(p => ({ ...p, [f.key]: e.target.value }))} style={inputStyle}/></div>
               ))}
               <div><label style={labelStyle}>Modalidad</label><select value={formTorneo.modalidad || ''} onChange={e => setFormTorneo(p => ({ ...p, modalidad: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{Array.from({ length: 10 }, (_, i) => `Fútbol ${i + 2}`).map(m => <option key={m}>{m}</option>)}</select></div>
+              <div>
+                <label style={labelStyle}>Duración de cada tiempo (minutos)</label>
+                <input type="number" min="1" value={formTorneo.duracion_tiempo_min ?? ''} onChange={e => setFormTorneo(p => ({ ...p, duracion_tiempo_min: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={inputStyle} placeholder="Automático según modalidad"/>
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Lo usa el cronómetro de la planilla del árbitro. Vacío = 20 min (Fútbol 5), 25 min (Fútbol 7) o 45 min (Fútbol 11) según la modalidad de arriba.</div>
+              </div>
               <div><label style={labelStyle}>Género</label><select value={formTorneo.genero || ''} onChange={e => setFormTorneo(p => ({ ...p, genero: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option><option>Masculino</option><option>Femenino</option><option>Mixto</option></select></div>
               <div>
                 <label style={labelStyle}>Sistema de puntos (victoria / empate / derrota)</label>
@@ -3724,7 +3736,7 @@ export default function AdminTorneoDetallePage() {
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
             </div>
           </div>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '' }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '' }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>

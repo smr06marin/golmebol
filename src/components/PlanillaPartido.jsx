@@ -929,7 +929,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     })()
   }, [])
 
-  function getDefaultDuracion(modalidad) {
+  // Si el torneo tiene configurada su propia duración de tiempo (campo
+  // "Duración de cada tiempo" al crear/editar el torneo), esa manda sobre
+  // el valor por defecto de la modalidad — así un Fútbol 7 que el
+  // organizador quiera jugar a 20 minutos, por ejemplo, no queda forzado a 25.
+  function getDefaultDuracion(torneo) {
+    const propia = Number(torneo?.duracion_tiempo_min)
+    if (propia > 0) return propia
+    const modalidad = torneo?.modalidad
     if (modalidad === 'Fútbol 5') return 20
     if (modalidad === 'Fútbol 7') return 25
     if (modalidad === 'Fútbol 11') return 45
@@ -1133,7 +1140,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const remoteTime = remoteSnap ? new Date(liveDB.data.live_state_updated_at || remoteSnap.savedAt || 0).getTime() : -1
       if (localTime >= 0 || remoteTime >= 0) {
         const ganador = remoteTime > localTime ? remoteSnap : localSnap
-        aplicarSnap(ganador, getDefaultDuracion(torneoData?.modalidad))
+        aplicarSnap(ganador, getDefaultDuracion(torneoData))
         // Si el snapshot que ganó vino del servidor, lo guardamos también aquí
         // para que este celular quede sincronizado desde ya.
         if (ganador === remoteSnap) { try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch(e) {} }
@@ -1146,11 +1153,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       setGolesLocal(yaJugado ? golesLocRec : Array(24).fill(null))
       setGolesVisitante(yaJugado ? golesVisRec : Array(24).fill(null))
       if (yaJugado) { setFaltasAcumLocal(fAL); setFaltasAcumVis(fAV) }
-      const dur = getDefaultDuracion(torneoData?.modalidad); setDuracionMinutos(dur); setDuracionInput(String(dur))
+      const dur = getDefaultDuracion(torneoData); setDuracionMinutos(dur); setDuracionInput(String(dur))
     }
 
     setTorneo(torneoData)
-    try { localStorage.setItem(cacheJugsKey, JSON.stringify({ jugadoresLocal: jugsLocalBase, jugadoresVisitante: jugsVisBase, torneo: torneoData, duracion: getDefaultDuracion(torneoData?.modalidad), savedAt: new Date().toISOString() })) } catch(e) {}
+    try { localStorage.setItem(cacheJugsKey, JSON.stringify({ jugadoresLocal: jugsLocalBase, jugadoresVisitante: jugsVisBase, torneo: torneoData, duracion: getDefaultDuracion(torneoData), savedAt: new Date().toISOString() })) } catch(e) {}
     setLoading(false)
   }
 
