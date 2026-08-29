@@ -50,7 +50,7 @@ const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 // Misma tabla azul de siempre, pero colapsable con un encabezado — para
 // mostrar un grupo a la vez sin saturar la pantalla cuando el torneo tiene
 // varios grupos.
-function TablaColapsable({ titulo, rows, defaultOpen = false }) {
+function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo }) {
   const [abierto, setAbierto] = useState(defaultOpen)
   return (
     <div>
@@ -65,7 +65,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false }) {
       </button>
       {abierto && (
         <div style={{ marginTop: '8px' }}>
-          <TablaPosiciones rows={rows}/>
+          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo}/>
         </div>
       )}
     </div>
@@ -88,7 +88,8 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
   }, [!!rosterModal])
 
   if (!rosterModal) return null
-  const { team, jugadores, loading } = rosterModal
+  const { team, jugadores, loading, stats } = rosterModal
+  const infoTeam = [team.city, team.categoria, team.modalidad, team.genero].filter(Boolean).join(' · ')
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '20px 18px 28px' }}>
@@ -97,10 +98,25 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
             <div style={{ width: '36px', height: '36px', borderRadius: '9px', overflow: 'hidden', flexShrink: 0 }}>
               <TeamLogo logo_url={team.logo_url} name={team.name} size={36}/>
             </div>
-            <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem' }}>{team.name}</div>
+            <div>
+              <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem', lineHeight: 1.2 }}>{team.name}</div>
+              {infoTeam && <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{infoTeam}</div>}
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', fontSize: '1rem', fontWeight: '700' }}>✕</button>
+          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', fontSize: '1rem', fontWeight: '700', flexShrink: 0 }}>✕</button>
         </div>
+
+        {stats && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', margin: '14px 0', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 6px' }}>
+            {[['PJ', stats.pj], ['PG', stats.pg], ['PE', stats.pe], ['PP', stats.pp], ['GF', stats.gf], ['GC', stats.gc], ['PTS', stats.pts]].map(([label, val]) => (
+              <div key={label} style={{ textAlign: 'center' }}>
+                <div style={{ fontWeight: '900', color: label === 'PTS' ? '#1a73e8' : '#202124', fontSize: '.9rem' }}>{val ?? 0}</div>
+                <div style={{ fontSize: '.6rem', color: '#9aa0a6', fontWeight: '700', letterSpacing: '.04em', marginTop: '1px' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '18px', lineHeight: 1.5 }}>
           Jugadores registrados de <b>{team.name}</b> en <b>{torneoNombre}</b>.
         </div>
@@ -502,9 +518,9 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     links.forEach(link => { link.href = torneo.favicon_url })
   }, [torneo?.favicon_url])
 
-  async function abrirRoster(team) {
+  async function abrirRoster(team, stats) {
     if (!team?.id) return
-    setRosterModal({ team, jugadores: [], loading: true })
+    setRosterModal({ team, jugadores: [], loading: true, stats })
     const { data } = await supabase
       .from('tournament_player_registrations')
       .select('player_id')
@@ -515,7 +531,15 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       columns: 'id, name, photo_url, photo_face_url, es_elite, es_profesional, es_mayor_35, etiqueta_personalizada',
     })
     const jugadores = hydrated.map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    setRosterModal({ team, jugadores, loading: false })
+    setRosterModal({ team, jugadores, loading: false, stats })
+  }
+
+  // Al tocar un equipo en la tabla de posiciones: misma ficha de siempre
+  // (RosterModal), pero además con sus estadísticas del torneo (PJ/PG/PE/
+  // PP/GF/GC/PTS) y ciudad/categoría — así "ver info del equipo" desde la
+  // tabla muestra algo más completo que solo la lista de jugadores.
+  function abrirEquipoInfo(row) {
+    abrirRoster(row.equipo, { pj: row.pj, pg: row.pg, pe: row.pe, pp: row.pp, gf: row.gf, gc: row.gc, pts: row.pts })
   }
 
   useEffect(() => {
@@ -823,12 +847,12 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           grupos.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {grupos.map(g => (
-                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen/>
+                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo}/>
               ))}
-              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada}/>
+              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo}/>
             </div>
           ) : (
-            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada}/>
+            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo}/>
           )
         )}
 

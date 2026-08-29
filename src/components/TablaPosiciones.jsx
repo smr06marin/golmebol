@@ -22,7 +22,7 @@ function LogoCircular({ logo, name, size = 30 }) {
 
 const COLS = '30px minmax(0,1fr) 26px 26px 26px 26px 26px 26px 30px 38px'
 
-export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún' }) {
+export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo }) {
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
       {vacio}
@@ -50,8 +50,8 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           const dif = (row.gf || 0) - (row.gc || 0)
           const esMio = miEquipoId && row.equipo.id === miEquipoId
           return (
-            <div key={row.equipo.id}
-              style={{ display: 'grid', gridTemplateColumns: COLS, gap: '3px', alignItems: 'center', padding: '7px 4px', borderRadius: '9px',
+            <div key={row.equipo.id} onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
+              style={{ display: 'grid', gridTemplateColumns: COLS, gap: '3px', alignItems: 'center', padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default',
                 background: esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
                 border: esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
               {/* Posición */}
