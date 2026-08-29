@@ -119,6 +119,14 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
                     : <span style={{ fontSize: '2rem' }}>👤</span>}
                 </div>
                 <div style={{ marginTop: '8px', fontWeight: '700', color: '#202124', fontSize: '.82rem', lineHeight: 1.25 }}>{j.name}</div>
+                {(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '5px', alignItems: 'center' }}>
+                    {j.es_elite && <span style={{ fontSize: '.62rem', color: '#1a1305', background: '#f5c542', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>💎 Élite</span>}
+                    {j.es_profesional && <span style={{ fontSize: '.62rem', color: '#fff', background: '#7b3ff2', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>🎓 Profesional</span>}
+                    {j.es_mayor_35 && <span style={{ fontSize: '.62rem', color: '#202124', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>🕒 Mayor de 35</span>}
+                    {j.etiqueta_personalizada && <span style={{ fontSize: '.62rem', color: '#fff', background: '#5b9dff', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>⭐ {j.etiqueta_personalizada}</span>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -504,7 +512,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       .eq('team_id', team.id)
       .eq('activo', true)
     const hydrated = await hydratePlayersPublico(data || [], {
-      columns: 'id, name, photo_url, photo_face_url',
+      columns: 'id, name, photo_url, photo_face_url, es_elite, es_profesional, es_mayor_35, etiqueta_personalizada',
     })
     const jugadores = hydrated.map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     setRosterModal({ team, jugadores, loading: false })
