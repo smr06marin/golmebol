@@ -127,15 +127,22 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
           <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Este equipo aún no tiene jugadores registrados en este torneo</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '16px' }}>
-            {jugadores.map(j => (
+            {jugadores.map(j => {
+              const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+              return (
               <div key={j.id} style={{ textAlign: 'center' }}>
-                <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto', overflow: 'hidden', background: '#f1f3f4', border: '2px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {(j.photo_face_url || j.photo_url)
-                    ? <img src={j.photo_face_url || j.photo_url} alt={j.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                    : <span style={{ fontSize: '2rem' }}>👤</span>}
+                {/* Aro de color tipo "historia de Instagram" alrededor de la foto,
+                    para resaltar de un vistazo a los jugadores con alguna etiqueta */}
+                <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto', padding: tieneTag ? '3px' : '0',
+                  background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#f1f3f4', border: tieneTag ? '3px solid #fff' : '2px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {(j.photo_face_url || j.photo_url)
+                      ? <img src={j.photo_face_url || j.photo_url} alt={j.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                      : <span style={{ fontSize: '2rem' }}>👤</span>}
+                  </div>
                 </div>
                 <div style={{ marginTop: '8px', fontWeight: '700', color: '#202124', fontSize: '.82rem', lineHeight: 1.25 }}>{j.name}</div>
-                {(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada) && (
+                {tieneTag && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '5px', alignItems: 'center' }}>
                     {j.es_elite && <span style={{ fontSize: '.62rem', color: '#1a1305', background: '#f5c542', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>💎 Élite</span>}
                     {j.es_profesional && <span style={{ fontSize: '.62rem', color: '#fff', background: '#7b3ff2', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>🎓 Profesional</span>}
@@ -144,7 +151,8 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

@@ -1046,11 +1046,16 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {jugadoresFiltrados.map((j, i) => (
+              {jugadoresFiltrados.map((j, i) => {
+                const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+                return (
                 <div key={j.id} style={{ ...GLASS_SM, borderRadius: '18px', padding: '14px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0, padding: tieneTag ? '2px' : '0',
+                      background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
+                      <div style={{ width: '100%', height: '100%', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
+                      </div>
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: '600', color: TXT, fontSize: '.875rem' }}>{j.name}</div>
@@ -1113,7 +1118,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )})()}
         </div>

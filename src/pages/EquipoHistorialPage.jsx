@@ -615,10 +615,15 @@ export default function EquipoHistorialPage() {
                 </div>
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-                  {jugadoresFiltrados.map(j => (
+                  {jugadoresFiltrados.map(j => {
+                    const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+                    return (
                     <div key={j.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px' }}>
-                      <div style={{ width:'38px', height:'38px', borderRadius:'50%', background:S.card2, overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
+                      <div style={{ width:'38px', height:'38px', borderRadius:'50%', flexShrink:0, padding: tieneTag ? '2px' : '0',
+                        background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
+                        <div style={{ width:'100%', height:'100%', borderRadius:'50%', background:S.card2, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', border: tieneTag ? `2px solid ${S.card}` : 'none' }}>
+                          {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
+                        </div>
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontWeight:'700', color:S.text, fontSize:'.84rem' }}>{j.name}</div>
@@ -636,7 +641,8 @@ export default function EquipoHistorialPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )
             })()}
