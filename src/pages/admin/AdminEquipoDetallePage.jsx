@@ -548,7 +548,14 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     try {
       const payload = { ...tagsForm, etiqueta_personalizada: tagsForm.etiqueta_personalizada.trim() || null }
       const { error } = await supabase.from('players').update(payload).eq('id', playerId)
-      if (error) { showMsg('Error al guardar las etiquetas', 'error'); return }
+      if (error) {
+        // Si falta correr migracion_jugador_etiquetas.sql en Supabase, estas
+        // columnas todavía no existen — se lo decimos claro en vez de un
+        // "Error al guardar" genérico que no explica qué pasó.
+        const faltaMigracion = error.message?.includes('es_mayor_35') || error.message?.includes('es_elite') || error.message?.includes('es_profesional') || error.message?.includes('etiqueta_personalizada') || error.code === '42703'
+        showMsg(faltaMigracion ? 'Falta ejecutar migracion_jugador_etiquetas.sql en Supabase' : `Error al guardar: ${error.message || error.code || 'desconocido'}`, 'error')
+        return
+      }
       setJugadoresEquipoGlobal(prev => prev.map(j => j.id === playerId ? { ...j, ...payload } : j))
       setEditandoTagsId(null)
       showMsg('Etiquetas guardadas ✓')
