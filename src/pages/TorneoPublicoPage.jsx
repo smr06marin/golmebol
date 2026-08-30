@@ -1137,53 +1137,64 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           </div>
         )}
 
-        {/* RESULTADOS */}
+        {/* RESULTADOS — cada partido en su propia tarjeta con degradado de
+            colores del torneo (los mismos del encabezado), para que se vea
+            con vida y no plano como una lista blanca de toda la vida */}
         {tab === 'resultados' && (
-          <div style={s.card}>
-            <div style={s.cardTitle}>Resultados</div>
+          <div>
+            <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#3c4043', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '12px', paddingLeft: '2px' }}>Resultados</div>
             {partidosJugados.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>No hay resultados aún</div>
-            ) : partidosJugados.map((p, i) => {
+              <div style={{ ...s.card, padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>No hay resultados aún</div>
+            ) : partidosJugados.map((p) => {
               const homeWin = p.home_score > p.away_score
               const awayWin = p.away_score > p.home_score
               return (
-                <div key={p.id} onClick={() => setPartidoDetalle(p)} style={{ padding: '16px 14px', borderTop: i > 0 ? '1px solid #f1f3f4' : 'none', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
-                    {p.matchday && <span style={{ fontSize: '.7rem', background: '#e8f0fe', color: '#1a73e8', borderRadius: '10px', padding: '2px 8px', fontWeight: '600' }}>J{p.matchday}</span>}
-                    {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.7rem', background: '#fce8d9', color: '#e8710a', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
-                    {p.played_at && <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
-                    {p.location && <span style={{ fontSize: '.72rem', color: '#9aa0a6', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10}/>{p.location}</span>}
-                  </div>
-                  {/* Escudos + marcador, todos alineados en la misma fila para que
-                      quede parejo aunque los nombres de abajo tengan largos distintos */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '6px' }}>
-                    <div onClick={e => { e.stopPropagation(); abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url }) }}
-                      style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '11px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 1px 4px rgba(0,0,0,.12)' }}>
-                        <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={48}/>
+                <div key={p.id} onClick={() => setPartidoDetalle(p)} style={{
+                  position: 'relative', overflow: 'hidden', borderRadius: '16px', marginBottom: '14px',
+                  padding: '16px 14px 14px', cursor: 'pointer',
+                  background: 'linear-gradient(135deg, var(--color-secundario) 0%, var(--color-primario) 65%, #00bcd4 130%)',
+                  boxShadow: '0 6px 16px rgba(0,0,0,.18)',
+                }}>
+                  {/* puntitos sutiles de fondo, igual que el encabezado del torneo */}
+                  <div style={{ position: 'absolute', inset: 0, opacity: .08, backgroundImage: 'radial-gradient(circle at 15% 25%, #fff 1px, transparent 1px), radial-gradient(circle at 85% 75%, #fff 1px, transparent 1px)', backgroundSize: '32px 32px', pointerEvents: 'none' }}/>
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+                      {p.matchday && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>J{p.matchday}</span>}
+                      {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
+                      {p.played_at && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)' }}>{new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
+                      {p.location && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} color="rgba(255,255,255,.8)"/>{p.location}</span>}
+                    </div>
+                    {/* Escudos + marcador, todos alineados en la misma fila para que
+                        quede parejo aunque los nombres de abajo tengan largos distintos */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '6px' }}>
+                      <div onClick={e => { e.stopPropagation(); abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url }) }}
+                        style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer' }}>
+                        <div style={{ width: '50px', height: '50px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, background: '#fff', padding: '3px', boxSizing: 'border-box', boxShadow: '0 3px 10px rgba(0,0,0,.28)' }}>
+                          <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={44}/>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.3)', borderRadius: '10px', padding: '7px 14px', flexShrink: 0 }}>
+                        <span style={{ fontWeight: '900', fontSize: '1.25rem', color: homeWin ? '#ffd54a' : '#fff' }}>{p.home_score}</span>
+                        <span style={{ color: 'rgba(255,255,255,.5)', fontSize: '.85rem', fontWeight: '400' }}>-</span>
+                        <span style={{ fontWeight: '900', fontSize: '1.25rem', color: awayWin ? '#ffd54a' : '#fff' }}>{p.away_score}</span>
+                      </div>
+                      <div onClick={e => { e.stopPropagation(); abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url }) }}
+                        style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer' }}>
+                        <div style={{ width: '50px', height: '50px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, background: '#fff', padding: '3px', boxSizing: 'border-box', boxShadow: '0 3px 10px rgba(0,0,0,.28)' }}>
+                          <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={44}/>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f3f4', borderRadius: '10px', padding: '7px 14px', flexShrink: 0 }}>
-                      <span style={{ fontWeight: '800', fontSize: '1.2rem', color: homeWin ? 'var(--color-primario)' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.home_score}</span>
-                      <span style={{ color: '#9aa0a6', fontSize: '.85rem', fontWeight: '400' }}>-</span>
-                      <span style={{ fontWeight: '800', fontSize: '1.2rem', color: awayWin ? 'var(--color-primario)' : '#202124', minWidth: '20px', textAlign: 'center' }}>{p.away_score}</span>
+                    {/* Nombres debajo de cada escudo — se enchiquitan solos si son
+                        largos y se parten en 2 líneas en vez de cortarse */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '6px', marginTop: '9px' }}>
+                      <div style={{ textAlign: 'center', fontWeight: homeWin ? '800' : '600', color: '#fff', opacity: homeWin ? 1 : .82, fontSize: tamNombreEquipo(p.home?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px' }}>{p.home?.name}</div>
+                      <div style={{ width: '1px' }}/>
+                      <div style={{ textAlign: 'center', fontWeight: awayWin ? '800' : '600', color: '#fff', opacity: awayWin ? 1 : .82, fontSize: tamNombreEquipo(p.away?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px' }}>{p.away?.name}</div>
                     </div>
-                    <div onClick={e => { e.stopPropagation(); abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url }) }}
-                      style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '11px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 1px 4px rgba(0,0,0,.12)' }}>
-                        <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={48}/>
-                      </div>
+                    <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                      <span style={{ fontSize: '.64rem', color: 'rgba(255,255,255,.7)' }}>👆 Toca el partido para ver el resumen (goles y tarjetas)</span>
                     </div>
-                  </div>
-                  {/* Nombres debajo de cada escudo — se enchiquitan solos si son
-                      largos y se parten en 2 líneas en vez de cortarse */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '6px', marginTop: '8px' }}>
-                    <div style={{ textAlign: 'center', fontWeight: homeWin ? '800' : '600', color: homeWin ? '#202124' : '#5f6368', fontSize: tamNombreEquipo(p.home?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px' }}>{p.home?.name}</div>
-                    <div style={{ width: '1px' }}/>
-                    <div style={{ textAlign: 'center', fontWeight: awayWin ? '800' : '600', color: awayWin ? '#202124' : '#5f6368', fontSize: tamNombreEquipo(p.away?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px' }}>{p.away?.name}</div>
-                  </div>
-                  <div style={{ textAlign: 'center', marginTop: '10px' }}>
-                    <span style={{ fontSize: '.65rem', color: '#9aa0a6' }}>👆 Toca el partido para ver el resumen (goles y tarjetas)</span>
                   </div>
                 </div>
               )
