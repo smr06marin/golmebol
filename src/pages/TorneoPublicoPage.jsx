@@ -1158,6 +1158,9 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                   {/* puntitos sutiles de fondo, igual que el encabezado del torneo */}
                   <div style={{ position: 'absolute', inset: 0, opacity: .08, backgroundImage: 'radial-gradient(circle at 15% 25%, #fff 1px, transparent 1px), radial-gradient(circle at 85% 75%, #fff 1px, transparent 1px)', backgroundSize: '32px 32px', pointerEvents: 'none' }}/>
                   <div style={{ position: 'relative', zIndex: 1 }}>
+                    {/* Nombre del torneo — para que salga aunque le tomen pantallazo
+                        solo a la tarjeta del partido para compartirlo */}
+                    <div style={{ textAlign: 'center', fontSize: '.66rem', fontWeight: '800', color: 'rgba(255,255,255,.85)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏆 {torneo.name}</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
                       {p.matchday && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>J{p.matchday}</span>}
                       {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
