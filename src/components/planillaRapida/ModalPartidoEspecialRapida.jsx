@@ -67,14 +67,14 @@ export default function ModalPartidoEspecialRapida({ nombreLocal, nombreVis, gua
                 <img src={fotoPreview} alt="Foto del equipo" style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '10px', border: `1px solid ${BORDE}` }}/>
                 <label style={{ display: 'block', marginTop: '8px', textAlign: 'center', padding: '9px', border: `1px solid ${BORDE}`, borderRadius: '8px', cursor: 'pointer', color: '#1a73e8', fontWeight: '700', fontSize: '.78rem' }}>
                   Cambiar foto
-                  <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ display: 'none' }}/>
+                  <input type="file" accept="image/*" onChange={handleFoto} style={{ display: 'none' }}/>
                 </label>
               </div>
             ) : (
               <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '18px', border: `2px dashed ${BORDE}`, borderRadius: '10px', cursor: 'pointer', color: TEXTO_TENUE }}>
                 <span style={{ fontSize: '1.5rem' }}>📷</span>
-                <span style={{ fontSize: '.78rem', fontWeight: '700' }}>Tomar foto</span>
-                <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ display: 'none' }}/>
+                <span style={{ fontSize: '.78rem', fontWeight: '700' }}>Tomar foto o subir de galería</span>
+                <input type="file" accept="image/*" onChange={handleFoto} style={{ display: 'none' }}/>
               </label>
             )}
           </div>

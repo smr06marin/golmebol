@@ -351,14 +351,14 @@ function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
                 <img src={fotoPreview} alt="Foto del equipo" style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #dadce0' }}/>
                 <label style={{ display: 'block', marginTop: '8px', textAlign: 'center', padding: '9px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#1a73e8', fontWeight: '600', fontSize: '.8rem' }}>
                   Cambiar foto
-                  <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ display: 'none' }}/>
+                  <input type="file" accept="image/*" onChange={handleFoto} style={{ display: 'none' }}/>
                 </label>
               </div>
             ) : (
               <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '20px', border: '2px dashed #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>
                 <span style={{ fontSize: '1.6rem' }}>📷</span>
-                <span style={{ fontSize: '.8rem', fontWeight: '600' }}>Tomar foto</span>
-                <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ display: 'none' }}/>
+                <span style={{ fontSize: '.8rem', fontWeight: '600' }}>Tomar foto o subir de galería</span>
+                <input type="file" accept="image/*" onChange={handleFoto} style={{ display: 'none' }}/>
               </label>
             )}
           </div>
