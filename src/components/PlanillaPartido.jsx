@@ -5,6 +5,7 @@ import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 }
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../lib/tarjetasDeuda'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { comprimirImagen } from '../lib/imageCompress'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -307,13 +308,21 @@ function ModalSeleccionArquero({ nombreEquipo, jugadores, onSeleccionar }) {
 function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
   const esW = tipo === 'w'
   const [equipoGana, setEquipoGana] = useState('')
+  const [foto, setFoto] = useState(null)
+  const [fotoPreview, setFotoPreview] = useState(null)
+  function handleFoto(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFoto(file)
+    setFotoPreview(URL.createObjectURL(file))
+  }
   function handleConfirmar() {
-    if (esW && !equipoGana) return
-    onConfirmar({ tipo, equipoGana: esW ? equipoGana : null })
+    if (esW && (!equipoGana || !foto)) return
+    onConfirmar({ tipo, equipoGana: esW ? equipoGana : null, foto: esW ? foto : null })
   }
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '400px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <div style={{ fontSize: '2rem', marginBottom: '8px' }}>{esW ? '🏆' : '❌'}</div>
           <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem' }}>{esW ? 'Partido por W' : 'Partido Desierto'}</div>
@@ -334,9 +343,29 @@ function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
             </div>
           </div>
         )}
+        {esW && (
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ fontSize: '.78rem', fontWeight: '600', color: '#5f6368', display: 'block', marginBottom: '8px' }}>📸 Foto del equipo que se presentó</label>
+            {fotoPreview ? (
+              <div style={{ position: 'relative' }}>
+                <img src={fotoPreview} alt="Foto del equipo" style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #dadce0' }}/>
+                <label style={{ display: 'block', marginTop: '8px', textAlign: 'center', padding: '9px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#1a73e8', fontWeight: '600', fontSize: '.8rem' }}>
+                  Cambiar foto
+                  <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ display: 'none' }}/>
+                </label>
+              </div>
+            ) : (
+              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '20px', border: '2px dashed #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>
+                <span style={{ fontSize: '1.6rem' }}>📷</span>
+                <span style={{ fontSize: '.8rem', fontWeight: '600' }}>Tomar foto</span>
+                <input type="file" accept="image/*" capture="environment" onChange={handleFoto} style={{ display: 'none' }}/>
+              </label>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleConfirmar} disabled={esW && !equipoGana}
-            style={{ flex: 1, padding: '11px', background: esW && !equipoGana ? '#dadce0' : esW ? '#1e8e3e' : '#d93025', border: 'none', borderRadius: '10px', cursor: esW && !equipoGana ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem' }}>
+          <button onClick={handleConfirmar} disabled={esW && (!equipoGana || !foto)}
+            style={{ flex: 1, padding: '11px', background: esW && (!equipoGana || !foto) ? '#dadce0' : esW ? '#1e8e3e' : '#d93025', border: 'none', borderRadius: '10px', cursor: esW && (!equipoGana || !foto) ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem' }}>
             Confirmar
           </button>
           <button onClick={onCancelar} style={{ padding: '11px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>Cancelar</button>
@@ -1185,10 +1214,26 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
 
     let golesLocalTotal, golesVisTotal, tipoPartido = null
+    let fotoWUrl = null
     if (esEspecial) {
       tipoPartido = esEspecial.tipo
       golesLocalTotal = esEspecial.tipo === 'w' ? (esEspecial.equipoGana === 'local' ? 3 : 0) : 0
       golesVisTotal   = esEspecial.tipo === 'w' ? (esEspecial.equipoGana === 'visitante' ? 3 : 0) : 0
+      // Foto del equipo que sí se presentó (partido por W) — se sube antes de
+      // actualizar el partido para poder guardar la URL de una vez.
+      if (esEspecial.foto) {
+        try {
+          const liviana = await comprimirImagen(esEspecial.foto)
+          const path = `partidos_w/${partido.id}_${Date.now()}.jpg`
+          const { error: errFoto } = await supabase.storage.from('teams').upload(path, liviana, { upsert: true, contentType: 'image/jpeg' })
+          if (!errFoto) {
+            const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+            fotoWUrl = urlData.publicUrl
+          } else {
+            console.error('No se pudo subir la foto del equipo (W):', errFoto.message)
+          }
+        } catch (e) { console.error('No se pudo subir la foto del equipo (W):', e.message) }
+      }
     } else {
       golesLocalTotal = golesLocal.filter(Boolean).length
       golesVisTotal   = golesVisitante.filter(Boolean).length
@@ -1270,12 +1315,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (arbitro2) { updatePartido.arbitro2 = arbitro2; if(arb2Obj) updatePartido.arbitro2_id = arb2Obj.id }
     if (arbitro3) { updatePartido.arbitro3 = arbitro3; if(arb3Obj) updatePartido.arbitro3_id = arb3Obj.id }
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
+    if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
     if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = penalesGanador }
     let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
     // Si la BD no tiene alguna columna opcional (falta una migración), se quita
     // esa columna y se reintenta: el RESULTADO nunca se debe quedar sin subir
-    // por un dato secundario (nombres de árbitros, firmas, capitanes...).
-    const columnasOpcionales = ['firmas', 'capitan_local', 'capitan_visitante', 'arbitro1', 'arbitro2', 'arbitro3']
+    // por un dato secundario (nombres de árbitros, firmas, capitanes, foto W...).
+    const columnasOpcionales = ['firmas', 'capitan_local', 'capitan_visitante', 'arbitro1', 'arbitro2', 'arbitro3', 'foto_w_url']
     let reintentos = 0
     while (errPartido && reintentos < 3) {
       const msgErr = errPartido.message || ''

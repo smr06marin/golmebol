@@ -11,7 +11,7 @@ export default function PantallaPartido({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
   arqueroLocal, arqueroVis, eventosLocal, eventosVis, periodo, segundos, corriendo, tiempoAgotado, modalidad,
   onVolverLista, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
-  onRegistrarEvento, onQuitarEvento, onSalir,
+  onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial,
 }) {
   const cLocal = colorPorHex(colorLocal)
   const cVis = colorPorHex(colorVis)
@@ -29,6 +29,8 @@ export default function PantallaPartido({
         <div style={{ display: 'flex', gap: '6px' }}>
           <button onClick={onSalir} title="Salir sin guardar resultado — el partido queda pendiente para seguir después"
             style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '5px 8px' }}>⏸ Suspender</button>
+          <button onClick={onAbrirEspecial} title="Partido por W o Desierto (no se jugó)"
+            style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '5px 8px' }}>⚠️ W</button>
           <button onClick={onAbrirCierre} style={{ background: '#1a73e8', border: 'none', borderRadius: '7px', color: '#fff', fontSize: '.72rem', fontWeight: '800', cursor: 'pointer', padding: '5px 10px' }}>🏁 Finalizar</button>
         </div>
       </div>

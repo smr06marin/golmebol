@@ -266,11 +266,25 @@ function PartidoDetalleModal({ partido, onClose }) {
           </div>
         </div>
 
+        {partido.tipo_resultado && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ textAlign: 'center', fontWeight: '700', fontSize: '.8rem', color: partido.tipo_resultado === 'w' ? '#1e8e3e' : '#5f6368', background: partido.tipo_resultado === 'w' ? '#e6f4ea' : '#f1f3f4', borderRadius: '8px', padding: '8px', marginBottom: partido.foto_w_url ? '12px' : 0 }}>
+              {partido.tipo_resultado === 'w' ? '🏆 Partido ganado por W' : '❌ Partido desierto'}
+            </div>
+            {partido.foto_w_url && (
+              <div>
+                <div style={{ fontSize: '.62rem', fontWeight: '800', color: '#9aa0a6', letterSpacing: '.08em', marginBottom: '8px' }}>FOTO DEL EQUIPO QUE SE PRESENTÓ</div>
+                <img src={partido.foto_w_url} alt="Equipo que se presentó" style={{ width: '100%', maxHeight: '320px', objectFit: 'cover', borderRadius: '12px' }}/>
+              </div>
+            )}
+          </div>
+        )}
+
         {eventos === null ? (
           <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem', padding: '20px 0' }}>Cargando...</div>
         ) : errorCarga ? (
           <div style={{ textAlign: 'center', color: '#d93025', fontSize: '.8rem', padding: '20px 14px', background: '#fce8e6', borderRadius: '10px' }}>No se pudo cargar el detalle: {errorCarga}</div>
-        ) : goles.length === 0 && tarjetas.length === 0 ? (
+        ) : partido.tipo_resultado ? null : goles.length === 0 && tarjetas.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem', padding: '20px 0' }}>No quedó registrado el detalle de goles ni tarjetas de este partido</div>
         ) : (
           <>

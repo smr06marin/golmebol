@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { resolverPrediccionesPartido } from '../../lib/predix'
+import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../../lib/predix'
 import PantallaColores from './PantallaColores'
 import PantallaAsignarNumeros from './PantallaAsignarNumeros'
 import PantallaPartido from './PantallaPartido'
@@ -8,8 +8,10 @@ import ModalFotoNumero from './ModalFotoNumero'
 import AlertaNumeroDesconocido from './AlertaNumeroDesconocido'
 import AlertaFaltasEquipo from './AlertaFaltasEquipo'
 import ModalCierrePartido from './ModalCierrePartido'
+import ModalPartidoEspecialRapida from './ModalPartidoEspecialRapida'
 import { FONDO, CIAN, formatTiempo } from './estilosRapida'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeuda'
+import { comprimirImagen } from '../../lib/imageCompress'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -65,6 +67,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const [alertaNumero, setAlertaNumero] = useState(null) // { team, numero, tipo }
   const [alertaFaltas, setAlertaFaltas] = useState(null) // { team }
   const [mostrarCierre, setMostrarCierre] = useState(false)
+  const [mostrarEspecial, setMostrarEspecial] = useState(false)
   const [guardandoDB, setGuardandoDB] = useState(false)
   const [finanzasConfig, setFinanzasConfig] = useState(null) // se guarda para poder recalcular la deuda en vivo
   const [registroSimple, setRegistroSimple] = useState(false) // torneo con registro simple (ej. internacionales): jugadores sin registro en la planilla quedan inscritos solos al guardar
@@ -752,6 +755,76 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     onClose && onClose()
   }
 
+  // ── Guardado de partido por W o Desierto (no se jugó) ──────────────────
+  // Construido desde cero: la rápida no tenía este concepto (a diferencia de
+  // la planilla completa). No hay eventos/arqueros/estadísticas que guardar
+  // porque no se jugó — solo el resultado, el tipo y (si es W) la foto del
+  // equipo que sí se presentó.
+  async function guardarFinalEspecial({ tipo, equipoGana, foto }) {
+    setGuardandoDB(true)
+    const golesLocalTotal = tipo === 'w' ? (equipoGana === 'local' ? 3 : 0) : 0
+    const golesVisTotal   = tipo === 'w' ? (equipoGana === 'visitante' ? 3 : 0) : 0
+    const erroresGuardado = []
+
+    if (partido.status === 'finished') {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        let editorName = user?.email || 'Desconocido'
+        if (user?.id) { const { data: pRow } = await supabase.from('players').select('name').eq('user_id', user.id).maybeSingle(); if (pRow?.name) editorName = pRow.name }
+        await supabase.from('match_edit_log').insert({ match_id: partido.id, editor_user_id: user?.id || null, editor_name: editorName, editor_email: user?.email || null })
+      } catch (e) { console.error('No se pudo registrar la edición post-cierre:', e) }
+    }
+
+    // Foto del equipo que sí se presentó
+    let fotoWUrl = null
+    if (foto) {
+      try {
+        const liviana = await comprimirImagen(foto)
+        const path = `partidos_w/${partido.id}_${Date.now()}.jpg`
+        const { error: errFoto } = await supabase.storage.from('teams').upload(path, liviana, { upsert: true, contentType: 'image/jpeg' })
+        if (!errFoto) {
+          const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+          fotoWUrl = urlData.publicUrl
+        } else {
+          console.error('No se pudo subir la foto del equipo (W):', errFoto.message)
+        }
+      } catch (e) { console.error('No se pudo subir la foto del equipo (W):', e.message) }
+    }
+
+    // No se jugó: se limpian eventos/arqueros de un guardado previo, por si
+    // se está reeditando un partido que antes sí se había jugado.
+    await supabase.from('match_events').delete().eq('match_id', partido.id)
+    await supabase.from('partido_arqueros').delete().eq('match_id', partido.id)
+
+    const updatePartido = {
+      home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished',
+      live_state_rapida: null, live_state_rapida_updated_at: null, tipo_resultado: tipo,
+    }
+    if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
+    let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
+    // Si falta la migración de foto_w_url, se reintenta sin ella: el
+    // resultado no se debe perder por un dato secundario.
+    if (errPartido && (errPartido.message || '').includes(`'foto_w_url'`)) {
+      delete updatePartido.foto_w_url
+      ;({ error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id))
+    }
+    if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
+
+    await anularPrediccionesPartido(partido.id)
+
+    if (erroresGuardado.length > 0) {
+      setGuardandoDB(false)
+      alert('⚠️ NO SE PUDO GUARDAR EL RESULTADO:\n\n' + erroresGuardado.join('\n') + '\n\nIntenta de nuevo con buena señal.')
+      return
+    }
+
+    try { localStorage.removeItem(localKey) } catch (e) {}
+    setGuardandoDB(false)
+    setMostrarEspecial(false)
+    onGuardarResultado && onGuardarResultado(golesLocalTotal, golesVisTotal)
+    onClose && onClose()
+  }
+
   if (loading) return (
     <div style={{ minHeight: '100dvh', background: FONDO, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CIAN, fontFamily: 'system-ui,sans-serif' }}>
       Cargando planilla rápida...
@@ -800,7 +873,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}
         onSeleccionarArquero={seleccionarArquero}
         onRegistrarEvento={registrarEvento} onQuitarEvento={quitarEvento}
-        onSalir={pausarYSalir}
+        onSalir={pausarYSalir} onAbrirEspecial={() => setMostrarEspecial(true)}
       />
       {alertaNumero && (
         <AlertaNumeroDesconocido
@@ -821,6 +894,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
           nombreLocal={nombreLocal} nombreVis={nombreVis} arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
           hayRoja={hayRoja} jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
           guardando={guardandoDB} onFinalizar={guardarFinal} onCerrar={() => setMostrarCierre(false)}
+        />
+      )}
+      {mostrarEspecial && (
+        <ModalPartidoEspecialRapida
+          nombreLocal={nombreLocal} nombreVis={nombreVis}
+          guardando={guardandoDB} onConfirmar={guardarFinalEspecial} onCerrar={() => setMostrarEspecial(false)}
         />
       )}
     </>
