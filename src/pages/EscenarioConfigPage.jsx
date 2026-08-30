@@ -211,6 +211,15 @@ export default function EscenarioConfigPage() {
           <div style={{ marginBottom:'12px' }}>
             <label style={lbl}>WhatsApp del negocio (sin + ni espacios, con código de país)</label>
             <input value={form.whatsapp} onChange={e=>setForm(f=>({...f,whatsapp:e.target.value}))} style={inp} placeholder="573001234567" disabled={soloLectura}/>
+            <div style={{ background:'rgba(249,168,37,.1)', border:`1px solid ${S.gold}`, borderRadius:'10px', padding:'10px 12px', marginTop:'8px', fontSize:'.72rem', color:S.text2, lineHeight:1.5 }}>
+              <b style={{ color:S.gold }}>⚠️ Cuidado con este número:</b> cada reserva de la página le manda un mensaje de WhatsApp — si llegan muchas reservas de gente que no tiene el número guardado, WhatsApp puede poner la cuenta "en revisión" y bloquearla. Para bajar el riesgo:
+              <ul style={{ margin:'6px 0 0', paddingLeft:'18px' }}>
+                <li>Usa <b>WhatsApp Business</b> en ese número, no el WhatsApp normal.</li>
+                <li>No uses este mismo número para enviar mensajes masivos o en cadena por otro lado.</li>
+                <li>Si ya te sale "cuenta en revisión", no la sigas usando ni la reinstales varias veces — espera a que WhatsApp la revise (puede tardar días).</li>
+                <li>Si se pone muy grave, considera usar un número aparte solo para las reservas de la página.</li>
+              </ul>
+            </div>
           </div>
           <div style={{ marginBottom:'0' }}>
             <label style={lbl}>Dirección</label>
