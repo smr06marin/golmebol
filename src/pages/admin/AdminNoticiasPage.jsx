@@ -6,22 +6,20 @@ import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, C
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
-
+// La llamada a la IA ya NO se hace directo desde el navegador (eso dejaba la
+// clave de Anthropic visible en el código fuente de la página, cualquiera
+// podía copiarla con F12). Ahora pasa por /api/generar-noticia, una función
+// del servidor de Vercel que guarda la clave real y nunca la expone — ver
+// api/generar-noticia.js.
 async function llamarIA(messages, maxTokens = 600) {
-  if (!API_KEY) {
-    throw new Error('Falta configurar la clave de IA en este sitio (VITE_ANTHROPIC_API_KEY). Avísale a quien administra el hosting.')
-  }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/generar-noticia', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
-    // Haiku en vez de Sonnet: mismo texto corto y estructurado, 3 veces más barato.
-    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages }),
+    body: JSON.stringify({ messages, maxTokens }),
   })
   let data
   try { data = await res.json() } catch { data = null }
