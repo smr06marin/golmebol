@@ -285,6 +285,29 @@ export default function LandingPage() {
   const torneosRef = useRef(null)
   const vivoRef = useRef(null)
 
+  // Arrastrar con el mouse para mover el carrusel de torneos en PC — en
+  // celular ya se mueve con el dedo (scroll táctil nativo), pero en
+  // computador sin pantalla táctil no había forma de moverlo.
+  const scrollerRef = useRef(null)
+  const arrastreRef = useRef({ activo: false, x: 0, scrollLeft: 0, movido: false })
+
+  function iniciarArrastre(e) {
+    const el = scrollerRef.current
+    if (!el) return
+    arrastreRef.current = { activo: true, x: e.pageX, scrollLeft: el.scrollLeft, movido: false }
+  }
+  function moverArrastre(e) {
+    const st = arrastreRef.current
+    const el = scrollerRef.current
+    if (!st.activo || !el) return
+    const delta = e.pageX - st.x
+    if (Math.abs(delta) > 4) st.movido = true
+    el.scrollLeft = st.scrollLeft - delta
+  }
+  function terminarArrastre() {
+    arrastreRef.current.activo = false
+  }
+
   useEffect(() => {
     fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores()
     registrarVisita('inicio')
@@ -429,6 +452,7 @@ export default function LandingPage() {
       <style>{`
         .gm-scrollx::-webkit-scrollbar { display: none }
         .gm-scrollx { scrollbar-width: none; -ms-overflow-style: none }
+        .gm-scrollx:active { cursor: grabbing }
         .gm-hover:hover { filter: brightness(1.08) }
         @keyframes gm-fadein { from { opacity: 0 } to { opacity: 1 } }
         .gm-fade { animation: gm-fadein 1s ease }
@@ -523,7 +547,15 @@ export default function LandingPage() {
             No hay torneos activos en este momento.
           </div>
         ) : (
-          <div className="gm-scrollx" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity' }}>
+          <div
+            ref={scrollerRef}
+            className="gm-scrollx"
+            onMouseDown={iniciarArrastre}
+            onMouseMove={moverArrastre}
+            onMouseUp={terminarArrastre}
+            onMouseLeave={terminarArrastre}
+            style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity', cursor: 'grab' }}
+          >
             {torneosOrdenados.map(t => {
               const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
               const inicio = fmtFecha(t.created_at)
@@ -531,7 +563,7 @@ export default function LandingPage() {
                 : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
-                <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
+                <button key={t.id} className="gm-hover" onClick={() => { if (arrastreRef.current.movido) return; navigate('/t/' + t.id) }} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
                   <div style={{ marginBottom: '12px' }}>
                     <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
                       {badge.txt}
