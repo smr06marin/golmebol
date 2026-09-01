@@ -38,6 +38,17 @@ function Escudo({ logo_url, name, size = 40, radius = 10 }) {
   )
 }
 
+// Tamaño de letra del nombre del torneo según su largo — así un nombre
+// largo se ve completo (más chiquito, hasta 2 líneas) en vez de cortarse
+// con "..." en la tarjeta de la portada.
+function tamNombreTorneo(nombre) {
+  const len = (nombre || '').length
+  if (len > 28) return '.7rem'
+  if (len > 20) return '.78rem'
+  if (len > 14) return '.85rem'
+  return '.92rem'
+}
+
 function fmtFecha(iso) {
   if (!iso) return null
   try {
@@ -520,7 +531,7 @@ export default function LandingPage() {
                 : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
-                <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', height: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1, overflow: 'hidden' }}>
+                <button key={t.id} className="gm-hover" onClick={() => navigate('/t/' + t.id)} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
                   <div style={{ marginBottom: '12px' }}>
                     <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
                       {badge.txt}
@@ -529,7 +540,7 @@ export default function LandingPage() {
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
                     <Escudo logo_url={t.logo_url} name={t.name} size={56} radius={14}/>
                   </div>
-                  <div style={{ fontWeight: 800, fontSize: '.92rem', textAlign: 'center', marginBottom: '10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                  <div style={{ fontWeight: 800, fontSize: tamNombreTorneo(t.name), textAlign: 'center', marginBottom: '10px', lineHeight: 1.25, wordBreak: 'break-word' }}>{t.name}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '8px' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
                     {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> Inició: {inicio}</span>}
@@ -539,7 +550,7 @@ export default function LandingPage() {
                     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '8px' }}>
                       <span style={{ fontSize: '.6rem', fontWeight: 900, color: S.gold, letterSpacing: '.08em' }}>🏆 CAMPEÓN</span>
                       <Escudo logo_url={t.campeon.logo_url} name={t.campeon.name} size={46} radius={12}/>
-                      <span style={{ fontSize: '.78rem', fontWeight: 800, color: S.text, textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.campeon.name}</span>
+                      <span style={{ fontSize: tamNombreTorneo(t.campeon.name), fontWeight: 800, color: S.text, textAlign: 'center', maxWidth: '100%', lineHeight: 1.25, wordBreak: 'break-word', padding: '0 4px' }}>{t.campeon.name}</span>
                     </div>
                   ) : (
                     <div style={{ flex: 1, minHeight: 0 }}/>

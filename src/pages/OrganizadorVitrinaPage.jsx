@@ -389,7 +389,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
                 </div>
                 <div style={{ padding: '16px 18px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <span style={{ alignSelf: 'flex-start', fontSize: '.62rem', fontWeight: '800', color: colorPrimario, background: `${colorPrimario}16`, borderRadius: '999px', padding: '3px 10px', marginBottom: '10px', letterSpacing: '.04em' }}>TORNEO ACTIVO</span>
-                  <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '.95rem', marginBottom: '10px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                  <div style={{ fontWeight: '800', color: '#0f172a', fontSize: (t.name || '').length > 28 ? '.78rem' : (t.name || '').length > 20 ? '.85rem' : '.95rem', marginBottom: '10px', lineHeight: 1.25, wordBreak: 'break-word' }}>{t.name}</div>
                   <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', fontSize: '.7rem', color: '#5f6368', marginBottom: '10px' }}>
                     {t.modalidad && <span>⚽ {t.modalidad}</span>}
                     {t.city && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={11}/>{t.city}</span>}
