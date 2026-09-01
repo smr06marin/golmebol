@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone, ArrowRight, Tag, Radio } from 'lucide-react'
+import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone, ArrowRight, Tag, Radio, X } from 'lucide-react'
 import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
+import { GiSoccerBall } from 'react-icons/gi'
 import { PantallaCargando } from '../components/PantallaCargando'
-import { derivarEnVivo } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 
 // Escudo del equipo (logo o iniciales) — versión chica para las tarjetas de
 // "en vivo" de la vitrina.
@@ -13,6 +14,97 @@ function EscudoChico({ logo_url, name, size = 34 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: '8px', overflow: 'hidden', flexShrink: 0, background: logo_url ? '#fff' : 'linear-gradient(135deg,#1a73e8,#6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #eef0f3' }}>
       {logo_url ? <img src={logo_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <span style={{ fontSize: size * 0.32, fontWeight: '800', color: '#fff' }}>{iniciales}</span>}
+    </div>
+  )
+}
+
+// Etiqueta corta del momento del partido en vivo: "1T · 12:34" o "DESCANSO"
+function labelTiempoVivoVit(vivo) {
+  if (vivo.descanso) return 'DESCANSO'
+  const per = vivo.periodo === 2 ? '2T' : '1T'
+  return `${per} · ${vivo.reloj}`
+}
+
+const COLOR_TARJETA_VIT = { amarilla: '#f9c400', azul: '#1a73e8', roja: '#d93025' }
+
+// Une goles y tarjetas de un partido en vivo en una sola línea de tiempo,
+// ordenada minuto a minuto — mismo criterio que golmebol.com.
+function eventosDelPartidoVivoVit(m) {
+  const goles    = extraerGoles(m).map(g => ({ ...g, tipoEvento: 'gol' }))
+  const tarjetas = extraerTarjetas(m).map(t => ({ ...t, tipoEvento: 'tarjeta' }))
+  return [...goles, ...tarjetas].sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+}
+
+// Detalle de un partido EN VIVO (marcador + reloj + minuto a minuto) — mismo
+// modal que se ve en golmebol.com, adaptado a la vitrina del organizador.
+function LiveMatchDetalleVit({ m, onClose }) {
+  useEffect(() => {
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [])
+
+  const eventos = eventosDelPartidoVivoVit(m)
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '540px', maxHeight: '88vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '20px 18px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <span style={{ fontWeight: 900, color: m.vivo.descanso ? '#e8710a' : '#d93025', fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Radio size={14}/> {m.vivo.descanso ? 'DESCANSO' : `EN VIVO · ${labelTiempoVivoVit(m.vivo)}`}
+          </span>
+          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={16}/></button>
+        </div>
+
+        {m.tournaments?.name && (
+          <div style={{ textAlign: 'center', marginBottom: '8px', color: '#1e8e3e', fontSize: '.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+            <Trophy size={11}/> {m.tournaments.name}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '22px', margin: '10px 0 20px' }}>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><EscudoChico logo_url={m.home?.logo_url} name={m.home?.name} size={52}/></div>
+            <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</div>
+          </div>
+          <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><EscudoChico logo_url={m.away?.logo_url} name={m.away?.name} size={52}/></div>
+            <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</div>
+          </div>
+        </div>
+
+        <div style={{ background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '14px', padding: '16px' }}>
+          <div style={{ fontSize: '.62rem', fontWeight: 800, color: '#9aa0a6', letterSpacing: '.08em', marginBottom: '10px', textAlign: 'center' }}>MINUTO A MINUTO</div>
+          {eventos.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem', padding: '18px 0' }}>Aún no hay goles ni tarjetas</div>
+          ) : (
+            eventos.map((ev, i) => {
+              const esLocal = ev.equipo === 'local'
+              const icono = ev.tipoEvento === 'gol' ? <GiSoccerBall size={13} color="#202124"/> : <span style={{ display: 'inline-block', width: '9px', height: '13px', borderRadius: '2px', background: COLOR_TARJETA_VIT[ev.color] || '#999', flexShrink: 0 }}/>
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 48px 1fr', alignItems: 'center', gap: '6px', padding: '8px 0', borderTop: i > 0 ? '1px solid #e8eaed' : 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px', textAlign: 'right', minWidth: 0 }}>
+                    {esLocal && <>
+                      <span style={{ fontWeight: 700, fontSize: '.8rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.jugador}</span>
+                      <span style={{ flexShrink: 0, display: 'flex' }}>{icono}</span>
+                    </>}
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '999px', padding: '3px 8px', fontSize: '.64rem', fontWeight: 800, color: '#5f6368', whiteSpace: 'nowrap' }}>{ev.minuto ? `${ev.minuto}'` : '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {!esLocal && <>
+                      <span style={{ flexShrink: 0, display: 'flex' }}>{icono}</span>
+                      <span style={{ fontWeight: 700, fontSize: '.8rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.jugador}</span>
+                    </>}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -71,6 +163,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
   // entrar a un torneo puntual.
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [tick, setTick] = useState(0)
+  const [detalleVivoId, setDetalleVivoId] = useState(null)
 
   useEffect(() => { if (id) fetchTodo() }, [id])
 
@@ -236,15 +329,14 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
             {partidosVivo.map(m => (
-              <Link key={m.id} to={`/t/${m.tournament_id}`} className="gm-vit-card"
-                style={{ ...s.card, textDecoration: 'none', color: 'inherit', border: '1px solid #f8b4b0', padding: '14px', display: 'block' }}>
+              <div key={m.id} style={{ ...s.card, border: '1px solid #f8b4b0', padding: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                   <span style={{ fontSize: '.64rem', fontWeight: '900', padding: '4px 9px', borderRadius: '999px', background: '#fce8e6', color: '#d93025', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/> EN VIVO
                   </span>
                   {m.tournaments?.name && <span style={{ fontSize: '.66rem', color: '#5f6368', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tournaments.name}</span>}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
                     <EscudoChico logo_url={m.home?.logo_url} name={m.home?.name}/>
                     <span style={{ fontSize: '.66rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.home?.name}</span>
@@ -258,10 +350,20 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
                     <span style={{ fontSize: '.66rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
                   </div>
                 </div>
-              </Link>
+                <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', textAlign: 'center', color: '#9aa0a6', fontSize: '.62rem', fontWeight: '700', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  Toca para ver quién anotó <GiSoccerBall size={10}/>
+                </div>
+                <Link to={`/t/${m.tournament_id}`} className="gm-hover" style={{ display: 'block', textAlign: 'center', width: '100%', padding: '9px', borderRadius: '9px', border: '1px solid #d93025', background: 'transparent', color: '#d93025', fontSize: '.75rem', fontWeight: '800', textDecoration: 'none', boxSizing: 'border-box' }}>
+                  VER TORNEO
+                </Link>
+              </div>
             ))}
           </div>
         </div>
+      )}
+
+      {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && (
+        <LiveMatchDetalleVit m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}/>
       )}
 
       {/* TORNEOS */}
