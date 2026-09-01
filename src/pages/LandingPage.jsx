@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X, MapPin, Megaphone } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
@@ -307,6 +307,9 @@ export default function LandingPage() {
   function terminarArrastre() {
     arrastreRef.current.activo = false
   }
+  function moverCarrusel(direccion) {
+    scrollerRef.current?.scrollBy({ left: direccion * 260, behavior: 'smooth' })
+  }
 
   useEffect(() => {
     fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores()
@@ -453,6 +456,8 @@ export default function LandingPage() {
         .gm-scrollx::-webkit-scrollbar { display: none }
         .gm-scrollx { scrollbar-width: none; -ms-overflow-style: none }
         .gm-scrollx:active { cursor: grabbing }
+        .gm-carousel-flecha:hover { filter: brightness(1.25) }
+        @media (pointer: coarse) { .gm-carousel-flecha { display: none !important } }
         .gm-hover:hover { filter: brightness(1.08) }
         @keyframes gm-fadein { from { opacity: 0 } to { opacity: 1 } }
         .gm-fade { animation: gm-fadein 1s ease }
@@ -547,15 +552,32 @@ export default function LandingPage() {
             No hay torneos activos en este momento.
           </div>
         ) : (
-          <div
-            ref={scrollerRef}
-            className="gm-scrollx"
-            onMouseDown={iniciarArrastre}
-            onMouseMove={moverArrastre}
-            onMouseUp={terminarArrastre}
-            onMouseLeave={terminarArrastre}
-            style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity', cursor: 'grab' }}
-          >
+          <div style={{ position: 'relative' }}>
+            <button
+              className="gm-carousel-flecha"
+              onClick={() => moverCarrusel(-1)}
+              aria-label="Ver torneos anteriores"
+              style={{ position: 'absolute', left: '4px', top: '50%', transform: 'translateY(-50%)', zIndex: 5, width: '38px', height: '38px', borderRadius: '50%', border: `1px solid ${S.border}`, background: 'rgba(22,22,22,.88)', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <ChevronLeft size={20}/>
+            </button>
+            <button
+              className="gm-carousel-flecha"
+              onClick={() => moverCarrusel(1)}
+              aria-label="Ver más torneos"
+              style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', zIndex: 5, width: '38px', height: '38px', borderRadius: '50%', border: `1px solid ${S.border}`, background: 'rgba(22,22,22,.88)', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <ChevronRight size={20}/>
+            </button>
+            <div
+              ref={scrollerRef}
+              className="gm-scrollx"
+              onMouseDown={iniciarArrastre}
+              onMouseMove={moverArrastre}
+              onMouseUp={terminarArrastre}
+              onMouseLeave={terminarArrastre}
+              style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity', cursor: 'grab' }}
+            >
             {torneosOrdenados.map(t => {
               const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
               const inicio = fmtFecha(t.created_at)
@@ -591,6 +613,7 @@ export default function LandingPage() {
                 </button>
               )
             })}
+            </div>
           </div>
         )}
       </div>
