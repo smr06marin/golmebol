@@ -30,7 +30,6 @@ const CSS_RESPONSIVO = `
   .gm-vit-navlinks { display: flex; }
   .gm-vit-card { transition: transform .15s ease, box-shadow .15s ease; }
   .gm-vit-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.1); }
-  .gm-vit-badges { grid-template-columns: repeat(3, 1fr); }
   @media (max-width: 720px) {
     .gm-vit-navlinks { display: none; }
     .gm-vit-hero-grid { grid-template-columns: 1fr !important; }
@@ -38,7 +37,6 @@ const CSS_RESPONSIVO = `
     .gm-vit-cta-grid { grid-template-columns: 1fr !important; }
     .gm-vit-cta-image { display: none; }
     .gm-vit-title { font-size: 2rem !important; }
-    .gm-vit-badges { grid-template-columns: 1fr !important; }
   }
 `
 
@@ -225,22 +223,6 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
           </div>
         </div>
 
-        {/* Franja de confianza — superpuesta sobre el borde del hero, en
-            tarjeta blanca elevada, como el resto de secciones "claras". */}
-        <div style={{ maxWidth: '1020px', margin: '-56px auto 0', padding: '0 20px', position: 'relative', zIndex: 5 }}>
-          <div className="gm-vit-badges" style={{ display: 'grid', gap: '1px', background: '#eef0f3', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 12px 32px rgba(15,23,42,.12)' }}>
-            {[
-              { icon: <ShieldCheck size={19} color={colorPrimario}/>, texto: 'Torneos seguros y organizados' },
-              { icon: <Users size={19} color={colorPrimario}/>, texto: 'Pasión por el fútbol amateur' },
-              { icon: <MapPin size={19} color={colorPrimario}/>, texto: hayEscenario ? 'Canchas de calidad' : 'Comunidad futbolera local' },
-            ].map((f, i) => (
-              <div key={i} style={{ background: '#fff', padding: '18px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: `${colorPrimario}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{f.icon}</div>
-                <span style={{ color: '#374151', fontSize: '.82rem', fontWeight: '600', lineHeight: 1.3 }}>{f.texto}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* EN VIVO — partido(s) de cualquiera de los torneos de este organizador
