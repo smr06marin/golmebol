@@ -29,6 +29,18 @@ export function PantallaCargando({ compact = false }) {
         height={logoSize}
         style={{ width: logoSize, height: 'auto', display: 'block' }}
       />
+      {!compact && (
+        <div style={{
+          fontFamily: 'var(--font-display), system-ui, sans-serif',
+          fontSize: '1.3rem',
+          letterSpacing: '.14em',
+          color: '#fff',
+          fontWeight: 400,
+          marginTop: '-6px',
+        }}>
+          GOLMEBOL
+        </div>
+      )}
       <div
         className="gm-spinner"
         style={compact ? { width: 22, height: 22, borderWidth: 2 } : undefined}
