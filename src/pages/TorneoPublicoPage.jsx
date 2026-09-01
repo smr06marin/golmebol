@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Trophy, MapPin, Calendar, ChevronDown, Shield, X } from 'lucide-react'
+import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
@@ -10,6 +10,7 @@ import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
 // que usa el admin para armar el bracket real.
@@ -54,6 +55,95 @@ function tamNombreEquipo(nombre) {
   if (len > 15) return '.7rem'
   if (len > 11) return '.76rem'
   return '.84rem'
+}
+
+// Etiqueta corta del momento del partido en vivo: "1T · 12:34" o "DESCANSO"
+// — mismo formato que usa la página de inicio de Golmebol.
+function labelTiempoVivo(vivo) {
+  if (vivo.descanso) return 'DESCANSO'
+  const per = vivo.periodo === 2 ? '2T' : '1T'
+  return `${per} · ${vivo.reloj}`
+}
+
+// Une goles y tarjetas de un partido en vivo en una sola línea de tiempo,
+// ordenada minuto a minuto — mismo criterio que la página de inicio.
+function eventosDelPartidoVivo(m) {
+  const goles    = extraerGoles(m).map(g => ({ ...g, tipoEvento: 'gol' }))
+  const tarjetas = extraerTarjetas(m).map(t => ({ ...t, tipoEvento: 'tarjeta' }))
+  return [...goles, ...tarjetas].sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+}
+
+const COLOR_TARJETA_VIVO = { amarilla: '#f9c400', azul: '#1a73e8', roja: '#d93025' }
+
+// Detalle de un partido EN VIVO (marcador + reloj + minuto a minuto) — se lee
+// del mismo snapshot que ya sube en tiempo real la planilla del árbitro
+// (matches.live_state / live_state_rapida), igual que en la página de
+// inicio de Golmebol, para que esto también se vea en el dominio propio de
+// cada organizador (antes solo estaba en golmebol.com).
+function LiveMatchDetalle({ m, onClose }) {
+  useEffect(() => {
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = original }
+  }, [])
+
+  const eventos = eventosDelPartidoVivo(m)
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '540px', maxHeight: '88vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '20px 18px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <span style={{ fontWeight: 900, color: m.vivo.descanso ? '#e8710a' : '#d93025', fontSize: '.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Radio size={14}/> {m.vivo.descanso ? 'DESCANSO' : `EN VIVO · ${labelTiempoVivo(m.vivo)}`}
+          </span>
+          <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={16}/></button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '22px', margin: '10px 0 20px' }}>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><TeamLogo logo_url={m.home?.logo_url} name={m.home?.name} size={52}/></div>
+            <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</div>
+          </div>
+          <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><TeamLogo logo_url={m.away?.logo_url} name={m.away?.name} size={52}/></div>
+            <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</div>
+          </div>
+        </div>
+
+        <div style={{ background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '14px', padding: '16px' }}>
+          <div style={{ fontSize: '.62rem', fontWeight: 800, color: '#9aa0a6', letterSpacing: '.08em', marginBottom: '10px', textAlign: 'center' }}>MINUTO A MINUTO</div>
+          {eventos.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem', padding: '18px 0' }}>Aún no hay goles ni tarjetas</div>
+          ) : (
+            eventos.map((ev, i) => {
+              const esLocal = ev.equipo === 'local'
+              const icono = ev.tipoEvento === 'gol' ? <GiSoccerBall size={13} color="#202124"/> : <span style={{ display: 'inline-block', width: '9px', height: '13px', borderRadius: '2px', background: COLOR_TARJETA_VIVO[ev.color] || '#999', flexShrink: 0 }}/>
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 48px 1fr', alignItems: 'center', gap: '6px', padding: '8px 0', borderTop: i > 0 ? '1px solid #e8eaed' : 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px', textAlign: 'right', minWidth: 0 }}>
+                    {esLocal && <>
+                      <span style={{ fontWeight: 700, fontSize: '.8rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.jugador}</span>
+                      <span style={{ flexShrink: 0, display: 'flex' }}>{icono}</span>
+                    </>}
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '999px', padding: '3px 8px', fontSize: '.64rem', fontWeight: 800, color: '#5f6368', whiteSpace: 'nowrap' }}>{ev.minuto ? `${ev.minuto}'` : '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    {!esLocal && <>
+                      <span style={{ flexShrink: 0, display: 'flex' }}>{icono}</span>
+                      <span style={{ fontWeight: 700, fontSize: '.8rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.jugador}</span>
+                    </>}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
@@ -438,6 +528,24 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   const [sponsors,  setSponsors]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [tab,       setTab]       = useState('posiciones')
+
+  // Partidos en vivo de ESTE torneo — antes esto solo existía en la página
+  // de inicio de Golmebol (golmebol.com), así que en el dominio propio de un
+  // organizador (ej. centegol.com) un partido que se está jugando ahora
+  // mismo no se veía en ningún lado. Reusa el mismo snapshot en vivo
+  // (matches.live_state / live_state_rapida) que ya sube la planilla del
+  // árbitro, y la suscripción realtime de más abajo (fetchPartidos) ya
+  // mantiene "partidos" al día solo, sin necesidad de otro polling.
+  const [tick, setTick] = useState(0)
+  const [detalleVivoId, setDetalleVivoId] = useState(null)
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const partidosVivo = useMemo(() => {
+    void tick
+    return partidos.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo)
+  }, [partidos, tick])
 
   // Apenas hay árbol de eliminatorias, lo mostramos de una — sin que el
   // visitante tenga que buscar la pestaña.
@@ -866,6 +974,37 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
       {/* BODY */}
       <div style={s.body}>
+        {/* EN VIVO — partido(s) de este torneo que se están jugando ahora mismo */}
+        {partidosVivo.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+            {partidosVivo.map(m => (
+              <div key={m.id} onClick={() => setDetalleVivoId(m.id)} style={{ background: '#fff', border: '1px solid #f8b4b0', borderRadius: '16px', padding: '14px', cursor: 'pointer', boxShadow: '0 2px 10px rgba(217,48,37,.08)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '.65rem', fontWeight: '900', padding: '4px 9px', borderRadius: '999px', background: '#fce8e6', color: '#d93025', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/> EN VIVO
+                  </span>
+                  <span style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '700' }}>{m.matchday ? `Fecha ${m.matchday}` : m.fase && m.fase !== 'grupo' ? FASE_LABEL[m.fase] : ''}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden' }}><TeamLogo logo_url={m.home?.logo_url} name={m.home?.name} size={34}/></div>
+                    <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.home?.name}</span>
+                  </div>
+                  <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                    <div style={{ fontWeight: '900', fontSize: '1.3rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+                    <div style={{ fontSize: '.6rem', color: '#d93025', fontWeight: '800', marginTop: '2px' }}>{m.vivo.descanso ? 'DESCANSO' : m.vivo.reloj}</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden' }}><TeamLogo logo_url={m.away?.logo_url} name={m.away?.name} size={34}/></div>
+                    <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.62rem', fontWeight: '700', marginTop: '10px' }}>Toca para ver quién anotó ⚽</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Tab bar */}
         <div style={s.tabBar}>
           {tabs.map(t => (
@@ -1317,6 +1456,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
       <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name}/>
       <PartidoDetalleModal partido={partidoDetalle} onClose={() => setPartidoDetalle(null)}/>
+      {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}/>}
     </div>
   )
 }
