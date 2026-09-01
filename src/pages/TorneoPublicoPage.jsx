@@ -1303,7 +1303,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
                       {p.matchday && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>J{p.matchday}</span>}
                       {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
-                      {p.played_at && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)' }}>{new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
+                      {p.played_at && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)' }}>{new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</span>}
                       {p.location && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} color="rgba(255,255,255,.8)"/>{p.location}</span>}
                     </div>
                     {/* Escudos + marcador, todos alineados en la misma fila para que
