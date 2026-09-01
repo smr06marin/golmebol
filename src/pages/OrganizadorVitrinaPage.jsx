@@ -1,9 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone, ArrowRight, Tag } from 'lucide-react'
+import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone, ArrowRight, Tag, Radio } from 'lucide-react'
 import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
 import { PantallaCargando } from '../components/PantallaCargando'
+import { derivarEnVivo } from '../lib/liveMatch'
+
+// Escudo del equipo (logo o iniciales) — versión chica para las tarjetas de
+// "en vivo" de la vitrina.
+function EscudoChico({ logo_url, name, size = 34 }) {
+  const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  return (
+    <div style={{ width: size, height: size, borderRadius: '8px', overflow: 'hidden', flexShrink: 0, background: logo_url ? '#fff' : 'linear-gradient(135deg,#1a73e8,#6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #eef0f3' }}>
+      {logo_url ? <img src={logo_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <span style={{ fontSize: size * 0.32, fontWeight: '800', color: '#fff' }}>{iniciales}</span>}
+    </div>
+  )
+}
 
 const IMG_HERO   = 'https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1600&q=70'
 const IMG_CANCHA = 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=900&q=60'
@@ -55,7 +67,41 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
   const [sponsors, setSponsors] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Partidos en vivo de CUALQUIERA de los torneos de este organizador —
+  // antes esto solo salía en golmebol.com; ahora también sale directo en la
+  // página principal del dominio propio (ej. centegol.com), sin tener que
+  // entrar a un torneo puntual.
+  const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
+  const [tick, setTick] = useState(0)
+
   useEffect(() => { if (id) fetchTodo() }, [id])
+
+  useEffect(() => {
+    if (torneos.length) fetchPartidosVivo()
+    const tRefetch = setInterval(fetchPartidosVivo, 20000)
+    return () => clearInterval(tRefetch)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [torneos])
+
+  useEffect(() => {
+    const tRelog = setInterval(() => setTick(x => x + 1), 1000)
+    return () => clearInterval(tRelog)
+  }, [])
+
+  async function fetchPartidosVivo() {
+    if (!torneos.length) { setMatchesVivoRaw([]); return }
+    const { data } = await supabase.from('matches')
+      .select('id, tournament_id, matchday, fase, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
+      .in('tournament_id', torneos.map(t => t.id))
+      .eq('status', 'scheduled')
+      .or('live_state.not.is.null,live_state_rapida.not.is.null')
+    setMatchesVivoRaw(data || [])
+  }
+
+  const partidosVivo = useMemo(() => {
+    void tick
+    return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo)
+  }, [matchesVivoRaw, tick])
 
   async function fetchTodo() {
     setLoading(true)
@@ -196,6 +242,45 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
           </div>
         </div>
       </div>
+
+      {/* EN VIVO — partido(s) de cualquiera de los torneos de este organizador
+          que se están jugando ahora mismo, visible directo en la página
+          principal sin tener que entrar a ningún torneo. */}
+      {partidosVivo.length > 0 && (
+        <div style={{ ...s.section, paddingTop: '36px', paddingBottom: '0' }}>
+          <div style={s.eyebrow}>
+            <Radio size={19} color="#d93025"/>
+            <span style={{ ...s.eyebrowText, color: '#d93025' }}>EN VIVO AHORA</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
+            {partidosVivo.map(m => (
+              <Link key={m.id} to={`/t/${m.tournament_id}`} className="gm-vit-card"
+                style={{ ...s.card, textDecoration: 'none', color: 'inherit', border: '1px solid #f8b4b0', padding: '14px', display: 'block' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '.64rem', fontWeight: '900', padding: '4px 9px', borderRadius: '999px', background: '#fce8e6', color: '#d93025', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/> EN VIVO
+                  </span>
+                  {m.tournaments?.name && <span style={{ fontSize: '.66rem', color: '#5f6368', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tournaments.name}</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                    <EscudoChico logo_url={m.home?.logo_url} name={m.home?.name}/>
+                    <span style={{ fontSize: '.66rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.home?.name}</span>
+                  </div>
+                  <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                    <div style={{ fontWeight: '900', fontSize: '1.25rem', color: '#0f172a' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+                    <div style={{ fontSize: '.6rem', color: '#d93025', fontWeight: '800', marginTop: '2px' }}>{m.vivo.descanso ? 'DESCANSO' : m.vivo.reloj}</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                    <EscudoChico logo_url={m.away?.logo_url} name={m.away?.name}/>
+                    <span style={{ fontSize: '.66rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* TORNEOS */}
       <div id="torneos" style={{ ...s.section, paddingTop: '64px' }}>
