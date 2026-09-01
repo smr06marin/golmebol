@@ -23,7 +23,7 @@ export function PantallaCargando({ compact = false }) {
       }}
     >
       <img
-        src="/favicon.svg"
+        src="/marca/watermark-logo.png"
         alt=""
         width={logoSize}
         height={logoSize}
