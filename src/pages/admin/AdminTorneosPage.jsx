@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { Plus, Pencil, Trash2, Trophy, Eye, Star } from 'lucide-react'
+import { Plus, Pencil, Trash2, Trophy, Eye, Star, X } from 'lucide-react'
 
 
 const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '' }
@@ -52,6 +52,13 @@ export default function AdminTorneosPage() {
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
   const [menuTorneo, setMenuTorneo] = useState(null) // torneo con menú ⋮ abierto
+
+  // Eliminar torneo por completo (torneo + todos sus datos) — pide escribir
+  // el nombre exacto para confirmar, porque no se puede deshacer.
+  const [torneoAEliminar, setTorneoAEliminar] = useState(null)
+  const [textoConfirmarEliminar, setTextoConfirmarEliminar] = useState('')
+  const [eliminandoTorneo, setEliminandoTorneo] = useState(false)
+  const eliminandoTorneoRef = useRef(false) // guarda sincrónico contra doble clic, antes de cualquier await
 
   useEffect(() => { fetchTorneos() }, [])
 
@@ -235,19 +242,60 @@ export default function AdminTorneosPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function handleDelete(id) {
-    if (!confirm('¿Eliminar torneo?')) return
-    const { error } = await supabase.from('tournaments').delete().eq('id', id)
-    if (error) {
-      if (error.code === '23503') {
-        showMsg('No se puede eliminar: este torneo ya tiene partidos, equipos u otros datos asociados. Elimina primero esos datos.', 'error')
-      } else {
-        showMsg(`Error al eliminar: ${error.message}`, 'error')
+  function handleDelete(t) {
+    setTextoConfirmarEliminar('')
+    setTorneoAEliminar(t)
+  }
+
+  // Borra el torneo COMPLETO: partidos y todo lo que cuelga de cada partido
+  // (estadísticas, goles/tarjetas, MVP, predicciones, apuestas Predix),
+  // inscripciones, grupos, fechas, canchas del torneo, sponsors, sanciones,
+  // finanzas y noticias de ese torneo. NO borra equipos ni jugadores (son
+  // entidades que se comparten entre torneos y pueden seguir jugando otros).
+  // Cada tabla se intenta por separado: si alguna no existe en este proyecto
+  // o falla, no frena la limpieza de las demás ni el borrado final.
+  async function handleEliminarTorneoConfirmado() {
+    const t = torneoAEliminar
+    if (!t || eliminandoTorneoRef.current) return
+    if (textoConfirmarEliminar.trim() !== t.name) return
+    eliminandoTorneoRef.current = true
+    setEliminandoTorneo(true)
+    try {
+      const { data: matchesData } = await supabase.from('matches').select('id').eq('tournament_id', t.id)
+      const matchIds = (matchesData || []).map(m => m.id)
+      const { data: gruposData } = await supabase.from('tournament_grupos').select('id').eq('tournament_id', t.id)
+      const grupoIds = (gruposData || []).map(g => g.id)
+
+      if (matchIds.length) {
+        const dependientesPartido = ['player_match_stats', 'predicciones', 'tournament_logros', 'predix_posturas_cruces', 'predix_posturas', 'predix_duelos', 'match_edit_log', 'match_informes', 'partido_arqueros', 'match_events']
+        for (const tabla of dependientesPartido) {
+          try { await supabase.from(tabla).delete().in('match_id', matchIds) } catch (e) { /* la tabla puede no existir */ }
+        }
       }
-      return
+      try { await supabase.from('matches').delete().eq('tournament_id', t.id) } catch (e) { /* no debería fallar */ }
+
+      if (grupoIds.length) {
+        try { await supabase.from('grupo_equipos').delete().in('grupo_id', grupoIds) } catch (e) { /* la tabla puede no existir */ }
+      }
+      try { await supabase.from('tournament_grupos').delete().eq('tournament_id', t.id) } catch (e) { /* la tabla puede no existir */ }
+
+      const dependientesTorneo = ['tournament_player_registrations', 'fechas', 'canchas', 'tournament_teams', 'tournament_sponsors', 'sanciones', 'torneo_finanzas', 'noticias', 'tournament_logros', 'predix_duelos', 'predix_posturas', 'goleadores_por_torneo']
+      for (const tabla of dependientesTorneo) {
+        try { await supabase.from(tabla).delete().eq('tournament_id', t.id) } catch (e) { /* la tabla puede no existir o ser una vista */ }
+      }
+
+      const { error } = await supabase.from('tournaments').delete().eq('id', t.id)
+      if (error) {
+        showMsg(`No se pudo eliminar del todo: ${error.message}`, 'error')
+        return
+      }
+      setTorneoAEliminar(null)
+      fetchTorneos()
+      showMsg('Torneo eliminado por completo ✓')
+    } finally {
+      eliminandoTorneoRef.current = false
+      setEliminandoTorneo(false)
     }
-    fetchTorneos()
-    showMsg('Eliminado')
   }
 
   const filtered = torneos.filter(t => t.name?.toLowerCase().includes(search.toLowerCase()))
@@ -479,7 +527,7 @@ export default function AdminTorneosPage() {
                         <Star size={14} fill={t.premium ? '#e8710a' : 'none'}/> {t.premium ? 'Quitar Premium' : 'Premium'}
                       </button>
                     )}
-                    <button onClick={() => { setMenuTorneo(null); handleDelete(t.id) }}
+                    <button onClick={() => { setMenuTorneo(null); handleDelete(t) }}
                       style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.78rem', fontWeight: '600' }}>
                       <Trash2 size={14}/> Eliminar
                     </button>
@@ -488,6 +536,60 @@ export default function AdminTorneosPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Confirmación al eliminar un torneo COMPLETO — pide escribir el
+          nombre exacto porque no hay forma de deshacer esto. */}
+      {torneoAEliminar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && !eliminandoTorneo && setTorneoAEliminar(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '460px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>🗑️ Eliminar torneo por completo</div>
+              <button onClick={() => !eliminandoTorneo && setTorneoAEliminar(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>{torneoAEliminar.name}</div>
+
+              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px' }}>
+                <div style={{ fontSize: '.78rem', fontWeight: '800', color: '#d93025', marginBottom: '8px' }}>Esto es definitivo y no se puede deshacer. Se borra:</div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '.78rem', color: '#5f6368', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <li>Todos los partidos del torneo (planillas, goles, tarjetas, MVP)</li>
+                  <li>Las estadísticas, predicciones y apuestas Predix de esos partidos</li>
+                  <li>Los grupos, fechas, calendario y canchas configuradas del torneo</li>
+                  <li>Las inscripciones de equipos y jugadores a este torneo</li>
+                  <li>Los patrocinadores, sanciones, finanzas y noticias de este torneo</li>
+                </ul>
+                <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '10px', fontStyle: 'italic' }}>
+                  No se borran los equipos ni los jugadores: siguen existiendo y pueden jugar en otros torneos.
+                </div>
+              </div>
+
+              <div style={{ marginTop: '16px' }}>
+                <label style={{ ...label, marginBottom: '6px' }}>Para confirmar, escribe el nombre del torneo: <b>{torneoAEliminar.name}</b></label>
+                <input
+                  autoFocus
+                  value={textoConfirmarEliminar}
+                  onChange={e => setTextoConfirmarEliminar(e.target.value)}
+                  placeholder={torneoAEliminar.name}
+                  style={input}
+                  disabled={eliminandoTorneo}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                <button onClick={() => setTorneoAEliminar(null)} disabled={eliminandoTorneo}
+                  style={{ flex: 1, padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', fontWeight: '600' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleEliminarTorneoConfirmado} disabled={eliminandoTorneo || textoConfirmarEliminar.trim() !== torneoAEliminar.name}
+                  style={{ flex: 1, padding: '11px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: (eliminandoTorneo || textoConfirmarEliminar.trim() !== torneoAEliminar.name) ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '700', opacity: (eliminandoTorneo || textoConfirmarEliminar.trim() !== torneoAEliminar.name) ? .6 : 1 }}>
+                  {eliminandoTorneo ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
