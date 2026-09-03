@@ -222,7 +222,24 @@ export default function AdminJugadoresPage() {
 
   async function handleDelete(id) {
     if (!confirm('¿Eliminar jugador?')) return
-    await supabase.from('players').delete().eq('id', id)
+    const { data, error } = await supabase.from('players').delete().eq('id', id).select('id')
+    if (error) {
+      // Error de foreign key: el jugador tiene datos relacionados que no
+      // dejan borrarlo (partidos, apuestas Predix, cuentas de escenario, etc.)
+      if (error.code === '23503' || (error.message || '').includes('foreign key')) {
+        showMsg('No se puede eliminar: este jugador tiene datos relacionados (partidos, apuestas u otras tablas). Habla con Golmebol si de verdad hay que borrarlo.', 'error')
+      } else {
+        showMsg('Error al eliminar: ' + (error.message || 'desconocido'), 'error')
+      }
+      return
+    }
+    // Sin error pero tampoco filas borradas: normalmente es RLS (el permiso
+    // de borrar players no lo tiene esta cuenta) — Supabase no avisa esto
+    // como error, simplemente no borra nada.
+    if (!data || data.length === 0) {
+      showMsg('No se eliminó: no tienes permiso para borrar este jugador (revisa las políticas RLS de "players" en Supabase)', 'error')
+      return
+    }
     fetchJugadores(); showMsg('Eliminado')
   }
 
