@@ -120,6 +120,15 @@ export default function AdminJugadoresPage() {
   const [modalReset,      setModalReset]      = useState(null)
   const [loadingReset,    setLoadingReset]    = useState(false)
 
+  // Eliminar jugador por completo (jugador + todos sus datos relacionados)
+  // — pide escribir el nombre exacto para confirmar, porque no se puede
+  // deshacer (mismo patrón que "eliminar torneo por completo" en
+  // AdminTorneosPage.jsx).
+  const [jugadorAEliminar,      setJugadorAEliminar]      = useState(null)
+  const [textoConfirmarEliminar, setTextoConfirmarEliminar] = useState('')
+  const [eliminandoJugador,     setEliminandoJugador]     = useState(false)
+  const eliminandoJugadorRef = useRef(false) // guarda sincrónico contra doble clic, antes de cualquier await
+
   useEffect(() => { fetchJugadores() }, [])
 
   useEffect(() => {
@@ -220,27 +229,93 @@ export default function AdminJugadoresPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function handleDelete(id) {
-    if (!confirm('¿Eliminar jugador?')) return
-    const { data, error } = await supabase.from('players').delete().eq('id', id).select('id')
-    if (error) {
-      // Error de foreign key: el jugador tiene datos relacionados que no
-      // dejan borrarlo (partidos, apuestas Predix, cuentas de escenario, etc.)
-      if (error.code === '23503' || (error.message || '').includes('foreign key')) {
-        showMsg('No se puede eliminar: este jugador tiene datos relacionados (partidos, apuestas u otras tablas). Habla con Golmebol si de verdad hay que borrarlo.', 'error')
-      } else {
-        showMsg('Error al eliminar: ' + (error.message || 'desconocido'), 'error')
+  // Abre el modal de confirmación (no borra nada todavía) — el borrado real,
+  // en cascada, es handleEliminarJugadorConfirmado más abajo.
+  function handleDelete(jugador) {
+    setTextoConfirmarEliminar('')
+    setJugadorAEliminar(jugador)
+  }
+
+  // Borra el jugador COMPLETO: sus partidos como árbitro quedan sin árbitro
+  // asignado (no se borran los partidos), y se borran todos sus datos
+  // relacionados (inscripciones a equipos/torneos, estadísticas, apuestas
+  // Predix, evaluaciones de árbitro, notificaciones, etc.) antes de borrar
+  // la fila del jugador. Cada tabla se intenta por separado: si alguna no
+  // existe en este proyecto o falla, no frena la limpieza de las demás ni
+  // el borrado final. NO borra la cuenta de Supabase Auth del jugador (si
+  // tiene una) — eso requiere un endpoint aparte con la service role key,
+  // fuera del alcance de este botón.
+  async function handleEliminarJugadorConfirmado() {
+    const j = jugadorAEliminar
+    if (!j || eliminandoJugadorRef.current) return
+    if (textoConfirmarEliminar.trim() !== j.name) return
+    eliminandoJugadorRef.current = true
+    setEliminandoJugador(true)
+    try {
+      // 1. Partidos donde es árbitro: se le quita, no se borra el partido.
+      for (const col of ['arbitro1_id', 'arbitro2_id', 'arbitro3_id']) {
+        try { await supabase.from('matches').update({ [col]: null }).eq(col, j.id) } catch (e) { /* la columna puede no existir */ }
       }
-      return
+
+      // 2. Tablas sin "on delete cascade" — hay que borrarlas a mano o el
+      //    delete final de players falla por foreign key.
+      try { await supabase.from('predix_duelos').delete().or(`retador_id.eq.${j.id},retado_id.eq.${j.id}`) } catch (e) { /* puede no existir */ }
+      try { await supabase.from('predix_posturas').delete().eq('player_id', j.id) } catch (e) { /* arrastra predix_posturas_cruces por su propio cascade */ }
+      try { await supabase.from('escenario_base_caja').delete().eq('player_id', j.id) } catch (e) { /* puede no existir */ }
+
+      // 3. Borrado defensivo del resto de tablas que referencian al jugador
+      //    (algunas ya tienen cascade/set null en la base, pero borrarlas acá
+      //    también no hace daño y cubre las que se crearon a mano en Supabase
+      //    sin dejar rastro en una migración .sql de este repo).
+      const porPlayerId = [
+        'team_players', 'tournament_player_registrations', 'player_match_stats',
+        'tournament_logros', 'predicciones', 'player_achievement_progress',
+        'player_card_level_progress', 'player_stats_cache', 'player_notifications',
+        'notificaciones', 'sanciones', 'torneo_finanzas', 'predix_suscripciones',
+        'predix_premios_mensuales', 'escenario_encargados', 'escenario_conteos_stock',
+        'escenario_actividad', 'escuela_asistencia',
+      ]
+      for (const tabla of porPlayerId) {
+        try { await supabase.from(tabla).delete().eq('player_id', j.id) } catch (e) { /* la tabla puede no existir o no tener esa columna */ }
+      }
+      const porJugadorId = [
+        'escuela_medidas', 'escuela_pruebas_fisicas', 'escuela_tecnica', 'escuela_tactica',
+        'escuela_disciplina', 'escuela_partido_stats', 'escuela_torneo_premios',
+      ]
+      for (const tabla of porJugadorId) {
+        try { await supabase.from(tabla).delete().eq('jugador_id', j.id) } catch (e) { /* la tabla puede no existir */ }
+      }
+      // Árbitro (si este jugador también es/fue árbitro)
+      const porArbitroId = ['arbitro_evaluaciones', 'arbitro_examenes', 'arbitro_reclamos']
+      for (const tabla of porArbitroId) {
+        try { await supabase.from(tabla).delete().eq('arbitro_id', j.id) } catch (e) { /* la tabla puede no existir */ }
+      }
+      try { await supabase.from('encuesta_respuestas').delete().eq('votante_id', j.id) } catch (e) { /* puede no existir */ }
+      try { await supabase.from('escuela_acudientes').delete().or(`acudiente_id.eq.${j.id},jugador_id.eq.${j.id}`) } catch (e) { /* puede no existir */ }
+
+      // 4. Borrado final del jugador — sí se revisa error/count, para no
+      //    creer que se borró si RLS o alguna FK que falte lo bloquean.
+      const { data, error } = await supabase.from('players').delete().eq('id', j.id).select('id')
+      if (error) {
+        if (error.code === '23503' || (error.message || '').includes('foreign key')) {
+          showMsg('No se pudo terminar de eliminar: todavía queda algún dato relacionado sin borrar (' + error.message + ')', 'error')
+        } else {
+          showMsg('Error al eliminar: ' + (error.message || 'desconocido'), 'error')
+        }
+        return
+      }
+      if (!data || data.length === 0) {
+        showMsg('No se eliminó: no tienes permiso para borrar este jugador (revisa las políticas RLS de "players" en Supabase)', 'error')
+        return
+      }
+
+      setJugadorAEliminar(null)
+      fetchJugadores()
+      showMsg('Jugador eliminado por completo ✓')
+    } finally {
+      eliminandoJugadorRef.current = false
+      setEliminandoJugador(false)
     }
-    // Sin error pero tampoco filas borradas: normalmente es RLS (el permiso
-    // de borrar players no lo tiene esta cuenta) — Supabase no avisa esto
-    // como error, simplemente no borra nada.
-    if (!data || data.length === 0) {
-      showMsg('No se eliminó: no tienes permiso para borrar este jugador (revisa las políticas RLS de "players" en Supabase)', 'error')
-      return
-    }
-    fetchJugadores(); showMsg('Eliminado')
   }
 
   async function handleActivarMembresia(jugador, meses, yaTieneAuth) {
@@ -544,6 +619,60 @@ export default function AdminJugadoresPage() {
                 style={{ flex: 1, padding: '10px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: loadingReset ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: loadingReset ? .7 : 1 }}>
                 {loadingReset ? 'Reseteando...' : '🔄 Sí, resetear'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación al eliminar un jugador COMPLETO — pide escribir el
+          nombre exacto porque no hay forma de deshacer esto. */}
+      {jugadorAEliminar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && !eliminandoJugador && setJugadorAEliminar(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '460px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>🗑️ Eliminar jugador por completo</div>
+              <button onClick={() => !eliminandoJugador && setJugadorAEliminar(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>{jugadorAEliminar.name}</div>
+
+              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px' }}>
+                <div style={{ fontSize: '.78rem', fontWeight: '800', color: '#d93025', marginBottom: '8px' }}>Esto es definitivo y no se puede deshacer. Se borra:</div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '.78rem', color: '#5f6368', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <li>Sus inscripciones a equipos y torneos</li>
+                  <li>Sus estadísticas de partidos, logros y apuestas Predix</li>
+                  <li>Sus sanciones, deudas/finanzas y notificaciones</li>
+                  <li>Sus datos de escuela (si es alumno) y de árbitro (si evaluó/examinó como árbitro)</li>
+                </ul>
+                <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '10px', fontStyle: 'italic' }}>
+                  Si tiene partidos donde fue árbitro, esos partidos NO se borran — solo quedan sin árbitro asignado.
+                  {jugadorAEliminar.user_id && ' Su cuenta de acceso (usuario/contraseña) no se borra con esto — sigue existiendo, aparte.'}
+                </div>
+              </div>
+
+              <div style={{ marginTop: '16px' }}>
+                <label style={{ ...lbl, marginBottom: '6px' }}>Para confirmar, escribe el nombre del jugador: <b>{jugadorAEliminar.name}</b></label>
+                <input
+                  autoFocus
+                  value={textoConfirmarEliminar}
+                  onChange={e => setTextoConfirmarEliminar(e.target.value)}
+                  placeholder={jugadorAEliminar.name}
+                  style={inp}
+                  disabled={eliminandoJugador}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                <button onClick={() => setJugadorAEliminar(null)} disabled={eliminandoJugador}
+                  style={{ flex: 1, padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', fontWeight: '600' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleEliminarJugadorConfirmado} disabled={eliminandoJugador || textoConfirmarEliminar.trim() !== jugadorAEliminar.name}
+                  style={{ flex: 1, padding: '11px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: (eliminandoJugador || textoConfirmarEliminar.trim() !== jugadorAEliminar.name) ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '700', opacity: (eliminandoJugador || textoConfirmarEliminar.trim() !== jugadorAEliminar.name) ? .6 : 1 }}>
+                  {eliminandoJugador ? 'Eliminando...' : 'Eliminar definitivamente'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -865,7 +994,7 @@ export default function AdminJugadoresPage() {
                       style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
                       <Pencil size={14}/>
                     </button>
-                    <button onClick={() => handleDelete(j.id)}
+                    <button onClick={() => handleDelete(j)}
                       style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', display: 'flex', alignItems: 'center' }}>
                       <Trash2 size={14}/>
                     </button>
