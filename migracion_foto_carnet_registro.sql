@@ -170,7 +170,31 @@ grant execute on function public.confirmar_foto_perfil(uuid, text) to anon, auth
 --    perfil durante el registro público, solo con el nombre
 --    fotos/{player_id}_cara.{ext} y solo si ese jugador todavía no
 --    tiene photo_face_url (para que no se pueda pisar una ya subida).
+--
+--    OJO: la condición NO puede consultar la tabla "players"
+--    directamente dentro de la política — eso necesita que el rol
+--    "anon" tenga permiso de SELECT sobre esa tabla, y ya se lo
+--    quitamos (ver migracion_rls_seguridad_tanda1.sql, "anon pierde
+--    SELECT en players"). Por eso el chequeo va adentro de una
+--    función security definer: así corre con permisos elevados y
+--    "anon" nunca necesita acceso directo a "players".
 -- ────────────────────────────────────────────────────────────
+
+create or replace function public.puede_subir_foto_perfil_registro(p_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from players p
+    where p.id::text = split_part(split_part(p_name, 'fotos/', 2), '_cara.', 1)
+      and p.photo_face_url is null
+  );
+$$;
+
+grant execute on function public.puede_subir_foto_perfil_registro(text) to anon, authenticated;
 
 drop policy if exists "players_insert_carnet_registro" on storage.objects;
 drop policy if exists "players_insert_perfil_registro" on storage.objects;
@@ -181,9 +205,50 @@ to anon, authenticated
 with check (
   bucket_id = 'players'
   and storage.objects.name ~* '^fotos/[0-9a-f-]{36}_cara\.[a-z0-9]+$'
-  and exists (
-    select 1 from players p
-    where p.id::text = split_part(split_part(storage.objects.name, 'fotos/', 2), '_cara.', 1)
-      and p.photo_face_url is null
-  )
+  and public.puede_subir_foto_perfil_registro(storage.objects.name)
+);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 4. Storage "cedulas" — mismo problema, ya existía desde antes:
+--    la política "cedulas_insert_registro" (migracion_rpc_registro.sql)
+--    también consulta "players" directo, así que hoy también le
+--    fallaría a "anon" si ya se le quitó el SELECT sobre players.
+--    Se redefine acá con el mismo arreglo (función security definer),
+--    manteniendo exactamente la misma regla (frontal/trasera, y solo
+--    si esa cara todavía no tiene URL guardada).
+-- ────────────────────────────────────────────────────────────
+
+create or replace function public.puede_subir_cedula_registro(p_name text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    case
+      when p_name ~* '^[0-9a-f-]{36}_frontal\.[a-z0-9]+$' then exists (
+        select 1 from players p
+        where p.id::text = split_part(p_name, '_frontal.', 1)
+          and p.cedula_frontal_url is null
+      )
+      when p_name ~* '^[0-9a-f-]{36}_trasera\.[a-z0-9]+$' then exists (
+        select 1 from players p
+        where p.id::text = split_part(p_name, '_trasera.', 1)
+          and p.cedula_trasera_url is null
+      )
+      else false
+    end;
+$$;
+
+grant execute on function public.puede_subir_cedula_registro(text) to anon, authenticated;
+
+drop policy if exists "cedulas_insert_registro" on storage.objects;
+create policy "cedulas_insert_registro"
+on storage.objects for insert
+to anon, authenticated
+with check (
+  bucket_id = 'cedulas'
+  and public.puede_subir_cedula_registro(storage.objects.name)
 );

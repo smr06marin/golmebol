@@ -808,7 +808,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {jugs.map(j => (
                     <span key={j.id} style={{ fontSize: '.75rem', color: TXT_SOFT, ...GLASS_INSET, borderRadius: '20px', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '500' }}>
-                      {j.players?.photo_url && <img src={j.players.photo_url} style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }}/>}
+                      {(j.players?.photo_face_url || j.players?.photo_url) && <img src={j.players.photo_face_url || j.players.photo_url} style={{ width: '16px', height: '16px', borderRadius: '50%', objectFit: 'cover' }}/>}
                       {j.players?.name}
                     </span>
                   ))}
@@ -914,7 +914,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#51cf66', marginBottom: '10px' }}>✓ JUGADOR ENCONTRADO</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ width: '48px', height: '48px', borderRadius: '50%', ...GLASS_SM, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {jugadorEncontrado.photo_url ? <img src={jugadorEncontrado.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={20} color="#51cf66"/>}
+                        {(jugadorEncontrado.photo_face_url || jugadorEncontrado.photo_url) ? <img src={jugadorEncontrado.photo_face_url || jugadorEncontrado.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={20} color="#51cf66"/>}
                       </div>
                       <div>
                         <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem' }}>{jugadorEncontrado.name}</div>
@@ -1054,7 +1054,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     <div style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0, padding: tieneTag ? '2px' : '0',
                       background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
                       <div style={{ width: '100%', height: '100%', borderRadius: '50%', ...GLASS_INSET, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {j.photo_url ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
+                        {(j.photo_face_url || j.photo_url) ? <img src={j.photo_face_url || j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Users size={18} color="rgba(255,255,255,.5)"/>}
                       </div>
                     </div>
                     <div style={{ flex: 1 }}>
