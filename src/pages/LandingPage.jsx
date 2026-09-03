@@ -350,6 +350,14 @@ export default function LandingPage() {
     return () => { clearInterval(tEsc); clearInterval(tPatro) }
   }, [])
 
+  // Ida y vuelta: para cada partido en vivo que sea de una fase de
+  // eliminación (nunca en grupos), busca si ya se jugó el otro partido de la
+  // llave — así se puede mostrar "Ida / Vuelta (en vivo) / Global". (Declarado
+  // acá arriba, antes del useMemo de partidosVivo, porque ese useMemo ya lo
+  // usa — si quedara declarado más abajo, sería un error "Cannot access
+  // 'hermanosVivo' before initialization" al renderizar.)
+  const [hermanosVivo, setHermanosVivo] = useState([])
+
   const partidosVivo = useMemo(() => {
     void tick
     return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo).map(m => {
@@ -426,10 +434,6 @@ export default function LandingPage() {
     setMatchesVivoRaw(data || [])
   }
 
-  // Ida y vuelta: para cada partido en vivo que sea de una fase de
-  // eliminación (nunca en grupos), busca si ya se jugó el otro partido de la
-  // llave — así se puede mostrar "Ida / Vuelta (en vivo) / Global".
-  const [hermanosVivo, setHermanosVivo] = useState([])
   useEffect(() => {
     const pares = [...new Set(matchesVivoRaw.filter(m => m.fase && m.fase !== 'grupo').map(m => `${m.tournament_id}|${m.fase}`))]
     if (!pares.length) { setHermanosVivo([]); return }
