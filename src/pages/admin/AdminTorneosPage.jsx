@@ -6,7 +6,11 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star, X } from 'lucide-react'
 
 
-const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '' }
+const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '' }
+// Solo estas cuentas pueden asignar/cambiar el organizador de un torneo ya
+// creado (mismo criterio que en AdminEquiposPage.jsx / AdminJugadorDetallePage.jsx
+// para "cambiar dueño" — respaldo por si la tabla de roles falla).
+const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 // Duración sugerida de cada tiempo según la modalidad — solo para
 // mostrarle al organizador un valor de referencia; el campo queda libre
 // para que ponga el que quiera.
@@ -38,12 +42,14 @@ export default function AdminTorneosPage() {
   const { user, rol } = useAuthStore()
   const esAdmin       = rol?.rol === 'admin'
   const esOrganizador = rol?.rol === 'organizador'
+  const esPrincipal   = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
   const isMobile      = useIsMobile()
   const cols2 = isMobile ? '1fr' : '1fr 1fr'
   const cols3 = isMobile ? '1fr' : '1fr 1fr 1fr'
 
   const [torneos, setTorneos] = useState([])
   const [organizadores, setOrganizadores] = useState({}) // user_id -> email
+  const [listaOrganizadores, setListaOrganizadores] = useState([]) // [{user_id, email}] — para el selector, solo admin principal
   const [form, setForm] = useState(EMPTY)
   const [fin, setFin] = useState(FIN_EMPTY)
   const [editId, setEditId] = useState(null)
@@ -75,6 +81,15 @@ export default function AdminTorneosPage() {
         ;(roles || []).forEach(r => { map[r.user_id] = r.email })
         setOrganizadores(map)
       } catch { /* columna user_id aún no creada */ }
+    }
+    // Solo el admin principal ve el selector para asignar organizador — la
+    // lista sale de las cuentas que ya tienen rol 'organizador' y ya iniciaron
+    // sesión al menos una vez (mismo query que AdminPerfilOrganizadorPage.jsx).
+    if (esPrincipal) {
+      try {
+        const { data } = await supabase.from('roles_plataforma').select('user_id, email').eq('rol', 'organizador').not('user_id', 'is', null)
+        setListaOrganizadores(data || [])
+      } catch { /* ignorar */ }
     }
   }
 
@@ -124,6 +139,12 @@ export default function AdminTorneosPage() {
       limite_jugadores_equipo: (form.limite_jugadores_equipo === '' || form.limite_jugadores_equipo === null || form.limite_jugadores_equipo === undefined) ? null : (parseInt(form.limite_jugadores_equipo, 10) || null),
       // Vacío = usar el valor por defecto de la modalidad (20/25/45 min).
       duracion_tiempo_min: (form.duracion_tiempo_min === '' || form.duracion_tiempo_min === null || form.duracion_tiempo_min === undefined) ? null : (parseInt(form.duracion_tiempo_min, 10) || null),
+      // Solo se usa al EDITAR (abajo, en "crear" se pisa siempre) — y solo el
+      // admin principal ve el selector para cambiarlo; para cualquier otro
+      // admin este valor llega sin tocar (el mismo que ya tenía el torneo),
+      // y de todos modos la base de datos revierte el cambio si quien
+      // actualiza no es admin principal (ver migracion_asignar_organizador.sql).
+      organizador_id: form.organizador_id || null,
     }
     const finanzasConfig = {
       llevar_cuentas:       !!fin.llevar_cuentas,
@@ -221,7 +242,7 @@ export default function AdminTorneosPage() {
   }
 
   function handleEdit(t) {
-    setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '' })
+    setForm({ name: t.name || '', season: t.season || '', city: t.city || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '' })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -416,6 +437,18 @@ export default function AdminTorneosPage() {
               <input type="number" min="1" value={form.duracion_tiempo_min} onChange={e => setForm(f => ({ ...f, duracion_tiempo_min: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}
                 placeholder={form.modalidad && DURACION_SUGERIDA[form.modalidad] ? `${DURACION_SUGERIDA[form.modalidad]} (por defecto)` : 'Ej: 25'}/>
             </div>
+
+            {/* Asignar organizador — solo el admin principal, y solo al editar un torneo ya creado */}
+            {editId && esAdmin && esPrincipal && (
+              <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>🏢 Organizador asignado</div>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Solo el admin principal puede asignar o cambiar el organizador de un torneo ya creado.</div>
+                <select value={form.organizador_id} onChange={e => setForm(f => ({ ...f, organizador_id: e.target.value }))} style={input}>
+                  <option value="">Sin organizador (torneo administrado por Golmebol)</option>
+                  {listaOrganizadores.map(o => <option key={o.user_id} value={o.user_id}>{o.email}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Precios de tarjetas */}
             <div style={{ borderTop: '1px solid #e8eaed', paddingTop: '16px' }}>
