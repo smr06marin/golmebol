@@ -10,7 +10,7 @@ import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
 // que usa el admin para armar el bracket real.
@@ -104,7 +104,20 @@ function LiveMatchDetalle({ m, onClose }) {
             <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><TeamLogo logo_url={m.home?.logo_url} name={m.home?.name} size={52}/></div>
             <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</div>
           </div>
-          <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          {m.hermano && m.global ? (
+            <div style={{ textAlign: 'center', flexShrink: 0 }}>
+              <div style={{ fontSize: '.6rem', color: '#9aa0a6', fontWeight: 800, letterSpacing: '.04em' }}>IDA</div>
+              <div style={{ fontSize: '.95rem', fontWeight: 800, color: '#5f6368' }}>{m.idaLocal} - {m.idaVisitante}</div>
+              <div style={{ fontSize: '.6rem', color: '#d93025', fontWeight: 800, letterSpacing: '.04em', marginTop: '8px' }}>VUELTA · EN VIVO</div>
+              <div style={{ fontWeight: 900, fontSize: '1.6rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e8eaed' }}>
+                <div style={{ fontSize: '.62rem', color: '#1a73e8', fontWeight: 900, letterSpacing: '.04em' }}>GLOBAL</div>
+                <div style={{ fontWeight: 900, fontSize: '1.6rem', color: '#1a73e8' }}>{m.global.local} - {m.global.visitante}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          )}
           <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
             <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><TeamLogo logo_url={m.away?.logo_url} name={m.away?.name} size={52}/></div>
             <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</div>
@@ -544,7 +557,18 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   }, [])
   const partidosVivo = useMemo(() => {
     void tick
-    return partidos.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo)
+    return partidos.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo).map(m => {
+      // Ida y vuelta: si el hermano de la llave ya se jugó, se le pega acá
+      // para poder mostrar "Ida / Vuelta (en vivo) / Global" — nunca en fase
+      // de grupos, ahí cada partido cuenta aparte.
+      if (!m.fase || m.fase === 'grupo') return m
+      const hermano = buscarPartidoHermano(m, partidos)
+      if (!hermano || hermano.status !== 'finished') return m
+      const invertido = hermano.home_team_id === m.away_team_id
+      const idaLocal      = invertido ? (hermano.away_score || 0) : (hermano.home_score || 0)
+      const idaVisitante  = invertido ? (hermano.home_score || 0) : (hermano.away_score || 0)
+      return { ...m, hermano, idaLocal, idaVisitante, global: marcadorGlobal(m, hermano) }
+    })
   }, [partidos, tick])
 
   // Apenas hay árbol de eliminatorias, lo mostramos de una — sin que el
@@ -993,6 +1017,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                   <div style={{ textAlign: 'center', flexShrink: 0 }}>
                     <div style={{ fontWeight: '900', fontSize: '1.3rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
                     <div style={{ fontSize: '.6rem', color: '#d93025', fontWeight: '800', marginTop: '2px' }}>{m.vivo.descanso ? 'DESCANSO' : m.vivo.reloj}</div>
+                    {m.global && <div style={{ fontSize: '.6rem', color: '#1a73e8', fontWeight: '800', marginTop: '2px' }}>Global {m.global.local}-{m.global.visitante}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
                     <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden' }}><TeamLogo logo_url={m.away?.logo_url} name={m.away?.name} size={34}/></div>

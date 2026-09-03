@@ -545,6 +545,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
   const [golesLocal,      setGolesLocal]      = useState(Array(24).fill(null))
   const [golesVisitante,  setGolesVisitante]  = useState(Array(24).fill(null))
+  // Ida y vuelta: si este partido tiene "hermano" (mismo torneo, misma fase,
+  // mismos dos equipos) y ese hermano ya se jugó, se muestra el marcador
+  // GLOBAL sumando los goles de ambos partidos — así el árbitro y los
+  // equipos ven en vivo quién está clasificando en este momento.
+  const [partidoHermano, setPartidoHermano] = useState(null)
   const [faltasAcumLocal, setFaltasAcumLocal] = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
   const [faltasAcumVis,   setFaltasAcumVis]   = useState({ p1: Array(5).fill(null), p2: Array(5).fill(null) })
   const [dropdownOpen,    setDropdownOpen]    = useState(null)
@@ -871,6 +876,34 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido])
 
   useEffect(() => { fetchTodo() }, [])
+
+  // Busca el otro partido de la llave (ida ↔ vuelta) — mismo torneo, misma
+  // fase (nunca en fase de grupos, ahí cada partido cuenta por separado) y
+  // los mismos dos equipos, sin importar el orden local/visitante.
+  useEffect(() => {
+    if (!partido?.fase || partido.fase === 'grupo' || !partido.home_team_id || !partido.away_team_id) { setPartidoHermano(null); return }
+    let cancelado = false
+    supabase.from('matches')
+      .select('id, home_team_id, away_team_id, home_score, away_score, status')
+      .eq('tournament_id', partido.tournament_id)
+      .eq('fase', partido.fase)
+      .neq('id', partido.id)
+      .or(`and(home_team_id.eq.${partido.away_team_id},away_team_id.eq.${partido.home_team_id}),and(home_team_id.eq.${partido.home_team_id},away_team_id.eq.${partido.away_team_id})`)
+      .then(({ data }) => { if (!cancelado) setPartidoHermano((data || []).find(m => m.status === 'finished') || null) })
+    return () => { cancelado = true }
+  }, [partido?.id, partido?.tournament_id, partido?.fase, partido?.home_team_id, partido?.away_team_id])
+
+  // Marcador GLOBAL de la llave (goles propios del partido que se está
+  // jugando + los del hermano ya jugado), en términos de local/visitante de
+  // ESTE partido — si el hermano tenía los equipos invertidos (lo normal en
+  // la vuelta), se invierten sus goles antes de sumarlos.
+  const globalLlave = (() => {
+    if (!partidoHermano) return null
+    const invertido = partidoHermano.home_team_id === partido.away_team_id
+    const otroLocal     = invertido ? (partidoHermano.away_score || 0) : (partidoHermano.home_score || 0)
+    const otroVisitante = invertido ? (partidoHermano.home_score || 0) : (partidoHermano.away_score || 0)
+    return { local: golesLocal.filter(Boolean).length + otroLocal, visitante: golesVisitante.filter(Boolean).length + otroVisitante }
+  })()
 
   // Si un admin registra el pago de una tarjeta desde otro lado (o desde otro
   // celular) mientras esta planilla está abierta, hay que "liberar" al
@@ -2274,6 +2307,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             )}
             <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '1.4rem', fontWeight: '900', color: '#fff' }}>{golesLocalTotal} — {golesVisTotal}</div>
             <div style={{ textAlign: 'center', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>{partido.home?.name} vs {partido.away?.name}</div>
+            {globalLlave && (
+              <div style={{ textAlign: 'center', marginTop: '6px' }}>
+                <div style={{ background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '8px', color: '#ffdd44', fontWeight: '800', letterSpacing: '.04em' }}>GLOBAL (ida+vuelta)</span>
+                  <span style={{ fontSize: '.85rem', fontWeight: '900', color: '#fff' }}>{globalLlave.local} — {globalLlave.visitante}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

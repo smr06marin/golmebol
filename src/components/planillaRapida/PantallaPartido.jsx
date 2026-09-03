@@ -11,7 +11,7 @@ export default function PantallaPartido({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
   arqueroLocal, arqueroVis, eventosLocal, eventosVis, periodo, segundos, corriendo, tiempoAgotado, modalidad,
   onVolverLista, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
-  onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial,
+  onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial, globalLlave,
 }) {
   const cLocal = colorPorHex(colorLocal)
   const cVis = colorPorHex(colorVis)
@@ -52,7 +52,7 @@ export default function PantallaPartido({
 
       <CronometroCentral
         periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
-        golesLocal={golesLocal} golesVis={golesVis}
+        golesLocal={golesLocal} golesVis={golesVis} globalLlave={globalLlave}
         onToggle={onToggleCronometro} onCambiarPeriodo={onCambiarPeriodo}
       />
     </div>

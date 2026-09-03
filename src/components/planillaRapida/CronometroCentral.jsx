@@ -7,7 +7,7 @@ import { formatTiempo } from './estilosRapida'
 // sigan funcionando). Arranca grande y centrado para que se lea bien de lejos;
 // con el ícono ↕ se puede achicar si estorba.
 export default function CronometroCentral({
-  periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, onToggle, onCambiarPeriodo,
+  periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, onToggle, onCambiarPeriodo, globalLlave,
 }) {
   const [mini, setMini] = useState(false)
   const [pos, setPos] = useState(() => ({
@@ -69,6 +69,12 @@ export default function CronometroCentral({
         <div style={{ fontSize: mini ? '.75rem' : '1.05rem', fontWeight: '800', color: 'rgba(255,255,255,.92)', marginTop: mini ? '2px' : '6px', background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: mini ? '1px 8px' : '3px 10px', display: 'inline-block' }}>
           {golesLocal} - {golesVis}
         </div>
+        {globalLlave && !mini && (
+          <div style={{ marginTop: '4px' }}>
+            <span style={{ fontSize: '.6rem', color: '#ffdd44', fontWeight: '800', letterSpacing: '.03em', marginRight: '5px' }}>GLOBAL</span>
+            <span style={{ fontSize: '.78rem', fontWeight: '800', color: '#fff' }}>{globalLlave.local} - {globalLlave.visitante}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: mini ? '6px' : '10px' }}>
           <button onClick={onToggle}
             style={{ padding: mini ? '5px 12px' : '8px 16px', background: 'rgba(255,255,255,.92)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: fondo, fontSize: mini ? '.75rem' : '.85rem', fontWeight: '800' }}>

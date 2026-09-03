@@ -73,6 +73,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const [registroSimple, setRegistroSimple] = useState(false) // torneo con registro simple (ej. internacionales): jugadores sin registro en la planilla quedan inscritos solos al guardar
   const [deudaDetalle, setDeudaDetalle] = useState({}) // player_id -> [{tipo, cantidad, monto, fecha, home_team_id, away_team_id}]
   const [equiposNombre, setEquiposNombre] = useState({}) // team_id -> name
+  const [partidoHermano, setPartidoHermano] = useState(null) // ida y vuelta: el otro partido de la llave, si ya se jugó
 
   const remoteTimer = useRef(null)
   const alarmaRef = useRef(null)
@@ -84,6 +85,22 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => { fetchTodo() }, [])
+
+  // Ida y vuelta: busca el otro partido de la llave (mismo torneo, misma
+  // fase — nunca en grupos, ahí cada partido cuenta aparte — y los mismos
+  // dos equipos, sin importar quién fue local en cada uno).
+  useEffect(() => {
+    if (!partido?.fase || partido.fase === 'grupo' || !partido.home_team_id || !partido.away_team_id) { setPartidoHermano(null); return }
+    let cancelado = false
+    supabase.from('matches')
+      .select('id, home_team_id, away_team_id, home_score, away_score, status')
+      .eq('tournament_id', partido.tournament_id)
+      .eq('fase', partido.fase)
+      .neq('id', partido.id)
+      .or(`and(home_team_id.eq.${partido.away_team_id},away_team_id.eq.${partido.home_team_id}),and(home_team_id.eq.${partido.home_team_id},away_team_id.eq.${partido.away_team_id})`)
+      .then(({ data }) => { if (!cancelado) setPartidoHermano((data || []).find(m => m.status === 'finished') || null) })
+    return () => { cancelado = true }
+  }, [partido?.id, partido?.tournament_id, partido?.fase, partido?.home_team_id, partido?.away_team_id])
 
   // Si se registra el pago de una tarjeta desde otro lado mientras esta
   // planilla rápida está abierta, se libera al jugador acá en vivo (sin
@@ -860,6 +877,18 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const eventosVis = eventos.filter(e => e.team === 'visitante')
   const hayRoja = eventos.some(e => e.tipo === 'red_card')
 
+  // Marcador GLOBAL de la llave (goles de este partido + los del hermano ya
+  // jugado), en términos de local/visitante de ESTE partido.
+  const globalLlave = (() => {
+    if (!partidoHermano) return null
+    const golesLocalActual = eventosLocal.filter(e => e.tipo === 'goal').length
+    const golesVisActual = eventosVis.filter(e => e.tipo === 'goal').length
+    const invertido = partidoHermano.home_team_id === partido.away_team_id
+    const otroLocal     = invertido ? (partidoHermano.away_score || 0) : (partidoHermano.home_score || 0)
+    const otroVisitante = invertido ? (partidoHermano.home_score || 0) : (partidoHermano.away_score || 0)
+    return { local: golesLocalActual + otroLocal, visitante: golesVisActual + otroVisitante }
+  })()
+
   return (
     <>
       <PantallaPartido
@@ -874,6 +903,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         onSeleccionarArquero={seleccionarArquero}
         onRegistrarEvento={registrarEvento} onQuitarEvento={quitarEvento}
         onSalir={pausarYSalir} onAbrirEspecial={() => setMostrarEspecial(true)}
+        globalLlave={globalLlave}
       />
       {alertaNumero && (
         <AlertaNumeroDesconocido

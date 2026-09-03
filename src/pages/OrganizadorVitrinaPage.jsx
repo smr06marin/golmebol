@@ -5,7 +5,7 @@ import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake
 import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
 import { GiSoccerBall } from 'react-icons/gi'
 import { PantallaCargando } from '../components/PantallaCargando'
-import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
 // Escudo del equipo (logo o iniciales) — versión chica para las tarjetas de
 // "en vivo" de la vitrina.
@@ -67,7 +67,20 @@ function LiveMatchDetalleVit({ m, onClose }) {
             <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><EscudoChico logo_url={m.home?.logo_url} name={m.home?.name} size={52}/></div>
             <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home?.name}</div>
           </div>
-          <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          {m.hermano && m.global ? (
+            <div style={{ textAlign: 'center', flexShrink: 0 }}>
+              <div style={{ fontSize: '.6rem', color: '#9aa0a6', fontWeight: 800, letterSpacing: '.04em' }}>IDA</div>
+              <div style={{ fontSize: '.95rem', fontWeight: 800, color: '#5f6368' }}>{m.idaLocal} - {m.idaVisitante}</div>
+              <div style={{ fontSize: '.6rem', color: '#d93025', fontWeight: 800, letterSpacing: '.04em', marginTop: '8px' }}>VUELTA · EN VIVO</div>
+              <div style={{ fontWeight: 900, fontSize: '1.5rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e8eaed' }}>
+                <div style={{ fontSize: '.62rem', color: '#1a73e8', fontWeight: 900, letterSpacing: '.04em' }}>GLOBAL</div>
+                <div style={{ fontWeight: 900, fontSize: '1.5rem', color: '#1a73e8' }}>{m.global.local} - {m.global.visitante}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontWeight: 900, fontSize: '1.8rem', color: '#202124' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
+          )}
           <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
             <div style={{ width: '52px', height: '52px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto' }}><EscudoChico logo_url={m.away?.logo_url} name={m.away?.name} size={52}/></div>
             <div style={{ fontWeight: 800, color: '#202124', fontSize: '.8rem', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away?.name}</div>
@@ -182,17 +195,37 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
   async function fetchPartidosVivo() {
     if (!torneos.length) { setMatchesVivoRaw([]); return }
     const { data } = await supabase.from('matches')
-      .select('id, tournament_id, matchday, fase, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
+      .select('id, tournament_id, matchday, fase, status, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
       .in('tournament_id', torneos.map(t => t.id))
       .eq('status', 'scheduled')
       .or('live_state.not.is.null,live_state_rapida.not.is.null')
     setMatchesVivoRaw(data || [])
   }
 
+  // Ida y vuelta: para cada partido en vivo de una fase de eliminación
+  // (nunca en grupos), busca si ya se jugó el otro partido de la llave.
+  const [hermanosVivo, setHermanosVivo] = useState([])
+  useEffect(() => {
+    const pares = [...new Set(matchesVivoRaw.filter(m => m.fase && m.fase !== 'grupo').map(m => `${m.tournament_id}|${m.fase}`))]
+    if (!pares.length) { setHermanosVivo([]); return }
+    Promise.all(pares.map(par => {
+      const [tid, fase] = par.split('|')
+      return supabase.from('matches').select('id, tournament_id, fase, home_team_id, away_team_id, home_score, away_score, status').eq('tournament_id', tid).eq('fase', fase).eq('status', 'finished')
+    })).then(resultados => setHermanosVivo(resultados.flatMap(r => r.data || [])))
+  }, [matchesVivoRaw])
+
   const partidosVivo = useMemo(() => {
     void tick
-    return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo)
-  }, [matchesVivoRaw, tick])
+    return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo).map(m => {
+      if (!m.fase || m.fase === 'grupo') return m
+      const hermano = buscarPartidoHermano(m, hermanosVivo)
+      if (!hermano) return m
+      const invertido = hermano.home_team_id === m.away_team_id
+      const idaLocal     = invertido ? (hermano.away_score || 0) : (hermano.home_score || 0)
+      const idaVisitante = invertido ? (hermano.home_score || 0) : (hermano.away_score || 0)
+      return { ...m, hermano, idaLocal, idaVisitante, global: marcadorGlobal(m, hermano) }
+    })
+  }, [matchesVivoRaw, hermanosVivo, tick])
 
   async function fetchTodo() {
     setLoading(true)
@@ -344,6 +377,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
                   <div style={{ textAlign: 'center', flexShrink: 0 }}>
                     <div style={{ fontWeight: '900', fontSize: '1.25rem', color: '#0f172a' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
                     <div style={{ fontSize: '.6rem', color: '#d93025', fontWeight: '800', marginTop: '2px' }}>{m.vivo.descanso ? 'DESCANSO' : m.vivo.reloj}</div>
+                    {m.global && <div style={{ fontSize: '.6rem', color: '#1a73e8', fontWeight: '800', marginTop: '2px' }}>Global {m.global.local}-{m.global.visitante}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
                     <EscudoChico logo_url={m.away?.logo_url} name={m.away?.name}/>

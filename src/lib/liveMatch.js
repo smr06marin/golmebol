@@ -123,3 +123,56 @@ export function extraerTarjetas(match) {
   }
   return tarjetas
 }
+
+// ── Ida y vuelta ─────────────────────────────────────────────────────────
+// Cuando una llave de eliminación se juega a dos partidos, la "vuelta" se
+// marca poniéndole al campo `ronda` la palabra "vuelta" (ej. "Cuartos
+// (vuelta)", "Vuelta") — así lo hacen tanto el generador automático de
+// brackets como la creación manual de un partido suelto.
+
+// ¿Este partido es la "vuelta" de una llave ida y vuelta?
+export function esPartidoVuelta(match) {
+  return !!(match?.ronda && match.ronda.toLowerCase().includes('vuelta') && !match.ronda.toLowerCase().includes('repechaje'))
+}
+
+// Busca el otro partido de la misma llave (ida ↔ vuelta): mismo torneo,
+// misma fase, mismos dos equipos (sin importar si quedaron invertidos como
+// local/visitante). `todosPartidos` puede traer partidos de cualquier
+// torneo/fase — el filtro se hace acá adentro.
+export function buscarPartidoHermano(match, todosPartidos) {
+  if (!match) return null
+  const clave = [match.home_team_id, match.away_team_id].sort().join('|')
+  return (todosPartidos || []).find(m =>
+    m.id !== match.id &&
+    m.tournament_id === match.tournament_id &&
+    m.fase === match.fase &&
+    [m.home_team_id, m.away_team_id].sort().join('|') === clave
+  ) || null
+}
+
+// Goles propios de un partido (sea que ya haya terminado o esté en vivo),
+// en términos de SU PROPIO local/visitante.
+function golesPropios(match) {
+  if (!match) return { local: 0, visitante: 0 }
+  if (match.status === 'finished') return { local: match.home_score || 0, visitante: match.away_score || 0 }
+  const vivo = derivarEnVivo(match)
+  if (vivo) return { local: vivo.golesLocal, visitante: vivo.golesVis }
+  return { local: 0, visitante: 0 }
+}
+
+// Marcador GLOBAL de una llave ida y vuelta, visto desde la perspectiva de
+// `match` (o sea, en términos de SU local/visitante) — suma los goles de
+// ambos partidos mapeados por equipo, no por local/visitante (que se
+// invierte en la vuelta). Si no hay hermano (todavía no existe el otro
+// partido), el global es simplemente el marcador propio.
+export function marcadorGlobal(match, hermano) {
+  const propio = golesPropios(match)
+  if (!hermano) return { local: propio.local, visitante: propio.visitante, hayHermano: false }
+  const otro = golesPropios(hermano)
+  // Si en el hermano el equipo local es el que en `match` es visitante,
+  // quiere decir que quedaron invertidos (lo normal en la vuelta).
+  const invertido = hermano.home_team_id === match.away_team_id
+  const otroLocal     = invertido ? otro.visitante : otro.local
+  const otroVisitante = invertido ? otro.local      : otro.visitante
+  return { local: propio.local + otroLocal, visitante: propio.visitante + otroVisitante, hayHermano: true }
+}

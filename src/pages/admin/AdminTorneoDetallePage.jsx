@@ -586,7 +586,7 @@ export default function AdminTorneoDetallePage() {
 
   const [subTab,          setSubTab]          = useState(draftJornada ? 'jornada' : 'partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
-  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '' })
+  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
   const [nuevaCancha,     setNuevaCancha]     = useState('')
   const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
@@ -2594,15 +2594,32 @@ export default function AdminTorneoDetallePage() {
     if (formPartido.home_team_id === formPartido.away_team_id) return showMsg('Los equipos no pueden ser iguales', 'error')
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
     setLoadingPartido(true)
-    const { error } = await supabase.from('matches').insert({
-      tournament_id: id, home_team_id: formPartido.home_team_id, away_team_id: formPartido.away_team_id,
-      played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00') + ':00-05:00',
+    const base = {
+      tournament_id: id,
       location: formPartido.location || null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
       fase: formPartido.fase || 'grupo', status: 'scheduled',
       arbitro1_id: formPartido.arbitro1_id || null, arbitro2_id: formPartido.arbitro2_id || null, arbitro3_id: formPartido.arbitro3_id || null,
-    })
+    }
+    // Ida y vuelta: crea los DOS partidos de una — la vuelta con los equipos
+    // invertidos (el local de ida visita en la vuelta) y sin fecha todavía
+    // (se le pone después, cuando se sepa cuándo se juega).
+    const conVuelta = formPartido.ida_vuelta && formPartido.fase !== 'grupo'
+    const inserts = [{
+      ...base, home_team_id: formPartido.home_team_id, away_team_id: formPartido.away_team_id,
+      played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00') + ':00-05:00',
+      ronda: conVuelta ? 'Ida' : null,
+    }]
+    if (conVuelta) {
+      inserts.push({ ...base, home_team_id: formPartido.away_team_id, away_team_id: formPartido.home_team_id, played_at: null, ronda: 'Vuelta' })
+    }
+    const { error } = await supabase.from('matches').insert(inserts)
     if (error) showMsg('Error al crear partido', 'error')
-    else { showMsg('Partido creado ✓'); setShowFormPartido(false); setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo' }); fetchPartidos() }
+    else {
+      showMsg(conVuelta ? 'Partido de ida creado ✓ — ponle fecha a la vuelta cuando la sepas' : 'Partido creado ✓')
+      setShowFormPartido(false)
+      setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
+      fetchPartidos()
+    }
     setLoadingPartido(false)
   }
 
@@ -4125,6 +4142,26 @@ export default function AdminTorneoDetallePage() {
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
                       <div><label style={labelStyle}>Fase</label><select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
                     </div>
+                    {formPartido.fase !== 'grupo' && (
+                      <div>
+                        <label style={labelStyle}>¿Se juega ida y vuelta?</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button type="button" onClick={() => setFormPartido(f => ({ ...f, ida_vuelta: false }))}
+                            style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: !formPartido.ida_vuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: !formPartido.ida_vuelta ? '#e8f0fe' : '#fff', color: !formPartido.ida_vuelta ? '#1a73e8' : '#5f6368' }}>
+                            Partido único
+                          </button>
+                          <button type="button" onClick={() => setFormPartido(f => ({ ...f, ida_vuelta: true }))}
+                            style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: formPartido.ida_vuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: formPartido.ida_vuelta ? '#e8f0fe' : '#fff', color: formPartido.ida_vuelta ? '#1a73e8' : '#5f6368' }}>
+                            Ida y vuelta
+                          </button>
+                        </div>
+                        {formPartido.ida_vuelta && (
+                          <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '6px' }}>
+                            Se crea este partido como "Ida" con la fecha de arriba, y otro "Vuelta" (con los equipos invertidos) sin fecha todavía — se la pones cuando la sepas. En la planilla y en vivo de la vuelta se va a ver el marcador global sumando los goles de ambos partidos.
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {arbitrosAdmin.length > 0 && (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
                         <div>
