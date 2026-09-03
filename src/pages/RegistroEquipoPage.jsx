@@ -225,20 +225,23 @@ export default function RegistroEquipoPage() {
     setPreviewCarnet(URL.createObjectURL(file))
   }
 
-  // Foto de carnet: totalmente opcional, así que un error acá nunca debe
-  // frenar el registro — solo se avisa y sigue.
+  // Foto de perfil (se muestra en el registro como "foto para el carnet",
+  // pero es la MISMA foto de perfil que se usa en toda la plataforma —
+  // players.photo_face_url — así no se le vuelve a pedir después en su
+  // cuenta). Totalmente opcional: un error acá nunca debe frenar el
+  // registro, solo se avisa y sigue.
   async function subirFotoCarnet(playerId) {
     if (!fotoCarnet) return
     try {
       const archivo = await comprimirImagen(fotoCarnet)
       const ext  = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
-      const path = `fotos/${playerId}_tarjeta.${ext}`
+      const path = `fotos/${playerId}_cara.${ext}`
       const { error: errUp } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
       if (errUp) throw errUp
-      const { error: errRpc } = await supabase.rpc('confirmar_foto_carnet', { p_player_id: playerId, p_ext: ext })
+      const { error: errRpc } = await supabase.rpc('confirmar_foto_perfil', { p_player_id: playerId, p_ext: ext })
       if (errRpc) throw errRpc
     } catch (e) {
-      showMsg('Quedaste registrado, pero la foto para el carnet no se pudo subir. Puedes intentar subirla después.', 'warning')
+      showMsg('Quedaste registrado, pero la foto no se pudo subir. Puedes intentar subirla después.', 'warning')
     }
   }
 
@@ -576,8 +579,8 @@ export default function RegistroEquipoPage() {
               </div>
             )}
 
-            {/* Foto para el carnet — opcional, para cualquier jugador que todavía no la tenga */}
-            {!jugadorExiste.photo_url && (
+            {/* Foto de perfil (mostrada como "foto para el carnet") — opcional, para cualquier jugador que todavía no la tenga */}
+            {!jugadorExiste.photo_face_url && (
               <div style={{ marginBottom: '20px' }}>
                 <FotoUpload label="Foto para el carnet del jugador" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
               </div>
