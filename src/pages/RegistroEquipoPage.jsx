@@ -49,10 +49,10 @@ function esMenorDeEdad(fechaISO) {
   return edad < 18
 }
 
-function FotoUpload({ label, preview, onChange }) {
+function FotoUpload({ label, preview, onChange, opcional = false }) {
   return (
     <div>
-      <label style={labelStyle}>{label} *</label>
+      <label style={labelStyle}>{label}{opcional ? '' : ' *'}</label>
       <label style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         border: `2px dashed ${preview ? '#1a73e8' : '#dadce0'}`,
@@ -114,6 +114,10 @@ export default function RegistroEquipoPage() {
   const [previewFrontal,     setPreviewFrontal]     = useState(null)
   const [previewTrasera,     setPreviewTrasera]     = useState(null)
   const [subiendoFotos,      setSubiendoFotos]      = useState(false)
+
+  // Foto para el carnet del jugador — opcional, no bloquea el registro.
+  const [fotoCarnet,         setFotoCarnet]         = useState(null)
+  const [previewCarnet,      setPreviewCarnet]      = useState(null)
 
   useEffect(() => { fetchDatos() }, [token, tournamentId])
 
@@ -215,6 +219,29 @@ export default function RegistroEquipoPage() {
     setPreviewTrasera(URL.createObjectURL(file))
   }
 
+  function handleFotoCarnet(e) {
+    const file = e.target.files[0]; if (!file) return
+    setFotoCarnet(file)
+    setPreviewCarnet(URL.createObjectURL(file))
+  }
+
+  // Foto de carnet: totalmente opcional, así que un error acá nunca debe
+  // frenar el registro — solo se avisa y sigue.
+  async function subirFotoCarnet(playerId) {
+    if (!fotoCarnet) return
+    try {
+      const archivo = await comprimirImagen(fotoCarnet)
+      const ext  = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
+      const path = `fotos/${playerId}_tarjeta.${ext}`
+      const { error: errUp } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
+      if (errUp) throw errUp
+      const { error: errRpc } = await supabase.rpc('confirmar_foto_carnet', { p_player_id: playerId, p_ext: ext })
+      if (errRpc) throw errRpc
+    } catch (e) {
+      showMsg('Quedaste registrado, pero la foto para el carnet no se pudo subir. Puedes intentar subirla después.', 'warning')
+    }
+  }
+
   async function subirFotosCedula(playerId) {
     let frontalExt = null
     let traseraExt = null
@@ -313,6 +340,7 @@ export default function RegistroEquipoPage() {
       if (error) throw new Error(error.message || 'Error al registrarte')
 
       await subirFotosCedula(data.player_id)
+      await subirFotoCarnet(data.player_id)
 
       limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
       setRosterCount(c => c + 1)
@@ -375,6 +403,7 @@ export default function RegistroEquipoPage() {
       if (error) throw new Error(error.message || 'Error al crear el jugador')
 
       await subirFotosCedula(data.player_id)
+      await subirFotoCarnet(data.player_id)
 
       limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
       setRosterCount(c => c + 1)
@@ -452,6 +481,7 @@ export default function RegistroEquipoPage() {
             setExito(false); setCedula(''); setJugadorExiste(null); setMostrarNuevo(false)
             setDeudaJugador(null); setSancionJugador(null); setFormNuevo(EMPTY_FORM); setGuardando(false)
             setFotoFrontal(null); setFotoTrasera(null); setPreviewFrontal(null); setPreviewTrasera(null); setAutorizoMenor(false)
+            setFotoCarnet(null); setPreviewCarnet(null)
             window.scrollTo({ top: 0 })
           }}
           style={{ marginTop: '18px', width: '100%', padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600' }}>
@@ -546,6 +576,13 @@ export default function RegistroEquipoPage() {
               </div>
             )}
 
+            {/* Foto para el carnet — opcional, para cualquier jugador que todavía no la tenga */}
+            {!jugadorExiste.photo_url && (
+              <div style={{ marginBottom: '20px' }}>
+                <FotoUpload label="Foto para el carnet del jugador" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
+              </div>
+            )}
+
             {/* Fotos cédula opcionales para jugadores existentes (no aplica en torneos de registro simple) */}
             {!torneo?.registro_simple && (!jugadorExiste.tiene_cedula_frontal || !jugadorExiste.tiene_cedula_trasera) && (
               <div style={{ marginBottom: '20px' }}>
@@ -633,6 +670,9 @@ export default function RegistroEquipoPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Foto para el carnet — opcional, no bloquea el registro */}
+              <FotoUpload label="Foto para el carnet del jugador" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
 
               {/* Fecha de nacimiento — se pide siempre, incluso en registro
                   simple, porque hace falta para saber si el jugador es
