@@ -6,13 +6,13 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 
 const MENU_COMPLETO = [
   { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos' },
-  { icon: <Globe size={22}/>,        label: 'MI DOMINIO', ruta: '/admin/perfil-organizador' },
+  { icon: <Globe size={22}/>,        label: 'MI DOMINIO', ruta: '/admin/perfil-organizador', ocultoOrganizador: true },
   { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true },
   { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true },
   { icon: <CalendarDays size={22}/>, label: 'CALENDARIO', ruta: '/admin/calendario' },
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
-  { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias' },
+  { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias', ocultoOrganizador: true },
   { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records',   soloAdmin: true },
   { icon: <UserCheck size={22}/>,    label: 'ÁRBITROS',   ruta: '/admin/arbitros',  soloAdmin: true },
   { icon: <GraduationCap size={22}/>,label: 'ESCUELAS',   ruta: '/admin/escuelas',  soloAdmin: true },

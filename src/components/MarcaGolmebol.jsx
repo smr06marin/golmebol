@@ -3,24 +3,32 @@
 // sola vez en App.jsx (igual que SessionGuard) para que aparezca en toda la
 // app sin tener que tocar cada página. pointer-events: none para que nunca
 // tape un botón real, aunque visualmente quede encima de algo.
+//
+// Va arriba a la derecha (no abajo): casi todas las pantallas de la app
+// tienen algo fijo pegado abajo (la barra inferior del admin/celular, el
+// botón circular de cerrar la planilla, las barras de navegación del sitio
+// público, el carrito de escenarios, etc.) — abajo a la derecha SIEMPRE
+// terminaba tapando alguno de esos elementos. Arriba a la derecha está
+// libre en prácticamente todas las pantallas (el sidebar del admin es
+// izquierdo, y no hay barras superiores fijas de ese lado).
 const wrapStyle = {
   position: 'fixed',
-  right: '10px',
-  bottom: '10px',
+  right: '8px',
+  top: '8px',
   zIndex: 9999,
   display: 'flex',
   alignItems: 'center',
-  gap: '6px',
-  padding: '5px 10px 5px 6px',
+  gap: '5px',
+  padding: '4px 9px 4px 5px',
   borderRadius: '999px',
-  background: 'rgba(10, 10, 16, .62)',
+  background: 'rgba(10, 10, 16, .55)',
   backdropFilter: 'blur(3px)',
   boxShadow: '0 2px 8px rgba(0,0,0,.25)',
   pointerEvents: 'none',
   userSelect: 'none',
 }
 
-const imgStyle = { height: '15px', width: 'auto', display: 'block', opacity: 0.95 }
+const imgStyle = { height: '13px', width: 'auto', display: 'block', opacity: 0.95 }
 
 const textStyle = {
   fontSize: '.62rem',
