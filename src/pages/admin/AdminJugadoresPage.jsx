@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
@@ -25,6 +25,108 @@ function diasRestantes(fechaVenc) {
   const diff = new Date(fechaVenc) - new Date()
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
+
+const FOTOS_CONFIG = [
+  { key: 'tarjeta',         urlField: 'photo_url',           flagField: 'foto_cambiar_tarjeta',          etiqueta: 'Foto tarjeta',    tipo: 'foto', cara: null,     objectPosition: 'top' },
+  { key: 'cara',            urlField: 'photo_face_url',      flagField: 'foto_cambiar_perfil',           etiqueta: 'Foto perfil',     tipo: 'foto', cara: null,     objectPosition: 'center' },
+  { key: 'cedula_frontal',  urlField: 'cedula_frontal_url',  flagField: 'foto_cambiar_cedula_frontal',   etiqueta: 'Cédula frontal',  tipo: 'cedula', cara: 'frontal', objectPosition: 'center' },
+  { key: 'cedula_trasera',  urlField: 'cedula_trasera_url',  flagField: 'foto_cambiar_cedula_trasera',   etiqueta: 'Cédula trasera',  tipo: 'cedula', cara: 'trasera', objectPosition: 'center' },
+]
+
+// Cache de URLs firmadas de cédula por sesión (path original -> URL firmada).
+// Antes FotoMiniatura vivía DENTRO de AdminJugadoresPage, así que cada letra
+// escrita en el buscador cambiaba la identidad del componente y React
+// remontaba TODAS las miniaturas visibles — volviendo a pedirle a Supabase
+// Storage una firma nueva por cada foto de cédula en cada tecla. Ahora vive
+// afuera (identidad estable entre renders) y además cachea la firma, así
+// aunque algo fuerce un remonte no se vuelve a pedir la misma URL dos veces.
+const cacheFirmasCedula = new Map()
+
+function tieneFotoPendiente(j) {
+  return !!(j.foto_cambiar_tarjeta || j.foto_cambiar_perfil || j.foto_cambiar_cedula_frontal || j.foto_cambiar_cedula_trasera)
+}
+
+const FotoMiniatura = memo(function FotoMiniatura({ jugador, cfg, uploading, onSubirFoto, onSubirCedula, onToggleFlag }) {
+  const url      = jugador[cfg.urlField]
+  const marcada  = !!jugador[cfg.flagField]
+  const uploadKey = cfg.tipo === 'foto' ? (cfg.key === 'tarjeta' ? 'tarjeta' : 'cara') : cfg.cara
+  const subiendo = uploading[jugador.id + '_' + uploadKey]
+  const onFile = (file) => cfg.tipo === 'foto' ? onSubirFoto(jugador, file, uploadKey) : onSubirCedula(jugador, file, cfg.cara)
+  const [rota, setRota] = useState(false)
+  const [signedUrl, setSignedUrl] = useState(() => (cfg.tipo === 'cedula' && url) ? (cacheFirmasCedula.get(url) || null) : null)
+
+  // El bucket "cedulas" es privado: la URL pública guardada no carga
+  // directo en un <img>, hay que firmarla primero.
+  useEffect(() => {
+    if (cfg.tipo !== 'cedula' || !url) { setSignedUrl(null); return }
+    const cacheada = cacheFirmasCedula.get(url)
+    if (cacheada) { setSignedUrl(cacheada); return }
+    let cancelado = false
+    async function firmar() {
+      const path = url.split('/cedulas/')[1]
+      if (!path) return
+      const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 3600)
+      if (data?.signedUrl) cacheFirmasCedula.set(url, data.signedUrl)
+      if (!cancelado) setSignedUrl(data?.signedUrl || null)
+    }
+    firmar()
+    return () => { cancelado = true }
+  }, [cfg.tipo, url])
+
+  const srcMostrar = cfg.tipo === 'cedula' ? signedUrl : url
+  const cargandoFirma = cfg.tipo === 'cedula' && url && !signedUrl && !rota
+  const fileRef = useRef(null)
+  const [menuAbierto, setMenuAbierto] = useState(false)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '64px' }}>
+      <div style={{ position: 'relative', width: '58px', height: '58px' }}>
+        <div onClick={() => url ? setMenuAbierto(m => !m) : fileRef.current?.click()}
+          style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
+          {srcMostrar && !rota
+            ? <img src={srcMostrar} onError={() => setRota(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
+            : url && rota
+            ? <div title="No se pudo cargar la imagen (revisa permisos del bucket)" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6' }}>
+                <span style={{ fontSize: '.52rem', color: '#d93025', fontWeight: '700', textAlign: 'center', lineHeight: 1.1, padding: '2px' }}>⚠️ no carga</span>
+              </div>
+            : cargandoFirma
+            ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.55rem', color: '#9aa0a6' }}>...</div>
+            : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
+              </div>}
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
+          {subiendo && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: '#5f6368', fontWeight: '700' }}>...</div>}
+        </div>
+        {url && (
+          <button
+            onClick={() => onToggleFlag(jugador, cfg.flagField, !marcada, cfg.etiqueta)}
+            title={marcada ? 'Quitar aviso' : 'Marcar: debe cambiar esta foto'}
+            style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #fff', background: marcada ? '#d93025' : '#fff', color: marcada ? '#fff' : '#d93025', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '.62rem', boxShadow: '0 1px 4px rgba(0,0,0,.25)', lineHeight: 1 }}>
+            {marcada ? '✕' : '🚩'}
+          </button>
+        )}
+        {menuAbierto && url && (
+          <>
+            <div onClick={() => setMenuAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }}/>
+            <div style={{ position: 'absolute', top: '64px', left: '50%', transform: 'translateX(-50%)', zIndex: 41, background: '#fff', borderRadius: '10px', boxShadow: '0 2px 10px rgba(0,0,0,.25)', border: '1px solid #e8eaed', overflow: 'hidden', width: '124px' }}>
+              <button onClick={() => { window.open(srcMostrar || url, '_blank'); setMenuAbierto(false) }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '9px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: '.72rem', fontWeight: '600', color: '#202124', textAlign: 'left' }}>
+                🔍 Ver en grande
+              </button>
+              <button onClick={() => { setMenuAbierto(false); fileRef.current?.click() }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '9px 12px', border: 'none', borderTop: '1px solid #f1f3f4', background: '#fff', cursor: 'pointer', fontSize: '.72rem', fontWeight: '600', color: '#202124', textAlign: 'left' }}>
+                📤 Cambiar foto
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <div style={{ fontSize: '.6rem', color: marcada ? '#d93025' : '#9aa0a6', fontWeight: marcada ? '700' : '500', textAlign: 'center', lineHeight: 1.2 }}>
+        {marcada ? '⚠️ Cambiar' : cfg.etiqueta}
+      </div>
+    </div>
+  )
+})
 
 function ModalMembresia({ jugador, onClose, onActivar }) {
   const [meses,   setMeses]   = useState(1)
@@ -474,104 +576,20 @@ export default function AdminJugadoresPage() {
     showMsg(marcar ? 'Marcada — se le pedirá al jugador que la cambie' : 'Aviso quitado')
   }
 
-  const FOTOS_CONFIG = [
-    { key: 'tarjeta',         urlField: 'photo_url',           flagField: 'foto_cambiar_tarjeta',          etiqueta: 'Foto tarjeta',    tipo: 'foto', cara: null,     objectPosition: 'top' },
-    { key: 'cara',            urlField: 'photo_face_url',      flagField: 'foto_cambiar_perfil',           etiqueta: 'Foto perfil',     tipo: 'foto', cara: null,     objectPosition: 'center' },
-    { key: 'cedula_frontal',  urlField: 'cedula_frontal_url',  flagField: 'foto_cambiar_cedula_frontal',   etiqueta: 'Cédula frontal',  tipo: 'cedula', cara: 'frontal', objectPosition: 'center' },
-    { key: 'cedula_trasera',  urlField: 'cedula_trasera_url',  flagField: 'foto_cambiar_cedula_trasera',   etiqueta: 'Cédula trasera',  tipo: 'cedula', cara: 'trasera', objectPosition: 'center' },
-  ]
+  // Contadores y lista filtrada — memoizados: antes se recalculaban con
+  // varios .filter() sobre TODOS los jugadores en cada render (cada tecla
+  // del buscador), ahora solo se recalculan si "jugadores"/"search"/
+  // "filtroMembresia" realmente cambiaron.
+  const { cActivos, cVencidos, cSinCuenta, cPorVencer, cPendientes, cFotos } = useMemo(() => ({
+    cActivos:    jugadores.filter(j => j.activo_membresia).length,
+    cVencidos:   jugadores.filter(j => !j.activo_membresia && j.user_id && !j.whatsapp).length,
+    cSinCuenta:  jugadores.filter(j => !j.user_id).length,
+    cPorVencer:  jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length,
+    cPendientes: jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length,
+    cFotos:      jugadores.filter(tieneFotoPendiente).length,
+  }), [jugadores])
 
-  function FotoMiniatura({ jugador, cfg }) {
-    const url      = jugador[cfg.urlField]
-    const marcada  = !!jugador[cfg.flagField]
-    const uploadKey = cfg.tipo === 'foto' ? (cfg.key === 'tarjeta' ? 'tarjeta' : 'cara') : cfg.cara
-    const subiendo = uploading[jugador.id + '_' + uploadKey]
-    const onFile = (file) => cfg.tipo === 'foto' ? handleFoto(jugador, file, uploadKey) : handleCedula(jugador, file, uploadKey)
-    const [rota, setRota] = useState(false)
-    const [signedUrl, setSignedUrl] = useState(null)
-
-    // El bucket "cedulas" es privado: la URL pública guardada no carga
-    // directo en un <img>, hay que firmarla primero.
-    useEffect(() => {
-      if (cfg.tipo !== 'cedula' || !url) { setSignedUrl(null); return }
-      let cancelado = false
-      async function firmar() {
-        const path = url.split('/cedulas/')[1]
-        if (!path) return
-        const { data } = await supabase.storage.from('cedulas').createSignedUrl(path, 3600)
-        if (!cancelado) setSignedUrl(data?.signedUrl || null)
-      }
-      firmar()
-      return () => { cancelado = true }
-    }, [cfg.tipo, url])
-
-    const srcMostrar = cfg.tipo === 'cedula' ? signedUrl : url
-    const cargandoFirma = cfg.tipo === 'cedula' && url && !signedUrl && !rota
-    const fileRef = useRef(null)
-    const [menuAbierto, setMenuAbierto] = useState(false)
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '64px' }}>
-        <div style={{ position: 'relative', width: '58px', height: '58px' }}>
-          <div onClick={() => url ? setMenuAbierto(m => !m) : fileRef.current?.click()}
-            style={{ display: 'block', width: '58px', height: '58px', borderRadius: '10px', overflow: 'hidden', border: `2px solid ${marcada ? '#d93025' : url ? '#1e8e3e' : '#dadce0'}`, background: '#f1f3f4', cursor: 'pointer', position: 'relative' }}>
-            {srcMostrar && !rota
-              ? <img src={srcMostrar} onError={() => setRota(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: cfg.objectPosition, opacity: subiendo ? .4 : 1 }}/>
-              : url && rota
-              ? <div title="No se pudo cargar la imagen (revisa permisos del bucket)" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fce8e6' }}>
-                  <span style={{ fontSize: '.52rem', color: '#d93025', fontWeight: '700', textAlign: 'center', lineHeight: 1.1, padding: '2px' }}>⚠️ no carga</span>
-                </div>
-              : cargandoFirma
-              ? <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.55rem', color: '#9aa0a6' }}>...</div>
-              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
-                </div>}
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
-            {subiendo && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: '#5f6368', fontWeight: '700' }}>...</div>}
-          </div>
-          {url && (
-            <button
-              onClick={() => handleFlagFoto(jugador, cfg.flagField, !marcada, cfg.etiqueta)}
-              title={marcada ? 'Quitar aviso' : 'Marcar: debe cambiar esta foto'}
-              style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #fff', background: marcada ? '#d93025' : '#fff', color: marcada ? '#fff' : '#d93025', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '.62rem', boxShadow: '0 1px 4px rgba(0,0,0,.25)', lineHeight: 1 }}>
-              {marcada ? '✕' : '🚩'}
-            </button>
-          )}
-          {menuAbierto && url && (
-            <>
-              <div onClick={() => setMenuAbierto(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }}/>
-              <div style={{ position: 'absolute', top: '64px', left: '50%', transform: 'translateX(-50%)', zIndex: 41, background: '#fff', borderRadius: '10px', boxShadow: '0 2px 10px rgba(0,0,0,.25)', border: '1px solid #e8eaed', overflow: 'hidden', width: '124px' }}>
-                <button onClick={() => { window.open(srcMostrar || url, '_blank'); setMenuAbierto(false) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '9px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: '.72rem', fontWeight: '600', color: '#202124', textAlign: 'left' }}>
-                  🔍 Ver en grande
-                </button>
-                <button onClick={() => { setMenuAbierto(false); fileRef.current?.click() }}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '9px 12px', border: 'none', borderTop: '1px solid #f1f3f4', background: '#fff', cursor: 'pointer', fontSize: '.72rem', fontWeight: '600', color: '#202124', textAlign: 'left' }}>
-                  📤 Cambiar foto
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-        <div style={{ fontSize: '.6rem', color: marcada ? '#d93025' : '#9aa0a6', fontWeight: marcada ? '700' : '500', textAlign: 'center', lineHeight: 1.2 }}>
-          {marcada ? '⚠️ Cambiar' : cfg.etiqueta}
-        </div>
-      </div>
-    )
-  }
-
-  function tieneFotoPendiente(j) {
-    return !!(j.foto_cambiar_tarjeta || j.foto_cambiar_perfil || j.foto_cambiar_cedula_frontal || j.foto_cambiar_cedula_trasera)
-  }
-
-  const cActivos    = jugadores.filter(j => j.activo_membresia).length
-  const cVencidos   = jugadores.filter(j => !j.activo_membresia && j.user_id && !j.whatsapp).length
-  const cSinCuenta  = jugadores.filter(j => !j.user_id).length
-  const cPorVencer  = jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length
-  const cPendientes = jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length
-  const cFotos      = jugadores.filter(tieneFotoPendiente).length
-
-  const filtered = jugadores.filter(j => {
+  const filtered = useMemo(() => jugadores.filter(j => {
     const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
     if (!matchSearch) return false
     if (filtroMembresia === 'activos')    return j.activo_membresia
@@ -580,7 +598,15 @@ export default function AdminJugadoresPage() {
     if (filtroMembresia === 'pendientes') return j.user_id && j.whatsapp && !j.activo_membresia
     if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
     return true
-  })
+  }), [jugadores, search, filtroMembresia])
+
+  // Antes este mismo .filter() se repetía 3 veces idéntico en el JSX (una
+  // para el "if" de mostrar la sección, otra para el contador del título, y
+  // otra para el .map()) — ahora se calcula una sola vez.
+  const pendientesVerificacion = useMemo(
+    () => jugadores.filter(j => j.verificado === false && j.activo_membresia),
+    [jugadores]
+  )
 
   return (
     <div>
@@ -679,16 +705,16 @@ export default function AdminJugadoresPage() {
       )}
 
       {/* ── Pendientes de verificación por WhatsApp ── */}
-      {jugadores.filter(j => j.verificado === false && j.activo_membresia).length > 0 && (
+      {pendientesVerificacion.length > 0 && (
         <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
           <div style={{ fontWeight: '700', color: '#e8710a', fontSize: '.95rem', marginBottom: '4px' }}>
-            ⏳ Pendientes de verificación ({jugadores.filter(j => j.verificado === false && j.activo_membresia).length})
+            ⏳ Pendientes de verificación ({pendientesVerificacion.length})
           </div>
           <div style={{ fontSize: '.75rem', color: '#8a5a00', marginBottom: '14px' }}>
             Se registraron desde la app. Compara con el mensaje de WhatsApp que te enviaron y verifica solo si los datos coinciden.
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {jugadores.filter(j => j.verificado === false && j.activo_membresia).map(j => (
+            {pendientesVerificacion.map(j => (
               <div key={j.id} style={{ background: '#fff', border: '1px solid #f1e3b0', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '180px' }}>
                   <div style={{ fontWeight: '700', color: '#202124', fontSize: '.88rem' }}>{j.name}</div>
@@ -1033,7 +1059,7 @@ export default function AdminJugadoresPage() {
               </div>
 
               <div style={{ display: 'flex', gap: '14px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f1f3f4' }}>
-                {FOTOS_CONFIG.map(cfg => <FotoMiniatura key={cfg.key} jugador={j} cfg={cfg}/>)}
+                {FOTOS_CONFIG.map(cfg => <FotoMiniatura key={cfg.key} jugador={j} cfg={cfg} uploading={uploading} onSubirFoto={handleFoto} onSubirCedula={handleCedula} onToggleFlag={handleFlagFoto}/>)}
               </div>
             </div>
           )
