@@ -50,10 +50,11 @@ function esMenorDeEdad(fechaISO) {
   return edad < 18
 }
 
-function FotoUpload({ label, preview, onChange, opcional = false }) {
+function FotoUpload({ label, hint, preview, onChange, opcional = false }) {
   return (
     <div>
       <label style={labelStyle}>{label}{opcional ? '' : ' *'}</label>
+      {hint && <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '-2px', marginBottom: '6px', fontStyle: 'italic' }}>{hint}</div>}
       <label style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         border: `2px dashed ${preview ? '#1a73e8' : '#dadce0'}`,
@@ -623,7 +624,7 @@ export default function RegistroEquipoPage() {
             {/* Foto de perfil (mostrada como "foto para el carnet") — opcional, para cualquier jugador que todavía no la tenga */}
             {!jugadorExiste.photo_face_url && (
               <div style={{ marginBottom: '20px' }}>
-                <FotoUpload label="Foto para el carnet del jugador" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
+                <FotoUpload label="Foto del jugador" hint="La cara del jugador, no del documento" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
               </div>
             )}
 
@@ -634,8 +635,8 @@ export default function RegistroEquipoPage() {
                   📸 Aprovecha para subir tu foto del documento de identidad si aún no la tienes registrada
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
-                  <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                  <FotoUpload label="Documento — Frente" hint="Foto del documento, no del jugador" preview={previewFrontal} onChange={handleFotoFrontal}/>
+                  <FotoUpload label="Documento — Atrás" hint="Foto del documento, no del jugador" preview={previewTrasera} onChange={handleFotoTrasera}/>
                 </div>
                 <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
                   ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real del documento</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu documento real.
@@ -710,7 +711,7 @@ export default function RegistroEquipoPage() {
               </div>
 
               {/* Foto para el carnet — opcional, no bloquea el registro */}
-              <FotoUpload label="Foto para el carnet del jugador" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
+              <FotoUpload label="Foto del jugador" hint="La cara del jugador, no del documento" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
 
               {/* Fecha de nacimiento — se pide siempre, incluso en registro
                   simple, porque hace falta para saber si el jugador es
@@ -765,8 +766,8 @@ export default function RegistroEquipoPage() {
                       <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '10px' }}>📸 Fotos del documento de identidad</div>
                       <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '12px' }}>Necesitamos ambas caras para verificar tu identidad</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        <FotoUpload label="Cara Frontal" preview={previewFrontal} onChange={handleFotoFrontal}/>
-                        <FotoUpload label="Cara Trasera" preview={previewTrasera} onChange={handleFotoTrasera}/>
+                        <FotoUpload label="Documento — Frente" hint="Foto del documento, no del jugador" preview={previewFrontal} onChange={handleFotoFrontal}/>
+                        <FotoUpload label="Documento — Atrás" hint="Foto del documento, no del jugador" preview={previewTrasera} onChange={handleFotoTrasera}/>
                       </div>
                       <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '10px', padding: '12px 14px', marginTop: '10px', fontSize: '.78rem', color: '#7a1712', lineHeight: 1.55, fontWeight: '600' }}>
                         ⚠️ <strong>Importante:</strong> este campo deja subir cualquier foto, pero si el administrador revisa y ve que <u>no es la foto real del documento</u>, <strong>no te dará autorización para jugar</strong>. Por favor sube tu documento real.
