@@ -22,13 +22,13 @@ import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 // de layout del hijo, solo cómo se pinta) — ver "escalaPreview" más abajo.
 const ANCHO = 540
 const ALTO  = 960
-// Cantidad de partidos por página — calculada para que las tarjetas entren
-// a su tamaño real (ver comentario grande sobre flexShrink en FilaPartido)
-// sin que el navegador tenga que achicarlas: con encabezado de torneo hay
-// menos alto libre (el encabezado ocupa bastante), así que caben menos que
-// sin encabezado (que va directo a la lista de partidos).
-const POR_PAGINA_CON_TORNEO = 5
-const POR_PAGINA_SIN_TORNEO = 6
+// Cantidad de partidos por página — mínimo 10 en ambos modos (pedido del
+// cliente), calculada para que las tarjetas entren a su tamaño real (ver
+// comentario grande sobre flexShrink en FilaPartido) sin que el navegador
+// tenga que achicarlas. Para que 10 quepan con letra grande, el encabezado
+// y el pie de página se recortaron a lo esencial (ver más abajo).
+const POR_PAGINA_CON_TORNEO = 10
+const POR_PAGINA_SIN_TORNEO = 10
 
 const ROJO_OSC = '#230404'
 const ROJO     = '#7a0f0f'
@@ -91,7 +91,7 @@ const NOMBRE_MAXW = 138
 function NombreEquipo({ nombre, align }) {
   return (
     <span style={{
-      color: '#fff', fontWeight: 900, fontSize: '17px', textTransform: 'uppercase',
+      color: '#fff', fontWeight: 900, fontSize: '14.5px', textTransform: 'uppercase',
       textAlign: align, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       maxWidth: `${NOMBRE_MAXW}px`, textShadow: '0 1px 3px rgba(0,0,0,.6)',
     }}>
@@ -134,34 +134,34 @@ function FilaPartido({ p, mostrarTorneo }) {
   const infoCancha = [p.location, fechaObj && formatFechaCorta(fechaObj)].filter(Boolean).join('  ·  ')
 
   return (
-    <div style={{ flexShrink: 0, margin: '0 20px' }}>
-      <div style={{ background: 'rgba(0,0,0,.22)', border: '1px solid rgba(255,255,255,.16)', borderRadius: '12px', overflow: 'hidden' }}>
+    <div style={{ flexShrink: 0, margin: '0 18px' }}>
+      <div style={{ background: 'rgba(0,0,0,.22)', borderRadius: '9px', overflow: 'hidden' }}>
         {/* Zona 1 (dorada): de qué torneo es — solo en el flyer "todos los torneos" */}
         {mostrarTorneo && p.tournaments?.name && (
-          <div style={{ textAlign: 'center', background: ORO, padding: '5px 8px' }}>
-            <span style={{ color: ROJO_OSC, fontSize: '13px', fontWeight: 900, letterSpacing: '.3px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ textAlign: 'center', background: ORO, padding: '2px 8px' }}>
+            <span style={{ color: ROJO_OSC, fontSize: '11px', fontWeight: 900, letterSpacing: '.2px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {p.tournaments.name}
             </span>
           </div>
         )}
         {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', height: '66px', padding: '0 12px' }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '9px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '50px', padding: '0 10px' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '7px' }}>
             <NombreEquipo nombre={p.home?.name} align="right"/>
-            <EscudoCirculo logo_url={p.home?.logo_url} size={42}/>
+            <EscudoCirculo logo_url={p.home?.logo_url} size={34}/>
           </div>
-          <div style={{ flexShrink: 0, width: '72px', textAlign: 'center' }}>
-            <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '23px' : '17px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
+          <div style={{ flexShrink: 0, width: '58px', textAlign: 'center' }}>
+            <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '18px' : '14px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
           </div>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <EscudoCirculo logo_url={p.away?.logo_url} size={42}/>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <EscudoCirculo logo_url={p.away?.logo_url} size={34}/>
             <NombreEquipo nombre={p.away?.name} align="left"/>
           </div>
         </div>
         {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
             centro, así que no se repite acá) */}
-        <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '5px 8px' }}>
-          <span style={{ color: ORO_SUAVE, fontSize: '13px', fontWeight: 700, letterSpacing: '.2px' }}>
+        <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '2px 8px' }}>
+          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 700, letterSpacing: '.2px' }}>
             {infoCancha || 'Por confirmar'}
           </span>
         </div>
@@ -343,30 +343,25 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                     torneos no hay título ni escudo: va directo a la lista
                     de partidos, cada uno con su propio torneo. */}
                 {sinEncabezado ? (
-                  <div style={{ flexShrink: 0, height: '20px' }}/>
+                  <div style={{ flexShrink: 0, height: '10px' }}/>
                 ) : (
-                  <div style={{ flexShrink: 0, textAlign: 'center', padding: '36px 26px 12px' }}>
-                    <div style={{ width: '78px', height: '78px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `3px solid ${ORO}`, boxShadow: '0 4px 14px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  <div style={{ flexShrink: 0, textAlign: 'center', padding: '16px 24px 8px' }}>
+                    <div style={{ width: '52px', height: '52px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `2px solid ${ORO}`, boxShadow: '0 3px 10px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                       {torneo?.logo_url
                         ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
-                        : <Trophy size={34} color={ROJO}/>}
+                        : <Trophy size={22} color={ROJO}/>}
                     </div>
-                    <div style={{ color: ORO, fontSize: '14px', fontWeight: 900, letterSpacing: '3px', marginTop: '8px' }}>GOLMEBOL</div>
-                    <div style={{ color: '#fff', fontSize: '33px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.12, marginTop: '4px', textShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
+                    <div style={{ color: ORO, fontSize: '11px', fontWeight: 900, letterSpacing: '2.5px', marginTop: '5px' }}>GOLMEBOL</div>
+                    <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900, letterSpacing: '.3px', textTransform: 'uppercase', lineHeight: 1.1, marginTop: '3px', textShadow: '0 2px 8px rgba(0,0,0,.5)' }}>
                       {torneo.name}
                     </div>
                     {subtitulo && (
-                      <div style={{ color: ORO_SUAVE, fontSize: '13px', fontWeight: 800, letterSpacing: '1.5px', marginTop: '4px', textTransform: 'uppercase' }}>
+                      <div style={{ color: ORO_SUAVE, fontSize: '10px', fontWeight: 800, letterSpacing: '1px', marginTop: '3px', textTransform: 'uppercase' }}>
                         {subtitulo}
                       </div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '10px 0 8px' }}>
-                      <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, transparent, ${ORO})` }}/>
-                      <div style={{ width: '9px', height: '9px', background: ORO, transform: 'rotate(45deg)', flexShrink: 0 }}/>
-                      <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, ${ORO}, transparent)` }}/>
-                    </div>
-                    <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '20px', padding: '4px 18px' }}>
-                      <span style={{ color: '#fff', fontSize: '14px', fontWeight: 900, letterSpacing: '1.5px' }}>{titulo}</span>
+                    <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '16px', padding: '2px 14px', marginTop: '7px' }}>
+                      <span style={{ color: '#fff', fontSize: '11px', fontWeight: 900, letterSpacing: '1.2px' }}>{titulo}</span>
                     </div>
                   </div>
                 )}
@@ -377,22 +372,16 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                     fija entre tarjetas aunque el espacio esté justo (antes,
                     sin gap, con muchas tarjetas terminaban pegadas una con
                     otra). */}
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', gap: '8px', padding: '4px 0' }}>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', gap: '4px', padding: '2px 0' }}>
                   {items.map(p => <FilaPartido key={p.id} p={p} mostrarTorneo={sinEncabezado}/>)}
                 </div>
 
-                {/* Footer */}
-                <div style={{ flexShrink: 0, textAlign: 'center', padding: '12px 20px 16px' }}>
-                  <div style={{ color: '#fff', fontSize: '16px', fontWeight: 900, letterSpacing: '.5px' }}>golmebol.com</div>
-                  <div style={{ color: ORO_SUAVE, fontSize: '10.5px', fontWeight: 700, letterSpacing: '1.5px', marginTop: '4px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '7px' }}>
-                    {['IG', 'FB', 'TT'].map(s => (
-                      <div key={s} style={{ width: '18px', height: '18px', borderRadius: '50%', border: `1px solid ${ORO}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ color: ORO, fontSize: '7px', fontWeight: 900 }}>{s}</span>
-                      </div>
-                    ))}
-                    <span style={{ color: 'rgba(255,255,255,.7)', fontSize: '11.5px', fontWeight: 700, marginLeft: '4px' }}>@golmebol</span>
-                  </div>
+                {/* Footer — reducido a lo esencial (sin iconos ni frase),
+                    para dejarle el máximo alto posible a la lista de
+                    partidos y que quepan al menos 10 por página. */}
+                <div style={{ flexShrink: 0, textAlign: 'center', padding: '6px 20px 10px' }}>
+                  <span style={{ color: '#fff', fontSize: '13px', fontWeight: 900, letterSpacing: '.5px' }}>golmebol.com</span>
+                  <span style={{ color: 'rgba(255,255,255,.65)', fontSize: '11px', fontWeight: 700, marginLeft: '8px' }}>@golmebol</span>
                 </div>
               </div>
             </div>
