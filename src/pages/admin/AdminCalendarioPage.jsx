@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
+import FlyerProgramacion from '../../components/FlyerProgramacion'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHoraDate } from '../../lib/horaHelpers'
@@ -70,8 +71,20 @@ export default function AdminCalendarioPage() {
   const [torneoFiltro,    setTorneoFiltro]    = useState('')
   const [torneos,         setTorneos]         = useState([])
   const [flyerPartido,    setFlyerPartido]    = useState(null)
+  const [flyerGrupo,      setFlyerGrupo]      = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [abiertos,        setAbiertos]        = useState({})
+
+  // Arma el "torneo" que se le pasa al flyer de programación: si todos los
+  // partidos del grupo son del mismo torneo, usa su nombre/escudo/etc (así
+  // el flyer sale con la identidad del torneo); si el grupo mezcla varios
+  // torneos (ej. "todos los partidos" de un organizador con más de un
+  // torneo activo), cae a un encabezado genérico de Golmebol.
+  function construirTorneoFlyer(subset) {
+    const ids = [...new Set(subset.map(p => p.tournament_id))]
+    if (ids.length === 1) return subset[0]?.tournaments || null
+    return { name: 'Golmebol' }
+  }
 
   useEffect(() => { fetchTodo() }, [rol])
   // La planilla abierta queda marcada en la URL (?planilla=<id>): así, sin
@@ -82,7 +95,7 @@ export default function AdminCalendarioPage() {
     const matchId = searchParams.get('planilla')
     if (matchId) {
       supabase.from('matches')
-        .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+        .select('*, tournaments(id,name,modalidad,logo_url,season,categoria), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
         .eq('id', matchId).single()
         .then(({ data }) => { if (data) setPlanillaPartido(data) })
     } else {
@@ -111,7 +124,7 @@ export default function AdminCalendarioPage() {
         setPartidos([]); setTorneos([]); setLoading(false); return
       }
       const { data: pts } = await supabase.from('matches')
-        .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+        .select('*, tournaments(id,name,modalidad,logo_url,season,categoria), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
         .in('tournament_id', torneoIds)
         .order('played_at', { ascending: true })
       setPartidos(pts || [])
@@ -122,7 +135,7 @@ export default function AdminCalendarioPage() {
 
     const [{ data: pts }, { data: trs }] = await Promise.all([
       supabase.from('matches')
-        .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+        .select('*, tournaments(id,name,modalidad,logo_url,season,categoria), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
         .order('played_at', { ascending: true }),
       supabase.from('tournaments').select('id,name').eq('status', 'active'),
     ])
@@ -144,6 +157,7 @@ export default function AdminCalendarioPage() {
   return (
     <div>
       {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
+      {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
       {planillaPartido && <PlanillaPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
 
       <div style={{ marginBottom: '24px' }}>
@@ -166,6 +180,12 @@ export default function AdminCalendarioPage() {
           <option value="">Todos los torneos</option>
           {torneos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
+        {filtrados.length > 0 && (
+          <button onClick={() => setFlyerGrupo({ torneo: construirTorneoFlyer(filtrados), partidos: filtrados })}
+            style={{ background: '#6c35de', border: 'none', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Image size={13}/> Crear flyer (todos)
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', fontSize: '.8rem', color: '#9aa0a6' }}>{filtrados.length} partido{filtrados.length!==1?'s':''}</div>
       </div>
 
@@ -201,6 +221,11 @@ export default function AdminCalendarioPage() {
                       {pendientes > 0 && <span style={{ color: esFase?'rgba(255,255,255,.85)':'#e8710a' }}>⏳ {pendientes} pendiente{pendientes!==1?'s':''}</span>}
                     </div>
                   </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); setFlyerGrupo({ torneo: construirTorneoFlyer(jornada.partidos), partidos: jornada.partidos }) }}
+                    style={{ background: esFase ? 'rgba(255,255,255,.18)' : '#f3ecfd', border: 'none', borderRadius: '6px', padding: '5px 9px', cursor: 'pointer', color: esFase ? '#fff' : '#6c35de', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    <Image size={12}/> Flyer
+                  </button>
                   {isOpen
                     ? <ChevronUp  size={18} color={esFase?'rgba(255,255,255,.8)':'#9aa0a6'}/>
                     : <ChevronDown size={18} color={esFase?'rgba(255,255,255,.8)':'#9aa0a6'}/>}
