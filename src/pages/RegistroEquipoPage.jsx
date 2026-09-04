@@ -113,11 +113,16 @@ export default function RegistroEquipoPage() {
   const [fotoTrasera,        setFotoTrasera]        = useState(null)
   const [previewFrontal,     setPreviewFrontal]     = useState(null)
   const [previewTrasera,     setPreviewTrasera]     = useState(null)
-  const [subiendoFotos,      setSubiendoFotos]      = useState(false)
 
   // Foto para el carnet del jugador — opcional, no bloquea el registro.
   const [fotoCarnet,         setFotoCarnet]         = useState(null)
   const [previewCarnet,      setPreviewCarnet]      = useState(null)
+
+  // Cuántas subidas de foto siguen en curso EN SEGUNDO PLANO después de que
+  // ya se mostró "¡Registrado!" — el registro en sí no espera a que las
+  // fotos terminen de subir (con mala señal eso dejaba la pantalla trabada
+  // en "Subiendo fotos..." sin avanzar, aunque el jugador ya estaba guardado).
+  const [fotosPendientes,    setFotosPendientes]    = useState(0)
 
   useEffect(() => { fetchDatos() }, [token, tournamentId])
 
@@ -228,8 +233,9 @@ export default function RegistroEquipoPage() {
   // Foto de perfil (se muestra en el registro como "foto para el carnet",
   // pero es la MISMA foto de perfil que se usa en toda la plataforma —
   // players.photo_face_url — así no se le vuelve a pedir después en su
-  // cuenta). Totalmente opcional: un error acá nunca debe frenar el
-  // registro, solo se avisa y sigue.
+  // cuenta). Totalmente opcional y se sube EN SEGUNDO PLANO (ver
+  // crearYRegistrarReal/registrarExistente): nunca lanza error hacia afuera,
+  // así nunca frena ni retrasa el "¡Registrado!".
   async function subirFotoCarnet(playerId) {
     if (!fotoCarnet) return
     try {
@@ -245,33 +251,49 @@ export default function RegistroEquipoPage() {
     }
   }
 
+  // Fotos del documento — se suben EN SEGUNDO PLANO, en paralelo (frontal y
+  // trasera a la vez, no una después de la otra) para que tarden la mitad.
+  // Igual que subirFotoCarnet, nunca lanza error hacia afuera: si algo falla
+  // (típicamente mala señal), se avisa con un mensaje pero el registro del
+  // jugador ya quedó hecho de todas formas.
   async function subirFotosCedula(playerId) {
-    let frontalExt = null
-    let traseraExt = null
-    if (fotoFrontal) {
-      const archivo = await comprimirImagen(fotoFrontal, { maxSize: 1600, calidad: 0.85 })
-      const ext  = archivo.name.split('.').pop()
-      const path = `${playerId}_frontal.${ext}`
-      const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
-      if (error) throw new Error('Error al subir cédula frontal: ' + error.message)
-      frontalExt = ext
+    try {
+      const subirCara = async (file, cara) => {
+        if (!file) return null
+        const archivo = await comprimirImagen(file, { maxSize: 1600, calidad: 0.85 })
+        const ext  = archivo.name.split('.').pop()
+        const path = `${playerId}_${cara}.${ext}`
+        const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+        if (error) throw new Error(`Error al subir cédula ${cara}: ` + error.message)
+        return ext
+      }
+      const [frontalExt, traseraExt] = await Promise.all([
+        subirCara(fotoFrontal, 'frontal'),
+        subirCara(fotoTrasera, 'trasera'),
+      ])
+      if (frontalExt || traseraExt) {
+        const { error } = await supabase.rpc('confirmar_cedula_urls', {
+          p_player_id: playerId,
+          p_frontal_ext: frontalExt,
+          p_trasera_ext: traseraExt,
+        })
+        if (error) throw new Error('Error al guardar URLs de cédula: ' + error.message)
+      }
+    } catch (e) {
+      showMsg('Quedaste registrado, pero ' + (e.message ? e.message.charAt(0).toLowerCase() + e.message.slice(1) : 'no se pudo subir la foto del documento') + '. Puedes intentar subirla después.', 'warning')
     }
-    if (fotoTrasera) {
-      const archivo = await comprimirImagen(fotoTrasera, { maxSize: 1600, calidad: 0.85 })
-      const ext  = archivo.name.split('.').pop()
-      const path = `${playerId}_trasera.${ext}`
-      const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
-      if (error) throw new Error('Error al subir cédula trasera: ' + error.message)
-      traseraExt = ext
-    }
-    if (frontalExt || traseraExt) {
-      const { error } = await supabase.rpc('confirmar_cedula_urls', {
-        p_player_id: playerId,
-        p_frontal_ext: frontalExt,
-        p_trasera_ext: traseraExt,
-      })
-      if (error) throw new Error('Error al guardar URLs de cédula: ' + error.message)
-    }
+  }
+
+  // Dispara la subida de fotos SIN esperarla (fire-and-forget): el registro
+  // ya quedó guardado en la base antes de llamar a esto, así que no tiene
+  // sentido dejar al jugador mirando "Subiendo fotos..." con el riesgo de
+  // que una conexión lenta lo deje trabado ahí. Actualiza fotosPendientes
+  // para poder mostrar un aviso discreto en la pantalla de éxito mientras
+  // terminan de subir.
+  function subirFotosEnSegundoPlano(playerId) {
+    setFotosPendientes(n => n + 2)
+    subirFotosCedula(playerId).finally(() => setFotosPendientes(n => n - 1))
+    subirFotoCarnet(playerId).finally(() => setFotosPendientes(n => n - 1))
   }
 
   async function handleBuscarCedula() {
@@ -342,8 +364,7 @@ export default function RegistroEquipoPage() {
       })
       if (error) throw new Error(error.message || 'Error al registrarte')
 
-      await subirFotosCedula(data.player_id)
-      await subirFotoCarnet(data.player_id)
+      subirFotosEnSegundoPlano(data.player_id)
 
       limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
       setRosterCount(c => c + 1)
@@ -387,7 +408,6 @@ export default function RegistroEquipoPage() {
     if (guardandoRegistroRef.current) return
     guardandoRegistroRef.current = true
     setGuardando(true)
-    setSubiendoFotos(true)
     try {
       const { data, error } = await supabase.rpc('registrar_equipo', {
         p_token: token,
@@ -405,8 +425,7 @@ export default function RegistroEquipoPage() {
       })
       if (error) throw new Error(error.message || 'Error al crear el jugador')
 
-      await subirFotosCedula(data.player_id)
-      await subirFotoCarnet(data.player_id)
+      subirFotosEnSegundoPlano(data.player_id)
 
       limpiarBorrador(`draft_registro_equipo_${token || 'x'}`)
       setRosterCount(c => c + 1)
@@ -415,7 +434,6 @@ export default function RegistroEquipoPage() {
       showMsg(e.message || 'Error al crear el jugador. Intenta de nuevo.')
     } finally {
       guardandoRegistroRef.current = false
-      setSubiendoFotos(false)
       setGuardando(false)
     }
   }
@@ -459,8 +477,19 @@ export default function RegistroEquipoPage() {
   )
 
   if (exito) return (
-    <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '40px', textAlign: 'center', maxWidth: '360px', width: '90%', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
+    <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ width: '100%', maxWidth: '360px' }}>
+        {msg && (
+          <div style={{
+            background: msg.type === 'warning' ? '#fff8e1' : msg.type === 'ok' ? '#e6f4ea' : '#fce8e6',
+            border: `1px solid ${msg.type === 'warning' ? '#ffe082' : msg.type === 'ok' ? '#ceead6' : '#fad2cf'}`,
+            color: msg.type === 'warning' ? '#f57f17' : msg.type === 'ok' ? '#1e8e3e' : '#d93025',
+            borderRadius: '10px', padding: '12px 16px', marginBottom: '12px', fontSize: '.8rem', lineHeight: 1.5,
+          }}>
+            {msg.text}
+          </div>
+        )}
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '40px', textAlign: 'center', width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
         <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#e6f4ea', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <Check size={32} color="#1e8e3e"/>
         </div>
@@ -470,6 +499,11 @@ export default function RegistroEquipoPage() {
           <strong>{torneo.name}</strong><br/>
           con el equipo <strong>{equipo.name}</strong>
         </div>
+        {fotosPendientes > 0 && (
+          <div style={{ fontSize: '.75rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '8px', padding: '8px 12px', marginBottom: '16px' }}>
+            📤 Guardando tus fotos en segundo plano...
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center', padding: '12px', background: '#f8f9fa', borderRadius: '10px' }}>
           <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e8f0fe', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {equipo.logo_url ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={18} color="#1a73e8"/>}
@@ -484,7 +518,7 @@ export default function RegistroEquipoPage() {
             setExito(false); setCedula(''); setJugadorExiste(null); setMostrarNuevo(false)
             setDeudaJugador(null); setSancionJugador(null); setFormNuevo(EMPTY_FORM); setGuardando(false)
             setFotoFrontal(null); setFotoTrasera(null); setPreviewFrontal(null); setPreviewTrasera(null); setAutorizoMenor(false)
-            setFotoCarnet(null); setPreviewCarnet(null)
+            setFotoCarnet(null); setPreviewCarnet(null); setMsg(null)
             window.scrollTo({ top: 0 })
           }}
           style={{ marginTop: '18px', width: '100%', padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600' }}>
@@ -493,6 +527,7 @@ export default function RegistroEquipoPage() {
         <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '8px' }}>
           ¿Falta alguien del equipo? Regístralo desde este mismo teléfono
         </div>
+      </div>
       </div>
     </div>
   )
@@ -746,7 +781,7 @@ export default function RegistroEquipoPage() {
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleCrearYRegistrar} disabled={guardando || (esMenorDeEdad(formNuevo.fecha_nacimiento) && !autorizoMenor)}
                 style={{ flex: 1, padding: '13px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: (guardando || (esMenorDeEdad(formNuevo.fecha_nacimiento) && !autorizoMenor)) ? .5 : 1 }}>
-                {guardando ? (subiendoFotos ? 'Subiendo fotos...' : 'Registrando...') : '⚽ Registrarme en Golmebol'}
+                {guardando ? 'Registrando...' : '⚽ Registrarme en Golmebol'}
               </button>
               <button onClick={() => { setMostrarNuevo(false); setCedula('') }}
                 style={{ padding: '13px 16px', background: '#f1f3f4', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>←</button>
