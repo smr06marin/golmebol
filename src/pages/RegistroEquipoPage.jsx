@@ -15,11 +15,12 @@ const supabaseVerify = createClient(
   { auth: { persistSession: false, autoRefreshToken: false } }
 )
 
-const POSICIONES = {
-  'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
-  'Fútbol 7':  ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista', 'Extremo derecho', 'Extremo izquierdo', 'Delantero'],
-  'Fútbol 11': ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista defensivo', 'Mediocampista central', 'Mediocampista ofensivo', 'Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Segunda punta'],
-}
+// Posición simplificada: en el registro solo se pregunta si el jugador es
+// arquero o jugador de campo, nada de posiciones detalladas por modalidad.
+// Igual se guarda en las 3 columnas (posicion_futbol5/7/11) para no romper
+// los "esPortero" que se calculan en el resto de la app comparando contra
+// el texto exacto 'Portero'.
+const POSICIONES_SIMPLE = ['Arquero', 'Jugador']
 
 const inputStyle = {
   width: '100%', background: '#fff', border: '1px solid #dadce0',
@@ -34,7 +35,7 @@ const labelStyle = {
 
 const EMPTY_FORM = {
   name: '', telefono: '', city: '', genero: '', fecha_nacimiento: '',
-  posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
+  posicion: '',
 }
 
 // ¿La fecha de nacimiento ingresada da menor de 18 años hoy?
@@ -380,8 +381,8 @@ export default function RegistroEquipoPage() {
   async function handleCrearYRegistrar() {
     if (limiteAlcanzado) return showMsg(`🚫 ${equipo.name} ya llegó al límite de ${torneo.limite_jugadores_equipo} jugadores para este torneo. Comunícate con la organización si necesitas más cupo.`, 'warning')
     if (!formNuevo.name) return showMsg('El nombre es obligatorio')
-    if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
-      return showMsg('Selecciona al menos una posición')
+    if (!formNuevo.posicion)
+      return showMsg('Selecciona una posición')
     // Fecha de nacimiento y, si da menor de edad, la autorización — se pide
     // siempre, incluso en registro simple.
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria')
@@ -409,6 +410,11 @@ export default function RegistroEquipoPage() {
     guardandoRegistroRef.current = true
     setGuardando(true)
     try {
+      // Se guarda el mismo valor en las 3 columnas de posición por modalidad
+      // (el registro ya no distingue fútbol 5/7/11): "Arquero" se traduce a
+      // 'Portero' para que seguir cuadrando con los "esPortero" del resto de
+      // la app, y "Jugador" queda tal cual como posición genérica de campo.
+      const posicionGuardada = formNuevo.posicion === 'Arquero' ? 'Portero' : formNuevo.posicion || null
       const { data, error } = await supabase.rpc('registrar_equipo', {
         p_token: token,
         p_tournament_id: tournamentId,
@@ -418,9 +424,9 @@ export default function RegistroEquipoPage() {
         p_city: formNuevo.city || null,
         p_genero: formNuevo.genero || null,
         p_fecha_nacimiento: formNuevo.fecha_nacimiento || null,
-        p_posicion_futbol5: formNuevo.posicion_futbol5 || null,
-        p_posicion_futbol7: formNuevo.posicion_futbol7 || null,
-        p_posicion_futbol11: formNuevo.posicion_futbol11 || null,
+        p_posicion_futbol5: posicionGuardada,
+        p_posicion_futbol7: posicionGuardada,
+        p_posicion_futbol11: posicionGuardada,
         p_autorizacion_menor: esMenorDeEdad(formNuevo.fecha_nacimiento) ? autorizoMenor : false,
       })
       if (error) throw new Error(error.message || 'Error al crear el jugador')
@@ -690,23 +696,17 @@ export default function RegistroEquipoPage() {
               </div>
 
               {/* Posición — se pide siempre, incluso en registro simple (junto
-                  con cédula y nombre, es el mínimo para saber en qué puesto anotar al jugador) */}
+                  con cédula y nombre, es el mínimo para saber en qué puesto anotar al jugador).
+                  Solo arquero o jugador, sin detalle por modalidad. */}
               <div>
-                <label style={{ ...labelStyle, marginBottom: '10px' }}>Posición *</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {Object.entries(POSICIONES).map(([mod, posiciones]) => (
-                    <div key={mod}>
-                      <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '4px', fontWeight: '500' }}>{mod}</div>
-                      <select
-                        value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]}
-                        onChange={e => setFormNuevo(f => ({ ...f, [`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]: e.target.value }))}
-                        style={inputStyle}>
-                        <option value="">No juego {mod}</option>
-                        {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </div>
-                  ))}
-                </div>
+                <label style={labelStyle}>Posición *</label>
+                <select
+                  value={formNuevo.posicion}
+                  onChange={e => setFormNuevo(f => ({ ...f, posicion: e.target.value }))}
+                  style={inputStyle}>
+                  <option value="">Selecciona...</option>
+                  {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
               </div>
 
               {/* Foto para el carnet — opcional, no bloquea el registro */}
