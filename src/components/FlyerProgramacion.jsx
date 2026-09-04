@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useMemo, useEffect } from 'react'
 import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 
 // Tamaño fijo de "historia" de Instagram (1080x1920 = relación 9:16). Se
@@ -7,9 +7,22 @@ import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 // cuántos partidos tenga la página — el layout se acomoda dentro de ese
 // alto fijo (ver "flex + justify-content: space-evenly" en la lista de
 // partidos) en vez de crecer sin límite como antes.
+//
+// IMPORTANTE sobre el tamaño: el div que se captura con html2canvas
+// (flyerRef) SIEMPRE debe medir exactamente ANCHOxALTO px de verdad — antes
+// tenía "maxWidth:100%", así que en un celular angosto el navegador lo
+// achicaba de verdad (su propio ancho real quedaba, por ej., en 320px) y el
+// contenido interno (hecho con márgenes/anchos en píxeles fijos) se
+// desbordaba y se cortaba. El PNG exportado salía con esa franja de
+// contenido apretada a la izquierda y el resto del lienzo (hasta completar
+// los 540px pedidos) relleno con el color de fondo de reserva — una franja
+// oscura sin nada, que es exactamente el "parche negro" reportado. La forma
+// correcta de verlo más chico en pantalla SIN tocar su tamaño real es un
+// transform:scale() en un div ENVOLVENTE (el transform no cambia el tamaño
+// de layout del hijo, solo cómo se pinta) — ver "escalaPreview" más abajo.
 const ANCHO = 540
 const ALTO  = 960
-const POR_PAGINA = 6
+const POR_PAGINA = 8
 
 const ROJO_OSC = '#230404'
 const ROJO     = '#7a0f0f'
@@ -64,40 +77,56 @@ function EscudoCirculo({ logo_url, size = 40 }) {
   )
 }
 
-// Una "cinta" diagonal por partido: fondo en forma de paralelogramo (rojo),
-// escudos + nombres a los lados, un rombo "VS" (o el marcador, si ya se
-// jugó) montado en el centro — inspirado en el flyer de referencia.
+// Ancho máximo del nombre de cada equipo antes de truncar con "..." — así
+// un nombre largo nunca se envuelve en varias líneas ni se sale de su fila
+// (que es justo lo que se veía "desordenado" antes).
+const NOMBRE_MAXW = 138
+
+function NombreEquipo({ nombre, align }) {
+  return (
+    <span style={{
+      color: '#fff', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase',
+      textAlign: align, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      maxWidth: `${NOMBRE_MAXW}px`, textShadow: '0 1px 3px rgba(0,0,0,.6)',
+    }}>
+      {nombre || 'Por definir'}
+    </span>
+  )
+}
+
+// Fila plana por partido: escudo + nombre a cada lado (con elipsis si el
+// nombre no entra) y la hora del partido (o el marcador, si ya se jugó) bien
+// visible en el centro — sin cinta sesgada ni rombo, para que se vea
+// ordenado y prolijo como el flyer de referencia.
 function FilaPartido({ p }) {
   const esJugado = p.status === 'finished'
   const fechaObj = p.played_at ? new Date(p.played_at) : null
   const marcador = esJugado ? `${p.home_score}-${p.away_score}` : null
+  const centro = marcador || (fechaObj ? formatHora(fechaObj) : 'VS')
 
   return (
-    <div>
-      <div style={{ position: 'relative', height: '58px', margin: '0 22px' }}>
-        {/* Cinta de fondo — paralelogramo mediante skew, decorativa (sin texto
-            adentro) para que el contenido de arriba quede siempre derecho. */}
-        <div style={{ position: 'absolute', inset: '5px 0', transform: 'skewX(-9deg)', borderRadius: '5px', background: `linear-gradient(90deg, ${ROJO_CL}, ${ROJO})`, boxShadow: '0 4px 10px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.12)' }}/>
-        {/* Contenido: escudos + nombres, derechos */}
-        <div style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', zIndex: 2 }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-            <span style={{ color: '#fff', fontWeight: 900, fontSize: '12.5px', textAlign: 'right', textTransform: 'uppercase', lineHeight: 1.12, textShadow: '0 1px 3px rgba(0,0,0,.55)' }}>{p.home?.name || 'Por definir'}</span>
-            <EscudoCirculo logo_url={p.home?.logo_url}/>
-          </div>
-          <div style={{ width: '56px', flexShrink: 0 }}/>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <EscudoCirculo logo_url={p.away?.logo_url}/>
-            <span style={{ color: '#fff', fontWeight: 900, fontSize: '12.5px', textTransform: 'uppercase', lineHeight: 1.12, textShadow: '0 1px 3px rgba(0,0,0,.55)' }}>{p.away?.name || 'Por definir'}</span>
-          </div>
+    <div style={{ margin: '0 24px' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px', height: '50px',
+        background: 'rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.18)',
+        borderRadius: '10px', padding: '0 12px',
+      }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+          <NombreEquipo nombre={p.home?.name} align="right"/>
+          <EscudoCirculo logo_url={p.home?.logo_url} size={32}/>
         </div>
-        {/* Rombo VS / marcador, montado en el centro de la cinta */}
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%) rotate(45deg)', width: '38px', height: '38px', background: '#fff', border: `3px solid ${ORO}`, borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3, boxShadow: '0 3px 8px rgba(0,0,0,.5)' }}>
-          <span style={{ transform: 'rotate(-45deg)', color: ROJO, fontWeight: 900, fontSize: marcador ? '10.5px' : '12.5px', letterSpacing: marcador ? '0' : '.5px' }}>{marcador || 'VS'}</span>
+        <div style={{ flexShrink: 0, width: '62px', textAlign: 'center' }}>
+          <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '16px' : '12.5px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <EscudoCirculo logo_url={p.away?.logo_url} size={32}/>
+          <NombreEquipo nombre={p.away?.name} align="left"/>
         </div>
       </div>
-      {/* Línea de info debajo de la cinta */}
-      <div style={{ textAlign: 'center', marginTop: '5px', color: ORO_SUAVE, fontSize: '9.5px', fontWeight: 800, letterSpacing: '.6px' }}>
-        {[fechaObj && formatFechaCorta(fechaObj), fechaObj && formatHora(fechaObj), p.location].filter(Boolean).join('  ·  ')}
+      {/* Línea de info debajo de la fila: cancha y fecha (la hora ya se ve
+          arriba, en el centro, así que no se repite acá). */}
+      <div style={{ textAlign: 'center', marginTop: '4px', color: ORO_SUAVE, fontSize: '9px', fontWeight: 700, letterSpacing: '.5px' }}>
+        {[p.location, fechaObj && formatFechaCorta(fechaObj)].filter(Boolean).join('  ·  ')}
         {!fechaObj && !p.location && <span style={{ opacity: .7 }}>Por confirmar</span>}
       </div>
     </div>
@@ -118,6 +147,8 @@ function BandaChevron({ arriba }) {
 
 export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }) {
   const flyerRef = useRef(null)
+  const wrapperRef = useRef(null)
+  const [escalaPreview, setEscalaPreview] = useState(1)
   const [descargando, setDescargando] = useState(false)
   const [modo, setModo] = useState(() => {
     const hayProximos = partidos.some(p => p.status !== 'finished')
@@ -132,6 +163,23 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   const items = paginas[paginaActual] || []
 
   function cambiarModo(m) { setModo(m); setPagina(0) }
+
+  // El flyer (flyerRef) SIEMPRE mide ANCHOxALTO de verdad — nunca se achica
+  // por CSS — porque html2canvas necesita que su tamaño de layout real
+  // coincida con lo que le pedimos (ver comentario grande arriba). Para que
+  // igual se vea completo en pantallas angostas (celular), lo encogemos
+  // visualmente con transform:scale() sobre el div envolvente
+  // (wrapperRef): el transform no cambia el tamaño de layout del hijo, así
+  // que flyerRef sigue midiendo 540x960 de verdad para html2canvas.
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const calcular = () => setEscalaPreview(Math.min(1, wrapper.offsetWidth / ANCHO))
+    calcular()
+    const obs = new ResizeObserver(calcular)
+    obs.observe(wrapper)
+    return () => obs.disconnect()
+  }, [])
 
   async function descargarPagina(idx) {
     await esperarImagenes(flyerRef.current)
@@ -214,17 +262,21 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
             {/* FLYER — tamaño fijo de historia de Instagram (540x960 acá,
                 exporta 1080x1920). overflow:hidden para que nunca "se salga"
                 del lienzo — por eso la cantidad de partidos por página está
-                limitada (POR_PAGINA) y el resto queda en más páginas. */}
+                limitada (POR_PAGINA) y el resto queda en más páginas.
+                wrapperRef reserva el alto ya escalado (para que no quede un
+                hueco vacío en el modal) y centra; flyerRef adentro SIEMPRE
+                mide 540x960 de verdad y solo se ve más chico por el
+                transform:scale — así html2canvas nunca ve un tamaño achicado. */}
+            <div ref={wrapperRef} style={{ width: '100%', maxWidth: `${ANCHO}px`, height: `${ALTO * escalaPreview}px`, margin: '0 auto', overflow: 'hidden' }}>
             <div ref={flyerRef} style={{
-              width: `${ANCHO}px`, height: `${ALTO}px`, maxWidth: '100%', margin: '0 auto',
+              width: `${ANCHO}px`, height: `${ALTO}px`,
+              transform: `scale(${escalaPreview})`, transformOrigin: 'top left',
               position: 'relative', overflow: 'hidden', borderRadius: '4px',
               fontFamily: "'Arial Black', 'Impact', sans-serif",
               background: `radial-gradient(ellipse at 50% 15%, ${ROJO_CL} 0%, ${ROJO} 42%, ${ROJO_OSC} 100%)`,
             }}>
               {/* Textura diagonal sutil de fondo */}
               <div style={{ position: 'absolute', inset: 0, zIndex: 0, opacity: .5, background: 'repeating-linear-gradient(135deg, rgba(255,255,255,.045) 0px, rgba(255,255,255,.045) 16px, transparent 16px, transparent 32px)' }}/>
-              {/* Viñeta que oscurece bordes */}
-              <div style={{ position: 'absolute', inset: 0, zIndex: 0, background: 'radial-gradient(ellipse at 50% 40%, transparent 45%, rgba(0,0,0,.5) 100%)' }}/>
 
               <BandaChevron arriba/>
               <BandaChevron/>
@@ -277,6 +329,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                   </div>
                 </div>
               </div>
+            </div>
             </div>
 
             {/* Descargar */}
