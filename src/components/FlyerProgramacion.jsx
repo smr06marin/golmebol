@@ -27,8 +27,8 @@ const ALTO  = 960
 // sin que el navegador tenga que achicarlas: con encabezado de torneo hay
 // menos alto libre (el encabezado ocupa bastante), así que caben menos que
 // sin encabezado (que va directo a la lista de partidos).
-const POR_PAGINA_CON_TORNEO = 6
-const POR_PAGINA_SIN_TORNEO = 7
+const POR_PAGINA_CON_TORNEO = 5
+const POR_PAGINA_SIN_TORNEO = 6
 
 const ROJO_OSC = '#230404'
 const ROJO     = '#7a0f0f'
@@ -91,7 +91,7 @@ const NOMBRE_MAXW = 138
 function NombreEquipo({ nombre, align }) {
   return (
     <span style={{
-      color: '#fff', fontWeight: 900, fontSize: '14px', textTransform: 'uppercase',
+      color: '#fff', fontWeight: 900, fontSize: '17px', textTransform: 'uppercase',
       textAlign: align, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       maxWidth: `${NOMBRE_MAXW}px`, textShadow: '0 1px 3px rgba(0,0,0,.6)',
     }}>
@@ -138,30 +138,30 @@ function FilaPartido({ p, mostrarTorneo }) {
       <div style={{ background: 'rgba(0,0,0,.22)', border: '1px solid rgba(255,255,255,.16)', borderRadius: '12px', overflow: 'hidden' }}>
         {/* Zona 1 (dorada): de qué torneo es — solo en el flyer "todos los torneos" */}
         {mostrarTorneo && p.tournaments?.name && (
-          <div style={{ textAlign: 'center', background: ORO, padding: '4px 8px' }}>
-            <span style={{ color: ROJO_OSC, fontSize: '10.5px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ textAlign: 'center', background: ORO, padding: '5px 8px' }}>
+            <span style={{ color: ROJO_OSC, fontSize: '13px', fontWeight: 900, letterSpacing: '.3px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {p.tournaments.name}
             </span>
           </div>
         )}
         {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', height: '60px', padding: '0 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', height: '66px', padding: '0 12px' }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '9px' }}>
             <NombreEquipo nombre={p.home?.name} align="right"/>
-            <EscudoCirculo logo_url={p.home?.logo_url} size={38}/>
+            <EscudoCirculo logo_url={p.home?.logo_url} size={42}/>
           </div>
-          <div style={{ flexShrink: 0, width: '68px', textAlign: 'center' }}>
-            <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '19px' : '14.5px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
+          <div style={{ flexShrink: 0, width: '72px', textAlign: 'center' }}>
+            <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '23px' : '17px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
           </div>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <EscudoCirculo logo_url={p.away?.logo_url} size={38}/>
+            <EscudoCirculo logo_url={p.away?.logo_url} size={42}/>
             <NombreEquipo nombre={p.away?.name} align="left"/>
           </div>
         </div>
         {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
             centro, así que no se repite acá) */}
-        <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '4px 8px' }}>
-          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 700, letterSpacing: '.3px' }}>
+        <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '5px 8px' }}>
+          <span style={{ color: ORO_SUAVE, fontSize: '13px', fontWeight: 700, letterSpacing: '.2px' }}>
             {infoCancha || 'Por confirmar'}
           </span>
         </div>
@@ -345,28 +345,28 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                 {sinEncabezado ? (
                   <div style={{ flexShrink: 0, height: '20px' }}/>
                 ) : (
-                  <div style={{ flexShrink: 0, textAlign: 'center', padding: '44px 30px 14px' }}>
-                    <div style={{ width: '86px', height: '86px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `3px solid ${ORO}`, boxShadow: '0 4px 14px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  <div style={{ flexShrink: 0, textAlign: 'center', padding: '36px 26px 12px' }}>
+                    <div style={{ width: '78px', height: '78px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `3px solid ${ORO}`, boxShadow: '0 4px 14px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                       {torneo?.logo_url
                         ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
-                        : <Trophy size={38} color={ROJO}/>}
+                        : <Trophy size={34} color={ROJO}/>}
                     </div>
-                    <div style={{ color: ORO, fontSize: '12px', fontWeight: 900, letterSpacing: '3px', marginTop: '10px' }}>GOLMEBOL</div>
-                    <div style={{ color: '#fff', fontSize: '27px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.15, marginTop: '4px', textShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
+                    <div style={{ color: ORO, fontSize: '14px', fontWeight: 900, letterSpacing: '3px', marginTop: '8px' }}>GOLMEBOL</div>
+                    <div style={{ color: '#fff', fontSize: '33px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.12, marginTop: '4px', textShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
                       {torneo.name}
                     </div>
                     {subtitulo && (
-                      <div style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 800, letterSpacing: '2px', marginTop: '5px', textTransform: 'uppercase' }}>
+                      <div style={{ color: ORO_SUAVE, fontSize: '13px', fontWeight: 800, letterSpacing: '1.5px', marginTop: '4px', textTransform: 'uppercase' }}>
                         {subtitulo}
                       </div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '14px 0 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '10px 0 8px' }}>
                       <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, transparent, ${ORO})` }}/>
                       <div style={{ width: '9px', height: '9px', background: ORO, transform: 'rotate(45deg)', flexShrink: 0 }}/>
                       <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, ${ORO}, transparent)` }}/>
                     </div>
-                    <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '20px', padding: '5px 18px' }}>
-                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '1.5px' }}>{titulo}</span>
+                    <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '20px', padding: '4px 18px' }}>
+                      <span style={{ color: '#fff', fontSize: '14px', fontWeight: 900, letterSpacing: '1.5px' }}>{titulo}</span>
                     </div>
                   </div>
                 )}
@@ -382,16 +382,16 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                 </div>
 
                 {/* Footer */}
-                <div style={{ flexShrink: 0, textAlign: 'center', padding: '16px 20px 22px' }}>
-                  <div style={{ color: '#fff', fontSize: '14px', fontWeight: 900, letterSpacing: '.5px' }}>golmebol.com</div>
-                  <div style={{ color: ORO_SUAVE, fontSize: '9px', fontWeight: 700, letterSpacing: '2px', marginTop: '5px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '9px' }}>
+                <div style={{ flexShrink: 0, textAlign: 'center', padding: '12px 20px 16px' }}>
+                  <div style={{ color: '#fff', fontSize: '16px', fontWeight: 900, letterSpacing: '.5px' }}>golmebol.com</div>
+                  <div style={{ color: ORO_SUAVE, fontSize: '10.5px', fontWeight: 700, letterSpacing: '1.5px', marginTop: '4px' }}>PASIÓN · RESPETO · COMPETENCIA</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '7px' }}>
                     {['IG', 'FB', 'TT'].map(s => (
-                      <div key={s} style={{ width: '17px', height: '17px', borderRadius: '50%', border: `1px solid ${ORO}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ color: ORO, fontSize: '6.5px', fontWeight: 900 }}>{s}</span>
+                      <div key={s} style={{ width: '18px', height: '18px', borderRadius: '50%', border: `1px solid ${ORO}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ color: ORO, fontSize: '7px', fontWeight: 900 }}>{s}</span>
                       </div>
                     ))}
-                    <span style={{ color: 'rgba(255,255,255,.7)', fontSize: '10px', fontWeight: 700, marginLeft: '4px' }}>@golmebol</span>
+                    <span style={{ color: 'rgba(255,255,255,.7)', fontSize: '11.5px', fontWeight: 700, marginLeft: '4px' }}>@golmebol</span>
                   </div>
                 </div>
               </div>
