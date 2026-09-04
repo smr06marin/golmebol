@@ -22,7 +22,13 @@ import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 // de layout del hijo, solo cómo se pinta) — ver "escalaPreview" más abajo.
 const ANCHO = 540
 const ALTO  = 960
-const POR_PAGINA = 8
+// Cantidad de partidos por página — calculada para que las tarjetas entren
+// a su tamaño real (ver comentario grande sobre flexShrink en FilaPartido)
+// sin que el navegador tenga que achicarlas: con encabezado de torneo hay
+// menos alto libre (el encabezado ocupa bastante), así que caben menos que
+// sin encabezado (que va directo a la lista de partidos).
+const POR_PAGINA_CON_TORNEO = 6
+const POR_PAGINA_SIN_TORNEO = 7
 
 const ROJO_OSC = '#230404'
 const ROJO     = '#7a0f0f'
@@ -85,7 +91,7 @@ const NOMBRE_MAXW = 138
 function NombreEquipo({ nombre, align }) {
   return (
     <span style={{
-      color: '#fff', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase',
+      color: '#fff', fontWeight: 900, fontSize: '14px', textTransform: 'uppercase',
       textAlign: align, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
       maxWidth: `${NOMBRE_MAXW}px`, textShadow: '0 1px 3px rgba(0,0,0,.6)',
     }}>
@@ -103,11 +109,23 @@ function NombreEquipo({ nombre, align }) {
 // un encabezado de torneo propio — ver "sinEncabezado" en el componente
 // principal), cada fila necesita decir de qué torneo es ese partido, ya que
 // no hay un título general que lo diga.
+//
 // Tarjeta por partido: tres zonas con color propio para que no se confundan
 // entre sí aunque vayan pegadas — insignia dorada arriba (torneo, solo si
 // aplica), franja oscura en el medio (el partido en sí: escudos + nombres +
 // hora/marcador) y una etiqueta clara abajo (cancha + fecha) — todo dentro
 // de una misma tarjeta con borde, para que se lea como un conjunto.
+//
+// OJO con flexShrink: el contenedor de partidos (más abajo) es un flex
+// column con "space-evenly", y por el mismo motivo del "parche negro" (ver
+// comentario grande arriba de ANCHO/ALTO) un elemento flex con
+// overflow:hidden tiene su "tamaño mínimo automático" en 0 — así que si
+// el total de tarjetas no entra en el alto fijo, el navegador las achica
+// (recorta el texto) en vez de simplemente desbordar. Por eso overflow:
+// hidden va en un DIV DE ADENTRO (para el borde redondeado) y no en la
+// tarjeta misma, que además lleva flexShrink:0 para que nunca se comprima
+// — la cantidad de partidos por página (porPagina) ya está calculada para
+// que quepan todos a su tamaño real, sin necesidad de achicarlos.
 function FilaPartido({ p, mostrarTorneo }) {
   const esJugado = p.status === 'finished'
   const fechaObj = p.played_at ? new Date(p.played_at) : null
@@ -116,35 +134,37 @@ function FilaPartido({ p, mostrarTorneo }) {
   const infoCancha = [p.location, fechaObj && formatFechaCorta(fechaObj)].filter(Boolean).join('  ·  ')
 
   return (
-    <div style={{ margin: '0 22px', background: 'rgba(0,0,0,.22)', border: '1px solid rgba(255,255,255,.16)', borderRadius: '12px', overflow: 'hidden' }}>
-      {/* Zona 1 (dorada): de qué torneo es — solo en el flyer "todos los torneos" */}
-      {mostrarTorneo && p.tournaments?.name && (
-        <div style={{ textAlign: 'center', background: ORO, padding: '3px 8px' }}>
-          <span style={{ color: ROJO_OSC, fontSize: '8.5px', fontWeight: 900, letterSpacing: '1px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {p.tournaments.name}
+    <div style={{ flexShrink: 0, margin: '0 20px' }}>
+      <div style={{ background: 'rgba(0,0,0,.22)', border: '1px solid rgba(255,255,255,.16)', borderRadius: '12px', overflow: 'hidden' }}>
+        {/* Zona 1 (dorada): de qué torneo es — solo en el flyer "todos los torneos" */}
+        {mostrarTorneo && p.tournaments?.name && (
+          <div style={{ textAlign: 'center', background: ORO, padding: '4px 8px' }}>
+            <span style={{ color: ROJO_OSC, fontSize: '10.5px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {p.tournaments.name}
+            </span>
+          </div>
+        )}
+        {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', height: '60px', padding: '0 12px' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '9px' }}>
+            <NombreEquipo nombre={p.home?.name} align="right"/>
+            <EscudoCirculo logo_url={p.home?.logo_url} size={38}/>
+          </div>
+          <div style={{ flexShrink: 0, width: '68px', textAlign: 'center' }}>
+            <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '19px' : '14.5px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '9px' }}>
+            <EscudoCirculo logo_url={p.away?.logo_url} size={38}/>
+            <NombreEquipo nombre={p.away?.name} align="left"/>
+          </div>
+        </div>
+        {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
+            centro, así que no se repite acá) */}
+        <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '4px 8px' }}>
+          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 700, letterSpacing: '.3px' }}>
+            {infoCancha || 'Por confirmar'}
           </span>
         </div>
-      )}
-      {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '50px', padding: '0 12px' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-          <NombreEquipo nombre={p.home?.name} align="right"/>
-          <EscudoCirculo logo_url={p.home?.logo_url} size={32}/>
-        </div>
-        <div style={{ flexShrink: 0, width: '62px', textAlign: 'center' }}>
-          <span style={{ color: ORO, fontWeight: 900, fontSize: marcador ? '16px' : '12.5px', letterSpacing: marcador ? '.5px' : '.3px' }}>{centro}</span>
-        </div>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <EscudoCirculo logo_url={p.away?.logo_url} size={32}/>
-          <NombreEquipo nombre={p.away?.name} align="left"/>
-        </div>
-      </div>
-      {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
-          centro, así que no se repite acá) */}
-      <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '3px 8px' }}>
-        <span style={{ color: ORO_SUAVE, fontSize: '9px', fontWeight: 700, letterSpacing: '.5px' }}>
-          {infoCancha || 'Por confirmar'}
-        </span>
       </div>
     </div>
   )
@@ -182,7 +202,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   // muestra el encabezado de siempre. Al no haber encabezado sobra más
   // alto libre, así que entran más partidos por página.
   const sinEncabezado = !torneo?.name
-  const porPagina = sinEncabezado ? 10 : POR_PAGINA
+  const porPagina = sinEncabezado ? POR_PAGINA_SIN_TORNEO : POR_PAGINA_CON_TORNEO
 
   // Los partidos siempre quedan ordenados por fecha/hora real ascendente
   // (ordenarPartidos), así que si hay partidos el sábado y el domingo,
@@ -298,7 +318,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
             {/* FLYER — tamaño fijo de historia de Instagram (540x960 acá,
                 exporta 1080x1920). overflow:hidden para que nunca "se salga"
                 del lienzo — por eso la cantidad de partidos por página está
-                limitada (POR_PAGINA) y el resto queda en más páginas.
+                limitada (porPagina) y el resto queda en más páginas.
                 wrapperRef reserva el alto ya escalado (para que no quede un
                 hueco vacío en el modal) y centra; flyerRef adentro SIEMPRE
                 mide 540x960 de verdad y solo se ve más chico por el
@@ -352,9 +372,12 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                 )}
 
                 {/* Partidos — reparte el espacio vertical restante en partes
-                    iguales (space-evenly), así siempre llena el lienzo fijo
-                    sin importar si la página trae 1 o los porPagina partidos. */}
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', padding: '2px 0' }}>
+                    iguales (space-evenly) cuando la página trae menos de
+                    porPagina partidos, y "gap" asegura una separación mínima
+                    fija entre tarjetas aunque el espacio esté justo (antes,
+                    sin gap, con muchas tarjetas terminaban pegadas una con
+                    otra). */}
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', gap: '8px', padding: '4px 0' }}>
                   {items.map(p => <FilaPartido key={p.id} p={p} mostrarTorneo={sinEncabezado}/>)}
                 </div>
 
