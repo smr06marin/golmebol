@@ -161,7 +161,7 @@ function FilaPartido({ p, mostrarTorneo }) {
         {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
             centro, así que no se repite acá) */}
         <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '2px 8px' }}>
-          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 700, letterSpacing: '.2px' }}>
+          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 900, letterSpacing: '.2px' }}>
             {infoCancha || 'Por confirmar'}
           </span>
         </div>
@@ -235,9 +235,10 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
 
   async function descargarPagina(idx) {
     await esperarImagenes(flyerRef.current)
-    // Bebas Neue se carga async desde Google Fonts (index.html) — si
-    // html2canvas captura antes de que termine de cargar, el texto sale con
-    // la tipografía de respaldo (Arial/Impact) en vez de Bebas Neue.
+    // Poppins (peso 900, "Black") se carga async desde Google Fonts
+    // (index.html) — si html2canvas captura antes de que termine de
+    // cargar, el texto sale con la tipografía de respaldo (Arial/Impact)
+    // en vez de Poppins.
     if (document.fonts?.ready) await document.fonts.ready
     const { default: html2canvas } = await import('html2canvas')
     // scale:2 sobre un lienzo de 540x960 = 1080x1920 exactos (historia de Instagram).
@@ -328,7 +329,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
               width: `${ANCHO}px`, height: `${ALTO}px`,
               transform: `scale(${escalaPreview})`, transformOrigin: 'top left',
               position: 'relative', overflow: 'hidden', borderRadius: '4px',
-              fontFamily: "'Bebas Neue', 'Arial Black', 'Impact', sans-serif",
+              fontFamily: "'Poppins', 'Arial Black', 'Impact', sans-serif",
               background: `radial-gradient(ellipse at 50% 15%, ${ROJO_CL} 0%, ${ROJO} 42%, ${ROJO_OSC} 100%)`,
             }}>
               {/* Textura diagonal sutil de fondo */}
@@ -352,11 +353,11 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                         : <Trophy size={22} color={ROJO}/>}
                     </div>
                     <div style={{ color: ORO, fontSize: '11px', fontWeight: 900, letterSpacing: '2.5px', marginTop: '5px' }}>GOLMEBOL</div>
-                    <div style={{ color: '#fff', fontSize: '24px', fontWeight: 900, letterSpacing: '.3px', textTransform: 'uppercase', lineHeight: 1.1, marginTop: '3px', textShadow: '0 2px 8px rgba(0,0,0,.5)' }}>
+                    <div style={{ color: '#fff', fontSize: '28px', fontWeight: 900, letterSpacing: '.2px', textTransform: 'uppercase', lineHeight: 1.08, marginTop: '3px', textShadow: '0 2px 8px rgba(0,0,0,.5)' }}>
                       {torneo.name}
                     </div>
                     {subtitulo && (
-                      <div style={{ color: ORO_SUAVE, fontSize: '10px', fontWeight: 800, letterSpacing: '1px', marginTop: '3px', textTransform: 'uppercase' }}>
+                      <div style={{ color: ORO_SUAVE, fontSize: '10px', fontWeight: 900, letterSpacing: '1px', marginTop: '3px', textTransform: 'uppercase' }}>
                         {subtitulo}
                       </div>
                     )}
@@ -376,12 +377,12 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                   {items.map(p => <FilaPartido key={p.id} p={p} mostrarTorneo={sinEncabezado}/>)}
                 </div>
 
-                {/* Footer — reducido a lo esencial (sin iconos ni frase),
-                    para dejarle el máximo alto posible a la lista de
-                    partidos y que quepan al menos 10 por página. */}
-                <div style={{ flexShrink: 0, textAlign: 'center', padding: '6px 20px 10px' }}>
-                  <span style={{ color: '#fff', fontSize: '13px', fontWeight: 900, letterSpacing: '.5px' }}>golmebol.com</span>
-                  <span style={{ color: 'rgba(255,255,255,.65)', fontSize: '11px', fontWeight: 700, marginLeft: '8px' }}>@golmebol</span>
+                {/* Marca de agua — antes era una línea de texto centrada
+                    ("golmebol.com") que a veces tapaba la última tarjeta;
+                    ahora es solo el logo chico, pegado a la derecha, para
+                    que no estorbe la información de los partidos. */}
+                <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'flex-end', padding: '4px 18px 8px' }}>
+                  <img src="/marca/watermark-logo.png" alt="" style={{ height: '20px', width: 'auto', opacity: .8 }}/>
                 </div>
               </div>
             </div>
