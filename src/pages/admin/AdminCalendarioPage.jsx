@@ -77,13 +77,14 @@ export default function AdminCalendarioPage() {
 
   // Arma el "torneo" que se le pasa al flyer de programación: si todos los
   // partidos del grupo son del mismo torneo, usa su nombre/escudo/etc (así
-  // el flyer sale con la identidad del torneo); si el grupo mezcla varios
-  // torneos (ej. "todos los partidos" de un organizador con más de un
-  // torneo activo), cae a un encabezado genérico de Golmebol.
+  // el flyer sale con la identidad del torneo, que es de quien organiza).
+  // Golmebol solo presta la app — nunca debe aparecer como encabezado
+  // principal del flyer, así que si el grupo mezcla varios torneos (sin un
+  // nombre propio claro) se deja sin torneo (el flyer cae a un título
+  // neutro genérico, no a "Golmebol").
   function construirTorneoFlyer(subset) {
     const ids = [...new Set(subset.map(p => p.tournament_id))]
-    if (ids.length === 1) return subset[0]?.tournaments || null
-    return { name: 'Golmebol' }
+    return ids.length === 1 ? (subset[0]?.tournaments || null) : null
   }
 
   useEffect(() => { fetchTodo() }, [rol])

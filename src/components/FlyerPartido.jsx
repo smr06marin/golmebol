@@ -68,13 +68,24 @@ export default function FlyerPartido({ partido, onClose }) {
             ))}
           </div>
 
-          {/* Etiqueta GOLMEBOL arriba */}
-          <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', background: '#d93025', padding: '6px 20px', borderRadius: '4px', zIndex: 10 }}>
-            <span style={{ color: '#fff', fontSize: '14px', fontWeight: '900', letterSpacing: '2px' }}>GOLMEBOL</span>
+          {/* Marca de agua GOLMEBOL — chiquita y discreta arriba: Golmebol
+              solo presta la app, el protagonismo es del torneo que arma el
+              organizador (por eso ya no va en badge grande ni de encabezado). */}
+          <div style={{ position: 'absolute', top: '14px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
+            <span style={{ color: 'rgba(255,255,255,.6)', fontSize: '9px', fontWeight: '700', letterSpacing: '2.5px' }}>GOLMEBOL</span>
           </div>
 
+          {/* Nombre del torneo — protagonista, lo pone el organizador */}
+          {partido.tournaments?.name && (
+            <div style={{ position: 'absolute', top: '27px', left: 0, right: 0, textAlign: 'center', zIndex: 10, padding: '0 34px' }}>
+              <span style={{ color: '#fff', fontSize: '15px', fontWeight: '900', letterSpacing: '.5px', textTransform: 'uppercase', textShadow: '0 2px 6px rgba(0,0,0,.4)', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {partido.tournaments.name}
+              </span>
+            </div>
+          )}
+
           {/* Título PROGRAMA / RESULTADO */}
-          <div style={{ position: 'absolute', top: '65px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
+          <div style={{ position: 'absolute', top: '78px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
             <div style={{ color: '#F5C800', fontSize: '52px', fontWeight: '900', lineHeight: 1, letterSpacing: '-1px', textShadow: '3px 3px 0 rgba(0,0,0,.3)', textTransform: 'uppercase' }}>
               {esJugado ? 'RESULTADO' : 'PARTIDO'}
             </div>
@@ -155,10 +166,11 @@ export default function FlyerPartido({ partido, onClose }) {
             </div>
           )}
 
-          {/* Nombre torneo abajo */}
+          {/* Marca de agua GOLMEBOL abajo — chiquita, el torneo ya
+              apareció arriba como protagonista */}
           <div style={{ position: 'absolute', bottom: '20px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
-            <div style={{ color: '#1a3a8a', fontSize: '11px', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase' }}>
-              {partido.tournaments?.name || 'GOLMEBOL'}
+            <div style={{ color: 'rgba(26,58,138,.65)', fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px' }}>
+              GOLMEBOL · LA CASA DEL MICROFÚTBOL
             </div>
           </div>
 
