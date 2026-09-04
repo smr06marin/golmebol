@@ -103,24 +103,30 @@ function NombreEquipo({ nombre, align }) {
 // un encabezado de torneo propio — ver "sinEncabezado" en el componente
 // principal), cada fila necesita decir de qué torneo es ese partido, ya que
 // no hay un título general que lo diga.
+// Tarjeta por partido: tres zonas con color propio para que no se confundan
+// entre sí aunque vayan pegadas — insignia dorada arriba (torneo, solo si
+// aplica), franja oscura en el medio (el partido en sí: escudos + nombres +
+// hora/marcador) y una etiqueta clara abajo (cancha + fecha) — todo dentro
+// de una misma tarjeta con borde, para que se lea como un conjunto.
 function FilaPartido({ p, mostrarTorneo }) {
   const esJugado = p.status === 'finished'
   const fechaObj = p.played_at ? new Date(p.played_at) : null
   const marcador = esJugado ? `${p.home_score}-${p.away_score}` : null
   const centro = marcador || (fechaObj ? formatHora(fechaObj) : 'VS')
+  const infoCancha = [p.location, fechaObj && formatFechaCorta(fechaObj)].filter(Boolean).join('  ·  ')
 
   return (
-    <div style={{ margin: '0 24px' }}>
+    <div style={{ margin: '0 22px', background: 'rgba(0,0,0,.22)', border: '1px solid rgba(255,255,255,.16)', borderRadius: '12px', overflow: 'hidden' }}>
+      {/* Zona 1 (dorada): de qué torneo es — solo en el flyer "todos los torneos" */}
       {mostrarTorneo && p.tournaments?.name && (
-        <div style={{ textAlign: 'center', color: ORO, fontSize: '8.5px', fontWeight: 900, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {p.tournaments.name}
+        <div style={{ textAlign: 'center', background: ORO, padding: '3px 8px' }}>
+          <span style={{ color: ROJO_OSC, fontSize: '8.5px', fontWeight: 900, letterSpacing: '1px', textTransform: 'uppercase', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {p.tournaments.name}
+          </span>
         </div>
       )}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px', height: '50px',
-        background: 'rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.18)',
-        borderRadius: '10px', padding: '0 12px',
-      }}>
+      {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '50px', padding: '0 12px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
           <NombreEquipo nombre={p.home?.name} align="right"/>
           <EscudoCirculo logo_url={p.home?.logo_url} size={32}/>
@@ -133,11 +139,12 @@ function FilaPartido({ p, mostrarTorneo }) {
           <NombreEquipo nombre={p.away?.name} align="left"/>
         </div>
       </div>
-      {/* Línea de info debajo de la fila: cancha y fecha (la hora ya se ve
-          arriba, en el centro, así que no se repite acá). */}
-      <div style={{ textAlign: 'center', marginTop: '4px', color: ORO_SUAVE, fontSize: '9px', fontWeight: 700, letterSpacing: '.5px' }}>
-        {[p.location, fechaObj && formatFechaCorta(fechaObj)].filter(Boolean).join('  ·  ')}
-        {!fechaObj && !p.location && <span style={{ opacity: .7 }}>Por confirmar</span>}
+      {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
+          centro, así que no se repite acá) */}
+      <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '3px 8px' }}>
+        <span style={{ color: ORO_SUAVE, fontSize: '9px', fontWeight: 700, letterSpacing: '.5px' }}>
+          {infoCancha || 'Por confirmar'}
+        </span>
       </div>
     </div>
   )
@@ -175,7 +182,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   // muestra el encabezado de siempre. Al no haber encabezado sobra más
   // alto libre, así que entran más partidos por página.
   const sinEncabezado = !torneo?.name
-  const porPagina = sinEncabezado ? 12 : POR_PAGINA
+  const porPagina = sinEncabezado ? 10 : POR_PAGINA
 
   // Los partidos siempre quedan ordenados por fecha/hora real ascendente
   // (ordenarPartidos), así que si hay partidos el sábado y el domingo,
@@ -208,6 +215,10 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
 
   async function descargarPagina(idx) {
     await esperarImagenes(flyerRef.current)
+    // Bebas Neue se carga async desde Google Fonts (index.html) — si
+    // html2canvas captura antes de que termine de cargar, el texto sale con
+    // la tipografía de respaldo (Arial/Impact) en vez de Bebas Neue.
+    if (document.fonts?.ready) await document.fonts.ready
     const { default: html2canvas } = await import('html2canvas')
     // scale:2 sobre un lienzo de 540x960 = 1080x1920 exactos (historia de Instagram).
     const canvas = await html2canvas(flyerRef.current, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: ROJO_OSC, width: ANCHO, height: ALTO })
@@ -297,7 +308,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
               width: `${ANCHO}px`, height: `${ALTO}px`,
               transform: `scale(${escalaPreview})`, transformOrigin: 'top left',
               position: 'relative', overflow: 'hidden', borderRadius: '4px',
-              fontFamily: "'Arial Black', 'Impact', sans-serif",
+              fontFamily: "'Bebas Neue', 'Arial Black', 'Impact', sans-serif",
               background: `radial-gradient(ellipse at 50% 15%, ${ROJO_CL} 0%, ${ROJO} 42%, ${ROJO_OSC} 100%)`,
             }}>
               {/* Textura diagonal sutil de fondo */}
