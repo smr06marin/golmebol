@@ -98,7 +98,12 @@ function NombreEquipo({ nombre, align }) {
 // nombre no entra) y la hora del partido (o el marcador, si ya se jugó) bien
 // visible en el centro — sin cinta sesgada ni rombo, para que se vea
 // ordenado y prolijo como el flyer de referencia.
-function FilaPartido({ p }) {
+//
+// mostrarTorneo: cuando el flyer junta partidos de VARIOS torneos (no tiene
+// un encabezado de torneo propio — ver "sinEncabezado" en el componente
+// principal), cada fila necesita decir de qué torneo es ese partido, ya que
+// no hay un título general que lo diga.
+function FilaPartido({ p, mostrarTorneo }) {
   const esJugado = p.status === 'finished'
   const fechaObj = p.played_at ? new Date(p.played_at) : null
   const marcador = esJugado ? `${p.home_score}-${p.away_score}` : null
@@ -106,6 +111,11 @@ function FilaPartido({ p }) {
 
   return (
     <div style={{ margin: '0 24px' }}>
+      {mostrarTorneo && p.tournaments?.name && (
+        <div style={{ textAlign: 'center', color: ORO, fontSize: '8.5px', fontWeight: 900, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {p.tournaments.name}
+        </div>
+      )}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '6px', height: '50px',
         background: 'rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.18)',
@@ -156,8 +166,23 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   })
   const [pagina, setPagina] = useState(0)
 
+  // Sin torneo (viene null desde el calendario cuando junta partidos de
+  // VARIOS torneos): no hay encabezado propio que mostrar — nada de
+  // escudo/nombre/insignia — el flyer va directo a la lista de partidos, y
+  // cada partido se identifica con su propio torneo (ver FilaPartido). Con
+  // torneo (un solo torneo, ya sea porque el flyer se pide desde el detalle
+  // del torneo o porque el calendario está filtrado a uno solo) sí se
+  // muestra el encabezado de siempre. Al no haber encabezado sobra más
+  // alto libre, así que entran más partidos por página.
+  const sinEncabezado = !torneo?.name
+  const porPagina = sinEncabezado ? 12 : POR_PAGINA
+
+  // Los partidos siempre quedan ordenados por fecha/hora real ascendente
+  // (ordenarPartidos), así que si hay partidos el sábado y el domingo,
+  // primero salen todos los del sábado en orden de hora y después los del
+  // domingo — sin importar de qué torneo sea cada uno.
   const ordenados = useMemo(() => ordenarPartidos(partidos, modo), [partidos, modo])
-  const paginas = useMemo(() => trocear(ordenados, POR_PAGINA), [ordenados])
+  const paginas = useMemo(() => trocear(ordenados, porPagina), [ordenados, porPagina])
   const totalPaginas = paginas.length
   const paginaActual = Math.min(pagina, totalPaginas - 1)
   const items = paginas[paginaActual] || []
@@ -282,37 +307,44 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
               <BandaChevron/>
 
               <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                {/* Header */}
-                <div style={{ flexShrink: 0, textAlign: 'center', padding: '44px 30px 14px' }}>
-                  <div style={{ width: '86px', height: '86px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `3px solid ${ORO}`, boxShadow: '0 4px 14px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {torneo?.logo_url
-                      ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
-                      : <Trophy size={38} color={ROJO}/>}
-                  </div>
-                  <div style={{ color: ORO, fontSize: '12px', fontWeight: 900, letterSpacing: '3px', marginTop: '10px' }}>GOLMEBOL</div>
-                  <div style={{ color: '#fff', fontSize: '27px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.15, marginTop: '4px', textShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
-                    {torneo?.name || 'Torneo'}
-                  </div>
-                  {subtitulo && (
-                    <div style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 800, letterSpacing: '2px', marginTop: '5px', textTransform: 'uppercase' }}>
-                      {subtitulo}
+                {/* Header — solo cuando el flyer es de UN torneo (torneo
+                    viene con nombre). Cuando junta partidos de varios
+                    torneos no hay título ni escudo: va directo a la lista
+                    de partidos, cada uno con su propio torneo. */}
+                {sinEncabezado ? (
+                  <div style={{ flexShrink: 0, height: '20px' }}/>
+                ) : (
+                  <div style={{ flexShrink: 0, textAlign: 'center', padding: '44px 30px 14px' }}>
+                    <div style={{ width: '86px', height: '86px', margin: '0 auto', borderRadius: '50%', background: '#fff', border: `3px solid ${ORO}`, boxShadow: '0 4px 14px rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                      {torneo?.logo_url
+                        ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '84%', height: '84%', objectFit: 'contain' }}/>
+                        : <Trophy size={38} color={ROJO}/>}
                     </div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '14px 0 12px' }}>
-                    <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, transparent, ${ORO})` }}/>
-                    <div style={{ width: '9px', height: '9px', background: ORO, transform: 'rotate(45deg)', flexShrink: 0 }}/>
-                    <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, ${ORO}, transparent)` }}/>
+                    <div style={{ color: ORO, fontSize: '12px', fontWeight: 900, letterSpacing: '3px', marginTop: '10px' }}>GOLMEBOL</div>
+                    <div style={{ color: '#fff', fontSize: '27px', fontWeight: 900, letterSpacing: '.5px', textTransform: 'uppercase', lineHeight: 1.15, marginTop: '4px', textShadow: '0 2px 10px rgba(0,0,0,.5)' }}>
+                      {torneo.name}
+                    </div>
+                    {subtitulo && (
+                      <div style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 800, letterSpacing: '2px', marginTop: '5px', textTransform: 'uppercase' }}>
+                        {subtitulo}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', margin: '14px 0 12px' }}>
+                      <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, transparent, ${ORO})` }}/>
+                      <div style={{ width: '9px', height: '9px', background: ORO, transform: 'rotate(45deg)', flexShrink: 0 }}/>
+                      <div style={{ flex: 1, maxWidth: '90px', height: '2px', background: `linear-gradient(90deg, ${ORO}, transparent)` }}/>
+                    </div>
+                    <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '20px', padding: '5px 18px' }}>
+                      <span style={{ color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '1.5px' }}>{titulo}</span>
+                    </div>
                   </div>
-                  <div style={{ display: 'inline-block', border: `1.5px solid ${ORO}`, borderRadius: '20px', padding: '5px 18px' }}>
-                    <span style={{ color: '#fff', fontSize: '12px', fontWeight: 900, letterSpacing: '1.5px' }}>{titulo}</span>
-                  </div>
-                </div>
+                )}
 
                 {/* Partidos — reparte el espacio vertical restante en partes
                     iguales (space-evenly), así siempre llena el lienzo fijo
-                    sin importar si la página trae 1 o los POR_PAGINA partidos. */}
+                    sin importar si la página trae 1 o los porPagina partidos. */}
                 <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', padding: '2px 0' }}>
-                  {items.map(p => <FilaPartido key={p.id} p={p}/>)}
+                  {items.map(p => <FilaPartido key={p.id} p={p} mostrarTorneo={sinEncabezado}/>)}
                 </div>
 
                 {/* Footer */}
