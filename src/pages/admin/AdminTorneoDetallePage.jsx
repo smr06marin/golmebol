@@ -591,7 +591,7 @@ export default function AdminTorneoDetallePage() {
   const [nuevaCancha,     setNuevaCancha]     = useState('')
   const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
 
-  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null, horarios_por_dia: {}, dias_por_escenario: {} })
+  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', numero: '', cancha_ids: null, horarios_por_dia: {}, dias_por_escenario: {} })
   const [guardandoPref,   setGuardandoPref]   = useState(null) // tournament_team_id que se está guardando
   const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
   const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
@@ -919,7 +919,7 @@ export default function AdminTorneoDetallePage() {
   // importar qué pase (recarga, cambio de pestaña, se cae el internet), al
   // volver se retoma exactamente igual. Solo Guardar o Salir lo eliminan.
   useEffect(() => {
-    const hayBorrador = jornadaGenerada.length > 0 || configJornada.fecha || configJornada.hora_inicio || configJornada.numero
+    const hayBorrador = jornadaGenerada.length > 0 || configJornada.fecha || configJornada.numero || Object.keys(configJornada.dias_por_escenario || {}).length > 0
     if (hayBorrador) {
       localStorage.setItem(draftJornadaKey, JSON.stringify({ config: configJornada, jornada: jornadaGenerada, intergrupo: permitirIntergrupo }))
     }
@@ -928,7 +928,7 @@ export default function AdminTorneoDetallePage() {
   function salirJornada() {
     localStorage.removeItem(draftJornadaKey)
     setJornadaGenerada([])
-    setConfigJornada({ fecha: '', fecha_fin: '', hora_inicio: '', hora_fin: '', numero: '', dias_semana: null, cancha_ids: null, horarios_por_dia: {}, dias_por_escenario: {} })
+    setConfigJornada({ fecha: '', numero: '', cancha_ids: null, horarios_por_dia: {}, dias_por_escenario: {} })
     setEditJornadaIdx(null)
   }
 
@@ -1042,20 +1042,9 @@ export default function AdminTorneoDetallePage() {
     guardarPreferenciaEquipo(equipo, { dias_preferidos: nuevos })
   }
 
-  // Días de la semana y canchas/escenarios habilitados para ESTA jornada
-  // (distinto de la preferencia por equipo) — si no se toca nada, se
-  // comportan como "todos" (mismo resultado que antes de este selector).
-  function toggleDiaSemanaJornada(key) {
-    setConfigJornada(f => {
-      const actuales = f.dias_semana || DIAS_SEMANA.map(d => d.key)
-      const nuevos = actuales.includes(key) ? actuales.filter(d => d !== key) : [...actuales, key]
-      return { ...f, dias_semana: nuevos }
-    })
-  }
-
   // Horarios específicos por día (ej: sábado 8 y 9, domingo 5-6-7-8, lunes
-  // 9-10) — si un día no tiene horas marcadas acá, usa "Hora desde/hasta"
-  // como antes.
+  // 9-10) — para cada día que se vaya a jugar (marcado en algún escenario,
+  // ver toggleDiaEscenario) hay que marcar al menos una hora acá.
   function toggleHorarioDia(diaKey, horaStr) {
     setConfigJornada(f => {
       const actual = (f.horarios_por_dia || {})[diaKey] || []
@@ -1082,26 +1071,25 @@ export default function AdminTorneoDetallePage() {
     })
   }
 
-  // Qué días de la semana se puede usar cada escenario (ej: Old Trafford
-  // solo sábados, Gol solo domingo y lunes) — si un escenario no tiene
-  // días marcados acá, se puede usar cualquiera de los días generales de
-  // la jornada (comportamiento de antes).
+  // Qué días de la semana juega cada escenario/cancha (ej: Old Trafford
+  // solo sábados, Gol solo domingo y lunes) — esta es la ÚNICA fuente de
+  // "qué días se juega": ya no hay un selector global aparte, se marca acá
+  // mismo, junto a las canchas de cada escenario.
   function toggleDiaEscenario(escenarioKey, diaKey) {
     setConfigJornada(f => {
       const actual = (f.dias_por_escenario || {})[escenarioKey] || []
-      const activando = !actual.includes(diaKey)
-      const nuevo = activando ? [...actual, diaKey] : actual.filter(d => d !== diaKey)
-      const cambios = { ...f, dias_por_escenario: { ...(f.dias_por_escenario || {}), [escenarioKey]: nuevo } }
-      // Si marcás un día para un escenario (ej: domingo para El Gol), ese
-      // día tiene que estar habilitado también arriba en "¿Qué días de esa
-      // semana se juega?" — si no, de nada sirve marcarlo acá. Se activa
-      // solo, para no tener que tocar los dos selectores por separado.
-      if (activando) {
-        const diasActuales = f.dias_semana || DIAS_SEMANA.map(d => d.key)
-        if (!diasActuales.includes(diaKey)) cambios.dias_semana = [...diasActuales, diaKey]
-      }
-      return cambios
+      const nuevo = actual.includes(diaKey) ? actual.filter(d => d !== diaKey) : [...actual, diaKey]
+      return { ...f, dias_por_escenario: { ...(f.dias_por_escenario || {}), [escenarioKey]: nuevo } }
     })
+  }
+
+  // Días para los que hay que poder marcar horario en "Horarios específicos
+  // por día": la unión de los días marcados en los escenarios de las
+  // canchas seleccionadas para esta jornada.
+  function diasActivosParaHorarios() {
+    const seleccionadas = configJornada.cancha_ids || canchas.map(c => c.id)
+    const escenariosUsados = Array.from(new Set(canchas.filter(c => seleccionadas.includes(c.id)).map(c => c.escenario || 'Sin sede')))
+    return Array.from(new Set(escenariosUsados.flatMap(esc => (configJornada.dias_por_escenario || {})[esc] || [])))
   }
 
   async function guardarPreferenciaEquipo(equipo, cambios) {
@@ -2705,13 +2693,6 @@ export default function AdminTorneoDetallePage() {
   function generarJornada() {
     setEditJornadaIdx(null)
     if (!configJornada.fecha) return showMsg('Selecciona la fecha de inicio', 'error')
-    // "Hora desde" solo es obligatoria si falta marcar horarios específicos
-    // para alguno de los días que se van a jugar — si YA marcaste horas
-    // para todos esos días (ej: sábado 8 y 9, domingo 5-6-7-8), no hace
-    // falta llenarla.
-    const diasCheck = configJornada.dias_semana || DIAS_SEMANA.map(d => d.key)
-    const faltaHorarioEnAlgunDia = diasCheck.some(k => !(((configJornada.horarios_por_dia || {})[k] || []).length > 0))
-    if (!configJornada.hora_inicio && faltaHorarioEnAlgunDia) return showMsg('Ingresa la hora de inicio, o marca horarios específicos para todos los días que vas a jugar', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
 
@@ -2720,43 +2701,41 @@ export default function AdminTorneoDetallePage() {
     const canchasUsadas = canchas.filter(c => (configJornada.cancha_ids || canchas.map(x => x.id)).includes(c.id))
     if (canchasUsadas.length === 0) return showMsg('Selecciona al menos una cancha/escenario para esta jornada', 'error')
 
+    // Qué días se juega en total (unión de lo marcado en cada escenario —
+    // ver toggleDiaEscenario, ya no hay un selector global aparte) y
+    // validación de que haya al menos un horario marcado para cada uno de
+    // esos días (ver "Horarios específicos por día").
+    const diasCheck = Array.from(new Set(Object.values(configJornada.dias_por_escenario || {}).flat()))
+    if (diasCheck.length === 0) return showMsg('Marca qué días juega cada escenario/cancha', 'error')
+    const faltaHorarioEnAlgunDia = diasCheck.some(k => !(((configJornada.horarios_por_dia || {})[k] || []).length > 0))
+    if (faltaHorarioEnAlgunDia) return showMsg('Marca al menos un horario para cada día que vas a jugar, en "Horarios específicos por día"', 'error')
+
     // Qué canchas (de las seleccionadas) se pueden usar en una fecha dada,
-    // según el día de la semana que sea Y las restricciones por escenario
-    // (ej: Old Traffod solo sábados, Gol solo domingo y lunes). Un
-    // escenario sin días marcados se puede usar cualquier día permitido.
+    // según el día de la semana que sea y lo marcado para su escenario (ej:
+    // Old Traffod solo sábados, Gol solo domingo y lunes) — un escenario
+    // SIN días marcados no juega ningún día (hay que marcarlos).
     function canchasDisponiblesEnFecha(fechaIso) {
       const diaKey = DIAS_SEMANA[new Date(fechaIso + 'T00:00:00').getDay()].key
       return canchasUsadas.filter(c => {
         const esc = c.escenario || 'Sin sede'
-        const dias = (configJornada.dias_por_escenario || {})[esc]
-        return !dias || dias.length === 0 || dias.includes(diaKey)
+        const dias = (configJornada.dias_por_escenario || {})[esc] || []
+        return dias.includes(diaKey)
       })
     }
 
-    // Rango de fechas disponible para programar esta jornada. Si no se puso
-    // "Fecha fin" queda como antes: un solo día. Se filtra además por los
-    // días de la semana marcados arriba (si se tocó ese selector) y por si
-    // hay al menos una cancha disponible ese día según los escenarios.
+    // Rango de fechas disponible para programar esta jornada: ya no se pide
+    // "Fecha fin" — se busca automáticamente, desde la fecha de inicio, en
+    // las próximas 4 semanas, cuáles fechas caen en un día habilitado y
+    // tienen al menos una cancha disponible ese día.
     const fechaIni = configJornada.fecha
-    const fechaFin = configJornada.fecha_fin || configJornada.fecha
-    // Si algún escenario tiene marcado un día que no está prendido arriba
-    // en "¿Qué días de esa semana se juega?" (ej: quedó un borrador viejo
-    // desincronizado), ese día igual cuenta como permitido — si lo
-    // marcaste para un escenario es porque sí se juega ese día.
-    const diasDeEscenarios = Object.values(configJornada.dias_por_escenario || {}).flat()
-    const diasPermitidos = Array.from(new Set([...(configJornada.dias_semana || DIAS_SEMANA.map(d => d.key)), ...diasDeEscenarios]))
     let fechasDisponibles = []
     const d0 = new Date(fechaIni + 'T00:00:00')
-    const d1 = new Date(fechaFin + 'T00:00:00')
-    if (d1 >= d0) {
-      for (let d = new Date(d0); d <= d1 && fechasDisponibles.length < 60; d.setDate(d.getDate() + 1)) {
-        fechasDisponibles.push({ iso: d.toISOString().slice(0, 10), dow: d.getDay() })
-      }
-    } else {
-      fechasDisponibles.push({ iso: fechaIni, dow: d0.getDay() })
+    for (let i = 0; i < 28; i++) {
+      const d = new Date(d0); d.setDate(d0.getDate() + i)
+      fechasDisponibles.push({ iso: d.toISOString().slice(0, 10), dow: d.getDay() })
     }
-    fechasDisponibles = fechasDisponibles.filter(f => diasPermitidos.includes(DIAS_SEMANA[f.dow].key) && canchasDisponiblesEnFecha(f.iso).length > 0)
-    if (fechasDisponibles.length === 0) return showMsg('Ningún día del rango de fechas tiene canchas disponibles (revisa los días marcados por escenario)', 'error')
+    fechasDisponibles = fechasDisponibles.filter(f => canchasDisponiblesEnFecha(f.iso).length > 0)
+    if (fechasDisponibles.length === 0) return showMsg('Ningún día de las próximas 4 semanas desde la fecha de inicio tiene canchas disponibles (revisa los días marcados por escenario)', 'error')
 
     // Cruces que ya existen en el torneo (jugados o programados)
     const yaJugaron = new Set()
@@ -2904,22 +2883,21 @@ export default function AdminTorneoDetallePage() {
     //     mismo equipo semana a semana).
     const porFecha = {}
     conFecha.forEach(p => { if (!p.descanso) (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
-    const [hIniDefault] = configJornada.hora_inicio.split(':').map(Number)
-    const hFinLimite = configJornada.hora_fin ? parseInt(configJornada.hora_fin.split(':')[0], 10) : null
     Object.entries(porFecha).forEach(([fechaIso, lista]) => {
       // Canchas que sí se pueden usar ESE día (según restricción por
       // escenario, ej: Old Traffod solo sábados).
       const canchasDia = canchasDisponiblesEnFecha(fechaIso)
       // Horarios específicos de ESE día de la semana (ej: domingo 5,6,7,8) —
-      // si no se marcó ninguno, se cae al comportamiento de antes (Hora
-      // desde + una ronda por cada tanda de canchas, tope en Hora hasta).
+      // la validación de arriba ya exige que todo día que se juega tenga al
+      // menos uno marcado, así que esto normalmente nunca cae al respaldo
+      // de 08:00 en adelante (solo por si acaso, para no romper nada).
       const diaKey = DIAS_SEMANA[new Date(fechaIso + 'T00:00:00').getDay()].key
       const horariosDia = (configJornada.horarios_por_dia || {})[diaKey]
       const usaHorarioEspecifico = !!(horariosDia && horariosDia.length > 0)
       let slots = usaHorarioEspecifico ? [...horariosDia].sort() : []
       if (slots.length === 0) {
         const rondas = Math.max(1, Math.ceil(lista.length / canchasDia.length))
-        slots = Array.from({ length: rondas }, (_, r) => `${String(hIniDefault + r).padStart(2, '0')}:00`)
+        slots = Array.from({ length: rondas }, (_, r) => `${String(8 + r).padStart(2, '0')}:00`)
       }
       // Si los horarios marcados para ese día no alcanzan (más partidos que
       // horarios × canchas disponibles), NO se inventan horas nuevas fuera
@@ -2938,18 +2916,14 @@ export default function AdminTorneoDetallePage() {
       const sinRestriccion = lista.filter(p => p._minHora === -1).sort(() => Math.random() - 0.5)
 
       ;[...conRestriccion, ...sinRestriccion].forEach(p => {
-        // 1) ideal: dentro del "no antes de" del equipo Y del "hasta" de la
-        //    jornada. 2) si no hay, se relaja el "hasta". 3) si tampoco, se
-        //    relaja todo (cualquier slot con cupo) — siempre se avisa con
+        // 1) ideal: dentro del "no antes de" del equipo. 2) si no hay, se
+        //    relaja todo (cualquier slot con cupo) — se avisa con
         //    sinHorarioDisponible para que se revise a mano.
-        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora) && (usaHorarioEspecifico || hFinLimite == null || parseInt(s, 10) <= hFinLimite))
+        let candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora))
         let sinHorarioDisponible = false
         if (candidatos.length === 0) {
-          candidatos = slots.filter(s => cupo[s] > 0 && (p._minHora < 0 || parseInt(s, 10) >= p._minHora))
-          sinHorarioDisponible = true
-        }
-        if (candidatos.length === 0) {
           candidatos = slots.filter(s => cupo[s] > 0)
+          sinHorarioDisponible = true
         }
         if (candidatos.length === 0) {
           // Ya no queda ningún horario/cancha libre ese día con lo que
@@ -3012,7 +2986,7 @@ export default function AdminTorneoDetallePage() {
     if (fechaErr) { showMsg('Error al crear jornada', 'error'); setLoadingPartido(false); return }
     const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
       tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
-      played_at: `${p.fecha || configJornada.fecha}T${p.hora || configJornada.hora_inicio}:00-05:00`, location: p.cancha?.nombre || null,
+      played_at: `${p.fecha || configJornada.fecha}T${p.hora || '08:00'}:00-05:00`, location: p.cancha?.nombre || null,
       matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id,
       status: 'scheduled', fase: 'grupo',
     }))
@@ -4308,62 +4282,14 @@ export default function AdminTorneoDetallePage() {
 
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><Shuffle size={18} color="#1a73e8"/> Configurar jornada automática</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                   <div><label style={labelStyle}>Número de jornada</label><input type="number" value={configJornada.numero} onChange={e => setConfigJornada(f => ({ ...f, numero: e.target.value }))} style={inputStyle} placeholder={fechas.length + 1}/></div>
                   <div><label style={labelStyle}>Fecha inicio *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
-                  <div><label style={labelStyle}>Fecha fin</label><input type="date" value={configJornada.fecha_fin} min={configJornada.fecha || undefined} onChange={e => setConfigJornada(f => ({ ...f, fecha_fin: e.target.value }))} style={inputStyle} placeholder="Igual a fecha inicio"/></div>
-                  <div/>
                 </div>
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Desde esta fecha, el sorteo busca solo los días que marques abajo (ej: sábados y domingos) en las próximas 4 semanas — no hace falta poner una "fecha fin".</div>
 
-                <div style={{ marginTop: '14px' }}>
-                  <label style={labelStyle}>¿Qué días de esa semana se juega?</label>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {DIAS_SEMANA_UI.map(d => {
-                      const activo = (configJornada.dias_semana || DIAS_SEMANA.map(x => x.key)).includes(d.key)
-                      return (
-                        <button key={d.key} onClick={() => toggleDiaSemanaJornada(d.key)} title={d.key}
-                          style={{ width: '30px', height: '30px', borderRadius: '7px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1a73e8' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.72rem', fontWeight: '700', cursor: 'pointer' }}>
-                          {d.corta}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '14px' }}>
-                  <div><label style={labelStyle}>Hora desde *</label><input type="time" value={configJornada.hora_inicio} onChange={e => setConfigJornada(f => ({ ...f, hora_inicio: e.target.value }))} style={inputStyle}/></div>
-                  <div><label style={labelStyle}>Hora hasta</label><input type="time" value={configJornada.hora_fin} onChange={e => setConfigJornada(f => ({ ...f, hora_fin: e.target.value }))} style={inputStyle} placeholder="Sin límite"/></div>
-                </div>
-                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>"Hora desde/hasta" es el horario por defecto — para un día en particular podés marcar horarios distintos abajo (ej: sábado solo 8 y 9, domingo 5-6-7-8).</div>
-
-                <div style={{ marginTop: '14px' }}>
-                  <label style={labelStyle}>Horarios específicos por día (opcional)</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {DIAS_SEMANA_UI.filter(d => (configJornada.dias_semana || DIAS_SEMANA.map(x => x.key)).includes(d.key)).map(d => {
-                      const marcadas = (configJornada.horarios_por_dia || {})[d.key] || []
-                      return (
-                        <div key={d.key}>
-                          <div style={{ fontSize: '.75rem', fontWeight: '700', color: '#202124', marginBottom: '4px' }}>{d.label}{marcadas.length === 0 && <span style={{ fontWeight: '400', color: '#9aa0a6' }}> — usa Hora desde/hasta</span>}</div>
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {HORAS_CHIP.map(h => {
-                              const activo = marcadas.includes(h)
-                              return (
-                                <button key={h} onClick={() => toggleHorarioDia(d.key, h)}
-                                  style={{ padding: '4px 8px', borderRadius: '6px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1e8e3e' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '600', cursor: 'pointer' }}>
-                                  {fmtHora12(h)}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {(configJornada.dias_semana || DIAS_SEMANA.map(x => x.key)).length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>Marca primero qué días se juega, arriba.</div>}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '14px' }}>
-                  <label style={labelStyle}>Escenarios y canchas a usar en esta jornada</label>
+                <div style={{ marginTop: '16px' }}>
+                  <label style={labelStyle}>Escenarios, canchas y qué días juega cada uno</label>
                   {(() => {
                     const grupos_ = {}
                     canchas.forEach(c => { const k = c.escenario || 'Sin sede'; (grupos_[k] = grupos_[k] || []).push(c) })
@@ -4373,6 +4299,8 @@ export default function AdminTorneoDetallePage() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '10px' }}>
                         {entradas.map(([esc, lista]) => {
                           const todasMarcadas = lista.every(c => seleccionadas.includes(c.id))
+                          const escSeleccionado = todasMarcadas === true || lista.some(c => seleccionadas.includes(c.id))
+                          const diasEsc = (configJornada.dias_por_escenario || {})[esc] || []
                           return (
                             <div key={esc}>
                               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '4px' }}>
@@ -4387,12 +4315,11 @@ export default function AdminTorneoDetallePage() {
                                   </label>
                                 ))}
                               </div>
-                              {todasMarcadas === true || lista.some(c => seleccionadas.includes(c.id)) ? (
+                              {escSeleccionado && (
                                 <div style={{ marginLeft: '22px', marginTop: '6px' }}>
-                                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginBottom: '3px' }}>¿Qué días se usa {esc}?{(!((configJornada.dias_por_escenario || {})[esc]?.length)) && <span> — todos los días marcados arriba</span>}</div>
+                                  <div style={{ fontSize: '.68rem', color: diasEsc.length === 0 ? '#e8710a' : '#9aa0a6', marginBottom: '3px' }}>¿Qué días juega {esc}? {diasEsc.length === 0 && '(marca al menos uno)'}</div>
                                   <div style={{ display: 'flex', gap: '4px' }}>
                                     {DIAS_SEMANA_UI.map(d => {
-                                      const diasEsc = (configJornada.dias_por_escenario || {})[esc] || []
                                       const activo = diasEsc.includes(d.key)
                                       return (
                                         <button key={d.key} onClick={() => toggleDiaEscenario(esc, d.key)} title={d.key}
@@ -4403,7 +4330,7 @@ export default function AdminTorneoDetallePage() {
                                     })}
                                   </div>
                                 </div>
-                              ) : null}
+                              )}
                             </div>
                           )
                         })}
@@ -4413,8 +4340,34 @@ export default function AdminTorneoDetallePage() {
                   })()}
                 </div>
 
+                <div style={{ marginTop: '16px' }}>
+                  <label style={labelStyle}>Horarios por día</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {DIAS_SEMANA_UI.filter(d => diasActivosParaHorarios().includes(d.key)).map(d => {
+                      const marcadas = (configJornada.horarios_por_dia || {})[d.key] || []
+                      return (
+                        <div key={d.key}>
+                          <div style={{ fontSize: '.75rem', fontWeight: '700', color: marcadas.length === 0 ? '#e8710a' : '#202124', marginBottom: '4px' }}>{d.label}{marcadas.length === 0 && <span style={{ fontWeight: '400' }}> — marca al menos una hora</span>}</div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {HORAS_CHIP.map(h => {
+                              const activo = marcadas.includes(h)
+                              return (
+                                <button key={h} onClick={() => toggleHorarioDia(d.key, h)}
+                                  style={{ padding: '4px 8px', borderRadius: '6px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1e8e3e' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '600', cursor: 'pointer' }}>
+                                  {fmtHora12(h)}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {diasActivosParaHorarios().length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>Marca primero qué días juega cada escenario/cancha, arriba.</div>}
+                  </div>
+                </div>
+
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
-                  📅 Si dejas "Fecha fin" vacía, todos los partidos quedan en un solo día como antes. Si le pones un rango, el sorteo reparte los cruces entre esas fechas según los días marcados arriba y la preferencia de días de cada equipo. La hora "hasta" es un tope para todos los partidos de esta jornada (además del "no antes de" de cada equipo). Con los días 🟠 de cada escenario podés limitar, por ejemplo, que Old Traffod solo se use los sábados y Gol solo domingo y lunes.
+                  📅 El sorteo reparte los cruces entre las fechas de esos días (dentro de las próximas 4 semanas desde la fecha de inicio) y las horas que marques, según la preferencia de cada equipo. Con los días de cada escenario podés limitar, por ejemplo, que Old Traffod solo se use los sábados y Gol solo domingo y lunes.
                 </div>
                 {grupos.length > 1 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
@@ -4542,7 +4495,7 @@ export default function AdminTorneoDetallePage() {
                         )}
                         {!p.descanso && p.usoHoraDefault && (
                           <div style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px' }}>
-                            ⚠️ Ese día no tiene horarios marcados en "Horarios específicos por día" — se usó "Hora desde" ({configJornada.hora_inicio ? fmtHora12(configJornada.hora_inicio) : 'vacía'}) como horario por defecto. Marca las horas de ese día arriba, o edita el horario acá con "✏️ Editar".
+                            ⚠️ Ese día no tenía horarios marcados en "Horarios por día" — se usó un horario por defecto desde las 8am. Marca las horas de ese día arriba, o edita el horario acá con "✏️ Editar".
                           </div>
                         )}
                         {!p.descanso && p.sinCupo && (
