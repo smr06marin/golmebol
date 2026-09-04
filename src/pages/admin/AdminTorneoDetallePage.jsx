@@ -2786,27 +2786,54 @@ export default function AdminTorneoDetallePage() {
       return da.some(d => db.includes(d))
     }
 
-    const eq = [...equipos].sort(() => Math.random() - 0.5)
+    // Un equipo "tiene preferencia" si marcó días y/o una hora mínima — a
+    // esos hay que darles prioridad: se procesan primero (para que puedan
+    // elegir rival mientras todavía hay equipos sin preferencia libres) y,
+    // al buscarles rival, se prefiere emparejarlos con un equipo SIN
+    // preferencia (más flexible) antes que con otro que también tenga la
+    // suya — así el que sí pidió algo tiene más chances de que se le
+    // respete, en vez de quedar cruzado con otro equipo igual de exigente.
+    function tienePreferencia(t) {
+      return (t.dias_preferidos && t.dias_preferidos.length > 0) || !!t.hora_preferida
+    }
+
+    const conPreferencia = equipos.filter(tienePreferencia).sort(() => Math.random() - 0.5)
+    const sinPreferencia = equipos.filter(t => !tienePreferencia(t)).sort(() => Math.random() - 0.5)
+    const eq = [...conPreferencia, ...sinPreferencia]
     const usados = new Set()
     const pares = []
     const descansan = []
+
+    // Busca rival para "a" entre los que cumplen "filtro"; si "a" tiene
+    // preferencia, prioriza un rival flexible (sin preferencia) entre los
+    // que cumplen el filtro, y solo si no hay ninguno flexible acepta uno
+    // que también tenga preferencia propia.
+    function elegirRival(a, filtro) {
+      const candidatos = eq.filter(b => !usados.has(b.id) && filtro(b))
+      if (candidatos.length === 0) return null
+      if (tienePreferencia(a)) {
+        const flexibles = candidatos.filter(b => !tienePreferencia(b))
+        if (flexibles.length > 0) return flexibles[0]
+      }
+      return candidatos[0]
+    }
 
     for (const a of eq) {
       if (usados.has(a.id)) continue
       usados.add(a.id)
       // 1) Rival del mismo grupo, compatible en día, con el que no haya jugado
-      let rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]) && diasCompatibles(a, b))
+      let rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]) && diasCompatibles(a, b))
       // 2) Si no hay, mismo grupo pero sin exigir compatibilidad de día
       if (!rival) {
-        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
+        rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
       }
       // 3) Si no hay y está permitido, rival de otro grupo compatible en día
       if (!rival && hayGrupos && permitirIntergrupo) {
-        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && diasCompatibles(a, b))
+        rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`) && diasCompatibles(a, b))
       }
       // 4) Último recurso: rival de otro grupo sin exigir nada más
       if (!rival && hayGrupos && permitirIntergrupo) {
-        rival = eq.find(b => !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`))
+        rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`))
       }
       if (rival) {
         usados.add(rival.id)
@@ -2834,6 +2861,22 @@ export default function AdminTorneoDetallePage() {
     fechasDisponibles.forEach(f => { capacidadFecha[f.iso] = slotsDeFecha(f.iso).length })
     const usoFecha = {}
     fechasDisponibles.forEach(f => { usoFecha[f.iso] = 0 })
+
+    // Historial de en qué día de la semana ha jugado cada equipo hasta
+    // ahora en este torneo — para que, entre fechas igual de cargadas, se
+    // prefiera la que caiga en el día que MENOS haya jugado esa pareja de
+    // equipos (así no le toca siempre sábado al mismo equipo, por ejemplo).
+    const historialDia = {}
+    function sumarHistorialDia(teamId, diaKey) {
+      if (!teamId || !diaKey) return
+      historialDia[teamId] = historialDia[teamId] || {}
+      historialDia[teamId][diaKey] = (historialDia[teamId][diaKey] || 0) + 1
+    }
+    partidos.forEach(m => {
+      if (!m.played_at) return
+      sumarHistorialDia(m.home_team_id, DIAS_SEMANA[new Date(m.played_at).getDay()].key)
+      sumarHistorialDia(m.away_team_id, DIAS_SEMANA[new Date(m.played_at).getDay()].key)
+    })
 
     const conFecha = pares.map(p => {
       if (p.descanso) return p
@@ -2865,11 +2908,19 @@ export default function AdminTorneoDetallePage() {
       }
       const minUso = Math.min(...pool.map(f => usoFecha[f.iso]))
       const empatadas = pool.filter(f => usoFecha[f.iso] === minUso)
-      // Entre las que empatan en uso, se prefiere la fecha más próxima —
-      // así se llena primero el fin de semana más cercano en vez de
-      // esparcir partidos a semanas futuras que también tenían cupo.
-      const elegida = [...empatadas].sort((a, b) => a.iso.localeCompare(b.iso))[0]
+      // Entre las que empatan en uso, se prefiere la que caiga en el día de
+      // la semana que MENOS haya jugado esta pareja de equipos hasta ahora
+      // (para intercalar sábados/domingos/etc en vez de repetir siempre el
+      // mismo), y solo como último desempate la fecha más próxima — así se
+      // llena primero el fin de semana más cercano en vez de esparcir
+      // partidos a semanas futuras que también tenían cupo.
+      const pesoDia = f => (historialDia[p.local.id]?.[DIAS_SEMANA[f.dow].key] || 0) + (historialDia[p.visitante.id]?.[DIAS_SEMANA[f.dow].key] || 0)
+      const minDia = Math.min(...empatadas.map(pesoDia))
+      const empatadasDia = empatadas.filter(f => pesoDia(f) === minDia)
+      const elegida = [...empatadasDia].sort((a, b) => a.iso.localeCompare(b.iso))[0]
       usoFecha[elegida.iso] = (usoFecha[elegida.iso] || 0) + 1
+      sumarHistorialDia(p.local.id, DIAS_SEMANA[elegida.dow].key)
+      sumarHistorialDia(p.visitante.id, DIAS_SEMANA[elegida.dow].key)
       return { ...p, fecha: elegida.iso, sinCoincidencia, sinCupoPreferencia }
     })
 
