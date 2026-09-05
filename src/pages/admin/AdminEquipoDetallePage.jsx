@@ -701,6 +701,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       }).select().single()
       if (error) { showMsg('Error al crear jugador', 'error'); return }
       await subirFotosNuevoJugador(nuevo.id)
+      // team_players es lo que arma el roster histórico del equipo (pestaña
+      // "Jugadores" / vida futbolística del equipo) — sin esta fila el
+      // jugador queda inscrito en el torneo pero no aparece en el equipo.
+      await supabase.from('team_players').insert({ team_id: id, player_id: nuevo.id })
       if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); return }
       const torneo = torneos[0]
       await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id })
