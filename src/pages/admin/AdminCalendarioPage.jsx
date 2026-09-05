@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp } from 'lucide-react'
+import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp, Link2 } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHoraDate } from '../../lib/horaHelpers'
+import { notify } from '../../lib/notify'
 
 function TeamLogo({ logo_url, name, size = 32 }) {
   if (logo_url) return <img src={logo_url} style={{ width: size, height: size, objectFit: 'contain' }}/>
@@ -147,6 +148,22 @@ export default function AdminCalendarioPage() {
 
   function toggleAbierto(key) {
     setAbiertos(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  // Link de 24h para que un árbitro sin cuenta entre directo a planillar
+  // ESTE partido puntual (ver PlanillarLinkPage.jsx). No requiere modal:
+  // se copia al portapapeles con la descripción lista para reenviar por
+  // WhatsApp, igual que el link de registro de jugadores.
+  async function handleLinkArbitro(p) {
+    const { data, error } = await supabase.rpc('generar_link_planilla', { p_match_id: p.id })
+    if (error) { notify('Error al generar el link: ' + error.message, 'error'); return }
+    const link = `${window.location.origin}/planillar/${data.token}`
+    const cuando = p.played_at
+      ? `${new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long' })} · ${fmtHoraDate(p.played_at)}`
+      : 'Por confirmar'
+    const mensaje = `🟡 Planilla del partido — ${p.home?.name || 'Por definir'} vs ${p.away?.name || 'Por definir'}\n\n📅 ${cuando}${p.location ? `\n📍 ${p.location}` : ''}\n\n⏰ Este link dura 24 horas.\n\n👉 ${link}`
+    navigator.clipboard.writeText(mensaje)
+    notify('Link copiado con la descripción ✓')
   }
 
   const filtrados = partidos
@@ -294,6 +311,12 @@ export default function AdminCalendarioPage() {
                                 style={{ background: '#6c35de', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                 <Image size={11}/> Flyer
                               </button>
+                              {!esJugado && (
+                                <button onClick={() => handleLinkArbitro(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido"
+                                  style={{ background: '#fff', border: '1px solid #00b8ad', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#00958c', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <Link2 size={11}/> Link árbitro
+                                </button>
+                              )}
                               <button onClick={() => abrirPlanilla(p)}
                                 style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: esJugado?'#5f6368':'#fff', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                 {esJugado ? '✏️ Editar' : <><Check size={11}/> Resultado</>}

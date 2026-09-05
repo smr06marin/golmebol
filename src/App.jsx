@@ -43,6 +43,7 @@ const TorneoPublicoPage       = lazy(() => import('./pages/TorneoPublicoPage'))
 const OrganizadorVitrinaPage  = lazy(() => import('./pages/OrganizadorVitrinaPage'))
 const AdminPerfilOrganizadorPage = lazy(() => import('./pages/admin/AdminPerfilOrganizadorPage'))
 const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
+const PlanillarLinkPage       = lazy(() => import('./pages/PlanillarLinkPage'))
 const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
 const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
 const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
@@ -460,6 +461,9 @@ export default function App() {
           <Route path="/registro/equipo/:token/:tournamentId" element={<RegistroEquipoPage/>}/>
           {/* Registro público de jugadores de escuela (acudiente) */}
           <Route path="/registro/escuela/:escuelaId" element={<RegistroEscuelaPage/>}/>
+          {/* Link temporal (24h) para que un árbitro sin cuenta planille un
+              partido puntual — sin login */}
+          <Route path="/planillar/:token" element={<PlanillarLinkPage/>}/>
           {/* Listado público de escenarios (antes la landing solo llevaba al
               primer escenario que trajera la consulta, así que con más de
               uno creado los demás no se veían) */}
