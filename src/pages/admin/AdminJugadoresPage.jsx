@@ -58,7 +58,7 @@ function FotoUploadMini({ label, hint, preview, onChange, opcional = false }) {
         {preview
           ? <img src={preview} style={{ maxHeight: '100px', borderRadius: '6px', objectFit: 'cover' }}/>
           : <><Upload size={20} color="#9aa0a6" style={{ marginBottom: '4px' }}/><span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>Toca para subir foto</span></>}
-        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onChange}/>
+        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onChange}/>
       </label>
     </div>
   )
@@ -138,7 +138,7 @@ const FotoMiniatura = memo(function FotoMiniatura({ jugador, cfg, uploading, onS
             : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {cfg.tipo === 'foto' ? <User size={20} color="#c1c7cd"/> : <Upload size={18} color="#c1c7cd"/>}
               </div>}
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => onFile(e.target.files[0])} disabled={subiendo}/>
           {subiendo && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: '#5f6368', fontWeight: '700' }}>...</div>}
         </div>
         {url && (

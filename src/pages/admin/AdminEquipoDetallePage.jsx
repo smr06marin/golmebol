@@ -97,7 +97,7 @@ function FotoUploadMini({ label, hint, preview, onChange }) {
         {preview
           ? <img src={preview} style={{ maxHeight: '100px', borderRadius: '8px', objectFit: 'cover' }}/>
           : <><Upload size={20} color={TXT_MUTED} style={{ marginBottom: '4px' }}/><span style={{ fontSize: '.75rem', color: TXT_MUTED }}>Toca para subir foto</span></>}
-        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onChange}/>
+        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onChange}/>
       </label>
     </div>
   )
