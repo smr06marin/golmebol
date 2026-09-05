@@ -8,6 +8,18 @@ import BuscadorJugador from '../../components/BuscadorJugador'
 import { useAuthStore } from '../../store/authStore'
 
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
+
+// Posición simplificada (Arquero/Jugador, sin detalle por modalidad) — se
+// sigue guardando en las 3 columnas posicion_futbol5/7/11 para no romper
+// los "esPortero" del resto de la app, pero el selector es uno solo. Esto
+// deriva qué mostrar en ese único selector a partir de datos existentes
+// (jugadores creados antes de este cambio, que pudieran tener las 3
+// columnas distintas entre sí).
+function posicionVista(f) {
+  if (f.posicion_futbol5 === 'Portero' || f.posicion_futbol7 === 'Portero' || f.posicion_futbol11 === 'Portero') return 'Arquero'
+  if (f.posicion_futbol5 || f.posicion_futbol7 || f.posicion_futbol11) return 'Jugador'
+  return ''
+}
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
 
@@ -746,24 +758,15 @@ export default function AdminJugadorDetallePage() {
               <input type="number" value={formJugador.peso} onChange={e => setFormJugador(f => ({ ...f, peso: e.target.value }))} style={inp} placeholder="70"/>
             </div>
             <div>
-              <label style={lbl}>Posición Fútbol 5</label>
-              <select value={formJugador.posicion_futbol5} onChange={e => setFormJugador(f => ({ ...f, posicion_futbol5: e.target.value }))} style={inp}>
-                <option value="">Seleccionar...</option>
-                <option>Portero</option><option>Cierre</option><option>Ala derecha</option><option>Ala izquierda</option><option>Pivot</option>
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Posición Fútbol 7</label>
-              <select value={formJugador.posicion_futbol7} onChange={e => setFormJugador(f => ({ ...f, posicion_futbol7: e.target.value }))} style={inp}>
-                <option value="">Seleccionar...</option>
-                <option>Portero</option><option>Defensa central</option><option>Lateral derecho</option><option>Lateral izquierdo</option><option>Mediocampista</option><option>Extremo derecho</option><option>Extremo izquierdo</option><option>Delantero</option>
-              </select>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lbl}>Posición Fútbol 11</label>
-              <select value={formJugador.posicion_futbol11} onChange={e => setFormJugador(f => ({ ...f, posicion_futbol11: e.target.value }))} style={inp}>
-                <option value="">Seleccionar...</option>
-                <option>Portero</option><option>Defensa central</option><option>Lateral derecho</option><option>Lateral izquierdo</option><option>Mediocampista defensivo</option><option>Mediocampista</option><option>Mediocampista ofensivo</option><option>Extremo derecho</option><option>Extremo izquierdo</option><option>Segundo delantero</option><option>Delantero centro</option>
+              <label style={lbl}>Posición</label>
+              <select value={posicionVista(formJugador)} onChange={e => {
+                const v = e.target.value
+                const guardado = v === 'Arquero' ? 'Portero' : v
+                setFormJugador(f => ({ ...f, posicion_futbol5: guardado, posicion_futbol7: guardado, posicion_futbol11: guardado }))
+              }} style={inp}>
+                <option value="">Selecciona...</option>
+                <option value="Arquero">Arquero</option>
+                <option value="Jugador">Jugador</option>
               </select>
             </div>
           </div>

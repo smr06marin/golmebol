@@ -8,15 +8,14 @@ import { useAuthStore } from '../../store/authStore'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
 
-const POSICIONES = {
-  'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
-  'Fútbol 7':  ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista', 'Extremo derecho', 'Extremo izquierdo', 'Delantero'],
-  'Fútbol 11': ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista defensivo', 'Mediocampista central', 'Mediocampista ofensivo', 'Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Segunda punta'],
-}
+// Posición simplificada: solo arquero o jugador, sin detalle por
+// modalidad. Igual se guarda en las 3 columnas (posicion_futbol5/7/11)
+// para no romper los "esPortero" que se calculan en el resto de la app
+// comparando contra el texto exacto 'Portero'.
+const POSICIONES_SIMPLE = ['Arquero', 'Jugador']
 
 const EMPTY_NUEVO = {
-  name: '', telefono: '', city: '', genero: '', fecha_nacimiento: '',
-  posicion_futbol5: '', posicion_futbol7: '', posicion_futbol11: '',
+  name: '', telefono: '', city: '', genero: '', fecha_nacimiento: '', posicion: '',
 }
 
 // ── Paleta "glassmorfismo": paneles de vidrio esmerilado (translúcidos + blur)
@@ -576,8 +575,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!formNuevo.city)             return showMsg('La ciudad es obligatoria', 'error')
     if (!formNuevo.genero)           return showMsg('El género es obligatorio', 'error')
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
-    if (!formNuevo.posicion_futbol5 && !formNuevo.posicion_futbol7 && !formNuevo.posicion_futbol11)
-      return showMsg('Selecciona al menos una posición', 'error')
+    if (!formNuevo.posicion) return showMsg('Selecciona una posición', 'error')
 
     guardandoCrearRef.current = true
     try {
@@ -599,7 +597,16 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       }
 
       setGuardando(true)
-      const { data: nuevo, error } = await supabase.from('players').insert({ ...formNuevo, numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString() }).select().single()
+      // Se guarda el mismo valor en las 3 columnas de posición por modalidad
+      // (ya no se distingue fútbol 5/7/11): "Arquero" se traduce a 'Portero'
+      // para cuadrar con los "esPortero" del resto de la app.
+      const { posicion, ...datosJugador } = formNuevo
+      const posicionGuardada = posicion === 'Arquero' ? 'Portero' : posicion
+      const { data: nuevo, error } = await supabase.from('players').insert({
+        ...datosJugador,
+        posicion_futbol5: posicionGuardada, posicion_futbol7: posicionGuardada, posicion_futbol11: posicionGuardada,
+        numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString(),
+      }).select().single()
       if (error) { showMsg('Error al crear jugador', 'error'); return }
       if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); return }
       const torneo = torneos[0]
@@ -964,16 +971,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       </div>
                       <div><label style={labelStyle}>Fecha nacimiento *</label><input type="date" value={formNuevo.fecha_nacimiento} onChange={e => setFormNuevo(f=>({...f,fecha_nacimiento:e.target.value}))} style={inputStyle}/></div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                      {Object.entries(POSICIONES).map(([mod, posiciones]) => (
-                        <div key={mod}>
-                          <label style={labelStyle}>{mod}</label>
-                          <select value={formNuevo[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]} onChange={e => setFormNuevo(f=>({...f,[`posicion_${mod.toLowerCase().replace('ú','u').replace(' ','')}`]:e.target.value}))} style={inputStyle}>
-                            <option value="">No juega</option>
-                            {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        </div>
-                      ))}
+                    <div>
+                      <label style={labelStyle}>Posición *</label>
+                      <select value={formNuevo.posicion} onChange={e => setFormNuevo(f=>({...f,posicion:e.target.value}))} style={inputStyle}>
+                        <option value="">Selecciona...</option>
+                        {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>

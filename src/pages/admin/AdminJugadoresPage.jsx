@@ -7,10 +7,18 @@ import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
-const POSICIONES = {
-  'Fútbol 5':  ['Portero', 'Cierre', 'Ala derecha', 'Ala izquierda', 'Pivot'],
-  'Fútbol 7':  ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista', 'Extremo derecho', 'Extremo izquierdo', 'Delantero'],
-  'Fútbol 11': ['Portero', 'Defensa central', 'Lateral derecho', 'Lateral izquierdo', 'Mediocampista defensivo', 'Mediocampista central', 'Mediocampista ofensivo', 'Extremo derecho', 'Extremo izquierdo', 'Delantero centro', 'Segunda punta'],
+// Posición simplificada (Arquero/Jugador, sin detalle por modalidad) — se
+// sigue guardando en las 3 columnas posicion_futbol5/7/11 para no romper
+// los "esPortero" del resto de la app, pero el selector es uno solo.
+const POSICIONES_SIMPLE = ['Arquero', 'Jugador']
+function posicionVista(f) {
+  if (f.posicion_futbol5 === 'Portero' || f.posicion_futbol7 === 'Portero' || f.posicion_futbol11 === 'Portero') return 'Arquero'
+  if (f.posicion_futbol5 || f.posicion_futbol7 || f.posicion_futbol11) return 'Jugador'
+  return ''
+}
+function setPosicionSimple(setForm, valor) {
+  const guardado = valor === 'Arquero' ? 'Portero' : valor
+  setForm(f => ({ ...f, posicion_futbol5: guardado, posicion_futbol7: guardado, posicion_futbol11: guardado }))
 }
 const GENEROS = ['Masculino', 'Femenino']
 const EMPTY = {
@@ -306,7 +314,7 @@ export default function AdminJugadoresPage() {
     if (!form.name)          return showMsg('El nombre es obligatorio', 'error')
     if (!form.numero_cedula) return showMsg('El número de cédula es obligatorio', 'error')
     if (!form.posicion_futbol5 && !form.posicion_futbol7 && !form.posicion_futbol11)
-      return showMsg('Debe seleccionar al menos una posición', 'error')
+      return showMsg('Debe seleccionar una posición', 'error')
     setLoading(true)
     if (editId) {
       const { error } = await supabase.from('players').update(form).eq('id', editId)
@@ -817,20 +825,12 @@ export default function AdminJugadoresPage() {
               </div>
               <div><label style={lbl}>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
             </div>
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones por modalidad</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-              {Object.entries(POSICIONES).map(([modalidad, posiciones]) => {
-                const key = `posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`
-                return (
-                  <div key={modalidad}>
-                    <label style={lbl}>{modalidad}</label>
-                    <select value={form[key]} onChange={e => setForm(f=>({...f,[key]:e.target.value}))} style={inp}>
-                      <option value="">No juega</option>
-                      {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                )
-              })}
+            <div>
+              <label style={lbl}>Posición</label>
+              <select value={posicionVista(form)} onChange={e => setPosicionSimple(setForm, e.target.value)} style={{ ...inp, maxWidth: '260px' }}>
+                <option value="">Selecciona...</option>
+                {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
@@ -910,20 +910,12 @@ export default function AdminJugadoresPage() {
               </div>
               <div><label style={lbl}>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
             </div>
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px', marginTop: '8px' }}>Posiciones por modalidad</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-              {Object.entries(POSICIONES).map(([modalidad, posiciones]) => {
-                const key = `posicion_${modalidad.toLowerCase().replace('ú','u').replace(' ','')}`
-                return (
-                  <div key={modalidad}>
-                    <label style={lbl}>{modalidad}</label>
-                    <select value={form[key]} onChange={e => setForm(f=>({...f,[key]:e.target.value}))} style={inp}>
-                      <option value="">No juega</option>
-                      {posiciones.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                )
-              })}
+            <div>
+              <label style={lbl}>Posición</label>
+              <select value={posicionVista(form)} onChange={e => setPosicionSimple(setForm, e.target.value)} style={{ ...inp, maxWidth: '260px' }}>
+                <option value="">Selecciona...</option>
+                {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
