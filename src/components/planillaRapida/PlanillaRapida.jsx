@@ -79,6 +79,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const alarmaRef = useRef(null)
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
+  const deudaDetalleRef = useRef({}) // último deudaDetalle conocido, para no perder el flag "debeTarjeta" al refrescar el roster en vivo
 
   const nombreLocal = partido.home?.name || 'Local'
   const nombreVis = partido.away?.name || 'Visitante'
@@ -134,6 +135,44 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [partido?.tournament_id, refetchDeudaTarjetas])
+
+  useEffect(() => { deudaDetalleRef.current = deudaDetalle }, [deudaDetalle])
+
+  // Si el admin/organizador registra (o inscribe) un jugador nuevo en
+  // alguno de los dos equipos MIENTRAS esta planilla está abierta, se suma
+  // solo a la lista en vivo — sin tocar los números/eventos que el árbitro
+  // ya tiene cargados (misma lógica de fusionarJugadores que usa la carga
+  // inicial cuando llega un borrador remoto más nuevo).
+  const refetchRoster = useCallback(async () => {
+    if (!partido?.tournament_id || partido.status === 'finished') return
+    const [jugsL, jugsV, sancionesDB] = await Promise.all([
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
+    ])
+    const hoyIso = new Date().toISOString()
+    const idsSancionados = new Set((sancionesDB?.data || [])
+      .filter(s => (!s.fecha_fin || s.fecha_fin > hoyIso) && (s.partidos_pendientes === null || s.partidos_pendientes === undefined || s.partidos_pendientes > 0))
+      .map(s => s.player_id))
+    const idsDebenTarjeta = new Set(Object.keys(deudaDetalleRef.current || {}))
+    const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
+    const mapJug = data => (data || [])
+      .filter(r => !idsSancionados.has(r.players?.id))
+      .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players) }))
+    setJugadoresLocal(prev => fusionarJugadores(prev, mapJug(jugsL.data)))
+    setJugadoresVisitante(prev => fusionarJugadores(prev, mapJug(jugsV.data)))
+  }, [partido?.tournament_id, partido?.home_team_id, partido?.away_team_id, partido?.status])
+
+  useEffect(() => {
+    if (!partido?.tournament_id || partido.status === 'finished') return
+    const channel = supabase
+      .channel(`planilla-rapida-roster-${partido.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_player_registrations', filter: `tournament_id=eq.${partido.tournament_id}` }, () => {
+        refetchRoster()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [partido?.tournament_id, partido?.status, refetchRoster])
 
   // Pantalla completa real (oculta también la barra del navegador móvil),
   // igual que la planilla completa — se sale sola al desmontar el componente.
