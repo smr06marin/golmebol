@@ -4752,6 +4752,18 @@ export default function AdminTorneoDetallePage() {
                                   }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
                                     Sacar del equipo
                                   </button>
+                                  {/* Distinto de "Sacar del equipo" (que solo desactiva, conservando el
+                                      historial): esto BORRA por completo la inscripción y la asociación
+                                      con este equipo — pensado para un jugador que se inscribió por
+                                      error y hay que corregirlo, no para uno que ya jugó y se retira. */}
+                                  <button onClick={async () => {
+                                    if (!confirm('¿Eliminar por completo a ' + p.name + ' de ' + e.name + '? Esto borra la inscripción entera (no queda como "desactivado") y su asociación con este equipo. Úsalo solo si se inscribió por error — si ya jugó algún partido, mejor usa "Sacar del equipo".')) return
+                                    await supabase.from('tournament_player_registrations').delete().eq('id', j.id)
+                                    await supabase.from('team_players').delete().eq('team_id', e.id).eq('player_id', j.player_id)
+                                    fetchJugadores()
+                                  }} style={{ background:'none', border:'1px solid #d93025', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                    Eliminar por error
+                                  </button>
                                 </div>
                               )
                             })}
