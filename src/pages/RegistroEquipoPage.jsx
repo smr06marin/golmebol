@@ -232,12 +232,15 @@ export default function RegistroEquipoPage() {
     setPreviewCarnet(URL.createObjectURL(file))
   }
 
-  // Foto de perfil (se muestra en el registro como "foto para el carnet",
-  // pero es la MISMA foto de perfil que se usa en toda la plataforma —
+  // Foto de perfil (se muestra en el registro como "Foto del jugador", pero
+  // es la MISMA foto de perfil que se usa en toda la plataforma —
   // players.photo_face_url — así no se le vuelve a pedir después en su
-  // cuenta). Totalmente opcional y se sube EN SEGUNDO PLANO (ver
-  // crearYRegistrarReal/registrarExistente): nunca lanza error hacia afuera,
-  // así nunca frena ni retrasa el "¡Registrado!".
+  // cuenta). Es OBLIGATORIA (tanto en registro simple como completo, y
+  // también para un jugador ya existente que todavía no la tenga — ver
+  // handleCrearYRegistrar/handleConfirmarExistente), pero se SUBE en
+  // segundo plano (ver crearYRegistrarReal/registrarExistente): la subida en
+  // sí nunca lanza error hacia afuera, así una mala conexión no frena ni
+  // retrasa el "¡Registrado!" una vez ya se validó que el archivo está.
   async function subirFotoCarnet(playerId) {
     if (!fotoCarnet) return
     try {
@@ -351,6 +354,10 @@ export default function RegistroEquipoPage() {
     if (limiteAlcanzado) return showMsg(`🚫 ${equipo.name} ya llegó al límite de ${torneo.limite_jugadores_equipo} jugadores para este torneo. Comunícate con la organización si necesitas más cupo.`, 'warning')
     if (sancionJugador) return showMsg(`⛔ No puedes inscribirte: estás sancionado${sancionJugador.fecha_fin ? ` hasta el ${new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO')}` : ' de forma permanente'}.`, 'warning')
     if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
+    // Si el jugador ya existe pero todavía no tiene foto de perfil, se exige
+    // subirla acá mismo antes de dejarlo inscribir — sea registro simple o
+    // completo, así ningún jugador queda sin su foto.
+    if (!jugadorExiste.photo_face_url && !fotoCarnet) return showMsg('Sube la foto del jugador para continuar')
     registrarExistente()
   }
 
@@ -384,6 +391,8 @@ export default function RegistroEquipoPage() {
     if (!formNuevo.name) return showMsg('El nombre es obligatorio')
     if (!formNuevo.posicion)
       return showMsg('Selecciona una posición')
+    // Foto del jugador — se pide siempre, sea registro simple o completo.
+    if (!fotoCarnet) return showMsg('La foto del jugador es obligatoria')
     // Fecha de nacimiento y, si da menor de edad, la autorización — se pide
     // siempre, incluso en registro simple.
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria')
@@ -621,10 +630,10 @@ export default function RegistroEquipoPage() {
               </div>
             )}
 
-            {/* Foto de perfil (mostrada como "foto para el carnet") — opcional, para cualquier jugador que todavía no la tenga */}
+            {/* Foto de perfil — obligatoria para cualquier jugador que todavía no la tenga (ver handleConfirmarExistente) */}
             {!jugadorExiste.photo_face_url && (
               <div style={{ marginBottom: '20px' }}>
-                <FotoUpload label="Foto del jugador" hint="La cara del jugador, no del documento" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
+                <FotoUpload label="Foto del jugador" hint="La cara del jugador, no del documento" preview={previewCarnet} onChange={handleFotoCarnet}/>
               </div>
             )}
 
@@ -710,8 +719,8 @@ export default function RegistroEquipoPage() {
                 </select>
               </div>
 
-              {/* Foto para el carnet — opcional, no bloquea el registro */}
-              <FotoUpload label="Foto del jugador" hint="La cara del jugador, no del documento" preview={previewCarnet} onChange={handleFotoCarnet} opcional/>
+              {/* Foto del jugador — obligatoria, sea registro simple o completo (ver handleCrearYRegistrar) */}
+              <FotoUpload label="Foto del jugador" hint="La cara del jugador, no del documento" preview={previewCarnet} onChange={handleFotoCarnet}/>
 
               {/* Fecha de nacimiento — se pide siempre, incluso en registro
                   simple, porque hace falta para saber si el jugador es
