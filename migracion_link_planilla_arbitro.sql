@@ -155,6 +155,7 @@ declare
   v_expira timestamptz;
   v_player_id uuid;
   v_uid uuid := auth.uid();
+  v_cedula text := 'LINK-' || substr(p_token::text, 1, 8);
 begin
   if v_uid is null then
     raise exception 'Sesión inválida';
@@ -173,14 +174,20 @@ begin
     raise exception 'Este link ya venció';
   end if;
 
-  select id into v_player_id from players where user_id = v_uid;
+  -- Se busca primero por la cédula sintética (fija por token, no por sesión):
+  -- si el árbitro recarga la página o vuelve a entrar, cada intento crea una
+  -- sesión anónima NUEVA (user_id distinto), y buscar solo por user_id hacía
+  -- que intentara insertar otra vez la misma cédula y chocara con el unique
+  -- index (idx_players_numero_cedula_unico). Buscando por cédula se reutiliza
+  -- siempre el mismo jugador sin importar cuántas veces entre.
+  select id into v_player_id from players where numero_cedula = v_cedula;
 
   if v_player_id is null then
     insert into players (user_id, name, numero_cedula, rol, es_arbitro, activo_membresia, primer_ingreso)
-    values (v_uid, trim(p_nombre), 'LINK-' || substr(p_token::text, 1, 8), 'arbitro', true, true, false)
+    values (v_uid, trim(p_nombre), v_cedula, 'arbitro', true, true, false)
     returning id into v_player_id;
   else
-    update players set name = trim(p_nombre) where id = v_player_id;
+    update players set name = trim(p_nombre), user_id = v_uid where id = v_player_id;
   end if;
 
   update matches set
