@@ -159,6 +159,7 @@ export default function AdminCrearPage() {
     tournament_id: torneoSel,
     team_id: equipoSel.id,
     player_id: jugador.id,
+    activo: true,
   })
   if (error) return showMsg('Error al agregar jugador', 'error')
 

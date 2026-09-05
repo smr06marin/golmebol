@@ -707,7 +707,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       await supabase.from('team_players').insert({ team_id: id, player_id: nuevo.id })
       if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); return }
       const torneo = torneos[0]
-      await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id })
+      await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id, activo: true })
       showMsg('Jugador creado y agregado ✓')
       setMostrarFormNuevo(false); setCedulaBuscar(''); setFormNuevo(EMPTY_NUEVO)
       setFotoPerfilNueva(null); setPreviewPerfilNueva(null)
