@@ -83,17 +83,24 @@ function EscudoCirculo({ logo_url, size = 40 }) {
   )
 }
 
-// Ancho máximo del nombre de cada equipo antes de truncar con "..." — así
-// un nombre largo nunca se envuelve en varias líneas ni se sale de su fila
-// (que es justo lo que se veía "desordenado" antes).
+// Ancho fijo del nombre de cada equipo — ya no se trunca con "...": si el
+// nombre completo no entra en una sola línea, se envuelve a una segunda
+// línea (en vez de recortarlo o achicar la letra). El ancho es FIJO (no
+// maxWidth) a propósito: así el escudo queda siempre a la misma distancia
+// del centro sin importar qué tan largo sea el nombre de cada equipo,
+// alineando visualmente todos los escudos de la página en una columna.
 const NOMBRE_MAXW = 138
 
 function NombreEquipo({ nombre, align }) {
   return (
     <span style={{
       color: '#fff', fontWeight: 900, fontSize: '14.5px', textTransform: 'uppercase',
-      textAlign: align, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      maxWidth: `${NOMBRE_MAXW}px`, textShadow: '0 1px 3px rgba(0,0,0,.6)',
+      textAlign: align, lineHeight: 1.14, wordBreak: 'break-word',
+      width: `${NOMBRE_MAXW}px`, flexShrink: 0,
+      // Tope de 2 líneas por las dudas (nombre absurdamente largo) — dentro
+      // de ese tope nunca se corta, solo se envuelve.
+      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+      textShadow: '0 1px 3px rgba(0,0,0,.6)',
     }}>
       {nombre || 'Por definir'}
     </span>
@@ -144,8 +151,10 @@ function FilaPartido({ p, mostrarTorneo }) {
             </span>
           </div>
         )}
-        {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '50px', padding: '0 10px' }}>
+        {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador.
+            minHeight (no height fijo) para que, cuando un nombre se envuelva
+            a 2 líneas, la fila crezca en vez de recortarlo. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minHeight: '50px', padding: '6px 10px' }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '7px' }}>
             <NombreEquipo nombre={p.home?.name} align="right"/>
             <EscudoCirculo logo_url={p.home?.logo_url} size={34}/>
