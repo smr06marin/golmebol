@@ -152,9 +152,9 @@ function FilaPartido({ p, mostrarTorneo }) {
           </div>
         )}
         {/* Zona 2 (oscura): el partido — escudos, nombres, hora o marcador.
-            minHeight (no height fijo) para que, cuando un nombre se envuelva
-            a 2 líneas, la fila crezca en vez de recortarlo. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minHeight: '50px', padding: '6px 10px' }}>
+            height FIJO (la tarjeta no crece): a 14.5px con 2 líneas el nombre
+            mide ~33px de alto, que entra sobrado en los 50px de la fila. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', height: '50px', padding: '0 10px' }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '7px' }}>
             <NombreEquipo nombre={p.home?.name} align="right"/>
             <EscudoCirculo logo_url={p.home?.logo_url} size={34}/>
