@@ -4697,8 +4697,17 @@ export default function AdminTorneoDetallePage() {
                     const jugsDesact  = jugadores.filter(j => j.team_id === e.id && j.activo === false)
                     return (
                       <div style={{ borderTop:'1px solid #f1f3f4', background:'#f8f9fa', padding:'12px 20px 14px' }}>
-                        <div style={{ fontSize:'.72rem', fontWeight:'700', color: torneo?.limite_jugadores_equipo && jugsActivos.length >= torneo.limite_jugadores_equipo ? '#d93025' : '#5f6368', marginBottom:'10px' }}>
-                          👥 Jugadores de {e.name} · {jugsActivos.length}/{torneo?.limite_jugadores_equipo || '∞'}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
+                          <div style={{ fontSize:'.72rem', fontWeight:'700', color: torneo?.limite_jugadores_equipo && jugsActivos.length >= torneo.limite_jugadores_equipo ? '#d93025' : '#5f6368' }}>
+                            👥 Jugadores de {e.name} · {jugsActivos.length}/{torneo?.limite_jugadores_equipo || '∞'}
+                          </div>
+                          {/* Agregar jugador directo (busca por cédula o crea uno nuevo),
+                              sin necesidad de generar/enviar el link de registro — abre la
+                              pestaña "Jugadores" del equipo, que ya tiene ese flujo. */}
+                          <button onClick={() => navigate(`/admin/equipos/${e.id}?tab=jugadores`)}
+                            style={{ background:'#e8f0fe', border:'none', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.7rem', fontWeight:'700', display:'flex', alignItems:'center', gap:'4px' }}>
+                            <Plus size={11}/> Agregar jugador
+                          </button>
                         </div>
                         {jugsActivos.length === 0 ? (
                           <div style={{ fontSize:'.78rem', color:'#9aa0a6', marginBottom:'8px' }}>Sin jugadores activos</div>

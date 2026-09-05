@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock } from 'lucide-react'
@@ -92,6 +92,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const { id }     = useParams()
   const navigate   = useNavigate()
   const { user, rol } = useAuthStore()
+  const [searchParams] = useSearchParams()
 
   const [editandoNombre, setEditandoNombre] = useState(false)
   const [nombreEditado,  setNombreEditado]  = useState('')
@@ -108,7 +109,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [logros,                setLogros]                = useState([])
   const [stats,                 setStats]                 = useState(null)
   const [loading,               setLoading]               = useState(true)
-  const [tabActiva,             setTabActiva]             = useState('resumen')
+  // Permite llegar directo a una pestaña puntual (ej. desde "Ver
+  // jugadores" en el torneo: /admin/equipos/:id?tab=jugadores) en vez de
+  // caer siempre en "resumen" y obligar a un clic más.
+  const [tabActiva,             setTabActiva]             = useState(searchParams.get('tab') || 'resumen')
   const [msg,                   setMsg]                   = useState(null)
   const [subiendoLogo,          setSubiendoLogo]          = useState(false)
 
