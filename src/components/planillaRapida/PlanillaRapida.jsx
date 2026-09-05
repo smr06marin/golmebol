@@ -274,6 +274,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       if (remoteTime >= 0) {
         aplicarSnap(remoteSnap, dur)
         aplicarDeudaTarjeta(idsDebenTarjeta, idsDebenFoto)
+        // El snapshot guardado puede ser de ANTES de que se registraran
+        // jugadores nuevos en el equipo (ej. se abrió la planilla una vez
+        // sin nadie inscrito, se guardó ese borrador, y luego se inscribió
+        // gente) — se fusiona siempre con el roster fresco de la BD para no
+        // quedarse pegado con una lista vieja/vacía.
+        setJugadoresLocal(prev => fusionarJugadores(prev, baseLocal))
+        setJugadoresVisitante(prev => fusionarJugadores(prev, baseVis))
         try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
       } else {
         setJugadoresLocal(baseLocal)
@@ -284,9 +291,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       setLoading(false)
     } else if (remoteTime > localTime) {
       // Ya se mostró el borrador local, pero el remoto resultó más nuevo
-      // (otro árbitro guardó desde otro celular) — lo aplico encima.
+      // (otro árbitro guardó desde otro celular) — lo aplico encima, y
+      // también fusiono con el roster fresco (mismo motivo que arriba).
       aplicarSnap(remoteSnap, dur)
       aplicarDeudaTarjeta(idsDebenTarjeta, idsDebenFoto)
+      setJugadoresLocal(prev => fusionarJugadores(prev, baseLocal))
+      setJugadoresVisitante(prev => fusionarJugadores(prev, baseVis))
       try { localStorage.setItem(localKey, JSON.stringify(remoteSnap)) } catch (e) {}
     } else {
       // El borrador local sigue siendo el más nuevo: solo sumo jugadores
