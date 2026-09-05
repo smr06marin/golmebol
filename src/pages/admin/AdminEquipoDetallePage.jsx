@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
-import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock } from 'lucide-react'
+import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock, Upload } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
 import { useAuthStore } from '../../store/authStore'
 
@@ -16,6 +16,19 @@ const POSICIONES_SIMPLE = ['Arquero', 'Jugador']
 
 const EMPTY_NUEVO = {
   name: '', telefono: '', city: '', genero: '', fecha_nacimiento: '', posicion: '',
+}
+
+// ¿La fecha de nacimiento ingresada da menor de 18 años hoy? (mismo
+// cálculo que en el registro público, RegistroEquipoPage.jsx)
+function esMenorDeEdad(fechaISO) {
+  if (!fechaISO) return false
+  const nacimiento = new Date(fechaISO + 'T00:00:00')
+  if (isNaN(nacimiento.getTime())) return false
+  const hoy = new Date()
+  let edad = hoy.getFullYear() - nacimiento.getFullYear()
+  const m = hoy.getMonth() - nacimiento.getMonth()
+  if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) edad--
+  return edad < 18
 }
 
 // ── Paleta "glassmorfismo": paneles de vidrio esmerilado (translúcidos + blur)
@@ -65,6 +78,29 @@ const inputStyle = {
 const labelStyle = {
   fontSize: '.75rem', fontWeight: '600', color: TXT_SOFT,
   display: 'block', marginBottom: '6px',
+}
+
+// Selector de foto — mismo look que el del registro público (FotoUpload en
+// RegistroEquipoPage.jsx), para que crear un jugador desde el admin pida
+// exactamente lo mismo que el link de inscripción.
+function FotoUploadMini({ label, hint, preview, onChange }) {
+  return (
+    <div>
+      <label style={labelStyle}>{label} *</label>
+      {hint && <div style={{ fontSize: '.68rem', color: TXT_MUTED, marginTop: '-3px', marginBottom: '6px', fontStyle: 'italic' }}>{hint}</div>}
+      <label style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        border: `2px dashed ${preview ? '#5b9dff' : 'rgba(255,255,255,.25)'}`,
+        borderRadius: '12px', padding: '14px', cursor: 'pointer', minHeight: '90px',
+        ...(preview ? { background: 'rgba(91,157,255,.12)' } : GLASS_INSET),
+      }}>
+        {preview
+          ? <img src={preview} style={{ maxHeight: '100px', borderRadius: '8px', objectFit: 'cover' }}/>
+          : <><Upload size={20} color={TXT_MUTED} style={{ marginBottom: '4px' }}/><span style={{ fontSize: '.75rem', color: TXT_MUTED }}>Toca para subir foto</span></>}
+        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onChange}/>
+      </label>
+    </div>
+  )
 }
 
 function StatBox({ label, value, color = '#5b9dff' }) {
@@ -125,6 +161,17 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [agregandoGlobal,  setAgregandoGlobal]    = useState(false)
   const agregandoGlobalRef = useRef(false) // bloqueo inmediato para "Agregar al equipo"
   const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
+
+  // Fotos del jugador NUEVO — mismos 3 archivos que pide el link de
+  // inscripción (RegistroEquipoPage.jsx): foto de perfil + documento
+  // frontal/trasera. Se suben recién cuando el jugador ya tiene id.
+  const [fotoPerfilNueva,        setFotoPerfilNueva]        = useState(null)
+  const [previewPerfilNueva,     setPreviewPerfilNueva]     = useState(null)
+  const [fotoCedulaFrontalNueva, setFotoCedulaFrontalNueva] = useState(null)
+  const [previewCedFrontalNueva, setPreviewCedFrontalNueva] = useState(null)
+  const [fotoCedulaTraseraNueva, setFotoCedulaTraseraNueva] = useState(null)
+  const [previewCedTraseraNueva, setPreviewCedTraseraNueva] = useState(null)
+  const [autorizoMenorNuevo,     setAutorizoMenorNuevo]     = useState(false)
 
   const [editandoTagsId, setEditandoTagsId] = useState(null) // id del jugador cuyas etiquetas se están editando
   const [tagsForm,       setTagsForm]       = useState({ es_mayor_35: false, es_elite: false, es_profesional: false, etiqueta_personalizada: '' })
@@ -568,6 +615,46 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     }
   }
 
+  // Sube las 3 fotos del jugador NUEVO (perfil + documento frontal/trasera),
+  // igual que en el link público de registro. No bloquea la creación del
+  // jugador si alguna falla: solo avisa con un toast no bloqueante.
+  async function subirFotosNuevoJugador(playerId) {
+    try {
+      if (fotoPerfilNueva) {
+        const archivo = await comprimirImagen(fotoPerfilNueva, { maxSize: 800 })
+        const ext = archivo.name.split('.').pop()
+        const path = `fotos/${playerId}_perfil.${ext}`
+        const { error } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
+        if (!error) {
+          const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
+          await supabase.from('players').update({ photo_face_url: urlData.publicUrl }).eq('id', playerId)
+        }
+      }
+      if (fotoCedulaFrontalNueva) {
+        const archivo = await comprimirImagen(fotoCedulaFrontalNueva, { maxSize: 1600, calidad: 0.85 })
+        const ext = archivo.name.split('.').pop()
+        const path = `${playerId}_frontal.${ext}`
+        const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+        if (!error) {
+          const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
+          await supabase.from('players').update({ cedula_frontal_url: urlData.publicUrl }).eq('id', playerId)
+        }
+      }
+      if (fotoCedulaTraseraNueva) {
+        const archivo = await comprimirImagen(fotoCedulaTraseraNueva, { maxSize: 1600, calidad: 0.85 })
+        const ext = archivo.name.split('.').pop()
+        const path = `${playerId}_trasera.${ext}`
+        const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+        if (!error) {
+          const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
+          await supabase.from('players').update({ cedula_trasera_url: urlData.publicUrl }).eq('id', playerId)
+        }
+      }
+    } catch (e) {
+      showMsg('Jugador creado, pero hubo un problema subiendo alguna foto — se puede subir después', 'error')
+    }
+  }
+
   async function handleCrearYAgregar() {
     if (guardandoCrearRef.current) return // ya se está creando — evita doble clic
     if (!formNuevo.name)             return showMsg('El nombre es obligatorio', 'error')
@@ -576,6 +663,11 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!formNuevo.genero)           return showMsg('El género es obligatorio', 'error')
     if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
     if (!formNuevo.posicion) return showMsg('Selecciona una posición', 'error')
+    if (!fotoPerfilNueva) return showMsg('La foto del jugador es obligatoria', 'error')
+    if (esMenorDeEdad(formNuevo.fecha_nacimiento) && !autorizoMenorNuevo)
+      return showMsg('Falta marcar la autorización de un adulto responsable, el jugador es menor de edad', 'error')
+    if (!fotoCedulaFrontalNueva) return showMsg('La foto frontal del documento es obligatoria', 'error')
+    if (!fotoCedulaTraseraNueva) return showMsg('La foto trasera del documento es obligatoria', 'error')
 
     guardandoCrearRef.current = true
     try {
@@ -608,10 +700,17 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
         numero_cedula: cedulaBuscar, activo_membresia: true, fecha_registro: new Date().toISOString(),
       }).select().single()
       if (error) { showMsg('Error al crear jugador', 'error'); return }
+      await subirFotosNuevoJugador(nuevo.id)
       if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); return }
       const torneo = torneos[0]
       await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id })
-      showMsg('Jugador creado y agregado ✓'); setMostrarFormNuevo(false); setCedulaBuscar(''); setFormNuevo(EMPTY_NUEVO); fetchJugadoresGlobal()
+      showMsg('Jugador creado y agregado ✓')
+      setMostrarFormNuevo(false); setCedulaBuscar(''); setFormNuevo(EMPTY_NUEVO)
+      setFotoPerfilNueva(null); setPreviewPerfilNueva(null)
+      setFotoCedulaFrontalNueva(null); setPreviewCedFrontalNueva(null)
+      setFotoCedulaTraseraNueva(null); setPreviewCedTraseraNueva(null)
+      setAutorizoMenorNuevo(false)
+      fetchJugadoresGlobal()
     } finally {
       guardandoCrearRef.current = false
       setGuardando(false)
@@ -978,12 +1077,41 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                         {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </div>
+
+                    {esMenorDeEdad(formNuevo.fecha_nacimiento) && (
+                      <div style={{ ...GLASS_INSET, borderRadius: '14px', padding: '12px 14px' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={autorizoMenorNuevo} onChange={e => setAutorizoMenorNuevo(e.target.checked)} style={{ marginTop: '3px' }}/>
+                          <span style={{ fontSize: '.78rem', color: TXT_SOFT }}>Confirmo que un adulto responsable autoriza la inscripción de este jugador menor de edad.</span>
+                        </label>
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: '.8rem', fontWeight: '700', color: TXT, marginTop: '4px' }}>Fotos</div>
+                    <FotoUploadMini
+                      label="Foto del jugador"
+                      hint="La cara del jugador, no del documento"
+                      preview={previewPerfilNueva}
+                      onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoPerfilNueva(f); setPreviewPerfilNueva(URL.createObjectURL(f)) }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <FotoUploadMini
+                        label="Documento — Frente"
+                        preview={previewCedFrontalNueva}
+                        onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoCedulaFrontalNueva(f); setPreviewCedFrontalNueva(URL.createObjectURL(f)) }}
+                      />
+                      <FotoUploadMini
+                        label="Documento — Atrás"
+                        preview={previewCedTraseraNueva}
+                        onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoCedulaTraseraNueva(f); setPreviewCedTraseraNueva(URL.createObjectURL(f)) }}
+                      />
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                     <button onClick={handleCrearYAgregar} disabled={guardando} style={{ ...glassBtn('#5b9dff'), padding: '10px 18px', opacity: guardando ? .7 : 1 }}>
                       {guardando ? 'Creando...' : 'Crear y agregar al equipo'}
                     </button>
-                    <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar('') }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Cancelar</button>
+                    <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar(''); setFotoPerfilNueva(null); setPreviewPerfilNueva(null); setFotoCedulaFrontalNueva(null); setPreviewCedFrontalNueva(null); setFotoCedulaTraseraNueva(null); setPreviewCedTraseraNueva(null); setAutorizoMenorNuevo(false) }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Cancelar</button>
                   </div>
                 </div>
               )}

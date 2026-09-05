@@ -28,6 +28,42 @@ const EMPTY = {
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 
+// ¿La fecha de nacimiento ingresada da menor de 18 años hoy? (mismo cálculo
+// que en el registro público, RegistroEquipoPage.jsx)
+function esMenorDeEdad(fechaISO) {
+  if (!fechaISO) return false
+  const nacimiento = new Date(fechaISO + 'T00:00:00')
+  if (isNaN(nacimiento.getTime())) return false
+  const hoy = new Date()
+  let edad = hoy.getFullYear() - nacimiento.getFullYear()
+  const m = hoy.getMonth() - nacimiento.getMonth()
+  if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) edad--
+  return edad < 18
+}
+
+// Selector de foto — mismo look que el del registro público (FotoUpload en
+// RegistroEquipoPage.jsx), para que crear un jugador desde el admin pida
+// exactamente lo mismo que el link de inscripción.
+function FotoUploadMini({ label, hint, preview, onChange, opcional = false }) {
+  return (
+    <div>
+      <label style={lbl}>{label}{opcional ? '' : ' *'}</label>
+      {hint && <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '-2px', marginBottom: '6px', fontStyle: 'italic' }}>{hint}</div>}
+      <label style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        border: `2px dashed ${preview ? '#1a73e8' : '#dadce0'}`,
+        borderRadius: '10px', padding: '14px', cursor: 'pointer',
+        background: preview ? '#e8f0fe' : '#f8f9fa', minHeight: '90px',
+      }}>
+        {preview
+          ? <img src={preview} style={{ maxHeight: '100px', borderRadius: '6px', objectFit: 'cover' }}/>
+          : <><Upload size={20} color="#9aa0a6" style={{ marginBottom: '4px' }}/><span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>Toca para subir foto</span></>}
+        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onChange}/>
+      </label>
+    </div>
+  )
+}
+
 function diasRestantes(fechaVenc) {
   if (!fechaVenc) return null
   const diff = new Date(fechaVenc) - new Date()
@@ -230,6 +266,18 @@ export default function AdminJugadoresPage() {
   const [modalReset,      setModalReset]      = useState(null)
   const [loadingReset,    setLoadingReset]    = useState(false)
 
+  // Fotos del jugador NUEVO — mismos 3 archivos que pide el link de
+  // inscripción (RegistroEquipoPage.jsx): foto de perfil + documento
+  // frontal/trasera. Se suben recién cuando el jugador ya tiene id (justo
+  // después de crearlo).
+  const [fotoPerfilNueva,        setFotoPerfilNueva]        = useState(null)
+  const [previewPerfilNueva,     setPreviewPerfilNueva]     = useState(null)
+  const [fotoCedulaFrontalNueva, setFotoCedulaFrontalNueva] = useState(null)
+  const [previewCedFrontalNueva, setPreviewCedFrontalNueva] = useState(null)
+  const [fotoCedulaTraseraNueva, setFotoCedulaTraseraNueva] = useState(null)
+  const [previewCedTraseraNueva, setPreviewCedTraseraNueva] = useState(null)
+  const [autorizoMenorNuevo,     setAutorizoMenorNuevo]     = useState(false)
+
   // Eliminar jugador por completo (jugador + todos sus datos relacionados)
   // — pide escribir el nombre exacto para confirmar, porque no se puede
   // deshacer (mismo patrón que "eliminar torneo por completo" en
@@ -279,6 +327,45 @@ export default function AdminJugadoresPage() {
   function cerrarFormNuevo() {
     setShowForm(false); setForm(EMPTY); setEditId(null)
     setCedulaBuscar(''); setPersonaEncontrada(null); setMostrarCamposNuevo(false)
+    setFotoPerfilNueva(null); setPreviewPerfilNueva(null)
+    setFotoCedulaFrontalNueva(null); setPreviewCedFrontalNueva(null)
+    setFotoCedulaTraseraNueva(null); setPreviewCedTraseraNueva(null)
+    setAutorizoMenorNuevo(false)
+  }
+
+  // Sube las 3 fotos del jugador recién creado (perfil + documento
+  // frontal/trasera) — mismos campos que llena el link de inscripción
+  // (RegistroEquipoPage.jsx: photo_face_url, cedula_frontal_url,
+  // cedula_trasera_url). Si alguna falla, avisa pero no revierte la
+  // creación del jugador (ya quedó guardado).
+  async function subirFotosNuevoJugador(playerId) {
+    try {
+      const archivo = await comprimirImagen(fotoPerfilNueva)
+      const ext = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
+      const path = `fotos/${playerId}_perfil.${ext}`
+      const { error } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
+      if (error) throw error
+      const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
+      await supabase.from('players').update({ photo_face_url: urlData.publicUrl }).eq('id', playerId)
+    } catch (e) {
+      showMsg('Jugador creado, pero la foto de perfil no se pudo subir. Puedes subirla después.', 'warning')
+    }
+    try {
+      const subirCara = async (file, cara) => {
+        if (!file) return
+        const archivo = await comprimirImagen(file, { maxSize: 1600, calidad: 0.85 })
+        const ext = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
+        const path = `${playerId}_${cara}.${ext}`
+        const { error } = await supabase.storage.from('cedulas').upload(path, archivo, { upsert: true })
+        if (error) throw error
+        const { data: urlData } = supabase.storage.from('cedulas').getPublicUrl(path)
+        const campo = cara === 'frontal' ? 'cedula_frontal_url' : 'cedula_trasera_url'
+        await supabase.from('players').update({ [campo]: urlData.publicUrl }).eq('id', playerId)
+      }
+      await Promise.all([subirCara(fotoCedulaFrontalNueva, 'frontal'), subirCara(fotoCedulaTraseraNueva, 'trasera')])
+    } catch (e) {
+      showMsg('Jugador creado, pero la foto del documento no se pudo subir. Puedes subirla después.', 'warning')
+    }
   }
 
   // Paso 1 del alta: revisar si ya existe una persona con esta cédula en
@@ -315,17 +402,40 @@ export default function AdminJugadoresPage() {
     if (!form.numero_cedula) return showMsg('El número de cédula es obligatorio', 'error')
     if (!form.posicion_futbol5 && !form.posicion_futbol7 && !form.posicion_futbol11)
       return showMsg('Debe seleccionar una posición', 'error')
+    // Un jugador NUEVO pide exactamente los mismos datos que el link de
+    // inscripción (RegistroEquipoPage.jsx) — así crear desde el admin no
+    // deja huecos que el link sí exige.
+    if (!editId) {
+      if (!fotoPerfilNueva) return showMsg('La foto del jugador es obligatoria', 'error')
+      if (!form.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
+      if (esMenorDeEdad(form.fecha_nacimiento) && !autorizoMenorNuevo)
+        return showMsg('Falta marcar la autorización de un adulto responsable, el jugador es menor de edad', 'error')
+      if (!form.telefono) return showMsg('El teléfono es obligatorio', 'error')
+      if (!form.city)     return showMsg('La ciudad es obligatoria', 'error')
+      if (!form.genero)   return showMsg('El género es obligatorio', 'error')
+      if (!fotoCedulaFrontalNueva) return showMsg('La foto frontal del documento es obligatoria', 'error')
+      if (!fotoCedulaTraseraNueva) return showMsg('La foto trasera del documento es obligatoria', 'error')
+    }
     setLoading(true)
     if (editId) {
       const { error } = await supabase.from('players').update(form).eq('id', editId)
       if (error) showMsg('Error al guardar', 'error')
       else { showMsg('Jugador actualizado ✓'); setEditId(null) }
     } else {
-      const { error } = await supabase.from('players').insert({ ...form, activo_membresia: true, fecha_registro: new Date().toISOString() })
-      if (error) showMsg('Error al crear', 'error')
-      else { showMsg('Jugador creado ✓'); limpiarBorrador('draft_crear_jugador') }
+      const { data: nuevo, error } = await supabase.from('players').insert({ ...form, activo_membresia: true, fecha_registro: new Date().toISOString() }).select().single()
+      if (error) { showMsg('Error al crear', 'error') }
+      else {
+        await subirFotosNuevoJugador(nuevo.id)
+        showMsg('Jugador creado ✓')
+        limpiarBorrador('draft_crear_jugador')
+      }
     }
-    setForm(EMPTY); setShowForm(false); setLoading(false); fetchJugadores()
+    setForm(EMPTY); setShowForm(false); setLoading(false)
+    setFotoPerfilNueva(null); setPreviewPerfilNueva(null)
+    setFotoCedulaFrontalNueva(null); setPreviewCedFrontalNueva(null)
+    setFotoCedulaTraseraNueva(null); setPreviewCedTraseraNueva(null)
+    setAutorizoMenorNuevo(false)
+    fetchJugadores()
   }
 
   function handleEdit(j) {
@@ -895,27 +1005,58 @@ export default function AdminJugadoresPage() {
           </div>
           <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '16px' }}>⚠️ No hay nadie registrado con la cédula <strong>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ fontSize: '.75rem', color: '#5f6368', background: '#e8f0fe', borderRadius: '8px', padding: '8px 12px' }}>
+              📋 Se piden los mismos datos que el link de inscripción, para que un jugador creado desde acá quede exactamente igual de completo.
+            </div>
             <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
-              <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
+              <div><label style={lbl}>Teléfono *</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
               <div><label style={lbl}>Número de cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#f1f3f4', color:'#9aa0a6'}}/></div>
-              <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
+              <div><label style={lbl}>Ciudad *</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
               <div>
-                <label style={lbl}>Género</label>
+                <label style={lbl}>Género *</label>
                 <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
                   <option value="">Seleccionar</option>
                   {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
-              <div><label style={lbl}>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
+              <div><label style={lbl}>Fecha de nacimiento *</label><input type="date" value={form.fecha_nacimiento} onChange={e => { setForm(f=>({...f,fecha_nacimiento:e.target.value})); setAutorizoMenorNuevo(false) }} style={inp}/></div>
             </div>
             <div>
-              <label style={lbl}>Posición</label>
+              <label style={lbl}>Posición *</label>
               <select value={posicionVista(form)} onChange={e => setPosicionSimple(setForm, e.target.value)} style={{ ...inp, maxWidth: '260px' }}>
                 <option value="">Selecciona...</option>
                 {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
+            </div>
+
+            {esMenorDeEdad(form.fecha_nacimiento) && (
+              <div style={{ background: '#fff8e1', border: '2px solid #f9a825', borderRadius: '10px', padding: '14px 16px' }}>
+                <div style={{ fontSize: '.78rem', color: '#7a5c00', fontWeight: '700', marginBottom: '10px' }}>
+                  ⚠️ El jugador es menor de edad — se necesita autorización de un adulto responsable.
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={autorizoMenorNuevo} onChange={e => setAutorizoMenorNuevo(e.target.checked)}
+                    style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0 }}/>
+                  <span style={{ fontSize: '.8rem', color: '#5f6368', lineHeight: 1.5 }}>
+                    Confirmo que un padre, madre o acudiente autorizó la participación de este jugador menor de edad.
+                  </span>
+                </label>
+              </div>
+            )}
+
+            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Fotos</div>
+            <FotoUploadMini label="Foto del jugador" hint="La cara del jugador, no del documento"
+              preview={previewPerfilNueva}
+              onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoPerfilNueva(f); setPreviewPerfilNueva(URL.createObjectURL(f)) }}/>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <FotoUploadMini label="Documento — Frente" hint="Foto del documento, no del jugador"
+                preview={previewCedFrontalNueva}
+                onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoCedulaFrontalNueva(f); setPreviewCedFrontalNueva(URL.createObjectURL(f)) }}/>
+              <FotoUploadMini label="Documento — Atrás" hint="Foto del documento, no del jugador"
+                preview={previewCedTraseraNueva}
+                onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoCedulaTraseraNueva(f); setPreviewCedTraseraNueva(URL.createObjectURL(f)) }}/>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
