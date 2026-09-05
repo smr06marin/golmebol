@@ -41,9 +41,13 @@ create unique index if not exists matches_link_planilla_token_idx
 
 -- Genera (o reutiliza, si el anterior sigue vigente) un link de 24h para
 -- que un árbitro sin cuenta entre a planillar este partido puntual. Solo
--- el dueño del torneo (organizador) o el admin de la plataforma pueden
--- generarlo — reutiliza el mismo helper es_dueno_torneo() que ya protege
--- matches/torneo_finanzas.
+-- el organizador dueño del torneo o un admin principal pueden generarlo.
+--
+-- OJO: NO usa un helper es_dueno_torneo() de una migración de RLS aparte
+-- (esa sigue sin aplicarse en este proyecto) — el chequeo va inline acá,
+-- con el mismo patrón (organizador_id = auth.uid() o email admin) que ya
+-- usa tournaments_bloquear_organizador_no_principal() en
+-- migracion_asignar_organizador.sql, que sí está aplicada.
 create or replace function public.generar_link_planilla(p_match_id uuid)
 returns jsonb
 language plpgsql
@@ -52,18 +56,23 @@ set search_path = public
 as $$
 declare
   v_tournament_id uuid;
+  v_organizador_id uuid;
   v_token uuid;
   v_expira timestamptz;
+  v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
 begin
-  select tournament_id, link_planilla_token, link_planilla_expira
-    into v_tournament_id, v_token, v_expira
-  from matches where id = p_match_id;
+  select m.tournament_id, t.organizador_id, m.link_planilla_token, m.link_planilla_expira
+    into v_tournament_id, v_organizador_id, v_token, v_expira
+  from matches m
+  join tournaments t on t.id = m.tournament_id
+  where m.id = p_match_id;
 
   if v_tournament_id is null then
     raise exception 'Partido no encontrado';
   end if;
 
-  if not public.es_dueno_torneo(v_tournament_id) then
+  if v_organizador_id is distinct from auth.uid()
+     and v_email not in ('golmebol@gmail.com', 'smr06marin@gmail.com') then
     raise exception 'No autorizado';
   end if;
 
