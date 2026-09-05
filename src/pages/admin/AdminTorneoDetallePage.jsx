@@ -4717,53 +4717,61 @@ export default function AdminTorneoDetallePage() {
                               const p = j.players || {}
                               const sancion = sancionDeJugador(j.player_id)
                               return (
-                                <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border: sancion ? '1px solid #fad2cf' : '1px solid #e8eaed' }}>
-                                  <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                    {p.photo_face_url || p.photo_url
-                                      ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                                      : <span style={{ fontSize:'.85rem' }}>👤</span>}
+                                <div key={j.id} style={{ display:'flex', flexDirection:'column', gap:'8px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border: sancion ? '1px solid #fad2cf' : '1px solid #e8eaed' }}>
+                                  {/* Fila 1: foto + nombre — en su propia fila para que los botones de
+                                      abajo (que pueden ser varios) nunca la aplasten ni la tapen. */}
+                                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                                    <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                      {p.photo_face_url || p.photo_url
+                                        ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                        : <span style={{ fontSize:'.85rem' }}>👤</span>}
+                                    </div>
+                                    <div style={{ flex:1, minWidth:0 }}>
+                                      <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
+                                      <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
+                                      {sancion && (
+                                        <div style={{ fontSize:'.65rem', color:'#d93025', fontWeight:'600', marginTop:'2px' }}>
+                                          🚫 Sancionado{sancion.fecha_fin ? ` hasta ${new Date(sancion.fecha_fin).toLocaleDateString('es-CO')}` : ' (indefinido)'} — {sancion.motivo}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div style={{ flex:1, minWidth:0 }}>
-                                    <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
-                                    <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
-                                    {sancion && (
-                                      <div style={{ fontSize:'.65rem', color:'#d93025', fontWeight:'600', marginTop:'2px' }}>
-                                        🚫 Sancionado{sancion.fecha_fin ? ` hasta ${new Date(sancion.fecha_fin).toLocaleDateString('es-CO')}` : ' (indefinido)'} — {sancion.motivo}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {sancion ? (
-                                    esAdminRol && (
-                                      <button onClick={() => handleLevantarSancion(sancion.id)}
-                                        style={{ background:'#e6f4ea', border:'1px solid #ceead6', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1e8e3e', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                        Levantar sanción
+                                  {/* Fila 2: acciones — envuelven libremente (flexWrap) en vez de
+                                      apretarse contra el nombre en pantallas angostas. */}
+                                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', justifyContent:'flex-end' }}>
+                                    {sancion ? (
+                                      esAdminRol && (
+                                        <button onClick={() => handleLevantarSancion(sancion.id)}
+                                          style={{ background:'#e6f4ea', border:'1px solid #ceead6', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1e8e3e', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                          Levantar sanción
+                                        </button>
+                                      )
+                                    ) : (
+                                      <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
+                                        style={{ background:'#fff3e0', border:'1px solid #ffcc80', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#e8710a', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                        Suspender
                                       </button>
-                                    )
-                                  ) : (
-                                    <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
-                                      style={{ background:'#fff3e0', border:'1px solid #ffcc80', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#e8710a', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                      Suspender
+                                    )}
+                                    <button onClick={async () => {
+                                      if (!confirm('¿Sacar a ' + p.name + ' del equipo en este torneo? Ya no hará parte del equipo, pero sus estadísticas se conservan.')) return
+                                      await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
+                                      fetchJugadores()
+                                    }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
+                                      Sacar del equipo
                                     </button>
-                                  )}
-                                  <button onClick={async () => {
-                                    if (!confirm('¿Sacar a ' + p.name + ' del equipo en este torneo? Ya no hará parte del equipo, pero sus estadísticas se conservan.')) return
-                                    await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
-                                    fetchJugadores()
-                                  }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
-                                    Sacar del equipo
-                                  </button>
-                                  {/* Distinto de "Sacar del equipo" (que solo desactiva, conservando el
-                                      historial): esto BORRA por completo la inscripción y la asociación
-                                      con este equipo — pensado para un jugador que se inscribió por
-                                      error y hay que corregirlo, no para uno que ya jugó y se retira. */}
-                                  <button onClick={async () => {
-                                    if (!confirm('¿Eliminar por completo a ' + p.name + ' de ' + e.name + '? Esto borra la inscripción entera (no queda como "desactivado") y su asociación con este equipo. Úsalo solo si se inscribió por error — si ya jugó algún partido, mejor usa "Sacar del equipo".')) return
-                                    await supabase.from('tournament_player_registrations').delete().eq('id', j.id)
-                                    await supabase.from('team_players').delete().eq('team_id', e.id).eq('player_id', j.player_id)
-                                    fetchJugadores()
-                                  }} style={{ background:'none', border:'1px solid #d93025', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                    Eliminar por error
-                                  </button>
+                                    {/* Distinto de "Sacar del equipo" (que solo desactiva, conservando el
+                                        historial): esto BORRA por completo la inscripción y la asociación
+                                        con este equipo — pensado para un jugador que se inscribió por
+                                        error y hay que corregirlo, no para uno que ya jugó y se retira. */}
+                                    <button onClick={async () => {
+                                      if (!confirm('¿Eliminar por completo a ' + p.name + ' de ' + e.name + '? Esto borra la inscripción entera (no queda como "desactivado") y su asociación con este equipo. Úsalo solo si se inscribió por error — si ya jugó algún partido, mejor usa "Sacar del equipo".')) return
+                                      await supabase.from('tournament_player_registrations').delete().eq('id', j.id)
+                                      await supabase.from('team_players').delete().eq('team_id', e.id).eq('player_id', j.player_id)
+                                      fetchJugadores()
+                                    }} style={{ background:'none', border:'1px solid #d93025', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                      Eliminar por error
+                                    </button>
+                                  </div>
                                 </div>
                               )
                             })}
