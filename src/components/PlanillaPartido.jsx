@@ -754,6 +754,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     return () => { try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}) } catch (e) {} }
   }, [])
 
+  // Baja la marca de agua "Creada por GOLMEBOL" al fondo mientras esta
+  // planilla está abierta (arriba tapa el header) — ver index.css.
+  useEffect(() => {
+    document.body.classList.add('gm-planilla-abierta')
+    return () => { document.body.classList.remove('gm-planilla-abierta') }
+  }, [])
+
   // Si el cronómetro se pausa por cualquier vía (botón pausa, reset, cambio de
   // periodo, tiempo agotado, etc.) se limpia el ancla de hora real para que al
   // reanudar se recalcule desde el segundo actual, no desde un punto viejo.

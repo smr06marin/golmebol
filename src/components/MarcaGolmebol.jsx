@@ -11,23 +11,12 @@
 // terminaba tapando alguno de esos elementos. Arriba a la derecha está
 // libre en prácticamente todas las pantallas (el sidebar del admin es
 // izquierdo, y no hay barras superiores fijas de ese lado).
-const wrapStyle = {
-  position: 'fixed',
-  right: '8px',
-  top: '8px',
-  zIndex: 9999,
-  display: 'flex',
-  alignItems: 'center',
-  gap: '5px',
-  padding: '4px 9px 4px 5px',
-  borderRadius: '999px',
-  background: 'rgba(10, 10, 16, .55)',
-  backdropFilter: 'blur(3px)',
-  boxShadow: '0 2px 8px rgba(0,0,0,.25)',
-  pointerEvents: 'none',
-  userSelect: 'none',
-}
-
+//
+// EXCEPCIÓN: en las planillas (PlanillaRapida/PlanillaPartido) arriba SÍ
+// está ocupado por el header (Jugadores/Suspender/W/Finalizar) y tapaba
+// esos botones. Esas pantallas le agregan la clase "gm-planilla-abierta"
+// a <body> mientras están montadas — la regla en index.css baja la marca
+// abajo solo en ese caso, sin tocar el resto de la app.
 const imgStyle = { height: '13px', width: 'auto', display: 'block', opacity: 0.95 }
 
 const textStyle = {
@@ -40,7 +29,7 @@ const textStyle = {
 
 export default function MarcaGolmebol() {
   return (
-    <div style={wrapStyle} aria-hidden="true">
+    <div className="gm-marca-golmebol" aria-hidden="true">
       <img src="/marca/watermark-logo.png" alt="" style={imgStyle} />
       <span style={textStyle}>Creada por GOLMEBOL</span>
     </div>

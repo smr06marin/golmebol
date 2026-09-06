@@ -181,6 +181,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     return () => { document.exitFullscreen?.().catch(() => {}) }
   }, [])
 
+  // Baja la marca de agua "Creada por GOLMEBOL" al fondo mientras esta
+  // planilla está abierta (arriba tapa el header) — ver index.css.
+  useEffect(() => {
+    document.body.classList.add('gm-planilla-abierta')
+    return () => { document.body.classList.remove('gm-planilla-abierta') }
+  }, [])
+
   async function fetchTodo() {
     // 1) Restauro INSTANTÁNEO desde el borrador local, sin esperar la red —
     // clave para que abrir la planilla sea inmediato (el árbitro solo tiene

@@ -76,27 +76,34 @@ export default function PlanillarLinkPage() {
     }
   }
 
-  if (partido) {
-    return (
-      <PlanillaRapida
-        partido={partido}
-        onClose={() => setTerminado(true)}
-        onGuardarResultado={() => {}}
-      />
-    )
-  }
-
   const wrap = { minHeight: '100vh', background: '#07070e', fontFamily: 'system-ui,sans-serif', color: '#e8f4fd', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }
 
+  // "Guardado" (resultado final ya guardado) va ANTES que "partido": si no,
+  // como PlanillaRapida llama primero a onGuardarResultado y luego a
+  // onClose, pero partido nunca se limpiaba, se seguía mostrando la
+  // planilla de nuevo en vez de la pantalla de "listo". Al pausar
+  // (Suspender) SOLO se llama a onClose (sin onGuardarResultado) — ahí no
+  // se marca terminado, se limpia partido y vuelve a la pantalla de
+  // "Entrar a planillar" para poder seguir el partido después por el mismo link.
   if (terminado) {
     return (
       <div style={wrap}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>✓</div>
-          <div style={{ fontSize: '1.1rem', fontWeight: '800' }}>¡Listo, gracias!</div>
-          <div style={{ fontSize: '.85rem', color: '#7a9ab5', marginTop: '6px' }}>Ya puedes cerrar esta página.</div>
+          <div style={{ fontSize: '1.1rem', fontWeight: '800' }}>Resultado guardado</div>
+          <div style={{ fontSize: '.85rem', color: '#7a9ab5', marginTop: '6px' }}>Ya puedes salir — cierra esta página.</div>
         </div>
       </div>
+    )
+  }
+
+  if (partido) {
+    return (
+      <PlanillaRapida
+        partido={partido}
+        onClose={() => setPartido(null)}
+        onGuardarResultado={() => setTerminado(true)}
+      />
     )
   }
 
