@@ -68,6 +68,52 @@ function resumirTabla(tablaOrdenada, destacar = []) {
   return texto + (restantes > 0 ? ` (+${restantes} equipos más, ${tablaOrdenada.length} en total)` : '')
 }
 
+// Reconstruye la LÍNEA DE TIEMPO del partido a partir de match_events (los
+// goles quedan guardados minuto a minuto desde la planilla, sea la
+// completa o la rápida) y detecta remontadas / empates en el último tramo —
+// así la noticia puede contar CÓMO se dio el resultado, no solo cuál fue.
+function construirNarrativaPartido(eventosGol, nombreHome, nombreAway, homeTeamId, duracionMinTiempo) {
+  if (!eventosGol || eventosGol.length === 0) {
+    return { lineaStr: 'Sin goles registrados minuto a minuto', narrativa: '', cambiosMarcador: 0 }
+  }
+  const durMin = duracionMinTiempo > 0 ? duracionMinTiempo : 20
+  const aSegundos = (minuto, periodo) => {
+    const [mm, ss] = (minuto || '0:00').split(':').map(n => parseInt(n, 10) || 0)
+    return (periodo === 2 ? durMin * 60 : 0) + mm * 60 + ss
+  }
+  const ordenados = [...eventosGol].sort((a, b) => aSegundos(a.minute, a.periodo) - aSegundos(b.minute, b.periodo))
+  const duracionTotal = durMin * 2 * 60
+
+  let golesHome = 0, golesAway = 0, estadoAnterior = null, cambiosMarcador = 0
+  let remontoHome = false, remontoAway = false, empateTardioDe = null
+  const hitos = []
+
+  ordenados.forEach(e => {
+    const esHome = e.team_id === homeTeamId
+    if (esHome) golesHome++; else golesAway++
+    const estado = golesHome === golesAway ? 'igual' : golesHome > golesAway ? 'home' : 'away'
+    if (esHome && estadoAnterior === 'away' && estado === 'home') remontoHome = true
+    if (!esHome && estadoAnterior === 'home' && estado === 'away') remontoAway = true
+    if (estadoAnterior !== null && estado !== estadoAnterior) cambiosMarcador++
+    const esTardio = aSegundos(e.minute, e.periodo) >= duracionTotal - 5 * 60
+    if (estado === 'igual' && estadoAnterior && estadoAnterior !== 'igual' && esTardio) {
+      empateTardioDe = estadoAnterior === 'home' ? nombreHome : nombreAway
+    }
+    const nombreEq = esHome ? nombreHome : nombreAway
+    hitos.push(`${e.periodo === 2 ? '2T' : '1T'} ${e.minute} ${nombreEq}${e.jugador ? ` (${e.jugador})` : ''} → ${golesHome}-${golesAway}`)
+    estadoAnterior = estado
+  })
+
+  const partes = []
+  if (remontoHome) partes.push(`${nombreHome} remontó el partido (llegó a ir perdiendo y terminó arriba en algún momento)`)
+  if (remontoAway) partes.push(`${nombreAway} remontó el partido (llegó a ir perdiendo y terminó arriba en algún momento)`)
+  if (empateTardioDe) partes.push(`${empateTardioDe} iba ganando y le empataron en los últimos 5 minutos`)
+  if (cambiosMarcador >= 2) partes.push(`el marcador cambió de dueño ${cambiosMarcador} veces durante el partido`)
+  if (partes.length === 0 && ordenados.length > 1) partes.push('el resultado no tuvo vuelcos, se mantuvo sin sobresaltos en el marcador')
+
+  return { lineaStr: hitos.join(' | '), narrativa: partes.join('; ') + (partes.length ? '.' : ''), cambiosMarcador }
+}
+
 function buildContextoPre(partido, datos) {
   const esFaseElim = partido.fase && partido.fase !== 'grupo'
   const tablaStr = datos.tablaOrdenada.length > 0
@@ -123,6 +169,8 @@ function buildContextoPost(partido, datos) {
 GANADOR: ${ganador}${esFaseElim ? ` | ${FASES_LABEL[partido.fase]} ⚡ELIMINATORIA` : ''}
 FECHA: ${fecha}${partido.location ? ` · ${partido.location}` : ''}
 GOLEADORES DEL PARTIDO: ${golesPartido}${hatsPartido ? ` | 🎩 HAT-TRICK: ${hatsPartido}` : ''}
+LÍNEA DE TIEMPO DE GOLES: ${datos.lineaTiempoGoles || 'Sin datos minuto a minuto'}
+CÓMO SE DIO EL PARTIDO: ${datos.narrativaPartido || 'Sin datos suficientes para narrar el desarrollo'}
 TABLA ANTES: ${tablaAntes}
 TABLA DESPUÉS: ${tablaDespues}
 RACHA ${partido.home?.name}: ${rachaHome}
@@ -142,6 +190,7 @@ export default function AdminNoticiasPage() {
   const [torneos,   setTorneos]   = useState([])
   const [torneoId,  setTorneoId]  = useState('')
   const [torneoPuntos, setTorneoPuntos] = useState({ victoria: 3, empate: 1, derrota: 0 })
+  const [torneoInfo,   setTorneoInfo]   = useState({}) // duracion_tiempo_min / modalidad — para armar la línea de tiempo del partido
   const [partidos,  setPartidos]  = useState([])
   const [noticias,  setNoticias]  = useState([])
   const [loading,   setLoading]   = useState(false)
@@ -169,7 +218,7 @@ export default function AdminNoticiasPage() {
     if (!torneoId) return
     fetchPartidos(); fetchNoticias()
     supabase.from('tournaments').select('*').eq('id', torneoId).single()
-      .then(({ data }) => setTorneoPuntos(getPuntosTorneo(data)))
+      .then(({ data }) => { setTorneoPuntos(getPuntosTorneo(data)); setTorneoInfo(data || {}) })
   }, [torneoId])
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chatMessages])
   useEffect(() => {
@@ -289,6 +338,7 @@ export default function AdminNoticiasPage() {
       { data: hatTricksData },
       { data: fasesHome }, { data: fasesAway },
       { data: todosPartidos },
+      { data: eventosGolPartido },
     ] = await Promise.all([
       // Stats de jugadores en este partido específico
       supabase.from('player_match_stats').select('goals_scored,players(name),team_id').eq('match_id', partido.id).gt('goals_scored',0),
@@ -298,7 +348,19 @@ export default function AdminNoticiasPage() {
       supabase.from('matches').select('fase,status,home_score,away_score,home:home_team_id(name),away:away_team_id(name)').or(`home_team_id.eq.${partido.home_team_id},away_team_id.eq.${partido.home_team_id}`).in('fase',['octavos','cuartos','semifinal','final']).eq('status','finished'),
       supabase.from('matches').select('fase,status,home_score,away_score,home:home_team_id(name),away:away_team_id(name)').or(`home_team_id.eq.${partido.away_team_id},away_team_id.eq.${partido.away_team_id}`).in('fase',['octavos','cuartos','semifinal','final']).eq('status','finished'),
       supabase.from('matches').select('id,home_score,away_score,status,played_at,fase,home_team_id,away_team_id,home:home_team_id(name),away:away_team_id(name)').eq('tournament_id', torneoId).eq('status','finished').order('played_at', { ascending: true }),
+      // Goles minuto a minuto (los guarda la planilla, completa o rápida) —
+      // para poder narrar remontadas / empates en el último tramo, no solo
+      // el marcador final.
+      supabase.from('match_events').select('team_id, minute, periodo, players!player_id(name)').eq('match_id', partido.id).eq('event_type', 'goal'),
     ])
+
+    const duracionMedioTiempo = Number(torneoInfo?.duracion_tiempo_min) > 0
+      ? Number(torneoInfo.duracion_tiempo_min)
+      : torneoInfo?.modalidad === 'Fútbol 7' ? 25 : torneoInfo?.modalidad === 'Fútbol 11' ? 45 : 20
+    const { lineaStr, narrativa } = construirNarrativaPartido(
+      (eventosGolPartido || []).map(e => ({ team_id: e.team_id, minute: e.minute, periodo: e.periodo, jugador: e.players?.name })),
+      partido.home?.name, partido.away?.name, partido.home_team_id, duracionMedioTiempo,
+    )
 
     // Tabla ANTES (sin contar este partido)
     const tablaAntes = {}
@@ -384,6 +446,8 @@ export default function AdminNoticiasPage() {
       tablaOrdenadaDespues: Object.values(tablaDespues).sort((a,b)=>b.pts-a.pts),
       enfrentamientos,
       golesPartido: golesPartidoArr,
+      lineaTiempoGoles: lineaStr,
+      narrativaPartido: narrativa,
       rachaHome: getRacha(partido.home_team_id, partido.home?.name),
       rachaAway: getRacha(partido.away_team_id, partido.away?.name),
       resumenHome: formatRecords(golesHistHome),
@@ -545,6 +609,77 @@ Texto plano, sin markdown.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cu
     setGenerandoDirecto(null)
   }
 
+  // ── Datos históricos / récords de TODA la plataforma (cruza todos los
+  // torneos, no solo el seleccionado arriba) — goleador histórico, partido
+  // con más goles, mayor goleada, equipos más ganadores. Igual que
+  // RÉCORDS HISTÓRICOS ${equipo} ya cruza torneos (no filtra por
+  // tournament_id, solo por team_id), esto va un paso más: ve TODA la
+  // plataforma junta, no solo los dos equipos de un partido puntual.
+  async function cargarDatosHistoricos() {
+    const [{ data: statsGlobal }, { data: partidosFinal }, { data: logrosCampeon }] = await Promise.all([
+      supabase.from('player_match_stats').select('goals_scored, players(name)').gt('goals_scored', 0),
+      supabase.from('matches').select('home_score, away_score, played_at, home:home_team_id(name), away:away_team_id(name), tournaments(name)').eq('status', 'finished'),
+      supabase.from('tournament_logros').select('team_id, teams(name)').eq('tipo', 'campeon'),
+    ])
+
+    const golPorJugador = {}
+    ;(statsGlobal || []).forEach(s => { const n = s.players?.name; if (n) golPorJugador[n] = (golPorJugador[n] || 0) + (s.goals_scored || 0) })
+    const topGoleadores = Object.entries(golPorJugador).sort((a, b) => b[1] - a[1]).slice(0, 5)
+
+    const conTotal = (partidosFinal || []).map(p => ({ ...p, total: (p.home_score || 0) + (p.away_score || 0), dif: Math.abs((p.home_score || 0) - (p.away_score || 0)) }))
+    const topPartidosGoles = [...conTotal].sort((a, b) => b.total - a.total).slice(0, 3)
+    const topGoleadas       = [...conTotal].sort((a, b) => b.dif - a.dif).slice(0, 3)
+
+    const titulosPorEquipo = {}
+    ;(logrosCampeon || []).forEach(l => { const n = l.teams?.name; if (n) titulosPorEquipo[n] = (titulosPorEquipo[n] || 0) + 1 })
+    const topTitulos = Object.entries(titulosPorEquipo).sort((a, b) => b[1] - a[1]).slice(0, 5)
+
+    return { topGoleadores, topPartidosGoles, topGoleadas, topTitulos, totalPartidos: (partidosFinal || []).length }
+  }
+
+  function buildContextoHistorico(datos) {
+    const fmtPartido = p => `${p.home?.name} ${p.home_score}-${p.away_score} ${p.away?.name} (${p.tournaments?.name || 'torneo desconocido'})`
+    const golStr     = datos.topGoleadores.length   ? datos.topGoleadores.map(([n, g], i) => `${i + 1}.${n} ${g} goles (histórico, todos los torneos)`).join(' | ') : 'Sin datos'
+    const partidoStr = datos.topPartidosGoles.length ? datos.topPartidosGoles.map(p => `${fmtPartido(p)} — ${p.total} goles en total`).join(' | ') : 'Sin datos'
+    const goleadaStr = datos.topGoleadas.length     ? datos.topGoleadas.map(p => `${fmtPartido(p)} — diferencia de ${p.dif}`).join(' | ') : 'Sin datos'
+    const titulosStr = datos.topTitulos.length      ? datos.topTitulos.map(([n, c], i) => `${i + 1}.${n} ${c} título${c > 1 ? 's' : ''}`).join(' | ') : 'Sin campeones registrados aún'
+    return `DATOS HISTÓRICOS DE TODA LA PLATAFORMA GOLMEBOL — ${datos.totalPartidos} partidos jugados en total, en todos los torneos
+GOLEADOR HISTÓRICO DE LA PLATAFORMA (todos los torneos): ${golStr}
+PARTIDO CON MÁS GOLES DE LA HISTORIA: ${partidoStr}
+MAYOR GOLEADA (más diferencia de goles) DE LA HISTORIA: ${goleadaStr}
+EQUIPOS CON MÁS TÍTULOS (todos los torneos): ${titulosStr}`
+  }
+
+  async function generarNoticiaHistoricaDirecta() {
+    const idKey = 'historica'
+    setGenerandoDirecto(idKey)
+    try {
+      const datos = await cargarDatosHistoricos()
+      const ctx = buildContextoHistorico(datos)
+      const indicacion = (indicaciones[idKey] || '').trim()
+
+      const instruccion = `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia de DATOS HISTÓRICOS / RÉCORDS de TODA la plataforma (cruza todos los torneos que se han jugado, no es sobre un partido puntual ni un solo torneo) para Instagram/WhatsApp.
+
+Primero identifica tú mismo, de los datos, el récord o dato histórico más llamativo (goleador histórico de la plataforma, partido con más goles de la historia, mayor goleada, equipo más ganador) y úsalo como eje.
+
+Escribe:
+1. Título IMPACTANTE en mayúsculas (máx 8 palabras) — deja claro que es un RÉCORD/HISTÓRICO
+2. Máx 4 líneas — cuenta el récord como una historia (quién lo tiene, contra quién, en qué torneo si aplica, y qué tan lejos está el que le sigue)
+3. 4 hashtags (#Golmebol #Armenia obligatorio, agrega algo como #Récord o #Historia)
+
+Texto plano, sin markdown.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cuenta por encima de lo demás): ${indicacion}` : ''}`
+
+      const texto = await llamarIA([{ role: 'user', content: `DATOS:\n${ctx}\n\n${instruccion}` }], 500)
+      const { titulo, cuerpo, hashtags } = parseNoticia(texto)
+      await supabase.from('noticias').insert({ tournament_id: torneoId, match_id: null, tipo: 'historica', titulo, cuerpo, hashtags })
+      showMsg('✅ Noticia histórica generada')
+      fetchNoticias()
+    } catch (e) {
+      showMsg(e.message, 'error')
+    }
+    setGenerandoDirecto(null)
+  }
+
   async function abrirChatFecha(jornadaNum) {
     if (!jornadaNum) return
     setChatPartido({ esFecha: true, matchday: jornadaNum })
@@ -592,7 +727,7 @@ Texto plano, sin markdown.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cu
     const esFaseElim = partido.fase && partido.fase !== 'grupo'
     const tipoTexto = tipo === 'pre_partido' ? 'PRE-PARTIDO' : 'POST-PARTIDO'
 
-    const instruccion = `Analista deportivo GOLMEBOL. Datos del ${tipoTexto}.\n\nDame máx 4 puntos con los datos MÁS INTERESANTES y picantes para la noticia${tipo==='post_partido' ? ' (prioriza: cambios en tabla, rachas, récords rotos, hat-tricks, primera victoria histórica entre estos equipos)' : ' (prioriza hitos ⚠️, hat-tricks, fases eliminatorias, historial)'}. Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
+    const instruccion = `Analista deportivo GOLMEBOL. Datos del ${tipoTexto}.\n\nDame máx 4 puntos con los datos MÁS INTERESANTES y picantes para la noticia${tipo==='post_partido' ? ' (prioriza CÓMO SE DIO EL PARTIDO — remontada, empate en el último tramo, cambios de marcador — antes que cambios en tabla, rachas, récords rotos, hat-tricks, primera victoria histórica entre estos equipos)' : ' (prioriza hitos ⚠️, hat-tricks, fases eliminatorias, historial)'}. Sé muy conciso. Luego pregunta si genero ya o quiero explorar algo.`
 
     try {
       const respuestaIA = await llamarIA([{ role: 'user', content: [bloqueContexto(ctx), { type: 'text', text: instruccion }] }], 400)
@@ -738,7 +873,7 @@ Texto plano, sin markdown. 10 segundos de lectura.`
       const instruccion = esPost
         ? `Periodista deportivo GOLMEBOL, Armenia, Colombia. Noticia POST-PARTIDO explosiva para Instagram/WhatsApp.
 
-Primero identifica tú mismo, de los datos, el dato más picante (cambio en tabla, racha, récord roto, hat-trick, primera victoria histórica) y úsalo como eje de la noticia.
+Primero identifica tú mismo, de los datos, el dato más picante — dale prioridad a CÓMO SE DIO EL PARTIDO (remontada, empate en el último tramo, cambios de marcador) si CÓMO SE DIO EL PARTIDO tiene algo relevante; si no, usa cambio en tabla, racha, récord roto, hat-trick o primera victoria histórica — y úsalo como eje de la noticia.
 
 Escribe:
 1. Título IMPACTANTE mayúsculas (máx 8 palabras) — menciona el resultado${esFaseElim?' y la '+faseLabel:''}
@@ -811,9 +946,9 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
 
   const pendientes = partidos.filter(p => p.status !== 'finished')
   const jugados    = partidos.filter(p => p.status === 'finished')
-  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha', ranking: '🏆 Ranking' }
-  const tipoColor  = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de', ranking: '#e8710a' }
-  const tipoBg     = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd', ranking: '#fce8d9' }
+  const tipoLabel  = { pre_partido: '⚡ Pre-partido', post_partido: '🏁 Post-partido', semanal: '📋 Resumen de fecha', ranking: '🏆 Ranking', historica: '📜 Histórica' }
+  const tipoColor  = { pre_partido: '#1a73e8', post_partido: '#1e8e3e', semanal: '#6c35de', ranking: '#e8710a', historica: '#8430ce' }
+  const tipoBg     = { pre_partido: '#e8f0fe', post_partido: '#e6f4ea', semanal: '#f3e8fd', ranking: '#fce8d9', historica: '#f0e4fb' }
 
   const jornadasConPartidos = [...new Set(
     jugados.filter(p => p.matchday !== null && p.matchday !== undefined && p.matchday !== '').map(p => p.matchday)
@@ -1035,15 +1170,33 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
             </button>
           </div>
 
+          {/* Datos históricos / récords — cruza TODOS los torneos de la plataforma, no solo el seleccionado arriba */}
+          <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'16px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ fontWeight:'600', color:'#202124', fontSize:'.9rem', marginBottom:'4px', display:'flex', alignItems:'center', gap:'6px' }}>
+              📜 Datos históricos / récords
+            </div>
+            <div style={{ fontSize:'.75rem', color:'#5f6368', marginBottom:'10px' }}>Goleador histórico, partido con más goles, mayor goleada y más títulos — de TODOS los torneos jugados en Golmebol, no solo este</div>
+            <input value={indicaciones['historica'] || ''}
+              onChange={e => setIndicaciones(prev => ({ ...prev, historica: e.target.value }))}
+              placeholder="¿Qué quieres que diga? (opcional)"
+              style={{ width:'100%', boxSizing:'border-box', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
+            <button onClick={generarNoticiaHistoricaDirecta} disabled={generandoDirecto==='historica'}
+              style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#8430ce', border:'none', borderRadius:'8px', cursor:generandoDirecto?'not-allowed':'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600', opacity:generandoDirecto&&generandoDirecto!=='historica'?.5:1 }}>
+              {generandoDirecto==='historica' ? <><RefreshCw size={13} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar histórica</>}
+            </button>
+          </div>
+
           <div style={{ background:'#e8f0fe', borderRadius:'10px', padding:'12px 14px' }}>
             <div style={{ fontSize:'.78rem', fontWeight:'600', color:'#1a73e8', marginBottom:'6px' }}>🧠 La IA usa datos reales</div>
             <div style={{ fontSize:'.72rem', color:'#5f6368', lineHeight:1.6 }}>
+              · Línea de tiempo minuto a minuto (remontadas, empates tardíos)<br/>
               · Cambio en tabla antes/después<br/>
               · Racha de resultados (últimos 5)<br/>
               · Hat-tricks en el partido<br/>
-              · Récords históricos y hitos<br/>
+              · Récords históricos y hitos (cruzan todos los torneos)<br/>
               · Historial directo con fechas<br/>
-              · Historial en semifinales/finales
+              · Historial en semifinales/finales<br/>
+              · Récords de toda la plataforma (goleador histórico, partido con más goles, mayor goleada, más títulos)
             </div>
           </div>
         </div>
