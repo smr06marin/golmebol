@@ -35,6 +35,17 @@ export default function PantallaPartido({
         </div>
       </div>
 
+      {/* Marcador fijo arriba — siempre visible y bien grande, pero SIN
+          flotar sobre la pantalla (a diferencia del cronómetro, que sí es
+          arrastrable): así nunca tapa los botones de gol/tarjeta de abajo. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '4px 10px 7px', flexShrink: 0, background: 'rgba(255,255,255,.03)', borderBottom: `1px solid ${BORDE}` }}>
+        <span style={{ flex: 1, textAlign: 'right', fontSize: '.72rem', fontWeight: '700', color: TEXTO_TENUE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreLocal}</span>
+        <span style={{ fontSize: '1.5rem', fontWeight: '900', color: TEXTO, background: 'rgba(255,255,255,.08)', borderRadius: '10px', padding: '2px 14px', letterSpacing: '.02em', flexShrink: 0 }}>
+          {golesLocal} - {golesVis}
+        </span>
+        <span style={{ flex: 1, textAlign: 'left', fontSize: '.72rem', fontWeight: '700', color: TEXTO_TENUE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreVis}</span>
+      </div>
+
       <EquipoHalf arriba equipoNombre={nombreLocal} color={cLocal.hex} colorTexto={cLocal.texto}
         jugadores={jugadoresLocal} arquero={arqueroLocal} eventos={eventosLocal}
         mostrarFaltas={mostrarFaltas} faltasEquipo={faltasLocal}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { PANEL, BORDE, TEXTO, TEXTO_TENUE, VERDE, ROJO, btnPrimario, btnSecundario } from './estilosRapida'
 
 // Último paso antes de guardar el resultado: arquero de cada equipo (ya
@@ -10,6 +10,62 @@ export default function ModalCierrePartido({
 }) {
   const [informeTexto, setInformeTexto] = useState('')
   const [mvpId, setMvpId] = useState(null)
+
+  // ── Informe por voz ────────────────────────────────────────────────────
+  // Dictado continuo (Web Speech API): mientras el árbitro habla, el texto
+  // se va escribiendo solo. El navegador corta el reconocimiento solo tras
+  // un silencio corto — si no lo apagó a propósito, se reinicia solo para
+  // que se sienta fluido (no hay que tocar el botón cada vez que hace una
+  // pausa para pensar qué decir).
+  const [escuchando, setEscuchando] = useState(false)
+  const recognitionRef = useRef(null)
+  const detenidoManualRef = useRef(true)
+  const baseTextoRef = useRef('')
+  const vozDisponible = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+
+  useEffect(() => () => { detenidoManualRef.current = true; try { recognitionRef.current?.stop() } catch (e) {} }, [])
+
+  function toggleVoz() {
+    if (escuchando) {
+      detenidoManualRef.current = true
+      try { recognitionRef.current?.stop() } catch (e) {}
+      setEscuchando(false)
+      return
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return
+    detenidoManualRef.current = false
+    const rec = new SR()
+    rec.lang = 'es-CO'
+    rec.continuous = true
+    rec.interimResults = true
+    baseTextoRef.current = informeTexto.trim() ? informeTexto.trim() + ' ' : ''
+    rec.onresult = (e) => {
+      let final = '', interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript
+        if (e.results[i].isFinal) final += t + ' '
+        else interim += t
+      }
+      if (final) baseTextoRef.current += final
+      setInformeTexto((baseTextoRef.current + interim).trimStart())
+    }
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        detenidoManualRef.current = true
+        setEscuchando(false)
+      }
+      // otros errores (ej. "no-speech") los ignora onend, que reintenta solo
+    }
+    rec.onend = () => {
+      if (!detenidoManualRef.current) {
+        try { rec.start(); return } catch (e) {}
+      }
+      setEscuchando(false)
+    }
+    recognitionRef.current = rec
+    try { rec.start(); setEscuchando(true) } catch (e) {}
+  }
 
   const numerados = [
     ...jugadoresLocal.filter(j => (j.numero || '').trim() && j.id).map(j => ({ ...j, equipo: nombreLocal })),
@@ -37,9 +93,24 @@ export default function ModalCierrePartido({
         {/* Informe obligatorio si hubo roja */}
         {hayRoja && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '.75rem', fontWeight: '700', color: TEXTO, marginBottom: '6px' }}>📋 Informe (obligatorio por tarjeta roja)</div>
-            <textarea value={informeTexto} onChange={e => setInformeTexto(e.target.value)} rows={3} placeholder="Qué pasó, quién fue expulsado y por qué..."
-              style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '10px', border: `1px solid ${BORDE}`, background: '#0d1117', color: TEXTO, fontSize: '.82rem', outline: 'none', resize: 'vertical' }}/>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+              <div style={{ fontSize: '.75rem', fontWeight: '700', color: TEXTO }}>📋 Informe (obligatorio por tarjeta roja)</div>
+              {vozDisponible && (
+                <button type="button" onClick={toggleVoz}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0,
+                    background: escuchando ? ROJO : 'rgba(255,255,255,.1)', border: 'none', borderRadius: '20px',
+                    padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700',
+                    animation: escuchando ? 'gmMicPulso 1.3s infinite' : 'none',
+                  }}>
+                  {escuchando ? '⏹ Detener' : '🎙️ Dictar'}
+                </button>
+              )}
+            </div>
+            <textarea value={informeTexto} onChange={e => setInformeTexto(e.target.value)} rows={3}
+              placeholder={vozDisponible ? 'Qué pasó, quién fue expulsado y por qué... (o tocá 🎙️ Dictar para hablarlo)' : 'Qué pasó, quién fue expulsado y por qué...'}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px', borderRadius: '10px', border: `1px solid ${escuchando ? ROJO : BORDE}`, background: '#0d1117', color: TEXTO, fontSize: '.82rem', outline: 'none', resize: 'vertical' }}/>
+            {escuchando && <div style={{ fontSize: '.65rem', color: '#ff8a80', marginTop: '5px', fontWeight: '700' }}>🎙️ Escuchando... hablá normal, se va escribiendo solo.</div>}
           </div>
         )}
 

@@ -172,6 +172,12 @@ input:focus, select:focus, textarea:focus {
 @keyframes gmLogroPop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes gmTrofeo { 0%,100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-10deg) scale(1.18); } 75% { transform: rotate(10deg) scale(1.18); } }
 
+/* Micrófono dictando (informe por voz, Planilla Rápida) */
+@keyframes gmMicPulso {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,.55); }
+  50%      { box-shadow: 0 0 0 8px rgba(217,48,37,0); }
+}
+
 /* Cada logro entra en cascada */
 .gm-logro { animation: gmLogroPop .32s ease both; }
 .gm-logro:nth-child(2) { animation-delay: .05s; } .gm-logro:nth-child(3) { animation-delay: .10s; }
