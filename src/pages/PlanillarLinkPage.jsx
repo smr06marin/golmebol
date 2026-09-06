@@ -50,9 +50,16 @@ export default function PlanillarLinkPage() {
     try {
       // Si el celular ya tiene una sesión real (un admin/árbitro probando su
       // propio link, por ejemplo), se respeta esa — no se pisa con una
-      // sesión anónima nueva.
+      // sesión anónima nueva. Pero si lo que quedó guardado es una sesión
+      // ANÓNIMA de un link anterior (este mismo celular ya planilló otro
+      // partido por link antes), esa sesión queda atada a OTRO jugador —
+      // hay que cerrarla y entrar con una anónima nueva, si no
+      // reclamar_planilla_por_link choca con el límite de un jugador por
+      // sesión (unique en players.user_id) al intentar crear el jugador de
+      // este partido nuevo sobre la sesión vieja.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
+      if (!session || session.user?.is_anonymous) {
+        if (session?.user?.is_anonymous) await supabase.auth.signOut()
         const { error: errAnon } = await supabase.auth.signInAnonymously()
         if (errAnon) throw new Error('No se pudo entrar: ' + errAnon.message)
       }
