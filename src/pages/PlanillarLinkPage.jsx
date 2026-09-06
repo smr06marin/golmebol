@@ -5,27 +5,33 @@ import { Shield, MapPin, Clock, Trophy, AlertTriangle } from 'lucide-react'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import { fmtHoraDate } from '../lib/horaHelpers'
 
-// Entrada pública (sin cuenta ni login) para que un árbitro ocasional
-// planille UN partido puntual desde un link de 24h que le manda el
-// organizador (ver botón "Link árbitro" en /admin/calendario).
+// Entrada pública (sin cuenta ni login) para que cualquiera que tenga el
+// link entre directo a planillar UN partido puntual — el link es de 24h y
+// lo genera el organizador (ver botón "Link árbitro" en /admin/calendario).
+//
+// A propósito NO pide nombre ni crea ningún "jugador árbitro" por sesión:
+// cada link es simplemente la puerta a ESE partido puntual, y todos los que
+// entren por ahí (uno o varios celulares, a la vez o en momentos distintos)
+// ven y editan la MISMA planilla — PlanillaRapida ya sabe fusionar lo que
+// hay guardado (roster, goles, cronómetro) sin borrar nada, así que entrar
+// de nuevo — incluso a un partido ya jugado o que se está jugando ahora
+// mismo desde otro celular — nunca pisa lo que ya está cargado.
 //
 // Pasos:
 //  1) Se valida el token con ver_partido_por_link() (público, solo lectura)
-//     y se muestra bien grande el partido — para que el árbitro confirme
-//     que es el que le toca ANTES de escribir nada.
-//  2) Escribe su nombre y confirma: se hace un login anónimo de Supabase
-//     (requiere "Allow anonymous sign-ins" activado en el proyecto) y se
-//     llama a reclamar_planilla_por_link(), que valida el token de nuevo
-//     y deja registrado quién va a planillar.
+//     y se muestra bien grande el partido — para confirmar que es el que
+//     toca antes de entrar.
+//  2) Al tocar "Entrar a planillar": si el celular no tiene sesión, se hace
+//     un login anónimo de Supabase (requiere "Allow anonymous sign-ins"
+//     activado en el proyecto) — solo para poder guardar, no identifica a
+//     nadie ni crea un jugador.
 //  3) Se abre PlanillaRapida (la Planilla Rápida normal, sin ningún cambio)
-//     ya cargada con ese partido — el guardado es exactamente el mismo
-//     código que usa cualquier árbitro con cuenta real.
+//     ya cargada con ese partido.
 export default function PlanillarLinkPage() {
   const { token } = useParams()
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
-  const [nombre, setNombre] = useState('')
   const [entrando, setEntrando] = useState(false)
   const [partido, setPartido] = useState(null)
   const [terminado, setTerminado] = useState(false)
@@ -43,35 +49,23 @@ export default function PlanillarLinkPage() {
     setCargando(false)
   }
 
-  async function handleComenzar() {
-    if (!nombre.trim()) return
+  async function handleEntrar() {
     setEntrando(true)
     setError('')
     try {
-      // Si el celular ya tiene una sesión real (un admin/árbitro probando su
-      // propio link, por ejemplo), se respeta esa — no se pisa con una
-      // sesión anónima nueva. Pero si lo que quedó guardado es una sesión
-      // ANÓNIMA de un link anterior (este mismo celular ya planilló otro
-      // partido por link antes), esa sesión queda atada a OTRO jugador —
-      // hay que cerrarla y entrar con una anónima nueva, si no
-      // reclamar_planilla_por_link choca con el límite de un jugador por
-      // sesión (unique en players.user_id) al intentar crear el jugador de
-      // este partido nuevo sobre la sesión vieja.
+      // Solo hace falta ALGUNA sesión para poder guardar (así sea anónima) —
+      // no identifica a la persona ni crea ningún jugador. Si el celular ya
+      // tiene cualquier sesión (anónima de antes, o una cuenta real), se
+      // respeta tal cual: no hace falta una nueva por cada link.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session || session.user?.is_anonymous) {
-        if (session?.user?.is_anonymous) await supabase.auth.signOut()
+      if (!session) {
         const { error: errAnon } = await supabase.auth.signInAnonymously()
         if (errAnon) throw new Error('No se pudo entrar: ' + errAnon.message)
       }
 
-      const { data, error: errReclamar } = await supabase.rpc('reclamar_planilla_por_link', {
-        p_token: token, p_nombre: nombre.trim(),
-      })
-      if (errReclamar) throw new Error(errReclamar.message)
-
       const { data: match, error: errMatch } = await supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-        .eq('id', data.match_id).single()
+        .eq('id', preview.id).single()
       if (errMatch || !match) throw new Error('No se pudo cargar el partido')
 
       setPartido(match)
@@ -129,7 +123,7 @@ export default function PlanillarLinkPage() {
           <div style={{ fontSize: '.65rem', letterSpacing: '.3em', color: '#7a9ab5', textTransform: 'uppercase' }}>GOLMEBOL · PLANILLA</div>
         </div>
 
-        {/* Partido bien grande y claro — esto es lo primero que confirma el árbitro */}
+        {/* Partido bien grande y claro — esto es lo primero que confirma quien entra */}
         <div style={{ background: '#111827', border: '1px solid #1e2d3d', borderRadius: '16px', padding: '22px 18px', marginBottom: '18px' }}>
           <div style={{ textAlign: 'center', fontSize: '.75rem', color: '#f9a825', fontWeight: '700', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
             <Trophy size={13}/> {preview.torneo}
@@ -165,18 +159,11 @@ export default function PlanillarLinkPage() {
           </div>
         </div>
 
-        {/* Nombre del árbitro — se pide ANTES de abrir la planilla, así queda ordenado quién planilla cada partido */}
-        <div style={{ marginBottom: '10px' }}>
-          <label style={{ fontSize: '.72rem', fontWeight: '700', color: '#7a9ab5', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.05em' }}>Tu nombre (árbitro) *</label>
-          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre completo"
-            style={{ width: '100%', background: '#1e2d3d', border: '1px solid #2a3a4a', borderRadius: '10px', padding: '12px 14px', color: '#e8f4fd', fontSize: '.95rem', outline: 'none', boxSizing: 'border-box' }}/>
-        </div>
-
         {error && <div style={{ fontSize: '.78rem', color: '#ff6b6b', marginBottom: '10px' }}>{error}</div>}
 
-        <button onClick={handleComenzar} disabled={!nombre.trim() || entrando}
-          style={{ width: '100%', padding: '13px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1a73e8,#00ddd0)', color: '#07070e', fontSize: '.9rem', fontWeight: '800', opacity: (!nombre.trim() || entrando) ? .6 : 1 }}>
-          {entrando ? 'Entrando...' : 'Comenzar planilla'}
+        <button onClick={handleEntrar} disabled={entrando}
+          style={{ width: '100%', padding: '13px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1a73e8,#00ddd0)', color: '#07070e', fontSize: '.9rem', fontWeight: '800', opacity: entrando ? .6 : 1 }}>
+          {entrando ? 'Entrando...' : 'Entrar a planillar'}
         </button>
       </div>
     </div>

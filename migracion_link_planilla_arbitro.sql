@@ -1,30 +1,43 @@
 -- ============================================================
--- MIGRACIÓN: Link temporal (24h) para que un árbitro sin cuenta
--- entre directo a planillar un partido puntual.
+-- MIGRACIÓN: Link temporal (24h) para que cualquiera con el link
+-- entre directo a planillar un partido puntual, sin cuenta.
 -- Cómo ejecutar: Supabase → SQL Editor → RUN.
 -- Es idempotente (add column if not exists / create or replace).
 --
--- FLUJO:
+-- FLUJO (simplificado — ya NO pide nombre ni crea un "jugador
+-- árbitro" por sesión; ver nota más abajo):
 --   1) El organizador, desde /admin/calendario, genera el link para
 --      UN partido puntual (botón "Link árbitro" en cada partido).
 --      generar_link_planilla() valida que sea el dueño del torneo,
 --      crea un token + vencimiento a 24h, y los devuelve.
---   2) El organizador le envía ese link al árbitro (WhatsApp, etc).
---   3) El árbitro abre el link (público, sin login): la página
+--   2) El organizador le envía ese link (WhatsApp, etc).
+--   3) Quien abre el link (público, sin login): la página
 --      /planillar/:token llama a ver_partido_por_link() para
 --      mostrarle bien grande y claro qué partido es (torneo, hora,
---      cancha, equipos) antes de nada.
---   4) El árbitro escribe su nombre y confirma: la página hace un
---      login anónimo (supabase.auth.signInAnonymously — requiere
---      tenerlo habilitado en Authentication → Settings del proyecto)
---      y llama a reclamar_planilla_por_link(), que valida el token
---      de nuevo, crea (o reutiliza) un "players" ligado a esa sesión
---      anónima con el nombre escrito, y deja registrado en el
---      partido quién lo va a planillar.
+--      cancha, equipos), y ya trae el match_id en la respuesta.
+--   4) Al tocar "Entrar a planillar": si el celular no tiene sesión,
+--      la página hace un login anónimo (supabase.auth.signInAnonymously
+--      — requiere tenerlo habilitado en Authentication → Settings del
+--      proyecto) SOLO para poder guardar — no identifica a nadie ni
+--      crea ningún jugador — y carga el partido directo con ese
+--      match_id.
 --   5) La página abre la Planilla Rápida (PlanillaRapida.jsx) ya
 --      cargada con ese partido — el guardado en sí no cambia en
 --      nada, sigue siendo exactamente el mismo código/flujo que ya
---      usa un árbitro con cuenta real.
+--      usa un árbitro con cuenta real. Como cada link es independiente
+--      y apunta siempre al mismo partido, cualquiera que entre (uno o
+--      varios celulares a la vez, incluso a un partido ya jugado o que
+--      se está jugando ahora mismo desde otro celular) ve y sigue
+--      exactamente los mismos datos ya guardados — PlanillaRapida
+--      fusiona el roster/eventos en vez de pisarlos, así que nunca se
+--      pierde nada.
+--
+-- NOTA: reclamar_planilla_por_link() (más abajo) y las columnas
+-- link_arbitro_nombre / link_arbitro_player_id quedan definidas por
+-- compatibilidad histórica, pero la app YA NO las usa — se quitó el
+-- paso de pedir nombre porque generaba errores de duplicado cuando el
+-- mismo celular entraba a más de un link seguido. Es seguro dejarlas
+-- así (no rompen nada) o borrarlas más adelante si se quiere limpiar.
 --
 -- OJO — requisito manual en el dashboard de Supabase:
 --   Authentication → Settings → "Allow anonymous sign-ins" debe
