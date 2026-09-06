@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Trophy, Shield, Users, Search, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 
 const input = {
   width: '100%', background: '#fff', border: '1px solid #dadce0',
@@ -36,6 +38,8 @@ export default function AdminCrearPage() {
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
+  const [parecidosCrear, setParecidosCrear] = useState([]) // equipos ya existentes con nombre parecido
+  const creandoEquipoRef = useRef(false)
 
   useEffect(() => {
     supabase.from('tournaments').select('*').eq('status', 'active').then(({ data }) => setTorneos(data || []))
@@ -114,35 +118,71 @@ export default function AdminCrearPage() {
     setNuevoEquipoLogoPreview(URL.createObjectURL(file))
   }
 
+  // Usa un equipo ya existente (con nombre parecido) en vez de crear uno
+  // nuevo — lo inscribe en este torneo (si no lo estaba ya) y lo deja
+  // seleccionado, conservando toda su historia.
+  async function usarEquipoExistente(equipo) {
+    if (creandoEquipoRef.current) return
+    creandoEquipoRef.current = true
+    setCreandoEquipo(true)
+    try {
+      const { data: existe } = await supabase.from('tournament_teams').select('id')
+        .eq('tournament_id', torneoSel).eq('team_id', equipo.id).single()
+      if (!existe) {
+        const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: torneoSel, team_id: equipo.id })
+        if (errorLink) { showMsg('No se pudo inscribir el equipo', 'error'); return }
+      }
+      showMsg(`${equipo.name} inscrito en el torneo ✓ — se conserva toda su historia`)
+      setParecidosCrear([])
+      setMostrarCrearEquipo(false)
+      await handleSeleccionarEquipo(equipo)
+      fetchEquiposInscritos()
+    } finally {
+      creandoEquipoRef.current = false
+      setCreandoEquipo(false)
+    }
+  }
+
   // Crea el equipo (con su representante y escudo), lo inscribe en el torneo y lo deja seleccionado
-  async function handleCrearEquipoYSeleccionar() {
+  async function handleCrearEquipoYSeleccionar(forzar = false) {
+    if (creandoEquipoRef.current) return
     if (!nuevoEquipoForm.name.trim())                 return showMsg('El nombre del equipo es obligatorio', 'error')
     if (!nuevoEquipoForm.representante_nombre.trim()) return showMsg('El representante del equipo es obligatorio', 'error')
+    creandoEquipoRef.current = true
     setCreandoEquipo(true)
-    const { data: nuevo, error } = await supabase.from('teams').insert({
-      name: nuevoEquipoForm.name.trim(),
-      city: nuevoEquipoForm.city.trim() || null,
-      representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
-      representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
-    }).select().single()
-    if (error) { showMsg('Error al crear el equipo', 'error'); setCreandoEquipo(false); return }
-    if (nuevoEquipoLogo) {
-      const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
-      const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
-      if (!errorLogo) {
-        const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
-        await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
-        nuevo.logo_url = urlData.publicUrl
+    try {
+      if (!forzar) {
+        const parecidos = await buscarEquiposParecidos(nuevoEquipoForm.name)
+        if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
       }
+      setParecidosCrear([])
+      const { data: nuevo, error } = await supabase.from('teams').insert({
+        name: nuevoEquipoForm.name.trim(),
+        city: nuevoEquipoForm.city.trim() || null,
+        representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+        representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+      }).select().single()
+      if (error) { showMsg('Error al crear el equipo', 'error'); return }
+      if (nuevoEquipoLogo) {
+        const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
+        const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
+        if (!errorLogo) {
+          const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+          await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
+          nuevo.logo_url = urlData.publicUrl
+        }
+      }
+      const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: torneoSel, team_id: nuevo.id })
+      if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); return }
+      setEquipos(prev => [...prev, nuevo].sort((a, b) => a.name.localeCompare(b.name)))
+      showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
+      setMostrarCrearEquipo(false)
+      await handleSeleccionarEquipo(nuevo)
+      fetchEquiposInscritos()
+    } finally {
+      creandoEquipoRef.current = false
+      setCreandoEquipo(false)
     }
-    const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: torneoSel, team_id: nuevo.id })
-    if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); setCreandoEquipo(false); return }
-    setEquipos(prev => [...prev, nuevo].sort((a, b) => a.name.localeCompare(b.name)))
-    showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
-    setCreandoEquipo(false)
-    setMostrarCrearEquipo(false)
-    await handleSeleccionarEquipo(nuevo)
-    fetchEquiposInscritos()
   }
 
   async function handleAgregarJugador(jugador) {
@@ -322,11 +362,11 @@ export default function AdminCrearPage() {
                       <div><label style={label}>Teléfono del representante</label><input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" style={input}/></div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                      <button onClick={handleCrearEquipoYSeleccionar} disabled={creandoEquipo}
+                      <button onClick={() => handleCrearEquipoYSeleccionar()} disabled={creandoEquipo}
                         style={{ flex: 1, padding: '9px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: creandoEquipo ? .7 : 1 }}>
                         {creandoEquipo ? 'Creando...' : '+ Crear e inscribir'}
                       </button>
-                      <button onClick={() => setMostrarCrearEquipo(false)} style={{ padding: '9px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
+                      <button onClick={() => { setMostrarCrearEquipo(false); setParecidosCrear([]) }} style={{ padding: '9px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
                     </div>
                   </div>
                 ) : (
@@ -502,6 +542,16 @@ export default function AdminCrearPage() {
             </>
           )}
         </div>
+      )}
+
+      {parecidosCrear.length > 0 && (
+        <ModalEquipoParecido
+          equipos={parecidosCrear}
+          creando={creandoEquipo}
+          onUsar={usarEquipoExistente}
+          onCrearNuevo={() => handleCrearEquipoYSeleccionar(true)}
+          onCancelar={() => setParecidosCrear([])}
+        />
       )}
     </div>
   )

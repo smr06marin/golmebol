@@ -4,6 +4,7 @@ import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
+import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 
 // Solo el ADMIN PRINCIPAL puede cambiar el dueño de un equipo ya creado
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -268,6 +269,7 @@ export default function AdminEquiposPage() {
   const [showForm,  setShowForm]  = useState(false)
   const [loading,   setLoading]   = useState(false)
   const guardandoEquipoRef = useRef(false) // bloqueo inmediato para que doble clic no cree el equipo dos veces
+  const [parecidosCrear, setParecidosCrear] = useState([]) // equipos ya existentes con nombre parecido
   const [uploading, setUploading] = useState(null)
   const [msg,       setMsg]       = useState(null)
   const [search,    setSearch]    = useState('')
@@ -315,7 +317,17 @@ export default function AdminEquiposPage() {
     setTimeout(() => setMsg(null), 3000)
   }
 
-  async function handleSave() {
+  // Cierra el aviso de duplicado y deja visible/resaltado el equipo existente
+  // en la lista, en vez de crear uno nuevo.
+  function usarEquipoExistente(equipo) {
+    setParecidosCrear([])
+    setShowForm(false); setForm(EMPTY); setEditId(null)
+    limpiarBorrador('draft_crear_equipo')
+    setSearch(equipo.name)
+    showMsgFn(`Ese es ${equipo.name} — ya está en la lista, no hace falta crear otro`)
+  }
+
+  async function handleSave(forzar = false) {
     if (guardandoEquipoRef.current) return // ya se está guardando — evita doble clic
     if (!form.name) return showMsgFn('El nombre es obligatorio', 'error')
     // Todo equipo debe tener un DUEÑO identificado con cédula y teléfono
@@ -328,17 +340,11 @@ export default function AdminEquiposPage() {
     try {
       // Al CREAR (no al editar): avisar si ya existe un equipo con nombre
       // parecido — duplicarlo hace que la historia quede huérfana en el viejo
-      if (!editId) {
+      if (!editId && !forzar) {
         const parecidos = await buscarEquiposParecidos(form.name)
-        if (parecidos.length > 0) {
-          const ok = window.confirm(
-            `⚠️ YA EXISTE un equipo con nombre parecido:\n\n${parecidos.map(p => `• ${p.name}${p.city ? ` (${p.city})` : ''} — Dueño: ${p.representante_nombre || 'sin registrar'}`).join('\n')}\n\n` +
-            `Si es el MISMO equipo, NO lo crees de nuevo: usa el existente para conservar su historia (partidos, palmarés, jugadores).\n\n` +
-            `¿Es un equipo DISTINTO y quieres crearlo de todas formas?`
-          )
-          if (!ok) return
-        }
+        if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
       }
+      setParecidosCrear([])
       setLoading(true)
       const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_cedula: form.representante_cedula || null, representante_telefono: form.representante_telefono || null }
       // El DUEÑO solo lo puede modificar el admin principal: al editar, los
@@ -395,6 +401,15 @@ export default function AdminEquiposPage() {
 
       {uniforme && <ModalUniforme equipo={uniforme} onClose={() => setUniforme(null)} onSaved={() => { fetchEquipos(); setUniforme(null) }}/>}
       {poster   && <ModalPoster   equipo={poster}   onClose={() => setPoster(null)}/>}
+      {parecidosCrear.length > 0 && (
+        <ModalEquipoParecido
+          equipos={parecidosCrear}
+          creando={loading}
+          onUsar={usarEquipoExistente}
+          onCrearNuevo={() => handleSave(true)}
+          onCancelar={() => setParecidosCrear([])}
+        />
+      )}
 
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'24px', flexWrap:'wrap', gap:'12px' }}>
@@ -428,7 +443,7 @@ export default function AdminEquiposPage() {
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Logros y palmarés</label><textarea value={form.logros} onChange={e => setForm(f=>({...f,logros:e.target.value}))} style={{...inputStyle,height:'60px',resize:'vertical'}} placeholder="Campeonatos, títulos, participaciones destacadas..."/></div>
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
-            <button onClick={handleSave} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':editId?'Actualizar':'Crear equipo'}</button>
+            <button onClick={() => handleSave()} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':editId?'Actualizar':'Crear equipo'}</button>
             <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
           </div>
         </div>
