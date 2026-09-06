@@ -337,7 +337,10 @@ export default function RegistroEquipoPage() {
       // torneo del MISMO organizador que este torneo (ver jugador_tiene_deuda
       // en la BD) — no de torneos de otros organizadores.
       supabase.rpc('jugador_tiene_deuda', { p_player_id: res.id, p_tournament_id: tournamentId }),
-      supabase.rpc('jugador_sancion_activa', { p_player_id: res.id }),
+      // p_tournament_id: la sanción solo bloquea si es de ESTE torneo (o una
+      // sanción global sin torneo, puesta a mano por el admin principal) —
+      // no una expulsión de otro torneo distinto.
+      supabase.rpc('jugador_sancion_activa', { p_player_id: res.id, p_tournament_id: tournamentId }),
     ])
     if (deuda?.tiene_deuda) {
       setDeudaJugador({ total: deuda.total, concepto: deuda.concepto || 'un torneo anterior de este organizador' })
