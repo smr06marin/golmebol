@@ -2748,19 +2748,24 @@ export default function AdminTorneoDetallePage() {
       return slots
     }
 
-    // Rango de fechas disponible para programar esta jornada: ya no se pide
-    // "Fecha fin" — se busca automáticamente, desde la fecha de inicio, en
-    // las próximas 4 semanas, cuáles fechas caen en un día habilitado y
-    // tienen al menos una cancha disponible ese día.
+    // Rango de fechas disponible para programar ESTA jornada: solo la
+    // primera vez que cae cada día marcado desde la fecha de inicio (ej: si
+    // se marcó sábado y domingo, es ESE sábado y ESE domingo — no los de
+    // las semanas siguientes). Antes se buscaba en las próximas 4 semanas,
+    // lo que hacía que, si el fin de semana alcanzaba de sobra para todos
+    // los cruces, el sorteo igual esparciera partidos en fines de semana
+    // futuros dejando huecos sin usar en el más cercano. Si de verdad no
+    // alcanza el cupo de esta semana, esos equipos quedan descansando por
+    // falta de disponibilidad (se resuelve generando otra jornada después).
     const fechaIni = configJornada.fecha
     let fechasDisponibles = []
     const d0 = new Date(fechaIni + 'T00:00:00')
-    for (let i = 0; i < 28; i++) {
+    for (let i = 0; i < 7; i++) {
       const d = new Date(d0); d.setDate(d0.getDate() + i)
       fechasDisponibles.push({ iso: d.toISOString().slice(0, 10), dow: d.getDay() })
     }
     fechasDisponibles = fechasDisponibles.filter(f => canchasDisponiblesEnFecha(f.iso).length > 0)
-    if (fechasDisponibles.length === 0) return showMsg('Ningún día de las próximas 4 semanas desde la fecha de inicio tiene canchas disponibles (revisa los días marcados por escenario)', 'error')
+    if (fechasDisponibles.length === 0) return showMsg('Ningún día desde la fecha de inicio (esa semana) tiene canchas disponibles (revisa los días marcados por escenario)', 'error')
 
     // Cruces que ya existen en el torneo (jugados o programados)
     const yaJugaron = new Set()
@@ -2879,8 +2884,8 @@ export default function AdminTorneoDetallePage() {
       sumarHistorialDia(m.away_team_id, DIAS_SEMANA[new Date(m.played_at).getDay()].key)
     })
 
-    const conFecha = pares.map(p => {
-      if (p.descanso) return p
+    const conFecha = pares.flatMap(p => {
+      if (p.descanso) return [p]
       const diasA = p.local.dias_preferidos || []
       const diasB = p.visitante.dias_preferidos || []
       let preferidas = null
@@ -2905,7 +2910,17 @@ export default function AdminTorneoDetallePage() {
       } else {
         if (preferidas && preferidas.length > 0) sinCupoPreferencia = true
         const conCupoGeneral = fechasDisponibles.filter(f => capacidadFecha[f.iso] == null || usoFecha[f.iso] < capacidadFecha[f.iso])
-        pool = conCupoGeneral.length > 0 ? conCupoGeneral : fechasDisponibles
+        if (conCupoGeneral.length === 0) {
+          // Ya no queda NINGÚN cupo (cancha+hora) libre en ninguna de las
+          // fechas de esta jornada — en vez de inventar una fecha nueva o
+          // forzar el cruce sin cupo, los dos equipos quedan descansando
+          // por falta de disponibilidad (se programan en otra jornada).
+          return [
+            { local: p.local, visitante: null, descanso: true, sinDisponibilidad: true },
+            { local: p.visitante, visitante: null, descanso: true, sinDisponibilidad: true },
+          ]
+        }
+        pool = conCupoGeneral
       }
       const minUso = Math.min(...pool.map(f => usoFecha[f.iso]))
       const empatadas = pool.filter(f => usoFecha[f.iso] === minUso)
@@ -2922,7 +2937,7 @@ export default function AdminTorneoDetallePage() {
       usoFecha[elegida.iso] = (usoFecha[elegida.iso] || 0) + 1
       sumarHistorialDia(p.local.id, DIAS_SEMANA[elegida.dow].key)
       sumarHistorialDia(p.visitante.id, DIAS_SEMANA[elegida.dow].key)
-      return { ...p, fecha: elegida.iso, sinCoincidencia, sinCupoPreferencia }
+      return [{ ...p, fecha: elegida.iso, sinCoincidencia, sinCupoPreferencia }]
     })
 
     // Historial de a qué hora ha jugado cada equipo hasta ahora en este
@@ -4329,7 +4344,7 @@ export default function AdminTorneoDetallePage() {
                   <div><label style={labelStyle}>Número de jornada</label><input type="number" value={configJornada.numero} onChange={e => setConfigJornada(f => ({ ...f, numero: e.target.value }))} style={inputStyle} placeholder={fechas.length + 1}/></div>
                   <div><label style={labelStyle}>Fecha inicio *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
                 </div>
-                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Desde esta fecha, el sorteo busca solo los días que marques abajo (ej: sábados y domingos) en las próximas 4 semanas — no hace falta poner una "fecha fin".</div>
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Desde esta fecha, el sorteo usa solo la primera vez que cae cada día que marques abajo (ej: el sábado y domingo de ESA semana, no de las siguientes) — no hace falta poner una "fecha fin". Si no alcanza el cupo de horarios/canchas, los equipos que sobran quedan descansando.</div>
 
                 <div style={{ marginTop: '16px' }}>
                   <label style={labelStyle}>Escenarios, canchas, días y horarios de cada cancha</label>
@@ -4420,7 +4435,7 @@ export default function AdminTorneoDetallePage() {
                 </div>
 
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
-                  📅 El sorteo reparte los cruces entre las fechas de esos días (dentro de las próximas 4 semanas desde la fecha de inicio) y los horarios de cada cancha, según la preferencia de cada equipo — cada cancha juega solo en sus propias horas marcadas, aunque otra cancha del mismo escenario tenga horas distintas ese día.
+                  📅 El sorteo reparte los cruces entre esos días de ESA semana (el próximo sábado/domingo/etc que marques desde la fecha de inicio) y los horarios de cada cancha, según la preferencia de cada equipo — cada cancha juega solo en sus propias horas marcadas, aunque otra cancha del mismo escenario tenga horas distintas ese día. Si no alcanza el cupo para todos los cruces, los equipos que sobran quedan descansando (podés generar otra jornada después para ellos).
                 </div>
                 {grupos.length > 1 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
@@ -4460,7 +4475,7 @@ export default function AdminTorneoDetallePage() {
                               style={{ flex: 1, minWidth: '160px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'local' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'local' ? 'rgba(26,115,232,.06)' : 'transparent' }}>
                               <GripVertical size={13} color="#9aa0a6"/>
                               <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
-                              <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa</span>
+                              <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa{p.sinDisponibilidad ? ' (sin cupo de horario/cancha)' : ''}</span>
                             </div>
                             <span style={{ fontSize: '.65rem', color: '#bdbdbd' }}>arrástralo sobre un partido para ponerlo a jugar</span>
                           </div>
