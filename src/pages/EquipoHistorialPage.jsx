@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
   ArrowLeft, Shield, Users, Trophy, Calendar, Award, Search, X,
-  LayoutGrid, BarChart3, Clock, MapPin,
+  LayoutGrid, BarChart3, Clock, MapPin, Pencil, Camera, Power, Check,
 } from 'lucide-react'
 import { responderPregunta } from '../lib/motorPreguntas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { useAuthStore } from '../store/authStore'
+import { comprimirImagen } from '../lib/imageCompress'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -32,6 +34,19 @@ const normalizarTexto = s => (s || '').toLowerCase().normalize('NFD').replace(ne
 export default function EquipoHistorialPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+
+  // Encargado del equipo (representante): si su cédula coincide con la del
+  // dueño registrado del equipo, puede desactivar/reactivar jugadores de la
+  // plantilla y corregirles el teléfono o la foto — pero NO puede agregar
+  // jugadores nuevos ni eliminar (borrar) a ninguno; eso sigue siendo solo
+  // del admin/organizador.
+  const [miPlayer,        setMiPlayer]        = useState(null)
+  const [msg,             setMsg]             = useState(null)
+  const [editandoTelId,   setEditandoTelId]   = useState(null)
+  const [telEdit,         setTelEdit]         = useState('')
+  const [guardandoTel,    setGuardandoTel]    = useState(false)
+  const [subiendoFoto,    setSubiendoFoto]    = useState(null)
 
   const [equipo,                setEquipo]                = useState(null)
   const [torneos,               setTorneos]               = useState([])
@@ -50,6 +65,9 @@ export default function EquipoHistorialPage() {
   const [statsJugadores,          setStatsJugadores]        = useState(null)
 
   useEffect(() => { fetchTodo() }, [id])
+  useEffect(() => {
+    if (user) supabase.from('players').select('id, numero_cedula').eq('user_id', user.id).maybeSingle().then(({ data }) => setMiPlayer(data))
+  }, [user])
   useEffect(() => {
     if (tab === 'buscador' && !statsJugadores) {
       supabase.from('player_match_stats')
@@ -71,8 +89,11 @@ export default function EquipoHistorialPage() {
   }
 
   async function fetchJugadoresGlobal() {
-    const { data } = await supabase.from('team_players').select('*, players(*)').eq('team_id', id)
-    setJugadoresEquipoGlobal((data || []).map(r => r.players).filter(Boolean))
+    const { data } = await supabase.from('team_players').select('id, activo, players(*)').eq('team_id', id)
+    // _tpId/_tpActivo son del renglón team_players (la plantilla base del
+    // equipo) — distinto del "Activo/Inactivo" que ya se mostraba, que es
+    // por inscripción en torneo (tournament_player_registrations).
+    setJugadoresEquipoGlobal((data || []).filter(r => r.players).map(r => ({ ...r.players, _tpId: r.id, _tpActivo: r.activo !== false })))
     const { data: activos } = await supabase.from('tournament_player_registrations').select('player_id').eq('team_id', id).eq('activo', true)
     setJugadoresActivos((activos || []).map(a => a.player_id))
     const { data: regsAll } = await supabase.from('tournament_player_registrations').select('player_id, tournament_id').eq('team_id', id)
@@ -160,6 +181,46 @@ export default function EquipoHistorialPage() {
     return { texto: 'P', color: S.loss, bg: S.lossDim }
   }
   function getRival(partido) { return partido.home_team_id === id ? partido.away : partido.home }
+
+  function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000) }
+
+  // Desactivar (o reactivar) un jugador de la plantilla base del equipo —
+  // NO lo elimina ni lo desinscribe de ningún torneo puntual, solo lo saca
+  // (o lo devuelve) de la lista de jugadores del equipo.
+  async function handleToggleActivoEquipo(jugador) {
+    if (!esDueno) return
+    const nuevo = !jugador._tpActivo
+    const { error } = await supabase.from('team_players').update({ activo: nuevo }).eq('id', jugador._tpId)
+    if (error) return showMsg('No se pudo actualizar', 'error')
+    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, _tpActivo: nuevo } : j))
+    showMsg(nuevo ? `${jugador.name} activo en el equipo ✓` : `${jugador.name} desactivado del equipo`)
+  }
+
+  async function handleGuardarTelefono(jugador) {
+    if (!esDueno) return
+    setGuardandoTel(true)
+    const { error } = await supabase.from('players').update({ telefono: telEdit.trim() || null }).eq('id', jugador.id)
+    setGuardandoTel(false)
+    if (error) return showMsg('No se pudo guardar el teléfono', 'error')
+    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, telefono: telEdit.trim() || null } : j))
+    setEditandoTelId(null)
+    showMsg('Teléfono actualizado ✓')
+  }
+
+  async function handleFotoJugador(jugador, file) {
+    if (!esDueno || !file) return
+    setSubiendoFoto(jugador.id)
+    const archivo = await comprimirImagen(file)
+    const ext  = archivo.name.split('.').pop()
+    const path = `fotos/${jugador.id}_tarjeta.${ext}`
+    const { error } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
+    if (error) { setSubiendoFoto(null); return showMsg('Error al subir la foto', 'error') }
+    const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
+    await supabase.from('players').update({ photo_url: urlData.publicUrl, foto_cambiar_tarjeta: false }).eq('id', jugador.id)
+    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, photo_url: urlData.publicUrl } : j))
+    setSubiendoFoto(null)
+    showMsg('Foto actualizada ✓')
+  }
 
   // ── Buscador del equipo (misma lógica que el admin, solo lectura) ──
   function construirRespuestas() {
@@ -304,6 +365,8 @@ export default function EquipoHistorialPage() {
   if (loading) return <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando equipo...</div>
   if (!equipo) return <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem' }}>Equipo no encontrado</div>
 
+  const esDueno = !!(miPlayer?.numero_cedula && equipo.representante_cedula && String(miPlayer.numero_cedula) === String(equipo.representante_cedula))
+
   const titulos = logros.filter(l => l.tipo === 'campeon').length
   const efectividad = stats?.pj > 0 ? Math.round((stats.pg / stats.pj) * 100) : 0
   const promGf = stats?.pj > 0 ? (stats.gf / stats.pj) : 0
@@ -354,6 +417,12 @@ export default function EquipoHistorialPage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
 
+      {msg && (
+        <div style={{ position:'fixed', top:'14px', left:'50%', transform:'translateX(-50%)', background: msg.type==='error' ? '#d93025' : '#1e8e3e', color:'#fff', borderRadius:'10px', padding:'9px 20px', zIndex:300, fontSize:'.82rem', fontWeight:'600', boxShadow:'0 4px 14px rgba(0,0,0,.35)' }}>
+          {msg.text}
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'680px', margin:'0 auto' }}>
@@ -375,6 +444,11 @@ export default function EquipoHistorialPage() {
               {equipo.representante_nombre && (
                 <div style={{ fontSize:'.74rem', color:S.muted, marginTop:'8px' }}>
                   👤 Representante: {equipo.representante_nombre}{equipo.representante_telefono && ` · 📞 ${equipo.representante_telefono}`}
+                </div>
+              )}
+              {esDueno && (
+                <div style={{ fontSize:'.7rem', color:S.gold, marginTop:'6px', fontWeight:'700' }}>
+                  👑 Sos el encargado de este equipo — podés desactivar jugadores y corregir su teléfono/foto en la pestaña Jugadores.
                 </div>
               )}
             </div>
@@ -617,29 +691,74 @@ export default function EquipoHistorialPage() {
                 <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                   {jugadoresFiltrados.map(j => {
                     const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+                    const editandoTel = editandoTelId === j.id
                     return (
-                    <div key={j.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', display:'flex', alignItems:'center', gap:'12px', padding:'12px 16px' }}>
-                      <div style={{ width:'38px', height:'38px', borderRadius:'50%', flexShrink:0, padding: tieneTag ? '2px' : '0',
-                        background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
-                        <div style={{ width:'100%', height:'100%', borderRadius:'50%', background:S.card2, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', border: tieneTag ? `2px solid ${S.card}` : 'none' }}>
-                          {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
+                    <div key={j.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px', opacity: esDueno && j._tpActivo === false ? .6 : 1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                        <div style={{ position:'relative', flexShrink:0 }}>
+                          <div style={{ width:'38px', height:'38px', borderRadius:'50%', padding: tieneTag ? '2px' : '0',
+                            background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
+                            <div style={{ width:'100%', height:'100%', borderRadius:'50%', background:S.card2, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', border: tieneTag ? `2px solid ${S.card}` : 'none' }}>
+                              {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
+                            </div>
+                          </div>
+                          {esDueno && (
+                            <label style={{ position:'absolute', bottom:'-3px', right:'-3px', width:'18px', height:'18px', borderRadius:'50%', background:S.cyan, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:`2px solid ${S.card}` }} title="Cambiar foto">
+                              <Camera size={10} color="#000"/>
+                              <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoFoto === j.id}
+                                onChange={e => handleFotoJugador(j, e.target.files[0])}/>
+                            </label>
+                          )}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontWeight:'700', color:S.text, fontSize:'.84rem' }}>{j.name}{subiendoFoto === j.id && <span style={{ fontSize:'.66rem', color:S.muted, fontWeight:'500' }}> · subiendo foto...</span>}</div>
+                          <div style={{ display:'flex', gap:'6px', marginTop:'5px', flexWrap:'wrap' }}>
+                            {j.es_elite       && <span style={{ fontSize:'.66rem', color:'#1a1305', background:'#f5c542', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>💎 Élite</span>}
+                            {j.es_profesional && <span style={{ fontSize:'.66rem', color:'#fff', background:'#7b3ff2', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>🎓 Profesional</span>}
+                            {j.es_mayor_35    && <span style={{ fontSize:'.66rem', color:S.text, background:S.card2, borderRadius:'10px', padding:'2px 8px', fontWeight:'700' }}>🕒 Mayor de 35</span>}
+                            {j.etiqueta_personalizada && <span style={{ fontSize:'.66rem', color:'#0a1a3f', background:'#5b9dff', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>⭐ {j.etiqueta_personalizada}</span>}
+                            {j.posicion_futbol5  && <span style={{ fontSize:'.66rem', color:S.cyan, background:S.cyanDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F5: {j.posicion_futbol5}</span>}
+                            {j.posicion_futbol7  && <span style={{ fontSize:'.66rem', color:S.win, background:S.winDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F7: {j.posicion_futbol7}</span>}
+                            {j.posicion_futbol11 && <span style={{ fontSize:'.66rem', color:S.gold, background:S.goldDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F11: {j.posicion_futbol11}</span>}
+                            <span style={{ fontSize:'.64rem', fontWeight:'700', color: jugadoresActivos.includes(j.id) ? S.win : S.muted, background:S.card2, borderRadius:'20px', padding:'2px 8px' }}>
+                              {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
+                            </span>
+                            {esDueno && j._tpActivo === false && (
+                              <span style={{ fontSize:'.64rem', fontWeight:'700', color:S.loss, background:S.lossDim, borderRadius:'20px', padding:'2px 8px' }}>Fuera del equipo</span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontWeight:'700', color:S.text, fontSize:'.84rem' }}>{j.name}</div>
-                        <div style={{ display:'flex', gap:'6px', marginTop:'5px', flexWrap:'wrap' }}>
-                          {j.es_elite       && <span style={{ fontSize:'.66rem', color:'#1a1305', background:'#f5c542', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>💎 Élite</span>}
-                          {j.es_profesional && <span style={{ fontSize:'.66rem', color:'#fff', background:'#7b3ff2', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>🎓 Profesional</span>}
-                          {j.es_mayor_35    && <span style={{ fontSize:'.66rem', color:S.text, background:S.card2, borderRadius:'10px', padding:'2px 8px', fontWeight:'700' }}>🕒 Mayor de 35</span>}
-                          {j.etiqueta_personalizada && <span style={{ fontSize:'.66rem', color:'#0a1a3f', background:'#5b9dff', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>⭐ {j.etiqueta_personalizada}</span>}
-                          {j.posicion_futbol5  && <span style={{ fontSize:'.66rem', color:S.cyan, background:S.cyanDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F5: {j.posicion_futbol5}</span>}
-                          {j.posicion_futbol7  && <span style={{ fontSize:'.66rem', color:S.win, background:S.winDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F7: {j.posicion_futbol7}</span>}
-                          {j.posicion_futbol11 && <span style={{ fontSize:'.66rem', color:S.gold, background:S.goldDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F11: {j.posicion_futbol11}</span>}
-                          <span style={{ fontSize:'.64rem', fontWeight:'700', color: jugadoresActivos.includes(j.id) ? S.win : S.muted, background:S.card2, borderRadius:'20px', padding:'2px 8px' }}>
-                            {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
-                          </span>
+
+                      {/* Controles del encargado del equipo: solo teléfono, foto (arriba)
+                          y desactivar/reactivar — nunca agregar ni eliminar jugadores. */}
+                      {esDueno && (
+                        <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${S.border}`, display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                          {editandoTel ? (
+                            <>
+                              <input value={telEdit} onChange={e => setTelEdit(e.target.value)} placeholder="Teléfono" type="tel"
+                                style={{ flex:'1 1 140px', minWidth:0, background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 10px', color:S.text, fontSize:'.78rem', outline:'none' }}/>
+                              <button onClick={() => handleGuardarTelefono(j)} disabled={guardandoTel}
+                                style={{ background:S.win, border:'none', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center' }}>
+                                <Check size={13}/>
+                              </button>
+                              <button onClick={() => setEditandoTelId(null)}
+                                style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:S.muted, display:'flex', alignItems:'center' }}>
+                                <X size={13}/>
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={() => { setEditandoTelId(j.id); setTelEdit(j.telefono || '') }}
+                              style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:S.text2, fontSize:'.76rem' }}>
+                              <Pencil size={12}/> {j.telefono || 'Sin teléfono'}
+                            </button>
+                          )}
+                          <button onClick={() => handleToggleActivoEquipo(j)}
+                            style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${j._tpActivo === false ? S.win : S.loss}66`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color: j._tpActivo === false ? S.win : S.loss, fontSize:'.76rem', fontWeight:'600' }}>
+                            <Power size={12}/> {j._tpActivo === false ? 'Reactivar en el equipo' : 'Desactivar del equipo'}
+                          </button>
                         </div>
-                      </div>
+                      )}
                     </div>
                     )
                   })}
