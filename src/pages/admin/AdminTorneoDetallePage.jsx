@@ -875,6 +875,7 @@ export default function AdminTorneoDetallePage() {
   const [showFlyerTorneo,  setShowFlyerTorneo]  = useState(false)
   const [showFlyerProgramacion, setShowFlyerProgramacion] = useState(false)
   const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
+  const [moviendoJugadorId, setMoviendoJugadorId] = useState(null) // id de la inscripción (tournament_player_registrations) con el selector de "mover a otro equipo" abierto
   const [verDesact,        setVerDesact]        = useState(false)
   const [abiertosJornada,  setAbiertosJornada]  = useState({})
 
@@ -1193,6 +1194,31 @@ export default function AdminTorneoDetallePage() {
     await supabase.from('sanciones').update({ activa: false }).eq('id', sancionId)
     showMsg('Sanción levantada ✓')
     fetchSanciones()
+  }
+
+  // Mueve a un jugador de un equipo a otro DENTRO del mismo torneo — la
+  // inscripción (tournament_player_registrations) pasa a apuntar al equipo
+  // nuevo. El vínculo base equipo↔jugador (team_players) del equipo viejo
+  // se deja intacto (así no se pierde el historial de que jugó ahí); en el
+  // equipo nuevo se crea si todavía no existía.
+  async function handleMoverJugador(reg, nuevoEquipoId) {
+    const equipoDestino = equipos.find(eq => eq.id === nuevoEquipoId)
+    if (!equipoDestino) return
+    const activosDestino = jugadores.filter(j => j.team_id === nuevoEquipoId && j.activo !== false).length
+    if (torneo?.limite_jugadores_equipo && activosDestino >= torneo.limite_jugadores_equipo) {
+      showMsg(`${equipoDestino.name} ya alcanzó el límite de jugadores del torneo (${torneo.limite_jugadores_equipo})`, 'error')
+      return
+    }
+    if (!confirm(`¿Mover a ${reg.players?.name || 'este jugador'} a ${equipoDestino.name}? Sus estadísticas de partidos ya jugados se conservan con el equipo con el que los jugó.`)) return
+    const { error } = await supabase.from('tournament_player_registrations').update({ team_id: nuevoEquipoId }).eq('id', reg.id)
+    if (error) { showMsg('Error al mover el jugador', 'error'); return }
+    const { data: yaEnEquipoNuevo } = await supabase.from('team_players').select('id').eq('team_id', nuevoEquipoId).eq('player_id', reg.player_id).maybeSingle()
+    if (!yaEnEquipoNuevo) {
+      await supabase.from('team_players').insert({ team_id: nuevoEquipoId, player_id: reg.player_id, activo: true })
+    }
+    showMsg(`${reg.players?.name || 'Jugador'} movido a ${equipoDestino.name} ✓`)
+    setMoviendoJugadorId(null)
+    fetchJugadores()
   }
 
   async function fetchCanchas() {
@@ -4838,6 +4864,12 @@ export default function AdminTorneoDetallePage() {
                                         Suspender
                                       </button>
                                     )}
+                                    {equipos.length > 1 && (
+                                      <button onClick={() => setMoviendoJugadorId(moviendoJugadorId === j.id ? null : j.id)}
+                                        style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1a73e8', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                        🔁 Mover de equipo
+                                      </button>
+                                    )}
                                     <button onClick={async () => {
                                       if (!confirm('¿Sacar a ' + p.name + ' del equipo en este torneo? Ya no hará parte del equipo, pero sus estadísticas se conservan.')) return
                                       await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
@@ -4858,6 +4890,23 @@ export default function AdminTorneoDetallePage() {
                                       Eliminar por error
                                     </button>
                                   </div>
+                                  {moviendoJugadorId === j.id && (
+                                    <div style={{ borderTop:'1px solid #f1f3f4', marginTop:'2px', paddingTop:'8px' }}>
+                                      <div style={{ fontSize:'.68rem', color:'#5f6368', marginBottom:'6px' }}>¿A qué equipo lo movemos?</div>
+                                      <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                                        {equipos.filter(eq => eq.id !== e.id).map(eq => (
+                                          <button key={eq.id} onClick={() => handleMoverJugador(j, eq.id)}
+                                            style={{ background:'#fff', border:'1px solid #dadce0', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', color:'#202124', fontSize:'.7rem', fontWeight:'600' }}>
+                                            {eq.name}
+                                          </button>
+                                        ))}
+                                        <button onClick={() => setMoviendoJugadorId(null)}
+                                          style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6', fontSize:'.7rem', padding:'4px 6px' }}>
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })}
