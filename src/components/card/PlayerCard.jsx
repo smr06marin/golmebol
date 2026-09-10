@@ -292,8 +292,14 @@ export default function PlayerCard({
                 borrarla desde su panel para habilitar una nueva subida. */}
           </div>
 
-          {/* Zona media */}
-          <div style={{ position: 'relative', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          {/* Zona media — zIndex explícito (no "auto") para que el panel de
+              escudos (zIndex 12 más abajo) quede garantizado por encima de
+              la foto (zIndex 2) en todos los navegadores. Dejarlo en "auto"
+              funciona en iPhone/Safari pero en varios Android con este mismo
+              contenedor recortado por clip-path + translateZ(0), el z-index
+              interno del panel de escudos no se respetaba y la foto tapaba
+              el escudo del equipo. */}
+          <div style={{ position: 'relative', flex: 1, overflow: 'hidden', minHeight: 0, zIndex: 10 }}>
 
             {/* Panel izquierdo escudos */}
             {!hideShields && (
