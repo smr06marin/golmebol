@@ -27,6 +27,28 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Red de seguridad final: si el navegador tiene guardada una página
+         vieja de antes del último deploy, puede terminar pidiendo el
+         archivo principal de React con un nombre que ya no existe en el
+         servidor. Ahí ni React llega a arrancar (así que ni su propio
+         "recargar sola" de más abajo puede actuar) y la pantalla queda
+         completamente en negro, sin ningún aviso. Este script no depende
+         de React: si a los 5 segundos el div#root sigue vacío, se recarga
+         la página una sola vez (sessionStorage evita quedar en bucle si el
+         sitio está realmente caído por otra razón). -->
+    <script>
+      (function () {
+        setTimeout(function () {
+          try {
+            var root = document.getElementById('root')
+            if (root && root.childElementCount === 0 && !sessionStorage.getItem('golmebol_watchdog_reload')) {
+              sessionStorage.setItem('golmebol_watchdog_reload', '1')
+              window.location.reload()
+            }
+          } catch (e) {}
+        }, 5000)
+      })()
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

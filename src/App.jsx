@@ -373,7 +373,12 @@ export default function App() {
     // nuevo), y se limpia para que un futuro deploy pueda volver a disparar
     // la recarga sola.
     const t = setTimeout(() => {
-      try { sessionStorage.removeItem('golmebol_reload_chunk') } catch {}
+      try {
+        sessionStorage.removeItem('golmebol_reload_chunk')
+        // Mismo motivo: solo se limpia la bandera del "watchdog" de
+        // index.html (ver ahí) una vez que la app ya se ve arriba de verdad.
+        sessionStorage.removeItem('golmebol_watchdog_reload')
+      } catch {}
     }, 6000)
     return () => clearTimeout(t)
   }, [])
