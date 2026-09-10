@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -277,6 +278,7 @@ export default function AdminEquiposPage() {
   const [poster,    setPoster]    = useState(null)
   const [filtro,    setFiltro]    = useState('todos')
   const formRef = useRef(null)
+  const [personaCedula, setPersonaCedula] = useState(null) // jugador/árbitro ya registrado con esa cédula
 
   // Si el celular mata la pestaña al salir a otra app (ej. WhatsApp) mientras
   // se está llenando el formulario de un equipo NUEVO, esto guarda lo escrito
@@ -317,21 +319,25 @@ export default function AdminEquiposPage() {
     setTimeout(() => setMsg(null), 3000)
   }
 
-  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
-  // autocompletan nombre y teléfono para no volver a escribirlos ni
-  // arriesgarse a guardarlos distinto en cada equipo.
+  // La cédula solo debe tener UN nombre en toda la plataforma. Primero se
+  // busca si ya es un jugador/árbitro registrado (es la fuente más
+  // confiable); si no, si ya es dueño de otro equipo. En cualquier caso se
+  // autocompletan nombre y teléfono para no volver a escribirlos distinto.
   async function buscarDuenoPorCedula(cedula) {
     const c = (cedula || '').trim()
-    if (!c) return
-    const { data } = await supabase.from('teams')
-      .select('representante_nombre, representante_telefono')
-      .eq('representante_cedula', c)
-      .not('representante_nombre', 'is', null)
-      .limit(1)
-      .maybeSingle()
-    if (data) {
-      setForm(f => ({ ...f, representante_nombre: data.representante_nombre || f.representante_nombre, representante_telefono: data.representante_telefono || f.representante_telefono }))
-      showMsgFn(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    if (!c) { setPersonaCedula(null); return }
+    const persona = await buscarPersonaPorCedula(c)
+    if (persona) {
+      setPersonaCedula(persona)
+      setForm(f => ({ ...f, representante_nombre: persona.name || f.representante_nombre, representante_telefono: persona.telefono || f.representante_telefono }))
+      showMsgFn(`👤 ${persona.name} ya está registrado en Golmebol — datos completados`)
+      return
+    }
+    setPersonaCedula(null)
+    const equipo = await buscarDuenoEquipoPorCedula(c, editId)
+    if (equipo) {
+      setForm(f => ({ ...f, representante_nombre: equipo.representante_nombre || f.representante_nombre, representante_telefono: equipo.representante_telefono || f.representante_telefono }))
+      showMsgFn(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
     }
   }
 
@@ -339,7 +345,7 @@ export default function AdminEquiposPage() {
   // en la lista, en vez de crear uno nuevo.
   function usarEquipoExistente(equipo) {
     setParecidosCrear([])
-    setShowForm(false); setForm(EMPTY); setEditId(null)
+    setShowForm(false); setForm(EMPTY); setEditId(null); setPersonaCedula(null)
     limpiarBorrador('draft_crear_equipo')
     setSearch(equipo.name)
     showMsgFn(`Ese es ${equipo.name} — ya está en la lista, no hace falta crear otro`)
@@ -383,7 +389,7 @@ export default function AdminEquiposPage() {
       }
       if (error) showMsgFn(editId ? 'Error al guardar' : 'Error al crear', 'error')
       else { showMsgFn(editId ? 'Equipo actualizado ✓' : 'Equipo creado ✓'); setEditId(null); if (!editId) limpiarBorrador('draft_crear_equipo') }
-      setShowForm(false); setForm(EMPTY); fetchEquipos()
+      setShowForm(false); setForm(EMPTY); setPersonaCedula(null); fetchEquipos()
     } finally {
       guardandoEquipoRef.current = false
       setLoading(false)
@@ -435,7 +441,7 @@ export default function AdminEquiposPage() {
           <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:0 }}>Equipos</h1>
           <p style={{ color:'#5f6368', margin:'4px 0 0', fontSize:'.875rem' }}>{equipos.length} equipos registrados</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setEditId(null); setShowForm(true) }}
+        <button onClick={() => { setForm(EMPTY); setEditId(null); setPersonaCedula(null); setShowForm(true) }}
           style={{ display:'flex', alignItems:'center', gap:'6px', background:'#1a73e8', border:'none', borderRadius:'8px', padding:'9px 18px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600' }}>
           <Plus size={16}/> Agregar Equipo
         </button>
@@ -452,8 +458,15 @@ export default function AdminEquiposPage() {
             <div><label style={labelStyle}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{GENEROS.map(g=><option key={g}>{g}</option>)}</select></div>
             <div>
               <label style={labelStyle}>Cédula del dueño *</label>
-              <input value={form.representante_cedula || ''} onChange={e => setForm(f=>({...f,representante_cedula:e.target.value}))} onBlur={e => buscarDuenoPorCedula(e.target.value)} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Número de cédula" type="number" disabled={editId && !esPrincipal}/>
-              <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya es dueño de otro equipo, se completan el nombre y teléfono solos</div>
+              <input value={form.representante_cedula || ''} onChange={e => { setForm(f=>({...f,representante_cedula:e.target.value})); setPersonaCedula(null) }} onBlur={e => buscarDuenoPorCedula(e.target.value)} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Número de cédula" type="number" disabled={editId && !esPrincipal}/>
+              {personaCedula ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '8px 10px', marginTop: '6px' }}>
+                  <span style={{ fontSize: '.78rem', color: '#202124' }}>👤 <strong>{personaCedula.name}</strong> ya está registrado como {rolActualLabel(personaCedula)}</span>
+                  <a href={`/admin/jugadores/${personaCedula.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '700', textDecoration: 'none', marginLeft: 'auto', whiteSpace: 'nowrap' }}>Ver perfil →</a>
+                </div>
+              ) : (
+                <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan el nombre y teléfono solos</div>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Dueño / representante *</label>
@@ -466,7 +479,7 @@ export default function AdminEquiposPage() {
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
             <button onClick={() => handleSave()} disabled={loading} style={{ padding:'8px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:loading?.7:1 }}>{loading?'Guardando...':editId?'Actualizar':'Crear equipo'}</button>
-            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null) }} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
+            <button onClick={() => { setShowForm(false); setForm(EMPTY); setEditId(null); setPersonaCedula(null) }} style={{ padding:'8px 20px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.875rem' }}>Cancelar</button>
           </div>
         </div>
       )}
@@ -535,7 +548,7 @@ export default function AdminEquiposPage() {
             {/* Acciones */}
             <MenuAcciones
               equipo={equipo}
-              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setShowForm(true) }}
+              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setPersonaCedula(null); setShowForm(true) }}
               onJugadores={eq => navigate(`/admin/equipos/${eq.id}`)}
               onUniforme={eq => setUniforme(eq)}
               onPoster={eq => setPoster(eq)}

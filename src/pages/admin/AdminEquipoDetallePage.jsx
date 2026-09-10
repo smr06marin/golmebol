@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock, Upload } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { useAuthStore } from '../../store/authStore'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
@@ -141,6 +142,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [editandoDueno, setEditandoDueno] = useState(false)
   const [duenoForm,     setDuenoForm]     = useState({ nombre: '', cedula: '', telefono: '' })
   const [guardandoDueno, setGuardandoDueno] = useState(false)
+  const [personaCedulaDueno, setPersonaCedulaDueno] = useState(null) // jugador/árbitro ya registrado con esa cédula
 
   const [equipo,                setEquipo]                = useState(null)
   const [torneos,               setTorneos]               = useState([])
@@ -544,21 +546,24 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     showMsg('Nombre actualizado ✓')
   }
 
-  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
-  // autocompletan nombre y teléfono para no volver a escribirlos.
+  // La cédula solo debe tener UN nombre en toda la plataforma. Primero se
+  // busca si ya es un jugador/árbitro registrado; si no, si ya es dueño de
+  // otro equipo. En cualquier caso se autocompletan nombre y teléfono.
   async function buscarDuenoPorCedula(cedula) {
     const c = (cedula || '').trim()
-    if (!c) return
-    const { data } = await supabase.from('teams')
-      .select('representante_nombre, representante_telefono')
-      .eq('representante_cedula', c)
-      .neq('id', id)
-      .not('representante_nombre', 'is', null)
-      .limit(1)
-      .maybeSingle()
-    if (data) {
-      setDuenoForm(f => ({ ...f, nombre: data.representante_nombre || f.nombre, telefono: data.representante_telefono || f.telefono }))
-      showMsg(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    if (!c) { setPersonaCedulaDueno(null); return }
+    const persona = await buscarPersonaPorCedula(c)
+    if (persona) {
+      setPersonaCedulaDueno(persona)
+      setDuenoForm(f => ({ ...f, nombre: persona.name || f.nombre, telefono: persona.telefono || f.telefono }))
+      showMsg(`👤 ${persona.name} ya está registrado en Golmebol — datos completados`)
+      return
+    }
+    setPersonaCedulaDueno(null)
+    const equipo = await buscarDuenoEquipoPorCedula(c, id)
+    if (equipo) {
+      setDuenoForm(f => ({ ...f, nombre: equipo.representante_nombre || f.nombre, telefono: equipo.representante_telefono || f.telefono }))
+      showMsg(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
     }
   }
 
@@ -577,6 +582,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (error) { showMsg(`No se pudo guardar: ${error.message}`, 'error'); setGuardandoDueno(false); return }
     setEquipo(prev => ({ ...prev, representante_nombre: nombre, representante_cedula: cedula || null, representante_telefono: telefono || null }))
     setEditandoDueno(false)
+    setPersonaCedulaDueno(null)
     setGuardandoDueno(false)
     showMsg('Dueño actualizado ✓')
   }
@@ -882,8 +888,15 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               <div style={{ ...GLASS_SM, borderRadius: '16px', padding: '14px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
                   <label style={labelStyle}>Cédula del dueño</label>
-                  <input autoFocus value={duenoForm.cedula} onChange={e => setDuenoForm(f => ({ ...f, cedula: e.target.value }))} onBlur={e => buscarDuenoPorCedula(e.target.value)} style={inputStyle} placeholder="Número de cédula" type="number"/>
-                  <div style={{ fontSize: '.68rem', color: TXT_MUTED, marginTop: '3px' }}>Si ya es dueño de otro equipo, se completan nombre y teléfono solos</div>
+                  <input autoFocus value={duenoForm.cedula} onChange={e => { setDuenoForm(f => ({ ...f, cedula: e.target.value })); setPersonaCedulaDueno(null) }} onBlur={e => buscarDuenoPorCedula(e.target.value)} style={inputStyle} placeholder="Número de cédula" type="number"/>
+                  {personaCedulaDueno ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', ...GLASS_INSET, borderRadius: '10px', padding: '8px 10px', marginTop: '6px' }}>
+                      <span style={{ fontSize: '.78rem', color: TXT }}>👤 <strong>{personaCedulaDueno.name}</strong> ya está registrado como {rolActualLabel(personaCedulaDueno)}</span>
+                      <a href={`/admin/jugadores/${personaCedulaDueno.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '.72rem', color: '#8ec3ff', fontWeight: '700', textDecoration: 'none', marginLeft: 'auto', whiteSpace: 'nowrap' }}>Ver perfil →</a>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '.68rem', color: TXT_MUTED, marginTop: '3px' }}>Si ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan nombre y teléfono solos</div>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>Nombre del dueño</label>
@@ -897,7 +910,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   <button onClick={handleGuardarDueno} disabled={guardandoDueno} style={{ ...glassBtn('#51cf66'), padding: '8px 14px', fontSize: '.8rem' }}>
                     {guardandoDueno ? 'Guardando...' : 'Guardar'}
                   </button>
-                  <button onClick={() => setEditandoDueno(false)} disabled={guardandoDueno} style={{ ...glassBtn('#868e96', false), padding: '8px 14px', fontSize: '.8rem' }}>
+                  <button onClick={() => { setEditandoDueno(false); setPersonaCedulaDueno(null) }} disabled={guardandoDueno} style={{ ...glassBtn('#868e96', false), padding: '8px 14px', fontSize: '.8rem' }}>
                     Cancelar
                   </button>
                 </div>
@@ -910,7 +923,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                     : '⚠️ Sin dueño registrado'}
                 </span>
                 {!modoLectura && esPrincipal && (
-                  <button onClick={() => { setDuenoForm({ nombre: equipo.representante_nombre || '', cedula: equipo.representante_cedula || '', telefono: equipo.representante_telefono || '' }); setEditandoDueno(true) }}
+                  <button onClick={() => { setDuenoForm({ nombre: equipo.representante_nombre || '', cedula: equipo.representante_cedula || '', telefono: equipo.representante_telefono || '' }); setPersonaCedulaDueno(null); setEditandoDueno(true) }}
                     title="Editar dueño"
                     style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '8px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                     <Pencil size={11} color={TXT_SOFT}/>

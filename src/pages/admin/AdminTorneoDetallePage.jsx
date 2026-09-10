@@ -10,6 +10,7 @@ import VallaEquipos from '../../components/VallaEquipos'
 import FlyerTorneo from '../../components/FlyerTorneo'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
@@ -608,6 +609,7 @@ export default function AdminTorneoDetallePage() {
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
   const [parecidosCrear,     setParecidosCrear]     = useState([]) // equipos ya existentes con nombre parecido
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
+  const [personaCedulaNuevoEquipo, setPersonaCedulaNuevoEquipo] = useState(null) // jugador/árbitro ya registrado con esa cédula
   // Si el celular mata la pestaña al salir a otra app mientras se llena este
   // formulario, se recupera solo al volver.
   useFormDraft('draft_crear_equipo_torneo', nuevoEquipoForm, setNuevoEquipoForm)
@@ -3219,24 +3221,29 @@ export default function AdminTorneoDetallePage() {
 
   function abrirCrearEquipo() {
     setNuevoEquipoForm({ name: busquedaEquipo, city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
+    setPersonaCedulaNuevoEquipo(null)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
   }
 
-  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
-  // autocompletan nombre y teléfono para no volver a escribirlos.
+  // La cédula solo debe tener UN nombre en toda la plataforma. Primero se
+  // busca si ya es un jugador/árbitro registrado; si no, si ya es dueño de
+  // otro equipo. En cualquier caso se autocompletan nombre y teléfono.
   async function buscarDuenoPorCedulaNuevoEquipo(cedula) {
     const c = (cedula || '').trim()
-    if (!c) return
-    const { data } = await supabase.from('teams')
-      .select('representante_nombre, representante_telefono')
-      .eq('representante_cedula', c)
-      .not('representante_nombre', 'is', null)
-      .limit(1)
-      .maybeSingle()
-    if (data) {
-      setNuevoEquipoForm(f => ({ ...f, representante_nombre: data.representante_nombre || f.representante_nombre, representante_telefono: data.representante_telefono || f.representante_telefono }))
-      showMsg(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    if (!c) { setPersonaCedulaNuevoEquipo(null); return }
+    const persona = await buscarPersonaPorCedula(c)
+    if (persona) {
+      setPersonaCedulaNuevoEquipo(persona)
+      setNuevoEquipoForm(f => ({ ...f, representante_nombre: persona.name || f.representante_nombre, representante_telefono: persona.telefono || f.representante_telefono }))
+      showMsg(`👤 ${persona.name} ya está registrado en Golmebol — datos completados`)
+      return
+    }
+    setPersonaCedulaNuevoEquipo(null)
+    const equipo = await buscarDuenoEquipoPorCedula(c)
+    if (equipo) {
+      setNuevoEquipoForm(f => ({ ...f, representante_nombre: equipo.representante_nombre || f.representante_nombre, representante_telefono: equipo.representante_telefono || f.representante_telefono }))
+      showMsg(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
     }
   }
 
@@ -3248,7 +3255,7 @@ export default function AdminTorneoDetallePage() {
 
   function cerrarModalEquipo() {
     setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
-    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
+    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }); setPersonaCedulaNuevoEquipo(null)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
   }
 
@@ -3771,8 +3778,15 @@ export default function AdminTorneoDetallePage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Cédula del dueño *</label>
-                    <input value={nuevoEquipoForm.representante_cedula} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value }))} onBlur={e => buscarDuenoPorCedulaNuevoEquipo(e.target.value)} placeholder="Número de cédula" type="number" style={inputStyle}/>
-                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya es dueño de otro equipo, se completan el nombre y teléfono solos</div>
+                    <input value={nuevoEquipoForm.representante_cedula} onChange={e => { setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value })); setPersonaCedulaNuevoEquipo(null) }} onBlur={e => buscarDuenoPorCedulaNuevoEquipo(e.target.value)} placeholder="Número de cédula" type="number" style={inputStyle}/>
+                    {personaCedulaNuevoEquipo ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '8px 10px', marginTop: '6px' }}>
+                        <span style={{ fontSize: '.78rem', color: '#202124' }}>👤 <strong>{personaCedulaNuevoEquipo.name}</strong> ya está registrado como {rolActualLabel(personaCedulaNuevoEquipo)}</span>
+                        <a href={`/admin/jugadores/${personaCedulaNuevoEquipo.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '700', textDecoration: 'none', marginLeft: 'auto', whiteSpace: 'nowrap' }}>Ver perfil →</a>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan el nombre y teléfono solos</div>
+                    )}
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Dueño / representante del equipo *</label>

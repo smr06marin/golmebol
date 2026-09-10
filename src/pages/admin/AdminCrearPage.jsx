@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Trophy, Shield, Users, Search, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 
 const input = {
@@ -39,6 +40,7 @@ export default function AdminCrearPage() {
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
   const [parecidosCrear, setParecidosCrear] = useState([]) // equipos ya existentes con nombre parecido
+  const [personaCedula, setPersonaCedula] = useState(null) // jugador/árbitro ya registrado con esa cédula
   const creandoEquipoRef = useRef(false)
 
   useEffect(() => {
@@ -108,24 +110,29 @@ export default function AdminCrearPage() {
 
   function abrirCrearEquipo() {
     setNuevoEquipoForm({ name: equipoSearch, city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
+    setPersonaCedula(null)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
   }
 
-  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
-  // autocompletan nombre y teléfono para no volver a escribirlos.
+  // La cédula solo debe tener UN nombre en toda la plataforma. Primero se
+  // busca si ya es un jugador/árbitro registrado; si no, si ya es dueño de
+  // otro equipo. En cualquier caso se autocompletan nombre y teléfono.
   async function buscarDuenoPorCedula(cedula) {
     const c = (cedula || '').trim()
-    if (!c) return
-    const { data } = await supabase.from('teams')
-      .select('representante_nombre, representante_telefono')
-      .eq('representante_cedula', c)
-      .not('representante_nombre', 'is', null)
-      .limit(1)
-      .maybeSingle()
-    if (data) {
-      setNuevoEquipoForm(f => ({ ...f, representante_nombre: data.representante_nombre || f.representante_nombre, representante_telefono: data.representante_telefono || f.representante_telefono }))
-      showMsg(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    if (!c) { setPersonaCedula(null); return }
+    const persona = await buscarPersonaPorCedula(c)
+    if (persona) {
+      setPersonaCedula(persona)
+      setNuevoEquipoForm(f => ({ ...f, representante_nombre: persona.name || f.representante_nombre, representante_telefono: persona.telefono || f.representante_telefono }))
+      showMsg(`👤 ${persona.name} ya está registrado en Golmebol — datos completados`)
+      return
+    }
+    setPersonaCedula(null)
+    const equipo = await buscarDuenoEquipoPorCedula(c)
+    if (equipo) {
+      setNuevoEquipoForm(f => ({ ...f, representante_nombre: equipo.representante_nombre || f.representante_nombre, representante_telefono: equipo.representante_telefono || f.representante_telefono }))
+      showMsg(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
     }
   }
 
@@ -386,8 +393,15 @@ export default function AdminCrearPage() {
                       <div><label style={label}>Ciudad</label><input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={input}/></div>
                       <div>
                         <label style={label}>Cédula del dueño</label>
-                        <input value={nuevoEquipoForm.representante_cedula} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value }))} onBlur={e => buscarDuenoPorCedula(e.target.value)} placeholder="Número de cédula" type="number" style={input}/>
-                        <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si ya es dueño de otro equipo, se completan nombre y teléfono solos</div>
+                        <input value={nuevoEquipoForm.representante_cedula} onChange={e => { setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value })); setPersonaCedula(null) }} onBlur={e => buscarDuenoPorCedula(e.target.value)} placeholder="Número de cédula" type="number" style={input}/>
+                        {personaCedula ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '8px 10px', marginTop: '6px' }}>
+                            <span style={{ fontSize: '.78rem', color: '#202124' }}>👤 <strong>{personaCedula.name}</strong> ya está registrado como {rolActualLabel(personaCedula)}</span>
+                            <a href={`/admin/jugadores/${personaCedula.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '700', textDecoration: 'none', marginLeft: 'auto', whiteSpace: 'nowrap' }}>Ver perfil →</a>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan nombre y teléfono solos</div>
+                        )}
                       </div>
                       <div><label style={label}>Representante / dueño del equipo *</label><input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={input}/></div>
                       <div><label style={label}>Teléfono del representante</label><input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" style={input}/></div>
