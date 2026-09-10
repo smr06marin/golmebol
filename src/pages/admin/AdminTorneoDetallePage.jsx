@@ -867,6 +867,8 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   const [posterEquipo,     setPosterEquipo]      = useState(null)
+  const [linkRegistroEquipo, setLinkRegistroEquipo] = useState(null) // equipo al que se le va a compartir el link — abre el modal de duración
+  const [duracionLinkDias,   setDuracionLinkDias]   = useState(1)    // cuántos días dura el link de registro antes de vencer
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
   const [showFlyerTorneo,  setShowFlyerTorneo]  = useState(false)
   const [showFlyerProgramacion, setShowFlyerProgramacion] = useState(false)
@@ -1006,6 +1008,20 @@ export default function AdminTorneoDetallePage() {
     await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
     showMsg(`${equipo.name} desactivado del torneo`)
     fetchEquipos(); fetchJugadores()
+  }
+
+  function handleCopiarLinkRegistroTorneo() {
+    const e = linkRegistroEquipo
+    if (!e) return
+    const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
+    const dTexto = duracionLinkDias === 1 ? '1 día' : `${duracionLinkDias} días`
+    const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+    navigator.clipboard.writeText(mensaje)
+    // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
+    // duración que se haya elegido (1, 2 o 3 días).
+    supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString(), registro_token_horas: duracionLinkDias * 24 }).eq('id', e.id).then(() => {}, () => {})
+    showMsg('Link copiado con la descripción ✓')
+    setLinkRegistroEquipo(null)
   }
 
   async function fetchTorneo() {
@@ -4679,12 +4695,8 @@ export default function AdminTorneoDetallePage() {
                             { label: 'Editar equipo',     icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
                             { label: 'Descargar escudo',  icon: '⬇️', action: () => { descargarEscudo(e); setMenuEquipoId(null) } },
                             { label: 'Compartir link',    icon: '🔗', action: () => {
-                                const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
-                                const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por 24 horas desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
-                                navigator.clipboard.writeText(mensaje)
-                                // Reinicia el reloj de 24h del link cada vez que se comparte de nuevo
-                                supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString() }).eq('id', e.id).then(() => {}, () => {})
-                                showMsg('Link copiado con la descripción ✓')
+                                setDuracionLinkDias(1)
+                                setLinkRegistroEquipo(e)
                                 setMenuEquipoId(null)
                               } },
                             { label: 'Poster bienvenida', icon: '🖼️', action: () => { setPosterEquipo(e); setMenuEquipoId(null) } },
@@ -6081,6 +6093,40 @@ export default function AdminTorneoDetallePage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal compartir link de registro — elegir cuánto dura antes de vencer */}
+      {linkRegistroEquipo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setLinkRegistroEquipo(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '380px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🔗 Link de registro — {linkRegistroEquipo.name}</div>
+              <button onClick={() => setLinkRegistroEquipo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <label style={labelStyle}>¿Cuánto dura antes de vencer?</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                {[1, 2, 3].map(d => (
+                  <button key={d} onClick={() => setDuracionLinkDias(d)}
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '700',
+                      border: duracionLinkDias === d ? '2px solid #1a73e8' : '1px solid #dadce0',
+                      background: duracionLinkDias === d ? '#e8f0fe' : '#fff',
+                      color: duracionLinkDias === d ? '#1a73e8' : '#5f6368' }}>
+                    {d} día{d > 1 ? 's' : ''}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setLinkRegistroEquipo(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                <button onClick={handleCopiarLinkRegistroTorneo}
+                  style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                  🔗 Copiar link
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

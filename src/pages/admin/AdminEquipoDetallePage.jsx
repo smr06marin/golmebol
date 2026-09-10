@@ -161,6 +161,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [agregandoGlobal,  setAgregandoGlobal]    = useState(false)
   const agregandoGlobalRef = useRef(false) // bloqueo inmediato para "Agregar al equipo"
   const [mostrarSelectorTorneo, setMostrarSelectorTorneo] = useState(false)
+  const [duracionLinkDias, setDuracionLinkDias] = useState(1) // cuántos días dura el link de registro antes de vencer (elegible antes de copiarlo)
 
   // Fotos del jugador NUEVO — mismos 3 archivos que pide el link de
   // inscripción (RegistroEquipoPage.jsx): foto de perfil + documento
@@ -404,12 +405,14 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     setTimeout(() => setMsg(null), 3500)
   }
 
-  function handleCopiarLinkRegistro(t) {
+  function handleCopiarLinkRegistro(t, dias = duracionLinkDias) {
     const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}/${t.tournament_id}`
-    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\n⏰ Válido por 24 horas desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+    const dTexto = dias === 1 ? '1 día' : `${dias} días`
+    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
     navigator.clipboard.writeText(mensaje)
-    // Reinicia el reloj de 24h del link cada vez que se comparte de nuevo
-    supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString() }).eq('id', equipo.id).then(() => {}, () => {})
+    // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
+    // duración que se haya elegido (1, 2 o 3 días).
+    supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString(), registro_token_horas: dias * 24 }).eq('id', equipo.id).then(() => {}, () => {})
     showMsg('Link copiado con la descripción ✓')
     setMostrarSelectorTorneo(false)
   }
@@ -1125,11 +1128,6 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
     {torneos.length === 0 ? (
       <div style={{ fontSize: '.78rem', color: TXT_MUTED }}>Inscribí el equipo en un torneo para generar el link de registro</div>
-    ) : torneos.length === 1 ? (
-      <button onClick={() => handleCopiarLinkRegistro(torneos[0])}
-        style={{ ...glassBtn('#5b9dff', false), display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', color: '#8ec3ff' }}>
-        🔗 Copiar link de registro
-      </button>
     ) : (
       <div style={{ position: 'relative' }}>
         <button onClick={() => setMostrarSelectorTorneo(o => !o)}
@@ -1137,16 +1135,37 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
           🔗 Copiar link de registro
         </button>
         {mostrarSelectorTorneo && (
-          <div style={{ position: 'absolute', top: '46px', right: 0, ...GLASS, borderRadius: '14px', padding: '6px', zIndex: 300, minWidth: '220px' }}>
-            <div style={{ fontSize: '.7rem', color: TXT_MUTED, padding: '6px 10px' }}>¿Para qué torneo?</div>
-            {torneos.map(t => (
-              <button key={t.id} onClick={() => handleCopiarLinkRegistro(t)}
-                style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', color: TXT, fontSize: '.82rem', borderRadius: '8px' }}
-                onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.08)'}
-                onMouseLeave={e => e.currentTarget.style.background='none'}>
-                {t.tournaments?.name}
+          <div style={{ position: 'absolute', top: '46px', right: 0, ...GLASS, borderRadius: '14px', padding: '10px', zIndex: 300, minWidth: '240px' }}>
+            <div style={{ fontSize: '.7rem', color: TXT_MUTED, padding: '2px 6px 6px' }}>¿Cuánto dura antes de vencer?</div>
+            <div style={{ display: 'flex', gap: '6px', padding: '0 6px 10px' }}>
+              {[1, 2, 3].map(d => (
+                <button key={d} onClick={() => setDuracionLinkDias(d)}
+                  style={{ flex: 1, padding: '7px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '700',
+                    border: duracionLinkDias === d ? '2px solid #5b9dff' : '1px solid rgba(255,255,255,.15)',
+                    background: duracionLinkDias === d ? 'rgba(91,157,255,.15)' : 'none',
+                    color: duracionLinkDias === d ? '#8ec3ff' : TXT_MUTED }}>
+                  {d} día{d > 1 ? 's' : ''}
+                </button>
+              ))}
+            </div>
+            {torneos.length === 1 ? (
+              <button onClick={() => handleCopiarLinkRegistro(torneos[0])}
+                style={{ width: '100%', padding: '9px 10px', background: '#5b9dff', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#07070e', fontSize: '.8rem', fontWeight: '700' }}>
+                Copiar link
               </button>
-            ))}
+            ) : (
+              <>
+                <div style={{ fontSize: '.7rem', color: TXT_MUTED, padding: '2px 6px 4px' }}>¿Para qué torneo?</div>
+                {torneos.map(t => (
+                  <button key={t.id} onClick={() => handleCopiarLinkRegistro(t)}
+                    style={{ width: '100%', textAlign: 'left', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', color: TXT, fontSize: '.82rem', borderRadius: '8px' }}
+                    onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.08)'}
+                    onMouseLeave={e => e.currentTarget.style.background='none'}>
+                    {t.tournaments?.name}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>

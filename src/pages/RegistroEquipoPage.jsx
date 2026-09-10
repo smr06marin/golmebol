@@ -470,12 +470,15 @@ export default function RegistroEquipoPage() {
     </div>
   )
 
-  // El link para registrar jugadores vence 24h después de que se compartió
-  // (teams.registro_token_generado_en se actualiza cada vez que el admin/
-  // coordinador lo copia para enviarlo). Si nunca se registró esa fecha
-  // (equipos viejos, antes de este cambio) se deja pasar sin restricción.
+  // El link para registrar jugadores vence según lo que haya elegido quien
+  // lo compartió (1, 2 o 3 días — teams.registro_token_horas), contado
+  // desde que se copió (teams.registro_token_generado_en se actualiza cada
+  // vez que el admin/coordinador lo copia para enviarlo). Si nunca se
+  // registró esa fecha (equipos viejos, antes de este cambio) se deja
+  // pasar sin restricción. Si no hay horas guardadas, se asume 24h.
+  const horasValidez = equipo.registro_token_horas || 24
   const vencido = equipo.registro_token_generado_en &&
-    (Date.now() - new Date(equipo.registro_token_generado_en).getTime()) > 24 * 60 * 60 * 1000
+    (Date.now() - new Date(equipo.registro_token_generado_en).getTime()) > horasValidez * 60 * 60 * 1000
 
   if (vencido) return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -483,7 +486,7 @@ export default function RegistroEquipoPage() {
         <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>⏰</div>
         <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#d93025', marginBottom: '10px' }}>Link vencido</div>
         <div style={{ fontSize: '.85rem', color: '#5f6368', lineHeight: 1.6, marginBottom: '22px' }}>
-          Este link de registro ya venció (es válido por 24 horas desde que se envió).
+          Este link de registro ya venció (es válido por {horasValidez === 24 ? '1 día' : `${Math.round(horasValidez / 24)} días`} desde que se envió).
           Pide a Golmebol que te comparta uno nuevo para seguir inscribiendo jugadores del equipo <strong>{equipo.name}</strong> en el torneo <strong>{torneo.name}</strong>.
         </div>
         <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Quiero registrar otro jugador, ¿me podrías enviar el link? Equipo: ${equipo.name} — Torneo: ${torneo.name}`)}`}
