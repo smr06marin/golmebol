@@ -3823,7 +3823,7 @@ export default function AdminTorneoDetallePage() {
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Nombre del equipo *</label>
-                    <input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={inputStyle}/>
+                    <input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={inputStyle} autoComplete="off"/>
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Ciudad</label>

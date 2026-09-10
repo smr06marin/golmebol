@@ -476,7 +476,7 @@ export default function AdminEquiposPage() {
         <div ref={formRef} style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
           <div style={{ fontWeight:'600', color:'#202124', marginBottom:'16px' }}>{editId ? 'Editar equipo' : 'Nuevo equipo'}</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'14px', marginBottom:'14px' }}>
-            <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Nombre *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="Nombre del equipo"/></div>
+            <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Nombre *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="Nombre del equipo" autoComplete="off"/></div>
             <div><label style={labelStyle}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inputStyle} placeholder="Ciudad"/></div>
             <div><label style={labelStyle}>Modalidad</label><select value={form.modalidad} onChange={e => setForm(f=>({...f,modalidad:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{MODALIDADES.map(m=><option key={m}>{m}</option>)}</select></div>
             <div><label style={labelStyle}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{GENEROS.map(g=><option key={g}>{g}</option>)}</select></div>

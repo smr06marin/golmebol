@@ -398,7 +398,7 @@ export default function AdminCrearPage() {
                           <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{nuevoEquipoLogoPreview ? 'Imagen seleccionada' : 'Opcional — podés subirlo después'}</div>
                         </div>
                       </div>
-                      <div><label style={label}>Nombre del equipo *</label><input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={input}/></div>
+                      <div><label style={label}>Nombre del equipo *</label><input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={input} autoComplete="off"/></div>
                       <div><label style={label}>Ciudad</label><input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={input}/></div>
                       <div>
                         <label style={label}>Cédula del dueño</label>
