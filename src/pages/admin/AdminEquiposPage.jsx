@@ -279,6 +279,7 @@ export default function AdminEquiposPage() {
   const [filtro,    setFiltro]    = useState('todos')
   const formRef = useRef(null)
   const [personaCedula, setPersonaCedula] = useState(null) // jugador/árbitro ya registrado con esa cédula
+  const cedulaOriginalEditRef = useRef('') // cédula que ya tenía el equipo al abrir "Editar" (para no borrar sus datos si no cambió)
 
   // Si el celular mata la pestaña al salir a otra app (ej. WhatsApp) mientras
   // se está llenando el formulario de un equipo NUEVO, esto guarda lo escrito
@@ -338,6 +339,12 @@ export default function AdminEquiposPage() {
     if (equipo) {
       setForm(f => ({ ...f, representante_nombre: equipo.representante_nombre || '', representante_telefono: equipo.representante_telefono || '' }))
       showMsgFn(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
+    } else if (editId && c !== cedulaOriginalEditRef.current) {
+      // Al EDITAR: cédula nueva y distinta a la que ya tenía este equipo, y
+      // no está registrada en ningún lado — se borran nombre/teléfono que
+      // hubiera antes (eran de la cédula vieja) para no dejar datos de otra
+      // persona. Al CREAR no se borra nada: podría ser lo que ya escribió.
+      setForm(f => ({ ...f, representante_nombre: '', representante_telefono: '' }))
     }
   }
 
@@ -548,7 +555,7 @@ export default function AdminEquiposPage() {
             {/* Acciones */}
             <MenuAcciones
               equipo={equipo}
-              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setPersonaCedula(null); setShowForm(true) }}
+              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setPersonaCedula(null); cedulaOriginalEditRef.current = eq.representante_cedula || ''; setShowForm(true) }}
               onJugadores={eq => navigate(`/admin/equipos/${eq.id}`)}
               onUniforme={eq => setUniforme(eq)}
               onPoster={eq => setPoster(eq)}

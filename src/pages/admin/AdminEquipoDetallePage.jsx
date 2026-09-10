@@ -560,10 +560,16 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       return
     }
     setPersonaCedulaDueno(null)
-    const equipo = await buscarDuenoEquipoPorCedula(c, id)
-    if (equipo) {
-      setDuenoForm(f => ({ ...f, nombre: equipo.representante_nombre || '', telefono: equipo.representante_telefono || '' }))
-      showMsg(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
+    const equipoOtro = await buscarDuenoEquipoPorCedula(c, id)
+    if (equipoOtro) {
+      setDuenoForm(f => ({ ...f, nombre: equipoOtro.representante_nombre || '', telefono: equipoOtro.representante_telefono || '' }))
+      showMsg(`👤 Dueño encontrado: ${equipoOtro.representante_nombre} — datos completados`)
+    } else if (c !== String(equipo?.representante_cedula || '').trim()) {
+      // Es una cédula nueva y distinta a la que ya tenía este equipo, y no
+      // está registrada en ningún lado — se borran nombre/teléfono que
+      // hubiera antes (eran de la cédula vieja) para no dejar datos de otra
+      // persona pegados a esta cédula nueva.
+      setDuenoForm(f => ({ ...f, nombre: '', telefono: '' }))
     }
   }
 
