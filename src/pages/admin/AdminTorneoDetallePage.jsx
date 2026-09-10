@@ -1012,7 +1012,7 @@ export default function AdminTorneoDetallePage() {
     fetchEquipos(); fetchJugadores()
   }
 
-  function handleCopiarLinkRegistroTorneo() {
+  async function handleCopiarLinkRegistroTorneo() {
     const e = linkRegistroEquipo
     if (!e) return
     const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
@@ -1020,8 +1020,26 @@ export default function AdminTorneoDetallePage() {
     const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
     navigator.clipboard.writeText(mensaje)
     // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
-    // duración que se haya elegido (1, 2 o 3 días).
-    supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString(), registro_token_horas: duracionLinkDias * 24 }).eq('id', e.id).then(() => {}, () => {})
+    // duración que se haya elegido (1, 2 o 3 días). Antes se mandaba "y se
+    // olvidaba" sin mirar si falló — si la BD no tenía todavía la columna
+    // registro_token_horas (falta correr
+    // migracion_duracion_link_registro.sql), el update completo fallaba
+    // calladito y el reloj nunca se reiniciaba: el link quedaba con la
+    // fecha vieja y salía "vencido" apenas lo abrían.
+    const ahora = new Date().toISOString()
+    let { error } = await supabase.from('teams').update({ registro_token_generado_en: ahora, registro_token_horas: duracionLinkDias * 24 }).eq('id', e.id)
+    if (error && (error.message || '').includes('registro_token_horas')) {
+      ;({ error } = await supabase.from('teams').update({ registro_token_generado_en: ahora }).eq('id', e.id))
+      if (!error) {
+        showMsg('Link copiado — pero falta una actualización de la base de datos para que la duración de 1/2/3 días funcione (por ahora el link dura 24h). Avisale al admin principal.', 'error')
+        setLinkRegistroEquipo(null)
+        return
+      }
+    }
+    if (error) {
+      showMsg('⚠️ El link se copió pero no se pudo reiniciar su fecha de vencimiento — puede salir vencido al abrirlo. Avisale al admin.', 'error')
+      return
+    }
     showMsg('Link copiado con la descripción ✓')
     setLinkRegistroEquipo(null)
   }

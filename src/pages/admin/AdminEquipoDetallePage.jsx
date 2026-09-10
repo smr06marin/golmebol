@@ -416,14 +416,36 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     setTimeout(() => setMsg(null), 3500)
   }
 
-  function handleCopiarLinkRegistro(t, dias = duracionLinkDias) {
+  async function handleCopiarLinkRegistro(t, dias = duracionLinkDias) {
     const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}/${t.tournament_id}`
     const dTexto = dias === 1 ? '1 día' : `${dias} días`
     const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
     navigator.clipboard.writeText(mensaje)
     // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
-    // duración que se haya elegido (1, 2 o 3 días).
-    supabase.from('teams').update({ registro_token_generado_en: new Date().toISOString(), registro_token_horas: dias * 24 }).eq('id', equipo.id).then(() => {}, () => {})
+    // duración que se haya elegido (1, 2 o 3 días). Antes esto se mandaba
+    // "y se olvidaba" (sin mirar si falló) — si la BD todavía no tenía la
+    // columna registro_token_horas (falta correr
+    // migracion_duracion_link_registro.sql), el update completo fallaba
+    // calladito y el reloj NUNCA se reiniciaba: el link quedaba con la
+    // fecha vieja y salía "vencido" apenas lo abrían, aunque se acabara de
+    // mandar. Ahora si eso pasa, al menos se reinicia el reloj con 24h por
+    // defecto y se avisa en pantalla.
+    const ahora = new Date().toISOString()
+    let { error } = await supabase.from('teams').update({ registro_token_generado_en: ahora, registro_token_horas: dias * 24 }).eq('id', equipo.id)
+    if (error && (error.message || '').includes('registro_token_horas')) {
+      ;({ error } = await supabase.from('teams').update({ registro_token_generado_en: ahora }).eq('id', equipo.id))
+      if (!error) {
+        setEquipo(prev => ({ ...prev, registro_token_generado_en: ahora }))
+        showMsg('Link copiado — pero falta una actualización de la base de datos para que la duración de 1/2/3 días funcione (por ahora el link dura 24h). Avisale al admin principal.', 'error')
+        setMostrarSelectorTorneo(false)
+        return
+      }
+    }
+    if (error) {
+      showMsg('⚠️ El link se copió pero no se pudo reiniciar su fecha de vencimiento — puede salir vencido al abrirlo. Avisale al admin.', 'error')
+      return
+    }
+    setEquipo(prev => ({ ...prev, registro_token_generado_en: ahora, registro_token_horas: dias * 24 }))
     showMsg('Link copiado con la descripción ✓')
     setMostrarSelectorTorneo(false)
   }
