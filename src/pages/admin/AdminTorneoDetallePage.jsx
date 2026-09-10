@@ -1884,7 +1884,7 @@ export default function AdminTorneoDetallePage() {
       if (!porEquipo[mv.team_id]) return
       if (mv.tipo === 'pago_tarjetas') porEquipo[mv.team_id].pagosTarjetas += mv.monto || 0
       if (mv.tipo === 'pago_cargos')   porEquipo[mv.team_id].pagosOtros   += mv.monto || 0
-      if (mv.tipo === 'cargo_manual')  porEquipo[mv.team_id].deudas       += mv.monto || 0 // deuda anotada a mano
+      if (mv.tipo === 'cargo_manual' && !mv.pagado) porEquipo[mv.team_id].deudas += mv.monto || 0 // deuda anotada a mano, sin marcar pagada todavía
     })
 
     const filas = Object.values(porEquipo).map(r => {
@@ -1966,6 +1966,27 @@ export default function AdminTorneoDetallePage() {
     if (error) return showMsg('Error al marcar como pagada', 'error')
     showMsg('Deuda personal marcada como pagada ✓ — ya puede inscribirse en próximos torneos de este organizador')
     fetchFinanzas()
+  }
+
+  // Marca como pagada una deuda anotada a mano (➖ Deuda) — sea de arbitraje,
+  // multa, W o lo que sea que se haya anotado — y deja de sumar en el saldo
+  // del equipo. No la borra, solo queda marcada (se puede ver en el
+  // historial de Movimientos registrados).
+  async function handleMarcarCargoPagado(mv) {
+    if (!confirm(`¿Marcar como pagada esta deuda de ${mv.teams?.name || 'el equipo'} (${fmt(mv.monto)})${mv.concepto ? ` — ${mv.concepto}` : ''}?`)) return
+    const { error } = await supabase.from('torneo_finanzas').update({ pagado: true }).eq('id', mv.id)
+    if (error) return showMsg('Error al marcar como pagada', 'error')
+    showMsg('Deuda marcada como pagada ✓')
+    fetchFinanzas()
+  }
+
+  // Atajo: abre el modal de pago ya prellenado con el monto pendiente de W
+  // o de multas del equipo (los cargos automáticos por partidos en W), para
+  // no tener que calcularlo ni escribirlo a mano.
+  function abrirPagoRapido(equipo, tarjetasDetalle, monto, concepto) {
+    setPagoForm({ tipo: 'pago_cargos', monto: String(Math.round(monto || 0)), concepto })
+    setTarjetasAPagar([])
+    setPagoModal({ ...equipo, tarjetasDetalle })
   }
 
   // Marca como pagadas TODAS las tarjetas pendientes de un color de un
@@ -5695,12 +5716,13 @@ export default function AdminTorneoDetallePage() {
               </div>
               {fin.filas.map((r, i) => (
                 <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: r.tarjetasDetalle.length > 0 ? 'pointer' : 'default' }}
-                    onClick={() => r.tarjetasDetalle.length > 0 && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
+                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0; return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
+                    onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                       <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={24}/></div>
                       <span style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</span>
-                      {r.tarjetasDetalle.length > 0 && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
+                      {sePuedeExpandir && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.inscripcion) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }} title="Se paga en efectivo en la cancha — se da por pagado automáticamente al jugarse el partido">{fin.fc.llevar_cuentas ? (r.arbitrajes > 0 ? <>{fmt(r.arbitrajes)} <span style={{ color: '#1e8e3e' }}>✓</span></> : fmt(r.arbitrajes)) : '—'}</div>
@@ -5720,6 +5742,34 @@ export default function AdminTorneoDetallePage() {
                       </button>
                     </div>
                   </div>
+                  )})()}
+                  {equipoFinAbierto === r.equipo.id && (r.w > 0 || r.multas > 0) && (
+                    <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa', borderBottom: r.tarjetasDetalle.length > 0 ? '1px solid #e8eaed' : 'none' }}>
+                      <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>CARGOS DE PARTIDOS EN W</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {r.w > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368' }}>
+                            <span style={{ flex: 1, color: '#202124' }}>🏆 Cobro por ganar W</span>
+                            <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(r.w)}</span>
+                            <button onClick={() => abrirPagoRapido(r.equipo, r.tarjetasDetalle, r.w, 'Pago de W')}
+                              style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
+                              💵 Ya pagó {fmt(r.w)}
+                            </button>
+                          </div>
+                        )}
+                        {r.multas > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368' }}>
+                            <span style={{ flex: 1, color: '#202124' }}>⛔ Multa por no presentarse</span>
+                            <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(r.multas)}</span>
+                            <button onClick={() => abrirPagoRapido(r.equipo, r.tarjetasDetalle, r.multas, 'Pago de multa')}
+                              style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
+                              💵 Ya pagó {fmt(r.multas)}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {equipoFinAbierto === r.equipo.id && r.tarjetasDetalle.length > 0 && (
                     <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa' }}>
                       <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>TARJETAS POR JUGADOR</div>
@@ -5807,11 +5857,20 @@ export default function AdminTorneoDetallePage() {
                          {pagosRegistrados.length === 0 ? (
                 <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay movimientos — usa los botones 💵 Pago o ➖ Deuda de cada equipo</div>
               ) : pagosRegistrados.map((mv, i) => (
-                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
+                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: mv.tipo === 'cargo_manual' && mv.pagado ? .55 : 1 }}>
                   <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
                   <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos')}</span>
                   <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : '#1a73e8', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : 'Cargos'}</span>
-                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: mv.tipo === 'cargo_manual' ? '#d93025' : '#1e8e3e' }}>{mv.tipo === 'cargo_manual' ? '−' : ''}{fmt(mv.monto)}</span>
+                  {mv.tipo === 'cargo_manual' && mv.pagado && (
+                    <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>✓ Pagada</span>
+                  )}
+                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: mv.tipo === 'cargo_manual' && !mv.pagado ? '#d93025' : '#1e8e3e', textDecoration: mv.tipo === 'cargo_manual' && mv.pagado ? 'line-through' : 'none' }}>{mv.tipo === 'cargo_manual' ? '−' : ''}{fmt(mv.monto)}</span>
+                  {mv.tipo === 'cargo_manual' && !mv.pagado && (
+                    <button onClick={() => handleMarcarCargoPagado(mv)} title="Marcar esta deuda como pagada (ej: ya pagó el arbitraje o la multa que le habían anotado)"
+                      style={{ background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '4px 9px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                      ✓ Ya pagó
+                    </button>
+                  )}
                   <button onClick={() => handleEliminarPago(mv)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#d93025', display: 'flex' }}><X size={12}/></button>
                 </div>
               ))}
