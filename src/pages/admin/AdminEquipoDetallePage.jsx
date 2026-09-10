@@ -8,6 +8,11 @@ import { useAuthStore } from '../../store/authStore'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
 
+// Los datos del DUEÑO del equipo (nombre/cédula/teléfono) solo los puede
+// editar el admin principal de la plataforma — cualquier otro organizador
+// solo los ve, y si quiere cambiarlos debe pedírselo por WhatsApp.
+const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
+
 // Posición simplificada: solo arquero o jugador, sin detalle por
 // modalidad. Igual se guarda en las 3 columnas (posicion_futbol5/7/11)
 // para no romper los "esPortero" que se calculan en el resto de la app
@@ -132,6 +137,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [editandoNombre, setEditandoNombre] = useState(false)
   const [nombreEditado,  setNombreEditado]  = useState('')
   const [guardandoNombre, setGuardandoNombre] = useState(false)
+
+  const [editandoDueno, setEditandoDueno] = useState(false)
+  const [duenoForm,     setDuenoForm]     = useState({ nombre: '', cedula: '', telefono: '' })
+  const [guardandoDueno, setGuardandoDueno] = useState(false)
 
   const [equipo,                setEquipo]                = useState(null)
   const [torneos,               setTorneos]               = useState([])
@@ -535,6 +544,25 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     showMsg('Nombre actualizado ✓')
   }
 
+  async function handleGuardarDueno() {
+    if (!esPrincipal) { showMsg('Solo el admin principal puede cambiar el dueño', 'error'); return }
+    const nombre   = duenoForm.nombre.trim()
+    const cedula   = duenoForm.cedula.trim()
+    const telefono = duenoForm.telefono.trim()
+    if (!nombre) return showMsg('El nombre del dueño no puede quedar vacío', 'error')
+    setGuardandoDueno(true)
+    const { error } = await supabase.from('teams').update({
+      representante_nombre:   nombre,
+      representante_cedula:   cedula || null,
+      representante_telefono: telefono || null,
+    }).eq('id', id)
+    if (error) { showMsg(`No se pudo guardar: ${error.message}`, 'error'); setGuardandoDueno(false); return }
+    setEquipo(prev => ({ ...prev, representante_nombre: nombre, representante_cedula: cedula || null, representante_telefono: telefono || null }))
+    setEditandoDueno(false)
+    setGuardandoDueno(false)
+    showMsg('Dueño actualizado ✓')
+  }
+
   async function handleBuscarCedula() {
     if (!cedulaBuscar.trim()) return showMsg('Ingresa un número de cédula', 'error')
     setBuscando(true); setJugadorEncontrado(null); setMostrarFormNuevo(false)
@@ -748,6 +776,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const fechasJugadas  = new Set(partidos.map(p => p.matchday).filter(Boolean)).size
   const bloqueadoPorFechas = esOrganizador && fechasJugadas >= FECHAS_LIMITE_EDICION
   const puedeEditar = esAdminRol || (esOrganizador && esDueño && !bloqueadoPorFechas)
+  // Los datos del DUEÑO del equipo (nombre/cédula/teléfono, distintos de
+  // "esDueño" arriba que es sobre el TORNEO) solo los edita el admin
+  // principal de la plataforma — cualquier otro rol solo los ve.
+  const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
 
   const TABS = [
     { id: 'resumen',   label: 'Resumen'   },
@@ -828,11 +860,52 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               {equipo.genero    && <span style={{ fontSize: '.78rem', color: '#cbb2ff', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{equipo.genero}</span>}
               <span style={{ fontSize: '.78rem', color: '#8ef0a8', ...GLASS_SM, borderRadius: '20px', padding: '4px 12px', fontWeight: '600' }}>{torneos.length} torneos</span>
             </div>
-            <div style={{ fontSize: '.78rem', color: equipo.representante_nombre ? TXT_SOFT : '#ff9b9b', marginTop: '8px', fontWeight: '600' }}>
-              {equipo.representante_nombre
-                ? `👤 Representante: ${equipo.representante_nombre}${equipo.representante_telefono ? ` · 📞 ${equipo.representante_telefono}` : ''}`
-                : '⚠️ Sin representante registrado'}
-            </div>
+            {editandoDueno ? (
+              <div style={{ ...GLASS_SM, borderRadius: '16px', padding: '14px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <label style={labelStyle}>Nombre del dueño</label>
+                  <input autoFocus value={duenoForm.nombre} onChange={e => setDuenoForm(f => ({ ...f, nombre: e.target.value }))} style={inputStyle} placeholder="Nombre completo"/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Cédula del dueño</label>
+                  <input value={duenoForm.cedula} onChange={e => setDuenoForm(f => ({ ...f, cedula: e.target.value }))} style={inputStyle} placeholder="Número de cédula" type="number"/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Teléfono del dueño</label>
+                  <input value={duenoForm.telefono} onChange={e => setDuenoForm(f => ({ ...f, telefono: e.target.value }))} style={inputStyle} placeholder="300 000 0000" type="tel"/>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={handleGuardarDueno} disabled={guardandoDueno} style={{ ...glassBtn('#51cf66'), padding: '8px 14px', fontSize: '.8rem' }}>
+                    {guardandoDueno ? 'Guardando...' : 'Guardar'}
+                  </button>
+                  <button onClick={() => setEditandoDueno(false)} disabled={guardandoDueno} style={{ ...glassBtn('#868e96', false), padding: '8px 14px', fontSize: '.8rem' }}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: '.78rem', color: equipo.representante_nombre ? TXT_SOFT : '#ff9b9b', marginTop: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>
+                  {equipo.representante_nombre
+                    ? `👤 Dueño: ${equipo.representante_nombre}${equipo.representante_cedula ? ` · 🪪 ${equipo.representante_cedula}` : ''}${equipo.representante_telefono ? ` · 📞 ${equipo.representante_telefono}` : ''}`
+                    : '⚠️ Sin dueño registrado'}
+                </span>
+                {!modoLectura && esPrincipal && (
+                  <button onClick={() => { setDuenoForm({ nombre: equipo.representante_nombre || '', cedula: equipo.representante_cedula || '', telefono: equipo.representante_telefono || '' }); setEditandoDueno(true) }}
+                    title="Editar dueño"
+                    style={{ background: 'rgba(255,255,255,.12)', border: 'none', borderRadius: '8px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <Pencil size={11} color={TXT_SOFT}/>
+                  </button>
+                )}
+                {!modoLectura && !esPrincipal && (
+                  <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Soy organizador y quiero pedir permiso para editar los datos del dueño del equipo "${equipo.name}". Datos actuales: ${equipo.representante_nombre || 'sin nombre'}${equipo.representante_cedula ? ` · cédula ${equipo.representante_cedula}` : ''}${equipo.representante_telefono ? ` · tel ${equipo.representante_telefono}` : ''}`)}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ fontSize: '.68rem', color: '#e8710a', ...GLASS_INSET, borderRadius: '20px', padding: '3px 10px', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    🔒 Solicitar cambio
+                  </a>
+                )}
+              </div>
+            )}
             {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#8ec3ff', marginTop: '8px', fontWeight: '600' }}>Subiendo logo...</div>}
           </div>
           <div style={{ textAlign: 'center', ...GLASS_SM, borderRadius: '18px', padding: '12px 18px' }}>
