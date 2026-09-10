@@ -544,6 +544,24 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     showMsg('Nombre actualizado ✓')
   }
 
+  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
+  // autocompletan nombre y teléfono para no volver a escribirlos.
+  async function buscarDuenoPorCedula(cedula) {
+    const c = (cedula || '').trim()
+    if (!c) return
+    const { data } = await supabase.from('teams')
+      .select('representante_nombre, representante_telefono')
+      .eq('representante_cedula', c)
+      .neq('id', id)
+      .not('representante_nombre', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    if (data) {
+      setDuenoForm(f => ({ ...f, nombre: data.representante_nombre || f.nombre, telefono: data.representante_telefono || f.telefono }))
+      showMsg(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    }
+  }
+
   async function handleGuardarDueno() {
     if (!esPrincipal) { showMsg('Solo el admin principal puede cambiar el dueño', 'error'); return }
     const nombre   = duenoForm.nombre.trim()
@@ -863,12 +881,13 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
             {editandoDueno ? (
               <div style={{ ...GLASS_SM, borderRadius: '16px', padding: '14px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
-                  <label style={labelStyle}>Nombre del dueño</label>
-                  <input autoFocus value={duenoForm.nombre} onChange={e => setDuenoForm(f => ({ ...f, nombre: e.target.value }))} style={inputStyle} placeholder="Nombre completo"/>
+                  <label style={labelStyle}>Cédula del dueño</label>
+                  <input autoFocus value={duenoForm.cedula} onChange={e => setDuenoForm(f => ({ ...f, cedula: e.target.value }))} onBlur={e => buscarDuenoPorCedula(e.target.value)} style={inputStyle} placeholder="Número de cédula" type="number"/>
+                  <div style={{ fontSize: '.68rem', color: TXT_MUTED, marginTop: '3px' }}>Si ya es dueño de otro equipo, se completan nombre y teléfono solos</div>
                 </div>
                 <div>
-                  <label style={labelStyle}>Cédula del dueño</label>
-                  <input value={duenoForm.cedula} onChange={e => setDuenoForm(f => ({ ...f, cedula: e.target.value }))} style={inputStyle} placeholder="Número de cédula" type="number"/>
+                  <label style={labelStyle}>Nombre del dueño</label>
+                  <input value={duenoForm.nombre} onChange={e => setDuenoForm(f => ({ ...f, nombre: e.target.value }))} style={inputStyle} placeholder="Nombre completo"/>
                 </div>
                 <div>
                   <label style={labelStyle}>Teléfono del dueño</label>

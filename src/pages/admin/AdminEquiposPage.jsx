@@ -317,6 +317,24 @@ export default function AdminEquiposPage() {
     setTimeout(() => setMsg(null), 3000)
   }
 
+  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
+  // autocompletan nombre y teléfono para no volver a escribirlos ni
+  // arriesgarse a guardarlos distinto en cada equipo.
+  async function buscarDuenoPorCedula(cedula) {
+    const c = (cedula || '').trim()
+    if (!c) return
+    const { data } = await supabase.from('teams')
+      .select('representante_nombre, representante_telefono')
+      .eq('representante_cedula', c)
+      .not('representante_nombre', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    if (data) {
+      setForm(f => ({ ...f, representante_nombre: data.representante_nombre || f.representante_nombre, representante_telefono: data.representante_telefono || f.representante_telefono }))
+      showMsgFn(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    }
+  }
+
   // Cierra el aviso de duplicado y deja visible/resaltado el equipo existente
   // en la lista, en vez de crear uno nuevo.
   function usarEquipoExistente(equipo) {
@@ -433,11 +451,15 @@ export default function AdminEquiposPage() {
             <div><label style={labelStyle}>Modalidad</label><select value={form.modalidad} onChange={e => setForm(f=>({...f,modalidad:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{MODALIDADES.map(m=><option key={m}>{m}</option>)}</select></div>
             <div><label style={labelStyle}>Género</label><select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inputStyle}><option value="">Seleccionar...</option>{GENEROS.map(g=><option key={g}>{g}</option>)}</select></div>
             <div>
+              <label style={labelStyle}>Cédula del dueño *</label>
+              <input value={form.representante_cedula || ''} onChange={e => setForm(f=>({...f,representante_cedula:e.target.value}))} onBlur={e => buscarDuenoPorCedula(e.target.value)} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Número de cédula" type="number" disabled={editId && !esPrincipal}/>
+              <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya es dueño de otro equipo, se completan el nombre y teléfono solos</div>
+            </div>
+            <div>
               <label style={labelStyle}>Dueño / representante *</label>
               <input value={form.representante_nombre} onChange={e => setForm(f=>({...f,representante_nombre:e.target.value}))} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Nombre completo" disabled={editId && !esPrincipal}/>
               {editId && !esPrincipal && <div style={{ fontSize: '.65rem', color: '#e8710a', marginTop: '3px' }}>🔒 Solo el admin principal puede cambiar el dueño</div>}
             </div>
-            <div><label style={labelStyle}>Cédula del dueño *</label><input value={form.representante_cedula || ''} onChange={e => setForm(f=>({...f,representante_cedula:e.target.value}))} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="Número de cédula" type="number" disabled={editId && !esPrincipal}/></div>
             <div><label style={labelStyle}>Teléfono del dueño *</label><input value={form.representante_telefono} onChange={e => setForm(f=>({...f,representante_telefono:e.target.value}))} style={{ ...inputStyle, opacity: editId && !esPrincipal ? .55 : 1 }} placeholder="300 000 0000" type="tel" disabled={editId && !esPrincipal}/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Descripción del equipo</label><textarea value={form.descripcion} onChange={e => setForm(f=>({...f,descripcion:e.target.value}))} style={{...inputStyle,height:'70px',resize:'vertical'}} placeholder="Historia, estilo de juego, descripción..."/></div>
             <div style={{ gridColumn:'1/-1' }}><label style={labelStyle}>Logros y palmarés</label><textarea value={form.logros} onChange={e => setForm(f=>({...f,logros:e.target.value}))} style={{...inputStyle,height:'60px',resize:'vertical'}} placeholder="Campeonatos, títulos, participaciones destacadas..."/></div>
@@ -513,7 +535,7 @@ export default function AdminEquiposPage() {
             {/* Acciones */}
             <MenuAcciones
               equipo={equipo}
-              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setShowForm(true) }}
+              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setShowForm(true) }}
               onJugadores={eq => navigate(`/admin/equipos/${eq.id}`)}
               onUniforme={eq => setUniforme(eq)}
               onPoster={eq => setPoster(eq)}

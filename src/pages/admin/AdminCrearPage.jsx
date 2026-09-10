@@ -34,7 +34,7 @@ export default function AdminCrearPage() {
   const [expandedEquipo, setExpandedEquipo] = useState(null)
   const [equiposInscritos, setEquiposInscritos] = useState([])
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
-  const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+  const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
   const [creandoEquipo,      setCreandoEquipo]      = useState(false)
   const [nuevoEquipoLogo,        setNuevoEquipoLogo]        = useState(null)
   const [nuevoEquipoLogoPreview, setNuevoEquipoLogoPreview] = useState(null)
@@ -107,9 +107,26 @@ export default function AdminCrearPage() {
   }
 
   function abrirCrearEquipo() {
-    setNuevoEquipoForm({ name: equipoSearch, city: '', representante_nombre: '', representante_telefono: '' })
+    setNuevoEquipoForm({ name: equipoSearch, city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
+  }
+
+  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
+  // autocompletan nombre y teléfono para no volver a escribirlos.
+  async function buscarDuenoPorCedula(cedula) {
+    const c = (cedula || '').trim()
+    if (!c) return
+    const { data } = await supabase.from('teams')
+      .select('representante_nombre, representante_telefono')
+      .eq('representante_cedula', c)
+      .not('representante_nombre', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    if (data) {
+      setNuevoEquipoForm(f => ({ ...f, representante_nombre: data.representante_nombre || f.representante_nombre, representante_telefono: data.representante_telefono || f.representante_telefono }))
+      showMsg(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    }
   }
 
   function handleNuevoEquipoLogo(file) {
@@ -156,12 +173,21 @@ export default function AdminCrearPage() {
         if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
       }
       setParecidosCrear([])
-      const { data: nuevo, error } = await supabase.from('teams').insert({
+      let { data: nuevo, error } = await supabase.from('teams').insert({
         name: nuevoEquipoForm.name.trim(),
         city: nuevoEquipoForm.city.trim() || null,
         representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+        representante_cedula: nuevoEquipoForm.representante_cedula.trim() || null,
         representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
       }).select().single()
+      if (error && (error.message || '').includes('representante_cedula')) {
+        // BD sin la migración de la cédula: crear sin ella para no bloquear
+        ;({ data: nuevo, error } = await supabase.from('teams').insert({
+          name: nuevoEquipoForm.name.trim(), city: nuevoEquipoForm.city.trim() || null,
+          representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+          representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+        }).select().single())
+      }
       if (error) { showMsg('Error al crear el equipo', 'error'); return }
       if (nuevoEquipoLogo) {
         const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
@@ -358,6 +384,11 @@ export default function AdminCrearPage() {
                       </div>
                       <div><label style={label}>Nombre del equipo *</label><input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={input}/></div>
                       <div><label style={label}>Ciudad</label><input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={input}/></div>
+                      <div>
+                        <label style={label}>Cédula del dueño</label>
+                        <input value={nuevoEquipoForm.representante_cedula} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value }))} onBlur={e => buscarDuenoPorCedula(e.target.value)} placeholder="Número de cédula" type="number" style={input}/>
+                        <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si ya es dueño de otro equipo, se completan nombre y teléfono solos</div>
+                      </div>
                       <div><label style={label}>Representante / dueño del equipo *</label><input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={input}/></div>
                       <div><label style={label}>Teléfono del representante</label><input value={nuevoEquipoForm.representante_telefono} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_telefono: e.target.value }))} placeholder="300 000 0000" style={input}/></div>
                     </div>

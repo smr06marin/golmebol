@@ -3218,9 +3218,26 @@ export default function AdminTorneoDetallePage() {
   }
 
   function abrirCrearEquipo() {
-    setNuevoEquipoForm({ name: busquedaEquipo, city: '', representante_nombre: '', representante_telefono: '' })
+    setNuevoEquipoForm({ name: busquedaEquipo, city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
+  }
+
+  // Si la cédula ya es dueño de otro equipo, es la misma persona — se
+  // autocompletan nombre y teléfono para no volver a escribirlos.
+  async function buscarDuenoPorCedulaNuevoEquipo(cedula) {
+    const c = (cedula || '').trim()
+    if (!c) return
+    const { data } = await supabase.from('teams')
+      .select('representante_nombre, representante_telefono')
+      .eq('representante_cedula', c)
+      .not('representante_nombre', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    if (data) {
+      setNuevoEquipoForm(f => ({ ...f, representante_nombre: data.representante_nombre || f.representante_nombre, representante_telefono: data.representante_telefono || f.representante_telefono }))
+      showMsg(`👤 Dueño encontrado: ${data.representante_nombre} — datos completados`)
+    }
   }
 
   function handleNuevoEquipoLogo(file) {
@@ -3231,7 +3248,7 @@ export default function AdminTorneoDetallePage() {
 
   function cerrarModalEquipo() {
     setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
-    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_telefono: '' })
+    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
   }
 
@@ -3753,12 +3770,13 @@ export default function AdminTorneoDetallePage() {
                     <input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={inputStyle}/>
                   </div>
                   <div>
-                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Dueño / representante del equipo *</label>
-                    <input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={inputStyle}/>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Cédula del dueño *</label>
+                    <input value={nuevoEquipoForm.representante_cedula} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value }))} onBlur={e => buscarDuenoPorCedulaNuevoEquipo(e.target.value)} placeholder="Número de cédula" type="number" style={inputStyle}/>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya es dueño de otro equipo, se completan el nombre y teléfono solos</div>
                   </div>
                   <div>
-                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Cédula del dueño *</label>
-                    <input value={nuevoEquipoForm.representante_cedula} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value }))} placeholder="Número de cédula" type="number" style={inputStyle}/>
+                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Dueño / representante del equipo *</label>
+                    <input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={inputStyle}/>
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Teléfono del dueño *</label>
