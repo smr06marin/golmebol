@@ -2,18 +2,22 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { comprimirImagen } from '../lib/imageCompress'
 
-// Cada jugador puede subir su propia foto de perfil y su propia foto de
-// tarjeta, pero solo UNA VEZ: en cuanto queda guardada en players.photo_url /
-// players.photo_face_url, este componente pasa a modo "bloqueado" y ya no
-// deja subir otra. La única forma de volver a habilitar la subida es que un
-// admin/coordinador borre esa foto desde su panel (eso pone el campo en null
-// de nuevo) — normalmente porque la foto no cumplía la recomendación.
+// Cada jugador puede subir su propia foto de perfil, pero solo UNA VEZ: en
+// cuanto queda guardada en players.photo_face_url, este componente pasa a
+// modo "bloqueado" y ya no deja subir otra. La única forma de volver a
+// habilitar la subida es que un admin/coordinador borre esa foto desde su
+// panel (eso pone el campo en null de nuevo) — normalmente porque la foto
+// no cumplía la recomendación.
+// La foto de TARJETA (photo_url) es distinta: el jugador la puede cambiar
+// las veces que quiera (prop bloqueada=false), porque es solo estética de
+// su tarjeta y no una verificación de identidad.
 const TIPO_POR_CAMPO = { photo_face_url: 'cara', photo_url: 'tarjeta' }
 const FLAG_POR_CAMPO = { photo_face_url: 'foto_cambiar_perfil', photo_url: 'foto_cambiar_tarjeta' }
 
 export default function SubidaFotoJugador({
   playerId, campo, url, titulo, recomendacion, ejemplo, onSubido,
   flagged = false,
+  bloqueada = true,
   colors = { card: '#fff', border: '#e8eaed', text: '#202124', muted: '#5f6368', accent: '#1a73e8', accentBg: '#e8f0fe' },
 }) {
   const [subiendo, setSubiendo] = useState(false)
@@ -46,7 +50,7 @@ export default function SubidaFotoJugador({
 
   const c = colors
 
-  if (url && !flagged) {
+  if (url && !flagged && bloqueada) {
     return (
       <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: '12px', padding: '14px', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <img src={url} style={{ width: '54px', height: '54px', borderRadius: '10px', objectFit: 'cover', objectPosition: 'top', flexShrink: 0, border: `1px solid ${c.border}` }}/>
@@ -56,6 +60,23 @@ export default function SubidaFotoJugador({
             Ya la subiste — no se puede cambiar sola. Si crees que está mal, pide que te la borren para poder subir otra.
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (url && !flagged && !bloqueada) {
+    return (
+      <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: '12px', padding: '14px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <img src={url} style={{ width: '54px', height: '54px', borderRadius: '10px', objectFit: 'cover', objectPosition: 'top', flexShrink: 0, border: `1px solid ${c.border}` }}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '.82rem', fontWeight: '700', color: c.text }}>{titulo}</div>
+          <div style={{ fontSize: '.7rem', color: c.muted, marginTop: '2px' }}>{recomendacion}</div>
+        </div>
+        <label style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', background: subiendo ? '#f1f3f4' : c.accentBg, border: `1px solid ${c.accent}`, borderRadius: '8px', cursor: subiendo ? 'default' : 'pointer', color: c.accent, fontSize: '.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+          {subiendo ? '...' : 'Cambiar'}
+          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} disabled={subiendo}/>
+        </label>
+        {error && <div style={{ fontSize: '.7rem', color: '#d93025', marginTop: '6px', textAlign: 'center' }}>{error}</div>}
       </div>
     )
   }

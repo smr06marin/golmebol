@@ -998,6 +998,7 @@ export default function PlayerHomePage() {
             <SubidaFotoJugador
               playerId={player.id} campo="photo_url" url={player.photo_url || null}
               flagged={!!player.foto_cambiar_tarjeta}
+              bloqueada={false}
               titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
               ejemplo={<EjemploFotoTarjeta/>}
               onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}

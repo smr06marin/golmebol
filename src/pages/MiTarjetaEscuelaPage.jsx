@@ -218,6 +218,7 @@ export default function MiTarjetaEscuelaPage() {
           <SubidaFotoJugador
             playerId={jugador.id} campo="photo_url" url={jugador.photo_url || null}
             flagged={!!jugador.foto_cambiar_tarjeta}
+            bloqueada={false}
             titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
             ejemplo={<EjemploFotoTarjeta/>}
             onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
