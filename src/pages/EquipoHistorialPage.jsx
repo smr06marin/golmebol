@@ -47,6 +47,10 @@ export default function EquipoHistorialPage() {
   const [telEdit,         setTelEdit]         = useState('')
   const [guardandoTel,    setGuardandoTel]    = useState(false)
   const [subiendoFoto,    setSubiendoFoto]    = useState(null)
+  const [mostrarAgregarTorneo, setMostrarAgregarTorneo] = useState(false)
+  const [busquedaAgregarTorneo, setBusquedaAgregarTorneo] = useState('')
+  const [agregandoJugadorId, setAgregandoJugadorId] = useState(null)
+  const [quitandoJugadorId,  setQuitandoJugadorId]  = useState(null)
 
   const [equipo,                setEquipo]                = useState(null)
   const [torneos,               setTorneos]               = useState([])
@@ -184,16 +188,39 @@ export default function EquipoHistorialPage() {
 
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000) }
 
-  // Desactivar (o reactivar) un jugador de la plantilla base del equipo —
-  // NO lo elimina ni lo desinscribe de ningún torneo puntual, solo lo saca
-  // (o lo devuelve) de la lista de jugadores del equipo.
-  async function handleToggleActivoEquipo(jugador) {
+  // Quitar (desactivar) a un jugador de ESTE torneo puntual — libera un
+  // cupo del límite de jugadores del torneo. No lo elimina del equipo ni
+  // de otros torneos donde también esté inscrito.
+  async function handleQuitarDeTorneo(reg, torneoId) {
+    if (!esDueno || !reg) return
+    setQuitandoJugadorId(reg.player_id)
+    const { error } = await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', reg.id)
+    setQuitandoJugadorId(null)
+    if (error) return showMsg('No se pudo quitar del torneo', 'error')
+    showMsg(`${reg.players?.name} quitado del torneo — se liberó un cupo`)
+    fetchTorneos()
+  }
+
+  // Agrega (o vuelve a activar) un jugador del equipo EN ESTE torneo,
+  // respetando el límite de jugadores configurado en el torneo. Si ya no
+  // hay cupo, no se agrega — se ofrece pedir cupo extra por WhatsApp.
+  async function handleAgregarJugadorTorneo(jugador, torneoId) {
     if (!esDueno) return
-    const nuevo = !jugador._tpActivo
-    const { error } = await supabase.from('team_players').update({ activo: nuevo }).eq('id', jugador._tpId)
-    if (error) return showMsg('No se pudo actualizar', 'error')
-    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, _tpActivo: nuevo } : j))
-    showMsg(nuevo ? `${jugador.name} activo en el equipo ✓` : `${jugador.name} desactivado del equipo`)
+    const t = torneos.find(x => x.tournament_id === torneoId)
+    const limite = t?.tournaments?.limite_jugadores_equipo
+    const actuales = (jugadoresPorTorneo[torneoId] || []).length
+    if (limite && actuales >= limite) return showMsg(`Ya llegaste al límite de ${limite} jugadores de este torneo`, 'error')
+    setAgregandoJugadorId(jugador.id)
+    const { data: existente } = await supabase.from('tournament_player_registrations').select('id')
+      .eq('tournament_id', torneoId).eq('team_id', id).eq('player_id', jugador.id).maybeSingle()
+    const { error } = existente
+      ? await supabase.from('tournament_player_registrations').update({ activo: true }).eq('id', existente.id)
+      : await supabase.from('tournament_player_registrations').insert({ tournament_id: torneoId, team_id: id, player_id: jugador.id, activo: true })
+    setAgregandoJugadorId(null)
+    if (error) return showMsg('No se pudo agregar', 'error')
+    showMsg(`${jugador.name} agregado al torneo ✓`)
+    setBusquedaAgregarTorneo('')
+    fetchTorneos()
   }
 
   async function handleGuardarTelefono(jugador) {
@@ -677,13 +704,83 @@ export default function EquipoHistorialPage() {
               </div>
             )}
             {(() => {
-              const idsTorneo = filtroJugadores !== 'todos' && filtroJugadores !== 'activos'
-                ? new Set(regsEquipo.filter(r => r.tournament_id === filtroJugadores).map(r => r.player_id))
-                : null
+              const torneoSel = filtroJugadores !== 'todos' && filtroJugadores !== 'activos' ? filtroJugadores : null
+              const idsTorneo = torneoSel ? new Set(regsEquipo.filter(r => r.tournament_id === torneoSel).map(r => r.player_id)) : null
               const jugadoresFiltrados = filtroJugadores === 'todos' ? jugadoresEquipoGlobal
                 : filtroJugadores === 'activos' ? jugadoresEquipoGlobal.filter(j => jugadoresActivos.includes(j.id))
                 : jugadoresEquipoGlobal.filter(j => idsTorneo.has(j.id))
-              return jugadoresFiltrados.length === 0 ? (
+
+              // Cupo de ESTE torneo (solo cuando hay un torneo puntual
+              // seleccionado) — es lo que el encargado del equipo puede
+              // gestionar: agregar hasta el límite, o quitar (libera cupo).
+              const regsActivasTorneo = torneoSel ? (jugadoresPorTorneo[torneoSel] || []) : []
+              const regEnTorneo = playerId => regsActivasTorneo.find(r => r.player_id === playerId)
+              const tInfo = torneoSel ? torneos.find(x => x.tournament_id === torneoSel) : null
+              const limiteTorneo = tInfo?.tournaments?.limite_jugadores_equipo || null
+              const cupoUsado = regsActivasTorneo.length
+              const cupoLleno = !!(limiteTorneo && cupoUsado >= limiteTorneo)
+              const candidatosAgregar = torneoSel
+                ? jugadoresEquipoGlobal.filter(j => !regEnTorneo(j.id) &&
+                    (!busquedaAgregarTorneo.trim() || j.name?.toLowerCase().includes(busquedaAgregarTorneo.toLowerCase()) || j.numero_cedula?.includes(busquedaAgregarTorneo)))
+                : []
+              const mensajeWa = tInfo ? `Hola! Soy encargado de ${equipo.name} en ${tInfo.tournaments?.name}. Ya llegamos al límite de ${limiteTorneo} jugadores y necesito inscribir uno más.` : ''
+
+              return (
+              <>
+              {esDueno && torneoSel && (
+                <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'14px 16px', marginBottom:'12px' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', flexWrap:'wrap' }}>
+                    <div style={{ fontWeight:'700', fontSize:'.82rem', color:S.text }}>
+                      Cupo de {tInfo?.tournaments?.name}: <span style={{ color: cupoLleno ? S.loss : S.cyan }}>{cupoUsado}{limiteTorneo ? ` / ${limiteTorneo}` : ''}</span>
+                    </div>
+                    {!cupoLleno && (
+                      <button onClick={() => setMostrarAgregarTorneo(v => !v)}
+                        style={{ background: mostrarAgregarTorneo ? 'none' : S.cyan, border: mostrarAgregarTorneo ? `1px solid ${S.border}` : 'none', borderRadius:'8px', padding:'6px 12px', cursor:'pointer', color: mostrarAgregarTorneo ? S.text2 : '#000', fontSize:'.76rem', fontWeight:'700' }}>
+                        {mostrarAgregarTorneo ? 'Cerrar' : '+ Agregar jugador'}
+                      </button>
+                    )}
+                  </div>
+
+                  {cupoLleno && (
+                    <div style={{ marginTop:'10px' }}>
+                      <div style={{ fontSize:'.76rem', color:S.muted, marginBottom:'8px' }}>Ya llegaste al límite de jugadores de este torneo. Para inscribir uno más, pedile al organizador que te habilite un cupo extra.</div>
+                      <a href={`https://wa.me/573226490055?text=${encodeURIComponent(mensajeWa)}`} target="_blank" rel="noreferrer"
+                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:'#25d366', borderRadius:'8px', padding:'8px 14px', color:'#04250f', fontSize:'.78rem', fontWeight:'800', textDecoration:'none' }}>
+                        📲 Pedir cupo extra por WhatsApp
+                      </a>
+                    </div>
+                  )}
+
+                  {!cupoLleno && mostrarAgregarTorneo && (
+                    <div style={{ marginTop:'10px' }}>
+                      <input value={busquedaAgregarTorneo} onChange={e => setBusquedaAgregarTorneo(e.target.value)}
+                        placeholder="Buscar jugador del equipo por nombre o cédula..."
+                        style={{ width:'100%', boxSizing:'border-box', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'8px 10px', color:S.text, fontSize:'.78rem', outline:'none', marginBottom:'8px' }}/>
+                      {candidatosAgregar.length === 0 ? (
+                        <div style={{ fontSize:'.74rem', color:S.muted }}>
+                          {jugadoresEquipoGlobal.length === 0 ? 'Este equipo todavía no tiene jugadores.' : 'No hay más jugadores del equipo para agregar a este torneo — si es alguien nuevo, pídele al organizador que lo registre.'}
+                        </div>
+                      ) : (
+                        <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'220px', overflowY:'auto' }}>
+                          {candidatosAgregar.map(j => (
+                            <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:S.card2, borderRadius:'8px', padding:'6px 10px' }}>
+                              <div style={{ width:'26px', height:'26px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:S.border, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={12} color={S.muted}/>}
+                              </div>
+                              <div style={{ flex:1, minWidth:0, fontSize:'.78rem', color:S.text, fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{j.name}</div>
+                              <button onClick={() => handleAgregarJugadorTorneo(j, torneoSel)} disabled={agregandoJugadorId === j.id}
+                                style={{ background:S.win, border:'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#fff', fontSize:'.72rem', fontWeight:'700', flexShrink:0 }}>
+                                {agregandoJugadorId === j.id ? '...' : '+ Agregar'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {jugadoresFiltrados.length === 0 ? (
                 <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'48px', textAlign:'center', color:S.muted }}>
                   <Users size={32} style={{ opacity:.3, marginBottom:'8px' }}/><div>{jugadoresEquipoGlobal.length === 0 ? 'No hay jugadores en este equipo aún' : 'Ningún jugador con este filtro'}</div>
                 </div>
@@ -692,8 +789,9 @@ export default function EquipoHistorialPage() {
                   {jugadoresFiltrados.map(j => {
                     const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
                     const editandoTel = editandoTelId === j.id
+                    const regJugadorTorneo = torneoSel ? regEnTorneo(j.id) : null
                     return (
-                    <div key={j.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px', opacity: esDueno && j._tpActivo === false ? .6 : 1 }}>
+                    <div key={j.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'12px 16px' }}>
                       <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
                         <div style={{ position:'relative', flexShrink:0 }}>
                           <div style={{ width:'38px', height:'38px', borderRadius:'50%', padding: tieneTag ? '2px' : '0',
@@ -723,15 +821,15 @@ export default function EquipoHistorialPage() {
                             <span style={{ fontSize:'.64rem', fontWeight:'700', color: jugadoresActivos.includes(j.id) ? S.win : S.muted, background:S.card2, borderRadius:'20px', padding:'2px 8px' }}>
                               {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
                             </span>
-                            {esDueno && j._tpActivo === false && (
-                              <span style={{ fontSize:'.64rem', fontWeight:'700', color:S.loss, background:S.lossDim, borderRadius:'20px', padding:'2px 8px' }}>Fuera del equipo</span>
-                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Controles del encargado del equipo: solo teléfono, foto (arriba)
-                          y desactivar/reactivar — nunca agregar ni eliminar jugadores. */}
+                      {/* Controles del encargado del equipo: teléfono y foto
+                          (cualquier vista), y quitar del torneo — solo dentro
+                          de un torneo puntual, ya que es lo que libera cupo.
+                          Nunca hay botón de eliminar jugador ni de crear uno
+                          nuevo desde cero. */}
                       {esDueno && (
                         <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:`1px solid ${S.border}`, display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
                           {editandoTel ? (
@@ -753,16 +851,20 @@ export default function EquipoHistorialPage() {
                               <Pencil size={12}/> {j.telefono || 'Sin teléfono'}
                             </button>
                           )}
-                          <button onClick={() => handleToggleActivoEquipo(j)}
-                            style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${j._tpActivo === false ? S.win : S.loss}66`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color: j._tpActivo === false ? S.win : S.loss, fontSize:'.76rem', fontWeight:'600' }}>
-                            <Power size={12}/> {j._tpActivo === false ? 'Reactivar en el equipo' : 'Desactivar del equipo'}
-                          </button>
+                          {regJugadorTorneo && (
+                            <button onClick={() => handleQuitarDeTorneo(regJugadorTorneo, torneoSel)} disabled={quitandoJugadorId === j.id}
+                              style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${S.loss}66`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:S.loss, fontSize:'.76rem', fontWeight:'600' }}>
+                              <Power size={12}/> {quitandoJugadorId === j.id ? 'Quitando...' : 'Quitar del torneo'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
                     )
                   })}
                 </div>
+              )}
+              </>
               )
             })()}
           </div>
