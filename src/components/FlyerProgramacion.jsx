@@ -170,7 +170,15 @@ function FilaPartido({ p, mostrarTorneo }) {
         {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
             centro, así que no se repite acá) */}
         <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '2px 8px' }}>
-          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 900, letterSpacing: '.2px' }}>
+          {/* whiteSpace:nowrap + ellipsis, igual que la zona del torneo arriba:
+              si la cancha tiene un nombre largo, esta línea NO puede
+              envolverse a una segunda línea — cada tarjeta debe medir
+              siempre la misma altura fija, porque "porPagina" (arriba) está
+              calculado asumiendo eso. Si se dejaba envolver, la última
+              tarjeta de la página quedaba más alta de lo previsto y el
+              overflow:hidden del lienzo la cortaba (reportado con "El Club
+              de los Amigos" / "Complejo Deportivo El Gol"). */}
+          <span style={{ color: ORO_SUAVE, fontSize: '11px', fontWeight: 900, letterSpacing: '.2px', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {infoCancha || 'Por confirmar'}
           </span>
         </div>
