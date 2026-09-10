@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
@@ -72,6 +72,25 @@ export default function EquipoHistorialPage() {
   useEffect(() => {
     if (user) supabase.from('players').select('id, numero_cedula').eq('user_id', user.id).maybeSingle().then(({ data }) => setMiPlayer(data))
   }, [user])
+  // Si quien entra es el DUEÑO del equipo, el filtro de jugadores arranca
+  // en "Activos" — pero ahí el botón "Quitar del torneo" (para liberar
+  // cupo) no puede salir, porque no hay forma de saber de qué torneo
+  // sacarlo sin elegir uno puntual en los filtros de arriba. Reportado como
+  // "no sale el botón para sacar jugador" — en realidad estaba escondido
+  // detrás de un clic que no era obvio. Se selecciona solo, una única vez,
+  // el torneo activo (o el primero si ninguno está en curso) para que el
+  // dueño vea el control de cupos de una — después puede cambiar el filtro
+  // libremente sin que esto se lo pise.
+  const autoSeleccionoTorneoRef = useRef(false)
+  useEffect(() => {
+    if (autoSeleccionoTorneoRef.current) return
+    if (!equipo || !miPlayer || torneos.length === 0) return
+    const esDuenoEquipo = !!(miPlayer?.numero_cedula && equipo.representante_cedula && String(miPlayer.numero_cedula) === String(equipo.representante_cedula))
+    if (!esDuenoEquipo) return
+    autoSeleccionoTorneoRef.current = true
+    const torneoDefault = torneos.find(t => t.tournaments?.status === 'active') || torneos[0]
+    setFiltroJugadores(torneoDefault.tournament_id)
+  }, [equipo, miPlayer, torneos])
   useEffect(() => {
     if (tab === 'buscador' && !statsJugadores) {
       supabase.from('player_match_stats')
@@ -739,6 +758,16 @@ export default function EquipoHistorialPage() {
                         {mostrarAgregarTorneo ? 'Cerrar' : '+ Agregar jugador'}
                       </button>
                     )}
+                  </div>
+
+                  {/* Nota fija: "+ Agregar jugador" de acá abajo solo sirve para
+                      sumar a ESTE torneo a alguien que YA es del equipo (ya
+                      tiene foto, teléfono, etc. cargados de antes). La ÚNICA
+                      forma de inscribir a una persona totalmente nueva es con
+                      el link de registro — este portal no lo genera, hay que
+                      pedírselo al organizador del torneo. */}
+                  <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'8px', lineHeight:1.5 }}>
+                    ℹ️ Acá solo podés sumar jugadores que <b>ya hacen parte del equipo</b>. La única manera de inscribir a alguien nuevo (que nunca ha jugado con este equipo) es con el <b>link de registro</b> — pedíselo al organizador del torneo.
                   </div>
 
                   {cupoLleno && (
