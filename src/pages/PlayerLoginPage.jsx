@@ -219,9 +219,37 @@ export default function PlayerLoginPage() {
       // apellido (si no, cualquiera con una cédula ajena podría crearse la cuenta).
       if (p) { setPlayer(p); if (p.user_id) setStep('login'); else setStep('verificar_nombre') }
       else {
+        // No hay jugador con esa cédula — pero puede ser el DUEÑO de un
+        // equipo (representante_cedula), registrado al crear el equipo sin
+        // que nadie lo haya inscrito como jugador. Esa persona también debe
+        // poder entrar y administrar su equipo, así que le creamos aquí
+        // mismo un perfil mínimo con los datos que ya puso el organizador
+        // (nombre/teléfono) y seguimos el mismo flujo de siempre (verificar
+        // nombre y crear contraseña) como si fuera cualquier jugador nuevo.
+        const { data: equipoDueno } = await supabase.from('teams')
+          .select('name, representante_nombre, representante_telefono')
+          .eq('representante_cedula', cedula.trim())
+          .not('representante_nombre', 'is', null)
+          .limit(1)
+          .maybeSingle()
+        if (equipoDueno) {
+          const { data: nuevo, error: errCrear } = await supabase.from('players').insert({
+            name: equipoDueno.representante_nombre,
+            telefono: equipoDueno.representante_telefono || null,
+            numero_cedula: cedula.trim(),
+            rol: 'jugador',
+            activo_membresia: true,
+            primer_ingreso: true,
+            fecha_registro: new Date().toISOString(),
+          }).select('id, name, user_id, primer_ingreso, rol, es_arbitro, es_arbitro_lider, es_profesor, es_profesor_coordinador, es_acudiente, es_jugador_escuela, equipo_deseado').single()
+          if (!errCrear && nuevo) {
+            setPlayer(nuevo)
+            setStep('verificar_nombre')
+            return
+          }
+        }
         // Golmebol es gratis y no pide autorización — pero solo puede entrar
-        // quien YA está registrado como jugador (por su equipo o por Golmebol).
-        // Si la cédula no existe en players, no se deja crear cuenta desde acá.
+        // quien YA está registrado como jugador o dueño de equipo.
         setStep('no_registrado')
       }
       })())

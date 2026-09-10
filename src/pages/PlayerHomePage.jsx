@@ -141,6 +141,7 @@ export default function PlayerHomePage() {
       { data: tps },
       { data: predsResueltas },
       { data: rondaNotifs },
+      { data: equiposDuenoData },
     ] = await Promise.all([
       supabase.from('player_match_stats').select('*').eq('player_id', p.id),
       supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon'),
@@ -162,6 +163,13 @@ export default function PlayerHomePage() {
       supabase.from('team_players').select('id').eq('player_id', p.id).limit(1),
       supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', p.id).eq('resuelta', true).gt('puntos_ganados', 0),
       supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'predix_ronda').eq('leida', false),
+      // ¿Es DUEÑO de algún equipo? Va en el mismo Promise.all (no encadenado
+      // después) para que "sinEquipo" ya lo tenga en cuenta abajo — si no, un
+      // dueño que no está en ninguna plantilla quedaba atrapado en la
+      // pantalla de "solo PREDIX" antes de que esto terminara de llegar.
+      p.numero_cedula
+        ? supabase.from('teams').select('id, name, created_at').eq('representante_cedula', String(p.numero_cedula))
+        : Promise.resolve({ data: [] }),
     ])
 
     const raw       = rawStats || []
@@ -200,15 +208,12 @@ export default function PlayerHomePage() {
     setTarjetasCustom(customCards || [])
     setTorneos(regs || [])
 
-    // ¿Está registrado como jugador en algún equipo? Si no (ni en torneos ni
-    // en la plantilla de ningún equipo), su portal se limita a PREDIX.
-    setSinEquipo((regs || []).length === 0 && (tps || []).length === 0)
+    setEquiposDueno(equiposDuenoData || [])
 
-    // ¿Es DUEÑO de algún equipo? (insignia 👑 con la fecha de creación)
-    if (p.numero_cedula) {
-      supabase.from('teams').select('name, created_at').eq('representante_cedula', String(p.numero_cedula))
-        .then(({ data }) => setEquiposDueno(data || []), () => {})
-    }
+    // ¿Está registrado como jugador en algún equipo (torneo o plantilla)? Si
+    // tampoco es DUEÑO de ninguno, ahí sí su portal se limita a PREDIX — ser
+    // dueño sin estar en la plantilla cuenta como "tener equipo".
+    setSinEquipo((regs || []).length === 0 && (tps || []).length === 0 && (equiposDuenoData || []).length === 0)
 
     // Precargar TODOS los logros + progreso + stats en paralelo (sin bloquear
     // la pantalla): cuando el jugador toque una tarjeta, el show sale de una.
@@ -926,14 +931,15 @@ export default function PlayerHomePage() {
 
       <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>
 
-      {/* Insignia de dueño de equipo */}
+      {/* Insignia de dueño de equipo — toca para entrar a administrar ese equipo */}
       {equiposDueno.length > 0 && (
         <div style={{ background: 'linear-gradient(90deg, #fff8e1, #fff)', borderBottom: '1px solid #ffe082', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '1rem' }}>👑</span>
           {equiposDueno.map(eq => (
-            <span key={eq.name} style={{ fontSize: '.75rem', color: '#8a5a00', fontWeight: '700' }}>
+            <button key={eq.id || eq.name} onClick={() => eq.id && navigate(`/equipos/${eq.id}`)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: eq.id ? 'pointer' : 'default', fontSize: '.75rem', color: '#8a5a00', fontWeight: '700', textDecoration: eq.id ? 'underline' : 'none' }}>
               Dueño de {eq.name}{eq.created_at ? ` · equipo creado el ${new Date(eq.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
-            </span>
+            </button>
           ))}
         </div>
       )}
