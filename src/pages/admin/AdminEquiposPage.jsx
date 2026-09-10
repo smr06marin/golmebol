@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
-import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -377,7 +377,24 @@ export default function AdminEquiposPage() {
       }
       setParecidosCrear([])
       setLoading(true)
-      const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: form.representante_nombre || null, representante_cedula: form.representante_cedula || null, representante_telefono: form.representante_telefono || null }
+      // Último chequeo justo antes de guardar — SOLO si la cédula cambió (al
+      // crear, o al editar si es distinta a la que ya tenía el equipo): si
+      // esta cédula nueva ya está registrada en algún lado, se usa ESE
+      // nombre/teléfono, así no queda guardada la cédula de una persona con
+      // el nombre de otra aunque el autocompletado en pantalla no se haya
+      // alcanzado a disparar. Si la cédula no cambió, se respeta el nombre
+      // recién escrito a mano (puede ser una corrección de un dato mal
+      // guardado antes).
+      let repNombre = form.representante_nombre, repTelefono = form.representante_telefono
+      const cedulaCambio = !editId || (form.representante_cedula || '').trim() !== cedulaOriginalEditRef.current
+      if ((!editId || esPrincipal) && cedulaCambio) {
+        const identidad = await resolverIdentidadPorCedula(form.representante_cedula, editId)
+        if (identidad) {
+          if (identidad.nombre)   repNombre   = identidad.nombre
+          if (identidad.telefono) repTelefono = identidad.telefono
+        }
+      }
+      const payload = { name: form.name, city: form.city, genero: form.genero, modalidad: form.modalidad, descripcion: form.descripcion, logros: form.logros, representante_nombre: repNombre || null, representante_cedula: form.representante_cedula || null, representante_telefono: repTelefono || null }
       // El DUEÑO solo lo puede modificar el admin principal: al editar, los
       // demás no envían esos campos (quedan como estaban)
       if (editId && !esPrincipal) {

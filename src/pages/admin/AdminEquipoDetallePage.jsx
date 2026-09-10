@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock, Upload } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
-import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { useAuthStore } from '../../store/authStore'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
@@ -575,11 +575,25 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   async function handleGuardarDueno() {
     if (!esPrincipal) { showMsg('Solo el admin principal puede cambiar el dueño', 'error'); return }
-    const nombre   = duenoForm.nombre.trim()
+    let nombre   = duenoForm.nombre.trim()
     const cedula   = duenoForm.cedula.trim()
-    const telefono = duenoForm.telefono.trim()
+    let telefono = duenoForm.telefono.trim()
     if (!nombre) return showMsg('El nombre del dueño no puede quedar vacío', 'error')
     setGuardandoDueno(true)
+    // Último chequeo justo antes de guardar — SOLO si la cédula cambió en
+    // esta edición: si esta cédula nueva ya está registrada en algún lado
+    // (jugador/árbitro u otro equipo), se usa ESE nombre/teléfono, así no
+    // queda guardada la cédula de una persona con el nombre de otra aunque
+    // el autocompletado en pantalla no se haya alcanzado a disparar. Si la
+    // cédula NO cambió, se respeta el nombre que se acaba de escribir a
+    // mano (puede ser justamente una corrección de un dato mal guardado).
+    if (cedula !== String(equipo?.representante_cedula || '').trim()) {
+      const identidad = await resolverIdentidadPorCedula(cedula, id)
+      if (identidad) {
+        if (identidad.nombre)   nombre   = identidad.nombre
+        if (identidad.telefono) telefono = identidad.telefono
+      }
+    }
     const { error } = await supabase.from('teams').update({
       representante_nombre:   nombre,
       representante_cedula:   cedula || null,

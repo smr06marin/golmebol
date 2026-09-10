@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Trophy, Shield, Users, Search, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
-import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
+import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 
 const input = {
@@ -180,19 +180,28 @@ export default function AdminCrearPage() {
         if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
       }
       setParecidosCrear([])
+      // Último chequeo justo antes de guardar: si esta cédula ya está
+      // registrada en algún lado, se usa ESE nombre/teléfono para no crear
+      // el equipo con la cédula de una persona y el nombre de otra.
+      let repNombre = nuevoEquipoForm.representante_nombre.trim(), repTelefono = nuevoEquipoForm.representante_telefono.trim()
+      const identidad = await resolverIdentidadPorCedula(nuevoEquipoForm.representante_cedula)
+      if (identidad) {
+        if (identidad.nombre)   repNombre   = identidad.nombre
+        if (identidad.telefono) repTelefono = identidad.telefono
+      }
       let { data: nuevo, error } = await supabase.from('teams').insert({
         name: nuevoEquipoForm.name.trim(),
         city: nuevoEquipoForm.city.trim() || null,
-        representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
+        representante_nombre: repNombre,
         representante_cedula: nuevoEquipoForm.representante_cedula.trim() || null,
-        representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+        representante_telefono: repTelefono || null,
       }).select().single()
       if (error && (error.message || '').includes('representante_cedula')) {
         // BD sin la migración de la cédula: crear sin ella para no bloquear
         ;({ data: nuevo, error } = await supabase.from('teams').insert({
           name: nuevoEquipoForm.name.trim(), city: nuevoEquipoForm.city.trim() || null,
-          representante_nombre: nuevoEquipoForm.representante_nombre.trim(),
-          representante_telefono: nuevoEquipoForm.representante_telefono.trim() || null,
+          representante_nombre: repNombre,
+          representante_telefono: repTelefono || null,
         }).select().single())
       }
       if (error) { showMsg('Error al crear el equipo', 'error'); return }
