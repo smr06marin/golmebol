@@ -555,14 +555,14 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     const persona = await buscarPersonaPorCedula(c)
     if (persona) {
       setPersonaCedulaDueno(persona)
-      setDuenoForm(f => ({ ...f, nombre: persona.name || f.nombre, telefono: persona.telefono || f.telefono }))
+      setDuenoForm(f => ({ ...f, nombre: persona.name || '', telefono: persona.telefono || '' }))
       showMsg(`👤 ${persona.name} ya está registrado en Golmebol — datos completados`)
       return
     }
     setPersonaCedulaDueno(null)
     const equipo = await buscarDuenoEquipoPorCedula(c, id)
     if (equipo) {
-      setDuenoForm(f => ({ ...f, nombre: equipo.representante_nombre || f.nombre, telefono: equipo.representante_telefono || f.telefono }))
+      setDuenoForm(f => ({ ...f, nombre: equipo.representante_nombre || '', telefono: equipo.representante_telefono || '' }))
       showMsg(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
     }
   }
