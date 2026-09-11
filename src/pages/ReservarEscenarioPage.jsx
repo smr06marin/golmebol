@@ -37,7 +37,6 @@ export default function ReservarEscenarioPage() {
   const [duracion, setDuracion] = useState(60)
   const [error, setError] = useState('')
   const [estadoEnvio, setEstadoEnvio] = useState('idle') // idle | esperando | ok | timeout | ocupado
-  const waLimpiarRef = useRef(null)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
   useEffect(() => { setHoraSel(null) }, [fecha, cancha])
@@ -58,85 +57,59 @@ export default function ReservarEscenarioPage() {
     setLoading(false)
   }
 
-  function limpiarEsperaWA() {
-    if (waLimpiarRef.current) { waLimpiarRef.current(); waLimpiarRef.current = null }
-  }
-
   function abrirSlot() {
     if (!horaSel) return
-    limpiarEsperaWA()
     setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError(''); setEstadoEnvio('idle')
   }
 
   function cerrarModal() {
-    limpiarEsperaWA()
     setModalSlot(null); setEstadoEnvio('idle')
   }
 
-  // El número de WhatsApp es el único dato que de verdad se puede confiar
-  // (nombre y equipo se los puede inventar cualquiera) — pero solo si el
-  // mensaje efectivamente sale desde ese número real. Por eso la reserva
-  // YA NO se guarda apenas se hace click: se guarda solo cuando esta
-  // pestaña detecta que el navegador salió hacia WhatsApp (se puso en
-  // segundo plano — visibilitychange), que es la señal más fuerte que se
-  // puede detectar desde acá de que el link realmente se abrió. No hay
-  // forma de confirmar desde el navegador si además le dieron "enviar"
-  // dentro de WhatsApp — eso ya no lo puede ver esta página — pero esto
-  // evita reservas de alguien que nunca llegó a abrir WhatsApp.
-  function handleReservar(e) {
-    if (!nombre.trim()) { e.preventDefault(); setError('Escribe tu nombre'); return }
-    if (!telefono.trim()) { e.preventDefault(); setError('Escribe tu número de WhatsApp'); return }
+  // Antes la reserva NO se guardaba apenas se hacía click: se guardaba solo
+  // cuando esta pestaña detectaba (con visibilitychange) que el navegador
+  // salió hacia WhatsApp — la idea era evitar reservas de alguien que nunca
+  // llegó a abrir WhatsApp. El problema: esa detección puede fallar en
+  // silencio en varios celulares (sobre todo iOS), y cuando fallaba, el
+  // mensaje SÍ le llegaba al negocio por WhatsApp — hasta lo confirmaban
+  // por chat — pero la reserva nunca quedaba guardada acá. El horario
+  // seguía viéndose "Disponible" para cualquier otra persona, y terminaba
+  // pasando exactamente eso: dos personas con la misma cancha a la misma
+  // hora. Ahora la reserva se guarda EN EL CLICK, de forma síncrona y
+  // confiable, y solo después de guardarla se abre WhatsApp.
+  async function handleReservar(e) {
+    e.preventDefault()
+    const waUrl = e.currentTarget.href
+    if (!nombre.trim()) { setError('Escribe tu nombre'); return }
+    if (!telefono.trim()) { setError('Escribe tu número de WhatsApp'); return }
     setError('')
-    limpiarEsperaWA()
     setEstadoEnvio('esperando')
+
+    // Revalidación de último momento: la grilla de horarios se cargó una
+    // sola vez al entrar a la página, así que si la persona se demoró
+    // llenando el formulario, alguien más pudo haber tomado ese mismo
+    // horario mientras tanto.
+    const { data: actuales, error: errCheck } = await supabase.from('escenario_reservas')
+      .select('hora, duracion, estado')
+      .eq('escenario_id', escenario.id).eq('cancha', cancha).eq('fecha', fecha)
+    if (errCheck) { setEstadoEnvio('timeout'); return }
+    const chocaConOtra = (actuales || []).some(r =>
+      (r.estado === 'aceptada' || r.estado === 'pendiente' || r.estado === 'mantenimiento') &&
+      intervalosSolapan(modalSlot, duracion, r.hora, r.duracion)
+    )
+    if (chocaConOtra) { setEstadoEnvio('ocupado'); setHoraSel(null); fetchTodo(); return }
 
     const datos = {
       escenario_id: escenario.id, cancha, fecha, hora: modalSlot, duracion,
       nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
       estado: 'pendiente', pago: 'pendiente', monto: precioCancha(canchas, cancha), monto_pagado: 0,
     }
+    const { error: errInsert } = await supabase.from('escenario_reservas').insert(datos)
+    if (errInsert) { setEstadoEnvio('timeout'); return }
 
-    let resuelto = false
-    const onVisibility = async () => {
-      if (resuelto || !document.hidden) return
-      resuelto = true
-      limpiar()
-
-      // Revalidación de último momento: la grilla de horarios se cargó una
-      // sola vez al entrar a la página, así que si la persona se demoró en
-      // mandar el mensaje, alguien más pudo haber tomado ese mismo horario
-      // mientras tanto. Se vuelve a consultar el estado real justo antes de
-      // guardar — si ya no está libre, no se inserta la reserva duplicada.
-      const { data: actuales, error: errCheck } = await supabase.from('escenario_reservas')
-        .select('hora, duracion, estado')
-        .eq('escenario_id', escenario.id).eq('cancha', cancha).eq('fecha', fecha)
-      if (!errCheck) {
-        const chocaConOtra = (actuales || []).some(r =>
-          (r.estado === 'aceptada' || r.estado === 'pendiente' || r.estado === 'mantenimiento') &&
-          intervalosSolapan(modalSlot, duracion, r.hora, r.duracion)
-        )
-        if (chocaConOtra) { setEstadoEnvio('ocupado'); setHoraSel(null); fetchTodo(); return }
-      }
-
-      supabase.from('escenario_reservas').insert(datos).then(({ error }) => {
-        setEstadoEnvio(error ? 'timeout' : 'ok')
-        if (!error) fetchTodo()
-      })
-    }
-    const timer = setTimeout(() => {
-      if (resuelto) return
-      resuelto = true
-      limpiar()
-      setEstadoEnvio('timeout')
-    }, 15000)
-    function limpiar() {
-      document.removeEventListener('visibilitychange', onVisibility)
-      clearTimeout(timer)
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    waLimpiarRef.current = limpiar
-    // El <a href target="_blank"> sigue su curso normal y abre WhatsApp —
-    // este handler no bloquea esa navegación.
+    fetchTodo()
+    setEstadoEnvio('ok')
+    if (waUrl) window.open(waUrl, '_blank')
   }
 
   if (loading) return (
@@ -379,14 +352,14 @@ export default function ReservarEscenarioPage() {
             ) : estadoEnvio === 'esperando' ? (
               <div style={{ textAlign:'center', padding:'10px 0 4px' }}>
                 <div style={{ fontSize:'2rem', marginBottom:8 }}>📲</div>
-                <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:6 }}>Termina de enviar el mensaje en WhatsApp</div>
-                <div style={{ fontSize:'.8rem', color:S.muted }}>La reserva se confirma acá apenas se abra WhatsApp con el mensaje.</div>
+                <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:6 }}>Guardando tu reserva...</div>
+                <div style={{ fontSize:'.8rem', color:S.muted }}>Ya casi — en un momento se abre WhatsApp para que la confirmes.</div>
               </div>
             ) : (
               <>
                 {estadoEnvio === 'timeout' && (
                   <div style={{ background:'rgba(220,38,38,.08)', color:S.loss, borderRadius:8, padding:'8px 12px', fontSize:'.75rem', marginBottom:14, textAlign:'center' }}>
-                    No se detectó que se abriera WhatsApp. Intenta de nuevo — la reserva solo queda pendiente si el mensaje llega a abrirse.
+                    No se pudo guardar la reserva. Revisa tu conexión e intenta de nuevo.
                   </div>
                 )}
                 <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
@@ -399,7 +372,7 @@ export default function ReservarEscenarioPage() {
                   </select>
                 </div>
                 {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'14px' }}>{error}</div>}
-                <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Tu reserva solo queda registrada si el mensaje se abre en tu WhatsApp.</div>
+                <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Al enviar, tu reserva queda guardada y se abre WhatsApp para que la confirmes con el lugar.</div>
                 <a href={hrefReservar} target="_blank" rel="noreferrer" onClick={handleReservar}
                   style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, width:'100%', padding:'13px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.9rem', textDecoration:'none', boxSizing:'border-box' }}>
                   <FaWhatsapp size={17}/> Enviar reserva por WhatsApp
