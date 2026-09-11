@@ -84,6 +84,16 @@ export function slotEstado(reservas, cancha, fecha, hora) {
   return 'libre'
 }
 
+// Reserva(s) que ocupan un horario puntual — a diferencia de slotEstado
+// (que solo dice si está libre/pendiente/ocupado), esto devuelve las filas
+// completas para poder mostrar quién reservó cuando alguien toca un
+// horario ya tomado en la página pública.
+export function reservasDeSlot(reservas, cancha, fecha, hora) {
+  return (reservas || []).filter(r =>
+    r.cancha === cancha && r.fecha === fecha && r.estado !== 'cancelada' && r.estado !== 'rechazada' && horaEnRango(hora, r)
+  )
+}
+
 // ¿Se cruzan dos rangos hora+duración? Se usa para revalidar disponibilidad
 // justo antes de guardar una reserva — la grilla que ve la persona se cargó
 // una sola vez al entrar a la página, así que si se queda un rato largo

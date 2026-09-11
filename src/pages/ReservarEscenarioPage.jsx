@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, intervalosSolapan, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, reservasDeSlot, intervalosSolapan, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
@@ -29,12 +29,19 @@ export default function ReservarEscenarioPage() {
   const [fecha,     setFecha]     = useState(todayStr())
   const [horaSel,   setHoraSel]   = useState(null)
   const [modalSlot, setModalSlot] = useState(null)
+  const [infoSlot,  setInfoSlot]  = useState(null) // { hora, reservas: [...] } — al tocar un horario ya tomado
   const fechasRef = useRef(null)
 
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [equipo, setEquipo] = useState('')
-  const [duracion, setDuracion] = useState(60)
+  // Fija en 60 — la reserva pública siempre es por horas completas. Antes
+  // había un selector de 60/90/120 min, pero nada evitaba que alguien
+  // reservara solo 90 min de una hora y dejara "colgados" los 30 min
+  // restantes sin poder ofrecerse a nadie más. Si alguien necesita más
+  // tiempo, reserva varias horas seguidas o escribe por WhatsApp (botón de
+  // "¿Necesitas algo especial?" más abajo).
+  const duracion = 60
   const [error, setError] = useState('')
   const [estadoEnvio, setEstadoEnvio] = useState('idle') // idle | esperando | ok | timeout | ocupado
 
@@ -49,7 +56,7 @@ export default function ReservarEscenarioPage() {
     await asegurarReservasFijas(escenarioId)
     const [{ data: cs }, { data: rsvs }] = await Promise.all([
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
-      supabase.from('escenario_reservas').select('cancha, fecha, hora, duracion, estado').eq('escenario_id', escenarioId),
+      supabase.from('escenario_reservas').select('cancha, fecha, hora, duracion, estado, nombre, equipo').eq('escenario_id', escenarioId),
     ])
     setCanchas(cs || [])
     setReservas(rsvs || [])
@@ -59,7 +66,7 @@ export default function ReservarEscenarioPage() {
 
   function abrirSlot() {
     if (!horaSel) return
-    setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setDuracion(60); setError(''); setEstadoEnvio('idle')
+    setModalSlot(horaSel); setNombre(''); setTelefono(''); setEquipo(''); setError(''); setEstadoEnvio('idle')
   }
 
   function cerrarModal() {
@@ -245,14 +252,19 @@ export default function ReservarEscenarioPage() {
                 const color = est === 'libre' ? S.win : est === 'pendiente' ? S.warn : S.loss
                 const label = est === 'libre' ? 'Disponible' : est === 'pendiente' ? 'Pendiente' : 'Ocupado'
                 return (
-                  <button key={h} onClick={() => libre && setHoraSel(h)} disabled={!libre}
-                    style={{ padding:'12px 10px', borderRadius:12, textAlign:'left', cursor: libre ? 'pointer' : 'not-allowed',
+                  <button key={h}
+                    onClick={() => {
+                      if (libre) { setHoraSel(h); return }
+                      const rs = reservasDeSlot(reservas, cancha, fecha, h)
+                      if (rs.length) setInfoSlot({ hora: h, reservas: rs })
+                    }}
+                    style={{ padding:'12px 10px', borderRadius:12, textAlign:'left', cursor:'pointer',
                       border: sel ? `2px solid ${S.green}` : est === 'ocupado' ? `1.5px solid #f3d3d3` : `1.5px solid ${S.border}`,
                       background: sel ? S.greenDim : est === 'ocupado' ? '#fdf4f4' : '#fff' }}>
                     <div style={{ fontWeight:800, fontSize:'.92rem', color: sel ? S.greenDark : S.text }}>{fmtHora12(h)}</div>
                     <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:'.7rem', color, fontWeight:700, marginTop:3 }}>
                       <span style={{ width:6, height:6, borderRadius:'50%', background:color, display:'inline-block' }}/>
-                      {label}
+                      {label}{!libre && ' · toca para ver'}
                     </div>
                   </button>
                 )
@@ -322,6 +334,27 @@ export default function ReservarEscenarioPage() {
         )}
       </div>
 
+      {infoSlot && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(10,15,13,.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
+          onClick={() => setInfoSlot(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:'18px', padding:'22px', width:'340px', maxWidth:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+              <div style={{ fontWeight:800, fontSize:'.95rem' }}>{nombreCancha(canchas, cancha)} — {fmtHora12(infoSlot.hora)}</div>
+              <button onClick={() => setInfoSlot(null)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
+            </div>
+            {infoSlot.reservas.map((r, i) => (
+              <div key={i} style={{ padding:'10px 0', borderTop: i > 0 ? `1px solid ${S.border}` : 'none' }}>
+                <div style={{ fontWeight:800, fontSize:'.9rem', color:S.text }}>{r.nombre || 'Sin nombre'}</div>
+                {r.equipo && <div style={{ fontSize:'.78rem', color:S.text2, marginTop:2 }}>Equipo: {r.equipo}</div>}
+                <div style={{ fontSize:'.72rem', color:S.muted, marginTop:2 }}>
+                  {fmtHora12(r.hora)} · {r.duracion} min · {r.estado === 'pendiente' ? 'Pendiente de confirmar' : r.estado === 'aceptada' ? 'Confirmada' : r.estado === 'mantenimiento' ? 'Mantenimiento' : r.estado}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {modalSlot && (() => {
         const mensajeWA = `Hola, quiero reservar la ${nombreCancha(canchas, cancha)}.\n` +
           `Nombre: ${nombre.trim() || '-'}\nWhatsApp: ${telefono.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}\nDuración: ${duracion} min`
@@ -364,13 +397,7 @@ export default function ReservarEscenarioPage() {
                 )}
                 <div style={{ marginBottom:'12px' }}><label style={lbl}>Nombre *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Tu nombre"/></div>
                 <div style={{ marginBottom:'12px' }}><label style={lbl}>Número de WhatsApp real para confirmar la reserva *</label><input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="3001234567"/></div>
-                <div style={{ marginBottom:'12px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
-                <div style={{ marginBottom:'18px' }}>
-                  <label style={lbl}>Duración</label>
-                  <select value={duracion} onChange={e=>setDuracion(parseInt(e.target.value))} style={inp}>
-                    <option value={60}>1 hora</option><option value={90}>1.5 horas</option><option value={120}>2 horas</option>
-                  </select>
-                </div>
+                <div style={{ marginBottom:'18px' }}><label style={lbl}>Equipo (opcional)</label><input value={equipo} onChange={e=>setEquipo(e.target.value)} style={inp} placeholder="Nombre del equipo"/></div>
                 {error && <div style={{ color:S.loss, fontSize:'.78rem', marginBottom:'14px' }}>{error}</div>}
                 <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>Al enviar, tu reserva queda guardada y se abre WhatsApp para que la confirmes con el lugar.</div>
                 <a href={hrefReservar} target="_blank" rel="noreferrer" onClick={handleReservar}
