@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, intervalosSolapan, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
@@ -36,7 +36,7 @@ export default function ReservarEscenarioPage() {
   const [equipo, setEquipo] = useState('')
   const [duracion, setDuracion] = useState(60)
   const [error, setError] = useState('')
-  const [estadoEnvio, setEstadoEnvio] = useState('idle') // idle | esperando | ok | timeout
+  const [estadoEnvio, setEstadoEnvio] = useState('idle') // idle | esperando | ok | timeout | ocupado
   const waLimpiarRef = useRef(null)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
@@ -97,10 +97,27 @@ export default function ReservarEscenarioPage() {
     }
 
     let resuelto = false
-    const onVisibility = () => {
+    const onVisibility = async () => {
       if (resuelto || !document.hidden) return
       resuelto = true
       limpiar()
+
+      // Revalidación de último momento: la grilla de horarios se cargó una
+      // sola vez al entrar a la página, así que si la persona se demoró en
+      // mandar el mensaje, alguien más pudo haber tomado ese mismo horario
+      // mientras tanto. Se vuelve a consultar el estado real justo antes de
+      // guardar — si ya no está libre, no se inserta la reserva duplicada.
+      const { data: actuales, error: errCheck } = await supabase.from('escenario_reservas')
+        .select('hora, duracion, estado')
+        .eq('escenario_id', escenario.id).eq('cancha', cancha).eq('fecha', fecha)
+      if (!errCheck) {
+        const chocaConOtra = (actuales || []).some(r =>
+          (r.estado === 'aceptada' || r.estado === 'pendiente' || r.estado === 'mantenimiento') &&
+          intervalosSolapan(modalSlot, duracion, r.hora, r.duracion)
+        )
+        if (chocaConOtra) { setEstadoEnvio('ocupado'); setHoraSel(null); fetchTodo(); return }
+      }
+
       supabase.from('escenario_reservas').insert(datos).then(({ error }) => {
         setEstadoEnvio(error ? 'timeout' : 'ok')
         if (!error) fetchTodo()
@@ -345,7 +362,14 @@ export default function ReservarEscenarioPage() {
             </div>
             <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(canchas,cancha))}/h</div>
 
-            {estadoEnvio === 'ok' ? (
+            {estadoEnvio === 'ocupado' ? (
+              <div style={{ textAlign:'center', padding:'10px 0 4px' }}>
+                <div style={{ fontSize:'2rem', marginBottom:8 }}>😕</div>
+                <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:6 }}>Ese horario ya no está disponible</div>
+                <div style={{ fontSize:'.8rem', color:S.muted, marginBottom:18 }}>Alguien más reservó {nombreCancha(canchas, cancha)} a esa hora justo antes que tú. Elige otro horario.</div>
+                <button onClick={cerrarModal} style={{ width:'100%', padding:'12px', background:S.green, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.85rem' }}>Elegir otro horario</button>
+              </div>
+            ) : estadoEnvio === 'ok' ? (
               <div style={{ textAlign:'center', padding:'10px 0 4px' }}>
                 <div style={{ fontSize:'2rem', marginBottom:8 }}>✅</div>
                 <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:6 }}>¡Solicitud registrada!</div>

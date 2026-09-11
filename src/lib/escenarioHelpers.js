@@ -84,6 +84,20 @@ export function slotEstado(reservas, cancha, fecha, hora) {
   return 'libre'
 }
 
+// ¿Se cruzan dos rangos hora+duración? Se usa para revalidar disponibilidad
+// justo antes de guardar una reserva — la grilla que ve la persona se cargó
+// una sola vez al entrar a la página, así que si se queda un rato largo
+// mirando antes de mandar el mensaje de WhatsApp, alguien más pudo haber
+// tomado ese mismo horario mientras tanto. Sin este chequeo de último
+// momento, dos personas pueden terminar con la misma cancha a la misma hora.
+export function intervalosSolapan(horaA, duracionA, horaB, duracionB) {
+  const a1 = parseInt(horaA, 10) * 60
+  const a2 = a1 + (parseInt(duracionA, 10) || 60)
+  const b1 = parseInt(horaB, 10) * 60
+  const b2 = b1 + (parseInt(duracionB, 10) || 60)
+  return a1 < b2 && b1 < a2
+}
+
 // `canchas` es la lista de filas de escenario_canchas (id, slug, nombre,
 // precio_hora, activa...) — reemplaza el viejo hardcode a solo
 // ['futbol5','futbol7'], ahora el escenario puede tener las canchas que
