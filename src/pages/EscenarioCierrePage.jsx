@@ -47,6 +47,8 @@ export default function EscenarioCierrePage() {
   const [deudasProveedores, setDeudasProveedores] = useState([])
   const [baseActual, setBaseActual] = useState(null)
   const [conteos,      setConteos]      = useState({}) // product_id -> fila de escenario_conteos_stock
+  const [conteoApertura, setConteoApertura] = useState({}) // product_id -> fila del conteo físico en la fecha "desde" (modo rango)
+  const [conteoCierre,   setConteoCierre]   = useState({}) // product_id -> fila del conteo físico en la fecha "hasta" (modo rango)
   const [inputFisico,  setInputFisico]  = useState({}) // product_id -> texto que se está escribiendo
   const [guardandoConteo, setGuardandoConteo] = useState(false)
   const [msgConteo, setMsgConteo] = useState('')
@@ -83,7 +85,7 @@ export default function EscenarioCierrePage() {
     const enRango = modo === 'rango'
     const desde = enRango ? (fechaDesde <= fechaHasta ? fechaDesde : fechaHasta) : fecha
     const hasta = enRango ? (fechaDesde <= fechaHasta ? fechaHasta : fechaDesde) : fecha
-    const [{ data: v }, { data: r }, { data: c }, { data: g }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }] = await Promise.all([
+    const [{ data: v }, { data: r }, { data: c }, { data: g }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }, { data: cntRango }] = await Promise.all([
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
       supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
@@ -94,6 +96,10 @@ export default function EscenarioCierrePage() {
       // El conteo físico es una foto de UN día puntual — en modo rango no
       // aplica, así que no se pide (queda vacío y esa sección se oculta).
       enRango ? Promise.resolve({ data: [] }) : supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).eq('fecha', fecha),
+      // En modo rango sí interesan los conteos físicos de los dos extremos
+      // del periodo (apertura y cierre) — son la base del resumen semanal
+      // "apertura + compras − cierre = vendido" por producto.
+      enRango ? supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).in('fecha', [desde, hasta]) : Promise.resolve({ data: [] }),
     ])
     setVentas(v || [])
     setReservas(r || [])
@@ -105,6 +111,14 @@ export default function EscenarioCierrePage() {
     const mapaConteos = {}
     ;(cnt || []).forEach(row => { if (row.product_id) mapaConteos[row.product_id] = row })
     setConteos(mapaConteos)
+    const mapaApertura = {}, mapaCierre = {}
+    ;(cntRango || []).forEach(row => {
+      if (!row.product_id) return
+      if (row.fecha === desde) mapaApertura[row.product_id] = row
+      if (row.fecha === hasta) mapaCierre[row.product_id] = row
+    })
+    setConteoApertura(mapaApertura)
+    setConteoCierre(mapaCierre)
     setInputFisico({})
   }
 
@@ -173,6 +187,23 @@ export default function EscenarioCierrePage() {
 
   const montoBase = Number(baseActual?.monto || 0)
   const cajaNeta = montoBase + ingresoTienda + ingresoCanchas - pagadoCompras - totalGastos
+
+  // Resumen del periodo por producto (solo modo rango): apertura + compras
+  // − cierre = lo que de verdad salió de la nevera/bodega, sin importar si
+  // quedó registrado como venta o no (sirve para ver faltantes, dañados o
+  // ventas que no se cargaron al sistema). Depende de que se haya guardado
+  // el conteo físico tanto en la fecha "desde" como en la fecha "hasta" del
+  // rango — si falta alguno de los dos, no se puede calcular ese producto.
+  const resumenProductos = modo === 'rango' ? productos.map(p => {
+    const apertura = conteoApertura[p.id]?.cantidad_fisica
+    const cierre = conteoCierre[p.id]?.cantidad_fisica
+    const comprasProd = compras.filter(c => c.product_id === p.id).reduce((a,c)=>a+Number(c.cantidad||0),0)
+    const ventasRegistradas = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).filter(i=>i.productId===p.id).reduce((b,i)=>b+Number(i.cantidad||0),0), 0)
+    const tieneAmbosConteos = apertura != null && cierre != null
+    const vendidoReal = tieneAmbosConteos ? apertura + comprasProd - cierre : null
+    const diferencia = tieneAmbosConteos ? vendidoReal - ventasRegistradas : null
+    return { producto: p, apertura, cierre, comprasProd, ventasRegistradas, vendidoReal, diferencia, tieneAmbosConteos }
+  }) : []
 
   const totalDeudaClientes = deudasClientes.reduce((a,v)=>a+Number(v.total||0),0)
   const totalDeudaProveedores = deudasProveedores.reduce((a,c)=>a+(totalCompra(c)-(c.monto_pagado||0)),0)
@@ -310,6 +341,36 @@ export default function EscenarioCierrePage() {
               <span style={{ fontWeight:700, color:S.gold }}>{fmtMoney(totalCompra(c)-(c.monto_pagado||0))}</span>
             </div>
           ))}
+
+          {/* Resumen del periodo por producto — apertura + compras − cierre = vendido real */}
+          {modo === 'rango' && (
+            <>
+              <div style={seccion}>📦 Resumen del periodo por producto</div>
+              <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'8px', lineHeight:1.4 }}>
+                Apertura = conteo físico guardado en {fmtDate(fechaDesde<=fechaHasta?fechaDesde:fechaHasta)}. Cierre = conteo físico guardado en {fmtDate(fechaDesde<=fechaHasta?fechaHasta:fechaDesde)}. Si falta alguno de los dos, no se puede calcular — guárdalos desde "Verificar stock físico" en modo "Un día", en esas dos fechas.
+              </div>
+              {productos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin productos.</div> : resumenProductos.map(rp => (
+                <div key={rp.producto.id} style={{ padding:'8px 0', borderBottom:`1px solid ${S.border}` }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'.8rem', fontWeight:700 }}>
+                    <span>{rp.producto.emoji || '📦'} {rp.producto.nombre}</span>
+                    {rp.tieneAmbosConteos ? (
+                      <span style={{ color:S.cyan }}>{rp.vendidoReal} vendido(s)</span>
+                    ) : (
+                      <span style={{ color:S.muted, fontWeight:400, fontSize:'.72rem' }}>falta conteo físico</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'2px' }}>
+                    Apertura: {rp.apertura ?? '—'} · + Compras: {rp.comprasProd} · − Cierre: {rp.cierre ?? '—'}
+                    {rp.tieneAmbosConteos && (
+                      <> · Según ventas registradas: {rp.ventasRegistradas}{rp.diferencia !== 0 && (
+                        <span style={{ color: S.gold, fontWeight:700 }}> · diferencia: {rp.diferencia>0?'+':''}{rp.diferencia}</span>
+                      )}</>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
 
           {/* Stock actual — sistema vs. físico contado, si ya se verificó ese día */}
           <div style={seccion}>📦 Stock — lo que quedó (sistema vs. conteo físico)</div>
