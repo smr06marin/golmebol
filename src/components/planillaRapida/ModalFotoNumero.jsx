@@ -5,14 +5,27 @@ import { PANEL, BORDE, TEXTO, TEXTO_TENUE, btnPrimario, btnSecundario, VERDE } f
 // es el jugador correcto, y el número de camiseta se escribe justo debajo.
 // Si es un jugador SIN registro (fila agregada a mano) también deja escribir
 // el apellido/nombre acá mismo.
-export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombre = {}, onConfirmar, onQuitar, onCerrar }) {
+export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombre = {}, onConfirmar, onQuitar, onCerrar, onPagarEnCancha }) {
   const [numero, setNumero] = useState(jugador?.numero || '')
   const [nombre, setNombre] = useState(jugador?.nombre || '')
+  const [confirmandoPago, setConfirmandoPago] = useState(false)
+  const [procesandoPago, setProcesandoPago] = useState(false)
+  const [errorPago, setErrorPago] = useState('')
   const foto = jugador?.photo_face_url || jugador?.photo_url
   const esSinRegistro = !jugador?.id
   const debeTarjeta = !!jugador?.debeTarjeta
   const puedeConfirmar = !debeTarjeta && numero.trim() && (!esSinRegistro || nombre.trim())
   const iconoTipo = { Amarilla: '🟨', Azul: '🟦', Roja: '🟥' }
+  const totalDeuda = deudaItems.reduce((a, it) => a + (it.monto || 0), 0)
+
+  async function confirmarPago() {
+    if (!onPagarEnCancha) return
+    setProcesandoPago(true); setErrorPago('')
+    const { error } = await onPagarEnCancha(jugador)
+    setProcesandoPago(false)
+    if (error) { setErrorPago(typeof error === 'string' ? error : 'No se pudo registrar el pago. Intenta de nuevo.'); return }
+    setConfirmandoPago(false)
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -49,7 +62,36 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
                 {it.monto > 0 && <span style={{ fontWeight: '700' }}> · ${it.monto.toLocaleString('es-CO')}</span>}
               </div>
             ))}
-            <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, marginTop: '8px' }}>No se le puede poner número hasta ponerse al día. En cuanto se registre el pago, se libera solo — sin recargar.</div>
+            {onPagarEnCancha ? (
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(217,48,37,.25)' }}>
+                {!confirmandoPago ? (
+                  <>
+                    <div style={{ fontSize: '.78rem', color: TEXTO, fontWeight: '700', marginBottom: '8px' }}>Total a cobrar: ${totalDeuda.toLocaleString('es-CO')}</div>
+                    <button onClick={() => setConfirmandoPago(true)}
+                      style={{ ...btnPrimario, width: '100%', background: VERDE }}>
+                      💰 Ya me pagó — Desbloquear
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '.78rem', color: TEXTO, marginBottom: '10px', lineHeight: 1.4 }}>
+                      ¿{jugador?.nombre || 'El jugador'} ya te pagó <b>${totalDeuda.toLocaleString('es-CO')}</b> en efectivo? Esto lo desbloquea de una vez y queda anotado en Finanzas del torneo como recibido por el árbitro.
+                    </div>
+                    {errorPago && <div style={{ fontSize: '.72rem', color: '#ff6b5e', marginBottom: '8px' }}>{errorPago}</div>}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => { setConfirmandoPago(false); setErrorPago('') }} disabled={procesandoPago}
+                        style={{ ...btnSecundario, flex: 1 }}>No</button>
+                      <button onClick={confirmarPago} disabled={procesandoPago}
+                        style={{ ...btnPrimario, flex: 1, background: VERDE, opacity: procesandoPago ? .6 : 1 }}>
+                        {procesandoPago ? '...' : 'Sí, ya pagó'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, marginTop: '8px' }}>No se le puede poner número hasta ponerse al día. En cuanto se registre el pago, se libera solo — sin recargar.</div>
+            )}
           </div>
         ) : (
           <>

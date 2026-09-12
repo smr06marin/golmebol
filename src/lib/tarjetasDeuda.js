@@ -49,6 +49,24 @@ export function construirDeudaTarjetas(filas, finanzasConfig, matchesInfo = {}) 
   return { idsDebenTarjeta, detallePorJugador, idsEquipos }
 }
 
+const COLUMNAS_TARJETA = {
+  Amarilla: { pagado: 'yellow_paid', cantidad: 'yellow_cards' },
+  Azul:     { pagado: 'blue_paid',   cantidad: 'blue_cards' },
+  Roja:     { pagado: 'red_paid',    cantidad: 'red_cards' },
+}
+
+// Marca como pagada(s), en TODO el torneo (no solo el partido puntual donde
+// se generó la deuda), la tarjeta de un color de un jugador — es exactamente
+// lo que revisa construirDeudaTarjetas para decidir si sigue "debiendo". Se
+// usa tanto desde el panel de Finanzas del admin como desde la planilla
+// rápida (cuando el árbitro cobra la tarjeta en efectivo en la cancha).
+export async function marcarTarjetaPagada(tournamentId, playerId, tipo) {
+  const cols = COLUMNAS_TARJETA[tipo]
+  if (!cols) return { error: new Error('Tipo de tarjeta inválido: ' + tipo) }
+  return supabase.from('player_match_stats').update({ [cols.pagado]: true })
+    .eq('tournament_id', tournamentId).eq('player_id', playerId).gt(cols.cantidad, 0)
+}
+
 // Trae played_at/home_team_id/away_team_id de un set de partidos (para el
 // detalle de deuda de tarjetas) en una sola consulta con .in().
 export async function fetchMatchesInfo(matchIds) {

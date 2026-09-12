@@ -10,7 +10,7 @@ import AlertaFaltasEquipo from './AlertaFaltasEquipo'
 import ModalCierrePartido from './ModalCierrePartido'
 import ModalPartidoEspecialRapida from './ModalPartidoEspecialRapida'
 import { FONDO, CIAN, formatTiempo } from './estilosRapida'
-import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeuda'
+import { construirDeudaTarjetas, fetchMatchesInfo, marcarTarjetaPagada } from '../../lib/tarjetasDeuda'
 import { comprimirImagen } from '../../lib/imageCompress'
 
 function idUnico() {
@@ -595,6 +595,44 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setModalFoto(null)
   }
 
+  // El árbitro cobra en efectivo, ahí mismo en la cancha, la tarjeta que
+  // tiene bloqueado al jugador — esto lo desbloquea de una vez (para poder
+  // ponerle número) y deja el cobro anotado en Finanzas del torneo, con la
+  // nota de que lo recibió el árbitro (no es un pago que haya pasado por el
+  // admin), para que el organizador pueda verificarlo y cuadrar cuentas con
+  // el árbitro después. Marca TODOS los colores que ese jugador debe en el
+  // torneo (no solo el del partido actual) — si debiera de varios partidos,
+  // acá se pone al día con todo de una vez.
+  async function handlePagarTarjetaEnCancha(jugador) {
+    const items = deudaDetalle[jugador?.id] || []
+    if (!jugador?.id || items.length === 0) return { error: 'Sin deuda registrada' }
+    const tipos = [...new Set(items.flatMap(it => it.tiposDelPartido?.length ? it.tiposDelPartido : [it.tipo]))]
+    const total = items.reduce((a, it) => a + (it.monto || 0), 0)
+
+    const resultados = await Promise.all(tipos.map(t => marcarTarjetaPagada(partido.tournament_id, jugador.id, t)))
+    const conError = resultados.find(r => r?.error)
+    if (conError) return { error: conError.error.message || 'No se pudo desbloquear' }
+
+    const teamId = modalFoto?.team === 'local' ? partido.home_team_id : partido.away_team_id
+    const { error: errFin } = await supabase.from('torneo_finanzas').insert({
+      tournament_id: partido.tournament_id, team_id: teamId || null, player_id: jugador.id,
+      tipo: 'pago_tarjetas', monto: total, pagado: true,
+      concepto: `Tarjeta(s) de ${jugador.nombre || 'jugador'} — pagada en efectivo en cancha, recibida por el árbitro`,
+    })
+    // El desbloqueo YA quedó guardado en player_match_stats aunque falle este
+    // insert (RLS abierta, no debería pasar) — no se revierte, solo se avisa.
+    if (errFin) console.error('handlePagarTarjetaEnCancha: no se pudo anotar en Finanzas —', errFin.message)
+
+    // Reflejo inmediato en pantalla — además, el canal en tiempo real de
+    // arriba (UPDATE sobre player_match_stats) va a refrescar deudaDetalle
+    // solo, pero no hay que esperarlo para que se vea desbloqueado ya.
+    setJugadoresLocal(prev => prev.map(j => j.id === jugador.id ? { ...j, debeTarjeta: false } : j))
+    setJugadoresVisitante(prev => prev.map(j => j.id === jugador.id ? { ...j, debeTarjeta: false } : j))
+    setModalFoto(prev => (prev && prev.jugador?.id === jugador.id) ? { ...prev, jugador: { ...prev.jugador, debeTarjeta: false } } : prev)
+    setDeudaDetalle(prev => { const d = { ...prev }; delete d[jugador.id]; return d })
+    return { error: null, total }
+  }
+
   // ── Arquero ────────────────────────────────────────────────────────────
   function seleccionarArquero(team, jugador) {
     const arq = { id: jugador.id, nombre: jugador.nombre, numero: jugador.numero }
@@ -924,7 +962,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       />
       {modalFoto && (
         <ModalFotoNumero jugador={modalFoto.jugador} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
-          onConfirmar={confirmarNumero} onQuitar={quitarNumero} onCerrar={() => setModalFoto(null)}/>
+          onConfirmar={confirmarNumero} onQuitar={quitarNumero} onCerrar={() => setModalFoto(null)} onPagarEnCancha={handlePagarTarjetaEnCancha}/>
       )}
     </>
   )
