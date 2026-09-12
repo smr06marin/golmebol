@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fmtMoney, fmtDate, todayStr, nombreCancha, registrarActividad } from '../lib/escenarioHelpers'
+import { fmtMoney, fmtDate, todayStr, fechaLocalStr, getHours, nombreCancha, registrarActividad } from '../lib/escenarioHelpers'
+import { fmtHora12 } from '../lib/horaHelpers'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -47,6 +48,7 @@ export default function EscenarioCierrePage() {
   const [deudasProveedores, setDeudasProveedores] = useState([])
   const [baseActual, setBaseActual] = useState(null)
   const [conteos,      setConteos]      = useState({}) // product_id -> fila de escenario_conteos_stock
+  const [conteoAyer,   setConteoAyer]   = useState({}) // product_id -> fila del conteo físico del día ANTERIOR (modo día) — es el "II" (inventario inicial) del reporte tipo planilla de papel
   const [conteoApertura, setConteoApertura] = useState({}) // product_id -> fila del conteo físico en la fecha "desde" (modo rango)
   const [conteoCierre,   setConteoCierre]   = useState({}) // product_id -> fila del conteo físico en la fecha "hasta" (modo rango)
   const [inputFisico,  setInputFisico]  = useState({}) // product_id -> texto que se está escribiendo
@@ -85,7 +87,7 @@ export default function EscenarioCierrePage() {
     const enRango = modo === 'rango'
     const desde = enRango ? (fechaDesde <= fechaHasta ? fechaDesde : fechaHasta) : fecha
     const hasta = enRango ? (fechaDesde <= fechaHasta ? fechaHasta : fechaDesde) : fecha
-    const [{ data: v }, { data: r }, { data: c }, { data: g }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }, { data: cntRango }] = await Promise.all([
+    const [{ data: v }, { data: r }, { data: c }, { data: g }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }, { data: cntRango }, { data: cntAyer }] = await Promise.all([
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
       supabase.from('escenario_compras').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
@@ -100,6 +102,10 @@ export default function EscenarioCierrePage() {
       // del periodo (apertura y cierre) — son la base del resumen semanal
       // "apertura + compras − cierre = vendido" por producto.
       enRango ? supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).in('fecha', [desde, hasta]) : Promise.resolve({ data: [] }),
+      // En modo día, el conteo del día ANTERIOR hace de "II" (inventario
+      // inicial) del reporte tipo planilla de papel — lo que quedó ayer es
+      // con lo que se arrancó hoy.
+      enRango ? Promise.resolve({ data: [] }) : supabase.from('escenario_conteos_stock').select('*').eq('escenario_id', escenario.id).eq('fecha', fechaLocalStr(new Date(new Date(fecha + 'T00:00:00').getTime() - 86400000))),
     ])
     setVentas(v || [])
     setReservas(r || [])
@@ -119,6 +125,9 @@ export default function EscenarioCierrePage() {
     })
     setConteoApertura(mapaApertura)
     setConteoCierre(mapaCierre)
+    const mapaAyer = {}
+    ;(cntAyer || []).forEach(row => { if (row.product_id) mapaAyer[row.product_id] = row })
+    setConteoAyer(mapaAyer)
     setInputFisico({})
   }
 
@@ -205,6 +214,37 @@ export default function EscenarioCierrePage() {
     return { producto: p, apertura, cierre, comprasProd, ventasRegistradas, vendidoReal, diferencia, tieneAmbosConteos }
   }) : []
 
+  // Reporte diario estilo planilla de papel (solo modo día): por producto,
+  // II (lo que quedó ayer) + Llegó (compras de hoy) − IF (conteo físico de
+  // hoy) = Vendido, y Vendido × Precio = Total. Igual que en el resumen de
+  // rango, si falta el conteo de ayer o el de hoy no se puede calcular ese
+  // producto (queda en blanco en vez de un número inventado).
+  const resumenProductosDia = modo === 'dia' ? productos.map(p => {
+    const ii = conteoAyer[p.id]?.cantidad_fisica
+    const iff = conteos[p.id]?.cantidad_fisica
+    const llego = compras.filter(c => c.product_id === p.id).reduce((a,c)=>a+Number(c.cantidad||0),0)
+    const tieneAmbosConteos = ii != null && iff != null
+    const vendido = tieneAmbosConteos ? ii + llego - iff : null
+    const total = vendido != null ? vendido * Number(p.precio || 0) : null
+    return { producto: p, ii, iff, llego, vendido, total, tieneAmbosConteos }
+  }) : []
+  const totalVentasLedger = resumenProductosDia.reduce((a,rp)=>a+(rp.total||0), 0)
+
+  // Grilla de canchas × horarios del día (solo modo día) — un cuadro por
+  // cancha, con una fila por cada hora configurada del escenario, mostrando
+  // si esa hora tiene reserva y cuánto se cobró. Igual que arriba, no cuenta
+  // las canceladas/rechazadas.
+  const horasDia = escenario ? getHours(escenario) : []
+  const canchasGrid = modo === 'dia' ? canchas.map(cancha => {
+    const filas = horasDia.map(h => {
+      const r = reservasValidas.find(rv => rv.cancha === cancha.slug && rv.hora === h)
+      return { hora: h, reserva: r || null }
+    })
+    const total = filas.reduce((a,f)=>a+(f.reserva ? Number(f.reserva.monto_pagado||0) : 0), 0)
+    return { cancha, filas, total }
+  }) : []
+  const totalTodasCanchas = canchasGrid.reduce((a,cg)=>a+cg.total, 0)
+
   const totalDeudaClientes = deudasClientes.reduce((a,v)=>a+Number(v.total||0),0)
   const totalDeudaProveedores = deudasProveedores.reduce((a,c)=>a+(totalCompra(c)-(c.monto_pagado||0)),0)
 
@@ -251,6 +291,123 @@ export default function EscenarioCierrePage() {
           <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'14px' }}>
             🧾 Informe {modo==='dia' ? `diario — ${fmtDate(fecha)}` : `del ${fmtDate(fechaDesde<=fechaHasta?fechaDesde:fechaHasta)} al ${fmtDate(fechaDesde<=fechaHasta?fechaHasta:fechaDesde)}`}
           </div>
+
+          {/* Planilla del día, estilo papel: productos (II/Llegó/IF/Vendido/Total)
+              a un lado, canchas + compras + gastos al otro. */}
+          {modo === 'dia' && (
+            <div style={{ marginBottom:'22px' }}>
+              <div style={seccion}>📋 Planilla del día</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:'14px', alignItems:'start' }}>
+
+                {/* Columna izquierda: productos */}
+                <div style={{ border:`1px solid ${S.border}`, borderRadius:'10px', overflow:'hidden' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'.68rem' }}>
+                    <thead>
+                      <tr style={{ background:S.card2 }}>
+                        {['Producto','II','Llegó','IF','Vendido','Precio','Total'].map(h => (
+                          <th key={h} style={{ padding:'6px 5px', textAlign: h==='Producto' ? 'left' : 'right', color:S.muted, fontWeight:700, borderBottom:`1px solid ${S.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productos.length === 0 ? (
+                        <tr><td colSpan={7} style={{ padding:'10px', textAlign:'center', color:S.muted }}>Sin productos.</td></tr>
+                      ) : resumenProductosDia.map(rp => (
+                        <tr key={rp.producto.id} style={{ borderBottom:`1px solid ${S.border}` }}>
+                          <td style={{ padding:'5px' }}>{rp.producto.emoji || '📦'} {rp.producto.nombre}</td>
+                          <td style={{ padding:'5px', textAlign:'right' }}>{rp.ii ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right' }}>{rp.llego || ''}</td>
+                          <td style={{ padding:'5px', textAlign:'right' }}>{rp.iff ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', fontWeight:700, color: rp.tieneAmbosConteos ? S.cyan : S.muted }}>{rp.vendido ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{fmtMoney(rp.producto.precio)}</td>
+                          <td style={{ padding:'5px', textAlign:'right', fontWeight:700 }}>{rp.total != null ? fmtMoney(rp.total) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {productos.length > 0 && (
+                      <tfoot>
+                        <tr style={{ background:S.card2 }}>
+                          <td colSpan={6} style={{ padding:'6px 5px', textAlign:'right', fontWeight:800 }}>Total Ventas Día</td>
+                          <td style={{ padding:'6px 5px', textAlign:'right', fontWeight:900, color:S.cyan }}>{fmtMoney(totalVentasLedger)}</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                  <div style={{ fontSize:'.66rem', color:S.muted, padding:'6px 8px' }}>
+                    II = lo que quedó ayer (conteo físico del día anterior). IF = lo que quedó hoy (conteo físico de hoy, ver más abajo). Si falta alguno de los dos, no se puede calcular ese producto.
+                  </div>
+                </div>
+
+                {/* Columna derecha: canchas + compras + gastos */}
+                <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                  {canchasGrid.length === 0 ? (
+                    <div style={{ border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px', fontSize:'.75rem', color:S.muted }}>Sin canchas configuradas.</div>
+                  ) : canchasGrid.map(cg => (
+                    <div key={cg.cancha.id} style={{ border:`1px solid ${S.border}`, borderRadius:'10px', overflow:'hidden' }}>
+                      <div style={{ background:S.card2, padding:'6px 8px', fontWeight:800, fontSize:'.76rem' }}>{cg.cancha.nombre}</div>
+                      {cg.filas.map(f => (
+                        <div key={f.hora} style={{ display:'flex', justifyContent:'space-between', padding:'4px 8px', fontSize:'.72rem', borderTop:`1px solid ${S.border}` }}>
+                          <span style={{ color:S.muted }}>{fmtHora12(f.hora)}</span>
+                          <span style={{ fontWeight: f.reserva ? 700 : 400, color: f.reserva ? (f.reserva.pago==='pagado' ? S.cyan : S.gold) : S.muted }}>
+                            {f.reserva ? `${fmtMoney(f.reserva.monto_pagado||0)}/${fmtMoney(f.reserva.monto||0)}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                      <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 8px', fontSize:'.74rem', fontWeight:800, borderTop:`1px solid ${S.border}`, background:S.card2 }}>
+                        <span>TOTAL</span><span style={{ color:S.cyan }}>{fmtMoney(cg.total)}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {canchasGrid.length > 0 && (
+                    <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 10px', border:`1px solid ${S.border}`, borderRadius:'10px', fontWeight:900, fontSize:'.8rem' }}>
+                      <span>TOTAL CANCHAS</span><span style={{ color:S.cyan }}>{fmtMoney(totalTodasCanchas)}</span>
+                    </div>
+                  )}
+
+                  {/* Compras del día */}
+                  <div style={{ border:`1px solid ${S.border}`, borderRadius:'10px', overflow:'hidden' }}>
+                    <div style={{ background:S.card2, padding:'6px 8px', fontWeight:800, fontSize:'.76rem' }}>COMPRAS</div>
+                    {compras.length === 0 ? (
+                      <div style={{ padding:'8px', fontSize:'.72rem', color:S.muted }}>Sin compras hoy.</div>
+                    ) : compras.map(c => (
+                      <div key={c.id} style={{ display:'flex', justifyContent:'space-between', padding:'4px 8px', fontSize:'.72rem', borderTop:`1px solid ${S.border}` }}>
+                        <span style={{ color:S.text2 }}>{c.nombre} x{c.cantidad}</span>
+                        <span style={{ fontWeight:700 }}>{fmtMoney(totalCompra(c))}</span>
+                      </div>
+                    ))}
+                    <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 8px', fontSize:'.74rem', fontWeight:800, borderTop:`1px solid ${S.border}`, background:S.card2 }}>
+                      <span>TOTAL COMPRAS</span><span>{fmtMoney(gastoCompras)}</span>
+                    </div>
+                  </div>
+
+                  {/* Gastos del día */}
+                  <div style={{ border:`1px solid ${S.border}`, borderRadius:'10px', overflow:'hidden' }}>
+                    <div style={{ background:S.card2, padding:'6px 8px', fontWeight:800, fontSize:'.76rem' }}>GASTOS</div>
+                    {gastos.length === 0 ? (
+                      <div style={{ padding:'8px', fontSize:'.72rem', color:S.muted }}>Sin gastos hoy.</div>
+                    ) : gastos.map(g => (
+                      <div key={g.id} style={{ display:'flex', justifyContent:'space-between', padding:'4px 8px', fontSize:'.72rem', borderTop:`1px solid ${S.border}` }}>
+                        <span style={{ color:S.text2 }}>{g.descripcion}</span>
+                        <span style={{ fontWeight:700, color:S.loss }}>{fmtMoney(g.monto)}</span>
+                      </div>
+                    ))}
+                    <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 8px', fontSize:'.74rem', fontWeight:800, borderTop:`1px solid ${S.border}`, background:S.card2 }}>
+                      <span>TOTAL GASTOS</span><span style={{ color:S.loss }}>{fmtMoney(totalGastos)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Totales del pie, igual que la planilla de papel */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:'8px', marginTop:'12px', border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px' }}>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Total Ventas Día</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(totalVentasLedger)}</div></div>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Base</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(montoBase)}</div></div>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Compras</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(gastoCompras)}</div></div>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Gastos</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(totalGastos)}</div></div>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Total Efectivo Día</div><div style={{ fontWeight:900, fontSize:'.95rem', color:S.cyan }}>{fmtMoney(montoBase + totalVentasLedger + totalTodasCanchas - pagadoCompras - totalGastos)}</div></div>
+              </div>
+            </div>
+          )}
 
           {/* Resumen general */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
