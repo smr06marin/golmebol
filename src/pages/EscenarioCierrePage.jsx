@@ -214,19 +214,24 @@ export default function EscenarioCierrePage() {
     return { producto: p, apertura, cierre, comprasProd, ventasRegistradas, vendidoReal, diferencia, tieneAmbosConteos }
   }) : []
 
-  // Reporte diario estilo planilla de papel (solo modo día): por producto,
-  // II (lo que quedó ayer) + Llegó (compras de hoy) − IF (conteo físico de
-  // hoy) = Vendido, y Vendido × Precio = Total. Igual que en el resumen de
-  // rango, si falta el conteo de ayer o el de hoy no se puede calcular ese
-  // producto (queda en blanco en vez de un número inventado).
+  // Reporte diario estilo planilla de papel (solo modo día). "Vendido" ya NO
+  // depende de contar físicamente: sale directo de las ventas que se van
+  // registrando en la tienda (igual que "Total"), porque eso es justo lo que
+  // el encargado ya lleva al día. El conteo físico (II/IF) queda como
+  // verificación OPCIONAL: si se guardó el de ayer y el de hoy, se puede
+  // comparar contra lo vendido registrado y avisar si no cuadra (faltante,
+  // daño, o una venta que no se cargó al sistema) — pero si no se contó,
+  // igual sale el vendido y el total sin ningún bloqueo.
   const resumenProductosDia = modo === 'dia' ? productos.map(p => {
     const ii = conteoAyer[p.id]?.cantidad_fisica
     const iff = conteos[p.id]?.cantidad_fisica
     const llego = compras.filter(c => c.product_id === p.id).reduce((a,c)=>a+Number(c.cantidad||0),0)
+    const vendido = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).filter(i=>i.productId===p.id).reduce((b,i)=>b+Number(i.cantidad||0),0), 0)
+    const total = vendido * Number(p.precio || 0)
     const tieneAmbosConteos = ii != null && iff != null
-    const vendido = tieneAmbosConteos ? ii + llego - iff : null
-    const total = vendido != null ? vendido * Number(p.precio || 0) : null
-    return { producto: p, ii, iff, llego, vendido, total, tieneAmbosConteos }
+    const vendidoSegunConteo = tieneAmbosConteos ? ii + llego - iff : null
+    const diferencia = tieneAmbosConteos ? vendidoSegunConteo - vendido : null
+    return { producto: p, ii, iff, llego, vendido, total, tieneAmbosConteos, vendidoSegunConteo, diferencia }
   }) : []
   const totalVentasLedger = resumenProductosDia.reduce((a,rp)=>a+(rp.total||0), 0)
 
@@ -315,12 +320,17 @@ export default function EscenarioCierrePage() {
                       ) : resumenProductosDia.map(rp => (
                         <tr key={rp.producto.id} style={{ borderBottom:`1px solid ${S.border}` }}>
                           <td style={{ padding:'5px' }}>{rp.producto.emoji || '📦'} {rp.producto.nombre}</td>
-                          <td style={{ padding:'5px', textAlign:'right' }}>{rp.ii ?? '—'}</td>
-                          <td style={{ padding:'5px', textAlign:'right' }}>{rp.llego || ''}</td>
-                          <td style={{ padding:'5px', textAlign:'right' }}>{rp.iff ?? '—'}</td>
-                          <td style={{ padding:'5px', textAlign:'right', fontWeight:700, color: rp.tieneAmbosConteos ? S.cyan : S.muted }}>{rp.vendido ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.ii ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.llego || ''}</td>
+                          <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.iff ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', fontWeight:700, color:S.cyan }}>
+                            {rp.vendido}
+                            {rp.tieneAmbosConteos && rp.diferencia !== 0 && (
+                              <div style={{ fontWeight:400, fontSize:'.62rem', color:S.gold }}>⚠️ conteo dice {rp.vendidoSegunConteo}</div>
+                            )}
+                          </td>
                           <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{fmtMoney(rp.producto.precio)}</td>
-                          <td style={{ padding:'5px', textAlign:'right', fontWeight:700 }}>{rp.total != null ? fmtMoney(rp.total) : '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', fontWeight:700 }}>{fmtMoney(rp.total)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -334,7 +344,7 @@ export default function EscenarioCierrePage() {
                     )}
                   </table>
                   <div style={{ fontSize:'.66rem', color:S.muted, padding:'6px 8px' }}>
-                    II = lo que quedó ayer (conteo físico del día anterior). IF = lo que quedó hoy (conteo físico de hoy, ver más abajo). Si falta alguno de los dos, no se puede calcular ese producto.
+                    Vendido y Total salen directo de las ventas ya registradas en la tienda — no hace falta contar nada. II/IF son opcionales (conteo físico de ayer y de hoy, ver más abajo): si guardaste los dos, acá aparece una alerta si el conteo no coincide con lo vendido registrado.
                   </div>
                 </div>
 
