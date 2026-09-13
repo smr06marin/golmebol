@@ -46,7 +46,11 @@ export default function EscenarioCierrePage() {
   const [productos, setProductos] = useState([])
   const [deudasClientes,   setDeudasClientes]   = useState([])
   const [deudasProveedores, setDeudasProveedores] = useState([])
-  const [baseActual, setBaseActual] = useState(null)
+  const [bases,     setBases]     = useState([]) // TODAS las filas de escenario_base_caja (para poder saber cuál regía en cualquier fecha del informe, no solo la última puesta)
+  const [mostrarFormBase, setMostrarFormBase] = useState(false)
+  const [montoBaseInput,  setMontoBaseInput]  = useState('')
+  const [guardandoBase,   setGuardandoBase]   = useState(false)
+  const [msgBase,         setMsgBase]         = useState('')
   const [conteos,      setConteos]      = useState({}) // product_id -> fila de escenario_conteos_stock
   const [conteoAyer,   setConteoAyer]   = useState({}) // product_id -> fila del conteo físico del día ANTERIOR (modo día) — es el "II" (inventario inicial) del reporte tipo planilla de papel
   const [conteoApertura, setConteoApertura] = useState({}) // product_id -> fila del conteo físico en la fecha "desde" (modo rango)
@@ -55,6 +59,15 @@ export default function EscenarioCierrePage() {
   const [guardandoConteo, setGuardandoConteo] = useState(false)
   const [msgConteo, setMsgConteo] = useState('')
   const [soloLectura, setSoloLectura] = useState(false)
+
+  // Límites reales del periodo que se está viendo — en modo "día" son la
+  // misma fecha dos veces, así el resto del código (fetch, conteo físico,
+  // base de caja) no necesita dos caminos distintos. Si alguien invierte
+  // las fechas del rango, se corrige solo. Calculados acá arriba (no solo
+  // dentro de fetchDia) para que estén disponibles también en guardarConteo
+  // y guardarBaseReporte.
+  const desde = modo === 'rango' ? (fechaDesde <= fechaHasta ? fechaDesde : fechaHasta) : fecha
+  const hasta = modo === 'rango' ? (fechaDesde <= fechaHasta ? fechaHasta : fechaDesde) : fecha
 
   useEffect(() => { fetchEscenario() }, [escenarioId])
   useEffect(() => { if (escenario) fetchDia() }, [modo, fecha, fechaDesde, fechaHasta, escenario])
@@ -73,20 +86,28 @@ export default function EscenarioCierrePage() {
     setEncargado(p)
     const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId)
     setCanchas(cs || [])
-    const { data: bs } = await supabase.from('escenario_base_caja').select('*').eq('escenario_id', escenarioId)
-      .order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(1)
-    setBaseActual(bs?.[0] || null)
+    await fetchBases(escenarioId)
     setLoading(false)
   }
 
+  // Trae TODAS las bases (no solo la última) para poder saber cuál regía en
+  // cualquier fecha que se esté viendo en el informe, no solo hoy.
+  async function fetchBases(escId) {
+    const { data: bs } = await supabase.from('escenario_base_caja').select('*').eq('escenario_id', escId)
+      .order('fecha', { ascending: false }).order('created_at', { ascending: false })
+    setBases(bs || [])
+  }
+
+  // La base "de este día" es la más reciente puesta EN O ANTES de la fecha
+  // que se está viendo (bases ya viene ordenado de más reciente a más
+  // antiguo) — así el informe de un día pasado usa la base que regía ese
+  // día, no la última que se puso después.
+  function baseComoDe(fechaObjetivo) {
+    return bases.find(b => b.fecha <= fechaObjetivo) || null
+  }
+
   async function fetchDia() {
-    // En modo "rango" se filtra entre fechaDesde y fechaHasta; en modo "día"
-    // se usan los mismos límites pero iguales a `fecha`, así el resto de la
-    // función (y todos los cálculos de más abajo) no necesitan dos caminos
-    // distintos. Si alguien invierte las fechas del rango, se corrige solo.
     const enRango = modo === 'rango'
-    const desde = enRango ? (fechaDesde <= fechaHasta ? fechaDesde : fechaHasta) : fecha
-    const hasta = enRango ? (fechaDesde <= fechaHasta ? fechaHasta : fechaDesde) : fecha
     const [{ data: v }, { data: r }, { data: c }, { data: g }, { data: prods }, { data: dc }, { data: dp }, { data: cnt }, { data: cntRango }, { data: cntAyer }] = await Promise.all([
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id).gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'),
@@ -133,14 +154,17 @@ export default function EscenarioCierrePage() {
 
   // Guarda el conteo físico de todos los productos en los que se escribió
   // algo, y calcula la diferencia contra lo que dice el sistema en este
-  // momento — así queda anotado si faltó o sobró algo ese día.
+  // momento — así queda anotado si faltó o sobró algo ese día. En modo
+  // rango se guarda en la fecha "hasta" (el cierre del periodo) — es lo que
+  // completa el "IF" de la planilla; el "II" (apertura) es el conteo que ya
+  // se haya guardado en la fecha "desde", de otra sesión.
   async function guardarConteo() {
     const filas = productos.map(p => {
       const texto = inputFisico[p.id]
       if (texto === undefined || texto === '') return null
       const fisica = parseInt(texto) || 0
       return {
-        escenario_id: escenario.id, fecha, product_id: p.id, nombre: p.nombre,
+        escenario_id: escenario.id, fecha: hasta, product_id: p.id, nombre: p.nombre,
         cantidad_sistema: p.cantidad, cantidad_fisica: fisica, diferencia: fisica - p.cantidad,
         player_id: encargado?.id || null,
       }
@@ -159,9 +183,27 @@ export default function EscenarioCierrePage() {
     setTimeout(()=>setMsgConteo(''),5000)
     if (conDiferencia.length) {
       registrarActividad(escenarioId, encargado, 'crear', 'conteo',
-        `Conteo físico del ${fecha}: ${conDiferencia.map(f=>`${f.nombre} ${f.diferencia>0?'+':''}${f.diferencia}`).join(', ')}`)
+        `Conteo físico del ${hasta}: ${conDiferencia.map(f=>`${f.nombre} ${f.diferencia>0?'+':''}${f.diferencia}`).join(', ')}`)
     }
     fetchDia()
+  }
+
+  // Pone (o cambia) la base de caja de la fecha que se está viendo — se
+  // guarda como una fila nueva (no se edita la anterior), igual que ya hacía
+  // la página de Reportes; acá queda además ligada al día del informe.
+  async function guardarBaseReporte() {
+    const montoNum = Number(montoBaseInput) || 0
+    if (montoNum <= 0) { setMsgBase('Ingresa un monto válido'); setTimeout(()=>setMsgBase(''),3000); return }
+    setGuardandoBase(true)
+    const { error } = await supabase.from('escenario_base_caja').insert({
+      escenario_id: escenario.id, monto: montoNum, fecha: hasta, hora: new Date().toTimeString().slice(0,5), player_id: encargado?.id || null,
+    })
+    setGuardandoBase(false)
+    if (error) { setMsgBase('❌ ' + error.message); setTimeout(()=>setMsgBase(''),5000); return }
+    registrarActividad(escenarioId, encargado, 'crear', 'base_caja', `Puso la base de caja: ${fmtMoney(montoNum)} (${hasta})`)
+    setMsgBase(`✅ Base guardada: ${fmtMoney(montoNum)}`); setTimeout(()=>setMsgBase(''),3000)
+    setMontoBaseInput(''); setMostrarFormBase(false)
+    fetchBases(escenario.id)
   }
 
   const ventasCompletadas = ventas.filter(v => v.estado !== 'devuelta')
@@ -194,37 +236,26 @@ export default function EscenarioCierrePage() {
   const pagadoCompras = compras.reduce((a,c)=>a+pagadoDe(c),0)
   const totalGastos = gastos.reduce((a,g)=>a+Number(g.monto||0),0)
 
-  const montoBase = Number(baseActual?.monto || 0)
+  // La base de caja "de este informe" es la más reciente puesta en o antes
+  // de la fecha final del periodo que se está viendo (hasta) — no siempre
+  // la última que se puso en general.
+  const baseDelDia = baseComoDe(hasta)
+  const montoBase = Number(baseDelDia?.monto || 0)
   const cajaNeta = montoBase + ingresoTienda + ingresoCanchas - pagadoCompras - totalGastos
 
-  // Resumen del periodo por producto (solo modo rango): apertura + compras
-  // − cierre = lo que de verdad salió de la nevera/bodega, sin importar si
-  // quedó registrado como venta o no (sirve para ver faltantes, dañados o
-  // ventas que no se cargaron al sistema). Depende de que se haya guardado
-  // el conteo físico tanto en la fecha "desde" como en la fecha "hasta" del
-  // rango — si falta alguno de los dos, no se puede calcular ese producto.
-  const resumenProductos = modo === 'rango' ? productos.map(p => {
-    const apertura = conteoApertura[p.id]?.cantidad_fisica
-    const cierre = conteoCierre[p.id]?.cantidad_fisica
-    const comprasProd = compras.filter(c => c.product_id === p.id).reduce((a,c)=>a+Number(c.cantidad||0),0)
-    const ventasRegistradas = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).filter(i=>i.productId===p.id).reduce((b,i)=>b+Number(i.cantidad||0),0), 0)
-    const tieneAmbosConteos = apertura != null && cierre != null
-    const vendidoReal = tieneAmbosConteos ? apertura + comprasProd - cierre : null
-    const diferencia = tieneAmbosConteos ? vendidoReal - ventasRegistradas : null
-    return { producto: p, apertura, cierre, comprasProd, ventasRegistradas, vendidoReal, diferencia, tieneAmbosConteos }
-  }) : []
-
-  // Reporte diario estilo planilla de papel (solo modo día). "Vendido" ya NO
-  // depende de contar físicamente: sale directo de las ventas que se van
-  // registrando en la tienda (igual que "Total"), porque eso es justo lo que
-  // el encargado ya lleva al día. El conteo físico (II/IF) queda como
-  // verificación OPCIONAL: si se guardó el de ayer y el de hoy, se puede
-  // comparar contra lo vendido registrado y avisar si no cuadra (faltante,
-  // daño, o una venta que no se cargó al sistema) — pero si no se contó,
-  // igual sale el vendido y el total sin ningún bloqueo.
-  const resumenProductosDia = modo === 'dia' ? productos.map(p => {
-    const ii = conteoAyer[p.id]?.cantidad_fisica
-    const iff = conteos[p.id]?.cantidad_fisica
+  // Planilla de productos, estilo papel: II (apertura) + Llegó (compras del
+  // periodo) − IF (cierre) sirven de verificación, pero "Vendido" y "Total"
+  // salen directo de las ventas ya registradas en la tienda (no dependen de
+  // contar nada) — porque eso es justo lo que el encargado ya lleva al día.
+  // En modo día, II = conteo físico de AYER e IF = conteo físico de HOY. En
+  // modo rango, II = conteo guardado en "desde" e IF = conteo guardado en
+  // "hasta". Si falta alguno de los dos conteos, no hay con qué comparar —
+  // pero Vendido/Total igual salen, sin ningún bloqueo.
+  const aperturaMap = modo === 'rango' ? conteoApertura : conteoAyer
+  const cierreMap = modo === 'rango' ? conteoCierre : conteos
+  const resumenProductosPlanilla = productos.map(p => {
+    const ii = aperturaMap[p.id]?.cantidad_fisica
+    const iff = cierreMap[p.id]?.cantidad_fisica
     const llego = compras.filter(c => c.product_id === p.id).reduce((a,c)=>a+Number(c.cantidad||0),0)
     const vendido = ventasCompletadas.reduce((a,v)=>a+(v.items||[]).filter(i=>i.productId===p.id).reduce((b,i)=>b+Number(i.cantidad||0),0), 0)
     const total = vendido * Number(p.precio || 0)
@@ -232,22 +263,25 @@ export default function EscenarioCierrePage() {
     const vendidoSegunConteo = tieneAmbosConteos ? ii + llego - iff : null
     const diferencia = tieneAmbosConteos ? vendidoSegunConteo - vendido : null
     return { producto: p, ii, iff, llego, vendido, total, tieneAmbosConteos, vendidoSegunConteo, diferencia }
-  }) : []
-  const totalVentasLedger = resumenProductosDia.reduce((a,rp)=>a+(rp.total||0), 0)
+  })
+  const totalVentasLedger = resumenProductosPlanilla.reduce((a,rp)=>a+(rp.total||0), 0)
 
-  // Grilla de canchas × horarios del día (solo modo día) — un cuadro por
-  // cancha, con una fila por cada hora configurada del escenario, mostrando
-  // si esa hora tiene reserva y cuánto se cobró. Igual que arriba, no cuenta
-  // las canceladas/rechazadas.
+  // Cuadro(s) de canchas: en modo día, una fila por cada horario configurado
+  // (para ver hora a hora quién pagó y cuánto, igual que la planilla de
+  // papel). En modo rango no tiene sentido una grilla hora × día — se
+  // muestra en cambio el total y la cantidad de reservas de cada cancha en
+  // todo el periodo. Ninguno de los dos cuenta canceladas/rechazadas.
   const horasDia = escenario ? getHours(escenario) : []
-  const canchasGrid = modo === 'dia' ? canchas.map(cancha => {
-    const filas = horasDia.map(h => {
-      const r = reservasValidas.find(rv => rv.cancha === cancha.slug && rv.hora === h)
-      return { hora: h, reserva: r || null }
-    })
-    const total = filas.reduce((a,f)=>a+(f.reserva ? Number(f.reserva.monto_pagado||0) : 0), 0)
-    return { cancha, filas, total }
-  }) : []
+  const canchasGrid = canchas.map(cancha => {
+    const reservasCancha = reservasValidas.filter(rv => rv.cancha === cancha.slug)
+    if (modo === 'dia') {
+      const filas = horasDia.map(h => ({ hora: h, reserva: reservasCancha.find(rv => rv.hora === h) || null }))
+      const total = filas.reduce((a,f)=>a+(f.reserva ? Number(f.reserva.monto_pagado||0) : 0), 0)
+      return { cancha, filas, total, cantidadReservas: filas.filter(f=>f.reserva).length }
+    }
+    const total = reservasCancha.reduce((a,r)=>a+Number(r.monto_pagado||0), 0)
+    return { cancha, filas: null, total, cantidadReservas: reservasCancha.length }
+  })
   const totalTodasCanchas = canchasGrid.reduce((a,cg)=>a+cg.total, 0)
 
   const totalDeudaClientes = deudasClientes.reduce((a,v)=>a+Number(v.total||0),0)
@@ -294,14 +328,15 @@ export default function EscenarioCierrePage() {
 
         <div id="print-area" style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'18px' }}>
           <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'14px' }}>
-            🧾 Informe {modo==='dia' ? `diario — ${fmtDate(fecha)}` : `del ${fmtDate(fechaDesde<=fechaHasta?fechaDesde:fechaHasta)} al ${fmtDate(fechaDesde<=fechaHasta?fechaHasta:fechaDesde)}`}
+            🧾 Informe {modo==='dia' ? `diario — ${fmtDate(fecha)}` : `del ${fmtDate(desde)} al ${fmtDate(hasta)}`}
           </div>
 
-          {/* Planilla del día, estilo papel: productos (II/Llegó/IF/Vendido/Total)
-              a un lado, canchas + compras + gastos al otro. */}
-          {modo === 'dia' && (
-            <div style={{ marginBottom:'22px' }}>
-              <div style={seccion}>📋 Planilla del día</div>
+          {/* Planilla, estilo papel: productos (II/Llegó/IF/Vendido/Total) a
+              un lado, canchas + compras + gastos al otro. Funciona igual en
+              modo día y en modo rango (con canchas resumidas por total en
+              vez de hora a hora). */}
+          <div style={{ marginBottom:'22px' }}>
+              <div style={seccion}>📋 Planilla {modo==='dia' ? 'del día' : 'del periodo'}</div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:'14px', alignItems:'start' }}>
 
                 {/* Columna izquierda: productos */}
@@ -317,7 +352,7 @@ export default function EscenarioCierrePage() {
                     <tbody>
                       {productos.length === 0 ? (
                         <tr><td colSpan={7} style={{ padding:'10px', textAlign:'center', color:S.muted }}>Sin productos.</td></tr>
-                      ) : resumenProductosDia.map(rp => (
+                      ) : resumenProductosPlanilla.map(rp => (
                         <tr key={rp.producto.id} style={{ borderBottom:`1px solid ${S.border}` }}>
                           <td style={{ padding:'5px' }}>{rp.producto.emoji || '📦'} {rp.producto.nombre}</td>
                           <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.ii ?? '—'}</td>
@@ -337,14 +372,14 @@ export default function EscenarioCierrePage() {
                     {productos.length > 0 && (
                       <tfoot>
                         <tr style={{ background:S.card2 }}>
-                          <td colSpan={6} style={{ padding:'6px 5px', textAlign:'right', fontWeight:800 }}>Total Ventas Día</td>
+                          <td colSpan={6} style={{ padding:'6px 5px', textAlign:'right', fontWeight:800 }}>Total Ventas {modo==='dia'?'Día':'Periodo'}</td>
                           <td style={{ padding:'6px 5px', textAlign:'right', fontWeight:900, color:S.cyan }}>{fmtMoney(totalVentasLedger)}</td>
                         </tr>
                       </tfoot>
                     )}
                   </table>
                   <div style={{ fontSize:'.66rem', color:S.muted, padding:'6px 8px' }}>
-                    Vendido y Total salen directo de las ventas ya registradas en la tienda — no hace falta contar nada. II/IF son opcionales (conteo físico de ayer y de hoy, ver más abajo): si guardaste los dos, acá aparece una alerta si el conteo no coincide con lo vendido registrado.
+                    Vendido y Total salen directo de las ventas ya registradas en la tienda — no hace falta contar nada. II = conteo físico de {modo==='dia' ? 'ayer' : `${fmtDate(desde)} (apertura)`}. IF = conteo físico de {modo==='dia' ? 'hoy' : `${fmtDate(hasta)} (cierre)`}, ver más abajo. Ambos son opcionales — si están los dos, acá aparece una alerta si no coinciden con lo vendido registrado.
                   </div>
                 </div>
 
@@ -355,14 +390,18 @@ export default function EscenarioCierrePage() {
                   ) : canchasGrid.map(cg => (
                     <div key={cg.cancha.id} style={{ border:`1px solid ${S.border}`, borderRadius:'10px', overflow:'hidden' }}>
                       <div style={{ background:S.card2, padding:'6px 8px', fontWeight:800, fontSize:'.76rem' }}>{cg.cancha.nombre}</div>
-                      {cg.filas.map(f => (
+                      {cg.filas ? cg.filas.map(f => (
                         <div key={f.hora} style={{ display:'flex', justifyContent:'space-between', padding:'4px 8px', fontSize:'.72rem', borderTop:`1px solid ${S.border}` }}>
                           <span style={{ color:S.muted }}>{fmtHora12(f.hora)}</span>
                           <span style={{ fontWeight: f.reserva ? 700 : 400, color: f.reserva ? (f.reserva.pago==='pagado' ? S.cyan : S.gold) : S.muted }}>
                             {f.reserva ? `${fmtMoney(f.reserva.monto_pagado||0)}/${fmtMoney(f.reserva.monto||0)}` : ''}
                           </span>
                         </div>
-                      ))}
+                      )) : (
+                        <div style={{ padding:'6px 8px', fontSize:'.72rem', color:S.text2, borderTop:`1px solid ${S.border}` }}>
+                          {cg.cantidadReservas} reserva{cg.cantidadReservas===1?'':'s'} en el periodo
+                        </div>
+                      )}
                       <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 8px', fontSize:'.74rem', fontWeight:800, borderTop:`1px solid ${S.border}`, background:S.card2 }}>
                         <span>TOTAL</span><span style={{ color:S.cyan }}>{fmtMoney(cg.total)}</span>
                       </div>
@@ -410,14 +449,13 @@ export default function EscenarioCierrePage() {
 
               {/* Totales del pie, igual que la planilla de papel */}
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:'8px', marginTop:'12px', border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px' }}>
-                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Total Ventas Día</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(totalVentasLedger)}</div></div>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Total Ventas {modo==='dia'?'Día':'Periodo'}</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(totalVentasLedger)}</div></div>
                 <div><div style={{ fontSize:'.66rem', color:S.muted }}>Base</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(montoBase)}</div></div>
                 <div><div style={{ fontSize:'.66rem', color:S.muted }}>Compras</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(gastoCompras)}</div></div>
                 <div><div style={{ fontSize:'.66rem', color:S.muted }}>Gastos</div><div style={{ fontWeight:800, fontSize:'.9rem' }}>{fmtMoney(totalGastos)}</div></div>
-                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Total Efectivo Día</div><div style={{ fontWeight:900, fontSize:'.95rem', color:S.cyan }}>{fmtMoney(montoBase + totalVentasLedger + totalTodasCanchas - pagadoCompras - totalGastos)}</div></div>
+                <div><div style={{ fontSize:'.66rem', color:S.muted }}>Total Efectivo {modo==='dia'?'Día':'Periodo'}</div><div style={{ fontWeight:900, fontSize:'.95rem', color:S.cyan }}>{fmtMoney(montoBase + totalVentasLedger + totalTodasCanchas - pagadoCompras - totalGastos)}</div></div>
               </div>
-            </div>
-          )}
+          </div>
 
           {/* Resumen general */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
@@ -432,9 +470,33 @@ export default function EscenarioCierrePage() {
                 <div style={stat}><div style={{ fontSize:'.68rem', color:S.muted }}>Fiado hoy ({ventasFiadas.length})</div><div style={{ fontWeight:900, fontSize:'1.1rem', color:S.gold }}>{fmtMoney(totalFiadoHoy)}</div></div>
               )}
               <div style={stat}>
-                <div style={{ fontSize:'.68rem', color:S.muted }}>Base de caja</div>
-                <div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(montoBase)}</div>
-                {baseActual && <div style={{ fontSize:'.62rem', color:S.muted }}>puesta el {fmtDate(baseActual.fecha)}</div>}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ fontSize:'.68rem', color:S.muted }}>Base de caja</div>
+                  {!soloLectura && (
+                    <button className="no-print" onClick={()=>{ setMostrarFormBase(v=>!v); setMontoBaseInput(baseDelDia?.fecha===hasta ? String(baseDelDia.monto) : '') }}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:S.cyan, fontSize:'.68rem', fontWeight:700 }}>
+                      {mostrarFormBase ? 'cancelar' : (baseDelDia?.fecha===hasta ? 'editar' : 'poner')}
+                    </button>
+                  )}
+                </div>
+                {!mostrarFormBase && (
+                  <>
+                    <div style={{ fontWeight:900, fontSize:'1.1rem' }}>{fmtMoney(montoBase)}</div>
+                    {baseDelDia && <div style={{ fontSize:'.62rem', color:S.muted }}>puesta el {fmtDate(baseDelDia.fecha)}</div>}
+                  </>
+                )}
+                {mostrarFormBase && (
+                  <div className="no-print" style={{ marginTop:'6px' }}>
+                    <input type="number" value={montoBaseInput} onChange={e=>setMontoBaseInput(e.target.value)} placeholder="$"
+                      style={{ width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 9px', color:S.text, fontSize:'.8rem', outline:'none', boxSizing:'border-box', marginBottom:'6px' }}/>
+                    <div style={{ fontSize:'.62rem', color:S.muted, marginBottom:'6px' }}>Para el {fmtDate(hasta)}</div>
+                    {msgBase && <div style={{ fontSize:'.68rem', color:S.cyan, marginBottom:'6px' }}>{msgBase}</div>}
+                    <button onClick={guardarBaseReporte} disabled={guardandoBase}
+                      style={{ width:'100%', padding:'7px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.76rem', opacity:guardandoBase?.7:1 }}>
+                      {guardandoBase ? 'Guardando...' : 'Guardar base'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -509,40 +571,10 @@ export default function EscenarioCierrePage() {
             </div>
           ))}
 
-          {/* Resumen del periodo por producto — apertura + compras − cierre = vendido real */}
-          {modo === 'rango' && (
-            <>
-              <div style={seccion}>📦 Resumen del periodo por producto</div>
-              <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'8px', lineHeight:1.4 }}>
-                Apertura = conteo físico guardado en {fmtDate(fechaDesde<=fechaHasta?fechaDesde:fechaHasta)}. Cierre = conteo físico guardado en {fmtDate(fechaDesde<=fechaHasta?fechaHasta:fechaDesde)}. Si falta alguno de los dos, no se puede calcular — guárdalos desde "Verificar stock físico" en modo "Un día", en esas dos fechas.
-              </div>
-              {productos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin productos.</div> : resumenProductos.map(rp => (
-                <div key={rp.producto.id} style={{ padding:'8px 0', borderBottom:`1px solid ${S.border}` }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'.8rem', fontWeight:700 }}>
-                    <span>{rp.producto.emoji || '📦'} {rp.producto.nombre}</span>
-                    {rp.tieneAmbosConteos ? (
-                      <span style={{ color:S.cyan }}>{rp.vendidoReal} vendido(s)</span>
-                    ) : (
-                      <span style={{ color:S.muted, fontWeight:400, fontSize:'.72rem' }}>falta conteo físico</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'2px' }}>
-                    Apertura: {rp.apertura ?? '—'} · + Compras: {rp.comprasProd} · − Cierre: {rp.cierre ?? '—'}
-                    {rp.tieneAmbosConteos && (
-                      <> · Según ventas registradas: {rp.ventasRegistradas}{rp.diferencia !== 0 && (
-                        <span style={{ color: S.gold, fontWeight:700 }}> · diferencia: {rp.diferencia>0?'+':''}{rp.diferencia}</span>
-                      )}</>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-
-          {/* Stock actual — sistema vs. físico contado, si ya se verificó ese día */}
+          {/* Stock — sistema vs. físico contado en la fecha de cierre (hasta) */}
           <div style={seccion}>📦 Stock — lo que quedó (sistema vs. conteo físico)</div>
           {productos.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin productos.</div> : productos.map(p => {
-            const cnt = conteos[p.id]
+            const cnt = cierreMap[p.id]
             return (
               <div key={p.id} style={rowItem}>
                 <span>{p.emoji || '📦'} {p.nombre}</span>
@@ -561,17 +593,16 @@ export default function EscenarioCierrePage() {
           })}
 
           {/* Verificación física — solo interactivo, no sale impreso hasta guardarse.
-              Solo aplica a modo "día": el conteo físico es una foto de un momento
-              puntual, no tiene sentido "contar" a lo largo de un rango. */}
-          {!soloLectura && modo==='dia' && (
+              En modo rango se guarda como el cierre (fecha "hasta") del periodo. */}
+          {!soloLectura && (
           <div className="no-print" style={{ marginTop:'16px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
-            <div style={{ fontWeight:800, fontSize:'.82rem', marginBottom:'4px' }}>🔍 Verificar stock físico de este día</div>
+            <div style={{ fontWeight:800, fontSize:'.82rem', marginBottom:'4px' }}>🔍 Verificar stock físico de {modo==='dia' ? 'este día' : `el cierre (${fmtDate(hasta)})`}</div>
             <div style={{ fontSize:'.72rem', color:S.muted, marginBottom:'12px' }}>Cuenta lo que realmente queda de cada producto y compáralo con lo que dice el sistema.</div>
             {productos.map(p => (
               <div key={p.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'6px 0' }}>
                 <span style={{ flex:1, fontSize:'.8rem' }}>{p.emoji || '📦'} {p.nombre} <span style={{ color:S.muted, fontSize:'.72rem' }}>(sistema: {p.cantidad})</span></span>
                 <input type="number" placeholder={String(p.cantidad)}
-                  value={inputFisico[p.id] ?? (conteos[p.id]?.cantidad_fisica ?? '')}
+                  value={inputFisico[p.id] ?? (cierreMap[p.id]?.cantidad_fisica ?? '')}
                   onChange={e=>setInputFisico(m=>({...m,[p.id]:e.target.value}))}
                   style={{ width:'70px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 8px', color:S.text, fontSize:'.8rem', outline:'none', boxSizing:'border-box' }}/>
               </div>

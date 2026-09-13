@@ -5,29 +5,29 @@ function FilaJugador({ j, color, onAbrir }) {
   const asignado = (j.numero || '').trim() !== ''
   return (
     <button onClick={() => onAbrir(j)}
-      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', textAlign: 'left', padding: '9px 10px', background: 'none', border: 'none', borderBottom: `1px solid ${BORDE}`, cursor: 'pointer' }}>
-      <div style={{ width: '34px', height: '34px', borderRadius: '50%', overflow: 'hidden', background: '#1e2d3d', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {foto ? <img src={foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '.9rem' }}>👤</span>}
+      style={{ display: 'flex', alignItems: 'center', gap: '14px', width: '100%', textAlign: 'left', padding: '13px 12px', background: 'none', border: 'none', borderBottom: `1px solid ${BORDE}`, cursor: 'pointer' }}>
+      <div style={{ width: '52px', height: '52px', borderRadius: '50%', overflow: 'hidden', background: '#1e2d3d', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {foto ? <img src={foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.5rem' }}>👤</span>}
       </div>
-      <span style={{ flex: 1, minWidth: 0, fontSize: '.85rem', fontWeight: '600', color: TEXTO, overflow: 'hidden' }}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: '1.7rem', fontWeight: '700', color: TEXTO, overflow: 'hidden' }}>
         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {j.nombre || <em style={{ color: TEXTO_TENUE }}>Sin nombre — toca para escribirlo</em>}
+          {j.nombre || <em style={{ color: TEXTO_TENUE, fontSize: '.8rem' }}>Sin nombre — toca para escribirlo</em>}
         </span>
         {j.debeTarjeta && (
-          <span style={{ display: 'inline-block', marginTop: '2px', fontSize: '.62rem', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '5px', padding: '2px 6px' }}>
+          <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '.7rem', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '5px', padding: '2px 7px' }}>
             ⚠️ DEBE TARJETA
           </span>
         )}
         {j.debeFoto && (
-          <span style={{ display: 'inline-block', marginTop: '2px', marginLeft: '4px', fontSize: '.62rem', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '5px', padding: '2px 6px' }}>
+          <span style={{ display: 'inline-block', marginTop: '4px', marginLeft: '4px', fontSize: '.7rem', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '5px', padding: '2px 7px' }}>
             📸 CAMBIAR FOTO
           </span>
         )}
       </span>
       {asignado ? (
-        <span style={{ background: VERDE, color: '#fff', fontWeight: '900', fontSize: '.8rem', borderRadius: '7px', padding: '4px 10px', flexShrink: 0 }}>#{j.numero}</span>
+        <span style={{ background: VERDE, color: '#fff', fontWeight: '900', fontSize: '1rem', borderRadius: '8px', padding: '6px 13px', flexShrink: 0 }}>#{j.numero}</span>
       ) : (
-        <span style={{ color, background: 'rgba(255,255,255,.06)', fontSize: '.68rem', fontWeight: '700', borderRadius: '7px', padding: '4px 10px', flexShrink: 0 }}>Asignar</span>
+        <span style={{ color, background: 'rgba(255,255,255,.06)', fontSize: '.8rem', fontWeight: '700', borderRadius: '8px', padding: '6px 13px', flexShrink: 0 }}>Asignar</span>
       )}
     </button>
   )
