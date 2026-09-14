@@ -606,6 +606,7 @@ export default function AdminTorneoDetallePage() {
   const [busquedaEquipo,     setBusquedaEquipo]     = useState('')
   const [equiposDisponibles, setEquiposDisponibles] = useState([])
   const [loadingEquipos,     setLoadingEquipos]     = useState(false)
+  const busquedaEquipoTimeoutRef = useRef(null)
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
   const [parecidosCrear,     setParecidosCrear]     = useState([]) // equipos ya existentes con nombre parecido
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
@@ -3228,10 +3229,22 @@ export default function AdminTorneoDetallePage() {
   }
 
 
-  async function buscarEquipos(q) {
+  // Buscar mientras se escribe, pero sin disparar una consulta por cada
+  // tecla (eso era lo que hacía parpadear la lista de resultados: se
+  // borraba y volvía a aparecer en cada letra). Ahora el texto se actualiza
+  // al toque, pero la consulta real espera 300ms de pausa al escribir — y
+  // mientras llega, se deja la lista anterior en pantalla en vez de
+  // vaciarla, así queda estática y solo se actualiza cuando hay resultado
+  // nuevo de verdad.
+  function buscarEquipos(q) {
     setBusquedaEquipo(q)
     setMostrarCrearEquipo(false)
-    if (!q.trim()) { setEquiposDisponibles([]); return }
+    if (busquedaEquipoTimeoutRef.current) clearTimeout(busquedaEquipoTimeoutRef.current)
+    if (!q.trim()) { setEquiposDisponibles([]); setLoadingEquipos(false); return }
+    busquedaEquipoTimeoutRef.current = setTimeout(() => ejecutarBusquedaEquipos(q), 300)
+  }
+
+  async function ejecutarBusquedaEquipos(q) {
     setLoadingEquipos(true)
     const { data } = await supabase.from('teams').select('*').ilike('name', `%${q}%`).limit(10)
     const idsInscritos = equipos.map(e => e.id)
@@ -3298,6 +3311,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   function cerrarModalEquipo() {
+    if (busquedaEquipoTimeoutRef.current) clearTimeout(busquedaEquipoTimeoutRef.current)
     setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
     setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }); setPersonaCedulaNuevoEquipo(null)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
@@ -3771,7 +3785,7 @@ export default function AdminTorneoDetallePage() {
             {!mostrarCrearEquipo && (
               <>
                 <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Buscar equipo por nombre..." style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
-                {loadingEquipos && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
+                {loadingEquipos && equiposDisponibles.length === 0 && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
                 {!loadingEquipos && busquedaEquipo && equiposDisponibles.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '16px 4px' }}>
                     <div style={{ color: '#9aa0a6', fontSize: '.875rem', marginBottom: '12px' }}>No se encontró ningún equipo con ese nombre</div>
