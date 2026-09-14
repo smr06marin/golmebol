@@ -261,42 +261,45 @@ export async function prepararFotoProducto(file, { maxDim = 500, quitarFondo = f
 // reserva_fija_id, así que si ya existe para esa fecha no se vuelve a crear
 // (y si el encargado canceló puntualmente una fecha, esa cancelación queda
 // como está, no se regenera).
+// Borra ocurrencias futuras "aceptadas" que quedaron huérfanas: ligadas a un
+// horario fijo que ya no existe (se borró del todo), o que existe pero con
+// otra cancha/hora (se editó) — en los dos casos la fila vieja se queda
+// ocupando el cupo para siempre si nadie la limpia. Es una consulta barata
+// (2 selects + 1 delete si hace falta), así que se puede — y se debe —
+// llamar SIEMPRE que se vaya a mostrar disponibilidad, sin throttle: si esto
+// quedara detrás del throttle de 10 minutos de abajo, un cupo fantasma podía
+// seguir apareciendo ocupado un buen rato después de arreglar la regla.
+export async function limpiarOcurrenciasHuerfanasDeFijas(escenarioId) {
+  const desde = todayStr()
+  const { data: todasFijas, error: errFijas } = await supabase.from('escenario_reservas_fijas').select('id, cancha, hora').eq('escenario_id', escenarioId)
+  // Si esta consulta falla, NO se puede saber cuáles reglas siguen existiendo
+  // — mejor no tocar nada (evita borrar en falso todo lo ligado a una regla
+  // por un error transitorio de red) que arriesgarse a limpiar de más.
+  if (errFijas) return
+  const fijasPorId = new Map((todasFijas || []).map(f => [f.id, f]))
+  const { data: ligadas, error: errLigadas } = await supabase.from('escenario_reservas')
+    .select('id, reserva_fija_id, fecha, cancha, hora, estado')
+    .eq('escenario_id', escenarioId).eq('estado', 'aceptada').not('reserva_fija_id', 'is', null).gte('fecha', desde)
+  if (errLigadas) return
+  const huerfanas = (ligadas || []).filter(r => {
+    const regla = fijasPorId.get(r.reserva_fija_id)
+    return !regla || regla.cancha !== r.cancha || regla.hora !== r.hora
+  })
+  if (huerfanas.length > 0) {
+    const { error } = await supabase.from('escenario_reservas').delete().in('id', huerfanas.map(h => h.id))
+    if (error) console.error('limpiarOcurrenciasHuerfanasDeFijas: no se pudieron limpiar —', error.message)
+  }
+}
+
 export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
   const desde = fechaLocalStr(hoy)
 
-  // Todas las reglas (activas o no) — hacen falta las inactivas también para
-  // poder detectar ocurrencias huérfanas: una regla se pudo haber borrado
-  // por completo, o editado (cambió de cancha/hora) — en los dos casos, las
-  // ocurrencias futuras que ya se habían generado con los datos VIEJOS se
-  // quedaban ocupando el cupo para siempre, sin que nadie las pudiera
-  // liberar (el borrado/edición de la regla no siempre alcanzaba a
-  // limpiarlas, por ejemplo si esta función corrió antes de que existiera
-  // esa limpieza). Se revisa y limpia acá, en cada refresco, para que quede
-  // autocorregido solo sin depender de una limpieza manual en la base de datos.
-  const { data: todasFijas, error: errFijas } = await supabase.from('escenario_reservas_fijas').select('*').eq('escenario_id', escenarioId)
-  // Si esta consulta falla, NO se puede saber cuáles reglas siguen existiendo
-  // — mejor no tocar nada (evita borrar en falso todo lo ligado a una regla
-  // por un error transitorio de red) que arriesgarse a limpiar de más.
-  if (!errFijas) {
-    const fijasPorId = new Map((todasFijas || []).map(f => [f.id, f]))
-    const { data: ligadas, error: errLigadas } = await supabase.from('escenario_reservas')
-      .select('id, reserva_fija_id, fecha, cancha, hora, estado')
-      .eq('escenario_id', escenarioId).eq('estado', 'aceptada').not('reserva_fija_id', 'is', null).gte('fecha', desde)
-    if (!errLigadas) {
-      const huerfanas = (ligadas || []).filter(r => {
-        const regla = fijasPorId.get(r.reserva_fija_id)
-        return !regla || regla.cancha !== r.cancha || regla.hora !== r.hora
-      })
-      if (huerfanas.length > 0) {
-        const { error: errLimpieza } = await supabase.from('escenario_reservas').delete().in('id', huerfanas.map(h => h.id))
-        if (errLimpieza) console.error('asegurarReservasFijas: no se pudieron limpiar ocurrencias huérfanas —', errLimpieza.message)
-      }
-    }
-  }
+  await limpiarOcurrenciasHuerfanasDeFijas(escenarioId)
 
-  const fijas = (todasFijas || []).filter(f => f.activa)
-  if (!fijas || fijas.length === 0) return
+  const { data: todasFijas } = await supabase.from('escenario_reservas_fijas').select('*').eq('escenario_id', escenarioId).eq('activa', true)
+  const fijas = todasFijas || []
+  if (fijas.length === 0) return
 
   // Se traen TODAS las reservas del rango (no solo las que ya tienen
   // reserva_fija_id) para poder revisar si el horario ya está ocupado por
@@ -391,10 +394,16 @@ export async function obtenerAccesoEscenario(escenarioId) {
 const _reservasFijasUltimoChequeo = new Map() // escenarioId -> timestamp
 const RESERVAS_FIJAS_THROTTLE_MS = 10 * 60 * 1000
 
-export function asegurarReservasFijasThrottled(escenarioId, semanas = 12) {
+export async function asegurarReservasFijasThrottled(escenarioId, semanas = 12) {
+  // La limpieza de huérfanas es barata y corrige lo que se ve en pantalla —
+  // esta SIEMPRE se espera, sin throttle, para no dejar un cupo fantasma
+  // ocupado con tal de ahorrarse una consulta. Lo que sí se limita a cada 10
+  // minutos es la parte cara (generar las próximas ocurrencias de cada
+  // horario fijo activo), que no hace falta repetir tan seguido.
+  await limpiarOcurrenciasHuerfanasDeFijas(escenarioId)
   const ahora = Date.now()
   const ultima = _reservasFijasUltimoChequeo.get(escenarioId)
-  if (ultima && ahora - ultima < RESERVAS_FIJAS_THROTTLE_MS) return Promise.resolve(null)
+  if (ultima && ahora - ultima < RESERVAS_FIJAS_THROTTLE_MS) return null
   _reservasFijasUltimoChequeo.set(escenarioId, ahora)
   return asegurarReservasFijas(escenarioId, semanas)
 }
