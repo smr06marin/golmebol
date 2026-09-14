@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, nombreCancha, fmtMoney, DIAS_SEMANA, asegurarReservasFijas, todayStr } from '../lib/escenarioHelpers'
+import { getHours, nombreCancha, fmtMoney, DIAS_SEMANA, asegurarReservasFijas, todayStr, proximasFechasDiaSemana } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { Plus, RotateCcw, Trash2, Pencil, X } from 'lucide-react'
 
@@ -64,8 +64,39 @@ export default function EscenarioReservasFijasPage() {
     setForm(f => ({ ...vacio, cancha: f.cancha, hora: f.hora }))
   }
 
+  // Antes de crear o editar un horario fijo, avisa si ese cancha+día+hora ya
+  // está comprometido con algo más — en vez de crearlo en silencio y dejar
+  // que asegurarReservasFijas se salte esas fechas puntuales sin que nadie
+  // se entere. Nunca sobrescribe nada: solo pregunta si de todas formas se
+  // quiere seguir (las fechas que choquen simplemente no se van a generar).
+  async function chequearConflicto() {
+    const diaSemana = Number(form.dia_semana)
+
+    // 1) Otro horario fijo ACTIVO ya ocupa exactamente esa cancha+día+hora.
+    const otraFijaChoca = fijas.find(f => f.activa && f.id !== editId && f.cancha === form.cancha && Number(f.dia_semana) === diaSemana && f.hora === form.hora)
+    if (otraFijaChoca) {
+      return `Ya existe otro horario fijo ahí: "${otraFijaChoca.nombre}" — ${DIAS_SEMANA[diaSemana]} ${fmtHora12(form.hora)}. Si sigues, van a quedar dos horarios fijos pisándose en el mismo cupo (uno de los dos se va a quedar sin generarse cada semana).\n\n¿Crear de todas formas?`
+    }
+
+    // 2) Reservas puntuales ya generadas (o hechas a mano) en las próximas
+    //    fechas de este día de la semana, que no son de este mismo horario fijo.
+    const fechas = proximasFechasDiaSemana(diaSemana, 8)
+    const { data: choques } = await supabase.from('escenario_reservas')
+      .select('fecha, nombre, reserva_fija_id, estado')
+      .eq('escenario_id', escenarioId).eq('cancha', form.cancha).eq('hora', form.hora)
+      .in('fecha', fechas).in('estado', ['aceptada', 'pendiente'])
+    const choquesAjenos = (choques || []).filter(c => c.reserva_fija_id !== editId)
+    if (choquesAjenos.length > 0) {
+      const detalle = choquesAjenos.slice(0, 5).map(c => `${c.fecha} (${c.nombre || 'sin nombre'})`).join(', ')
+      return `Ese horario ya tiene reserva en ${choquesAjenos.length} fecha(s) próxima(s): ${detalle}${choquesAjenos.length > 5 ? '...' : ''}. Esas fechas puntuales NO se van a sobrescribir — se van a quedar como están y el horario fijo se va a saltar solo esas semanas.\n\n¿Crear de todas formas?`
+    }
+    return null
+  }
+
   async function guardar() {
     if (!form.nombre.trim() || !form.cancha || !form.hora) { setMsg('Completa cancha, día, hora y nombre del cliente'); return }
+    const advertencia = await chequearConflicto()
+    if (advertencia && !window.confirm(advertencia)) return
     setGuardando(true); setMsg('')
     const payload = {
       escenario_id: escenarioId, cancha: form.cancha, dia_semana: Number(form.dia_semana), hora: form.hora,
@@ -107,10 +138,18 @@ export default function EscenarioReservasFijasPage() {
   }
 
   async function eliminar(f) {
-    if (!window.confirm(`¿Eliminar "${f.nombre}" (${DIAS_SEMANA[f.dia_semana]} ${fmtHora12(f.hora)}) definitivamente?\n\nEsto no se puede deshacer. Las reservas que ya se generaron con este horario fijo no se borran, solo dejan de estar vinculadas a él.`)) return
+    if (!window.confirm(`¿Eliminar "${f.nombre}" (${DIAS_SEMANA[f.dia_semana]} ${fmtHora12(f.hora)}) definitivamente?\n\nEsto no se puede deshacer. Se van a liberar todas las fechas futuras que ya estaban generadas con este horario fijo (quedan disponibles para que alguien más las reserve).`)) return
+    // Primero se liberan los cupos futuros ya generados (solo los que no
+    // pasaron y siguen "aceptados" — no toca el historial de fechas viejas,
+    // eso sigue contando para las finanzas). Si esto fallara, no se borra la
+    // regla — mejor dejar la regla viva a que queden ocurrencias huérfanas
+    // ocupando cupos sin que nadie las pueda liberar después.
+    const { error: errLiberar } = await supabase.from('escenario_reservas').delete()
+      .eq('reserva_fija_id', f.id).eq('estado', 'aceptada').gte('fecha', todayStr())
+    if (errLiberar) { setMsg('❌ No se pudieron liberar las fechas: ' + errLiberar.message); return }
     const { error } = await supabase.from('escenario_reservas_fijas').delete().eq('id', f.id)
     if (error) { setMsg('❌ ' + error.message); return }
-    setMsg('✅ Horario fijo eliminado'); setTimeout(()=>setMsg(''),4000)
+    setMsg('✅ Horario fijo eliminado — las fechas futuras quedaron liberadas'); setTimeout(()=>setMsg(''),4000)
     fetchTodo()
   }
 

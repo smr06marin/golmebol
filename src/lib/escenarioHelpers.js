@@ -60,6 +60,21 @@ export function proximosDias(n = 14) {
   return dias
 }
 
+// Próximas `n` fechas (empezando hoy) que caen en un día de la semana dado
+// (0=domingo .. 6=sábado) — mismo criterio de "próximas ocurrencias" que usa
+// asegurarReservasFijas para generar las reservas de un horario fijo. Sirve
+// para poder avisar, ANTES de crear o editar un horario fijo, si alguna de
+// esas fechas puntuales ya está ocupada por otra reserva.
+export function proximasFechasDiaSemana(diaSemana, n = 8, semanasMax = 12) {
+  const fechas = []
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
+  for (let i = 0; i < semanasMax * 7 && fechas.length < n; i++) {
+    const d = new Date(hoy); d.setDate(d.getDate() + i)
+    if (d.getDay() === diaSemana) fechas.push(fechaLocalStr(d))
+  }
+  return fechas
+}
+
 // Horas del día según la config de apertura/cierre del escenario (default 8-22 si aún no tiene config).
 export function getHours(escenario) {
   const apertura = escenario?.hora_apertura ?? 8
