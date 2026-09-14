@@ -262,11 +262,42 @@ export async function prepararFotoProducto(file, { maxDim = 500, quitarFondo = f
 // (y si el encargado canceló puntualmente una fecha, esa cancelación queda
 // como está, no se regenera).
 export async function asegurarReservasFijas(escenarioId, semanas = 12) {
-  const { data: fijas } = await supabase.from('escenario_reservas_fijas').select('*').eq('escenario_id', escenarioId).eq('activa', true)
-  if (!fijas || fijas.length === 0) return
-
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
   const desde = fechaLocalStr(hoy)
+
+  // Todas las reglas (activas o no) — hacen falta las inactivas también para
+  // poder detectar ocurrencias huérfanas: una regla se pudo haber borrado
+  // por completo, o editado (cambió de cancha/hora) — en los dos casos, las
+  // ocurrencias futuras que ya se habían generado con los datos VIEJOS se
+  // quedaban ocupando el cupo para siempre, sin que nadie las pudiera
+  // liberar (el borrado/edición de la regla no siempre alcanzaba a
+  // limpiarlas, por ejemplo si esta función corrió antes de que existiera
+  // esa limpieza). Se revisa y limpia acá, en cada refresco, para que quede
+  // autocorregido solo sin depender de una limpieza manual en la base de datos.
+  const { data: todasFijas, error: errFijas } = await supabase.from('escenario_reservas_fijas').select('*').eq('escenario_id', escenarioId)
+  // Si esta consulta falla, NO se puede saber cuáles reglas siguen existiendo
+  // — mejor no tocar nada (evita borrar en falso todo lo ligado a una regla
+  // por un error transitorio de red) que arriesgarse a limpiar de más.
+  if (!errFijas) {
+    const fijasPorId = new Map((todasFijas || []).map(f => [f.id, f]))
+    const { data: ligadas, error: errLigadas } = await supabase.from('escenario_reservas')
+      .select('id, reserva_fija_id, fecha, cancha, hora, estado')
+      .eq('escenario_id', escenarioId).eq('estado', 'aceptada').not('reserva_fija_id', 'is', null).gte('fecha', desde)
+    if (!errLigadas) {
+      const huerfanas = (ligadas || []).filter(r => {
+        const regla = fijasPorId.get(r.reserva_fija_id)
+        return !regla || regla.cancha !== r.cancha || regla.hora !== r.hora
+      })
+      if (huerfanas.length > 0) {
+        const { error: errLimpieza } = await supabase.from('escenario_reservas').delete().in('id', huerfanas.map(h => h.id))
+        if (errLimpieza) console.error('asegurarReservasFijas: no se pudieron limpiar ocurrencias huérfanas —', errLimpieza.message)
+      }
+    }
+  }
+
+  const fijas = (todasFijas || []).filter(f => f.activa)
+  if (!fijas || fijas.length === 0) return
+
   // Se traen TODAS las reservas del rango (no solo las que ya tienen
   // reserva_fija_id) para poder revisar si el horario ya está ocupado por
   // CUALQUIER reserva — manual o de otra regla fija — antes de generar una
