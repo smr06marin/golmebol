@@ -262,7 +262,15 @@ export default function EscenarioCierrePage() {
     const tieneAmbosConteos = ii != null && iff != null
     const vendidoSegunConteo = tieneAmbosConteos ? ii + llego - iff : null
     const diferencia = tieneAmbosConteos ? vendidoSegunConteo - vendido : null
-    return { producto: p, ii, iff, llego, vendido, total, tieneAmbosConteos, vendidoSegunConteo, diferencia }
+    // "Lo que quedó" cuando nadie hizo el conteo físico: en vez de dejar el
+    // IF en blanco (que era lo que pasaba antes), se muestra el stock que
+    // el sistema ya lleva solo (p.cantidad — se actualiza automáticamente
+    // con cada venta y cada compra). No reemplaza un conteo físico real
+    // (que sigue siendo más confiable si alguien lo hizo), pero así el
+    // reporte siempre dice algo sobre lo que quedó en la tienda.
+    const iffEsFisico = iff != null
+    const iffMostrar = iffEsFisico ? iff : p.cantidad
+    return { producto: p, ii, iff, llego, vendido, total, tieneAmbosConteos, vendidoSegunConteo, diferencia, iffEsFisico, iffMostrar }
   })
   const totalVentasLedger = resumenProductosPlanilla.reduce((a,rp)=>a+(rp.total||0), 0)
 
@@ -357,7 +365,7 @@ export default function EscenarioCierrePage() {
                           <td style={{ padding:'5px' }}>{rp.producto.emoji || '📦'} {rp.producto.nombre}</td>
                           <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.ii ?? '—'}</td>
                           <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.llego || ''}</td>
-                          <td style={{ padding:'5px', textAlign:'right', color:S.muted }}>{rp.iff ?? '—'}</td>
+                          <td style={{ padding:'5px', textAlign:'right', color: rp.iffEsFisico ? S.muted : S.gold, fontStyle: rp.iffEsFisico ? 'normal' : 'italic' }} title={rp.iffEsFisico ? 'Conteo físico' : 'Stock del sistema — nadie hizo el conteo físico todavía'}>{rp.iffMostrar ?? '—'}</td>
                           <td style={{ padding:'5px', textAlign:'right', fontWeight:700, color:S.cyan }}>
                             {rp.vendido}
                             {rp.tieneAmbosConteos && rp.diferencia !== 0 && (
@@ -379,7 +387,7 @@ export default function EscenarioCierrePage() {
                     )}
                   </table>
                   <div style={{ fontSize:'.66rem', color:S.muted, padding:'6px 8px' }}>
-                    Vendido y Total salen directo de las ventas ya registradas en la tienda — no hace falta contar nada. II = conteo físico de {modo==='dia' ? 'ayer' : `${fmtDate(desde)} (apertura)`}. IF = conteo físico de {modo==='dia' ? 'hoy' : `${fmtDate(hasta)} (cierre)`}, ver más abajo. Ambos son opcionales — si están los dos, acá aparece una alerta si no coinciden con lo vendido registrado.
+                    Vendido y Total salen directo de las ventas ya registradas en la tienda — no hace falta contar nada. II = conteo físico de {modo==='dia' ? 'ayer' : `${fmtDate(desde)} (apertura)`}. IF = conteo físico de {modo==='dia' ? 'hoy' : `${fmtDate(hasta)} (cierre)`}, ver más abajo — si nadie lo hizo todavía, se muestra en <span style={{ color:S.gold, fontStyle:'italic' }}>dorado</span> lo que el sistema lleva contado solo (se actualiza con cada venta y compra), como referencia de lo que debería quedar. Si hay conteo físico Y de ayer/hoy (o apertura/cierre), acá aparece una alerta si no coinciden con lo vendido registrado.
                   </div>
                 </div>
 
