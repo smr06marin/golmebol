@@ -11,10 +11,11 @@ import { resolverPrediccionesPartido } from '../lib/predix'
 // partido) — acá se escribe todo de una sola vez, después del partido.
 //
 // Guarda en los mismos destinos que las otras planillas (match_events,
-// player_match_stats, partido_arqueros, matches, sanciones, predicciones)
-// para que el resto de la plataforma (historial, récords, deuda de
-// tarjetas, apuestas Predix) vea el partido exactamente igual que si lo
-// hubiera llenado un árbitro.
+// player_match_stats, matches, sanciones, predicciones) para que el resto
+// de la plataforma (historial, récords, deuda de tarjetas, apuestas Predix)
+// vea el partido exactamente igual que si lo hubiera llenado un árbitro.
+// No pide número de camiseta ni arquero — eso solo lo necesita la planilla
+// completa (valla/récords de portero); acá es nomás goles y tarjetas.
 export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado }) {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -22,18 +23,15 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
   const [rosterLocal, setRosterLocal] = useState([])
   const [rosterVis, setRosterVis] = useState([])
   const [filas, setFilas] = useState({}) // player_id -> { jugo, goles, amarilla, azul, roja }
-  const [arqueroLocalId, setArqueroLocalId] = useState(null)
-  const [arqueroVisId, setArqueroVisId] = useState(null)
 
   useEffect(() => {
     let cancelado = false
     async function cargar() {
       setCargando(true)
-      const [{ data: tpLocal }, { data: tpVis }, { data: statsExistentes }, { data: arquerosExistentes }] = await Promise.all([
+      const [{ data: tpLocal }, { data: tpVis }, { data: statsExistentes }] = await Promise.all([
         supabase.from('team_players').select('player_id, players(id,name)').eq('team_id', partido.home_team_id).eq('activo', true),
         supabase.from('team_players').select('player_id, players(id,name)').eq('team_id', partido.away_team_id).eq('activo', true),
         supabase.from('player_match_stats').select('*').eq('match_id', partido.id),
-        supabase.from('partido_arqueros').select('*').eq('match_id', partido.id),
       ])
       if (cancelado) return
       const local = (tpLocal || []).map(t => t.players).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name))
@@ -52,10 +50,6 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
           : { jugo: (statsExistentes || []).length === 0, goles: 0, amarilla: false, azul: false, roja: false }
       })
       setFilas(f)
-      const arqLocal = (arquerosExistentes || []).find(a => a.team_id === partido.home_team_id)
-      const arqVis = (arquerosExistentes || []).find(a => a.team_id === partido.away_team_id)
-      if (arqLocal?.player_id) setArqueroLocalId(arqLocal.player_id)
-      if (arqVis?.player_id) setArqueroVisId(arqVis.player_id)
       setCargando(false)
     }
     cargar()
@@ -109,26 +103,16 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
       const { error: errPartido } = await supabase.from('matches').update({ home_score: golesLocal, away_score: golesVis, status: 'finished' }).eq('id', partido.id)
       if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
-      await supabase.from('partido_arqueros').delete().eq('match_id', partido.id)
-      const arqRows = []
-      if (arqueroLocalId) arqRows.push({ match_id: partido.id, team_id: partido.home_team_id, player_id: arqueroLocalId, orden: 1 })
-      if (arqueroVisId) arqRows.push({ match_id: partido.id, team_id: partido.away_team_id, player_id: arqueroVisId, orden: 1 })
-      if (arqRows.length > 0) {
-        const { error } = await supabase.from('partido_arqueros').insert(arqRows)
-        if (error) erroresGuardado.push('Arqueros: ' + error.message)
-      }
-
       const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
       const statsRows = todos.map(({ j, team_id, esLocal }) => {
         const f = filas[j.id]
         const gF = esLocal ? golesLocal : golesVis
         const gC = esLocal ? golesVis : golesLocal
-        const esArquero = (esLocal ? arqueroLocalId : arqueroVisId) === j.id
         return {
           match_id: partido.id, tournament_id: partido.tournament_id, player_id: j.id, team_id,
           numero_camiseta: null,
-          goals_scored: Number(f.goles || 0), goals_conceded: esArquero ? gC : 0,
-          fue_arquero: esArquero, own_goals: 0,
+          goals_scored: Number(f.goles || 0), goals_conceded: 0,
+          fue_arquero: false, own_goals: 0,
           yellow_cards: f.amarilla ? 1 : 0, blue_cards: f.azul ? 1 : 0, red_cards: f.roja ? 1 : 0,
           fouls: 0, team_result: calcResultado(gF, gC),
         }
@@ -185,7 +169,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   })
 
-  function Columna({ titulo, roster, arqueroId, setArqueroId }) {
+  function Columna({ titulo, roster }) {
     return (
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#202124', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -202,10 +186,6 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
               <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)} style={chip(f.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
               <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'azul', !f.azul)} style={chip(f.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
               <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'roja', !f.roja)} style={chip(f.roja, '#d93025')} title="Tarjeta roja">🟥</button>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '.65rem', color: '#5f6368', flexShrink: 0 }}>
-                <input type="radio" name={`arquero-${titulo}`} checked={arqueroId === j.id} disabled={!f.jugo} onChange={() => setArqueroId(j.id)} />
-                🧤
-              </label>
             </div>
           )
         })}
@@ -224,7 +204,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18} /></button>
         </div>
         <div style={{ fontSize: '.7rem', color: '#9aa0a6', margin: '6px 0 12px' }}>
-          Marcá quién jugó, sus goles y tarjetas — 🧤 es opcional, marca quién fue el arquero de cada equipo (solo para la estadística de valla). El resultado se calcula solo sumando los goles de cada jugador.
+          Marcá quién jugó, sus goles y tarjetas. El resultado se calcula solo sumando los goles de cada jugador.
         </div>
 
         {cargando ? (
@@ -238,8 +218,8 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
             </div>
 
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <Columna titulo={partido.home?.name} roster={rosterLocal} arqueroId={arqueroLocalId} setArqueroId={setArqueroLocalId} />
-              <Columna titulo={partido.away?.name} roster={rosterVis} arqueroId={arqueroVisId} setArqueroId={setArqueroVisId} />
+              <Columna titulo={partido.home?.name} roster={rosterLocal} />
+              <Columna titulo={partido.away?.name} roster={rosterVis} />
             </div>
 
             <button onClick={guardar} disabled={guardando} style={{ width: '100%', marginTop: '18px', padding: '13px', background: guardando ? '#9aa0a6' : '#1e8e3e', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', cursor: guardando ? 'default' : 'pointer' }}>
