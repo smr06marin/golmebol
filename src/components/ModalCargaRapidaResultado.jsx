@@ -23,6 +23,12 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
   const [rosterLocal, setRosterLocal] = useState([])
   const [rosterVis, setRosterVis] = useState([])
   const [filas, setFilas] = useState({}) // player_id -> { jugo, goles, amarilla, azul, roja }
+  // Jugadores sin registro que se van agregando a mano en esta pantalla (por
+  // ahora solo con nombre, sin id real — se crean en Golmebol recién al
+  // guardar, igual que hace la planilla rápida de los árbitros).
+  const [extrasLocal, setExtrasLocal] = useState([])
+  const [extrasVis, setExtrasVis] = useState([])
+  const extraIdRef = useRef(0)
 
   useEffect(() => {
     let cancelado = false
@@ -60,8 +66,22 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     setFilas(prev => ({ ...prev, [playerId]: { ...prev[playerId], [campo]: valor } }))
   }
 
+  function agregarExtra(esLocal) {
+    extraIdRef.current += 1
+    const nueva = { tempId: extraIdRef.current, nombre: '', goles: 0, amarilla: false, azul: false, roja: false }
+    ;(esLocal ? setExtrasLocal : setExtrasVis)(prev => [...prev, nueva])
+  }
+  function cambiarExtra(esLocal, tempId, campo, valor) {
+    ;(esLocal ? setExtrasLocal : setExtrasVis)(prev => prev.map(e => e.tempId === tempId ? { ...e, [campo]: valor } : e))
+  }
+  function quitarExtra(esLocal, tempId) {
+    ;(esLocal ? setExtrasLocal : setExtrasVis)(prev => prev.filter(e => e.tempId !== tempId))
+  }
+
   const golesLocal = rosterLocal.reduce((a, j) => a + (filas[j.id]?.jugo ? Number(filas[j.id]?.goles || 0) : 0), 0)
+    + extrasLocal.reduce((a, e) => a + (e.nombre.trim() ? Number(e.goles || 0) : 0), 0)
   const golesVis = rosterVis.reduce((a, j) => a + (filas[j.id]?.jugo ? Number(filas[j.id]?.goles || 0) : 0), 0)
+    + extrasVis.reduce((a, e) => a + (e.nombre.trim() ? Number(e.goles || 0) : 0), 0)
 
   async function guardar() {
     if (guardandoRef.current) return
@@ -80,15 +100,50 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
         } catch (e) { /* no bloquea el guardado */ }
       }
 
-      const todos = [...rosterLocal.map(j => ({ j, team_id: partido.home_team_id, esLocal: true })), ...rosterVis.map(j => ({ j, team_id: partido.away_team_id, esLocal: false }))]
-        .filter(({ j }) => filas[j.id]?.jugo)
+      // Los jugadores sin registro que se hayan escrito (con nombre puesto)
+      // se crean acá en Golmebol y quedan inscritos en su equipo/torneo —
+      // así ya salen identificados por su nombre real en todo lo demás
+      // (historial, deuda de tarjetas, etc.), igual que si el árbitro los
+      // hubiera registrado durante el partido.
+      const filasCombinadas = { ...filas }
+      async function crearExtras(lista, team_id) {
+        const creados = []
+        for (const e of lista) {
+          const nombreLimpio = e.nombre.trim()
+          if (!nombreLimpio) continue
+          const { data: nuevo, error } = await supabase.from('players')
+            .insert({ name: nombreLimpio, activo_membresia: true, fecha_registro: new Date().toISOString() })
+            .select().single()
+          if (error || !nuevo) { erroresGuardado.push(`No se pudo registrar a "${nombreLimpio}": ` + (error?.message || '')); continue }
+          await supabase.from('team_players').insert({ team_id, player_id: nuevo.id, activo: true })
+          await supabase.from('tournament_player_registrations').insert({ tournament_id: partido.tournament_id, team_id, player_id: nuevo.id, activo: true })
+          filasCombinadas[nuevo.id] = { jugo: true, goles: e.goles, amarilla: e.amarilla, azul: e.azul, roja: e.roja }
+          creados.push({ id: nuevo.id, name: nuevo.name })
+        }
+        return creados
+      }
+      const nuevosLocal = await crearExtras(extrasLocal, partido.home_team_id)
+      const nuevosVis = await crearExtras(extrasVis, partido.away_team_id)
+      // Se pasan al roster y se limpian los renglones "sin registro" ya
+      // usados — así, si algo más adelante falla y hay que reintentar
+      // guardar, no se vuelven a crear como jugadores duplicados.
+      if (nuevosLocal.length > 0) { setRosterLocal(prev => [...prev, ...nuevosLocal].sort((a, b) => a.name.localeCompare(b.name))); setExtrasLocal([]) }
+      if (nuevosVis.length > 0) { setRosterVis(prev => [...prev, ...nuevosVis].sort((a, b) => a.name.localeCompare(b.name))); setExtrasVis([]) }
+      setFilas(filasCombinadas)
+
+      const todos = [
+        ...rosterLocal.map(j => ({ j, team_id: partido.home_team_id, esLocal: true })),
+        ...nuevosLocal.map(j => ({ j, team_id: partido.home_team_id, esLocal: true })),
+        ...rosterVis.map(j => ({ j, team_id: partido.away_team_id, esLocal: false })),
+        ...nuevosVis.map(j => ({ j, team_id: partido.away_team_id, esLocal: false })),
+      ].filter(({ j }) => filasCombinadas[j.id]?.jugo)
 
       // Eventos individuales (uno por gol y por tarjeta) — para que el
       // historial de movimientos y tarjetas del torneo vea este partido
       // igual que cualquier otro.
       const eventosDB = []
       todos.forEach(({ j, team_id }) => {
-        const f = filas[j.id]
+        const f = filasCombinadas[j.id]
         for (let i = 0; i < Number(f.goles || 0); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'goal', minute: null, periodo: 1 })
         if (f.amarilla) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'yellow_card', minute: null, periodo: 1 })
         if (f.azul) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'blue_card', minute: null, periodo: 1 })
@@ -105,7 +160,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
 
       const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
       const statsRows = todos.map(({ j, team_id, esLocal }) => {
-        const f = filas[j.id]
+        const f = filasCombinadas[j.id]
         const gF = esLocal ? golesLocal : golesVis
         const gC = esLocal ? golesVis : golesLocal
         return {
@@ -173,13 +228,15 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
   // en una fila, en un celular angosto el nombre quedaba aplastado a cero
   // ancho y desaparecía (se veía "desordenado"). Así el nombre siempre tiene
   // todo el ancho de la pantalla para él solo.
-  function Columna({ titulo, roster }) {
+  const inputNombre = { flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem' }
+
+  function Columna({ titulo, roster, extras, esLocal }) {
     return (
       <div style={{ marginBottom: '18px' }}>
         <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#202124', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Shield size={14} color="#9aa0a6" /> {titulo}
         </div>
-        {roster.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6', padding: '8px 0' }}>Sin jugadores registrados en este equipo.</div>}
+        {roster.length === 0 && extras.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6', padding: '8px 0' }}>Sin jugadores registrados en este equipo.</div>}
         {roster.map(j => {
           const f = filas[j.id] || { jugo: true, goles: 0, amarilla: false, azul: false, roja: false }
           return (
@@ -198,6 +255,28 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
             </div>
           )
         })}
+
+        {/* Jugadores sin registro: solo escribir el nombre acá mismo — al
+            guardar quedan registrados de una en Golmebol y su historia
+            (goles, tarjetas) queda como la de cualquier otro jugador. */}
+        {extras.map(e => (
+          <div key={e.tempId} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <input type="text" value={e.nombre} onChange={ev => cambiarExtra(esLocal, e.tempId, 'nombre', ev.target.value)} placeholder="Nombre del jugador sin registro" autoFocus style={inputNombre} />
+              <button type="button" onClick={() => quitarExtra(esLocal, e.tempId)} title="Quitar" style={{ background: 'none', border: 'none', color: '#d93025', cursor: 'pointer', flexShrink: 0 }}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '2px' }}>
+              <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
+              <input type="number" min="0" value={e.goles} onChange={ev => cambiarExtra(esLocal, e.tempId, 'goles', ev.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
+              <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'amarilla', !e.amarilla)} style={chip(e.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
+              <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'azul', !e.azul)} style={chip(e.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
+              <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'roja', !e.roja)} style={chip(e.roja, '#d93025')} title="Tarjeta roja">🟥</button>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => agregarExtra(esLocal)} style={{ marginTop: '8px', background: 'none', border: '1px dashed #dadce0', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.75rem', fontWeight: '700', width: '100%' }}>
+          + Jugador sin registro
+        </button>
       </div>
     )
   }
@@ -226,8 +305,8 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
               <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', flex: 1 }}>{partido.away?.name}</div>
             </div>
 
-            <Columna titulo={partido.home?.name} roster={rosterLocal} />
-            <Columna titulo={partido.away?.name} roster={rosterVis} />
+            <Columna titulo={partido.home?.name} roster={rosterLocal} extras={extrasLocal} esLocal={true} />
+            <Columna titulo={partido.away?.name} roster={rosterVis} extras={extrasVis} esLocal={false} />
 
             <button onClick={guardar} disabled={guardando} style={{ width: '100%', marginTop: '18px', padding: '13px', background: guardando ? '#9aa0a6' : '#1e8e3e', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', cursor: guardando ? 'default' : 'pointer' }}>
               {guardando ? 'Guardando...' : '✓ Guardar resultado'}
