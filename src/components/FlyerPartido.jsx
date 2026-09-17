@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 
 import { Shield, Download, X } from 'lucide-react'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { descargarFlyer } from '../lib/flyerDescarga'
 
 export default function FlyerPartido({ partido, onClose }) {
   const flyerRef = useRef(null)
@@ -10,17 +11,15 @@ export default function FlyerPartido({ partido, onClose }) {
   async function handleDescargar() {
     if (!flyerRef.current) return
     setDescargando(true)
-    const { default: html2canvas } = await import('html2canvas'); const canvas = await html2canvas(flyerRef.current, {
-      scale: 3,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: null,
-    })
-    const link = document.createElement('a')
-    link.download = `partido_${partido.home?.name}_vs_${partido.away?.name}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-    setDescargando(false)
+    try {
+      await descargarFlyer(flyerRef.current, {
+        filename: `partido_${partido.home?.name}_vs_${partido.away?.name}.png`,
+        opcionesCanvas: { scale: 3, backgroundColor: null },
+        shareTitle: `${partido.home?.name} vs ${partido.away?.name}`,
+      })
+    } finally {
+      setDescargando(false)
+    }
   }
 
   const esJugado = partido.status === 'played'

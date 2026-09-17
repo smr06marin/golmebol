@@ -1,5 +1,6 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
 import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
+import { descargarFlyer } from '../lib/flyerDescarga'
 
 // Tamaño fijo de "historia" de Instagram (1080x1920 = relación 9:16). Se
 // dibuja a mitad de escala (540x960) y se exporta con scale:2 en
@@ -52,12 +53,6 @@ function trocear(lista, tam) {
   const paginas = []
   for (let i = 0; i < lista.length; i += tam) paginas.push(lista.slice(i, i + tam))
   return paginas.length ? paginas : [[]]
-}
-
-async function esperarImagenes(container) {
-  if (!container) return
-  const imgs = Array.from(container.querySelectorAll('img'))
-  await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = res })))
 }
 
 function formatFechaCorta(fecha) {
@@ -251,21 +246,20 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   }, [])
 
   async function descargarPagina(idx) {
-    await esperarImagenes(flyerRef.current)
     // Poppins (peso 900, "Black") se carga async desde Google Fonts
     // (index.html) — si html2canvas captura antes de que termine de
     // cargar, el texto sale con la tipografía de respaldo (Arial/Impact)
-    // en vez de Poppins.
-    if (document.fonts?.ready) await document.fonts.ready
-    const { default: html2canvas } = await import('html2canvas')
-    // scale:2 sobre un lienzo de 540x960 = 1080x1920 exactos (historia de Instagram).
-    const canvas = await html2canvas(flyerRef.current, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: ROJO_OSC, width: ANCHO, height: ALTO })
-    const link = document.createElement('a')
+    // en vez de Poppins. descargarFlyer ya espera imágenes + fuentes antes
+    // de capturar, y en el celular manda el PNG a la hoja de compartir
+    // nativa para que quede guardado en la Galería (no en Descargas).
     const base = (torneo?.name || 'golmebol').replace(/\s+/g, '_')
     const tipo = modo === 'jugados' ? 'resultados' : 'programacion'
-    link.download = totalPaginas > 1 ? `${base}_${tipo}_pag${idx + 1}de${totalPaginas}.png` : `${base}_${tipo}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+    // scale:2 sobre un lienzo de 540x960 = 1080x1920 exactos (historia de Instagram).
+    await descargarFlyer(flyerRef.current, {
+      filename: totalPaginas > 1 ? `${base}_${tipo}_pag${idx + 1}de${totalPaginas}.png` : `${base}_${tipo}.png`,
+      opcionesCanvas: { scale: 2, backgroundColor: ROJO_OSC, width: ANCHO, height: ALTO },
+      shareTitle: torneo?.name,
+    })
   }
 
   async function handleDescargarActual() {

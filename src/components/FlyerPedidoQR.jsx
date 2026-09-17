@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Download, QrCode } from 'lucide-react'
+import { descargarFlyer } from '../lib/flyerDescarga'
 
 // Cartel con código QR del link público de pedido (/pedir/:escenarioId) para
 // imprimir y pegar en la cancha — el cliente lo escanea con la cámara del
@@ -25,13 +26,15 @@ export default function FlyerPedidoQR({ escenario, escenarioId, onClose }) {
   async function handleDescargar() {
     if (!flyerRef.current) return
     setDescargando(true)
-    const { default: html2canvas } = await import('html2canvas')
-    const canvas = await html2canvas(flyerRef.current, { scale: 3, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' })
-    const a = document.createElement('a')
-    a.download = `pedido_qr_${(escenario?.name || 'golmebol').replace(/\s+/g, '_')}.png`
-    a.href = canvas.toDataURL('image/png')
-    a.click()
-    setDescargando(false)
+    try {
+      await descargarFlyer(flyerRef.current, {
+        filename: `pedido_qr_${(escenario?.name || 'golmebol').replace(/\s+/g, '_')}.png`,
+        opcionesCanvas: { scale: 3, backgroundColor: '#ffffff' },
+        shareTitle: escenario?.name,
+      })
+    } finally {
+      setDescargando(false)
+    }
   }
 
   return (

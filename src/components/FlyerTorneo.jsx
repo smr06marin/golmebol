@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Shield, Trophy, Download, X, Ticket } from 'lucide-react'
+import { descargarFlyer } from '../lib/flyerDescarga'
 
 const CENTER_TAM = 124 // diámetro del escudo del torneo, al centro
 const HEADER_H   = 122 // alto del bloque de título arriba
@@ -67,13 +68,15 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
   async function handleDescargar() {
     if (!flyerRef.current) return
     setDescargando(true)
-    const { default: html2canvas } = await import('html2canvas')
-    const canvas = await html2canvas(flyerRef.current, { scale: 3, useCORS: true, allowTaint: true, backgroundColor: null })
-    const link = document.createElement('a')
-    link.download = `torneo_${(torneo?.name || 'golmebol').replace(/\s+/g, '_')}_equipos.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
-    setDescargando(false)
+    try {
+      await descargarFlyer(flyerRef.current, {
+        filename: `torneo_${(torneo?.name || 'golmebol').replace(/\s+/g, '_')}_equipos.png`,
+        opcionesCanvas: { scale: 3, backgroundColor: null },
+        shareTitle: torneo?.name,
+      })
+    } finally {
+      setDescargando(false)
+    }
   }
 
   // ── Paso 1: preguntar si mostrar cupos libres ──
