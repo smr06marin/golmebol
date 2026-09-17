@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, fmtDate, todayStr, fechaLocalStr, getHours, nombreCancha, registrarActividad } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
+import ModalEditarCompra from '../components/ModalEditarCompra'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -59,6 +60,7 @@ export default function EscenarioCierrePage() {
   const [guardandoConteo, setGuardandoConteo] = useState(false)
   const [msgConteo, setMsgConteo] = useState('')
   const [soloLectura, setSoloLectura] = useState(false)
+  const [compraEditando, setCompraEditando] = useState(null) // compra que se está corrigiendo desde el informe (cualquier fecha, no solo hoy)
 
   // Límites reales del periodo que se está viendo — en modo "día" son la
   // misma fecha dos veces, así el resto del código (fetch, conteo físico,
@@ -300,6 +302,15 @@ export default function EscenarioCierrePage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       <style>{`@media print { .no-print { display:none !important } body * { visibility:hidden } #print-area, #print-area * { visibility:visible } #print-area { position:absolute; left:0; top:0; width:100% } }`}</style>
+
+      {compraEditando && (
+        <ModalEditarCompra
+          compra={compraEditando}
+          productos={productos}
+          onClose={() => setCompraEditando(null)}
+          onGuardado={fetchDia}
+        />
+      )}
 
       <div className="no-print" style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px' }}>
         <div style={{ maxWidth:'640px', margin:'0 auto' }}>
@@ -549,7 +560,15 @@ export default function EscenarioCierrePage() {
           {compras.length===0 ? <div style={{ color:S.muted, fontSize:'.78rem' }}>Sin compras {modo==='dia'?'este día':'en el periodo'}.</div> : compras.map(c => (
             <div key={c.id} style={rowItem}>
               <span>{modo==='rango' ? fmtDate(c.fecha)+' · ' : ''}{c.hora ? c.hora+' · ' : ''}{c.nombre} x{c.cantidad} · {c.proveedor}</span>
-              <span style={{ fontWeight:700, color: compraDebe(c) ? S.gold : S.text }}>{fmtMoney(totalCompra(c))}{compraDebe(c) ? ' (debe)' : ''}</span>
+              <span style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                <span style={{ fontWeight:700, color: compraDebe(c) ? S.gold : S.text }}>{fmtMoney(totalCompra(c))}{compraDebe(c) ? ' (debe)' : ''}</span>
+                {!soloLectura && (
+                  <button className="no-print" onClick={() => setCompraEditando(c)} title="Corregir esta compra (ej: producto equivocado)"
+                    style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'6px', padding:'3px 6px', cursor:'pointer', color:S.cyan, fontSize:'.72rem', flexShrink:0 }}>
+                    ✏️
+                  </button>
+                )}
+              </span>
             </div>
           ))}
 
