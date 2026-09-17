@@ -161,17 +161,21 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     }
   }
 
-  const filaEstilo = { display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 4px', borderBottom: '1px solid #f1f3f4' }
-  const inputGoles = { width: '42px', padding: '5px 4px', textAlign: 'center', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem' }
+  const inputGoles = { width: '46px', padding: '6px 4px', textAlign: 'center', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem', flexShrink: 0 }
   const chip = (activo, color) => ({
-    width: '28px', height: '28px', borderRadius: '7px', border: `1.5px solid ${activo ? color : '#dadce0'}`,
+    width: '30px', height: '30px', borderRadius: '7px', border: `1.5px solid ${activo ? color : '#dadce0'}`,
     background: activo ? color : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '800',
     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   })
 
+  // Cada jugador en DOS líneas (nombre arriba, controles abajo) — en vez de
+  // todo en una sola fila. Con los dos equipos uno al lado del otro y todo
+  // en una fila, en un celular angosto el nombre quedaba aplastado a cero
+  // ancho y desaparecía (se veía "desordenado"). Así el nombre siempre tiene
+  // todo el ancho de la pantalla para él solo.
   function Columna({ titulo, roster }) {
     return (
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ marginBottom: '18px' }}>
         <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#202124', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Shield size={14} color="#9aa0a6" /> {titulo}
         </div>
@@ -179,13 +183,18 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
         {roster.map(j => {
           const f = filas[j.id] || { jugo: true, goles: 0, amarilla: false, azul: false, roja: false }
           return (
-            <div key={j.id} style={{ ...filaEstilo, opacity: f.jugo ? 1 : .45 }}>
-              <input type="checkbox" checked={f.jugo} onChange={e => cambiar(j.id, 'jugo', e.target.checked)} title="¿Jugó este partido?" style={{ width: '16px', height: '16px', flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0, fontSize: '.8rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.name}</span>
-              <input type="number" min="0" value={f.goles} disabled={!f.jugo} onChange={e => cambiar(j.id, 'goles', e.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
-              <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)} style={chip(f.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
-              <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'azul', !f.azul)} style={chip(f.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
-              <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'roja', !f.roja)} style={chip(f.roja, '#d93025')} title="Tarjeta roja">🟥</button>
+            <div key={j.id} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4', opacity: f.jugo ? 1 : .45 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <input type="checkbox" checked={f.jugo} onChange={e => cambiar(j.id, 'jugo', e.target.checked)} title="¿Jugó este partido?" style={{ width: '17px', height: '17px', flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: '.85rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.name}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '25px' }}>
+                <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
+                <input type="number" min="0" value={f.goles} disabled={!f.jugo} onChange={e => cambiar(j.id, 'goles', e.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
+                <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)} style={chip(f.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
+                <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'azul', !f.azul)} style={chip(f.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
+                <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'roja', !f.roja)} style={chip(f.roja, '#d93025')} title="Tarjeta roja">🟥</button>
+              </div>
             </div>
           )
         })}
@@ -217,10 +226,8 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
               <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', flex: 1 }}>{partido.away?.name}</div>
             </div>
 
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <Columna titulo={partido.home?.name} roster={rosterLocal} />
-              <Columna titulo={partido.away?.name} roster={rosterVis} />
-            </div>
+            <Columna titulo={partido.home?.name} roster={rosterLocal} />
+            <Columna titulo={partido.away?.name} roster={rosterVis} />
 
             <button onClick={guardar} disabled={guardando} style={{ width: '100%', marginTop: '18px', padding: '13px', background: guardando ? '#9aa0a6' : '#1e8e3e', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', cursor: guardando ? 'default' : 'pointer' }}>
               {guardando ? 'Guardando...' : '✓ Guardar resultado'}
