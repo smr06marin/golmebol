@@ -23,6 +23,74 @@ import { resolverPrediccionesPartido } from '../lib/predix'
 // la tarjeta sí cuenten en el resultado y en el historial), y al guardar
 // se avisa que falta registrarlo para que sus estadísticas individuales
 // (goleador, deuda de tarjetas, etc.) empiecen a contar.
+
+const inputGoles = { width: '46px', padding: '6px 4px', textAlign: 'center', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem', flexShrink: 0 }
+const inputNombre = { flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem' }
+const chip = (activo, color) => ({
+  width: '30px', height: '30px', borderRadius: '7px', border: `1.5px solid ${activo ? color : '#dadce0'}`,
+  background: activo ? color : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '800',
+  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+})
+
+// IMPORTANTE: este componente va declarado FUERA de ModalCargaRapidaResultado
+// (a nivel de módulo), no adentro. Estaba adentro antes y por eso, al tipear
+// en cualquier input (goles, nombre), cada tecla volvía a crear la función
+// Columna de cero — React la trataba como un componente distinto en cada
+// letra y desmontaba/remontaba toda la lista, botando el foco del campo
+// apenas se escribía un carácter (por eso solo dejaba escribir un dígito de
+// los goles y "se salía"). Con Columna afuera, React reconoce que es el
+// mismo componente entre renders y el foco no se pierde.
+function Columna({ titulo, roster, extras, esLocal, filas, cambiar, cambiarExtra, quitarExtra }) {
+  return (
+    <div style={{ marginBottom: '18px' }}>
+      <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#202124', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Shield size={14} color="#9aa0a6" /> {titulo}
+      </div>
+      {roster.length === 0 && extras.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6', padding: '8px 0' }}>Sin jugadores registrados en este equipo.</div>}
+      {roster.map(j => {
+        const f = filas[j.id] || { jugo: true, goles: 0, amarilla: false, azul: false, roja: false }
+        return (
+          <div key={j.id} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4', opacity: f.jugo ? 1 : .45 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <input type="checkbox" checked={f.jugo} onChange={e => cambiar(j.id, 'jugo', e.target.checked)} title="¿Jugó este partido?" style={{ width: '17px', height: '17px', flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: '.85rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.name}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '25px' }}>
+              <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
+              <input type="text" inputMode="numeric" pattern="[0-9]*" value={f.goles} disabled={!f.jugo} onChange={e => cambiar(j.id, 'goles', e.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
+              <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)} style={chip(f.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
+              <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'azul', !f.azul)} style={chip(f.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
+              <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'roja', !f.roja)} style={chip(f.roja, '#d93025')} title="Tarjeta roja">🟥</button>
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Jugadores sin registro (todavía sin cédula): solo se anota el
+          nombre acá — NO se crea como jugador de Golmebol. Es un dato
+          "invisible", solo para que el gol o la tarjeta cuenten en este
+          partido; hay que registrarlo formalmente después para que
+          aparezca en goleadores/deuda de tarjetas. */}
+      {extras.map(e => (
+        <div key={e.tempId} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+            <input type="text" value={e.nombre} onChange={ev => cambiarExtra(esLocal, e.tempId, 'nombre', ev.target.value)} placeholder="Nombre del jugador sin registro" style={inputNombre} />
+            <button type="button" onClick={() => quitarExtra(esLocal, e.tempId)} title="Quitar" style={{ background: 'none', border: 'none', color: '#d93025', cursor: 'pointer', flexShrink: 0 }}><X size={16} /></button>
+          </div>
+          <div style={{ fontSize: '.62rem', color: '#e8710a', marginBottom: '6px' }}>⚠️ No se registra como jugador (falta cédula) — solo cuenta para este partido. Registralo después para que sus estadísticas cuenten.</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '2px' }}>
+            <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
+            <input type="text" inputMode="numeric" pattern="[0-9]*" value={e.goles} onChange={ev => cambiarExtra(esLocal, e.tempId, 'goles', ev.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
+            <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'amarilla', !e.amarilla)} style={chip(e.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
+            <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'azul', !e.azul)} style={chip(e.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
+            <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'roja', !e.roja)} style={chip(e.roja, '#d93025')} title="Tarjeta roja">🟥</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado }) {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -31,8 +99,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
   const [rosterVis, setRosterVis] = useState([])
   const [filas, setFilas] = useState({}) // player_id -> { jugo, goles, amarilla, azul, roja }
   // Jugadores sin registro que se van agregando a mano en esta pantalla (por
-  // ahora solo con nombre, sin id real — se crean en Golmebol recién al
-  // guardar, igual que hace la planilla rápida de los árbitros).
+  // ahora solo con nombre, sin id real — nunca se crean como jugador real).
   const [extrasLocal, setExtrasLocal] = useState([])
   const [extrasVis, setExtrasVis] = useState([])
   const extraIdRef = useRef(0)
@@ -240,106 +307,55 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     }
   }
 
-  const inputGoles = { width: '46px', padding: '6px 4px', textAlign: 'center', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem', flexShrink: 0 }
-  const chip = (activo, color) => ({
-    width: '30px', height: '30px', borderRadius: '7px', border: `1.5px solid ${activo ? color : '#dadce0'}`,
-    background: activo ? color : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '800',
-    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  })
-
-  // Cada jugador en DOS líneas (nombre arriba, controles abajo) — en vez de
-  // todo en una sola fila. Con los dos equipos uno al lado del otro y todo
-  // en una fila, en un celular angosto el nombre quedaba aplastado a cero
-  // ancho y desaparecía (se veía "desordenado"). Así el nombre siempre tiene
-  // todo el ancho de la pantalla para él solo.
-  const inputNombre = { flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem' }
-
-  function Columna({ titulo, roster, extras, esLocal }) {
-    return (
-      <div style={{ marginBottom: '18px' }}>
-        <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#202124', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Shield size={14} color="#9aa0a6" /> {titulo}
-        </div>
-        {roster.length === 0 && extras.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6', padding: '8px 0' }}>Sin jugadores registrados en este equipo.</div>}
-        {roster.map(j => {
-          const f = filas[j.id] || { jugo: true, goles: 0, amarilla: false, azul: false, roja: false }
-          return (
-            <div key={j.id} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4', opacity: f.jugo ? 1 : .45 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                <input type="checkbox" checked={f.jugo} onChange={e => cambiar(j.id, 'jugo', e.target.checked)} title="¿Jugó este partido?" style={{ width: '17px', height: '17px', flexShrink: 0 }} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: '.85rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.name}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '25px' }}>
-                <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
-                <input type="number" min="0" value={f.goles} disabled={!f.jugo} onChange={e => cambiar(j.id, 'goles', e.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
-                <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)} style={chip(f.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
-                <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'azul', !f.azul)} style={chip(f.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
-                <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'roja', !f.roja)} style={chip(f.roja, '#d93025')} title="Tarjeta roja">🟥</button>
-              </div>
-            </div>
-          )
-        })}
-
-        {/* Jugadores sin registro (todavía sin cédula): solo se anota el
-            nombre acá — NO se crea como jugador de Golmebol. Es un dato
-            "invisible", solo para que el gol o la tarjeta cuenten en este
-            partido; hay que registrarlo formalmente después para que
-            aparezca en goleadores/deuda de tarjetas. */}
-        {extras.map(e => (
-          <div key={e.tempId} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-              <input type="text" value={e.nombre} onChange={ev => cambiarExtra(esLocal, e.tempId, 'nombre', ev.target.value)} placeholder="Nombre del jugador sin registro" autoFocus style={inputNombre} />
-              <button type="button" onClick={() => quitarExtra(esLocal, e.tempId)} title="Quitar" style={{ background: 'none', border: 'none', color: '#d93025', cursor: 'pointer', flexShrink: 0 }}><X size={16} /></button>
-            </div>
-            <div style={{ fontSize: '.62rem', color: '#e8710a', marginBottom: '6px' }}>⚠️ No se registra como jugador (falta cédula) — solo cuenta para este partido. Registralo después para que sus estadísticas cuenten.</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '2px' }}>
-              <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
-              <input type="number" min="0" value={e.goles} onChange={ev => cambiarExtra(esLocal, e.tempId, 'goles', ev.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
-              <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'amarilla', !e.amarilla)} style={chip(e.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
-              <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'azul', !e.azul)} style={chip(e.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
-              <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'roja', !e.roja)} style={chip(e.roja, '#d93025')} title="Tarjeta roja">🟥</button>
-            </div>
-          </div>
-        ))}
-        <button type="button" onClick={() => agregarExtra(esLocal)} style={{ marginTop: '8px', background: 'none', border: '1px dashed #dadce0', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.75rem', fontWeight: '700', width: '100%' }}>
-          + Jugador sin registro
-        </button>
-      </div>
-    )
-  }
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 950, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px' }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '620px', maxHeight: '92vh', overflowY: 'auto', fontFamily: 'system-ui, sans-serif' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-          <div>
-            <div style={{ fontWeight: '800', fontSize: '1rem', color: '#202124' }}>⚡ Carga rápida de resultado</div>
-            <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{partido.home?.name} vs {partido.away?.name}</div>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18} /></button>
-        </div>
-        <div style={{ fontSize: '.7rem', color: '#9aa0a6', margin: '6px 0 12px' }}>
-          Marcá quién jugó, sus goles y tarjetas. El resultado se calcula solo sumando los goles de cada jugador.
-        </div>
-
-        {cargando ? (
-          <div style={{ textAlign: 'center', padding: '30px', color: '#9aa0a6', fontSize: '.85rem' }}>Cargando jugadores...</div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', background: '#f8f9fa', borderRadius: '10px', padding: '10px', marginBottom: '14px' }}>
-              <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', textAlign: 'right', flex: 1 }}>{partido.home?.name}</div>
-              <div style={{ fontWeight: '900', fontSize: '1.3rem', color: '#1a73e8' }}>{golesLocal} - {golesVis}</div>
-              <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', flex: 1 }}>{partido.away?.name}</div>
+      <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '620px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+            <div>
+              <div style={{ fontWeight: '800', fontSize: '1rem', color: '#202124' }}>⚡ Carga rápida de resultado</div>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>{partido.home?.name} vs {partido.away?.name}</div>
             </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18} /></button>
+          </div>
+          <div style={{ fontSize: '.7rem', color: '#9aa0a6', margin: '6px 0 12px' }}>
+            Marcá quién jugó, sus goles y tarjetas. El resultado se calcula solo sumando los goles de cada jugador.
+          </div>
+        </div>
 
-            <Columna titulo={partido.home?.name} roster={rosterLocal} extras={extrasLocal} esLocal={true} />
-            <Columna titulo={partido.away?.name} roster={rosterVis} extras={extrasVis} esLocal={false} />
+        {/* Área con scroll propio: así el resultado y el botón de guardar
+            (abajo, fuera de este bloque) quedan siempre visibles aunque la
+            lista de jugadores sea larga y haya que desplazarse para verlos
+            a todos. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 20px' }}>
+          {cargando ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: '#9aa0a6', fontSize: '.85rem' }}>Cargando jugadores...</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', background: '#f8f9fa', borderRadius: '10px', padding: '10px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', textAlign: 'right', flex: 1 }}>{partido.home?.name}</div>
+                <div style={{ fontWeight: '900', fontSize: '1.3rem', color: '#1a73e8' }}>{golesLocal} - {golesVis}</div>
+                <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', flex: 1 }}>{partido.away?.name}</div>
+              </div>
 
-            <button onClick={guardar} disabled={guardando} style={{ width: '100%', marginTop: '18px', padding: '13px', background: guardando ? '#9aa0a6' : '#1e8e3e', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', cursor: guardando ? 'default' : 'pointer' }}>
-              {guardando ? 'Guardando...' : '✓ Guardar resultado'}
-            </button>
-          </>
-        )}
+              <Columna titulo={partido.home?.name} roster={rosterLocal} extras={extrasLocal} esLocal={true} filas={filas} cambiar={cambiar} cambiarExtra={cambiarExtra} quitarExtra={quitarExtra} />
+              <button type="button" onClick={() => agregarExtra(true)} style={{ marginTop: '-10px', marginBottom: '18px', background: 'none', border: '1px dashed #dadce0', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.75rem', fontWeight: '700', width: '100%' }}>
+                + Jugador sin registro ({partido.home?.name})
+              </button>
+
+              <Columna titulo={partido.away?.name} roster={rosterVis} extras={extrasVis} esLocal={false} filas={filas} cambiar={cambiar} cambiarExtra={cambiarExtra} quitarExtra={quitarExtra} />
+              <button type="button" onClick={() => agregarExtra(false)} style={{ marginTop: '-10px', marginBottom: '4px', background: 'none', border: '1px dashed #dadce0', borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.75rem', fontWeight: '700', width: '100%' }}>
+                + Jugador sin registro ({partido.away?.name})
+              </button>
+            </>
+          )}
+        </div>
+
+        <div style={{ padding: '14px 20px 20px', borderTop: '1px solid #f1f3f4' }}>
+          <button onClick={guardar} disabled={guardando || cargando} style={{ width: '100%', padding: '13px', background: (guardando || cargando) ? '#9aa0a6' : '#1e8e3e', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', cursor: (guardando || cargando) ? 'default' : 'pointer' }}>
+            {guardando ? 'Guardando...' : '✓ Guardar resultado'}
+          </button>
+        </div>
       </div>
     </div>
   )
