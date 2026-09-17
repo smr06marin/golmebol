@@ -130,9 +130,18 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     let cancelado = false
     async function cargar() {
       setCargando(true)
+      // OJO: la lista tiene que salir de tournament_player_registrations
+      // (filtrada por tournament_id Y team_id), NO de team_players — esa
+      // trae TODOS los jugadores que alguna vez se metieron a ese equipo,
+      // en cualquier torneo/categoría (ej: un equipo que juega el 2018-2019
+      // Y el 2016-2017 comparte fila en "teams", pero cada categoría tiene
+      // su propia inscripción de jugadores). Con team_players salían
+      // mezclados los de todas las categorías del equipo en vez de solo
+      // los inscritos en ESTE torneo — el mismo patrón que ya usan bien
+      // PlanillaPartido.jsx y PlanillaRapida.jsx.
       const [{ data: tpLocal }, { data: tpVis }, { data: statsExistentes }, { data: eventosSinRegistro }] = await Promise.all([
-        supabase.from('team_players').select('player_id, players(id,name)').eq('team_id', partido.home_team_id).eq('activo', true),
-        supabase.from('team_players').select('player_id, players(id,name)').eq('team_id', partido.away_team_id).eq('activo', true),
+        supabase.from('tournament_player_registrations').select('player_id, players(id,name)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
+        supabase.from('tournament_player_registrations').select('player_id, players(id,name)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
         supabase.from('player_match_stats').select('*').eq('match_id', partido.id),
         supabase.from('match_events').select('team_id, player_nombre, event_type').eq('match_id', partido.id).is('player_id', null).not('player_nombre', 'is', null),
       ])
