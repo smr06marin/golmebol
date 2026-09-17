@@ -24,13 +24,35 @@ import { resolverPrediccionesPartido } from '../lib/predix'
 // se avisa que falta registrarlo para que sus estadísticas individuales
 // (goleador, deuda de tarjetas, etc.) empiecen a contar.
 
-const inputGoles = { width: '46px', padding: '6px 4px', textAlign: 'center', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem', flexShrink: 0 }
 const inputNombre = { flex: 1, minWidth: 0, padding: '6px 8px', border: '1px solid #dadce0', borderRadius: '6px', fontSize: '.85rem' }
 const chip = (activo, color) => ({
   width: '30px', height: '30px', borderRadius: '7px', border: `1.5px solid ${activo ? color : '#dadce0'}`,
   background: activo ? color : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.7rem', fontWeight: '800',
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
 })
+const arrowBtn = (posicion, disabled) => ({
+  width: '22px', height: '16px', padding: 0, fontSize: '.6rem', lineHeight: '14px',
+  border: '1px solid #dadce0', borderBottom: posicion === 'arriba' ? 'none' : '1px solid #dadce0',
+  borderRadius: posicion === 'arriba' ? '5px 5px 0 0' : '0 0 5px 5px',
+  background: disabled ? '#f1f3f4' : '#fff', color: disabled ? '#c9cdd1' : '#5f6368',
+  cursor: disabled ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+})
+
+// Goles: SOLO con flechas arriba/abajo, sin escribir número — así no hace
+// falta abrir el teclado del celular para nada (y de paso no hay ningún
+// input de texto que pueda perder el foco al tocar otra cosa).
+function StepperGoles({ value, onChange, disabled }) {
+  const n = Number(value || 0)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+      <span style={{ minWidth: '16px', textAlign: 'center', fontSize: '.9rem', fontWeight: '800', color: disabled ? '#c9cdd1' : '#202124' }}>{n}</span>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <button type="button" disabled={disabled} onClick={() => onChange(String(n + 1))} style={arrowBtn('arriba', disabled)} title="Sumar gol">▲</button>
+        <button type="button" disabled={disabled || n === 0} onClick={() => onChange(String(Math.max(0, n - 1)))} style={arrowBtn('abajo', disabled || n === 0)} title="Restar gol">▼</button>
+      </div>
+    </div>
+  )
+}
 
 // IMPORTANTE: este componente va declarado FUERA de ModalCargaRapidaResultado
 // (a nivel de módulo), no adentro. Estaba adentro antes y por eso, al tipear
@@ -57,7 +79,7 @@ function Columna({ titulo, roster, extras, esLocal, filas, cambiar, cambiarExtra
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '25px' }}>
               <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
-              <input type="text" inputMode="numeric" pattern="[0-9]*" value={f.goles} disabled={!f.jugo} onChange={e => cambiar(j.id, 'goles', e.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
+              <StepperGoles value={f.goles} disabled={!f.jugo} onChange={v => cambiar(j.id, 'goles', v)} />
               <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)} style={chip(f.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
               <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'azul', !f.azul)} style={chip(f.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
               <button type="button" disabled={!f.jugo} onClick={() => cambiar(j.id, 'roja', !f.roja)} style={chip(f.roja, '#d93025')} title="Tarjeta roja">🟥</button>
@@ -80,7 +102,7 @@ function Columna({ titulo, roster, extras, esLocal, filas, cambiar, cambiarExtra
           <div style={{ fontSize: '.62rem', color: '#e8710a', marginBottom: '6px' }}>⚠️ No se registra como jugador (falta cédula) — solo cuenta para este partido. Registralo después para que sus estadísticas cuenten.</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '2px' }}>
             <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
-            <input type="text" inputMode="numeric" pattern="[0-9]*" value={e.goles} onChange={ev => cambiarExtra(esLocal, e.tempId, 'goles', ev.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
+            <StepperGoles value={e.goles} onChange={v => cambiarExtra(esLocal, e.tempId, 'goles', v)} />
             <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'amarilla', !e.amarilla)} style={chip(e.amarilla, '#f9a825')} title="Tarjeta amarilla">🟨</button>
             <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'azul', !e.azul)} style={chip(e.azul, '#1a73e8')} title="Tarjeta azul">🟦</button>
             <button type="button" onClick={() => cambiarExtra(esLocal, e.tempId, 'roja', !e.roja)} style={chip(e.roja, '#d93025')} title="Tarjeta roja">🟥</button>
