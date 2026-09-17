@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import PlanillaPartido from '../../components/PlanillaPartido'
+import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
 import VallaEquipos from '../../components/VallaEquipos'
@@ -562,6 +563,7 @@ export default function AdminTorneoDetallePage() {
   }
   const [msg,       setMsg]       = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  const [cargaRapidaPartido, setCargaRapidaPartido] = useState(null) // partido con la "Carga rápida" de resultado abierta (fallback cuando el árbitro no llenó planilla)
   const [modalPartidoAdmin, setModalPartidoAdmin] = useState(null)
   const [partidoAEliminar, setPartidoAEliminar] = useState(null)
   const [eliminandoPartido, setEliminandoPartido] = useState(false)
@@ -3497,6 +3499,14 @@ export default function AdminTorneoDetallePage() {
         <ModalPartidoAdmin partido={modalPartidoAdmin} onClose={() => setModalPartidoAdmin(null)}/>
       )}
 
+      {cargaRapidaPartido && (
+        <ModalCargaRapidaResultado
+          partido={cargaRapidaPartido}
+          onClose={() => setCargaRapidaPartido(null)}
+          onGuardado={() => { showMsg('Resultado guardado ✓'); fetchPartidos(); fetchBracket() }}
+        />
+      )}
+
       {showFlyerProgramacion && <FlyerProgramacion torneo={torneo} equipos={equipos} partidos={partidos} onClose={() => setShowFlyerProgramacion(false)}/>}
 
       {/* Confirmación al eliminar un partido — avisa qué más se borra */}
@@ -4429,6 +4439,7 @@ export default function AdminTorneoDetallePage() {
                                 <button onClick={() => abrirPlanilla(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', fontWeight: '600', display:'flex', alignItems:'center', gap:'4px' }}>
                                   {esJugado ? '✏️ Resultado' : <><Check size={12}/> Resultado</>}
                                 </button>
+                                <button onClick={() => setCargaRapidaPartido(p)} title="Cargar goles y tarjetas a mano, rápido — para cuando el árbitro no llenó planilla" style={{ background:'none', border:'1px solid #ceead6', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#1e8e3e', fontSize:'.75rem', fontWeight:'600' }}>⚡ Carga rápida</button>
                                 <button onClick={() => setPartidoAEliminar(p)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center', gap:'4px', fontSize:'.75rem' }}><X size={13}/> Eliminar</button>
                               </div>
                             </div>
