@@ -16,6 +16,13 @@ import { resolverPrediccionesPartido } from '../lib/predix'
 // vea el partido exactamente igual que si lo hubiera llenado un árbitro.
 // No pide número de camiseta ni arquero — eso solo lo necesita la planilla
 // completa (valla/récords de portero); acá es nomás goles y tarjetas.
+//
+// Un jugador "sin registro" (todavía sin cédula) NO se crea como jugador
+// real de Golmebol — eso rompería el registro formal, que exige cédula.
+// Solo queda anotado su nombre en el detalle del partido (para que el gol o
+// la tarjeta sí cuenten en el resultado y en el historial), y al guardar
+// se avisa que falta registrarlo para que sus estadísticas individuales
+// (goleador, deuda de tarjetas, etc.) empiecen a contar.
 export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado }) {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -34,10 +41,11 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     let cancelado = false
     async function cargar() {
       setCargando(true)
-      const [{ data: tpLocal }, { data: tpVis }, { data: statsExistentes }] = await Promise.all([
+      const [{ data: tpLocal }, { data: tpVis }, { data: statsExistentes }, { data: eventosSinRegistro }] = await Promise.all([
         supabase.from('team_players').select('player_id, players(id,name)').eq('team_id', partido.home_team_id).eq('activo', true),
         supabase.from('team_players').select('player_id, players(id,name)').eq('team_id', partido.away_team_id).eq('activo', true),
         supabase.from('player_match_stats').select('*').eq('match_id', partido.id),
+        supabase.from('match_events').select('team_id, player_nombre, event_type').eq('match_id', partido.id).is('player_id', null).not('player_nombre', 'is', null),
       ])
       if (cancelado) return
       const local = (tpLocal || []).map(t => t.players).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name))
@@ -56,6 +64,28 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
           : { jugo: (statsExistentes || []).length === 0, goles: 0, amarilla: false, azul: false, roja: false }
       })
       setFilas(f)
+
+      // Los jugadores "sin registro" que ya se habían anotado en una carga
+      // anterior de este mismo partido (quedaron como eventos sueltos, sin
+      // player_id) se recuperan acá para que no desaparezcan al reabrir.
+      const porNombre = new Map()
+      ;(eventosSinRegistro || []).forEach(ev => {
+        const key = `${ev.team_id}|${ev.player_nombre}`
+        if (!porNombre.has(key)) porNombre.set(key, { team_id: ev.team_id, nombre: ev.player_nombre, goles: 0, amarilla: false, azul: false, roja: false })
+        const g = porNombre.get(key)
+        if (ev.event_type === 'goal') g.goles += 1
+        else if (ev.event_type === 'yellow_card') g.amarilla = true
+        else if (ev.event_type === 'blue_card') g.azul = true
+        else if (ev.event_type === 'red_card') g.roja = true
+      })
+      const preLocal = [], preVis = []
+      porNombre.forEach(g => {
+        extraIdRef.current += 1
+        const fila = { tempId: extraIdRef.current, nombre: g.nombre, goles: g.goles, amarilla: g.amarilla, azul: g.azul, roja: g.roja }
+        ;(g.team_id === partido.home_team_id ? preLocal : preVis).push(fila)
+      })
+      setExtrasLocal(preLocal)
+      setExtrasVis(preVis)
       setCargando(false)
     }
     cargar()
@@ -100,58 +130,49 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
         } catch (e) { /* no bloquea el guardado */ }
       }
 
-      // Los jugadores sin registro que se hayan escrito (con nombre puesto)
-      // se crean acá en Golmebol y quedan inscritos en su equipo/torneo —
-      // así ya salen identificados por su nombre real en todo lo demás
-      // (historial, deuda de tarjetas, etc.), igual que si el árbitro los
-      // hubiera registrado durante el partido.
-      const filasCombinadas = { ...filas }
-      async function crearExtras(lista, team_id) {
-        const creados = []
-        for (const e of lista) {
-          const nombreLimpio = e.nombre.trim()
-          if (!nombreLimpio) continue
-          const { data: nuevo, error } = await supabase.from('players')
-            .insert({ name: nombreLimpio, activo_membresia: true, fecha_registro: new Date().toISOString() })
-            .select().single()
-          if (error || !nuevo) { erroresGuardado.push(`No se pudo registrar a "${nombreLimpio}": ` + (error?.message || '')); continue }
-          await supabase.from('team_players').insert({ team_id, player_id: nuevo.id, activo: true })
-          await supabase.from('tournament_player_registrations').insert({ tournament_id: partido.tournament_id, team_id, player_id: nuevo.id, activo: true })
-          filasCombinadas[nuevo.id] = { jugo: true, goles: e.goles, amarilla: e.amarilla, azul: e.azul, roja: e.roja }
-          creados.push({ id: nuevo.id, name: nuevo.name })
-        }
-        return creados
-      }
-      const nuevosLocal = await crearExtras(extrasLocal, partido.home_team_id)
-      const nuevosVis = await crearExtras(extrasVis, partido.away_team_id)
-      // Se pasan al roster y se limpian los renglones "sin registro" ya
-      // usados — así, si algo más adelante falla y hay que reintentar
-      // guardar, no se vuelven a crear como jugadores duplicados.
-      if (nuevosLocal.length > 0) { setRosterLocal(prev => [...prev, ...nuevosLocal].sort((a, b) => a.name.localeCompare(b.name))); setExtrasLocal([]) }
-      if (nuevosVis.length > 0) { setRosterVis(prev => [...prev, ...nuevosVis].sort((a, b) => a.name.localeCompare(b.name))); setExtrasVis([]) }
-      setFilas(filasCombinadas)
-
       const todos = [
         ...rosterLocal.map(j => ({ j, team_id: partido.home_team_id, esLocal: true })),
-        ...nuevosLocal.map(j => ({ j, team_id: partido.home_team_id, esLocal: true })),
         ...rosterVis.map(j => ({ j, team_id: partido.away_team_id, esLocal: false })),
-        ...nuevosVis.map(j => ({ j, team_id: partido.away_team_id, esLocal: false })),
-      ].filter(({ j }) => filasCombinadas[j.id]?.jugo)
+      ].filter(({ j }) => filas[j.id]?.jugo)
 
       // Eventos individuales (uno por gol y por tarjeta) — para que el
       // historial de movimientos y tarjetas del torneo vea este partido
       // igual que cualquier otro.
       const eventosDB = []
       todos.forEach(({ j, team_id }) => {
-        const f = filasCombinadas[j.id]
+        const f = filas[j.id]
         for (let i = 0; i < Number(f.goles || 0); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'goal', minute: null, periodo: 1 })
         if (f.amarilla) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'yellow_card', minute: null, periodo: 1 })
         if (f.azul) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'blue_card', minute: null, periodo: 1 })
         if (f.roja) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'red_card', minute: null, periodo: 1 })
       })
+
+      // Jugadores SIN registro: no se crean en Golmebol (no tienen cédula
+      // todavía) — quedan solo como eventos sueltos con el nombre escrito a
+      // mano (sin player_id), para que sus goles/tarjetas SÍ cuenten en el
+      // marcador y en el historial de movimientos del partido, pero sin
+      // aparecer como jugador real hasta que alguien los registre bien.
+      const nombresSinRegistro = []
+      const agregarExtrasAEventos = (lista, team_id) => {
+        lista.forEach(e => {
+          const nombreLimpio = e.nombre.trim()
+          if (!nombreLimpio) return
+          nombresSinRegistro.push(nombreLimpio)
+          for (let i = 0; i < Number(e.goles || 0); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'goal', minute: null, periodo: 1 })
+          if (e.amarilla) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'yellow_card', minute: null, periodo: 1 })
+          if (e.azul) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'blue_card', minute: null, periodo: 1 })
+          if (e.roja) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'red_card', minute: null, periodo: 1 })
+        })
+      }
+      agregarExtrasAEventos(extrasLocal, partido.home_team_id)
+      agregarExtrasAEventos(extrasVis, partido.away_team_id)
+
       await supabase.from('match_events').delete().eq('match_id', partido.id)
       if (eventosDB.length > 0) {
-        const { error } = await supabase.from('match_events').insert(eventosDB)
+        let { error } = await supabase.from('match_events').insert(eventosDB)
+        if (error && (error.message || '').includes('player_nombre')) {
+          ;({ error } = await supabase.from('match_events').insert(eventosDB.map(({ player_nombre, ...e }) => e)))
+        }
         if (error) erroresGuardado.push('Eventos: ' + error.message)
       }
 
@@ -160,7 +181,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
 
       const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
       const statsRows = todos.map(({ j, team_id, esLocal }) => {
-        const f = filasCombinadas[j.id]
+        const f = filas[j.id]
         const gF = esLocal ? golesLocal : golesVis
         const gC = esLocal ? golesVis : golesLocal
         return {
@@ -207,6 +228,9 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
       if (erroresGuardado.length > 0) {
         alert('⚠️ Hubo un problema guardando:\n\n' + erroresGuardado.join('\n'))
         return
+      }
+      if (nombresSinRegistro.length > 0) {
+        alert('✓ Resultado guardado.\n\n📋 Recordá registrar en el equipo (con cédula) a:\n' + nombresSinRegistro.map(n => '• ' + n).join('\n') + '\n\nSus goles/tarjetas de este partido ya quedaron contados en el marcador, pero no van a salir en las estadísticas individuales ni en la deuda de tarjetas hasta que estén registrados.')
       }
       onGuardado && onGuardado(golesLocal, golesVis)
       onClose && onClose()
@@ -256,15 +280,18 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
           )
         })}
 
-        {/* Jugadores sin registro: solo escribir el nombre acá mismo — al
-            guardar quedan registrados de una en Golmebol y su historia
-            (goles, tarjetas) queda como la de cualquier otro jugador. */}
+        {/* Jugadores sin registro (todavía sin cédula): solo se anota el
+            nombre acá — NO se crea como jugador de Golmebol. Es un dato
+            "invisible", solo para que el gol o la tarjeta cuenten en este
+            partido; hay que registrarlo formalmente después para que
+            aparezca en goleadores/deuda de tarjetas. */}
         {extras.map(e => (
           <div key={e.tempId} style={{ padding: '8px 4px', borderBottom: '1px solid #f1f3f4' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
               <input type="text" value={e.nombre} onChange={ev => cambiarExtra(esLocal, e.tempId, 'nombre', ev.target.value)} placeholder="Nombre del jugador sin registro" autoFocus style={inputNombre} />
               <button type="button" onClick={() => quitarExtra(esLocal, e.tempId)} title="Quitar" style={{ background: 'none', border: 'none', color: '#d93025', cursor: 'pointer', flexShrink: 0 }}><X size={16} /></button>
             </div>
+            <div style={{ fontSize: '.62rem', color: '#e8710a', marginBottom: '6px' }}>⚠️ No se registra como jugador (falta cédula) — solo cuenta para este partido. Registralo después para que sus estadísticas cuenten.</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '2px' }}>
               <span style={{ fontSize: '.65rem', color: '#9aa0a6', flexShrink: 0 }}>Goles</span>
               <input type="number" min="0" value={e.goles} onChange={ev => cambiarExtra(esLocal, e.tempId, 'goles', ev.target.value.replace(/[^0-9]/g, ''))} style={inputGoles} title="Goles" />
