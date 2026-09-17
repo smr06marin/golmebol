@@ -3,10 +3,15 @@ import { useRef, useState } from 'react'
 import { Shield, Download, X } from 'lucide-react'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { descargarFlyer } from '../lib/flyerDescarga'
+import { TEMAS_PARTIDO } from '../lib/flyerTemas'
+import SelectorTemaFlyer from './SelectorTemaFlyer'
 
 export default function FlyerPartido({ partido, onClose }) {
   const flyerRef = useRef(null)
   const [descargando, setDescargando] = useState(false)
+  const [temaId, setTemaId] = useState(TEMAS_PARTIDO[0].id)
+  const tema = TEMAS_PARTIDO.find(t => t.id === temaId) || TEMAS_PARTIDO[0]
+  const { principal, secundario, watermark } = tema
 
   async function handleDescargar() {
     if (!flyerRef.current) return
@@ -47,6 +52,8 @@ export default function FlyerPartido({ partido, onClose }) {
           </div>
         </div>
 
+        <SelectorTemaFlyer temas={TEMAS_PARTIDO} temaId={temaId} onElegir={setTemaId} />
+
         {/* FLYER */}
         <div ref={flyerRef} style={{
           width: '400px',
@@ -54,11 +61,11 @@ export default function FlyerPartido({ partido, onClose }) {
           position: 'relative',
           overflow: 'hidden',
           fontFamily: "'Arial Black', 'Impact', sans-serif",
-          background: '#F5C800',
+          background: principal,
           margin: '0 auto',
         }}>
           {/* Fondo azul central */}
-          <div style={{ position: 'absolute', top: '60px', left: '20px', right: '20px', bottom: '60px', background: '#1a3a8a', borderRadius: '4px' }}/>
+          <div style={{ position: 'absolute', top: '60px', left: '20px', right: '20px', bottom: '60px', background: secundario, borderRadius: '4px' }}/>
 
           {/* Rayones decorativos blancos */}
           <div style={{ position: 'absolute', bottom: '40px', left: '0', right: '0', height: '120px', opacity: .15 }}>
@@ -85,7 +92,7 @@ export default function FlyerPartido({ partido, onClose }) {
 
           {/* Título PROGRAMA / RESULTADO */}
           <div style={{ position: 'absolute', top: '78px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
-            <div style={{ color: '#F5C800', fontSize: '52px', fontWeight: '900', lineHeight: 1, letterSpacing: '-1px', textShadow: '3px 3px 0 rgba(0,0,0,.3)', textTransform: 'uppercase' }}>
+            <div style={{ color: principal, fontSize: '52px', fontWeight: '900', lineHeight: 1, letterSpacing: '-1px', textShadow: '3px 3px 0 rgba(0,0,0,.3)', textTransform: 'uppercase' }}>
               {esJugado ? 'RESULTADO' : 'PARTIDO'}
             </div>
             {/* Línea roja */}
@@ -95,7 +102,7 @@ export default function FlyerPartido({ partido, onClose }) {
           {/* Fecha y hora */}
           <div style={{ position: 'absolute', top: '175px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
             <div style={{ color: '#fff', fontSize: '13px', fontWeight: '600', letterSpacing: '1px', textTransform: 'capitalize' }}>{fecha}</div>
-            {hora && <div style={{ color: '#F5C800', fontSize: '16px', fontWeight: '800', marginTop: '2px' }}>{hora}</div>}
+            {hora && <div style={{ color: principal, fontSize: '16px', fontWeight: '800', marginTop: '2px' }}>{hora}</div>}
           </div>
 
           {/* Equipos */}
@@ -103,10 +110,10 @@ export default function FlyerPartido({ partido, onClose }) {
             
             {/* Local */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', flex: 1 }}>
-              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#fff', border: '4px solid #F5C800', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,.3)' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#fff', border: `4px solid ${principal}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,.3)' }}>
                 {partido.home?.logo_url
                   ? <img src={partido.home.logo_url} style={{ width: '90%', height: '90%', objectFit: 'contain' }} crossOrigin="anonymous"/>
-                  : <Shield size={36} color="#1a3a8a"/>
+                  : <Shield size={36} color={secundario}/>
                 }
               </div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: '900', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px', maxWidth: '110px', lineHeight: '1.2' }}>
@@ -119,11 +126,11 @@ export default function FlyerPartido({ partido, onClose }) {
               {esJugado ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <span style={{ fontSize: '72px', fontWeight: '900', color: '#F5C800', lineHeight: 1, textShadow: '2px 2px 0 rgba(0,0,0,.3)' }}>{partido.home_score}</span>
+                    <span style={{ fontSize: '72px', fontWeight: '900', color: principal, lineHeight: 1, textShadow: '2px 2px 0 rgba(0,0,0,.3)' }}>{partido.home_score}</span>
                   </div>
                   <span style={{ fontSize: '28px', fontWeight: '900', color: '#fff', opacity: .7 }}>-</span>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <span style={{ fontSize: '72px', fontWeight: '900', color: '#F5C800', lineHeight: 1, textShadow: '2px 2px 0 rgba(0,0,0,.3)' }}>{partido.away_score}</span>
+                    <span style={{ fontSize: '72px', fontWeight: '900', color: principal, lineHeight: 1, textShadow: '2px 2px 0 rgba(0,0,0,.3)' }}>{partido.away_score}</span>
                   </div>
                 </div>
               ) : (
@@ -135,10 +142,10 @@ export default function FlyerPartido({ partido, onClose }) {
 
             {/* Visitante */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', flex: 1 }}>
-              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#fff', border: '4px solid #F5C800', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,.3)' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#fff', border: `4px solid ${principal}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,.3)' }}>
                 {partido.away?.logo_url
                   ? <img src={partido.away.logo_url} style={{ width: '90%', height: '90%', objectFit: 'contain' }} crossOrigin="anonymous"/>
-                  : <Shield size={36} color="#1a3a8a"/>
+                  : <Shield size={36} color={secundario}/>
                 }
               </div>
               <div style={{ color: '#fff', fontSize: '13px', fontWeight: '900', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px', maxWidth: '110px', lineHeight: '1.2' }}>
@@ -159,7 +166,7 @@ export default function FlyerPartido({ partido, onClose }) {
           {/* Jornada */}
           {partido.matchday && (
             <div style={{ position: 'absolute', bottom: '108px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
-              <span style={{ color: '#F5C800', fontSize: '12px', fontWeight: '800', letterSpacing: '2px' }}>
+              <span style={{ color: principal, fontSize: '12px', fontWeight: '800', letterSpacing: '2px' }}>
                 JORNADA {partido.matchday}
               </span>
             </div>
@@ -168,7 +175,7 @@ export default function FlyerPartido({ partido, onClose }) {
           {/* Marca de agua GOLMEBOL abajo — chiquita, el torneo ya
               apareció arriba como protagonista */}
           <div style={{ position: 'absolute', bottom: '20px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
-            <div style={{ color: 'rgba(26,58,138,.65)', fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px' }}>
+            <div style={{ color: watermark, fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px' }}>
               GOLMEBOL · LA CASA DEL MICROFÚTBOL
             </div>
           </div>

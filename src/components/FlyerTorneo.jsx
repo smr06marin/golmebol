@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { Shield, Trophy, Download, X, Ticket } from 'lucide-react'
 import { descargarFlyer } from '../lib/flyerDescarga'
+import { TEMAS_TORNEO } from '../lib/flyerTemas'
+import SelectorTemaFlyer from './SelectorTemaFlyer'
 
 const CENTER_TAM = 124 // diámetro del escudo del torneo, al centro
 const HEADER_H   = 122 // alto del bloque de título arriba
@@ -58,6 +60,8 @@ function CrestBadge({ item, tam }) {
 export default function FlyerTorneo({ torneo, equipos, onClose }) {
   const flyerRef = useRef(null)
   const [descargando, setDescargando] = useState(false)
+  const [temaId, setTemaId] = useState(TEMAS_TORNEO[0].id)
+  const tema = TEMAS_TORNEO.find(t => t.id === temaId) || TEMAS_TORNEO[0]
 
   const cuposPermitidos = torneo?.equipos_permitidos || 0
   const cuposRestantes  = Math.max(0, cuposPermitidos - equipos.length)
@@ -146,6 +150,8 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
           </div>
         </div>
 
+        <SelectorTemaFlyer temas={TEMAS_TORNEO} temaId={temaId} onElegir={setTemaId} />
+
         {/* FLYER */}
         <div ref={flyerRef} style={{
           width: `${flyerWidth}px`,
@@ -153,7 +159,7 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
           position: 'relative',
           overflow: 'hidden',
           fontFamily: "'Arial Black', 'Impact', sans-serif",
-          background: 'radial-gradient(circle at 50% 28%, #1a3a8a 0%, #0c1c4a 55%, #06102c 100%)',
+          background: tema.fondo,
           margin: '0 auto',
         }}>
           {/* Header */}
@@ -171,7 +177,7 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
           <div style={{ position: 'absolute', top: `${HEADER_H}px`, left: '50%', transform: 'translateX(-50%)', width: `${circleSize}px`, height: `${circleSize}px` }}>
             {/* Escudo del torneo, al centro */}
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 6 }}>
-              <div style={{ width: `${CENTER_TAM}px`, height: `${CENTER_TAM}px`, borderRadius: '50%', background: '#fff', border: '5px solid #00ddd0', boxShadow: '0 0 28px rgba(0,221,208,.55), 0 6px 18px rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <div style={{ width: `${CENTER_TAM}px`, height: `${CENTER_TAM}px`, borderRadius: '50%', background: '#fff', border: `5px solid ${tema.acento}`, boxShadow: `0 0 28px ${tema.acentoGlow}, 0 6px 18px rgba(0,0,0,.4)`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                 {torneo?.logo_url
                   ? <img src={torneo.logo_url} crossOrigin="anonymous" style={{ width: '86%', height: '86%', objectFit: 'contain' }}/>
                   : <Trophy size={52} color="#1a3a8a"/>}
