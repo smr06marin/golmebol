@@ -304,6 +304,45 @@ export default function AdminJugadoresPage() {
   // organizador ve los jugadores de su torneo desde el detalle de su propio
   // torneo, no desde este listado global.
   useEffect(() => { if (rol?.rol === 'organizador') navigate('/admin', { replace: true }) }, [rol])
+
+  // Contadores y lista filtrada — memoizados: antes se recalculaban con
+  // varios .filter() sobre TODOS los jugadores en cada render (cada tecla
+  // del buscador), ahora solo se recalculan si "jugadores"/"search"/
+  // "filtroMembresia" realmente cambiaron.
+  //
+  // OJO: estos useMemo tienen que ir ANTES del "return null" de más abajo.
+  // Antes estaban después, entonces cuando "rol" pasaba a ser 'organizador'
+  // el componente dejaba de llamar estos 3 hooks pero seguía llamando los
+  // ~20 useState/useEffect de arriba — distinta cantidad de hooks entre
+  // renders, lo que rompe React (crashea la página, no es solo un warning).
+  const { cActivos, cVencidos, cSinCuenta, cPorVencer, cPendientes, cFotos } = useMemo(() => ({
+    cActivos:    jugadores.filter(j => j.activo_membresia).length,
+    cVencidos:   jugadores.filter(j => !j.activo_membresia && j.user_id && !j.whatsapp).length,
+    cSinCuenta:  jugadores.filter(j => !j.user_id).length,
+    cPorVencer:  jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length,
+    cPendientes: jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length,
+    cFotos:      jugadores.filter(tieneFotoPendiente).length,
+  }), [jugadores])
+
+  const filtered = useMemo(() => jugadores.filter(j => {
+    const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
+    if (!matchSearch) return false
+    if (filtroMembresia === 'activos')    return j.activo_membresia
+    if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id && !j.whatsapp
+    if (filtroMembresia === 'sin_cuenta') return !j.user_id
+    if (filtroMembresia === 'pendientes') return j.user_id && j.whatsapp && !j.activo_membresia
+    if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
+    return true
+  }), [jugadores, search, filtroMembresia])
+
+  // Antes este mismo .filter() se repetía 3 veces idéntico en el JSX (una
+  // para el "if" de mostrar la sección, otra para el contador del título, y
+  // otra para el .map()) — ahora se calcula una sola vez.
+  const pendientesVerificacion = useMemo(
+    () => jugadores.filter(j => j.verificado === false && j.activo_membresia),
+    [jugadores]
+  )
+
   if (rol?.rol === 'organizador') return null
 
   async function fetchJugadores() {
@@ -693,38 +732,6 @@ export default function AdminJugadoresPage() {
     setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campoFlag]: marcar } : j))
     showMsg(marcar ? 'Marcada — se le pedirá al jugador que la cambie' : 'Aviso quitado')
   }
-
-  // Contadores y lista filtrada — memoizados: antes se recalculaban con
-  // varios .filter() sobre TODOS los jugadores en cada render (cada tecla
-  // del buscador), ahora solo se recalculan si "jugadores"/"search"/
-  // "filtroMembresia" realmente cambiaron.
-  const { cActivos, cVencidos, cSinCuenta, cPorVencer, cPendientes, cFotos } = useMemo(() => ({
-    cActivos:    jugadores.filter(j => j.activo_membresia).length,
-    cVencidos:   jugadores.filter(j => !j.activo_membresia && j.user_id && !j.whatsapp).length,
-    cSinCuenta:  jugadores.filter(j => !j.user_id).length,
-    cPorVencer:  jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length,
-    cPendientes: jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length,
-    cFotos:      jugadores.filter(tieneFotoPendiente).length,
-  }), [jugadores])
-
-  const filtered = useMemo(() => jugadores.filter(j => {
-    const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
-    if (!matchSearch) return false
-    if (filtroMembresia === 'activos')    return j.activo_membresia
-    if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id && !j.whatsapp
-    if (filtroMembresia === 'sin_cuenta') return !j.user_id
-    if (filtroMembresia === 'pendientes') return j.user_id && j.whatsapp && !j.activo_membresia
-    if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
-    return true
-  }), [jugadores, search, filtroMembresia])
-
-  // Antes este mismo .filter() se repetía 3 veces idéntico en el JSX (una
-  // para el "if" de mostrar la sección, otra para el contador del título, y
-  // otra para el .map()) — ahora se calcula una sola vez.
-  const pendientesVerificacion = useMemo(
-    () => jugadores.filter(j => j.verificado === false && j.activo_membresia),
-    [jugadores]
-  )
 
   return (
     <div>

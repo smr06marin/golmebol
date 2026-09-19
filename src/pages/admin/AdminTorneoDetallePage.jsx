@@ -45,70 +45,6 @@ function ModalPartidoAdmin({ partido, onClose }) {
   const local     = stats.filter(s => s.team_id === partido.home_team_id)
   const visitante = stats.filter(s => s.team_id === partido.away_team_id)
 
-  function TeamStats({ jugadores, equipo, logo }) {
-    const goleadores = jugadores.filter(j => j.goals_scored > 0)
-    const amarillas  = jugadores.filter(j => j.yellow_cards > 0)
-    const azules     = jugadores.filter(j => j.blue_cards > 0)
-    const rojas      = jugadores.filter(j => j.red_cards > 0)
-    const faltas     = jugadores.filter(j => j.fouls > 0)
-    return (
-      <div style={{ flex: 1 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
-          <div style={{ width:'28px', height:'28px', borderRadius:'50%', background:'#f1f3f4', border:'1px solid #e8eaed', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            {logo ? <img src={logo} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={13} color="#9aa0a6"/>}
-          </div>
-          <span style={{ fontWeight:'700', fontSize:'.85rem', color:'#202124' }}>{equipo}</span>
-        </div>
-        {jugadores.length === 0 && <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>Sin datos</div>}
-        {goleadores.length > 0 && (
-          <div style={{ marginBottom:'10px' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>⚽ Goles</div>
-            {goleadores.map(j => (
-              <div key={j.player_id} style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px' }}>
-                <div style={{ width:'22px', height:'22px', borderRadius:'50%', background:'#f1f3f4', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  {j.players?.photo_face_url || j.players?.photo_url ? <img src={j.players.photo_face_url || j.players.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.65rem' }}>👤</span>}
-                </div>
-                <span style={{ fontSize:'.78rem', color:'#202124', flex:1 }}>{j.players?.name}</span>
-                <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#1e8e3e' }}>×{j.goals_scored}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {amarillas.length > 0 && (
-          <div style={{ marginBottom:'8px' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>🟨 Amarillas</div>
-            {amarillas.map(j => <div key={j.player_id} style={{ fontSize:'.75rem', color:'#e8710a', marginBottom:'2px' }}>• {j.players?.name}</div>)}
-          </div>
-        )}
-        {azules.length > 0 && (
-          <div style={{ marginBottom:'8px' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>🟦 Azules</div>
-            {azules.map(j => <div key={j.player_id} style={{ fontSize:'.75rem', color:'#1a73e8', marginBottom:'2px' }}>• {j.players?.name}</div>)}
-          </div>
-        )}
-        {rojas.length > 0 && (
-          <div style={{ marginBottom:'8px' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>🟥 Rojas</div>
-            {rojas.map(j => <div key={j.player_id} style={{ fontSize:'.75rem', color:'#d93025', marginBottom:'2px' }}>• {j.players?.name}</div>)}
-          </div>
-        )}
-        {faltas.length > 0 && (
-          <div style={{ marginBottom:'8px' }}>
-            <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>✋ Faltas</div>
-            {faltas.map(j => (
-              <div key={j.player_id} style={{ display:'flex', justifyContent:'space-between', fontSize:'.75rem', color:'#5f6368', marginBottom:'2px' }}>
-                <span>• {j.players?.name}</span><span style={{ fontWeight:'600' }}>{j.fouls}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {goleadores.length===0 && amarillas.length===0 && azules.length===0 && rojas.length===0 && faltas.length===0 && jugadores.length>0 && (
-          <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>Sin incidencias</div>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:2000, display:'flex', alignItems:'flex-end', justifyContent:'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
@@ -173,7 +109,74 @@ function ModalPartidoAdmin({ partido, onClose }) {
   )
 }
 
-
+// Antes esto estaba definido DENTRO de ModalPartidoAdmin, en cada render se
+// creaba una función/componente nuevo — React lo trataba como un tipo de
+// componente distinto cada vez y le reseteaba el estado interno solo. Como
+// TeamStats no usa nada de ModalPartidoAdmin aparte de sus props, sacarlo
+// afuera no cambia el comportamiento, solo evita recrearlo en cada render.
+function TeamStats({ jugadores, equipo, logo }) {
+  const goleadores = jugadores.filter(j => j.goals_scored > 0)
+  const amarillas  = jugadores.filter(j => j.yellow_cards > 0)
+  const azules     = jugadores.filter(j => j.blue_cards > 0)
+  const rojas      = jugadores.filter(j => j.red_cards > 0)
+  const faltas     = jugadores.filter(j => j.fouls > 0)
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+        <div style={{ width:'28px', height:'28px', borderRadius:'50%', background:'#f1f3f4', border:'1px solid #e8eaed', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          {logo ? <img src={logo} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={13} color="#9aa0a6"/>}
+        </div>
+        <span style={{ fontWeight:'700', fontSize:'.85rem', color:'#202124' }}>{equipo}</span>
+      </div>
+      {jugadores.length === 0 && <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>Sin datos</div>}
+      {goleadores.length > 0 && (
+        <div style={{ marginBottom:'10px' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>⚽ Goles</div>
+          {goleadores.map(j => (
+            <div key={j.player_id} style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px' }}>
+              <div style={{ width:'22px', height:'22px', borderRadius:'50%', background:'#f1f3f4', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {j.players?.photo_face_url || j.players?.photo_url ? <img src={j.players.photo_face_url || j.players.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.65rem' }}>👤</span>}
+              </div>
+              <span style={{ fontSize:'.78rem', color:'#202124', flex:1 }}>{j.players?.name}</span>
+              <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#1e8e3e' }}>×{j.goals_scored}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {amarillas.length > 0 && (
+        <div style={{ marginBottom:'8px' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>🟨 Amarillas</div>
+          {amarillas.map(j => <div key={j.player_id} style={{ fontSize:'.75rem', color:'#e8710a', marginBottom:'2px' }}>• {j.players?.name}</div>)}
+        </div>
+      )}
+      {azules.length > 0 && (
+        <div style={{ marginBottom:'8px' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>🟦 Azules</div>
+          {azules.map(j => <div key={j.player_id} style={{ fontSize:'.75rem', color:'#1a73e8', marginBottom:'2px' }}>• {j.players?.name}</div>)}
+        </div>
+      )}
+      {rojas.length > 0 && (
+        <div style={{ marginBottom:'8px' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>🟥 Rojas</div>
+          {rojas.map(j => <div key={j.player_id} style={{ fontSize:'.75rem', color:'#d93025', marginBottom:'2px' }}>• {j.players?.name}</div>)}
+        </div>
+      )}
+      {faltas.length > 0 && (
+        <div style={{ marginBottom:'8px' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#5f6368', marginBottom:'4px', textTransform:'uppercase' }}>✋ Faltas</div>
+          {faltas.map(j => (
+            <div key={j.player_id} style={{ display:'flex', justifyContent:'space-between', fontSize:'.75rem', color:'#5f6368', marginBottom:'2px' }}>
+              <span>• {j.players?.name}</span><span style={{ fontWeight:'600' }}>{j.fouls}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {goleadores.length===0 && amarillas.length===0 && azules.length===0 && rojas.length===0 && faltas.length===0 && jugadores.length>0 && (
+        <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>Sin incidencias</div>
+      )}
+    </div>
+  )
+}
 
 const TABS = [
   { id: 'actividad',       label: 'Actividad',       icon: <Trophy size={16}/> },
