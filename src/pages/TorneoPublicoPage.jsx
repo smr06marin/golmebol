@@ -8,6 +8,8 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { getRondaNombre as getRondaNombrePreview, getFaseValue as getFaseValuePreview } from '../lib/bracketHelpers'
+import { computeTablaGeneral, computeVallaEquipos } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
@@ -19,20 +21,8 @@ const FASE_LABEL_ELIM = { octavos: '⚔️ Octavos', cuartos: '🔥 Cuartos', se
 
 // Nombre/fase de cada ronda de la VISTA PREVIA (antes de que existan
 // partidos reales de eliminatorias) — misma lógica que usa el admin en
-// AdminTorneoDetallePage para armar su vista previa en vivo.
-function getRondaNombrePreview(total) {
-  if (total === 16) return 'Octavos de final'
-  if (total === 8)  return 'Cuartos de final'
-  if (total === 4 || total === 3) return 'Semifinal'
-  if (total === 2)  return 'Final'
-  return `Ronda de ${total}`
-}
-function getFaseValuePreview(total) {
-  if (total > 8) return 'octavos'
-  if (total > 4) return 'cuartos'
-  if (total > 2) return 'semifinal'
-  return 'final'
-}
+// AdminTorneoDetallePage para armar su vista previa en vivo (ahora en
+// src/lib/bracketHelpers.js, compartida entre las tres vistas).
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -776,23 +766,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
   // Tabla de posiciones
   const P = getPuntosTorneo(torneo)
-  const tabla = {}
-  equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
-  partidos.filter(p => p.status === 'finished' && (!p.fase || p.fase === 'grupo')).forEach(p => {
-    if (tabla[p.home_team_id]) {
-      tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
-      if (p.home_score > p.away_score) { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
-      else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
-      else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
-    }
-    if (tabla[p.away_team_id]) {
-      tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score || 0; tabla[p.away_team_id].gc += p.home_score || 0
-      if (p.away_score > p.home_score) { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
-      else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
-      else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
-    }
-  })
-  const tablaOrdenada = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+  const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
 
   // Tabla de un grupo específico — solo cuenta partidos entre equipos de ese
   // mismo grupo en fase de grupos (misma lógica que usa el jugador/admin).
@@ -908,17 +882,10 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // de la tabla de posiciones (que en fase de grupos ya no cuenta partidos
   // de eliminación directa), acá los goles en contra deben seguir sumando
   // aunque el torneo ya esté en eliminatorias.
-  const gcTotal = {}, pjValla = {}
-  partidos.filter(p => p.status === 'finished').forEach(p => {
-    if (tabla[p.home_team_id]) { gcTotal[p.home_team_id] = (gcTotal[p.home_team_id] || 0) + (p.away_score || 0); pjValla[p.home_team_id] = (pjValla[p.home_team_id] || 0) + 1 }
-    if (tabla[p.away_team_id]) { gcTotal[p.away_team_id] = (gcTotal[p.away_team_id] || 0) + (p.home_score || 0); pjValla[p.away_team_id] = (pjValla[p.away_team_id] || 0) + 1 }
-  })
-  const vallaEquipos = equipos.filter(e => pjValla[e.id] > 0)
-    .map(e => ({
-      equipo: e, gc: gcTotal[e.id] || 0, pj: pjValla[e.id] || 0,
-      arqueros: porteros.filter(p => p.team_id === e.id).map(p => ({ name: p.name, foto: p.photo_face_url || p.photo_url })),
-    }))
-    .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
+  const vallaEquipos = computeVallaEquipos(equipos, partidos, porteros).map(row => ({
+    ...row,
+    arqueros: row.arqueros.map(p => ({ name: p.name, foto: p.photo_face_url || p.photo_url })),
+  }))
 
   // "Fase eliminatoria" (el árbol de llaves) aparece como una pestaña MÁS,
   // sin tapar Posiciones — así la gente puede seguir viendo la tabla de

@@ -8,6 +8,8 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { getRondaNombre, getFaseValue } from '../lib/bracketHelpers'
+import { computeTablaGeneral, computeVallaEquipos } from '../lib/torneoTablas'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -21,20 +23,6 @@ const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 // de fases que usa el admin para armar el bracket.
 const FASE_ORDEN_ELIM = ['octavos', 'cuartos', 'semifinal', 'final']
 const FASE_LABEL_ELIM = { octavos: '⚔️ Octavos', cuartos: '🔥 Cuartos', semifinal: '⚡ Semifinal', final: '🏆 Final' }
-
-function getRondaNombre(total) {
-  if (total === 16) return 'Octavos de final'
-  if (total === 8)  return 'Cuartos de final'
-  if (total === 4 || total === 3) return 'Semifinal'
-  if (total === 2)  return 'Final'
-  return `Ronda de ${total}`
-}
-function getFaseValue(total) {
-  if (total > 8) return 'octavos'
-  if (total > 4) return 'cuartos'
-  if (total > 2) return 'semifinal'
-  return 'final'
-}
 
 // Título de tabla que se despliega al tocarlo: arranca cerrado mostrando
 // solo el nombre, y al hacer click se amplía mostrando la tabla completa.
@@ -704,24 +692,7 @@ export default function PlayerTorneoPage() {
     return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
   }
 
-  const puntosTabla = getPuntosTorneo(torneo)
-  const tabla = {}
-  equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
-  partidos.filter(p => p.status === 'finished' && (p.fase === 'grupo' || !p.fase)).forEach(p => {
-    if (tabla[p.home_team_id]) {
-      tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score||0; tabla[p.home_team_id].gc += p.away_score||0
-      if (p.home_score > p.away_score) { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += puntosTabla.victoria }
-      else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += puntosTabla.empate }
-      else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += puntosTabla.derrota }
-    }
-    if (tabla[p.away_team_id]) {
-      tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score||0; tabla[p.away_team_id].gc += p.home_score||0
-      if (p.away_score > p.home_score) { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += puntosTabla.victoria }
-      else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += puntosTabla.empate }
-      else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += puntosTabla.derrota }
-    }
-  })
-  const tablaOrdenada      = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+  const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
 
   // ── Proyección en vivo del árbol (antes de que el admin cree el bracket
   // real) — misma lógica que usa el admin para su "vista previa en vivo",
@@ -807,18 +778,7 @@ export default function PlayerTorneoPage() {
   // de la tabla de posiciones (que en fase de grupos ya no cuenta partidos
   // de eliminación directa), acá los goles en contra deben seguir sumando
   // aunque el torneo ya esté en eliminatorias.
-  const gcVallaTotal = {}, pjVallaTotal = {}
-  partidos.filter(p => p.status === 'finished').forEach(p => {
-    if (tabla[p.home_team_id]) { gcVallaTotal[p.home_team_id] = (gcVallaTotal[p.home_team_id] || 0) + (p.away_score || 0); pjVallaTotal[p.home_team_id] = (pjVallaTotal[p.home_team_id] || 0) + 1 }
-    if (tabla[p.away_team_id]) { gcVallaTotal[p.away_team_id] = (gcVallaTotal[p.away_team_id] || 0) + (p.home_score || 0); pjVallaTotal[p.away_team_id] = (pjVallaTotal[p.away_team_id] || 0) + 1 }
-  })
-  const vallaEquiposRows = equipos
-    .filter(e => pjVallaTotal[e.id] > 0)
-    .map(e => ({
-      equipo: e, gc: gcVallaTotal[e.id] || 0, pj: pjVallaTotal[e.id] || 0,
-      arqueros: arquerosEquipos.filter(a => a.team_id === e.id),
-    }))
-    .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
+  const vallaEquiposRows = computeVallaEquipos(equipos, partidos, arquerosEquipos)
   const partidosJugados    = partidos.filter(p => p.status === 'finished')
   // "partidos" viene ordenado del más reciente al más antiguo (para que
   // Resultados muestre el último jugado primero). Los próximos necesitan el

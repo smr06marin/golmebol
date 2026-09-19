@@ -3,6 +3,8 @@ import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-
 import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
+import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
+import { computeTablaGeneral, computeVallaEquipos } from '../../lib/torneoTablas'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
@@ -237,20 +239,6 @@ const DIAS_SEMANA_UI = [1, 2, 3, 4, 5, 6, 0].map(i => DIAS_SEMANA[i])
 // Horas que se pueden marcar como horario específico de un día (5am–11pm,
 // suficiente para torneos amateur de fútbol 5/7/11).
 const HORAS_CHIP = Array.from({ length: 19 }, (_, i) => `${String(i + 5).padStart(2, '0')}:00`)
-
-function getRondaNombre(total) {
-  if (total === 16) return 'Octavos de final'
-  if (total === 8)  return 'Cuartos de final'
-  if (total === 4 || total === 3) return 'Semifinal'
-  if (total === 2)  return 'Final'
-  return `Ronda de ${total}`
-}
-function getFaseValue(total) {
-  if (total > 8) return 'octavos'
-  if (total > 4) return 'cuartos'
-  if (total > 2) return 'semifinal'
-  return 'final'
-}
 
 // played_at llega de Supabase en UTC (ej: "2026-07-25T01:00:00+00:00").
 // Colombia es UTC-5 todo el año — se resta ese offset para sacar la fecha/hora
@@ -2629,24 +2617,7 @@ export default function AdminTorneoDetallePage() {
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
-    const P = getPuntosTorneo(torneo)
-    const tabla = {}
-    equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
-    partidos.filter(p => p.status === 'finished' && (!p.fase || p.fase === 'grupo')).forEach(p => {
-      if (tabla[p.home_team_id]) {
-        tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
-        if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
-        else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
-        else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
-      }
-      if (tabla[p.away_team_id]) {
-        tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score || 0; tabla[p.away_team_id].gc += p.home_score || 0
-        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
-        else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
-        else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
-      }
-    })
-    return Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    return computeTablaGeneral(equipos, partidos, torneo)
   }
 
   // ── CALENDARIO ──────────────────────────────────────
@@ -3462,17 +3433,7 @@ export default function AdminTorneoDetallePage() {
   // los goles en contra acá deben seguir sumando aunque el torneo ya esté
   // en eliminatorias.
   function calcVallaEquipos() {
-    const gc = {}, pj = {}
-    partidos.filter(p => p.status === 'finished').forEach(p => {
-      gc[p.home_team_id] = (gc[p.home_team_id] || 0) + (p.away_score || 0); pj[p.home_team_id] = (pj[p.home_team_id] || 0) + 1
-      gc[p.away_team_id] = (gc[p.away_team_id] || 0) + (p.home_score || 0); pj[p.away_team_id] = (pj[p.away_team_id] || 0) + 1
-    })
-    return equipos.filter(e => pj[e.id] > 0)
-      .map(e => ({
-        equipo: e, gc: gc[e.id] || 0, pj: pj[e.id] || 0,
-        arqueros: arquerosEquipos.filter(a => a.team_id === e.id),
-      }))
-      .sort((a, b) => a.gc - b.gc || b.pj - a.pj)
+    return computeVallaEquipos(equipos, partidos, arquerosEquipos)
   }
 
   const faseActual         = torneo.fase_actual || 'grupos'
