@@ -69,7 +69,7 @@ function FotoUpload({ label, hint, preview, onChange, opcional = false }) {
               <span style={{ fontSize: '.8rem', color: '#9aa0a6' }}>Toca para subir foto</span>
             </>
         }
-        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onChange}/>
+        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onChange}/>
       </label>
     </div>
   )
