@@ -346,7 +346,7 @@ export const CARD_DESIGNS = [
   },
 ]
 
-export const NIVEL_NOMBRES = {
+const NIVEL_NOMBRES = {
   1: 'INICIACIÓN',
   2: 'COMPETIDOR',
   3: 'ÉLITE',
@@ -355,7 +355,7 @@ export const NIVEL_NOMBRES = {
   6: 'LEYENDA',
 }
 
-export const NIVEL_COLORES = {
+const NIVEL_COLORES = {
   1: '#00ddd0',
   2: '#cd7f32',
   3: '#c0c0c0',

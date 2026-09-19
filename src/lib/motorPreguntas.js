@@ -10,7 +10,7 @@
 // "quién tiene menos faltas", "más goles en Torneo Interno",
 // "jugador con más victorias", "quién ha recibido menos goles".
 
-export const normalizarPregunta = s =>
+const normalizarPregunta = s =>
   (s || '').toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
 
 // El orden importa: lo específico va antes que lo genérico

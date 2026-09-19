@@ -5,7 +5,7 @@ import { supabase } from './supabase'
 // parecido (sin importar tildes, mayúsculas o espacios). Así no se duplican
 // equipos y no se pierde su historia (partidos, palmarés, jugadores).
 
-export const normalizarNombreEquipo = s =>
+const normalizarNombreEquipo = s =>
   (s || '')
     .toLowerCase()
     .normalize('NFD')

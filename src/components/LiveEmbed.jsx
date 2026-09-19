@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 // youtu.be/, /embed/, /live/, /shorts/. Si no reconoce el formato (por
 // ejemplo si le pasan el link del CANAL en vez del video/live puntual),
 // devuelve null y se cae al botón "Ver en vivo" en vez de un embed roto.
-export function parseYouTubeId(url) {
+function parseYouTubeId(url) {
   try {
     const u = new URL(url)
     if (u.hostname.includes('youtu.be')) return u.pathname.slice(1) || null

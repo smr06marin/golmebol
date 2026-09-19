@@ -269,7 +269,7 @@ export async function prepararFotoProducto(file, { maxDim = 500, quitarFondo = f
 // llamar SIEMPRE que se vaya a mostrar disponibilidad, sin throttle: si esto
 // quedara detrás del throttle de 10 minutos de abajo, un cupo fantasma podía
 // seguir apareciendo ocupado un buen rato después de arreglar la regla.
-export async function limpiarOcurrenciasHuerfanasDeFijas(escenarioId) {
+async function limpiarOcurrenciasHuerfanasDeFijas(escenarioId) {
   const desde = todayStr()
   const { data: todasFijas, error: errFijas } = await supabase.from('escenario_reservas_fijas').select('id, cancha, hora').eq('escenario_id', escenarioId)
   // Si esta consulta falla, NO se puede saber cuáles reglas siguen existiendo

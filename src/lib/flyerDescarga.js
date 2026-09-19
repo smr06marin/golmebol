@@ -17,7 +17,7 @@
 //    (cuando el navegador lo soporta) en vez del link de descarga de
 //    siempre, que queda solo como respaldo para computador.
 
-export async function esperarListoParaCapturar(container) {
+async function esperarListoParaCapturar(container) {
   if (!container) return
   const imgs = Array.from(container.querySelectorAll('img'))
   await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = res })))

@@ -131,7 +131,7 @@ export function extraerTarjetas(match) {
 // brackets como la creación manual de un partido suelto.
 
 // ¿Este partido es la "vuelta" de una llave ida y vuelta?
-export function esPartidoVuelta(match) {
+function esPartidoVuelta(match) {
   return !!(match?.ronda && match.ronda.toLowerCase().includes('vuelta') && !match.ronda.toLowerCase().includes('repechaje'))
 }
 

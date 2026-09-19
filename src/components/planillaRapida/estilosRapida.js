@@ -6,7 +6,7 @@ export const PANEL = '#111827'
 export const BORDE = '#1e2d3d'
 export const TEXTO = '#e8f4fd'
 export const TEXTO_TENUE = '#7a9ab5'
-export const AZUL_APP = '#1a73e8'
+const AZUL_APP = '#1a73e8'
 export const CIAN = '#00ddd0'
 export const ORO = '#f9a825'
 export const VERDE = '#1e8e3e'
@@ -26,7 +26,7 @@ export function formatTiempo(s) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-export function avatarJugador(j, size = 40) {
+function avatarJugador(j, size = 40) {
   const url = j?.photo_face_url || j?.photo_url
   return { url, size }
 }
