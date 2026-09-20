@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import LiveEmbed from '../components/LiveEmbed'
+import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
@@ -470,7 +471,7 @@ export default function LandingPage() {
   // migracion_site_config.sql) simplemente no se muestra nada, sin romper
   // el resto de la página.
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_activo, en_vivo_url, en_vivo_titulo').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_activo, en_vivo_url, en_vivo_titulo, en_vivo_match_id').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
   }
@@ -574,7 +575,12 @@ export default function LandingPage() {
             </span>
             {siteConfig.en_vivo_titulo && <span style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem' }}>· {siteConfig.en_vivo_titulo}</span>}
           </h2>
-          <LiveEmbed url={siteConfig.en_vivo_url} titulo={siteConfig.en_vivo_titulo} S={S}/>
+          <div style={{ position: 'relative' }}>
+            <LiveEmbed url={siteConfig.en_vivo_url} titulo={siteConfig.en_vivo_titulo} S={S}/>
+            {siteConfig.en_vivo_match_id && (
+              <MarcadorEnVivoOverlay partido={partidosVivo.find(m => m.id === siteConfig.en_vivo_match_id) || null}/>
+            )}
+          </div>
         </div>
       )}
 
