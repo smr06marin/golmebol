@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 
 // Saca el ID del video de cualquier formato de link de YouTube: watch?v=,
@@ -73,6 +73,7 @@ const cajaCompleta = { position:'fixed', inset:0, zIndex:9999, background:'#000'
 export default function LiveEmbed({ url, titulo, S, overlay }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const iframeRef = useRef(null)
 
   useEffect(() => {
     if (plataforma !== 'instagram') return
@@ -99,6 +100,32 @@ export default function LiveEmbed({ url, titulo, S, overlay }) {
     return () => { document.body.style.overflow = previo; window.removeEventListener('keydown', onKey) }
   }, [pantallaCompleta])
 
+  // Red de seguridad: aunque ya quitamos "fullscreen" del `allow` del
+  // iframe, algunos navegadores (sobre todo el navegador interno de apps
+  // como WhatsApp/Instagram/Facebook) igual dejan pasar el botón nativo de
+  // ampliar de YouTube/Facebook — y ahí el marcador desaparece porque el
+  // navegador solo pone en pantalla completa el <iframe>, sin sus hermanos.
+  // Por eso acá escuchamos el evento nativo: si detectamos que el que se
+  // puso en pantalla completa es justo NUESTRO iframe, lo cancelamos al
+  // instante y activamos nuestra propia pantalla completa (con CSS), que sí
+  // incluye el marcador porque este vive adentro de la misma caja.
+  useEffect(() => {
+    function onFullscreenChange() {
+      const el = document.fullscreenElement || document.webkitFullscreenElement
+      if (el && iframeRef.current && el === iframeRef.current) {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {})
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
+        setPantallaCompleta(true)
+      }
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
+    }
+  }, [])
+
   if (!url) return null
 
   if (plataforma === 'youtube') {
@@ -106,7 +133,7 @@ export default function LiveEmbed({ url, titulo, S, overlay }) {
     if (!id) return <LinkFallback url={url} S={S}/>
     return (
       <div style={pantallaCompleta ? cajaCompleta : cajaNormal}>
-        <iframe src={`https://www.youtube.com/embed/${id}`} title={titulo || 'En vivo'}
+        <iframe ref={iframeRef} src={`https://www.youtube.com/embed/${id}`} title={titulo || 'En vivo'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
@@ -118,7 +145,7 @@ export default function LiveEmbed({ url, titulo, S, overlay }) {
   if (plataforma === 'facebook') {
     return (
       <div style={pantallaCompleta ? cajaCompleta : cajaNormal}>
-        <iframe src={`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false`}
+        <iframe ref={iframeRef} src={`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false`}
           title={titulo || 'En vivo'} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
