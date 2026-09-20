@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Radio } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
-import { derivarEnVivo } from '../../lib/liveMatch'
+import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas } from '../../lib/liveMatch'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
 const S = {
@@ -147,6 +147,8 @@ export default function AdminConfigSitioPage() {
                   home: partidoSeleccionado.home, away: partidoSeleccionado.away,
                   tournaments: partidoSeleccionado.tournaments,
                   vivo: derivarEnVivo(partidoSeleccionado),
+                  colores: derivarColoresUniforme(partidoSeleccionado),
+                  detalle: derivarFaltasYTarjetas(partidoSeleccionado),
                 }}/>
               ) : null}/>
             {config.en_vivo_match_id && !partidoSeleccionado?.enVivo && (

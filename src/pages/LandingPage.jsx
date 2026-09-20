@@ -4,7 +4,7 @@ import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, Arrow
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
@@ -361,7 +361,7 @@ export default function LandingPage() {
 
   const partidosVivo = useMemo(() => {
     void tick
-    return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m) })).filter(m => m.vivo).map(m => {
+    return matchesVivoRaw.map(m => ({ ...m, vivo: derivarEnVivo(m), colores: derivarColoresUniforme(m), detalle: derivarFaltasYTarjetas(m) })).filter(m => m.vivo).map(m => {
       if (!m.fase || m.fase === 'grupo') return m
       const hermano = buscarPartidoHermano(m, hermanosVivo)
       if (!hermano) return m

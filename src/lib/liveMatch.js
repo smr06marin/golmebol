@@ -61,6 +61,73 @@ export function derivarEnVivo(match) {
   }
 }
 
+// Junta el snapshot más reciente entre planilla completa y rápida — mismo
+// criterio que usa derivarEnVivo, factorizado acá para no repetirlo en cada
+// función nueva que necesite leer datos del partido en vivo.
+function snapshotMasReciente(match) {
+  const candidatos = []
+  if (match?.live_state)        candidatos.push({ snap: match.live_state,        updatedAt: match.live_state_updated_at,        tipo: 'completa' })
+  if (match?.live_state_rapida) candidatos.push({ snap: match.live_state_rapida, updatedAt: match.live_state_rapida_updated_at, tipo: 'rapida' })
+  if (candidatos.length === 0) return null
+  candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+  return candidatos[0].snap ? candidatos[0] : null
+}
+
+// Colores de uniforme que eligieron los árbitros al iniciar el partido (o
+// null si no los pusieron todavía) — la planilla completa guarda el color
+// visitante como `colorVisitante`, la rápida como `colorVis`; acá se
+// homogeniza para quien lo use no tenga que saber cuál de las dos está
+// activa.
+export function derivarColoresUniforme(match) {
+  const picked = snapshotMasReciente(match)
+  if (!picked) return { colorLocal: null, colorVisitante: null }
+  const { snap, tipo } = picked
+  return {
+    colorLocal: snap.colorLocal || null,
+    colorVisitante: (tipo === 'rapida' ? snap.colorVis : snap.colorVisitante) || null,
+  }
+}
+
+// Faltas acumuladas (las que llevan a tiro libre directo desde la 5ta, solo
+// aplica a Fútbol 5) y tarjetas amarillas/rojas, TOTALIZADAS POR EQUIPO (no
+// por jugador) — pensado para mostrarlas chiquitas en el marcador en vivo de
+// la portada, como un canal deportivo. Las faltas cuentan solo las del
+// período actual (se reinician cada mitad, igual que en la pantalla del
+// árbitro); las tarjetas cuentan todo el partido.
+export function derivarFaltasYTarjetas(match) {
+  const vacio = { faltasLocal: 0, faltasVisitante: 0, amarillasLocal: 0, amarillasVisitante: 0, rojasLocal: 0, rojasVisitante: 0 }
+  const picked = snapshotMasReciente(match)
+  if (!picked) return vacio
+  const { snap, tipo } = picked
+  const periodoActual = snap.periodo || 1
+
+  if (tipo === 'rapida') {
+    const eventos = snap.eventos || []
+    const contar = (team, tipoEvento, soloPeriodoActual) => eventos.filter(e =>
+      e.team === team && e.tipo === tipoEvento && (!soloPeriodoActual || e.periodo === periodoActual)
+    ).length
+    return {
+      faltasLocal:         contar('local',      'falta_acum', true),
+      faltasVisitante:     contar('visitante',  'falta_acum', true),
+      amarillasLocal:      contar('local',      'yellow_card', false),
+      amarillasVisitante:  contar('visitante',  'yellow_card', false),
+      rojasLocal:          contar('local',      'red_card', false),
+      rojasVisitante:      contar('visitante',  'red_card', false),
+    }
+  }
+
+  const faltasPeriodo = (faltasAcum) => (faltasAcum?.[`p${periodoActual}`] || []).filter(Boolean).length
+  const conTarjeta = (jugs, campo) => (jugs || []).filter(j => j[campo]).length
+  return {
+    faltasLocal:         faltasPeriodo(snap.faltasAcumLocal),
+    faltasVisitante:     faltasPeriodo(snap.faltasAcumVis),
+    amarillasLocal:      conTarjeta(snap.jugadoresLocal, 'amarilla'),
+    amarillasVisitante:  conTarjeta(snap.jugadoresVisitante, 'amarilla'),
+    rojasLocal:          conTarjeta(snap.jugadoresLocal, 'roja'),
+    rojasVisitante:      conTarjeta(snap.jugadoresVisitante, 'roja'),
+  }
+}
+
 // Lista de goles (jugador + minuto) del partido, sacada del mismo snapshot
 // que ya se sincroniza en vivo — para el detalle al tocar un partido en vivo.
 export function extraerGoles(match) {
