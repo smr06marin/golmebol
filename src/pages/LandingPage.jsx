@@ -372,6 +372,14 @@ export default function LandingPage() {
     })
   }, [matchesVivoRaw, hermanosVivo, tick])
 
+  // Transmisiones en vivo activas — puede haber varias a la vez (por ejemplo
+  // si hay varios partidos jugándose a la misma hora en canchas distintas),
+  // cada una configurada desde /admin/config-sitio con su propio link y,
+  // opcionalmente, su propio partido para el marcador.
+  const streamsVivos = useMemo(() => (
+    Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []
+  ).filter(s => s.activo && (s.url || '').trim()), [siteConfig])
+
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
       supabase.from('tournaments').select('id', { count: 'exact', head: true }),
@@ -471,7 +479,7 @@ export default function LandingPage() {
   // migracion_site_config.sql) simplemente no se muestra nada, sin romper
   // el resto de la página.
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_activo, en_vivo_url, en_vivo_titulo, en_vivo_match_id').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
   }
@@ -566,19 +574,25 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ── En vivo (YouTube/Facebook/Instagram) — configurable desde /admin/config-sitio ── */}
-      {siteConfig?.en_vivo_activo && siteConfig?.en_vivo_url && (
+      {/* ── En vivo (YouTube/Facebook/Instagram) — configurable desde /admin/config-sitio, puede haber varias a la vez ── */}
+      {streamsVivos.length > 0 && (
         <div style={{ maxWidth: '860px', margin: '44px auto 0', padding: '0 16px' }}>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: S.red }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
             </span>
-            {siteConfig.en_vivo_titulo && <span style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem' }}>· {siteConfig.en_vivo_titulo}</span>}
           </h2>
-          <LiveEmbed url={siteConfig.en_vivo_url} titulo={siteConfig.en_vivo_titulo} S={S}
-            overlay={siteConfig.en_vivo_match_id ? (
-              <MarcadorEnVivoOverlay partido={partidosVivo.find(m => m.id === siteConfig.en_vivo_match_id) || null}/>
-            ) : null}/>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            {streamsVivos.map(s => (
+              <div key={s.id}>
+                {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
+                <LiveEmbed url={s.url} titulo={s.titulo} S={S}
+                  overlay={s.match_id ? (
+                    <MarcadorEnVivoOverlay partido={partidosVivo.find(m => m.id === s.match_id) || null}/>
+                  ) : null}/>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

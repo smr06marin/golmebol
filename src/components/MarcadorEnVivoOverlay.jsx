@@ -1,10 +1,12 @@
 // Marcador en vivo que se muestra ENCIMA del video de transmisión de la
 // portada (golmebol.com) — como el "score bug" chiquito de un canal
 // deportivo, en la esquina superior izquierda, sin taparle nada del partido
-// a quien esté viendo el video. El partido a mostrar lo elige el admin
-// desde /admin/config-sitio (site_config.en_vivo_match_id); todo lo demás
-// (goles, colores de uniforme, faltas, tarjetas) sale del mismo estado en
-// vivo que ya sube la planilla del árbitro — ver src/lib/liveMatch.js.
+// a quien esté viendo el video. Puede haber varias transmisiones a la vez
+// (site_config.en_vivo_streams, por si hay varios partidos jugándose a la
+// misma hora); cada una tiene su propio partido opcional, elegido por el
+// admin desde /admin/config-sitio. Todo lo demás (goles, colores de
+// uniforme, faltas, tarjetas) sale del mismo estado en vivo que ya sube la
+// planilla del árbitro — ver src/lib/liveMatch.js.
 
 function EscudoChico({ logo_url, name, size = 18 }) {
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
