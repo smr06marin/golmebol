@@ -141,16 +141,14 @@ export default function AdminConfigSitioPage() {
         <div style={{ marginTop:'24px' }}>
           <div style={{ fontSize:'.8rem', color:'#5f6368', fontWeight:'600', marginBottom:'10px' }}>Vista previa (así se ve en la página de inicio):</div>
           <div style={{ background:S.bg, borderRadius:'16px', padding:'16px' }}>
-            <div style={{ position:'relative' }}>
-              <LiveEmbed url={config.en_vivo_url} titulo={config.en_vivo_titulo} S={S}/>
-              {partidoSeleccionado && (
+            <LiveEmbed url={config.en_vivo_url} titulo={config.en_vivo_titulo} S={S}
+              overlay={partidoSeleccionado ? (
                 <MarcadorEnVivoOverlay partido={{
                   home: partidoSeleccionado.home, away: partidoSeleccionado.away,
                   tournaments: partidoSeleccionado.tournaments,
                   vivo: derivarEnVivo(partidoSeleccionado),
                 }}/>
-              )}
-            </div>
+              ) : null}/>
             {config.en_vivo_match_id && !partidoSeleccionado?.enVivo && (
               <div style={{ fontSize:'.7rem', color:'#9aa0a6', marginTop:'10px', textAlign:'center' }}>
                 Elegiste un partido para el marcador, pero todavía no está en vivo (el árbitro no ha empezado la planilla) — por eso no se ve acá. Apenas empiece, aparece solo.

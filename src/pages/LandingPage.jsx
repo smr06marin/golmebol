@@ -575,12 +575,10 @@ export default function LandingPage() {
             </span>
             {siteConfig.en_vivo_titulo && <span style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem' }}>· {siteConfig.en_vivo_titulo}</span>}
           </h2>
-          <div style={{ position: 'relative' }}>
-            <LiveEmbed url={siteConfig.en_vivo_url} titulo={siteConfig.en_vivo_titulo} S={S}/>
-            {siteConfig.en_vivo_match_id && (
+          <LiveEmbed url={siteConfig.en_vivo_url} titulo={siteConfig.en_vivo_titulo} S={S}
+            overlay={siteConfig.en_vivo_match_id ? (
               <MarcadorEnVivoOverlay partido={partidosVivo.find(m => m.id === siteConfig.en_vivo_match_id) || null}/>
-            )}
-          </div>
+            ) : null}/>
         </div>
       )}
 
