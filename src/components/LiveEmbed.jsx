@@ -60,17 +60,17 @@ function EtiquetaRepeticion() {
   )
 }
 
-// La gráfica del patrocinador que tapa el video un instante justo cuando
-// empieza la repetición — la diseña y la sube el propio patrocinador/admin
-// desde /admin/patrocinadores (imagen_repeticion_url), como el "cortesía
-// de" de una transmisión deportiva de verdad. Entra y sale con transición
-// (ver .gm-repeticion-entra / .gm-repeticion-sale en index.css); `fase`
-// controla cuál de las dos animaciones se ve en cada momento.
-function BumperPatrocinador({ fase, imagenUrl, nombre }) {
+// La gráfica que tapa el video un instante justo cuando empieza la
+// repetición — se sube desde /admin/config-sitio (junto con el link de la
+// transmisión), se puede subir varias y van rotando en orden. Entra y sale
+// con transición (ver .gm-repeticion-entra / .gm-repeticion-sale en
+// index.css); `fase` controla cuál de las dos animaciones se ve en cada
+// momento.
+function BumperRepeticion({ fase, imagenUrl }) {
   return (
     <div className={fase === 'sale' ? 'gm-repeticion-sale' : 'gm-repeticion-entra'}
       style={{ position:'absolute', inset:0, zIndex:6, background:'#000', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', pointerEvents:'none' }}>
-      <img src={imagenUrl} alt={nombre ? `Repetición cortesía de ${nombre}` : 'Repetición'} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+      <img src={imagenUrl} alt="Repetición" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
     </div>
   )
 }
@@ -121,10 +121,10 @@ function cargarYouTubeAPI() {
 // navegador — esa API además no funciona bien para esto en Safari de
 // iPhone, así que este método funciona igual en todos los celulares.
 //
-// `repeticion` (opcional): { key, segundos, patrocinador } — cada vez que
-// `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo): si el
-// patrocinador de turno tiene una imagen de repetición cargada (desde
-// /admin/patrocinadores), esa imagen tapa el video un instante con
+// `repeticion` (opcional): { key, segundos, imagenUrl } — cada vez que
+// `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo): si hay
+// una imagen de repetición cargada (desde /admin/config-sitio, rotan en
+// orden si hay varias), esa imagen tapa el video un instante con
 // transición de entrada y salida; mientras dura toda la repetición, arriba
 // queda la etiqueta "REPETICIÓN" para que se sepa que no es un momento
 // nuevo del partido. En YouTube, además, el video de verdad se rebobina
@@ -136,7 +136,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" arriba, dura toda la repetición
-  const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica del patrocinador, solo al principio
+  const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
   const iframeRef = useRef(null)
   const ytPlayerRef = useRef(null)
   // Id propio para el iframe de YouTube (puede haber varios <LiveEmbed> a la
@@ -233,9 +233,9 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   }, [])
 
   // Dispara la repetición apenas cambia `repeticion.key` (un gol nuevo):
-  // 1) de una, rebobina el video en YouTube (tapado por la gráfica del
-  //    patrocinador si hay una, así el "salto" del rebobinado no se nota);
-  // 2) la gráfica del patrocinador entra, se queda un momento y sale;
+  // 1) de una, rebobina el video en YouTube (tapado por la gráfica de
+  //    repetición si hay una, así el "salto" del rebobinado no se nota);
+  // 2) la gráfica de repetición entra, se queda un momento y sale;
   // 3) la etiqueta "REPETICIÓN" se queda arriba durante toda la repetición;
   // 4) al cabo de `segundos`, el video vuelve solo al momento en vivo real
   //    y se quita la etiqueta.
@@ -262,7 +262,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
       } catch { /* si el reproductor todavía no está listo, se pierde este intento */ }
     }
 
-    if (repeticion.patrocinador?.imagen_repeticion_url) {
+    if (repeticion.imagenUrl) {
       setFaseBumper('entra')
       timers.push(setTimeout(() => setFaseBumper('sale'), 2000))
       timers.push(setTimeout(() => setFaseBumper(null), 2400))
@@ -286,8 +286,8 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
         {mostrandoEtiqueta && <EtiquetaRepeticion/>}
-        {faseBumper && repeticion?.patrocinador?.imagen_repeticion_url && (
-          <BumperPatrocinador fase={faseBumper} imagenUrl={repeticion.patrocinador.imagen_repeticion_url} nombre={repeticion.patrocinador.nombre}/>
+        {faseBumper && repeticion?.imagenUrl && (
+          <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
@@ -302,8 +302,8 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
         {mostrandoEtiqueta && <EtiquetaRepeticion/>}
-        {faseBumper && repeticion?.patrocinador?.imagen_repeticion_url && (
-          <BumperPatrocinador fase={faseBumper} imagenUrl={repeticion.patrocinador.imagen_repeticion_url} nombre={repeticion.patrocinador.nombre}/>
+        {faseBumper && repeticion?.imagenUrl && (
+          <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>

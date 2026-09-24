@@ -398,19 +398,23 @@ export default function LandingPage() {
     return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
   }, [streamsVivos])
 
+  // Imágenes para la repetición del gol — se cargan desde /admin/config-sitio
+  // (junto con el link de la transmisión en vivo), se puede subir varias y
+  // van rotando en orden.
+  const imagenesRepeticion = useMemo(() => (
+    Array.isArray(siteConfig?.en_vivo_repeticion_imagenes) ? siteConfig.en_vivo_repeticion_imagenes : []
+  ), [siteConfig])
+
   // Repetición automática del gol: cuando el árbitro anota un gol en el
   // partido de alguna transmisión activa, se le avisa a esa transmisión
   // (ver LiveEmbed) para que rebobine unos segundos y muestre otra vez la
-  // jugada. Rota en orden entre los patrocinadores que ya tengan su propia
-  // imagen de repetición cargada (/admin/patrocinadores) — si ninguno la
-  // tiene todavía, la repetición sigue funcionando igual, solo que sin la
-  // gráfica del patrocinador.
+  // jugada, tapándola primero un instante con la imagen que le toque en la
+  // rotación (si ya hay alguna cargada).
   const golesAnterioresRef = useRef({}) // { [matchId]: { local, vis } }
   const repeticionContadorRef = useRef(0)
-  const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, patrocinador } }
+  const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, imagenUrl } }
 
   useEffect(() => {
-    const patrocinadoresConImagen = patrocinadores.filter(p => p.imagen_repeticion_url)
     streamsVivos.forEach(s => {
       if (!s.match_id) return
       const partido = partidosVivo.find(m => m.id === s.match_id)
@@ -418,15 +422,15 @@ export default function LandingPage() {
       const anterior = golesAnterioresRef.current[s.match_id]
       const actual = { local: partido.vivo.golesLocal || 0, vis: partido.vivo.golesVis || 0 }
       if (anterior && (actual.local > anterior.local || actual.vis > anterior.vis)) {
-        const patrocinador = patrocinadoresConImagen.length
-          ? patrocinadoresConImagen[repeticionContadorRef.current % patrocinadoresConImagen.length]
+        const imagenUrl = imagenesRepeticion.length
+          ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
           : null
         repeticionContadorRef.current += 1
-        setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, patrocinador } }))
+        setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, imagenUrl } }))
       }
       golesAnterioresRef.current[s.match_id] = actual
     })
-  }, [partidosVivo, streamsVivos, patrocinadores])
+  }, [partidosVivo, streamsVivos, imagenesRepeticion])
 
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
@@ -527,7 +531,7 @@ export default function LandingPage() {
   // migracion_site_config.sql) simplemente no se muestra nada, sin romper
   // el resto de la página.
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
   }

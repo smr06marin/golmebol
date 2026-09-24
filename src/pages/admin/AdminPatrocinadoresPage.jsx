@@ -19,7 +19,6 @@ export default function AdminPatrocinadoresPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
   const [uploading, setUploading] = useState(null)
-  const [uploadingRepeticion, setUploadingRepeticion] = useState(null)
   const [msg, setMsg] = useState(null)
   const guardandoRef = useRef({}) // { [id]: bool } — bloqueo inmediato por fila, evita doble clic en "Guardar"
   const creandoRef = useRef(false) // bloqueo inmediato para "Agregar patrocinador"
@@ -80,10 +79,6 @@ export default function AdminPatrocinadoresPage() {
       const path = `${patro.id}.${patro.logo_url.split('.').pop().split('?')[0]}`
       await supabase.storage.from('patrocinadores').remove([path])
     }
-    if (patro.imagen_repeticion_url) {
-      const path = `${patro.id}-repeticion.${patro.imagen_repeticion_url.split('.').pop().split('?')[0]}`
-      await supabase.storage.from('patrocinadores').remove([path])
-    }
     setPatrocinadores(prev => prev.filter(p => p.id !== patro.id))
     showMsg('Patrocinador eliminado')
   }
@@ -102,30 +97,6 @@ export default function AdminPatrocinadoresPage() {
     setPatrocinadores(prev => prev.map(p => p.id === patro.id ? { ...p, logo_url: logoUrl } : p))
     setUploading(null)
     showMsg('Logo subido ✓')
-  }
-
-  // Imagen que sale encima del video en vivo cuando el árbitro anota un gol
-  // (la "repetición") — pensada como una gráfica completa tipo transmisión
-  // deportiva, no el logo chiquito de arriba. Ideal en formato horizontal
-  // (16:9), igual de ancha que el video.
-  async function handleImagenRepeticion(patro, file) {
-    if (!file) return
-    setUploadingRepeticion(patro.id)
-    const ext = file.name.split('.').pop()
-    const path = `${patro.id}-repeticion.${ext}`
-    const { error: uploadError } = await supabase.storage.from('patrocinadores').upload(path, file, { upsert: true })
-    if (uploadError) { setUploadingRepeticion(null); showMsg('Error al subir imagen', 'error'); return }
-    const { data: urlData } = supabase.storage.from('patrocinadores').getPublicUrl(path)
-    const imagenUrl = `${urlData.publicUrl}?t=${Date.now()}` // cache-bust: si la reemplazan, que se vea la nueva de una
-    const { error: updateError } = await supabase.from('patrocinadores_golmebol').update({ imagen_repeticion_url: imagenUrl }).eq('id', patro.id)
-    if (updateError) {
-      setUploadingRepeticion(null)
-      showMsg(/does not exist|column/.test(updateError.message || '') ? '⚠️ Falta correr migracion_patrocinadores_imagen_repeticion.sql en Supabase' : 'Error al guardar URL', 'error')
-      return
-    }
-    setPatrocinadores(prev => prev.map(p => p.id === patro.id ? { ...p, imagen_repeticion_url: imagenUrl } : p))
-    setUploadingRepeticion(null)
-    showMsg('Imagen de repetición subida ✓')
   }
 
   function updateLocal(id, field, value) {
@@ -193,21 +164,6 @@ export default function AdminPatrocinadoresPage() {
                     <Upload size={12}/> {uploading === patro.id ? 'Subiendo...' : 'Subir logo'}
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogo(patro, e.target.files[0])} disabled={uploading === patro.id}/>
                   </label>
-
-                  <div style={{ width: '120px', height: '70px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', margin: '14px 0 8px' }}>
-                    {patro.imagen_repeticion_url ? (
-                      <img src={patro.imagen_repeticion_url} alt={`Repetición ${patro.nombre}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                    ) : (
-                      <span style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center', padding: '0 6px' }}>Sin imagen de repetición</span>
-                    )}
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>
-                    <Upload size={12}/> {uploadingRepeticion === patro.id ? 'Subiendo...' : 'Subir imagen de repetición'}
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImagenRepeticion(patro, e.target.files[0])} disabled={uploadingRepeticion === patro.id}/>
-                  </label>
-                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', maxWidth: '120px', textAlign: 'center' }}>
-                    Se muestra encima del video en vivo cuando el árbitro anota un gol. Ideal horizontal (16:9), igual de ancha que el video.
-                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

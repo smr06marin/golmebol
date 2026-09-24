@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Radio, Plus, Trash2 } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas } from '../../lib/liveMatch'
@@ -24,6 +24,8 @@ export default function AdminConfigSitioPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [partidos, setPartidos] = useState([]) // partidos elegibles para el marcador (no finalizados)
+  const [imagenesRepeticion, setImagenesRepeticion] = useState([]) // [{id, url}] — rotan en la repetición del gol
+  const [subiendoImagen, setSubiendoImagen] = useState(false)
 
   // Partidos que se pueden elegir para el marcador: cualquiera que no haya
   // terminado (para poder elegirlo desde antes de que arranque). Se marcan
@@ -45,14 +47,15 @@ export default function AdminConfigSitioPage() {
 
   async function fetchConfig() {
     setLoading(true)
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes').eq('id', true).maybeSingle()
     if (error) {
-      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql en Supabase' : error.message, type:'error' })
+      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql y migracion_site_config_repeticion_imagenes.sql en Supabase' : error.message, type:'error' })
       setLoading(false)
       return
     }
     const lista = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
     setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID() })))
+    setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setLoading(false)
   }
 
@@ -79,6 +82,41 @@ export default function AdminConfigSitioPage() {
     }
     setMsg({ text: '✅ Guardado', type:'ok' })
     setTimeout(() => setMsg(null), 3000)
+  }
+
+  // Imágenes para la repetición del gol: se suben y se borran de una vez
+  // (no esperan al botón "Guardar" de arriba, igual que el logo de un
+  // patrocinador), y se guardan aparte del arreglo de transmisiones para no
+  // pisar cambios sin guardar que el admin tenga a medias en esa sección.
+  async function subirImagenRepeticion(file) {
+    if (!file) return
+    setSubiendoImagen(true)
+    const id = crypto.randomUUID()
+    const ext = file.name.split('.').pop()
+    const path = `repeticion/${id}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('patrocinadores').upload(path, file, { upsert: true })
+    if (uploadError) { setSubiendoImagen(false); setMsg({ text:'Error al subir imagen', type:'error' }); return }
+    const { data: urlData } = supabase.storage.from('patrocinadores').getPublicUrl(path)
+    const url = `${urlData.publicUrl}?t=${Date.now()}`
+    const nuevaLista = [...imagenesRepeticion, { id, url }]
+    const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_repeticion_imagenes: nuevaLista, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    setSubiendoImagen(false)
+    if (error) {
+      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_repeticion_imagenes.sql en Supabase' : 'Error al guardar la imagen', type:'error' })
+      return
+    }
+    setImagenesRepeticion(nuevaLista)
+    setMsg({ text:'✅ Imagen agregada', type:'ok' })
+    setTimeout(() => setMsg(null), 3000)
+  }
+
+  async function quitarImagenRepeticion(img) {
+    const nuevaLista = imagenesRepeticion.filter(x => x.id !== img.id)
+    const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_repeticion_imagenes: nuevaLista, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) { setMsg({ text:'Error al quitar la imagen', type:'error' }); return }
+    setImagenesRepeticion(nuevaLista)
+    const path = (img.url || '').split('/patrocinadores/')[1]?.split('?')[0]
+    if (path) await supabase.storage.from('patrocinadores').remove([path])
   }
 
   function agregarStream() {
@@ -179,6 +217,39 @@ export default function AdminConfigSitioPage() {
           style={{ display:'block', marginTop:'20px', padding:'10px 20px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.875rem', fontWeight:'600', opacity:guardando?.7:1 }}>
           {guardando ? 'Guardando...' : 'Guardar'}
         </button>
+      </div>
+
+      <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)', marginTop:'20px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'600', color:'#202124', marginBottom:'4px' }}>
+          <Repeat size={16} color={S.red}/> Imágenes para la repetición del gol
+        </div>
+        <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'16px' }}>
+          Cuando el árbitro anota un gol, el video se tapa un instante con una de estas imágenes (con una transición de entrada y salida) antes de mostrar otra vez la jugada — como el "cortesía de" de una transmisión deportiva. Puedes subir varias: van rotando en orden, una por cada gol. Ideal horizontal (16:9), igual de ancha que el video.
+        </div>
+
+        {imagenesRepeticion.length === 0 && (
+          <div style={{ fontSize:'.8rem', color:'#9aa0a6', padding:'14px 0', textAlign:'center' }}>
+            Todavía no has agregado ninguna imagen.
+          </div>
+        )}
+
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'12px', marginBottom: imagenesRepeticion.length ? '16px' : 0 }}>
+          {imagenesRepeticion.map(img => (
+            <div key={img.id} style={{ position:'relative', width:'140px' }}>
+              <img src={img.url} alt="Imagen de repetición" style={{ width:'140px', height:'79px', objectFit:'cover', borderRadius:'8px', border:'1px solid #e8eaed', display:'block' }}/>
+              <button onClick={() => quitarImagenRepeticion(img)} aria-label="Quitar imagen"
+                style={{ position:'absolute', top:'-6px', right:'-6px', width:'22px', height:'22px', borderRadius:'50%', border:'none', background:'#d93025', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', boxShadow:'0 1px 3px rgba(0,0,0,.3)' }}>
+                <X size={13}/>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <label style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'9px 14px', background:'#fff', border:'1px dashed #1a73e8', borderRadius:'8px', cursor: subiendoImagen ? 'not-allowed' : 'pointer', color:'#1a73e8', fontSize:'.8rem', fontWeight:'600' }}>
+          <Upload size={14}/> {subiendoImagen ? 'Subiendo...' : 'Agregar imagen'}
+          <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoImagen}
+            onChange={e => { subirImagenRepeticion(e.target.files[0]); e.target.value = '' }}/>
+        </label>
       </div>
 
       {streamsPreview.length > 0 && (
