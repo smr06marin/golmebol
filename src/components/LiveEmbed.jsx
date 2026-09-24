@@ -47,6 +47,25 @@ function BotonPantallaCompleta({ activo, onClick }) {
   )
 }
 
+// Logo chiquito arriba a la derecha de la transmisión, como el logo de un
+// canal deportivo de verdad, con "EN VIVO" debajo para que se note que es
+// la transmisión (y no, por ejemplo, la repetición del gol, que tiene su
+// propia etiqueta al centro-izquierda). Va justo al lado del botón de
+// pantalla completa, se queda todo el tiempo que dure la transmisión.
+function LogoCanal() {
+  return (
+    <div style={{ position:'absolute', top:'10px', right:'54px', zIndex:4, display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', pointerEvents:'none' }}>
+      <div style={{ background:'rgba(6,6,8,.65)', backdropFilter:'blur(2px)', borderRadius:'6px', padding:'4px 8px', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(0,0,0,.4)' }}>
+        <img src="/marca/watermark-logo.png" alt="" style={{ height:'15px', width:'auto' }}/>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:'4px', background:'rgba(6,6,8,.65)', backdropFilter:'blur(2px)', borderRadius:'5px', padding:'2px 7px', boxShadow:'0 2px 8px rgba(0,0,0,.4)' }}>
+        <span style={{ width:'5px', height:'5px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite' }}/>
+        <span style={{ fontSize:'.55rem', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>EN VIVO</span>
+      </div>
+    </div>
+  )
+}
+
 // Etiqueta fija al centro-izquierda del video mientras dura la repetición
 // del gol — para que quien esté viendo sepa que lo que aparece no es un
 // momento nuevo del partido sino la jugada de hace unos segundos. Va al
@@ -329,6 +348,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
+        <LogoCanal/>
         {mostrandoEtiqueta && <EtiquetaRepeticion/>}
         {faseBumper && repeticion?.imagenUrl && (
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
@@ -346,6 +366,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
           title={titulo || 'En vivo'} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
+        <LogoCanal/>
         {mostrandoEtiqueta && <EtiquetaRepeticion/>}
         {faseBumper && repeticion?.imagenUrl && (
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
