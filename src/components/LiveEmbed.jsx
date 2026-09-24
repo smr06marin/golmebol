@@ -48,32 +48,35 @@ function BotonPantallaCompleta({ activo, onClick }) {
 }
 
 // Logo chiquito arriba a la derecha de la transmisión, como el logo de un
-// canal deportivo de verdad, con "EN VIVO" debajo para que se note que es
-// la transmisión (y no, por ejemplo, la repetición del gol, que tiene su
-// propia etiqueta al centro-izquierda). Va justo al lado del botón de
-// pantalla completa, se queda todo el tiempo que dure la transmisión.
+// canal deportivo de verdad, con "EN VIVO" debajo (bien chiquito, para que
+// se vea como parte del mismo logo, no como una etiqueta aparte) para que
+// se note que es la transmisión (y no, por ejemplo, la repetición del gol,
+// que tiene su propia etiqueta debajo del reloj del marcador). Sin fondo
+// detrás — solo el logo encima del video, con sombra para que se lea igual
+// sobre cualquier fondo. Va justo al lado del botón de pantalla completa,
+// se queda todo el tiempo que dure la transmisión.
 function LogoCanal() {
   return (
-    <div style={{ position:'absolute', top:'10px', right:'54px', zIndex:4, display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', pointerEvents:'none' }}>
-      <div style={{ background:'rgba(6,6,8,.65)', backdropFilter:'blur(2px)', borderRadius:'6px', padding:'4px 8px', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(0,0,0,.4)' }}>
-        <img src="/marca/watermark-logo.png" alt="" style={{ height:'15px', width:'auto' }}/>
-      </div>
-      <div style={{ display:'flex', alignItems:'center', gap:'4px', background:'rgba(6,6,8,.65)', backdropFilter:'blur(2px)', borderRadius:'5px', padding:'2px 7px', boxShadow:'0 2px 8px rgba(0,0,0,.4)' }}>
-        <span style={{ width:'5px', height:'5px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite' }}/>
-        <span style={{ fontSize:'.55rem', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>EN VIVO</span>
+    <div style={{ position:'absolute', top:'10px', right:'54px', zIndex:4, display:'flex', flexDirection:'column', alignItems:'center', gap:'2px', pointerEvents:'none' }}>
+      <img src="/marca/watermark-logo.png" alt="" style={{ height:'16px', width:'auto', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
+      <div style={{ display:'flex', alignItems:'center', gap:'3px' }}>
+        <span style={{ width:'4px', height:'4px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite', boxShadow:'0 0 2px rgba(0,0,0,.9)' }}/>
+        <span style={{ fontSize:'.42rem', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap', textShadow:'0 1px 3px rgba(0,0,0,.9)' }}>EN VIVO</span>
       </div>
     </div>
   )
 }
 
-// Etiqueta fija al centro-izquierda del video mientras dura la repetición
-// del gol — para que quien esté viendo sepa que lo que aparece no es un
-// momento nuevo del partido sino la jugada de hace unos segundos. Va al
-// centro vertical (no arriba, donde ya está el marcador) durante toda la
-// repetición.
+// Etiqueta centrada justo debajo del reloj del marcador (ver
+// MarcadorEnVivoOverlay: barra de equipos + reloj en su propia píldora,
+// juntos suman más o menos esta altura) mientras dura la repetición del
+// gol — para que quien esté viendo sepa que lo que aparece no es un
+// momento nuevo del partido sino la jugada de hace unos segundos. Solo
+// dispara la repetición cuando la transmisión ya tiene su marcador (ver
+// LandingPage), así que siempre hay reloj arriba del cual colgar esto.
 function EtiquetaRepeticion() {
   return (
-    <div style={{ position:'absolute', top:'50%', left:'10px', transform:'translateY(-50%)', zIndex:5, display:'flex', alignItems:'center', gap:'6px', background:'rgba(6,6,8,.92)', borderRadius:'7px', padding:'4px 10px', pointerEvents:'none', boxShadow:'0 2px 10px rgba(0,0,0,.45)' }}>
+    <div style={{ position:'absolute', top:'64px', left:'50%', transform:'translateX(-50%)', zIndex:5, display:'flex', alignItems:'center', gap:'6px', background:'rgba(6,6,8,.92)', borderRadius:'7px', padding:'4px 10px', pointerEvents:'none', boxShadow:'0 2px 10px rgba(0,0,0,.45)' }}>
       <span style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite' }}/>
       <span style={{ fontSize:'clamp(.55rem,2.2vw,.66rem)', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>REPETICIÓN</span>
     </div>
@@ -163,7 +166,7 @@ function cargarYouTubeAPI() {
 // una imagen de repetición cargada (desde /admin/config-sitio, rotan en
 // orden si hay varias), esa imagen tapa el video un instante con
 // transición de entrada y salida; mientras dura toda la repetición, al
-// centro-izquierda queda la etiqueta "REPETICIÓN" para que se sepa que no
+// debajo del reloj del marcador queda la etiqueta "REPETICIÓN" para que se sepa que no
 // es un momento nuevo del partido. En YouTube, además, el video de verdad
 // se rebobina `segundos` (usando la IFrame Player API en vez del <iframe> a
 // secas) y después de ese mismo tiempo vuelve solo al momento en vivo real
@@ -175,7 +178,7 @@ function cargarYouTubeAPI() {
 export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
-  const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" al centro-izquierda, dura toda la repetición
+  const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
   const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
   const [mostrandoCierre, setMostrandoCierre] = useState(false) // el logo de Golmebol agrandándose, al final, de transición hacia el en vivo
   const iframeRef = useRef(null)
@@ -277,7 +280,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   // 1) de una, rebobina el video en YouTube (tapado por la gráfica de
   //    apertura si hay una, así el "salto" del rebobinado no se nota);
   // 2) la gráfica de apertura entra, se queda un momento y sale;
-  // 3) la etiqueta "REPETICIÓN" se queda al centro-izquierda durante toda
+  // 3) la etiqueta "REPETICIÓN" se queda debajo del reloj del marcador durante toda
   //    la repetición;
   // 4) al cabo de `segundos`, el logo de Golmebol aparece solo (sin fondo)
   //    encima del video y se va agrandando — a la mitad de esa animación,
