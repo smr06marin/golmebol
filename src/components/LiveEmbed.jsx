@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 
 // Saca el ID del video de cualquier formato de link de YouTube: watch?v=,
@@ -47,29 +47,30 @@ function BotonPantallaCompleta({ activo, onClick }) {
   )
 }
 
-// Aviso de "repetición" que aparece unos segundos abajo del video cuando el
-// árbitro anota un gol — con el patrocinador de turno, como el "cortesía
-// de" que ponen las transmisiones profesionales. En YouTube el video de
-// verdad se rebobina (ver `dispararRepeticion` más abajo); en las demás
-// plataformas no se puede mover el video desde acá, así que solo se avisa
-// del gol, sin decir "repetición".
-function AvisoRepeticion({ conRebobinado, patrocinador }) {
+// Etiqueta fija arriba del video mientras dura la repetición del gol — para
+// que quien esté viendo sepa que lo que aparece no es un momento nuevo del
+// partido sino la jugada de hace unos segundos. Se queda en la esquina
+// (no al centro, donde ya está el marcador) durante toda la repetición.
+function EtiquetaRepeticion() {
   return (
-    <div style={{ position:'absolute', left:0, right:0, bottom:'10px', zIndex:4, display:'flex', justifyContent:'center', pointerEvents:'none' }}>
-      <div style={{ background:'rgba(6,6,8,.94)', borderRadius:'9px', padding:'6px 14px', display:'flex', alignItems:'center', gap:'8px', boxShadow:'0 3px 14px rgba(0,0,0,.5)', maxWidth:'92%' }}>
-        <span style={{ fontSize:'clamp(.6rem,2.4vw,.72rem)', fontWeight:900, color:'#fff', whiteSpace:'nowrap' }}>
-          {conRebobinado ? '🔁 REPETICIÓN' : '⚽ ¡GOL!'}
-        </span>
-        {patrocinador && (
-          <>
-            <span style={{ width:'1px', height:'16px', background:'rgba(255,255,255,.25)', flexShrink:0 }}/>
-            <span style={{ fontSize:'clamp(.52rem,2vw,.6rem)', color:'#c9c9c9', fontWeight:700, whiteSpace:'nowrap' }}>Cortesía de</span>
-            {patrocinador.logo_url
-              ? <img src={patrocinador.logo_url} alt={patrocinador.nombre || ''} style={{ height:'18px', maxWidth:'90px', objectFit:'contain', flexShrink:0 }}/>
-              : <span style={{ fontSize:'clamp(.55rem,2.2vw,.65rem)', fontWeight:900, color:'#fff', whiteSpace:'nowrap' }}>{patrocinador.nombre}</span>}
-          </>
-        )}
-      </div>
+    <div style={{ position:'absolute', top:'10px', left:'10px', zIndex:5, display:'flex', alignItems:'center', gap:'6px', background:'rgba(6,6,8,.92)', borderRadius:'7px', padding:'4px 10px', pointerEvents:'none', boxShadow:'0 2px 10px rgba(0,0,0,.45)' }}>
+      <span style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite' }}/>
+      <span style={{ fontSize:'clamp(.55rem,2.2vw,.66rem)', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>REPETICIÓN</span>
+    </div>
+  )
+}
+
+// La gráfica del patrocinador que tapa el video un instante justo cuando
+// empieza la repetición — la diseña y la sube el propio patrocinador/admin
+// desde /admin/patrocinadores (imagen_repeticion_url), como el "cortesía
+// de" de una transmisión deportiva de verdad. Entra y sale con transición
+// (ver .gm-repeticion-entra / .gm-repeticion-sale en index.css); `fase`
+// controla cuál de las dos animaciones se ve en cada momento.
+function BumperPatrocinador({ fase, imagenUrl, nombre }) {
+  return (
+    <div className={fase === 'sale' ? 'gm-repeticion-sale' : 'gm-repeticion-entra'}
+      style={{ position:'absolute', inset:0, zIndex:6, background:'#000', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', pointerEvents:'none' }}>
+      <img src={imagenUrl} alt={nombre ? `Repetición cortesía de ${nombre}` : 'Repetición'} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
     </div>
   )
 }
@@ -121,19 +122,28 @@ function cargarYouTubeAPI() {
 // iPhone, así que este método funciona igual en todos los celulares.
 //
 // `repeticion` (opcional): { key, segundos, patrocinador } — cada vez que
-// `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo), se
-// muestra el aviso de "repetición" con el patrocinador de turno durante
-// unos segundos. En YouTube, además, el video de verdad se rebobina
+// `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo): si el
+// patrocinador de turno tiene una imagen de repetición cargada (desde
+// /admin/patrocinadores), esa imagen tapa el video un instante con
+// transición de entrada y salida; mientras dura toda la repetición, arriba
+// queda la etiqueta "REPETICIÓN" para que se sepa que no es un momento
+// nuevo del partido. En YouTube, además, el video de verdad se rebobina
 // `segundos` (usando la IFrame Player API en vez del <iframe> a secas) y
 // después de ese mismo tiempo vuelve solo al momento en vivo real. En
 // Facebook/Instagram no hay forma confiable de mover el video desde acá,
-// así que ahí solo se muestra el aviso, sin rebobinar.
+// así que ahí solo se ven la gráfica y la etiqueta, sin rebobinar de verdad.
 export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
-  const [mostrandoRepeticion, setMostrandoRepeticion] = useState(false)
+  const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" arriba, dura toda la repetición
+  const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica del patrocinador, solo al principio
   const iframeRef = useRef(null)
   const ytPlayerRef = useRef(null)
+  // Id propio para el iframe de YouTube (puede haber varios <LiveEmbed> a la
+  // vez si hay varias transmisiones) — la IFrame Player API de YouTube solo
+  // "adopta" un iframe ya existente de forma confiable cuando se le pasa el
+  // ID en texto (así lo documenta YouTube), no la referencia al elemento.
+  const idIframeYoutube = `yt-player-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
 
   useEffect(() => {
     if (plataforma !== 'instagram') return
@@ -162,14 +172,19 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
     let cancelado = false
     let player = null
     cargarYouTubeAPI().then(YT => {
-      if (cancelado || !YT || !iframeRef.current) return
-      player = new YT.Player(iframeRef.current, {
+      if (cancelado || !YT || !document.getElementById(idIframeYoutube)) return
+      player = new YT.Player(idIframeYoutube, {
         events: {
           onReady: () => {
             if (cancelado) return
             ytPlayerRef.current = player
             iframeRef.current = player.getIframe()
           },
+          // Si YouTube no deja controlar este video puntual (pasa con algunos
+          // videos/streams según cómo los configuró el dueño del canal), que
+          // quede al menos en la consola — así no se ve como un error
+          // "silencioso" si algún día hay que revisar por qué no rebobina.
+          onError: e => console.warn('[LiveEmbed] YouTube player no se pudo controlar (código', e?.data, ')'),
         },
       })
     })
@@ -178,7 +193,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
       ytPlayerRef.current = null
       if (player?.destroy) player.destroy()
     }
-  }, [plataforma, url])
+  }, [plataforma, url, idIframeYoutube])
 
   // Mientras está en nuestra pantalla completa: bloquea el scroll de fondo
   // (igual que cualquier modal de la app) y permite cerrarla con Escape.
@@ -217,14 +232,20 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
     }
   }, [])
 
-  // Dispara la repetición apenas cambia `repeticion.key` (un gol nuevo): en
-  // YouTube rebobina el video de verdad; en cualquier plataforma muestra el
-  // aviso con el patrocinador durante unos segundos.
+  // Dispara la repetición apenas cambia `repeticion.key` (un gol nuevo):
+  // 1) de una, rebobina el video en YouTube (tapado por la gráfica del
+  //    patrocinador si hay una, así el "salto" del rebobinado no se nota);
+  // 2) la gráfica del patrocinador entra, se queda un momento y sale;
+  // 3) la etiqueta "REPETICIÓN" se queda arriba durante toda la repetición;
+  // 4) al cabo de `segundos`, el video vuelve solo al momento en vivo real
+  //    y se quita la etiqueta.
   useEffect(() => {
     if (!repeticion?.key) return
     const segundos = repeticion.segundos || 12
-    setMostrandoRepeticion(true)
-    let volverEnVivoTimer
+    const timers = []
+
+    setMostrandoEtiqueta(true)
+
     const player = ytPlayerRef.current
     if (plataforma === 'youtube' && typeof player?.seekTo === 'function' && typeof player?.getCurrentTime === 'function') {
       try {
@@ -232,16 +253,23 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
         player.seekTo(Math.max(0, actual - segundos), true)
         // Después de repetir la jugada, vuelve sola al momento en vivo real
         // (si no, se quedaría viendo el partido con `segundos` de retraso).
-        volverEnVivoTimer = setTimeout(() => {
+        timers.push(setTimeout(() => {
           try {
             const duracion = player.getDuration?.()
             if (duracion) player.seekTo(duracion, true)
           } catch { /* si el reproductor ya no responde, no pasa nada */ }
-        }, segundos * 1000)
+        }, segundos * 1000))
       } catch { /* si el reproductor todavía no está listo, se pierde este intento */ }
     }
-    const ocultarAvisoTimer = setTimeout(() => setMostrandoRepeticion(false), 5000)
-    return () => { clearTimeout(volverEnVivoTimer); clearTimeout(ocultarAvisoTimer) }
+
+    if (repeticion.patrocinador?.imagen_repeticion_url) {
+      setFaseBumper('entra')
+      timers.push(setTimeout(() => setFaseBumper('sale'), 2000))
+      timers.push(setTimeout(() => setFaseBumper(null), 2400))
+    }
+
+    timers.push(setTimeout(() => setMostrandoEtiqueta(false), segundos * 1000))
+    return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe disparar cuando cambia la key, no en cada render
   }, [repeticion?.key, plataforma])
 
@@ -253,11 +281,14 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
     const origen = typeof window !== 'undefined' ? window.location.origin : ''
     return (
       <div style={pantallaCompleta ? cajaCompleta : cajaNormal}>
-        <iframe ref={iframeRef} src={`https://www.youtube.com/embed/${id}?enablejsapi=1&origin=${encodeURIComponent(origen)}`} title={titulo || 'En vivo'}
+        <iframe ref={iframeRef} id={idIframeYoutube} src={`https://www.youtube.com/embed/${id}?enablejsapi=1&origin=${encodeURIComponent(origen)}`} title={titulo || 'En vivo'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
-        {mostrandoRepeticion && <AvisoRepeticion conRebobinado patrocinador={repeticion?.patrocinador}/>}
+        {mostrandoEtiqueta && <EtiquetaRepeticion/>}
+        {faseBumper && repeticion?.patrocinador?.imagen_repeticion_url && (
+          <BumperPatrocinador fase={faseBumper} imagenUrl={repeticion.patrocinador.imagen_repeticion_url} nombre={repeticion.patrocinador.nombre}/>
+        )}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
     )
@@ -270,7 +301,10 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
           title={titulo || 'En vivo'} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
-        {mostrandoRepeticion && <AvisoRepeticion conRebobinado={false} patrocinador={repeticion?.patrocinador}/>}
+        {mostrandoEtiqueta && <EtiquetaRepeticion/>}
+        {faseBumper && repeticion?.patrocinador?.imagen_repeticion_url && (
+          <BumperPatrocinador fase={faseBumper} imagenUrl={repeticion.patrocinador.imagen_repeticion_url} nombre={repeticion.patrocinador.nombre}/>
+        )}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
     )

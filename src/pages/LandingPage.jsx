@@ -401,14 +401,16 @@ export default function LandingPage() {
   // Repetición automática del gol: cuando el árbitro anota un gol en el
   // partido de alguna transmisión activa, se le avisa a esa transmisión
   // (ver LiveEmbed) para que rebobine unos segundos y muestre otra vez la
-  // jugada, con el logo de un patrocinador activo (los mismos que se
-  // gestionan desde /admin/patrocinadores) rotando en orden, como el
-  // "cortesía de" de las transmisiones profesionales.
+  // jugada. Rota en orden entre los patrocinadores que ya tengan su propia
+  // imagen de repetición cargada (/admin/patrocinadores) — si ninguno la
+  // tiene todavía, la repetición sigue funcionando igual, solo que sin la
+  // gráfica del patrocinador.
   const golesAnterioresRef = useRef({}) // { [matchId]: { local, vis } }
   const repeticionContadorRef = useRef(0)
   const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, patrocinador } }
 
   useEffect(() => {
+    const patrocinadoresConImagen = patrocinadores.filter(p => p.imagen_repeticion_url)
     streamsVivos.forEach(s => {
       if (!s.match_id) return
       const partido = partidosVivo.find(m => m.id === s.match_id)
@@ -416,8 +418,8 @@ export default function LandingPage() {
       const anterior = golesAnterioresRef.current[s.match_id]
       const actual = { local: partido.vivo.golesLocal || 0, vis: partido.vivo.golesVis || 0 }
       if (anterior && (actual.local > anterior.local || actual.vis > anterior.vis)) {
-        const patrocinador = patrocinadores.length
-          ? patrocinadores[repeticionContadorRef.current % patrocinadores.length]
+        const patrocinador = patrocinadoresConImagen.length
+          ? patrocinadoresConImagen[repeticionContadorRef.current % patrocinadoresConImagen.length]
           : null
         repeticionContadorRef.current += 1
         setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, patrocinador } }))
