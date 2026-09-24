@@ -140,6 +140,30 @@ input:focus, select:focus, textarea:focus {
 .gm-repeticion-entra { animation: gmRepeticionEntra .45s ease both; }
 .gm-repeticion-sale  { animation: gmRepeticionSale .4s ease both; }
 
+/* Cierre de la repetición (LiveEmbed): el logo de Golmebol tapa el video
+   justo cuando toca volver al momento en vivo real, ampliándose al entrar
+   y al salir, para que el salto no se note. */
+@keyframes gmCierreEntra {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes gmCierreSale {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes gmCierreLogoEntra {
+  from { opacity: 0; transform: scale(.55); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes gmCierreLogoSale {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(1.4); }
+}
+.gm-cierre-entra      { animation: gmCierreEntra .4s ease both; }
+.gm-cierre-sale       { animation: gmCierreSale .45s ease both; }
+.gm-cierre-logo-entra { animation: gmCierreLogoEntra .4s ease both; }
+.gm-cierre-logo-sale  { animation: gmCierreLogoSale .45s ease both; }
+
 /* Spinner de carga de páginas */
 .gm-spinner {
   width: 34px; height: 34px;

@@ -47,13 +47,14 @@ function BotonPantallaCompleta({ activo, onClick }) {
   )
 }
 
-// Etiqueta fija arriba del video mientras dura la repetición del gol — para
-// que quien esté viendo sepa que lo que aparece no es un momento nuevo del
-// partido sino la jugada de hace unos segundos. Se queda en la esquina
-// (no al centro, donde ya está el marcador) durante toda la repetición.
+// Etiqueta fija al centro-izquierda del video mientras dura la repetición
+// del gol — para que quien esté viendo sepa que lo que aparece no es un
+// momento nuevo del partido sino la jugada de hace unos segundos. Va al
+// centro vertical (no arriba, donde ya está el marcador) durante toda la
+// repetición.
 function EtiquetaRepeticion() {
   return (
-    <div style={{ position:'absolute', top:'10px', left:'10px', zIndex:5, display:'flex', alignItems:'center', gap:'6px', background:'rgba(6,6,8,.92)', borderRadius:'7px', padding:'4px 10px', pointerEvents:'none', boxShadow:'0 2px 10px rgba(0,0,0,.45)' }}>
+    <div style={{ position:'absolute', top:'50%', left:'10px', transform:'translateY(-50%)', zIndex:5, display:'flex', alignItems:'center', gap:'6px', background:'rgba(6,6,8,.92)', borderRadius:'7px', padding:'4px 10px', pointerEvents:'none', boxShadow:'0 2px 10px rgba(0,0,0,.45)' }}>
       <span style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite' }}/>
       <span style={{ fontSize:'clamp(.55rem,2.2vw,.66rem)', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>REPETICIÓN</span>
     </div>
@@ -71,6 +72,23 @@ function BumperRepeticion({ fase, imagenUrl }) {
     <div className={fase === 'sale' ? 'gm-repeticion-sale' : 'gm-repeticion-entra'}
       style={{ position:'absolute', inset:0, zIndex:6, background:'#000', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', pointerEvents:'none' }}>
       <img src={imagenUrl} alt="Repetición" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+    </div>
+  )
+}
+
+// Cierre de TODA repetición (haya o no gráfica de patrocinador al principio):
+// justo cuando toca volver al momento en vivo real, el logo de Golmebol tapa
+// el video un instante, ampliándose al entrar y al salir — así el salto
+// (rebobinar unos segundos y de golpe volver adelante al en vivo) queda
+// disimulado detrás del logo en vez de notarse como un corte brusco del
+// video. Va por encima de todo lo demás (etiqueta, gráfica de apertura).
+function BumperCierre({ fase }) {
+  return (
+    <div className={fase === 'sale' ? 'gm-cierre-sale' : 'gm-cierre-entra'}
+      style={{ position:'absolute', inset:0, zIndex:7, background:'#000', display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+      <img src="/marca/logo-cierre-repeticion.png" alt="Golmebol"
+        className={fase === 'sale' ? 'gm-cierre-logo-sale' : 'gm-cierre-logo-entra'}
+        style={{ width:'46%', maxWidth:'320px', height:'auto' }}/>
     </div>
   )
 }
@@ -125,18 +143,21 @@ function cargarYouTubeAPI() {
 // `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo): si hay
 // una imagen de repetición cargada (desde /admin/config-sitio, rotan en
 // orden si hay varias), esa imagen tapa el video un instante con
-// transición de entrada y salida; mientras dura toda la repetición, arriba
-// queda la etiqueta "REPETICIÓN" para que se sepa que no es un momento
-// nuevo del partido. En YouTube, además, el video de verdad se rebobina
-// `segundos` (usando la IFrame Player API en vez del <iframe> a secas) y
-// después de ese mismo tiempo vuelve solo al momento en vivo real. En
-// Facebook/Instagram no hay forma confiable de mover el video desde acá,
-// así que ahí solo se ven la gráfica y la etiqueta, sin rebobinar de verdad.
+// transición de entrada y salida; mientras dura toda la repetición, al
+// centro-izquierda queda la etiqueta "REPETICIÓN" para que se sepa que no
+// es un momento nuevo del partido. En YouTube, además, el video de verdad
+// se rebobina `segundos` (usando la IFrame Player API en vez del <iframe> a
+// secas) y después de ese mismo tiempo vuelve solo al momento en vivo real
+// — ese regreso siempre se tapa con el logo de Golmebol (ver BumperCierre),
+// para que el salto no se note. En Facebook/Instagram no hay forma
+// confiable de mover el video desde acá, así que ahí solo se ven la
+// etiqueta y las dos gráficas (apertura y cierre), sin rebobinar de verdad.
 export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
-  const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" arriba, dura toda la repetición
+  const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" al centro-izquierda, dura toda la repetición
   const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
+  const [faseCierre, setFaseCierre] = useState(null) // null | 'entra' | 'sale' — el logo de Golmebol, al final, tapando el salto al en vivo
   const iframeRef = useRef(null)
   const ytPlayerRef = useRef(null)
   // Id propio para el iframe de YouTube (puede haber varios <LiveEmbed> a la
@@ -234,31 +255,38 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
 
   // Dispara la repetición apenas cambia `repeticion.key` (un gol nuevo):
   // 1) de una, rebobina el video en YouTube (tapado por la gráfica de
-  //    repetición si hay una, así el "salto" del rebobinado no se nota);
-  // 2) la gráfica de repetición entra, se queda un momento y sale;
-  // 3) la etiqueta "REPETICIÓN" se queda arriba durante toda la repetición;
-  // 4) al cabo de `segundos`, el video vuelve solo al momento en vivo real
-  //    y se quita la etiqueta.
+  //    apertura si hay una, así el "salto" del rebobinado no se nota);
+  // 2) la gráfica de apertura entra, se queda un momento y sale;
+  // 3) la etiqueta "REPETICIÓN" se queda al centro-izquierda durante toda
+  //    la repetición;
+  // 4) al cabo de `segundos`, el logo de Golmebol tapa el video
+  //    ampliándose, el video vuelve por detrás al momento en vivo real, y
+  //    el logo se abre de nuevo mostrando el en vivo ya al día — así ese
+  //    salto tampoco se nota, en NINGUNA repetición (con o sin gráfica de
+  //    apertura, y también en Facebook/Instagram, donde no hay salto real
+  //    pero el cierre queda igual de parejo).
   useEffect(() => {
     if (!repeticion?.key) return
     const segundos = repeticion.segundos || 12
     const timers = []
 
+    // Tiempos del cierre, todos relativos al momento en que toca volver al
+    // en vivo: el logo tarda 400ms en cubrir la pantalla, el salto de
+    // verdad ocurre ya tapado (450ms), se sostiene un poco (650ms) y luego
+    // se abre de nuevo (1100ms después, ya en vivo).
+    const msCierreInicio = segundos * 1000
+    const msCierreSeek = msCierreInicio + 450
+    const msCierreSale = msCierreInicio + 650
+    const msCierreFin = msCierreInicio + 1100
+
     setMostrandoEtiqueta(true)
 
     const player = ytPlayerRef.current
-    if (plataforma === 'youtube' && typeof player?.seekTo === 'function' && typeof player?.getCurrentTime === 'function') {
+    const puedeControlarVideo = plataforma === 'youtube' && typeof player?.seekTo === 'function' && typeof player?.getCurrentTime === 'function'
+    if (puedeControlarVideo) {
       try {
         const actual = player.getCurrentTime()
         player.seekTo(Math.max(0, actual - segundos), true)
-        // Después de repetir la jugada, vuelve sola al momento en vivo real
-        // (si no, se quedaría viendo el partido con `segundos` de retraso).
-        timers.push(setTimeout(() => {
-          try {
-            const duracion = player.getDuration?.()
-            if (duracion) player.seekTo(duracion, true)
-          } catch { /* si el reproductor ya no responde, no pasa nada */ }
-        }, segundos * 1000))
       } catch { /* si el reproductor todavía no está listo, se pierde este intento */ }
     }
 
@@ -268,7 +296,21 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
       timers.push(setTimeout(() => setFaseBumper(null), 2400))
     }
 
-    timers.push(setTimeout(() => setMostrandoEtiqueta(false), segundos * 1000))
+    timers.push(setTimeout(() => setFaseCierre('entra'), msCierreInicio))
+    timers.push(setTimeout(() => {
+      // El salto de verdad al en vivo pasa acá, ya tapado por el logo.
+      if (!puedeControlarVideo) return
+      try {
+        const duracion = player.getDuration?.()
+        if (duracion) player.seekTo(duracion, true)
+      } catch { /* si el reproductor ya no responde, no pasa nada */ }
+    }, msCierreSeek))
+    timers.push(setTimeout(() => setFaseCierre('sale'), msCierreSale))
+    timers.push(setTimeout(() => {
+      setFaseCierre(null)
+      setMostrandoEtiqueta(false)
+    }, msCierreFin))
+
     return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe disparar cuando cambia la key, no en cada render
   }, [repeticion?.key, plataforma])
@@ -289,6 +331,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
         {faseBumper && repeticion?.imagenUrl && (
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
+        {faseCierre && <BumperCierre fase={faseCierre}/>}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
     )
@@ -305,6 +348,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
         {faseBumper && repeticion?.imagenUrl && (
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
+        {faseCierre && <BumperCierre fase={faseCierre}/>}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
     )
