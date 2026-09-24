@@ -380,6 +380,52 @@ export default function LandingPage() {
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []
   ).filter(s => s.activo && (s.url || '').trim()), [siteConfig])
 
+  // Mientras haya alguna transmisión con marcador activa, escucha los
+  // cambios de la tabla matches casi al instante (en vez de esperar hasta
+  // 20s del refresco normal) — así, apenas el árbitro anota un gol, la
+  // repetición sale de una y no varios segundos tarde.
+  useEffect(() => {
+    const hayMarcadorActivo = streamsVivos.some(s => s.match_id)
+    if (!hayMarcadorActivo) return
+    const timer = { current: null }
+    const channel = supabase
+      .channel('landing-en-vivo-marcador')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, () => {
+        clearTimeout(timer.current)
+        timer.current = setTimeout(fetchPartidosVivo, 400)
+      })
+      .subscribe()
+    return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
+  }, [streamsVivos])
+
+  // Repetición automática del gol: cuando el árbitro anota un gol en el
+  // partido de alguna transmisión activa, se le avisa a esa transmisión
+  // (ver LiveEmbed) para que rebobine unos segundos y muestre otra vez la
+  // jugada, con el logo de un patrocinador activo (los mismos que se
+  // gestionan desde /admin/patrocinadores) rotando en orden, como el
+  // "cortesía de" de las transmisiones profesionales.
+  const golesAnterioresRef = useRef({}) // { [matchId]: { local, vis } }
+  const repeticionContadorRef = useRef(0)
+  const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, patrocinador } }
+
+  useEffect(() => {
+    streamsVivos.forEach(s => {
+      if (!s.match_id) return
+      const partido = partidosVivo.find(m => m.id === s.match_id)
+      if (!partido?.vivo) return
+      const anterior = golesAnterioresRef.current[s.match_id]
+      const actual = { local: partido.vivo.golesLocal || 0, vis: partido.vivo.golesVis || 0 }
+      if (anterior && (actual.local > anterior.local || actual.vis > anterior.vis)) {
+        const patrocinador = patrocinadores.length
+          ? patrocinadores[repeticionContadorRef.current % patrocinadores.length]
+          : null
+        repeticionContadorRef.current += 1
+        setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, patrocinador } }))
+      }
+      golesAnterioresRef.current[s.match_id] = actual
+    })
+  }, [partidosVivo, streamsVivos, patrocinadores])
+
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
       supabase.from('tournaments').select('id', { count: 'exact', head: true }),
@@ -589,7 +635,8 @@ export default function LandingPage() {
                 <LiveEmbed url={s.url} titulo={s.titulo} S={S}
                   overlay={s.match_id ? (
                     <MarcadorEnVivoOverlay partido={partidosVivo.find(m => m.id === s.match_id) || null}/>
-                  ) : null}/>
+                  ) : null}
+                  repeticion={repeticiones[s.id]}/>
               </div>
             ))}
           </div>

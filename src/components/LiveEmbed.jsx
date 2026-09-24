@@ -47,8 +47,57 @@ function BotonPantallaCompleta({ activo, onClick }) {
   )
 }
 
+// Aviso de "repetición" que aparece unos segundos abajo del video cuando el
+// árbitro anota un gol — con el patrocinador de turno, como el "cortesía
+// de" que ponen las transmisiones profesionales. En YouTube el video de
+// verdad se rebobina (ver `dispararRepeticion` más abajo); en las demás
+// plataformas no se puede mover el video desde acá, así que solo se avisa
+// del gol, sin decir "repetición".
+function AvisoRepeticion({ conRebobinado, patrocinador }) {
+  return (
+    <div style={{ position:'absolute', left:0, right:0, bottom:'10px', zIndex:4, display:'flex', justifyContent:'center', pointerEvents:'none' }}>
+      <div style={{ background:'rgba(6,6,8,.94)', borderRadius:'9px', padding:'6px 14px', display:'flex', alignItems:'center', gap:'8px', boxShadow:'0 3px 14px rgba(0,0,0,.5)', maxWidth:'92%' }}>
+        <span style={{ fontSize:'clamp(.6rem,2.4vw,.72rem)', fontWeight:900, color:'#fff', whiteSpace:'nowrap' }}>
+          {conRebobinado ? '🔁 REPETICIÓN' : '⚽ ¡GOL!'}
+        </span>
+        {patrocinador && (
+          <>
+            <span style={{ width:'1px', height:'16px', background:'rgba(255,255,255,.25)', flexShrink:0 }}/>
+            <span style={{ fontSize:'clamp(.52rem,2vw,.6rem)', color:'#c9c9c9', fontWeight:700, whiteSpace:'nowrap' }}>Cortesía de</span>
+            {patrocinador.logo_url
+              ? <img src={patrocinador.logo_url} alt={patrocinador.nombre || ''} style={{ height:'18px', maxWidth:'90px', objectFit:'contain', flexShrink:0 }}/>
+              : <span style={{ fontSize:'clamp(.55rem,2.2vw,.65rem)', fontWeight:900, color:'#fff', whiteSpace:'nowrap' }}>{patrocinador.nombre}</span>}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const cajaNormal = { position:'relative', paddingBottom:'56.25%', height:0, borderRadius:'16px', overflow:'hidden', background:'#000' }
 const cajaCompleta = { position:'fixed', inset:0, zIndex:9999, background:'#000', borderRadius:0 }
+
+// Carga el script oficial del reproductor de YouTube controlable por
+// JavaScript (IFrame Player API) una sola vez, sin importar cuántos
+// <LiveEmbed> de YouTube haya montados a la vez (puede haber varios si hay
+// varias transmisiones activas) — todos comparten la misma promesa/script.
+let promesaYouTubeAPI = null
+function cargarYouTubeAPI() {
+  if (typeof window === 'undefined') return Promise.resolve(null)
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT)
+  if (promesaYouTubeAPI) return promesaYouTubeAPI
+  promesaYouTubeAPI = new Promise(resolve => {
+    const anterior = window.onYouTubeIframeAPIReady
+    window.onYouTubeIframeAPIReady = () => { anterior?.(); resolve(window.YT) }
+    if (!document.getElementById('youtube-iframe-api')) {
+      const script = document.createElement('script')
+      script.id = 'youtube-iframe-api'
+      script.src = 'https://www.youtube.com/iframe_api'
+      document.body.appendChild(script)
+    }
+  })
+  return promesaYouTubeAPI
+}
 
 // Embebe un link de "en vivo" — YouTube se muestra directo en un iframe
 // (lo más confiable, no necesita API key). Facebook usa su plugin público
@@ -70,10 +119,21 @@ const cajaCompleta = { position:'fixed', inset:0, zIndex:9999, background:'#000'
 // (video + marcador juntos) con CSS, no con la API de pantalla completa del
 // navegador — esa API además no funciona bien para esto en Safari de
 // iPhone, así que este método funciona igual en todos los celulares.
-export default function LiveEmbed({ url, titulo, S, overlay }) {
+//
+// `repeticion` (opcional): { key, segundos, patrocinador } — cada vez que
+// `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo), se
+// muestra el aviso de "repetición" con el patrocinador de turno durante
+// unos segundos. En YouTube, además, el video de verdad se rebobina
+// `segundos` (usando la IFrame Player API en vez del <iframe> a secas) y
+// después de ese mismo tiempo vuelve solo al momento en vivo real. En
+// Facebook/Instagram no hay forma confiable de mover el video desde acá,
+// así que ahí solo se muestra el aviso, sin rebobinar.
+export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
+  const [mostrandoRepeticion, setMostrandoRepeticion] = useState(false)
   const iframeRef = useRef(null)
+  const ytPlayerRef = useRef(null)
 
   useEffect(() => {
     if (plataforma !== 'instagram') return
@@ -87,6 +147,37 @@ export default function LiveEmbed({ url, titulo, S, overlay }) {
     script.async = true
     script.onload = procesar
     document.body.appendChild(script)
+  }, [plataforma, url])
+
+  // Solo en YouTube: crea el reproductor controlable por JS a partir del
+  // mismo <iframe> que ya se está mostrando (necesita `enablejsapi=1` en su
+  // link, ver más abajo). La API REEMPLAZA ese iframe por uno propio, así
+  // que hay que volver a guardar la referencia con `getIframe()` — si no,
+  // el chequeo de pantalla completa nativa de más abajo quedaría comparando
+  // contra un elemento que ya no existe.
+  useEffect(() => {
+    if (plataforma !== 'youtube') return
+    const id = parseYouTubeId(url)
+    if (!id) return
+    let cancelado = false
+    let player = null
+    cargarYouTubeAPI().then(YT => {
+      if (cancelado || !YT || !iframeRef.current) return
+      player = new YT.Player(iframeRef.current, {
+        events: {
+          onReady: () => {
+            if (cancelado) return
+            ytPlayerRef.current = player
+            iframeRef.current = player.getIframe()
+          },
+        },
+      })
+    })
+    return () => {
+      cancelado = true
+      ytPlayerRef.current = null
+      if (player?.destroy) player.destroy()
+    }
   }, [plataforma, url])
 
   // Mientras está en nuestra pantalla completa: bloquea el scroll de fondo
@@ -126,17 +217,47 @@ export default function LiveEmbed({ url, titulo, S, overlay }) {
     }
   }, [])
 
+  // Dispara la repetición apenas cambia `repeticion.key` (un gol nuevo): en
+  // YouTube rebobina el video de verdad; en cualquier plataforma muestra el
+  // aviso con el patrocinador durante unos segundos.
+  useEffect(() => {
+    if (!repeticion?.key) return
+    const segundos = repeticion.segundos || 12
+    setMostrandoRepeticion(true)
+    let volverEnVivoTimer
+    const player = ytPlayerRef.current
+    if (plataforma === 'youtube' && typeof player?.seekTo === 'function' && typeof player?.getCurrentTime === 'function') {
+      try {
+        const actual = player.getCurrentTime()
+        player.seekTo(Math.max(0, actual - segundos), true)
+        // Después de repetir la jugada, vuelve sola al momento en vivo real
+        // (si no, se quedaría viendo el partido con `segundos` de retraso).
+        volverEnVivoTimer = setTimeout(() => {
+          try {
+            const duracion = player.getDuration?.()
+            if (duracion) player.seekTo(duracion, true)
+          } catch { /* si el reproductor ya no responde, no pasa nada */ }
+        }, segundos * 1000)
+      } catch { /* si el reproductor todavía no está listo, se pierde este intento */ }
+    }
+    const ocultarAvisoTimer = setTimeout(() => setMostrandoRepeticion(false), 5000)
+    return () => { clearTimeout(volverEnVivoTimer); clearTimeout(ocultarAvisoTimer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe disparar cuando cambia la key, no en cada render
+  }, [repeticion?.key, plataforma])
+
   if (!url) return null
 
   if (plataforma === 'youtube') {
     const id = parseYouTubeId(url)
     if (!id) return <LinkFallback url={url} S={S}/>
+    const origen = typeof window !== 'undefined' ? window.location.origin : ''
     return (
       <div style={pantallaCompleta ? cajaCompleta : cajaNormal}>
-        <iframe ref={iframeRef} src={`https://www.youtube.com/embed/${id}`} title={titulo || 'En vivo'}
+        <iframe ref={iframeRef} src={`https://www.youtube.com/embed/${id}?enablejsapi=1&origin=${encodeURIComponent(origen)}`} title={titulo || 'En vivo'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
+        {mostrandoRepeticion && <AvisoRepeticion conRebobinado patrocinador={repeticion?.patrocinador}/>}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
     )
@@ -149,6 +270,7 @@ export default function LiveEmbed({ url, titulo, S, overlay }) {
           title={titulo || 'En vivo'} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
+        {mostrandoRepeticion && <AvisoRepeticion conRebobinado={false} patrocinador={repeticion?.patrocinador}/>}
         <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
       </div>
     )
