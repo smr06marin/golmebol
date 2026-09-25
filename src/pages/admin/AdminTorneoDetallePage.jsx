@@ -5903,7 +5903,7 @@ export default function AdminTorneoDetallePage() {
               </div>
               {fin.filas.map((r, i) => (
                 <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0; return (
+                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0 || r.inscripcion > 0; return (
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
                     onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -5912,13 +5912,13 @@ export default function AdminTorneoDetallePage() {
                       {sePuedeExpandir && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: r.saldoInscripcion > 0 ? '700' : '400', color: !fin.fc.llevar_cuentas ? '#5f6368' : r.saldoInscripcion > 0 ? '#d93025' : '#1e8e3e' }}
-                      title="Independiente de arbitrajes, W, multas y tarjetas — se abona aparte con el botón 📝 Abono">
-                      {fin.fc.llevar_cuentas ? (r.inscripcion > 0 ? `${fmt(r.pagosInscripcion)} / ${fmt(r.inscripcion)}` : fmt(r.pagosInscripcion)) : '—'}
+                      title="Independiente de arbitrajes, W, multas y tarjetas — se abona aparte con el botón 📝 Abono. Clic en el equipo para ver el historial.">
+                      {fin.fc.llevar_cuentas ? (r.inscripcion <= 0 ? '—' : r.saldoInscripcion > 0 ? fmt(r.saldoInscripcion) : '✓ Al día') : '—'}
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }} title="Se paga en efectivo en la cancha — se da por pagado automáticamente al jugarse el partido">{fin.fc.llevar_cuentas ? (r.arbitrajes > 0 ? <>{fmt(r.arbitrajes)} <span style={{ color: '#1e8e3e' }}>✓</span></> : fmt(r.arbitrajes)) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: r.saldoMultas > 0 ? '700' : '400', color: !fin.fc.llevar_cuentas ? '#5f6368' : r.saldoMultas > 0 ? '#b45309' : '#1e8e3e' }}
-                      title={(r.deudas > 0 ? `Incluye ${fmt(r.deudas)} en deudas anotadas a mano — ` : '') + 'Cuenta aparte: no suma ni resta con arbitrajes, tarjetas ni inscripción'}>
-                      {fin.fc.llevar_cuentas ? (r.cargosMultas > 0 ? `${fmt(r.pagosMultas)} / ${fmt(r.cargosMultas)}` : fmt(r.pagosMultas)) : '—'}
+                      title={(r.deudas > 0 ? `Incluye ${fmt(r.deudas)} en deudas anotadas a mano — ` : '') + 'Cuenta aparte: no suma ni resta con arbitrajes, tarjetas ni inscripción. Clic en el equipo para ver el historial.'}>
+                      {fin.fc.llevar_cuentas ? (r.cargosMultas <= 0 ? '—' : r.saldoMultas > 0 ? fmt(r.saldoMultas) : '✓ Al día') : '—'}
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
@@ -5941,6 +5941,29 @@ export default function AdminTorneoDetallePage() {
                     </div>
                   </div>
                   )})()}
+                  {equipoFinAbierto === r.equipo.id && r.inscripcion > 0 && (() => {
+                    const historialInscripcion = movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'abono_inscripcion').sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                    return (
+                    <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa', borderBottom: (r.w > 0 || r.multas > 0 || r.tarjetasDetalle.length > 0) ? '1px solid #e8eaed' : 'none' }}>
+                      <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>
+                        INSCRIPCIÓN — {fmt(r.pagosInscripcion)} de {fmt(r.inscripcion)} abonado{r.saldoInscripcion > 0 ? ` · falta ${fmt(r.saldoInscripcion)}` : ' · ✓ al día'}
+                      </div>
+                      {historialInscripcion.length === 0 ? (
+                        <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Sin abonos registrados todavía</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {historialInscripcion.map(mv => (
+                            <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368' }}>
+                              <span style={{ flexShrink: 0, color: '#9aa0a6' }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                              <span style={{ flex: 1, color: '#202124' }}>{mv.concepto || 'Abono a inscripción'}</span>
+                              <span style={{ fontWeight: '700', color: '#6c35de' }}>{fmt(mv.monto)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    )
+                  })()}
                   {equipoFinAbierto === r.equipo.id && (r.w > 0 || r.multas > 0) && (() => {
                     // Lo ya pagado (r.pagosMultas, cuenta única de W/multas/deudas)
                     // se descuenta primero del cobro por W y lo que sobra de la
@@ -5982,6 +6005,24 @@ export default function AdminTorneoDetallePage() {
                           </div>
                         )}
                       </div>
+                      {(() => {
+                        const historialMultas = movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'pago_cargos').sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                        if (historialMultas.length === 0) return null
+                        return (
+                          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #e8eaed' }}>
+                            <div style={{ fontSize: '.62rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '4px' }}>HISTORIAL DE PAGOS</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {historialMultas.map(mv => (
+                                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.72rem', color: '#5f6368' }}>
+                                  <span style={{ flexShrink: 0, color: '#9aa0a6' }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
+                                  <span style={{ flex: 1, color: '#202124' }}>{mv.concepto || 'Pago de W/multa'}</span>
+                                  <span style={{ fontWeight: '700', color: '#b45309' }}>{fmt(mv.monto)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                     )
                   })()}
