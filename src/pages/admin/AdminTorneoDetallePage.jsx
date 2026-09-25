@@ -1888,7 +1888,7 @@ export default function AdminTorneoDetallePage() {
 
     const porEquipo = {}
     equipos.forEach(e => {
-      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0 }
+      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0, pagosInscripcion: 0 }
     })
 
     jugados.forEach(m => {
@@ -1936,21 +1936,28 @@ export default function AdminTorneoDetallePage() {
       }
     })
 
+    // La inscripción se lleva en SU PROPIA cuenta (pagosInscripcion, tipo
+    // 'abono_inscripcion') totalmente aparte de cargos/pagado/saldo — no se
+    // suma ni se resta con arbitrajes, W, multas, deudas ni tarjetas. Cada
+    // abono ya queda con su fecha (created_at, automática al insertar) y se
+    // ve en el historial de "Movimientos registrados" más abajo.
     movimientos.forEach(mv => {
       if (!porEquipo[mv.team_id]) return
-      if (mv.tipo === 'pago_tarjetas') porEquipo[mv.team_id].pagosTarjetas += mv.monto || 0
-      if (mv.tipo === 'pago_cargos')   porEquipo[mv.team_id].pagosOtros   += mv.monto || 0
+      if (mv.tipo === 'pago_tarjetas')     porEquipo[mv.team_id].pagosTarjetas    += mv.monto || 0
+      if (mv.tipo === 'pago_cargos')       porEquipo[mv.team_id].pagosOtros       += mv.monto || 0
+      if (mv.tipo === 'abono_inscripcion') porEquipo[mv.team_id].pagosInscripcion += mv.monto || 0
       if (mv.tipo === 'cargo_manual' && !mv.pagado) porEquipo[mv.team_id].deudas += mv.monto || 0 // deuda anotada a mano, sin marcar pagada todavía
     })
 
     const filas = Object.values(porEquipo).map(r => {
-      const cargos = r.inscripcion + r.arbitrajes + r.w + r.multas + r.deudas + r.tarjetas
+      // Cargos SIN inscripción — ver comentario arriba.
+      const cargos = r.arbitrajes + r.w + r.multas + r.deudas + r.tarjetas
       // El arbitraje se paga en efectivo directo en la cancha el día del partido:
       // en cuanto el partido queda "jugado" se da por pagado automáticamente, no
       // hace falta registrar ese pago a mano. Lo único manual sigue siendo
-      // inscripción (abonos), multas/W y tarjetas.
+      // multas/W y tarjetas (la inscripción se abona aparte, arriba).
       const pagado = r.pagosTarjetas + r.pagosOtros + r.arbitrajes
-      return { ...r, cargos, pagado, saldo: cargos - pagado, saldoTarjetas: r.tarjetas - r.pagosTarjetas }
+      return { ...r, cargos, pagado, saldo: cargos - pagado, saldoTarjetas: r.tarjetas - r.pagosTarjetas, saldoInscripcion: r.inscripcion - r.pagosInscripcion }
     }).sort((a, b) => b.saldo - a.saldo)
 
     const gastoCanchas  = jugados.length * (fc.pago_cancha_partido || 0) + partidosW.length * (fc.pago_cancha_w || 0)
@@ -1958,8 +1965,15 @@ export default function AdminTorneoDetallePage() {
     const gastos = gastoCanchas + gastoArbitros
     const ingresosEsperados = filas.reduce((a, r) => a + r.cargos, 0)
     const recaudado = filas.reduce((a, r) => a + r.pagado, 0)
+    // Totales de inscripción, aparte de todo lo demás.
+    const inscripcionTotal     = filas.reduce((a, r) => a + r.inscripcion, 0)
+    const inscripcionRecaudada = filas.reduce((a, r) => a + r.pagosInscripcion, 0)
 
-    return { fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos, ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos }
+    return {
+      fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos,
+      ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos,
+      inscripcionTotal, inscripcionRecaudada, inscripcionSaldo: inscripcionTotal - inscripcionRecaudada,
+    }
   }
 
   // yellow_paid/blue_paid/red_paid es lo único que revisa la planilla para
@@ -1990,7 +2004,10 @@ export default function AdminTorneoDetallePage() {
     setGuardandoPago(true)
     const { error } = await supabase.from('torneo_finanzas').insert({
       tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
-      concepto: pagoForm.concepto || (esDeuda ? 'Deuda anotada' : pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos'),
+      concepto: pagoForm.concepto || (esDeuda ? 'Deuda anotada'
+        : pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas'
+        : pagoForm.tipo === 'abono_inscripcion' ? 'Abono a inscripción'
+        : 'Pago de cargos'),
     })
     if (error) { setGuardandoPago(false); return showMsg('Error al registrar (¿ejecutaste migracion_finanzas.sql?)', 'error') }
 
@@ -5725,7 +5742,7 @@ export default function AdminTorneoDetallePage() {
       {/* ── TAB FINANZAS ── */}
       {tab === 'finanzas' && finanzasActivas && (() => {
         const fin = calcFinanzas()
-        const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos' || m.tipo === 'cargo_manual')
+        const pagosRegistrados = movimientos.filter(m => m.tipo === 'pago_tarjetas' || m.tipo === 'pago_cargos' || m.tipo === 'cargo_manual' || m.tipo === 'abono_inscripcion')
         return (
           <div>
             {/* Configurar precios — editables en cualquier momento */}
@@ -5800,6 +5817,17 @@ export default function AdminTorneoDetallePage() {
               </div>
             )}
 
+            {/* Inscripción — cuenta totalmente aparte, no entra en el Resumen de
+                arriba ni en Ingresos/Recaudado/Ganancia (ver calcFinanzas). */}
+            {fin.fc.llevar_cuentas && fin.inscripcionTotal > 0 && (
+              <div style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ fontWeight: '700', color: '#6c35de', fontSize: '.85rem' }}>📝 Inscripción <span style={{ fontWeight: '400', fontSize: '.7rem' }}>(cuenta aparte)</span></div>
+                <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Total: <b style={{ color: '#202124' }}>{fmt(fin.inscripcionTotal)}</b></span>
+                <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Recaudado: <b style={{ color: '#1e8e3e' }}>{fmt(fin.inscripcionRecaudada)}</b></span>
+                <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Falta: <b style={{ color: fin.inscripcionSaldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(fin.inscripcionSaldo)}</b></span>
+              </div>
+            )}
+
             {/* Gastos detalle */}
             {fin.fc.llevar_cuentas && (
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
@@ -5812,8 +5840,8 @@ export default function AdminTorneoDetallePage() {
             {/* Cuentas por equipo */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-             <div style={{ minWidth: '760px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
+             <div style={{ minWidth: '860px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 150px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
                 <div>EQUIPO</div>
                 <div style={{ textAlign: 'right' }}>INSCRIP.</div>
                 <div style={{ textAlign: 'right' }}>ARBITRAJES</div>
@@ -5826,14 +5854,17 @@ export default function AdminTorneoDetallePage() {
               {fin.filas.map((r, i) => (
                 <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
                   {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0; return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr 90px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 150px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
                     onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                       <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={24}/></div>
                       <span style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</span>
                       {sePuedeExpandir && <ChevronDown size={13} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
                     </div>
-                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }}>{fin.fc.llevar_cuentas ? fmt(r.inscripcion) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: r.saldoInscripcion > 0 ? '700' : '400', color: !fin.fc.llevar_cuentas ? '#5f6368' : r.saldoInscripcion > 0 ? '#d93025' : '#1e8e3e' }}
+                      title="Independiente de arbitrajes, W, multas y tarjetas — se abona aparte con el botón 📝 Abono">
+                      {fin.fc.llevar_cuentas ? (r.inscripcion > 0 ? `${fmt(r.pagosInscripcion)} / ${fmt(r.inscripcion)}` : fmt(r.pagosInscripcion)) : '—'}
+                    </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }} title="Se paga en efectivo en la cancha — se da por pagado automáticamente al jugarse el partido">{fin.fc.llevar_cuentas ? (r.arbitrajes > 0 ? <>{fmt(r.arbitrajes)} <span style={{ color: '#1e8e3e' }}>✓</span></> : fmt(r.arbitrajes)) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: (r.multas + r.deudas) > 0 ? '#d93025' : '#5f6368' }} title={r.deudas > 0 ? `Incluye ${fmt(r.deudas)} en deudas anotadas a mano` : ''}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas + r.deudas) : '—'}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
@@ -5848,6 +5879,11 @@ export default function AdminTorneoDetallePage() {
                         title="Anotar una deuda del equipo (ej: quedó debiendo arbitraje)"
                         style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.7rem', fontWeight: '700' }}>
                         ➖ Deuda
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'abono_inscripcion', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                        title="Registrar un abono a inscripción — independiente de tarjetas, arbitrajes, W y multas"
+                        style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#6c35de', fontSize: '.7rem', fontWeight: '700' }}>
+                        📝 Abono
                       </button>
                     </div>
                   </div>
@@ -5964,12 +6000,12 @@ export default function AdminTorneoDetallePage() {
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Movimientos registrados</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                          {pagosRegistrados.length === 0 ? (
-                <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay movimientos — usa los botones 💵 Pago o ➖ Deuda de cada equipo</div>
+                <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay movimientos — usa los botones 💵 Pago, ➖ Deuda o 📝 Abono de cada equipo</div>
               ) : pagosRegistrados.map((mv, i) => (
                 <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: mv.tipo === 'cargo_manual' && mv.pagado ? .55 : 1 }}>
                   <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
-                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : 'Pago de cargos')}</span>
-                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : '#1a73e8', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : 'Cargos'}</span>
+                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de cargos')}</span>
+                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : mv.tipo === 'abono_inscripcion' ? '#6c35de' : '#1a73e8', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : mv.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Inscripción' : 'Cargos'}</span>
                   {mv.tipo === 'cargo_manual' && mv.pagado && (
                     <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>✓ Pagada</span>
                   )}
@@ -6235,7 +6271,9 @@ export default function AdminTorneoDetallePage() {
           <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: '700', color: pagoForm.tipo === 'cargo_manual' ? '#d93025' : '#202124', fontSize: '.9rem' }}>
-                {pagoForm.tipo === 'cargo_manual' ? `➖ Anotar deuda — ${pagoModal.name}` : `💵 Registrar pago — ${pagoModal.name}`}
+                {pagoForm.tipo === 'cargo_manual' ? `➖ Anotar deuda — ${pagoModal.name}`
+                  : pagoForm.tipo === 'abono_inscripcion' ? `📝 Abono a inscripción — ${pagoModal.name}`
+                  : `💵 Registrar pago — ${pagoModal.name}`}
               </div>
               <button onClick={() => setPagoModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
             </div>
@@ -6256,8 +6294,17 @@ export default function AdminTorneoDetallePage() {
                     style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_cargos' ? '2px solid #1a73e8' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_cargos' ? '#e8f0fe' : '#fff', color: pagoForm.tipo === 'pago_cargos' ? '#1a73e8' : '#5f6368' }}>
                     🧾 Otros cargos
                   </button>
+                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'abono_inscripcion' }))}
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'abono_inscripcion' ? '2px solid #6c35de' : '1px solid #dadce0', background: pagoForm.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#fff', color: pagoForm.tipo === 'abono_inscripcion' ? '#6c35de' : '#5f6368' }}>
+                    📝 Inscripción
+                  </button>
                 </div>
               </div>
+              )}
+              {pagoForm.tipo === 'abono_inscripcion' && (
+                <div style={{ marginBottom: '12px', background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#6c35de', lineHeight: 1.5 }}>
+                  Este abono es <b>independiente</b> de tarjetas, arbitrajes, W y multas — solo se suma al saldo de inscripción del equipo, con la fecha de hoy.
+                </div>
               )}
               {pagoForm.tipo === 'pago_tarjetas' && (() => {
                 // Lista de tarjetas sin pagar de este equipo (de pendientesTarjetas,
@@ -6294,7 +6341,7 @@ export default function AdminTorneoDetallePage() {
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Concepto (opcional)</label>
-                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : 'Ej: pago tarjetas jornada 3'}/>
+                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : pagoForm.tipo === 'abono_inscripcion' ? 'Ej: primer abono de inscripción' : 'Ej: pago tarjetas jornada 3'}/>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
