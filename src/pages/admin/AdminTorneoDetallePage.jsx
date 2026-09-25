@@ -1820,6 +1820,16 @@ export default function AdminTorneoDetallePage() {
 
   const fmt = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
 
+  // Puntos de mil EN VIVO mientras se escribe un monto (ej: "50.000"), para
+  // no equivocarse de ceros al registrar plata. El estado siempre guarda solo
+  // dígitos (sin puntos) — lo que se le pasa a formatMiles puede venir con
+  // puntos ya puestos (se limpian antes de reformatear).
+  const formatMiles = v => {
+    const digits = String(v ?? '').replace(/\D/g, '')
+    return digits ? parseInt(digits, 10).toLocaleString('es-CO') : ''
+  }
+  const soloDigitos = s => s.replace(/\D/g, '')
+
   async function fetchFinanzas() {
     const [{ data: movs }, { data: evs }, { data: st }] = await Promise.all([
       supabase.from('torneo_finanzas').select('*, teams(name), players(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
@@ -5812,9 +5822,10 @@ export default function AdminTorneoDetallePage() {
                     ].map(c => (
                       <div key={c.k}>
                         <label style={{ display: 'block', fontSize: '.7rem', fontWeight: '600', color: '#5f6368', marginBottom: '4px' }}>{c.l}</label>
-                        <input type="number" min="0" value={formFin[c.k] ?? 0}
-                          onChange={e => setFormFin(f => ({ ...f, [c.k]: e.target.value }))}
+                        <input type="text" inputMode="numeric" value={formatMiles(formFin[c.k])}
+                          onChange={e => setFormFin(f => ({ ...f, [c.k]: soloDigitos(e.target.value) }))}
                           onFocus={e => e.target.select()}
+                          placeholder="0"
                           style={{ width: '100%', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '9px 10px', fontSize: '.9rem', fontWeight: '700', color: '#202124', outline: 'none', boxSizing: 'border-box' }}/>
                       </div>
                     ))}
@@ -6122,7 +6133,7 @@ export default function AdminTorneoDetallePage() {
                       <span style={{ flexShrink: 0, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} ·</span>
                       <input value={editandoMov.concepto} onChange={e => setEditandoMov(f => ({ ...f, concepto: e.target.value }))}
                         placeholder="Concepto" style={{ flex: 1, minWidth: '80px', border: '1.5px solid #dadce0', borderRadius: '6px', padding: '5px 8px', fontSize: '.78rem' }}/>
-                      <input type="number" min="0" value={editandoMov.monto} onChange={e => setEditandoMov(f => ({ ...f, monto: e.target.value }))}
+                      <input type="text" inputMode="numeric" value={formatMiles(editandoMov.monto)} onChange={e => setEditandoMov(f => ({ ...f, monto: soloDigitos(e.target.value) }))}
                         style={{ width: '100px', border: '1.5px solid #dadce0', borderRadius: '6px', padding: '5px 8px', fontSize: '.78rem', fontWeight: '700', textAlign: 'right' }}/>
                       <button onClick={handleGuardarEdicionMov} disabled={guardandoEdicionMov}
                         style={{ background: guardandoEdicionMov ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '6px', padding: '4px 9px', cursor: guardandoEdicionMov ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
@@ -6475,7 +6486,7 @@ export default function AdminTorneoDetallePage() {
               })()}
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Monto ($) *</label>
-                <input type="number" min="0" value={pagoForm.monto} onChange={e => setPagoForm(f => ({ ...f, monto: e.target.value }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
+                <input type="text" inputMode="numeric" value={formatMiles(pagoForm.monto)} onChange={e => setPagoForm(f => ({ ...f, monto: soloDigitos(e.target.value) }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Concepto (opcional)</label>
