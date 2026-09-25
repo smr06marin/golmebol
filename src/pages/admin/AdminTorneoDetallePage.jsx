@@ -849,6 +849,8 @@ export default function AdminTorneoDetallePage() {
   const [tarjetasAPagar,   setTarjetasAPagar]   = useState([]) // [{player_id, color, nombre}] a marcar pagadas junto con este pago
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
+  const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
+  const [guardandoEdicionMov, setGuardandoEdicionMov] = useState(false)
 
   // ── PERSONALIZACIÓN (marca + patrocinadores del torneo) ──
   const [formMarca,          setFormMarca]          = useState({ custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', favicon_url: '', logo_url: '' })
@@ -2040,6 +2042,25 @@ export default function AdminTorneoDetallePage() {
   async function handleEliminarPago(mv) {
     if (!confirm('¿Eliminar este pago?')) return
     await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    fetchFinanzas()
+  }
+
+  // Corregir un movimiento ya registrado (monto o concepto) por si hubo un
+  // error al escribirlo — no se toca el tipo ni el equipo, para no mezclar
+  // el movimiento entre cuentas independientes por accidente.
+  function iniciarEdicionMov(mv) {
+    setEditandoMov({ id: mv.id, monto: String(mv.monto ?? ''), concepto: mv.concepto || '' })
+  }
+
+  async function handleGuardarEdicionMov() {
+    const monto = parseFloat(editandoMov.monto)
+    if (!monto || monto <= 0) return showMsg('Ingresa un monto válido', 'error')
+    setGuardandoEdicionMov(true)
+    const { error } = await supabase.from('torneo_finanzas').update({ monto, concepto: editandoMov.concepto || null }).eq('id', editandoMov.id)
+    setGuardandoEdicionMov(false)
+    if (error) return showMsg('Error al guardar la corrección', 'error')
+    showMsg('Movimiento corregido ✓')
+    setEditandoMov(null)
     fetchFinanzas()
   }
 
@@ -5869,8 +5890,8 @@ export default function AdminTorneoDetallePage() {
             {/* Cuentas por equipo */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-             <div style={{ minWidth: '860px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 150px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
+             <div style={{ minWidth: '940px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
                 <div>EQUIPO</div>
                 <div style={{ textAlign: 'right' }}>INSCRIP.</div>
                 <div style={{ textAlign: 'right' }}>ARBITRAJES</div>
@@ -5883,7 +5904,7 @@ export default function AdminTorneoDetallePage() {
               {fin.filas.map((r, i) => (
                 <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
                   {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0; return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 150px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
                     onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                       <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={24}/></div>
@@ -5902,25 +5923,33 @@ export default function AdminTorneoDetallePage() {
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
-                    <div style={{ textAlign: 'right', display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                    <div style={{ textAlign: 'right', display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end', alignContent: 'center' }}>
                       <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
-                        style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '600' }}>
+                        style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         💵 Pago
                       </button>
                       <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'cargo_manual', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         title="Anotar una deuda del equipo (ej: quedó debiendo arbitraje)"
-                        style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.7rem', fontWeight: '700' }}>
+                        style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#d93025', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         ➖ Deuda
                       </button>
                       <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'abono_inscripcion', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         title="Registrar un abono a inscripción — independiente de tarjetas, arbitrajes, W y multas"
-                        style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#6c35de', fontSize: '.7rem', fontWeight: '700' }}>
+                        style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
                       </button>
                     </div>
                   </div>
                   )})()}
-                  {equipoFinAbierto === r.equipo.id && (r.w > 0 || r.multas > 0) && (
+                  {equipoFinAbierto === r.equipo.id && (r.w > 0 || r.multas > 0) && (() => {
+                    // Lo ya pagado (r.pagosMultas, cuenta única de W/multas/deudas)
+                    // se descuenta primero del cobro por W y lo que sobra de la
+                    // multa — así, en cuanto se registra el pago, cada línea deja
+                    // de mostrarse como pendiente en vez de seguir ofreciendo
+                    // cobrar lo mismo otra vez.
+                    const restanteW = Math.max(0, r.w - r.pagosMultas)
+                    const restanteMulta = Math.max(0, r.multas - Math.max(0, r.pagosMultas - r.w))
+                    return (
                     <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa', borderBottom: r.tarjetasDetalle.length > 0 ? '1px solid #e8eaed' : 'none' }}>
                       <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>CARGOS DE PARTIDOS EN W</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -5928,25 +5957,34 @@ export default function AdminTorneoDetallePage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368' }}>
                             <span style={{ flex: 1, color: '#202124' }}>🏆 Cobro por ganar W</span>
                             <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(r.w)}</span>
-                            <button onClick={() => abrirPagoRapido(r.equipo, r.tarjetasDetalle, r.w, 'Pago de W')}
-                              style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
-                              💵 Ya pagó {fmt(r.w)}
-                            </button>
+                            {restanteW <= 0 ? (
+                              <span style={{ color: '#1e8e3e', fontSize: '.68rem', fontWeight: '700' }}>✓ Pagado</span>
+                            ) : (
+                              <button onClick={() => abrirPagoRapido(r.equipo, r.tarjetasDetalle, restanteW, 'Pago de W')}
+                                style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
+                                💵 Ya pagó {fmt(restanteW)}
+                              </button>
+                            )}
                           </div>
                         )}
                         {r.multas > 0 && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem', color: '#5f6368' }}>
                             <span style={{ flex: 1, color: '#202124' }}>⛔ Multa por no presentarse</span>
                             <span style={{ fontWeight: '700', color: '#d93025' }}>{fmt(r.multas)}</span>
-                            <button onClick={() => abrirPagoRapido(r.equipo, r.tarjetasDetalle, r.multas, 'Pago de multa')}
-                              style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
-                              💵 Ya pagó {fmt(r.multas)}
-                            </button>
+                            {restanteMulta <= 0 ? (
+                              <span style={{ color: '#1e8e3e', fontSize: '.68rem', fontWeight: '700' }}>✓ Pagado</span>
+                            ) : (
+                              <button onClick={() => abrirPagoRapido(r.equipo, r.tarjetasDetalle, restanteMulta, 'Pago de multa')}
+                                style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '700' }}>
+                                💵 Ya pagó {fmt(restanteMulta)}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
-                  )}
+                    )
+                  })()}
                   {equipoFinAbierto === r.equipo.id && r.tarjetasDetalle.length > 0 && (
                     <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa' }}>
                       <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>TARJETAS POR JUGADOR</div>
@@ -6033,24 +6071,46 @@ export default function AdminTorneoDetallePage() {
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                          {pagosRegistrados.length === 0 ? (
                 <div style={{ padding: '28px', textAlign: 'center', color: '#9aa0a6', fontSize: '.8rem' }}>Aún no hay movimientos — usa los botones 💵 Pago, ➖ Deuda o 📝 Abono de cada equipo</div>
-              ) : pagosRegistrados.map((mv, i) => (
-                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: mv.tipo === 'cargo_manual' && mv.pagado ? .55 : 1 }}>
+              ) : pagosRegistrados.map((mv, i) => {
+                const editando = editandoMov?.id === mv.id
+                return (
+                <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: mv.tipo === 'cargo_manual' && mv.pagado && !editando ? .55 : 1, background: editando ? '#f8f9fa' : 'transparent' }}>
                   <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
-                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de W/multa')}</span>
-                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : mv.tipo === 'abono_inscripcion' ? '#6c35de' : '#b45309', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : mv.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#fef3c7', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Inscripción' : 'W/Multas'}</span>
-                  {mv.tipo === 'cargo_manual' && mv.pagado && (
-                    <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>✓ Pagada</span>
+                  {editando ? (
+                    <>
+                      <span style={{ flexShrink: 0, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} ·</span>
+                      <input value={editandoMov.concepto} onChange={e => setEditandoMov(f => ({ ...f, concepto: e.target.value }))}
+                        placeholder="Concepto" style={{ flex: 1, minWidth: '80px', border: '1.5px solid #dadce0', borderRadius: '6px', padding: '5px 8px', fontSize: '.78rem' }}/>
+                      <input type="number" min="0" value={editandoMov.monto} onChange={e => setEditandoMov(f => ({ ...f, monto: e.target.value }))}
+                        style={{ width: '100px', border: '1.5px solid #dadce0', borderRadius: '6px', padding: '5px 8px', fontSize: '.78rem', fontWeight: '700', textAlign: 'right' }}/>
+                      <button onClick={handleGuardarEdicionMov} disabled={guardandoEdicionMov}
+                        style={{ background: guardandoEdicionMov ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '6px', padding: '4px 9px', cursor: guardandoEdicionMov ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                        ✓ Guardar
+                      </button>
+                      <button onClick={() => setEditandoMov(null)} style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#5f6368', display: 'flex' }}><X size={12}/></button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de W/multa')}</span>
+                      <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : mv.tipo === 'abono_inscripcion' ? '#6c35de' : '#b45309', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : mv.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#fef3c7', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Inscripción' : 'W/Multas'}</span>
+                      {mv.tipo === 'cargo_manual' && mv.pagado && (
+                        <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>✓ Pagada</span>
+                      )}
+                      <span style={{ fontSize: '.85rem', fontWeight: '800', color: mv.tipo === 'cargo_manual' && !mv.pagado ? '#d93025' : '#1e8e3e', textDecoration: mv.tipo === 'cargo_manual' && mv.pagado ? 'line-through' : 'none' }}>{mv.tipo === 'cargo_manual' ? '−' : ''}{fmt(mv.monto)}</span>
+                      {mv.tipo === 'cargo_manual' && !mv.pagado && (
+                        <button onClick={() => handleMarcarCargoPagado(mv)} title="Marcar esta deuda como pagada (ej: ya pagó el arbitraje o la multa que le habían anotado)"
+                          style={{ background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '4px 9px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          ✓ Ya pagó
+                        </button>
+                      )}
+                      <button onClick={() => iniciarEdicionMov(mv)} title="Corregir el monto o el concepto de este movimiento"
+                        style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#5f6368', display: 'flex' }}><Pencil size={12}/></button>
+                      <button onClick={() => handleEliminarPago(mv)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#d93025', display: 'flex' }}><X size={12}/></button>
+                    </>
                   )}
-                  <span style={{ fontSize: '.85rem', fontWeight: '800', color: mv.tipo === 'cargo_manual' && !mv.pagado ? '#d93025' : '#1e8e3e', textDecoration: mv.tipo === 'cargo_manual' && mv.pagado ? 'line-through' : 'none' }}>{mv.tipo === 'cargo_manual' ? '−' : ''}{fmt(mv.monto)}</span>
-                  {mv.tipo === 'cargo_manual' && !mv.pagado && (
-                    <button onClick={() => handleMarcarCargoPagado(mv)} title="Marcar esta deuda como pagada (ej: ya pagó el arbitraje o la multa que le habían anotado)"
-                      style={{ background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '4px 9px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                      ✓ Ya pagó
-                    </button>
-                  )}
-                  <button onClick={() => handleEliminarPago(mv)} style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '3px 6px', cursor: 'pointer', color: '#d93025', display: 'flex' }}><X size={12}/></button>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )
