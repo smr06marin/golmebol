@@ -1888,7 +1888,7 @@ export default function AdminTorneoDetallePage() {
 
     const porEquipo = {}
     equipos.forEach(e => {
-      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosOtros: 0, pagosInscripcion: 0 }
+      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosMultas: 0, pagosInscripcion: 0 }
     })
 
     jugados.forEach(m => {
@@ -1936,28 +1936,38 @@ export default function AdminTorneoDetallePage() {
       }
     })
 
-    // La inscripción se lleva en SU PROPIA cuenta (pagosInscripcion, tipo
-    // 'abono_inscripcion') totalmente aparte de cargos/pagado/saldo — no se
-    // suma ni se resta con arbitrajes, W, multas, deudas ni tarjetas. Cada
-    // abono ya queda con su fecha (created_at, automática al insertar) y se
-    // ve en el historial de "Movimientos registrados" más abajo.
+    // Tres cuentas TOTALMENTE independientes, que no se suman ni se restan
+    // entre sí: (1) inscripción (pagosInscripcion, tipo 'abono_inscripcion'),
+    // (2) W/multas/deudas (pagosMultas, tipo 'pago_cargos' — cargo_manual se
+    // paga aparte marcando pagado:true, ver handleMarcarCargoPagado), y (3)
+    // PAGADO/SALDO "de cancha" (arbitrajes + tarjetas), que es lo único que
+    // entra en cargos/pagado/saldo e Ingresos/Recaudado/Ganancia del Resumen.
+    // Cada movimiento queda con su fecha (created_at, automática al insertar)
+    // y se ve en el historial de "Movimientos registrados" más abajo.
     movimientos.forEach(mv => {
       if (!porEquipo[mv.team_id]) return
       if (mv.tipo === 'pago_tarjetas')     porEquipo[mv.team_id].pagosTarjetas    += mv.monto || 0
-      if (mv.tipo === 'pago_cargos')       porEquipo[mv.team_id].pagosOtros       += mv.monto || 0
+      if (mv.tipo === 'pago_cargos')       porEquipo[mv.team_id].pagosMultas      += mv.monto || 0
       if (mv.tipo === 'abono_inscripcion') porEquipo[mv.team_id].pagosInscripcion += mv.monto || 0
       if (mv.tipo === 'cargo_manual' && !mv.pagado) porEquipo[mv.team_id].deudas += mv.monto || 0 // deuda anotada a mano, sin marcar pagada todavía
     })
 
     const filas = Object.values(porEquipo).map(r => {
-      // Cargos SIN inscripción — ver comentario arriba.
-      const cargos = r.arbitrajes + r.w + r.multas + r.deudas + r.tarjetas
+      // Cargos SOLO de cancha: arbitrajes + tarjetas. W, multas y deudas
+      // anotadas a mano viven en su propia cuenta (cargosMultas/saldoMultas),
+      // igual que inscripción — ver comentario arriba.
+      const cargos = r.arbitrajes + r.tarjetas
       // El arbitraje se paga en efectivo directo en la cancha el día del partido:
       // en cuanto el partido queda "jugado" se da por pagado automáticamente, no
-      // hace falta registrar ese pago a mano. Lo único manual sigue siendo
-      // multas/W y tarjetas (la inscripción se abona aparte, arriba).
-      const pagado = r.pagosTarjetas + r.pagosOtros + r.arbitrajes
-      return { ...r, cargos, pagado, saldo: cargos - pagado, saldoTarjetas: r.tarjetas - r.pagosTarjetas, saldoInscripcion: r.inscripcion - r.pagosInscripcion }
+      // hace falta registrar ese pago a mano. Lo único manual que entra acá son
+      // las tarjetas (W/multas e inscripción se abonan aparte, en su propia cuenta).
+      const pagado = r.pagosTarjetas + r.arbitrajes
+      const cargosMultas = r.w + r.multas + r.deudas
+      return {
+        ...r, cargos, pagado, saldo: cargos - pagado,
+        saldoTarjetas: r.tarjetas - r.pagosTarjetas, saldoInscripcion: r.inscripcion - r.pagosInscripcion,
+        cargosMultas, saldoMultas: cargosMultas - r.pagosMultas,
+      }
     }).sort((a, b) => b.saldo - a.saldo)
 
     const gastoCanchas  = jugados.length * (fc.pago_cancha_partido || 0) + partidosW.length * (fc.pago_cancha_w || 0)
@@ -1965,14 +1975,17 @@ export default function AdminTorneoDetallePage() {
     const gastos = gastoCanchas + gastoArbitros
     const ingresosEsperados = filas.reduce((a, r) => a + r.cargos, 0)
     const recaudado = filas.reduce((a, r) => a + r.pagado, 0)
-    // Totales de inscripción, aparte de todo lo demás.
+    // Totales de inscripción y de W/multas, cada una aparte de todo lo demás.
     const inscripcionTotal     = filas.reduce((a, r) => a + r.inscripcion, 0)
     const inscripcionRecaudada = filas.reduce((a, r) => a + r.pagosInscripcion, 0)
+    const multasTotal     = filas.reduce((a, r) => a + r.cargosMultas, 0)
+    const multasRecaudado = filas.reduce((a, r) => a + r.pagosMultas, 0)
 
     return {
       fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos,
       ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos,
       inscripcionTotal, inscripcionRecaudada, inscripcionSaldo: inscripcionTotal - inscripcionRecaudada,
+      multasTotal, multasRecaudado, multasSaldo: multasTotal - multasRecaudado,
     }
   }
 
@@ -2007,7 +2020,7 @@ export default function AdminTorneoDetallePage() {
       concepto: pagoForm.concepto || (esDeuda ? 'Deuda anotada'
         : pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas'
         : pagoForm.tipo === 'abono_inscripcion' ? 'Abono a inscripción'
-        : 'Pago de cargos'),
+        : 'Pago de W/multa'),
     })
     if (error) { setGuardandoPago(false); return showMsg('Error al registrar (¿ejecutaste migracion_finanzas.sql?)', 'error') }
 
@@ -2306,9 +2319,12 @@ export default function AdminTorneoDetallePage() {
       await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('tipo', 'deuda_personal')
 
       if (fc.llevar_cuentas && inscripcionFee > 0) {
-        const { data: pagosCargos } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'pago_cargos')
+        // La inscripción se abona con tipo 'abono_inscripcion' (cuenta aparte
+        // de W/multas/cargos) — antes esto leía 'pago_cargos' por error, de
+        // cuando todo se mezclaba en la misma cuenta.
+        const { data: pagosInscripcion } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'abono_inscripcion')
         const pagadoPorEquipo = {}
-        ;(pagosCargos || []).forEach(p => { pagadoPorEquipo[p.team_id] = (pagadoPorEquipo[p.team_id] || 0) + (p.monto || 0) })
+        ;(pagosInscripcion || []).forEach(p => { pagadoPorEquipo[p.team_id] = (pagadoPorEquipo[p.team_id] || 0) + (p.monto || 0) })
 
         const deudas = []
         equipos.forEach(eq => {
@@ -5817,14 +5833,27 @@ export default function AdminTorneoDetallePage() {
               </div>
             )}
 
-            {/* Inscripción — cuenta totalmente aparte, no entra en el Resumen de
-                arriba ni en Ingresos/Recaudado/Ganancia (ver calcFinanzas). */}
-            {fin.fc.llevar_cuentas && fin.inscripcionTotal > 0 && (
-              <div style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ fontWeight: '700', color: '#6c35de', fontSize: '.85rem' }}>📝 Inscripción <span style={{ fontWeight: '400', fontSize: '.7rem' }}>(cuenta aparte)</span></div>
-                <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Total: <b style={{ color: '#202124' }}>{fmt(fin.inscripcionTotal)}</b></span>
-                <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Recaudado: <b style={{ color: '#1e8e3e' }}>{fmt(fin.inscripcionRecaudada)}</b></span>
-                <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Falta: <b style={{ color: fin.inscripcionSaldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(fin.inscripcionSaldo)}</b></span>
+            {/* Inscripción y W/Multas — cuentas totalmente aparte, no entran en
+                el Resumen de arriba (PAGADO/SALDO es solo arbitrajes+tarjetas)
+                ni entre sí. Ver calcFinanzas. */}
+            {fin.fc.llevar_cuentas && (fin.inscripcionTotal > 0 || fin.multasTotal > 0) && (
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                {fin.inscripcionTotal > 0 && (
+                  <div style={{ flex: '1 1 260px', background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '12px', padding: '14px 20px', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ fontWeight: '700', color: '#6c35de', fontSize: '.85rem' }}>📝 Inscripción <span style={{ fontWeight: '400', fontSize: '.7rem' }}>(cuenta aparte)</span></div>
+                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Total: <b style={{ color: '#202124' }}>{fmt(fin.inscripcionTotal)}</b></span>
+                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Recaudado: <b style={{ color: '#1e8e3e' }}>{fmt(fin.inscripcionRecaudada)}</b></span>
+                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Falta: <b style={{ color: fin.inscripcionSaldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(fin.inscripcionSaldo)}</b></span>
+                  </div>
+                )}
+                {fin.multasTotal > 0 && (
+                  <div style={{ flex: '1 1 260px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '12px', padding: '14px 20px', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ fontWeight: '700', color: '#b45309', fontSize: '.85rem' }}>⛔ W / Multas <span style={{ fontWeight: '400', fontSize: '.7rem' }}>(cuenta aparte)</span></div>
+                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Total: <b style={{ color: '#202124' }}>{fmt(fin.multasTotal)}</b></span>
+                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Recaudado: <b style={{ color: '#1e8e3e' }}>{fmt(fin.multasRecaudado)}</b></span>
+                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Falta: <b style={{ color: fin.multasSaldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(fin.multasSaldo)}</b></span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -5833,7 +5862,7 @@ export default function AdminTorneoDetallePage() {
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
                 <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
                 <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
-                <span>Los cobros a equipos y gastos se calculan automáticamente con cada partido jugado o W. El arbitraje se da por pagado solo (se cobra en efectivo en la cancha) — lo único que se registra a mano es inscripción, multas/W y tarjetas.</span>
+                <span>PAGADO/SALDO de arriba es solo arbitrajes + tarjetas. El arbitraje se da por pagado solo (se cobra en efectivo en la cancha) — las tarjetas se registran a mano. Inscripción y W/Multas se llevan cada una en su propia cuenta, aparte.</span>
               </div>
             )}
 
@@ -5866,7 +5895,10 @@ export default function AdminTorneoDetallePage() {
                       {fin.fc.llevar_cuentas ? (r.inscripcion > 0 ? `${fmt(r.pagosInscripcion)} / ${fmt(r.inscripcion)}` : fmt(r.pagosInscripcion)) : '—'}
                     </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#5f6368' }} title="Se paga en efectivo en la cancha — se da por pagado automáticamente al jugarse el partido">{fin.fc.llevar_cuentas ? (r.arbitrajes > 0 ? <>{fmt(r.arbitrajes)} <span style={{ color: '#1e8e3e' }}>✓</span></> : fmt(r.arbitrajes)) : '—'}</div>
-                    <div style={{ textAlign: 'right', fontSize: '.78rem', color: (r.multas + r.deudas) > 0 ? '#d93025' : '#5f6368' }} title={r.deudas > 0 ? `Incluye ${fmt(r.deudas)} en deudas anotadas a mano` : ''}>{fin.fc.llevar_cuentas ? fmt(r.w + r.multas + r.deudas) : '—'}</div>
+                    <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: r.saldoMultas > 0 ? '700' : '400', color: !fin.fc.llevar_cuentas ? '#5f6368' : r.saldoMultas > 0 ? '#b45309' : '#1e8e3e' }}
+                      title={(r.deudas > 0 ? `Incluye ${fmt(r.deudas)} en deudas anotadas a mano — ` : '') + 'Cuenta aparte: no suma ni resta con arbitrajes, tarjetas ni inscripción'}>
+                      {fin.fc.llevar_cuentas ? (r.cargosMultas > 0 ? `${fmt(r.pagosMultas)} / ${fmt(r.cargosMultas)}` : fmt(r.pagosMultas)) : '—'}
+                    </div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', fontWeight: '700', color: r.saldoTarjetas > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.tarjetas)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
@@ -6004,8 +6036,8 @@ export default function AdminTorneoDetallePage() {
               ) : pagosRegistrados.map((mv, i) => (
                 <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < pagosRegistrados.length - 1 ? '1px solid #f1f3f4' : 'none', opacity: mv.tipo === 'cargo_manual' && mv.pagado ? .55 : 1 }}>
                   <span style={{ fontSize: '.75rem', color: '#9aa0a6', flexShrink: 0 }}>{new Date(mv.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}</span>
-                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de cargos')}</span>
-                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : mv.tipo === 'abono_inscripcion' ? '#6c35de' : '#1a73e8', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : mv.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#e8f0fe', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Inscripción' : 'Cargos'}</span>
+                  <span style={{ flex: 1, fontSize: '.8rem', color: '#202124', fontWeight: '500' }}>{mv.teams?.name || '—'} · {mv.concepto || (mv.tipo === 'cargo_manual' ? 'Deuda anotada' : mv.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de W/multa')}</span>
+                  <span style={{ fontSize: '.68rem', color: mv.tipo === 'cargo_manual' ? '#d93025' : mv.tipo === 'pago_tarjetas' ? '#e8710a' : mv.tipo === 'abono_inscripcion' ? '#6c35de' : '#b45309', background: mv.tipo === 'cargo_manual' ? '#fce8e6' : mv.tipo === 'pago_tarjetas' ? '#fff4e5' : mv.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#fef3c7', borderRadius: '10px', padding: '2px 8px' }}>{mv.tipo === 'cargo_manual' ? 'Deuda' : mv.tipo === 'pago_tarjetas' ? 'Tarjetas' : mv.tipo === 'abono_inscripcion' ? 'Inscripción' : 'W/Multas'}</span>
                   {mv.tipo === 'cargo_manual' && mv.pagado && (
                     <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 8px', fontWeight: '700' }}>✓ Pagada</span>
                   )}
@@ -6291,8 +6323,8 @@ export default function AdminTorneoDetallePage() {
                     💳 Tarjetas
                   </button>
                   <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_cargos' }))}
-                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_cargos' ? '2px solid #1a73e8' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_cargos' ? '#e8f0fe' : '#fff', color: pagoForm.tipo === 'pago_cargos' ? '#1a73e8' : '#5f6368' }}>
-                    🧾 Otros cargos
+                    style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_cargos' ? '2px solid #b45309' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_cargos' ? '#fef3c7' : '#fff', color: pagoForm.tipo === 'pago_cargos' ? '#b45309' : '#5f6368' }}>
+                    ⛔ W / Multas
                   </button>
                   <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'abono_inscripcion' }))}
                     style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'abono_inscripcion' ? '2px solid #6c35de' : '1px solid #dadce0', background: pagoForm.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#fff', color: pagoForm.tipo === 'abono_inscripcion' ? '#6c35de' : '#5f6368' }}>
@@ -6304,6 +6336,11 @@ export default function AdminTorneoDetallePage() {
               {pagoForm.tipo === 'abono_inscripcion' && (
                 <div style={{ marginBottom: '12px', background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#6c35de', lineHeight: 1.5 }}>
                   Este abono es <b>independiente</b> de tarjetas, arbitrajes, W y multas — solo se suma al saldo de inscripción del equipo, con la fecha de hoy.
+                </div>
+              )}
+              {pagoForm.tipo === 'pago_cargos' && (
+                <div style={{ marginBottom: '12px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#b45309', lineHeight: 1.5 }}>
+                  Este pago cubre <b>W y multas</b> (cobro por ganar/perder W, o deudas anotadas a mano) — es una cuenta aparte, no se mezcla con arbitrajes, tarjetas ni inscripción.
                 </div>
               )}
               {pagoForm.tipo === 'pago_tarjetas' && (() => {
@@ -6341,7 +6378,7 @@ export default function AdminTorneoDetallePage() {
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Concepto (opcional)</label>
-                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : pagoForm.tipo === 'abono_inscripcion' ? 'Ej: primer abono de inscripción' : 'Ej: pago tarjetas jornada 3'}/>
+                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : pagoForm.tipo === 'abono_inscripcion' ? 'Ej: primer abono de inscripción' : pagoForm.tipo === 'pago_cargos' ? 'Ej: pago de W jornada 3' : 'Ej: pago tarjetas jornada 3'}/>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
