@@ -17,8 +17,16 @@
 --      eso es justo lo que ya usa la planilla (yellow_paid /
 --      blue_paid / red_paid) para dejar de bloquear al jugador.
 --   3) Cada pago registrado por el link queda anotado en
---      Finanzas del torneo con una nota de que se recibió por
---      ese link, para que el organizador pueda verificarlo.
+--      Finanzas del torneo con el detalle de partido/cancha/fecha
+--      de cada tarjeta pagada, para que el organizador pueda
+--      verificarlo — y se ve en la misma página, en "Historial de
+--      pagos".
+--   4) El link es SIEMPRE el mismo (se genera una sola vez) y cada
+--      vez que se abre (o se toca "Actualizar") vuelve a calcular
+--      los deudores al momento — apenas termina un partido y se
+--      guardan sus tarjetas, la próxima vez que se abra (o el
+--      auto-refresco cada 30s) ya sale reflejado, sin tener que
+--      generar un link nuevo.
 --
 -- OJO: el árbitro YA NO tiene esta opción desde la planilla (ver
 -- PlanillaRapida.jsx) — el cobro/desbloqueo de tarjetas ahora
@@ -107,7 +115,7 @@ begin
       s.player_id, s.team_id, s.match_id,
       coalesce(p.name, 'Jugador') as player_nombre,
       tm.name as team_nombre,
-      m.played_at, ht.name as home_nombre, at.name as away_nombre,
+      m.played_at, m.location as cancha_nombre, ht.name as home_nombre, at.name as away_nombre,
       (s.yellow_cards > 0 and not s.yellow_paid) as debe_am,
       (s.blue_cards   > 0 and not s.blue_paid)   as debe_az,
       (s.red_cards    > 0 and not s.red_paid)    as debe_rj
@@ -156,6 +164,7 @@ begin
         'tiposDelPartido', to_jsonb(tipos_del_partido),
         'monto', monto,
         'fecha', played_at,
+        'cancha', cancha_nombre,
         'home', home_nombre,
         'away', away_nombre
       ) order by played_at) as items
@@ -183,7 +192,11 @@ grant execute on function public.ver_deudores_por_link(uuid) to anon, authentica
 -- Registra el pago de TODAS las tarjetas sin pagar de un jugador en el
 -- torneo (mismo criterio que ya usa marcarTarjetaPagada en
 -- src/lib/tarjetasDeuda.js: no separa por partido, pone al día todos los
--- colores que deba) y lo anota en Finanzas del torneo.
+-- colores que deba) y lo anota en Finanzas del torneo. El concepto queda
+-- con el detalle (partido, cancha y fecha) de CADA tarjeta que se pagó,
+-- armado ANTES de marcarlas pagadas — así el historial de pagos del link
+-- (ver_historial_pagos_tarjetas_por_link) puede mostrar cancha y fecha de
+-- cada una, aunque player_match_stats ya no distinga cuál pago fue cuál.
 create or replace function public.pagar_tarjeta_por_link(p_token uuid, p_player_id uuid)
 returns jsonb
 language plpgsql
@@ -197,6 +210,8 @@ declare
   v_player_nombre text;
   v_total numeric := 0;
   v_tipos text[] := '{}';
+  v_detalle text := '';
+  v_item record;
 begin
   select id, coalesce(finanzas_config, '{}'::jsonb) into v_tournament_id, v_config
   from tournaments where link_deudores_token = p_token;
@@ -206,6 +221,36 @@ begin
   end if;
 
   select name into v_player_nombre from players where id = p_player_id;
+
+  for v_item in
+    select 'Amarilla' as tipo, m.played_at, m.location as cancha, ht.name as home_nombre, at.name as away_nombre
+      from player_match_stats s
+      left join matches m on m.id = s.match_id
+      left join teams ht on ht.id = m.home_team_id
+      left join teams at on at.id = m.away_team_id
+      where s.tournament_id = v_tournament_id and s.player_id = p_player_id and s.yellow_cards > 0 and not s.yellow_paid
+    union all
+    select 'Azul', m.played_at, m.location, ht.name, at.name
+      from player_match_stats s
+      left join matches m on m.id = s.match_id
+      left join teams ht on ht.id = m.home_team_id
+      left join teams at on at.id = m.away_team_id
+      where s.tournament_id = v_tournament_id and s.player_id = p_player_id and s.blue_cards > 0 and not s.blue_paid
+    union all
+    select 'Roja', m.played_at, m.location, ht.name, at.name
+      from player_match_stats s
+      left join matches m on m.id = s.match_id
+      left join teams ht on ht.id = m.home_team_id
+      left join teams at on at.id = m.away_team_id
+      where s.tournament_id = v_tournament_id and s.player_id = p_player_id and s.red_cards > 0 and not s.red_paid
+    order by played_at
+  loop
+    v_detalle := v_detalle || case when v_detalle = '' then '' else ' | ' end
+      || v_item.tipo
+      || coalesce(' · ' || v_item.home_nombre || ' vs ' || v_item.away_nombre, '')
+      || coalesce(' · cancha ' || v_item.cancha, '')
+      || coalesce(' · ' || to_char(v_item.played_at, 'DD/MM/YYYY'), '');
+  end loop;
 
   if exists (select 1 from player_match_stats where tournament_id = v_tournament_id and player_id = p_player_id and yellow_cards > 0 and not yellow_paid) then
     update player_match_stats set yellow_paid = true where tournament_id = v_tournament_id and player_id = p_player_id and yellow_cards > 0;
@@ -236,10 +281,52 @@ begin
 
   insert into torneo_finanzas (tournament_id, team_id, player_id, tipo, monto, pagado, concepto)
   values (v_tournament_id, v_team_id, p_player_id, 'pago_tarjetas', v_total, true,
-    'Tarjeta(s) de ' || coalesce(v_player_nombre, 'jugador') || ' (' || array_to_string(v_tipos, ' + ') || ') — pagada por el link de deudores de tarjetas');
+    'Tarjeta(s) de ' || coalesce(v_player_nombre, 'jugador') || ' — ' || v_detalle || ' — pagada por el link de deudores de tarjetas');
 
   return jsonb_build_object('ok', true, 'total', v_total, 'tipos', to_jsonb(v_tipos));
 end;
 $$;
 
 grant execute on function public.pagar_tarjeta_por_link(uuid, uuid) to anon, authenticated;
+
+-- Historial de pagos de tarjetas de un torneo, para mostrarlo en la misma
+-- página del link de deudores — con fecha (created_at, cuándo se registró
+-- el pago) y el detalle de partido/cancha/fecha que quedó anotado en el
+-- concepto al momento de pagar (ver pagar_tarjeta_por_link más arriba).
+-- Incluye los pagos de tarjetas registrados por CUALQUIER vía (este link,
+-- el panel de Finanzas del admin), no solo los del link.
+create or replace function public.ver_historial_pagos_tarjetas_por_link(p_token uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_tournament_id uuid;
+  v_result jsonb;
+begin
+  select id into v_tournament_id from tournaments where link_deudores_token = p_token;
+
+  if v_tournament_id is null then
+    raise exception 'Link inválido';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', f.id,
+    'jugador', coalesce(p.name, 'Jugador'),
+    'equipo', tm.name,
+    'monto', f.monto,
+    'concepto', f.concepto,
+    'fecha', f.created_at
+  ) order by f.created_at desc), '[]'::jsonb)
+  into v_result
+  from torneo_finanzas f
+  left join players p on p.id = f.player_id
+  left join teams tm on tm.id = f.team_id
+  where f.tournament_id = v_tournament_id and f.tipo = 'pago_tarjetas';
+
+  return v_result;
+end;
+$$;
+
+grant execute on function public.ver_historial_pagos_tarjetas_por_link(uuid) to anon, authenticated;
