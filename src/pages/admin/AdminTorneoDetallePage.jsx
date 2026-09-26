@@ -6671,7 +6671,9 @@ export default function AdminTorneoDetallePage() {
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Contraseña</label>
-                <input value={passwordDeudoresForm} onChange={e => setPasswordDeudoresForm(e.target.value)} style={inputStyle} placeholder="Ej: golmebol2026"/>
+                <input value={passwordDeudoresForm} onChange={e => setPasswordDeudoresForm(e.target.value)} style={inputStyle} placeholder="Ej: golmebol2026"
+                  autoCapitalize="none" autoCorrect="off" autoComplete="off" spellCheck="false"/>
+                <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '4px' }}>Ojo: mayúsculas y minúsculas importan — anótala tal cual queda aquí.</div>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => setModalLinkDeudores(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cerrar</button>
