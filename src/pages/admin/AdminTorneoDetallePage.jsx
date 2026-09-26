@@ -843,6 +843,7 @@ export default function AdminTorneoDetallePage() {
   const [pendientesTarjetas, setPendientesTarjetas] = useState({}) // { player_id: { am, az, rj } } tarjetas sin pagar
   const [showConfigFin,    setShowConfigFin]    = useState(false)
   const [formFin,          setFormFin]          = useState({})
+  const [formCanchaPrecios, setFormCanchaPrecios] = useState({}) // { [cancha_id]: { precio_partido, precio_w } } — vacío = usa el valor por defecto del torneo
   const [guardandoFin,     setGuardandoFin]     = useState(false)
   const [pagoModal,        setPagoModal]        = useState(null) // equipo al que se registra pago
   const [pagoForm,         setPagoForm]         = useState({ tipo: 'pago_tarjetas', monto: '', concepto: '' })
@@ -1982,7 +1983,35 @@ export default function AdminTorneoDetallePage() {
       }
     }).sort((a, b) => b.saldo - a.saldo)
 
-    const gastoCanchas  = jugados.length * (fc.pago_cancha_partido || 0) + partidosW.length * (fc.pago_cancha_w || 0)
+    // Gasto de cancha, DESGLOSADO por cancha — a veces una cancha cuesta más
+    // que otra, así que cada cancha puede tener su propio precio_partido/
+    // precio_w (columnas en la tabla `canchas`); si una cancha no tiene
+    // precio propio, usa el valor por defecto del torneo (fc.pago_cancha_*).
+    // El partido se empareja con su cancha por el nombre que quedó guardado
+    // en matches.location (es lo que se guarda al crear la jornada o editar
+    // el partido — ver "Cancha" en el formulario de partido). Los árbitros
+    // NO varían por cancha, se quedan como un único gasto global.
+    const porCancha = {}
+    canchas.forEach(c => { porCancha[c.id] = { cancha: c, jugados: 0, ws: 0, total: 0 } })
+    let jugadosSinCancha = 0, wsSinCancha = 0, gastoSinCancha = 0
+    const canchaDeMatch = m => (m.location && canchas.find(c => c.nombre === m.location)) || null
+    jugados.forEach(m => {
+      const c = canchaDeMatch(m)
+      const precio = c && c.precio_partido != null ? (c.precio_partido || 0) : (fc.pago_cancha_partido || 0)
+      if (c) { porCancha[c.id].jugados += 1; porCancha[c.id].total += precio }
+      else { jugadosSinCancha += 1; gastoSinCancha += precio }
+    })
+    partidosW.forEach(m => {
+      const c = canchaDeMatch(m)
+      const precio = c && c.precio_w != null ? (c.precio_w || 0) : (fc.pago_cancha_w || 0)
+      if (c) { porCancha[c.id].ws += 1; porCancha[c.id].total += precio }
+      else { wsSinCancha += 1; gastoSinCancha += precio }
+    })
+    const canchasDetalle = Object.values(porCancha).filter(x => x.jugados > 0 || x.ws > 0)
+    if (jugadosSinCancha > 0 || wsSinCancha > 0) {
+      canchasDetalle.push({ cancha: { id: 'sin-cancha', nombre: 'Sin cancha asignada' }, jugados: jugadosSinCancha, ws: wsSinCancha, total: gastoSinCancha })
+    }
+    const gastoCanchas  = canchasDetalle.reduce((a, x) => a + x.total, 0)
     const gastoArbitros = jugados.length * (fc.pago_arbitro_partido || 0) + partidosW.length * (fc.pago_arbitro_w || 0)
     const gastos = gastoCanchas + gastoArbitros
     const ingresosEsperados = filas.reduce((a, r) => a + r.cargos, 0)
@@ -1994,7 +2023,7 @@ export default function AdminTorneoDetallePage() {
     const multasRecaudado = filas.reduce((a, r) => a + r.pagosMultas, 0)
 
     return {
-      fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos,
+      fc, filas, jugados: jugados.length, ws: partidosW.length, gastoCanchas, gastoArbitros, gastos, canchasDetalle,
       ingresosEsperados, recaudado, gananciaEsperada: ingresosEsperados - gastos, gananciaActual: recaudado - gastos,
       inscripcionTotal, inscripcionRecaudada, inscripcionSaldo: inscripcionTotal - inscripcionRecaudada,
       multasTotal, multasRecaudado, multasSaldo: multasTotal - multasRecaudado,
@@ -2142,6 +2171,12 @@ export default function AdminTorneoDetallePage() {
       pago_cancha_partido: fc.pago_cancha_partido || 0, pago_cancha_w: fc.pago_cancha_w || 0,
       pago_arbitro_partido: fc.pago_arbitro_partido || 0, pago_arbitro_w: fc.pago_arbitro_w || 0,
     })
+    // Precio propio por cancha (opcional) — si una cancha no tiene precio
+    // propio, queda vacío acá y usa el valor por defecto de arriba.
+    setFormCanchaPrecios(canchas.reduce((acc, c) => {
+      acc[c.id] = { precio_partido: c.precio_partido != null ? String(c.precio_partido) : '', precio_w: c.precio_w != null ? String(c.precio_w) : '' }
+      return acc
+    }, {}))
     setShowConfigFin(true)
   }
 
@@ -2150,11 +2185,22 @@ export default function AdminTorneoDetallePage() {
     const fc = { ...(torneo?.finanzas_config || {}), llevar_cuentas: true }
     Object.keys(formFin).forEach(k => { fc[k] = parseFloat(formFin[k]) || 0 })
     const { error } = await supabase.from('tournaments').update({ finanzas_config: fc }).eq('id', id)
+    if (error) { setGuardandoFin(false); return showMsg('Error al guardar precios: ' + error.message, 'error') }
+
+    // Precio propio por cancha — vacío = null = usa el valor por defecto.
+    const erroresCancha = (await Promise.all(canchas.map(c => {
+      const f = formCanchaPrecios[c.id] || {}
+      return supabase.from('canchas').update({
+        precio_partido: f.precio_partido ? parseFloat(f.precio_partido) : null,
+        precio_w: f.precio_w ? parseFloat(f.precio_w) : null,
+      }).eq('id', c.id)
+    }))).some(r => r.error)
+
     setGuardandoFin(false)
-    if (error) return showMsg('Error al guardar precios: ' + error.message, 'error')
     setTorneo(p => ({ ...p, finanzas_config: fc }))
     setShowConfigFin(false)
-    showMsg('Precios actualizados ✓ — todas las cuentas se recalcularon')
+    await fetchCanchas()
+    showMsg(erroresCancha ? 'Precios guardados, pero hubo un error con algún precio por cancha' : 'Precios actualizados ✓ — todas las cuentas se recalcularon')
   }
 
   // ── PERSONALIZACIÓN ─────────────────────────────────
@@ -5815,8 +5861,8 @@ export default function AdminTorneoDetallePage() {
                       { k: 'arbitraje_equipo',     l: '🧑‍⚖️ Arbitraje por equipo/partido' },
                       { k: 'valor_w_presenta',     l: '🏆 Cobro al que gana por W' },
                       { k: 'multa_no_presenta',    l: '⛔ Multa al que no se presenta' },
-                      { k: 'pago_cancha_partido',  l: '🏟️ Gasto cancha por partido' },
-                      { k: 'pago_cancha_w',        l: '🏟️ Gasto cancha por W' },
+                      { k: 'pago_cancha_partido',  l: '🏟️ Gasto cancha por partido (por defecto)' },
+                      { k: 'pago_cancha_w',        l: '🏟️ Gasto cancha por W (por defecto)' },
                       { k: 'pago_arbitro_partido', l: '💸 Pago árbitro por partido' },
                       { k: 'pago_arbitro_w',       l: '💸 Pago árbitro por W' },
                     ].map(c => (
@@ -5830,6 +5876,33 @@ export default function AdminTorneoDetallePage() {
                       </div>
                     ))}
                   </div>
+
+                  {canchas.length > 0 && (
+                    <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid #f1f3f4' }}>
+                      <div style={{ fontWeight: '700', color: '#202124', fontSize: '.8rem', marginBottom: '2px' }}>🏟️ Precio por cancha</div>
+                      <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginBottom: '10px' }}>Solo si alguna cancha cuesta distinto a las demás — deja vacío para que use el precio por defecto de arriba.</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {canchas.map(c => (
+                          <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '8px', alignItems: 'center' }}>
+                            <div style={{ fontSize: '.8rem', color: '#202124', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.escenario ? `${c.escenario} · ` : ''}{c.nombre}
+                            </div>
+                            <input type="text" inputMode="numeric" value={formatMiles(formCanchaPrecios[c.id]?.precio_partido)}
+                              onChange={e => setFormCanchaPrecios(f => ({ ...f, [c.id]: { ...f[c.id], precio_partido: soloDigitos(e.target.value) } }))}
+                              onFocus={e => e.target.select()}
+                              placeholder={`Por defecto (${fmt(formFin.pago_cancha_partido || 0)})`}
+                              style={{ width: '100%', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '7px 9px', fontSize: '.82rem', fontWeight: '700', color: '#202124', outline: 'none', boxSizing: 'border-box' }}/>
+                            <input type="text" inputMode="numeric" value={formatMiles(formCanchaPrecios[c.id]?.precio_w)}
+                              onChange={e => setFormCanchaPrecios(f => ({ ...f, [c.id]: { ...f[c.id], precio_w: soloDigitos(e.target.value) } }))}
+                              onFocus={e => e.target.select()}
+                              placeholder={`W (${fmt(formFin.pago_cancha_w || 0)})`}
+                              style={{ width: '100%', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '7px 9px', fontSize: '.82rem', fontWeight: '700', color: '#202124', outline: 'none', boxSizing: 'border-box' }}/>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                     <button onClick={handleGuardarConfigFin} disabled={guardandoFin}
                       style={{ padding: '10px 22px', background: guardandoFin ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoFin ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
@@ -5891,10 +5964,26 @@ export default function AdminTorneoDetallePage() {
 
             {/* Gastos detalle */}
             {fin.fc.llevar_cuentas && (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
-                <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
-                <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
-                <span>PAGADO/SALDO de arriba es solo arbitrajes + tarjetas. El arbitraje se da por pagado solo (se cobra en efectivo en la cancha) — las tarjetas se registran a mano. Inscripción y W/Multas se llevan cada una en su propia cuenta, aparte.</span>
+              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
+                  <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
+                  <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
+                  <span>PAGADO/SALDO de arriba es solo arbitrajes + tarjetas. El arbitraje se da por pagado solo (se cobra en efectivo en la cancha) — las tarjetas se registran a mano. Inscripción y W/Multas se llevan cada una en su propia cuenta, aparte.</span>
+                </div>
+                {fin.canchasDetalle.length > 1 && (
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f1f3f4' }}>
+                    <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>DESPIECE POR CANCHA</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {fin.canchasDetalle.map(x => (
+                        <div key={x.cancha.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem' }}>
+                          <span style={{ flex: 1, color: '#202124' }}>{x.cancha.escenario ? `${x.cancha.escenario} · ` : ''}{x.cancha.nombre}</span>
+                          <span style={{ color: '#9aa0a6' }}>{x.jugados} jugados{x.ws > 0 ? ` · ${x.ws} W` : ''}</span>
+                          <span style={{ fontWeight: '700', color: '#202124', minWidth: '80px', textAlign: 'right' }}>{fmt(x.total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
