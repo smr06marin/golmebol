@@ -852,6 +852,9 @@ export default function AdminTorneoDetallePage() {
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
   const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
   const [guardandoEdicionMov, setGuardandoEdicionMov] = useState(false)
+  const [modalLinkDeudores, setModalLinkDeudores] = useState(null) // { link, password } al abrir el cuadro de "Link deudores de tarjetas"
+  const [passwordDeudoresForm, setPasswordDeudoresForm] = useState('')
+  const [guardandoPasswordDeudores, setGuardandoPasswordDeudores] = useState(false)
 
   // ── PERSONALIZACIÓN (marca + patrocinadores del torneo) ──
   const [formMarca,          setFormMarca]          = useState({ custom_domain: '', color_primario: '#1a73e8', color_secundario: '#202124', favicon_url: '', logo_url: '' })
@@ -2164,13 +2167,26 @@ export default function AdminTorneoDetallePage() {
   // Link público fijo (no vence) para que quien lo tenga vea los deudores de
   // tarjetas de este torneo, filtre por equipo y registre sus pagos sin
   // entrar al admin — reemplaza el cobro/desbloqueo que antes hacía el
-  // árbitro desde la planilla (ver PlanillaRapida.jsx).
+  // árbitro desde la planilla (ver PlanillaRapida.jsx). Es privado: pide
+  // contraseña la primera vez que se abre desde cada celular.
   async function handleLinkDeudores() {
-    const { data, error } = await supabase.rpc('generar_link_deudores', { p_tournament_id: id })
-    if (error) { showMsg('Error al generar el link (¿ejecutaste migracion_link_deudores_tarjetas.sql?): ' + error.message, 'error'); return }
+    const [{ data, error }, { data: passwordActual, error: errPass }] = await Promise.all([
+      supabase.rpc('generar_link_deudores', { p_tournament_id: id }),
+      supabase.rpc('ver_password_link_deudores', { p_tournament_id: id }),
+    ])
+    if (error || errPass) { showMsg('Error al abrir el link (¿ejecutaste migracion_link_deudores_tarjetas.sql?): ' + (error || errPass).message, 'error'); return }
     const link = `${window.location.origin}/deudores-tarjetas/${data.token}`
-    navigator.clipboard.writeText(link)
-    showMsg('Link de deudores de tarjetas copiado ✓')
+    setPasswordDeudoresForm(passwordActual || '')
+    setModalLinkDeudores({ link, password: passwordActual || '' })
+  }
+
+  async function handleGuardarPasswordDeudores() {
+    setGuardandoPasswordDeudores(true)
+    const { error } = await supabase.rpc('set_password_link_deudores', { p_tournament_id: id, p_password: passwordDeudoresForm })
+    setGuardandoPasswordDeudores(false)
+    if (error) return showMsg('Error al guardar la contraseña', 'error')
+    setModalLinkDeudores(prev => prev && { ...prev, password: passwordDeudoresForm })
+    showMsg(passwordDeudoresForm.trim() ? 'Contraseña guardada ✓' : 'Contraseña quitada — el link queda abierto para cualquiera que lo tenga')
   }
 
   // ── Configurar precios de finanzas (editables en cualquier momento) ──────
@@ -6604,6 +6620,44 @@ export default function AdminTorneoDetallePage() {
                 <button onClick={handleRegistrarPago} disabled={guardandoPago}
                   style={{ flex: 1, padding: '10px', background: guardandoPago ? '#dadce0' : pagoForm.tipo === 'cargo_manual' ? '#d93025' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPago ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
                   {guardandoPago ? 'Guardando...' : pagoForm.tipo === 'cargo_manual' ? '➖ Anotar deuda' : 'Registrar pago'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {modalLinkDeudores && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setModalLinkDeudores(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '420px', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>🔗 Link deudores de tarjetas</div>
+              <button onClick={() => setModalLinkDeudores(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={labelStyle}>Link (siempre el mismo — no vence)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input readOnly value={modalLinkDeudores.link} style={{ ...inputStyle, fontSize: '.75rem', color: '#5f6368' }}
+                    onFocus={e => e.target.select()}/>
+                  <button onClick={() => { navigator.clipboard.writeText(modalLinkDeudores.link); showMsg('Link copiado ✓') }}
+                    style={{ padding: '0 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                    Copiar
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: '10px', background: '#fff8e1', border: '1px solid #f9e29d', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#8a6d00', lineHeight: 1.5 }}>
+                🔒 El link es privado: pide esta contraseña la <b>primera vez</b> que se abre desde cada celular. Si la dejas en blanco, cualquiera con el link entra sin pedir nada.
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={labelStyle}>Contraseña</label>
+                <input value={passwordDeudoresForm} onChange={e => setPasswordDeudoresForm(e.target.value)} style={inputStyle} placeholder="Ej: golmebol2026"/>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setModalLinkDeudores(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cerrar</button>
+                <button onClick={handleGuardarPasswordDeudores} disabled={guardandoPasswordDeudores || passwordDeudoresForm === modalLinkDeudores.password}
+                  style={{ flex: 1, padding: '10px', background: guardandoPasswordDeudores ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoPasswordDeudores ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700', opacity: passwordDeudoresForm === modalLinkDeudores.password ? .5 : 1 }}>
+                  {guardandoPasswordDeudores ? 'Guardando...' : 'Guardar contraseña'}
                 </button>
               </div>
             </div>

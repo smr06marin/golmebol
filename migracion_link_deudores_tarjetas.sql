@@ -1,39 +1,45 @@
 -- ============================================================
--- MIGRACIÓN: Link público por torneo para ver deudores de
--- tarjetas (con filtro por equipo) y registrar sus pagos desde
--- ahí mismo, sin tener que entrar al panel de admin.
+-- MIGRACIÓN: Link público (con contraseña) por torneo para ver
+-- deudores de tarjetas (con filtro por equipo), registrar sus
+-- pagos desde ahí mismo y llevar el historial/cuadre de lo
+-- recogido — sin tener que entrar al panel de admin.
 -- Cómo ejecutar: Supabase → SQL Editor → RUN.
--- Es idempotente (add column if not exists / create or replace).
+-- Es idempotente (add column if not exists / create or replace /
+-- drop function if exists antes de recrear con otra firma).
 --
 -- FLUJO:
---   1) El organizador, desde Finanzas del torneo (admin), genera
---      el link con "Link deudores de tarjetas". A diferencia del
---      link de planilla (24h, para UN partido puntual), este NO
---      vence — es un link fijo de todo el torneo que el
---      organizador reutiliza mientras dure.
---   2) Quien abre el link (público, sin login) ve la lista de
---      jugadores que deben tarjeta en el torneo, con filtro por
---      equipo, y puede tocar "Ya pagó" para marcarla pagada —
+--   1) El organizador, desde Finanzas del torneo (admin), abre
+--      "Link deudores de tarjetas": ahí genera el link (una sola
+--      vez, no vence) y le pone una contraseña. Puede cambiarla
+--      cuando quiera desde el mismo cuadro.
+--   2) Quien abre el link tiene que meter la contraseña la
+--      PRIMERA vez desde cada celular/navegador — de ahí en
+--      adelante, en ESE MISMO celular, no se la vuelve a pedir
+--      (queda guardada en ese navegador). Si la abre desde un
+--      celular distinto, sí se la vuelve a pedir.
+--   3) Ya adentro, ve la lista de jugadores que deben tarjeta,
+--      filtra por equipo, y toca "Ya pagó" para marcarla pagada —
 --      eso es justo lo que ya usa la planilla (yellow_paid /
 --      blue_paid / red_paid) para dejar de bloquear al jugador.
---   3) Cada pago registrado por el link queda anotado en
---      Finanzas del torneo con el detalle de partido/cancha/fecha
---      de cada tarjeta pagada, para que el organizador pueda
---      verificarlo — y se ve en la misma página, en "Historial de
---      pagos".
---   4) El link es SIEMPRE el mismo (se genera una sola vez) y cada
---      vez que se abre (o se toca "Actualizar") vuelve a calcular
---      los deudores al momento — apenas termina un partido y se
---      guardan sus tarjetas, la próxima vez que se abra (o el
---      auto-refresco cada 30s) ya sale reflejado, sin tener que
---      generar un link nuevo.
+--   4) En la pestaña "Historial de pagos" queda, por cada pago:
+--      quién pagó, cuánto, cuándo (día y hora) y el detalle de
+--      partido/cancha/fecha de cada tarjeta — y arriba, un resumen
+--      DÍA POR DÍA (con filtro de fechas) de cuánta plata se
+--      recogió y cuántas tarjetas se pagaron cada día, para poder
+--      cuadrar cuentas con el encargado de cuánto le toca entregar.
+--   5) El link es siempre el mismo (se genera una sola vez) y cada
+--      vez que se abre (o se toca "Actualizar", o pasan 30s con la
+--      página abierta) vuelve a calcular todo al momento.
 --
 -- OJO: el árbitro YA NO tiene esta opción desde la planilla (ver
--- PlanillaRapida.jsx) — el cobro/desbloqueo de tarjetas ahora
--- pasa solo por acá o por el panel de Finanzas del admin.
+-- PlanillaRapida.jsx) — el cobro/desbloqueo de tarjetas ahora pasa
+-- solo por acá (con la contraseña que le des a quien cobre) o por
+-- el panel de Finanzas del admin.
 -- ============================================================
 
 alter table tournaments add column if not exists link_deudores_token uuid;
+alter table tournaments add column if not exists link_deudores_password text;
+alter table torneo_finanzas add column if not exists tarjetas_pagadas integer;
 
 create unique index if not exists tournaments_link_deudores_token_idx
   on tournaments(link_deudores_token) where link_deudores_token is not null;
@@ -79,11 +85,122 @@ $$;
 revoke all on function public.generar_link_deudores(uuid) from public;
 grant execute on function public.generar_link_deudores(uuid) to authenticated;
 
--- Vista pública (sin login) de los deudores de tarjetas de un torneo — arma
--- el mismo cálculo que ya usa la app en src/lib/tarjetasDeuda.js
--- (construirDeudaTarjetas): si un jugador tiene varias tarjetas sin pagar en
--- el MISMO partido, solo se cobra la de mayor valor de ese partido.
-create or replace function public.ver_deudores_por_link(p_token uuid)
+-- Pone/cambia/quita (con p_password = null o '') la contraseña del link de
+-- deudores. Mismo chequeo de dueño que generar_link_deudores(). Se separa en
+-- su propia función para poder cambiar la contraseña sin tocar el token (el
+-- link que ya se compartió sigue siendo el mismo).
+create or replace function public.set_password_link_deudores(p_tournament_id uuid, p_password text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_organizador_id uuid;
+  v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+begin
+  if not exists (select 1 from tournaments where id = p_tournament_id) then
+    raise exception 'Torneo no encontrado';
+  end if;
+
+  select organizador_id into v_organizador_id from tournaments where id = p_tournament_id;
+
+  if v_organizador_id is distinct from auth.uid()
+     and v_email not in ('golmebol@gmail.com', 'smr06marin@gmail.com') then
+    raise exception 'No autorizado';
+  end if;
+
+  update tournaments
+    set link_deudores_password = nullif(trim(coalesce(p_password, '')), '')
+  where id = p_tournament_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+revoke all on function public.set_password_link_deudores(uuid, text) from public;
+grant execute on function public.set_password_link_deudores(uuid, text) to authenticated;
+
+-- Le devuelve al organizador (dueño del torneo) la contraseña actual del
+-- link, para poder recordarla/reenviarla — solo autenticado, mismo chequeo
+-- de dueño.
+create or replace function public.ver_password_link_deudores(p_tournament_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_organizador_id uuid;
+  v_password text;
+  v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+begin
+  select organizador_id, link_deudores_password into v_organizador_id, v_password
+  from tournaments where id = p_tournament_id;
+
+  if v_organizador_id is distinct from auth.uid()
+     and v_email not in ('golmebol@gmail.com', 'smr06marin@gmail.com') then
+    raise exception 'No autorizado';
+  end if;
+
+  return v_password;
+end;
+$$;
+
+revoke all on function public.ver_password_link_deudores(uuid) from public;
+grant execute on function public.ver_password_link_deudores(uuid) to authenticated;
+
+-- Le dice a la página del link (pública, sin login) si ese torneo tiene
+-- contraseña puesta, para saber si le muestra la pantalla de contraseña o
+-- entra directo.
+create or replace function public.link_deudores_requiere_password(p_token uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_password text;
+begin
+  select link_deudores_password into v_password from tournaments where link_deudores_token = p_token;
+  if not found then
+    raise exception 'Link inválido';
+  end if;
+  return v_password is not null and v_password <> '';
+end;
+$$;
+
+grant execute on function public.link_deudores_requiere_password(uuid) to anon, authenticated;
+
+-- Valida la contraseña que escribió quien abrió el link (sin exponer la
+-- contraseña real al que consulta, solo dice sí/no).
+create or replace function public.verificar_password_deudores(p_token uuid, p_password text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_password text;
+begin
+  select link_deudores_password into v_password from tournaments where link_deudores_token = p_token;
+  if not found then
+    raise exception 'Link inválido';
+  end if;
+  return v_password is null or v_password = '' or v_password = p_password;
+end;
+$$;
+
+grant execute on function public.verificar_password_deudores(uuid, text) to anon, authenticated;
+
+drop function if exists public.ver_deudores_por_link(uuid);
+
+-- Vista pública (con contraseña si el torneo la tiene puesta) de los
+-- deudores de tarjetas de un torneo — arma el mismo cálculo que ya usa la
+-- app en src/lib/tarjetasDeuda.js (construirDeudaTarjetas): si un jugador
+-- tiene varias tarjetas sin pagar en el MISMO partido, solo se cobra la de
+-- mayor valor de ese partido.
+create or replace function public.ver_deudores_por_link(p_token uuid, p_password text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -92,18 +209,22 @@ as $$
 declare
   v_tournament_id uuid;
   v_config jsonb;
+  v_password_real text;
   v_amarilla numeric;
   v_azul numeric;
   v_roja numeric;
   v_result jsonb;
 begin
-  select id, coalesce(finanzas_config, '{}'::jsonb)
-    into v_tournament_id, v_config
+  select id, coalesce(finanzas_config, '{}'::jsonb), link_deudores_password
+    into v_tournament_id, v_config, v_password_real
   from tournaments
   where link_deudores_token = p_token;
 
   if v_tournament_id is null then
     raise exception 'Link inválido';
+  end if;
+  if v_password_real is not null and v_password_real <> '' and v_password_real <> p_password then
+    raise exception 'Contraseña incorrecta';
   end if;
 
   v_amarilla := coalesce((v_config->>'precio_amarilla')::numeric, 0);
@@ -187,17 +308,20 @@ begin
 end;
 $$;
 
-grant execute on function public.ver_deudores_por_link(uuid) to anon, authenticated;
+grant execute on function public.ver_deudores_por_link(uuid, text) to anon, authenticated;
+
+drop function if exists public.pagar_tarjeta_por_link(uuid, uuid);
 
 -- Registra el pago de TODAS las tarjetas sin pagar de un jugador en el
 -- torneo (mismo criterio que ya usa marcarTarjetaPagada en
 -- src/lib/tarjetasDeuda.js: no separa por partido, pone al día todos los
 -- colores que deba) y lo anota en Finanzas del torneo. El concepto queda
--- con el detalle (partido, cancha y fecha) de CADA tarjeta que se pagó,
--- armado ANTES de marcarlas pagadas — así el historial de pagos del link
--- (ver_historial_pagos_tarjetas_por_link) puede mostrar cancha y fecha de
--- cada una, aunque player_match_stats ya no distinga cuál pago fue cuál.
-create or replace function public.pagar_tarjeta_por_link(p_token uuid, p_player_id uuid)
+-- con el detalle (partido, cancha y fecha) de CADA tarjeta que se pagó, y
+-- tarjetas_pagadas con la CANTIDAD — armado ANTES de marcarlas pagadas, así
+-- el historial de pagos del link (ver_historial_pagos_tarjetas_por_link)
+-- puede mostrar cancha/fecha/cantidad de cada pago, aunque
+-- player_match_stats ya no distinga cuál pago fue cuál.
+create or replace function public.pagar_tarjeta_por_link(p_token uuid, p_player_id uuid, p_password text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -206,6 +330,7 @@ as $$
 declare
   v_tournament_id uuid;
   v_config jsonb;
+  v_password_real text;
   v_team_id uuid;
   v_player_nombre text;
   v_total numeric := 0;
@@ -213,11 +338,15 @@ declare
   v_detalle text := '';
   v_item record;
 begin
-  select id, coalesce(finanzas_config, '{}'::jsonb) into v_tournament_id, v_config
+  select id, coalesce(finanzas_config, '{}'::jsonb), link_deudores_password
+    into v_tournament_id, v_config, v_password_real
   from tournaments where link_deudores_token = p_token;
 
   if v_tournament_id is null then
     raise exception 'Link inválido';
+  end if;
+  if v_password_real is not null and v_password_real <> '' and v_password_real <> p_password then
+    raise exception 'Contraseña incorrecta';
   end if;
 
   select name into v_player_nombre from players where id = p_player_id;
@@ -279,23 +408,27 @@ begin
   order by m.played_at desc nulls last
   limit 1;
 
-  insert into torneo_finanzas (tournament_id, team_id, player_id, tipo, monto, pagado, concepto)
+  insert into torneo_finanzas (tournament_id, team_id, player_id, tipo, monto, pagado, concepto, tarjetas_pagadas)
   values (v_tournament_id, v_team_id, p_player_id, 'pago_tarjetas', v_total, true,
-    'Tarjeta(s) de ' || coalesce(v_player_nombre, 'jugador') || ' — ' || v_detalle || ' — pagada por el link de deudores de tarjetas');
+    'Tarjeta(s) de ' || coalesce(v_player_nombre, 'jugador') || ' — ' || v_detalle || ' — pagada por el link de deudores de tarjetas',
+    array_length(v_tipos, 1));
 
   return jsonb_build_object('ok', true, 'total', v_total, 'tipos', to_jsonb(v_tipos));
 end;
 $$;
 
-grant execute on function public.pagar_tarjeta_por_link(uuid, uuid) to anon, authenticated;
+grant execute on function public.pagar_tarjeta_por_link(uuid, uuid, text) to anon, authenticated;
+
+drop function if exists public.ver_historial_pagos_tarjetas_por_link(uuid);
 
 -- Historial de pagos de tarjetas de un torneo, para mostrarlo en la misma
--- página del link de deudores — con fecha (created_at, cuándo se registró
--- el pago) y el detalle de partido/cancha/fecha que quedó anotado en el
--- concepto al momento de pagar (ver pagar_tarjeta_por_link más arriba).
--- Incluye los pagos de tarjetas registrados por CUALQUIER vía (este link,
--- el panel de Finanzas del admin), no solo los del link.
-create or replace function public.ver_historial_pagos_tarjetas_por_link(p_token uuid)
+-- página del link de deudores — con fecha y hora (created_at, cuándo se
+-- registró el pago), la cantidad de tarjetas que cubrió y el detalle de
+-- partido/cancha/fecha que quedó anotado en el concepto al momento de
+-- pagar (ver pagar_tarjeta_por_link). Incluye los pagos de tarjetas
+-- registrados por CUALQUIER vía (este link, el panel de Finanzas del
+-- admin), no solo los de este link — así el cuadre del día sale completo.
+create or replace function public.ver_historial_pagos_tarjetas_por_link(p_token uuid, p_password text default null)
 returns jsonb
 language plpgsql
 security definer
@@ -303,12 +436,17 @@ set search_path = public
 as $$
 declare
   v_tournament_id uuid;
+  v_password_real text;
   v_result jsonb;
 begin
-  select id into v_tournament_id from tournaments where link_deudores_token = p_token;
+  select id, link_deudores_password into v_tournament_id, v_password_real
+  from tournaments where link_deudores_token = p_token;
 
   if v_tournament_id is null then
     raise exception 'Link inválido';
+  end if;
+  if v_password_real is not null and v_password_real <> '' and v_password_real <> p_password then
+    raise exception 'Contraseña incorrecta';
   end if;
 
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -317,6 +455,7 @@ begin
     'equipo', tm.name,
     'monto', f.monto,
     'concepto', f.concepto,
+    'tarjetas', f.tarjetas_pagadas,
     'fecha', f.created_at
   ) order by f.created_at desc), '[]'::jsonb)
   into v_result
@@ -329,4 +468,4 @@ begin
 end;
 $$;
 
-grant execute on function public.ver_historial_pagos_tarjetas_por_link(uuid) to anon, authenticated;
+grant execute on function public.ver_historial_pagos_tarjetas_por_link(uuid, text) to anon, authenticated;
