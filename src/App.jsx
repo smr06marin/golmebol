@@ -44,6 +44,7 @@ const OrganizadorVitrinaPage  = lazy(() => import('./pages/OrganizadorVitrinaPag
 const AdminPerfilOrganizadorPage = lazy(() => import('./pages/admin/AdminPerfilOrganizadorPage'))
 const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
 const PlanillarLinkPage       = lazy(() => import('./pages/PlanillarLinkPage'))
+const DeudoresTarjetasLinkPage = lazy(() => import('./pages/DeudoresTarjetasLinkPage'))
 const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
 const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
 const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
@@ -469,6 +470,9 @@ export default function App() {
           {/* Link temporal (24h) para que un árbitro sin cuenta planille un
               partido puntual — sin login */}
           <Route path="/planillar/:token" element={<PlanillarLinkPage/>}/>
+          {/* Link fijo por torneo (no vence) para ver deudores de tarjetas,
+              filtrar por equipo y registrar sus pagos — sin login */}
+          <Route path="/deudores-tarjetas/:token" element={<DeudoresTarjetasLinkPage/>}/>
           {/* Listado público de escenarios (antes la landing solo llevaba al
               primer escenario que trajera la consulta, así que con más de
               uno creado los demás no se veían) */}

@@ -2161,6 +2161,18 @@ export default function AdminTorneoDetallePage() {
     fetchFinanzas()
   }
 
+  // Link público fijo (no vence) para que quien lo tenga vea los deudores de
+  // tarjetas de este torneo, filtre por equipo y registre sus pagos sin
+  // entrar al admin — reemplaza el cobro/desbloqueo que antes hacía el
+  // árbitro desde la planilla (ver PlanillaRapida.jsx).
+  async function handleLinkDeudores() {
+    const { data, error } = await supabase.rpc('generar_link_deudores', { p_tournament_id: id })
+    if (error) { showMsg('Error al generar el link (¿ejecutaste migracion_link_deudores_tarjetas.sql?): ' + error.message, 'error'); return }
+    const link = `${window.location.origin}/deudores-tarjetas/${data.token}`
+    navigator.clipboard.writeText(link)
+    showMsg('Link de deudores de tarjetas copiado ✓')
+  }
+
   // ── Configurar precios de finanzas (editables en cualquier momento) ──────
   function abrirConfigFin() {
     const fc = torneo?.finanzas_config || {}
@@ -5845,10 +5857,16 @@ export default function AdminTorneoDetallePage() {
                   <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>⚙️ Precios del torneo</div>
                   <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>Tarjetas, inscripción, arbitrajes, multas y gastos — al cambiarlos, todas las cuentas se recalculan solas</div>
                 </div>
-                <button onClick={() => showConfigFin ? setShowConfigFin(false) : abrirConfigFin()}
-                  style={{ padding: '8px 16px', background: showConfigFin ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: showConfigFin ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '700' }}>
-                  {showConfigFin ? 'Cerrar' : '✏️ Modificar precios'}
-                </button>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={handleLinkDeudores} title="Copia un link público para ver quién debe tarjeta, filtrar por equipo y registrar pagos — sin entrar al admin"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.8rem', fontWeight: '700' }}>
+                    <ExternalLink size={13}/> Link deudores de tarjetas
+                  </button>
+                  <button onClick={() => showConfigFin ? setShowConfigFin(false) : abrirConfigFin()}
+                    style={{ padding: '8px 16px', background: showConfigFin ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: showConfigFin ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                    {showConfigFin ? 'Cerrar' : '✏️ Modificar precios'}
+                  </button>
+                </div>
               </div>
               {showConfigFin && (
                 <div style={{ marginTop: '16px' }}>

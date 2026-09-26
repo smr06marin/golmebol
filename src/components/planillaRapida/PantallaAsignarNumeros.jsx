@@ -33,15 +33,11 @@ function FilaJugador({ j, color, onAbrir }) {
   )
 }
 
-function BloqueEquipo({ titulo, color, jugadores, onAbrir, onAgregarSinRegistro }) {
+function BloqueEquipo({ titulo, color, jugadores, onAbrir }) {
   return (
     <div style={{ background: PANEL, border: `1px solid ${BORDE}`, borderRadius: '14px', marginBottom: '14px', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', fontSize: '.82rem', fontWeight: '800', color, background: 'rgba(255,255,255,.03)' }}>{titulo}</div>
       {jugadores.map((j, i) => <FilaJugador key={j.id || 'sr' + i} j={j} color={color} onAbrir={() => onAbrir(i)}/>)}
-      <button onClick={onAgregarSinRegistro}
-        style={{ display: 'block', width: '100%', textAlign: 'center', padding: '10px', background: 'none', border: 'none', cursor: 'pointer', color: TEXTO_TENUE, fontSize: '.75rem', fontWeight: '700' }}>
-        + Jugador sin registro
-      </button>
     </div>
   )
 }
@@ -49,9 +45,13 @@ function BloqueEquipo({ titulo, color, jugadores, onAbrir, onAgregarSinRegistro 
 // Paso 2: asignar el número de camiseta a cada jugador (con su foto grande al
 // tocarlo, en ModalFotoNumero). Se puede volver acá en cualquier momento desde
 // el partido — por eso "Continuar" no borra nada, solo cambia de pantalla.
+// El árbitro NO puede agregar jugadores desde acá (solo el organizador
+// inscribe jugadores) — la única excepción es anotar el apellido de un
+// jugador sin registro justo cuando anota un gol con un número desconocido
+// (ver AlertaNumeroDesconocido.jsx), que no pasa por esta pantalla.
 export default function PantallaAsignarNumeros({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
-  onAbrirJugador, onAgregarSinRegistro, onContinuar, onVolverColores, volviendoDesdePartido,
+  onAbrirJugador, onContinuar, onVolverColores, volviendoDesdePartido,
 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -64,9 +64,9 @@ export default function PantallaAsignarNumeros({
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ maxWidth: '480px', margin: '0 auto', padding: '14px 12px' }}>
           <BloqueEquipo titulo={`🏠 ${nombreLocal}`} color={colorLocal} jugadores={jugadoresLocal}
-            onAbrir={i => onAbrirJugador('local', i)} onAgregarSinRegistro={() => onAgregarSinRegistro('local')}/>
+            onAbrir={i => onAbrirJugador('local', i)}/>
           <BloqueEquipo titulo={`🚩 ${nombreVis}`} color={colorVis} jugadores={jugadoresVisitante}
-            onAbrir={i => onAbrirJugador('visitante', i)} onAgregarSinRegistro={() => onAgregarSinRegistro('visitante')}/>
+            onAbrir={i => onAbrirJugador('visitante', i)}/>
         </div>
       </div>
 
