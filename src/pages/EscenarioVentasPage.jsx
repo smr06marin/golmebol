@@ -26,14 +26,14 @@ function ModalDevolucion({ venta, onClose, onConfirmar }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'380px', maxWidth:'100%', maxHeight:'90vh', display:'flex', flexDirection:'column' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px', flexShrink:0 }}>
           <div style={{ fontWeight:800, fontSize:'1rem' }}>↩️ Devolución</div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
         </div>
-        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>Elige cuántas unidades de cada producto se devuelven.</div>
+        <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px', flexShrink:0 }}>Elige cuántas unidades de cada producto se devuelven.</div>
 
-        <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'18px' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'18px', overflowY:'auto', paddingRight:'4px', minHeight:0 }}>
           {(venta.items||[]).map(it => {
             const val = cantidades[it.productId] || 0
             return (
@@ -54,13 +54,13 @@ function ModalDevolucion({ venta, onClose, onConfirmar }) {
           })}
         </div>
 
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexShrink:0 }}>
           <span style={{ fontSize:'.8rem', color:S.text2 }}>Total a devolver</span>
           <span style={{ fontWeight:900, fontSize:'1.1rem', color:S.loss }}>{fmtMoney(totalDevolver)}</span>
         </div>
 
         <button onClick={()=>onConfirmar(cantidades)} disabled={!hayAlgo}
-          style={{ width:'100%', padding:'13px', background:S.loss, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.88rem', opacity: hayAlgo ? 1 : .5 }}>
+          style={{ width:'100%', padding:'13px', background:S.loss, border:'none', borderRadius:'12px', cursor:'pointer', color:'#fff', fontWeight:800, fontSize:'.88rem', opacity: hayAlgo ? 1 : .5, flexShrink:0 }}>
           Confirmar devolución
         </button>
       </div>
