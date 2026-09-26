@@ -21,6 +21,17 @@ import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
+// Le pone un límite de tiempo a una consulta a Supabase para que un botón
+// nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
+// mitad de la consulta y la respuesta nunca llega): si no responde en ese
+// tiempo, se cae con un mensaje claro en vez de dejar la rueda girando.
+function conTimeout(promesa, ms = 15000) {
+  return Promise.race([
+    promesa,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Se agotó el tiempo de espera — revisa tu conexión a internet e intenta de nuevo')), ms)),
+  ])
+}
+
 function ModalPartidoAdmin({ partido, onClose }) {
   const [stats,   setStats]   = useState([])
   const [mvp,     setMvp]     = useState(null)
@@ -2170,23 +2181,32 @@ export default function AdminTorneoDetallePage() {
   // árbitro desde la planilla (ver PlanillaRapida.jsx). Es privado: pide
   // contraseña la primera vez que se abre desde cada celular.
   async function handleLinkDeudores() {
-    const [{ data, error }, { data: passwordActual, error: errPass }] = await Promise.all([
-      supabase.rpc('generar_link_deudores', { p_tournament_id: id }),
-      supabase.rpc('ver_password_link_deudores', { p_tournament_id: id }),
-    ])
-    if (error || errPass) { showMsg('Error al abrir el link (¿ejecutaste migracion_link_deudores_tarjetas.sql?): ' + (error || errPass).message, 'error'); return }
-    const link = `${window.location.origin}/deudores-tarjetas/${data.token}`
-    setPasswordDeudoresForm(passwordActual || '')
-    setModalLinkDeudores({ link, password: passwordActual || '' })
+    try {
+      const [{ data, error }, { data: passwordActual, error: errPass }] = await conTimeout(Promise.all([
+        supabase.rpc('generar_link_deudores', { p_tournament_id: id }),
+        supabase.rpc('ver_password_link_deudores', { p_tournament_id: id }),
+      ]))
+      if (error || errPass) { showMsg('Error al abrir el link (¿ejecutaste migracion_link_deudores_tarjetas.sql?): ' + (error || errPass).message, 'error'); return }
+      const link = `${window.location.origin}/deudores-tarjetas/${data.token}`
+      setPasswordDeudoresForm(passwordActual || '')
+      setModalLinkDeudores({ link, password: passwordActual || '' })
+    } catch (e) {
+      showMsg(e.message || 'No se pudo abrir el link (revisa tu conexión e intenta de nuevo)', 'error')
+    }
   }
 
   async function handleGuardarPasswordDeudores() {
     setGuardandoPasswordDeudores(true)
-    const { error } = await supabase.rpc('set_password_link_deudores', { p_tournament_id: id, p_password: passwordDeudoresForm })
-    setGuardandoPasswordDeudores(false)
-    if (error) return showMsg('Error al guardar la contraseña', 'error')
-    setModalLinkDeudores(prev => prev && { ...prev, password: passwordDeudoresForm })
-    showMsg(passwordDeudoresForm.trim() ? 'Contraseña guardada ✓' : 'Contraseña quitada — el link queda abierto para cualquiera que lo tenga')
+    try {
+      const { error } = await conTimeout(supabase.rpc('set_password_link_deudores', { p_tournament_id: id, p_password: passwordDeudoresForm }))
+      if (error) { showMsg('Error al guardar la contraseña: ' + error.message, 'error'); return }
+      setModalLinkDeudores(prev => prev && { ...prev, password: passwordDeudoresForm })
+      showMsg(passwordDeudoresForm.trim() ? 'Contraseña guardada ✓' : 'Contraseña quitada — el link queda abierto para cualquiera que lo tenga')
+    } catch (e) {
+      showMsg(e.message || 'No se pudo guardar (revisa tu conexión e intenta de nuevo)', 'error')
+    } finally {
+      setGuardandoPasswordDeudores(false)
+    }
   }
 
   // ── Configurar precios de finanzas (editables en cualquier momento) ──────
