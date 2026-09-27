@@ -442,7 +442,11 @@ export default function LandingPage() {
         repeticionContadorRef.current += 1
         const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 20) * 1000
         const timerId = setTimeout(() => {
-          setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, imagenUrl } }))
+          // segundosAtras bien holgado: si se queda corto, el rebobinado cae
+          // en medio de la celebración en vez de antes del gol (ver
+          // LiveEmbed). duracionVisible: los 12 segundos de juego que pidió
+          // Sebas, contados desde que se va la imagen del patrocinador.
+          setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras: 20, duracionVisible: 12, imagenUrl } }))
         }, retrasoMs)
         repeticionTimersRef.current.push(timerId)
       }

@@ -161,20 +161,24 @@ function cargarYouTubeAPI() {
 // navegador — esa API además no funciona bien para esto en Safari de
 // iPhone, así que este método funciona igual en todos los celulares.
 //
-// `repeticion` (opcional): { key, segundos, imagenUrl } — cada vez que
-// `key` cambia (LandingPage lo cambia apenas detecta un gol nuevo): si hay
-// una imagen de repetición cargada (desde /admin/config-sitio, rotan en
-// orden si hay varias), esa imagen tapa el video un instante con
-// transición de entrada y salida; mientras dura toda la repetición, al
-// debajo del reloj del marcador queda la etiqueta "REPETICIÓN" para que se sepa que no
-// es un momento nuevo del partido. En YouTube, además, el video de verdad
-// se rebobina `segundos` (usando la IFrame Player API en vez del <iframe> a
-// secas) y después de ese mismo tiempo vuelve solo al momento en vivo real
-// — ese regreso siempre queda de transición con el logo de Golmebol
-// agrandándose encima del video (ver BumperCierre), para que el salto no
-// se note. En Facebook/Instagram no hay forma
-// confiable de mover el video desde acá, así que ahí solo se ven la
-// etiqueta y las dos gráficas (apertura y cierre), sin rebobinar de verdad.
+// `repeticion` (opcional): { key, segundosAtras, duracionVisible, imagenUrl }
+// — cada vez que `key` cambia (LandingPage lo cambia apenas detecta un gol
+// nuevo): si hay una imagen de repetición cargada (desde
+// /admin/config-sitio, rotan en orden si hay varias), esa imagen tapa el
+// video unos segundos (con tiempo de sobra para leerla) con transición de
+// entrada y salida; mientras dura toda la repetición, debajo del reloj del
+// marcador queda la etiqueta "REPETICIÓN" para que se sepa que no es un
+// momento nuevo del partido. En YouTube, además, el video de verdad se
+// rebobina `segundosAtras` (usando la IFrame Player API en vez del <iframe>
+// a secas) — bastante hacia atrás, para que el rebobinado caiga ANTES de la
+// jugada del gol y no en medio de la celebración — y, una vez que
+// desaparece la imagen del patrocinador, se ven `duracionVisible` segundos
+// de juego antes de volver solo al momento en vivo real — ese regreso
+// siempre queda de transición con el logo de Golmebol agrandándose encima
+// del video (ver BumperCierre), para que el salto no se note. En
+// Facebook/Instagram no hay forma confiable de mover el video desde acá,
+// así que ahí solo se ven la etiqueta y las dos gráficas (apertura y
+// cierre), sin rebobinar de verdad.
 export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
@@ -292,15 +296,35 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   //    pero el cierre queda igual de parejo).
   useEffect(() => {
     if (!repeticion?.key) return
-    const segundos = repeticion.segundos || 12
+    // Dos números separados (antes eran uno solo, "segundos", y por eso la
+    // repetición se veía corta y a veces arrancaba ya en la celebración,
+    // sin alcanzar a mostrar el gol):
+    //  - segundosAtras: cuánto rebobina el video de ENTRADA (hacia atrás en
+    //    el tiempo). Tiene que ser lo bastante grande para que el rebobinado
+    //    caiga ANTES de la jugada del gol, no en medio de la celebración.
+    //  - duracionVisible: cuántos segundos de juego se ven DESPUÉS de que
+    //    desaparece la imagen del patrocinador (no antes, y no se le resta
+    //    nada por el tiempo que dura esa imagen) — esto es lo que pidió
+    //    Sebas: 12 segundos de repetición ya con el video visible.
+    const segundosAtras = repeticion.segundosAtras || repeticion.segundos || 20
+    const duracionVisible = repeticion.duracionVisible || 12
     const timers = []
+
+    // Cuánto dura la imagen del patrocinador quieta antes de empezar a
+    // salir, y su animación de salida (.gm-repeticion-sale en index.css) —
+    // mismos tiempos que más abajo, en el bloque que la muestra.
+    const HOLD_BUMPER_MS = 4500
+    const SALE_BUMPER_MS = 400
+    const msBumperFin = repeticion.imagenUrl ? (HOLD_BUMPER_MS + SALE_BUMPER_MS) : 0
 
     // Tiempos del cierre, relativos al momento en que toca volver al en
     // vivo: `CIERRE_MS` tiene que ser el mismo tiempo que dura la animación
     // .gm-cierre-logo en index.css. El salto de verdad se hace a la mitad
-    // (55%) de esa animación, cuando el logo ya está grande.
+    // (55%) de esa animación, cuando el logo ya está grande. Arranca DESPUÉS
+    // de que ya se vieron los `duracionVisible` segundos de juego (contados
+    // desde que se fue la imagen del patrocinador, no desde el arranque).
     const CIERRE_MS = 900
-    const msCierreInicio = segundos * 1000
+    const msCierreInicio = msBumperFin + duracionVisible * 1000
     const msCierreSeek = msCierreInicio + Math.round(CIERRE_MS * .55)
     const msCierreFin = msCierreInicio + CIERRE_MS
 
@@ -311,7 +335,7 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
     if (puedeControlarVideo) {
       try {
         const actual = player.getCurrentTime()
-        player.seekTo(Math.max(0, actual - segundos), true)
+        player.seekTo(Math.max(0, actual - segundosAtras), true)
       } catch { /* si el reproductor todavía no está listo, se pierde este intento */ }
     }
 
@@ -320,8 +344,8 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
       // Antes se veía solo ~1.5s de por sí (2000ms de entrada+espera, .4s de
       // salida) — muy poco para alcanzar a leer la imagen del patrocinador.
       // Ahora queda quieta unos 4.5s antes de empezar a salir.
-      timers.push(setTimeout(() => setFaseBumper('sale'), 4500))
-      timers.push(setTimeout(() => setFaseBumper(null), 4900))
+      timers.push(setTimeout(() => setFaseBumper('sale'), HOLD_BUMPER_MS))
+      timers.push(setTimeout(() => setFaseBumper(null), HOLD_BUMPER_MS + SALE_BUMPER_MS))
     }
 
     timers.push(setTimeout(() => setMostrandoCierre(true), msCierreInicio))
