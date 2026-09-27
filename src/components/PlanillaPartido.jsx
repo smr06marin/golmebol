@@ -38,6 +38,24 @@ function conRellenoA12(jugs) {
   return [...base, ...vacios]
 }
 
+// Si el organizador registra un jugador nuevo en alguno de los dos equipos
+// MIENTRAS esta planilla ya está abierta (ver el useEffect de más abajo que
+// escucha tournament_player_registrations en vivo), lo suma a la lista SIN
+// tocar nada de lo que el árbitro ya lleva cargado (números, tarjetas,
+// faltas): lo mete en la primera fila vacía (id: null) que quede del relleno
+// de conRellenoA12, y si ya no quedan filas vacías, lo agrega al final.
+function fusionarNuevosJugadores(actual, fresco) {
+  const idsActuales = new Set(actual.filter(j => j.id).map(j => j.id))
+  const nuevos = fresco.filter(j => j.id && !idsActuales.has(j.id))
+  if (nuevos.length === 0) return actual
+  const resultado = [...actual]
+  const restantes = [...nuevos]
+  for (let i = 0; i < resultado.length && restantes.length; i++) {
+    if (resultado[i].id === null) resultado[i] = restantes.shift()
+  }
+  return [...resultado, ...restantes]
+}
+
 function FirmaCanvas({ titulo, onSave, onClose }) {
   const canvasRef = useRef(null)
   const drawing = useRef(false)
@@ -948,6 +966,43 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [partido?.tournament_id, refetchDeudaTarjetas])
+
+  // Si el organizador registra (o inscribe) un jugador nuevo en alguno de
+  // los dos equipos MIENTRAS esta planilla ya está abierta, se suma solo a
+  // la lista en vivo (ver fusionarNuevosJugadores) — antes esto solo pasaba
+  // en Planilla Rápida; acá (la planilla completa que usa el admin o el
+  // árbitro cuando hay planillador dedicado) no había nada escuchando estos
+  // cambios, así que el jugador recién registrado no aparecía hasta cerrar
+  // y volver a abrir la planilla.
+  const refetchRosterNuevos = useCallback(async () => {
+    if (!partido?.tournament_id || partido.status === 'finished' || yaJugadoRef.current) return
+    const [jugsL, jugsV, sancionesDB] = await Promise.all([
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
+      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
+    ])
+    const hoyIso = new Date().toISOString()
+    const idsSancionados = new Set((sancionesDB?.data || [])
+      .filter(s => (!s.fecha_fin || s.fecha_fin > hoyIso) && (s.partidos_pendientes === null || s.partidos_pendientes === undefined || s.partidos_pendientes > 0))
+      .map(s => s.player_id))
+    const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
+    const mapJug = (data) => (data || [])
+      .filter(r => !idsSancionados.has(r.players?.id))
+      .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: false, debeFoto: tieneFotoPendiente(r.players) }))
+    setJugadoresLocal(prev => fusionarNuevosJugadores(prev, mapJug(jugsL.data)))
+    setJugadoresVisitante(prev => fusionarNuevosJugadores(prev, mapJug(jugsV.data)))
+  }, [partido?.tournament_id, partido?.home_team_id, partido?.away_team_id, partido?.status])
+
+  useEffect(() => {
+    if (!partido?.tournament_id || partido.status === 'finished') return
+    const channel = supabase
+      .channel(`planilla-completa-roster-${partido.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_player_registrations', filter: `tournament_id=eq.${partido.tournament_id}` }, () => {
+        refetchRosterNuevos()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [partido?.tournament_id, partido?.status, refetchRosterNuevos])
 
   useEffect(() => {
     const close = () => setDropdownOpen(null)
