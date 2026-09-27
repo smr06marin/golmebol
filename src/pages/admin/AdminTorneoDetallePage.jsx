@@ -2128,6 +2128,46 @@ export default function AdminTorneoDetallePage() {
     fetchFinanzas()
   }
 
+  // Bloquear equipo por inscripción sin pagar — MANUAL. Antes esto se hacía
+  // solo, para TODOS los equipos que quedaran debiendo, apenas se guardaban
+  // los logros del torneo. Ahora el organizador decide, equipo por equipo y
+  // cuando quiera (típicamente ya terminado el torneo), a quién bloquear con
+  // este botón. Duplica el saldo pendiente de inscripción de ese equipo y lo
+  // reparte entre sus jugadores inscritos, como deuda personal — eso es lo
+  // único que sigue al jugador a próximos torneos del MISMO organizador (ver
+  // jugador_tiene_deuda en la BD). Si se usa más de una vez para el mismo
+  // equipo, reemplaza la deuda anterior (no la duplica).
+  async function handleBloquearEquipoPorInscripcion(equipo, saldoInscripcion) {
+    if (!confirm(`¿Bloquear a los jugadores inscritos de ${equipo.name} por inscripción sin pagar (${fmt(saldoInscripcion)} x2)?\n\nQuedarán sin poder inscribirse en próximos torneos tuyos hasta que se marque la deuda como pagada.`)) return
+    try {
+      const { data: registros, error: errReg } = await supabase
+        .from('tournament_player_registrations')
+        .select('player_id')
+        .eq('tournament_id', id).eq('team_id', equipo.id).eq('activo', true)
+      if (errReg) throw errReg
+      const jugadoresEquipo = (registros || []).filter(r => r.player_id)
+      if (jugadoresEquipo.length === 0) return showMsg('Este equipo no tiene jugadores inscritos en el torneo', 'error')
+
+      const montoDoble = saldoInscripcion * 2
+      const montoPorJugador = Math.round(montoDoble / jugadoresEquipo.length)
+      if (montoPorJugador <= 0) return showMsg('No hay saldo de inscripción pendiente para este equipo', 'error')
+
+      // Reemplaza deudas anteriores de este equipo en este torneo (por si se
+      // bloquea más de una vez, ej: cambió el saldo o los jugadores).
+      await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('team_id', equipo.id).eq('tipo', 'deuda_personal')
+      const deudas = jugadoresEquipo.map(r => ({
+        tournament_id: id, team_id: equipo.id, player_id: r.player_id, tipo: 'deuda_personal', monto: montoPorJugador,
+        concepto: `Inscripción sin pagar (x2) de ${equipo.name} en ${torneo?.name || 'el torneo'}`.trim(), pagado: false,
+      }))
+      const { error } = await supabase.from('torneo_finanzas').insert(deudas)
+      if (error) throw error
+      showMsg(`${deudas.length} jugador(es) de ${equipo.name} quedaron bloqueados por inscripción sin pagar ✓`)
+      fetchFinanzas()
+    } catch (e) {
+      showMsg(`Error al bloquear el equipo: ${e.message}`, 'error')
+    }
+  }
+
   // Marca como pagada una deuda anotada a mano (➖ Deuda) — sea de arbitraje,
   // multa, W o lo que sea que se haya anotado — y deja de sumar en el saldo
   // del equipo. No la borra, solo queda marcada (se puede ver en el
@@ -2427,53 +2467,12 @@ export default function AdminTorneoDetallePage() {
     setGuardandoLogros(false)
     if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
 
-    // Al cerrar el torneo: las tarjetas sin pagar quedan así (ya NO generan
-    // deuda personal ni se cobran en otros torneos). Lo ÚNICO que sigue al
-    // jugador a futuros torneos es la inscripción que su equipo dejó sin
-    // pagar: se DUPLICA y se reparte entre los jugadores inscritos de ese
-    // equipo, como deuda personal. Esa deuda solo bloquea inscripciones en
-    // torneos del MISMO organizador (ver jugador_tiene_deuda en la BD) — si
-    // quedó debiendo en un torneo de Golmebol, solo le sale ese cobro en
-    // otros torneos de Golmebol, no en los de otro organizador.
-    let deudoresPersonales = 0
-    try {
-      const fc = torneo?.finanzas_config || {}
-      const inscripcionFee = fc.inscripcion || 0
-      // Se limpian las deudas personales de este torneo en cualquier caso
-      // (por si se corrige un pago y se vuelve a guardar logros).
-      await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('tipo', 'deuda_personal')
-
-      if (fc.llevar_cuentas && inscripcionFee > 0) {
-        // La inscripción se abona con tipo 'abono_inscripcion' (cuenta aparte
-        // de W/multas/cargos) — antes esto leía 'pago_cargos' por error, de
-        // cuando todo se mezclaba en la misma cuenta.
-        const { data: pagosInscripcion } = await supabase.from('torneo_finanzas').select('team_id, monto').eq('tournament_id', id).eq('tipo', 'abono_inscripcion')
-        const pagadoPorEquipo = {}
-        ;(pagosInscripcion || []).forEach(p => { pagadoPorEquipo[p.team_id] = (pagadoPorEquipo[p.team_id] || 0) + (p.monto || 0) })
-
-        const deudas = []
-        equipos.forEach(eq => {
-          const pagado = pagadoPorEquipo[eq.id] || 0
-          const deudaInscripcion = Math.max(0, inscripcionFee - pagado)
-          if (deudaInscripcion <= 0) return
-          const montoDoble = deudaInscripcion * 2
-          const jugadoresEquipo = jugadores.filter(j => j.team_id === eq.id && j.player_id)
-          if (jugadoresEquipo.length === 0) return
-          const montoPorJugador = Math.round(montoDoble / jugadoresEquipo.length)
-          if (montoPorJugador <= 0) return
-          jugadoresEquipo.forEach(j => deudas.push({
-            tournament_id: id, team_id: eq.id, player_id: j.player_id, tipo: 'deuda_personal', monto: montoPorJugador,
-            concepto: `Inscripción sin pagar (x2) de ${eq.name} en ${torneo?.name || 'el torneo'}`.trim(), pagado: false,
-          }))
-        })
-
-        if (deudas.length > 0) await supabase.from('torneo_finanzas').insert(deudas)
-        deudoresPersonales = deudas.length
-      }
-    } catch (e) { console.error('deuda personal:', e) }
-
+    // La deuda personal por inscripción sin pagar YA NO se genera sola acá al
+    // guardar los logros — quedó como acción MANUAL del organizador (botón
+    // "🚫 Bloquear" en Finanzas, por equipo), para que él decida caso por
+    // caso a quién perseguir. Ver handleBloquearEquipoPorInscripcion.
     const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
-    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${deudoresPersonales > 0 ? ` · 💳 ${deudoresPersonales} jugadores quedaron con deuda personal por inscripción sin pagar` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
   }
 
   // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
@@ -6092,6 +6091,13 @@ export default function AdminTorneoDetallePage() {
                         style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
                       </button>
+                      {fin.fc.llevar_cuentas && r.saldoInscripcion > 0 && (
+                        <button onClick={e => { e.stopPropagation(); handleBloquearEquipoPorInscripcion(r.equipo, r.saldoInscripcion) }}
+                          title="Bloquea a los jugadores inscritos de este equipo en próximos torneos tuyos, hasta que se marque la deuda como pagada"
+                          style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#a30000', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          🚫 Bloquear
+                        </button>
+                      )}
                     </div>
                   </div>
                   )})()}
@@ -6231,10 +6237,11 @@ export default function AdminTorneoDetallePage() {
             </div>
 
             {/* Deudas personales — inscripción sin pagar (x2), repartida entre
-                jugadores. Es lo único que se genera al guardar los logros del
-                torneo (los botones "Guardar logros" de Eliminatorias) y lo
-                único que sigue al jugador a próximos torneos del MISMO
-                organizador — las tarjetas sin pagar ya no bloquean nada. */}
+                jugadores. Se generan MANUALMENTE con el botón "🚫 Bloquear" de
+                cada equipo, arriba en "Cuentas por equipo" — ya no se crean
+                solas al guardar los logros del torneo. Es lo único que sigue
+                al jugador a próximos torneos del MISMO organizador — las
+                tarjetas sin pagar no bloquean nada. */}
             {(() => {
               const deudasPersonales = movimientos.filter(m => m.tipo === 'deuda_personal' && !m.pagado)
               if (deudasPersonales.length === 0) return null
