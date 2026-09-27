@@ -410,8 +410,22 @@ export default function LandingPage() {
   // (ver LiveEmbed) para que rebobine unos segundos y muestre otra vez la
   // jugada, tapándola primero un instante con la imagen que le toque en la
   // rotación (si ya hay alguna cargada).
+  //
+  // OJO con el retraso de la transmisión: el video en vivo (YouTube/Facebook)
+  // siempre va varios segundos ATRASADO respecto al partido real (retraso de
+  // transmisión normal en cualquier "en vivo" — puede ser 10, 20, hasta 40
+  // segundos según cómo esté transmitiendo). Si se dispara la repetición de
+  // una, apenas el árbitro anota el gol, el video TODAVÍA no ha mostrado esa
+  // jugada — se rebobina hacia un momento anterior al gol y la repetición no
+  // alcanza a mostrarlo. Por eso acá se ESPERA "retraso_segundos" (configurado
+  // por transmisión en /admin/config-sitio, con la transmisión real de
+  // Sebas) antes de disparar la repetición: ese tiempo es justo lo que le
+  // falta al video para "alcanzar" el momento del gol, así que cuando por
+  // fin se dispara, el gol ya pasó en la transmisión y el rebobinado sí lo
+  // agarra.
   const golesAnterioresRef = useRef({}) // { [matchId]: { local, vis } }
   const repeticionContadorRef = useRef(0)
+  const repeticionTimersRef = useRef([]) // ids de los setTimeout de espera, para limpiarlos si el componente se desmonta
   const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, imagenUrl } }
 
   useEffect(() => {
@@ -426,11 +440,17 @@ export default function LandingPage() {
           ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
           : null
         repeticionContadorRef.current += 1
-        setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, imagenUrl } }))
+        const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 20) * 1000
+        const timerId = setTimeout(() => {
+          setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundos: 12, imagenUrl } }))
+        }, retrasoMs)
+        repeticionTimersRef.current.push(timerId)
       }
       golesAnterioresRef.current[s.match_id] = actual
     })
   }, [partidosVivo, streamsVivos, imagenesRepeticion])
+
+  useEffect(() => () => repeticionTimersRef.current.forEach(clearTimeout), [])
 
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([

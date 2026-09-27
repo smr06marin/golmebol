@@ -317,8 +317,11 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
 
     if (repeticion.imagenUrl) {
       setFaseBumper('entra')
-      timers.push(setTimeout(() => setFaseBumper('sale'), 2000))
-      timers.push(setTimeout(() => setFaseBumper(null), 2400))
+      // Antes se veía solo ~1.5s de por sí (2000ms de entrada+espera, .4s de
+      // salida) — muy poco para alcanzar a leer la imagen del patrocinador.
+      // Ahora queda quieta unos 4.5s antes de empezar a salir.
+      timers.push(setTimeout(() => setFaseBumper('sale'), 4500))
+      timers.push(setTimeout(() => setFaseBumper(null), 4900))
     }
 
     timers.push(setTimeout(() => setMostrandoCierre(true), msCierreInicio))

@@ -15,7 +15,7 @@ const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'blo
 const NOMBRE_PLATAFORMA = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', otro: 'Enlace genérico (se mostrará un botón "Ver en vivo")' }
 
 function streamVacio() {
-  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, activo: true }
+  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, activo: true, retraso_segundos: 20 }
 }
 
 export default function AdminConfigSitioPage() {
@@ -54,7 +54,7 @@ export default function AdminConfigSitioPage() {
       return
     }
     const lista = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
-    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID() })))
+    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20 })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setLoading(false)
   }
@@ -69,6 +69,7 @@ export default function AdminConfigSitioPage() {
         titulo: (s.titulo || '').trim() || null,
         match_id: s.match_id || null,
         activo: !!s.activo,
+        retraso_segundos: Number(s.retraso_segundos) || 20,
       })),
       updated_at: new Date().toISOString(),
     }
@@ -189,6 +190,15 @@ export default function AdminConfigSitioPage() {
                     placeholder="Ej: Cancha 1 · Final del Torneo Relámpago"/>
                 </div>
 
+                <div style={{ marginBottom:'12px' }}>
+                  <label style={lbl}>Retraso de esta transmisión (segundos)</label>
+                  <input type="number" min="0" step="1" value={s.retraso_segundos ?? 20}
+                    onChange={e => actualizarStream(s.id, 'retraso_segundos', e.target.value)} style={{ ...inp, maxWidth:'120px' }}/>
+                  <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
+                    Cuánto va atrasada esta transmisión respecto al partido real (todo "en vivo" tiene algo de retraso). Se usa para esperar ese tiempo antes de disparar la repetición del gol — si no, el video rebobina a un momento en el que el gol todavía no había pasado. Para calcularlo: mira algo que pase en la cancha y cuenta cuántos segundos tarda en aparecer en la transmisión.
+                  </div>
+                </div>
+
                 <div>
                   <label style={lbl}>Marcador encima del video (opcional)</label>
                   <select value={s.match_id || ''} onChange={e => actualizarStream(s.id, 'match_id', e.target.value || null)} style={inp}>
@@ -224,7 +234,7 @@ export default function AdminConfigSitioPage() {
           <Repeat size={16} color={S.red}/> Imágenes para la repetición del gol
         </div>
         <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'16px' }}>
-          Cuando el árbitro anota un gol, el video se tapa un instante con una de estas imágenes (con una transición de entrada y salida) antes de mostrar otra vez la jugada — como el "cortesía de" de una transmisión deportiva. Puedes subir varias: van rotando en orden, una por cada gol. Ideal horizontal (16:9), igual de ancha que el video.
+          Cuando el árbitro anota un gol, el video se tapa unos segundos con una de estas imágenes (con una transición de entrada y salida, y tiempo de sobra para leerla) antes de mostrar otra vez la jugada — como el "cortesía de" de una transmisión deportiva. Puedes subir varias: van rotando en orden, una por cada gol. Ideal horizontal (16:9), igual de ancha que el video.
         </div>
 
         {imagenesRepeticion.length === 0 && (
