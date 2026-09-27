@@ -441,12 +441,15 @@ export default function LandingPage() {
           : null
         repeticionContadorRef.current += 1
         const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 20) * 1000
+        // segundosAtras es configurable por transmisión (/admin/config-sitio)
+        // porque en la práctica cada transmisión queda con un atraso real
+        // distinto — si se queda corto, el rebobinado cae en medio de la
+        // celebración en vez de antes del gol (ver LiveEmbed). duracionVisible:
+        // los 12 segundos de juego que pidió Sebas, contados desde que se va
+        // la imagen del patrocinador.
+        const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
         const timerId = setTimeout(() => {
-          // segundosAtras bien holgado: si se queda corto, el rebobinado cae
-          // en medio de la celebración en vez de antes del gol (ver
-          // LiveEmbed). duracionVisible: los 12 segundos de juego que pidió
-          // Sebas, contados desde que se va la imagen del patrocinador.
-          setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras: 20, duracionVisible: 12, imagenUrl } }))
+          setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras, duracionVisible: 12, imagenUrl } }))
         }, retrasoMs)
         repeticionTimersRef.current.push(timerId)
       }

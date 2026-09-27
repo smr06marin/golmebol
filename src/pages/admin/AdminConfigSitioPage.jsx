@@ -15,7 +15,7 @@ const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'blo
 const NOMBRE_PLATAFORMA = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', otro: 'Enlace genérico (se mostrará un botón "Ver en vivo")' }
 
 function streamVacio() {
-  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, activo: true, retraso_segundos: 20 }
+  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, activo: true, retraso_segundos: 20, segundos_repeticion: 28 }
 }
 
 export default function AdminConfigSitioPage() {
@@ -54,7 +54,7 @@ export default function AdminConfigSitioPage() {
       return
     }
     const lista = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
-    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20 })))
+    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20, segundos_repeticion: s.segundos_repeticion ?? 28 })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setLoading(false)
   }
@@ -70,6 +70,7 @@ export default function AdminConfigSitioPage() {
         match_id: s.match_id || null,
         activo: !!s.activo,
         retraso_segundos: Number(s.retraso_segundos) || 20,
+        segundos_repeticion: Number(s.segundos_repeticion) || 28,
       })),
       updated_at: new Date().toISOString(),
     }
@@ -196,6 +197,15 @@ export default function AdminConfigSitioPage() {
                     onChange={e => actualizarStream(s.id, 'retraso_segundos', e.target.value)} style={{ ...inp, maxWidth:'120px' }}/>
                   <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
                     Cuánto va atrasada esta transmisión respecto al partido real (todo "en vivo" tiene algo de retraso). Se usa para esperar ese tiempo antes de disparar la repetición del gol — si no, el video rebobina a un momento en el que el gol todavía no había pasado. Para calcularlo: mira algo que pase en la cancha y cuenta cuántos segundos tarda en aparecer en la transmisión.
+                  </div>
+                </div>
+
+                <div style={{ marginBottom:'12px' }}>
+                  <label style={lbl}>Cuánto rebobina la repetición del gol (segundos)</label>
+                  <input type="number" min="0" step="1" value={s.segundos_repeticion ?? 28}
+                    onChange={e => actualizarStream(s.id, 'segundos_repeticion', e.target.value)} style={{ ...inp, maxWidth:'120px' }}/>
+                  <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
+                    Si al ver la repetición el gol ya pasó (se ve la celebración pero no la jugada), sube este número — significa que el gol está más atrás de lo que se está rebobinando. Si en cambio se ve mucho relleno antes del gol, bájalo. No tiene relación con el número de arriba: ese es cuánto ESPERAR antes de disparar la repetición, este es hacia dónde atrás SALTA el video una vez que dispara.
                   </div>
                 </div>
 
