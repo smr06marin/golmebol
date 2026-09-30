@@ -295,7 +295,7 @@ export default function AdminTorneosPage() {
   async function handleEliminarTorneoConfirmado() {
     const t = torneoAEliminar
     if (!t || eliminandoTorneoRef.current) return
-    if (textoConfirmarEliminar.trim() !== t.name) return
+    if (textoConfirmarEliminar.trim().toUpperCase() !== 'ELIMINAR TORNEO') return
     eliminandoTorneoRef.current = true
     setEliminandoTorneo(true)
     try {
@@ -603,8 +603,9 @@ export default function AdminTorneosPage() {
         </div>
       )}
 
-      {/* Confirmación al eliminar un torneo COMPLETO — pide escribir el
-          nombre exacto porque no hay forma de deshacer esto. */}
+      {/* Confirmación al eliminar un torneo COMPLETO — pide escribir la frase
+          fija "ELIMINAR TORNEO" (no el nombre del torneo) porque no hay
+          forma de deshacer esto. */}
       {torneoAEliminar && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
           onClick={e => e.target === e.currentTarget && !eliminandoTorneo && setTorneoAEliminar(null)}>
@@ -631,12 +632,12 @@ export default function AdminTorneosPage() {
               </div>
 
               <div style={{ marginTop: '16px' }}>
-                <label style={{ ...label, marginBottom: '6px' }}>Para confirmar, escribe el nombre del torneo: <b>{torneoAEliminar.name}</b></label>
+                <label style={{ ...label, marginBottom: '6px' }}>Para confirmar, escribe: <b>ELIMINAR TORNEO</b></label>
                 <input
                   autoFocus
                   value={textoConfirmarEliminar}
                   onChange={e => setTextoConfirmarEliminar(e.target.value)}
-                  placeholder={torneoAEliminar.name}
+                  placeholder="ELIMINAR TORNEO"
                   style={input}
                   disabled={eliminandoTorneo}
                 />
@@ -647,8 +648,8 @@ export default function AdminTorneosPage() {
                   style={{ flex: 1, padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem', fontWeight: '600' }}>
                   Cancelar
                 </button>
-                <button onClick={handleEliminarTorneoConfirmado} disabled={eliminandoTorneo || textoConfirmarEliminar.trim() !== torneoAEliminar.name}
-                  style={{ flex: 1, padding: '11px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: (eliminandoTorneo || textoConfirmarEliminar.trim() !== torneoAEliminar.name) ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '700', opacity: (eliminandoTorneo || textoConfirmarEliminar.trim() !== torneoAEliminar.name) ? .6 : 1 }}>
+                <button onClick={handleEliminarTorneoConfirmado} disabled={eliminandoTorneo || textoConfirmarEliminar.trim().toUpperCase() !== 'ELIMINAR TORNEO'}
+                  style={{ flex: 1, padding: '11px', background: '#d93025', border: 'none', borderRadius: '10px', cursor: (eliminandoTorneo || textoConfirmarEliminar.trim().toUpperCase() !== 'ELIMINAR TORNEO') ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '700', opacity: (eliminandoTorneo || textoConfirmarEliminar.trim().toUpperCase() !== 'ELIMINAR TORNEO') ? .6 : 1 }}>
                   {eliminandoTorneo ? 'Eliminando...' : 'Eliminar definitivamente'}
                 </button>
               </div>
