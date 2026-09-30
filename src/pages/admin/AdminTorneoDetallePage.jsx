@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
@@ -543,6 +543,7 @@ export default function AdminTorneoDetallePage() {
   const draftJornada = draftJornadaRef.current
 
   const [torneo,    setTorneo]    = useState(null)
+  const [ediciones, setEdiciones] = useState([]) // otras ediciones de este mismo torneo (hermanas), para el link "Ver ediciones"
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
   const [jugadores, setJugadores] = useState([])
@@ -1075,6 +1076,21 @@ export default function AdminTorneoDetallePage() {
     if (data?.preview_calendario) setPreviewCalendario(data.preview_calendario)
     setPreviewConfigCargado(true)
   }
+
+  // Otras ediciones de este mismo torneo (creadas con "Crear siguiente
+  // edición"): la raíz de la cadena es torneo_padre_id si existe, o si no
+  // este mismo torneo es la raíz (la primera edición). Se traen todas las
+  // que compartan esa raíz, ordenadas por número de edición, para el link
+  // "Ver ediciones" del header.
+  const fetchEdiciones = useCallback(async () => {
+    if (!torneo?.id) return
+    const raizId = torneo.torneo_padre_id || torneo.id
+    const { data } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
+      .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)
+    setEdiciones((data || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1)))
+  }, [torneo?.id, torneo?.torneo_padre_id])
+
+  useEffect(() => { fetchEdiciones() }, [fetchEdiciones])
 
   async function fetchEquipos() {
     const { data } = await supabase.from('tournament_teams').select('*, teams(id, name, city, logo_url, modalidad, genero, registro_token)').eq('tournament_id', id)
@@ -2489,7 +2505,18 @@ export default function AdminTorneoDetallePage() {
       edicion: n, finanzas_config: torneo.finanzas_config || null,
     }).select().single()
     if (error) return showMsg(`Error al crear la edición: ${error.message}`, 'error')
-    showMsg(`${nombre} creada ✓ — este torneo queda guardado con todo su historial; agrega los equipos de la nueva edición`)
+    // Este torneo (el que ya terminó) se archiva solo: desaparece de la
+    // lista principal de Torneos (para que no se vaya llenando edición tras
+    // edición) pero NO se borra ni se toca ningún dato — sigue 100%
+    // disponible desde "Ver archivados" en Torneos, o desde el link
+    // "Ver ediciones" que va a aparecer en la edición nueva. Si esto falla
+    // (por ejemplo si falta la migración), no frena la creación de la
+    // edición nueva — solo no se oculta sola de la lista.
+    try {
+      const { error: errArchivar } = await supabase.from('tournaments').update({ archivado: true }).eq('id', torneo.id)
+      if (errArchivar && !(errArchivar.message || '').includes('archivado')) console.error('No se pudo archivar la edición anterior:', errArchivar)
+    } catch { /* falta migracion_archivar_torneos.sql — no es grave, se puede archivar a mano después */ }
+    showMsg(`${nombre} creada ✓ — este torneo queda guardado con todo su historial (y archivado, para no llenar la lista); agrega los equipos de la nueva edición`)
     navigate(`/admin/torneos/${data.id}`)
     setTab('actividad')
   }
@@ -4050,8 +4077,34 @@ export default function AdminTorneoDetallePage() {
               {torneo.genero    && <span style={{ color: '#6c35de', background: '#f3e8fd', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>{torneo.genero}</span>}
               {torneo.categoria && <span style={{ color: '#5f6368', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>{torneo.categoria}</span>}
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
+              {torneo.archivado && <span style={{ color: '#5f6368', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>🗄️ Archivado</span>}
             </div>
+            {ediciones.length > 1 && (
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center', fontSize: '.68rem', marginTop: '5px' }}>
+                <span style={{ color: '#9aa0a6' }}>Ediciones:</span>
+                {ediciones.map(e => (
+                  <button key={e.id} onClick={() => e.id !== torneo.id && navigate(`/admin/torneos/${e.id}`)}
+                    title={e.archivado ? `${e.name} (archivado)` : e.name}
+                    style={{ border: 'none', borderRadius: '8px', padding: '1px 8px', fontWeight: '700', cursor: e.id === torneo.id ? 'default' : 'pointer',
+                      background: e.id === torneo.id ? '#1a73e8' : '#f1f3f4', color: e.id === torneo.id ? '#fff' : '#5f6368', opacity: e.archivado && e.id !== torneo.id ? .7 : 1 }}>
+                    Ed. {e.edicion || 1}{e.archivado ? ' 🗄️' : ''}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          <button onClick={async () => {
+              const nuevo = !torneo.archivado
+              if (!confirm(nuevo ? `¿Archivar "${torneo.name}"? Desaparece de la lista principal de Torneos (no se borra nada, y se puede desarchivar cuando quieras).` : `¿Desarchivar "${torneo.name}"? Vuelve a aparecer en la lista principal de Torneos.`)) return
+              const { error } = await supabase.from('tournaments').update({ archivado: nuevo }).eq('id', torneo.id)
+              if (error) return showMsg(`Falta ejecutar migracion_archivar_torneos.sql en Supabase (${error.message})`, 'error')
+              setTorneo(prev => ({ ...prev, archivado: nuevo }))
+              showMsg(nuevo ? 'Torneo archivado ✓' : 'Torneo desarchivado ✓')
+            }}
+            title={torneo.archivado ? 'Desarchivar torneo' : 'Archivar torneo (sacarlo de la lista principal, sin borrar nada)'}
+            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '14px' }}>
+            🗄️
+          </button>
           <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '' }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>

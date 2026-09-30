@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { Plus, Pencil, Trash2, Trophy, Eye, Star, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Trophy, Eye, Star, X, Archive, ArchiveRestore } from 'lucide-react'
 
 
 const EMPTY = { name: '', season: '', city: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '' }
@@ -57,6 +57,7 @@ export default function AdminTorneosPage() {
   const [msg, setMsg] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
+  const [verArchivados, setVerArchivados] = useState(false) // por defecto los torneos archivados (ediciones viejas ya cerradas) no se muestran, para que la lista no se llene
   const [menuTorneo, setMenuTorneo] = useState(null) // torneo con menú ⋮ abierto
 
   // Eliminar torneo por completo (torneo + todos sus datos) — pide escribir
@@ -101,6 +102,22 @@ export default function AdminTorneosPage() {
     const { error } = await supabase.from('tournaments').update({ premium: !t.premium }).eq('id', t.id)
     if (error) return showMsg(error.message?.includes('premium') ? 'Falta ejecutar migracion_roles.sql en Supabase' : 'Error al actualizar', 'error')
     showMsg(t.premium ? 'Premium desactivado' : 'Torneo marcado como Premium ⭐')
+    fetchTorneos()
+  }
+
+  // Archivar/desarchivar: saca (o vuelve a poner) un torneo de la lista
+  // principal SIN borrar ni tocar ningún dato — se puede deshacer cuando
+  // sea. Pensado para ediciones ya cerradas (ver "Crear siguiente edición"
+  // en el detalle del torneo, que archiva la vieja sola), pero sirve para
+  // cualquier torneo que ya no se esté usando.
+  async function handleToggleArchivado(t) {
+    const nuevo = !t.archivado
+    if (!confirm(nuevo
+      ? `¿Archivar "${t.name}"? Desaparece de esta lista (no se borra nada) — lo volvés a ver con "Ver archivados". Se puede desarchivar cuando quieras.`
+      : `¿Desarchivar "${t.name}"? Vuelve a aparecer en la lista principal.`)) return
+    const { error } = await supabase.from('tournaments').update({ archivado: nuevo }).eq('id', t.id)
+    if (error) return showMsg(`Falta ejecutar migracion_archivar_torneos.sql en Supabase (${error.message})`, 'error')
+    showMsg(nuevo ? 'Torneo archivado ✓' : 'Torneo desarchivado ✓')
     fetchTorneos()
   }
 
@@ -319,7 +336,10 @@ export default function AdminTorneosPage() {
     }
   }
 
-  const filtered = torneos.filter(t => t.name?.toLowerCase().includes(search.toLowerCase()))
+  const archivadosCount = torneos.filter(t => t.archivado).length
+  const filtered = torneos
+    .filter(t => verArchivados || !t.archivado)
+    .filter(t => t.name?.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div>
@@ -334,7 +354,7 @@ export default function AdminTorneosPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Torneos</h1>
-          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{torneos.length} torneos registrados</p>
+          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{torneos.length - archivadosCount} torneos activos{archivadosCount > 0 ? ` · ${archivadosCount} archivados` : ''}</p>
         </div>
         <button onClick={() => { setForm(EMPTY); setFin(FIN_EMPTY); setEditId(null); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
@@ -503,8 +523,14 @@ export default function AdminTorneosPage() {
       )}
 
       {/* Buscador */}
-      <div style={{ marginBottom: '14px' }}>
+      <div style={{ marginBottom: '14px', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar torneo..." style={{ ...input, maxWidth: isMobile ? '100%' : '360px', padding: '11px 14px', borderRadius: '10px' }}/>
+        {archivadosCount > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={verArchivados} onChange={e => setVerArchivados(e.target.checked)} style={{ width: '15px', height: '15px', cursor: 'pointer' }}/>
+            🗄️ Ver archivados ({archivadosCount})
+          </label>
+        )}
       </div>
 
       {/* Lista de torneos en tarjetas */}
@@ -532,6 +558,7 @@ export default function AdminTorneosPage() {
                       <span style={{ fontSize: '.7rem', color: estado.color, background: estado.bg, borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{estado.label}</span>
                       {t.genero && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{t.genero}</span>}
                       {t.premium && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fff4e5', borderRadius: '5px', padding: '2px 8px', fontWeight: '700' }}>⭐ Premium</span>}
+                      {t.archivado && <span style={{ fontSize: '.7rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '5px', padding: '2px 8px', fontWeight: '700' }}>🗄️ Archivado</span>}
                       {esAdmin && t.organizador_id && (
                         <span style={{ fontSize: '.7rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>
                           🏢 {organizadores[t.organizador_id] || 'Organizador'}
@@ -560,6 +587,10 @@ export default function AdminTorneosPage() {
                         <Star size={14} fill={t.premium ? '#e8710a' : 'none'}/> {t.premium ? 'Quitar Premium' : 'Premium'}
                       </button>
                     )}
+                    <button onClick={() => { setMenuTorneo(null); handleToggleArchivado(t) }}
+                      style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
+                      {t.archivado ? <><ArchiveRestore size={14}/> Desarchivar</> : <><Archive size={14}/> Archivar</>}
+                    </button>
                     <button onClick={() => { setMenuTorneo(null); handleDelete(t) }}
                       style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.78rem', fontWeight: '600' }}>
                       <Trash2 size={14}/> Eliminar
