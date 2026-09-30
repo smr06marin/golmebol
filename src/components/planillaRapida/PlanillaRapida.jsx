@@ -80,9 +80,145 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
   const deudaDetalleRef = useRef({}) // último deudaDetalle conocido, para no perder el flag "debeTarjeta" al refrescar el roster en vivo
+  const ultimoGuardadoPropioRef = useRef(null) // marca de tiempo del último guardado que hice YO — para no confundir mi propio eco (al recibirlo por realtime) con un cambio real de otro celular
+
+  // ── Co-planillaje entre dos celulares ────────────────────────────────────
+  // Cuando SOLO un árbitro tiene la planilla abierta (el 99% de los casos)
+  // esto no cambia nada: misEquipos trae los dos equipos y todo funciona
+  // exactamente igual que antes. Apenas se detecta OTRO celular presente en
+  // este mismo partido, cada uno pasa a llevar UN equipo (se le pregunta
+  // cuál), y el equipo del otro celular queda bloqueado acá: no se puede
+  // tocar (se avisa "ya lo están planillando") y en cambio se actualiza solo,
+  // en vivo, con lo que el otro celular va cargando — así nunca los dos
+  // terminan anotando lo mismo.
+  const deviceIdRef = useRef(idUnico())
+  const [misEquipos, setMisEquipos] = useState(['local', 'visitante'])
+  const misEquiposRef = useRef(misEquipos)
+  useEffect(() => { misEquiposRef.current = misEquipos }, [misEquipos])
+  const [pidiendoEquipo, setPidiendoEquipo] = useState(false)
+  const pidiendoEquipoRef = useRef(false)
+  useEffect(() => { pidiendoEquipoRef.current = pidiendoEquipo }, [pidiendoEquipo])
+  const [equiposParaElegir, setEquiposParaElegir] = useState(['local', 'visitante'])
+  const presenceChRef = useRef(null)
+  const yaDetectoPeerRef = useRef(false)
 
   const nombreLocal = partido.home?.name || 'Local'
   const nombreVis = partido.away?.name || 'Visitante'
+
+  function equipoBloqueado(team) { return !misEquipos.includes(team) }
+  function avisarBloqueado(team) {
+    alert(`🔒 El equipo ${team === 'local' ? nombreLocal : nombreVis} ya lo está planillando otro celular — se va a actualizar solo acá en vivo, no hace falta anotarlo de nuevo.`)
+  }
+  function elegirEquipo(team) {
+    setMisEquipos([team])
+    setPidiendoEquipo(false)
+  }
+  function bannerCoPlanillaje() {
+    if (misEquipos.length !== 1) return null
+    const propio = misEquipos[0] === 'local' ? nombreLocal : nombreVis
+    const otro = misEquipos[0] === 'local' ? nombreVis : nombreLocal
+    return (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#0b3d2e', color: '#7CFFB2', fontSize: '.7rem', fontWeight: '700', textAlign: 'center', padding: '5px 8px' }}>
+        📋 Vos llevás {propio} · {otro} lo lleva el otro celular — se actualiza solo, en vivo
+      </div>
+    )
+  }
+
+  // Presencia: cada celular avisa qué equipo lleva (o "ambos" si sigue solo).
+  // Al ver aparecer OTRO celular por primera vez, si yo seguía en modo "ambos"
+  // (no elegí nada todavía) me toca elegir cuál llevo. Si el otro celular ya
+  // reclamó un equipo puntual y yo seguía en "ambos", lo suelto solo (sin
+  // preguntar) para no pisarle lo que ya está cargando.
+  useEffect(() => {
+    if (!listo || partido.status === 'finished') return
+    const ch = supabase.channel(`planilla-rapida-presencia-${partido.id}`, { config: { presence: { key: deviceIdRef.current } } })
+    ch.on('presence', { event: 'sync' }, () => {
+      const estado = ch.presenceState()
+      const otros = Object.entries(estado).filter(([k]) => k !== deviceIdRef.current).map(([, arr]) => arr[arr.length - 1])
+      const tomadosPorOtros = otros.map(o => o?.team).filter(t => t === 'local' || t === 'visitante')
+
+      if (otros.length > 0 && !yaDetectoPeerRef.current && misEquiposRef.current.length === 2) {
+        yaDetectoPeerRef.current = true
+        const disponibles = ['local', 'visitante'].filter(t => !tomadosPorOtros.includes(t))
+        if (disponibles.length === 0) {
+          alert('Los dos equipos de este partido ya los está planillando cada uno desde su celular.')
+        } else {
+          setEquiposParaElegir(disponibles)
+          setPidiendoEquipo(true)
+        }
+      }
+
+      if (tomadosPorOtros.length > 0 && misEquiposRef.current.length === 2 && !pidiendoEquipoRef.current) {
+        setMisEquipos(prev => prev.filter(t => !tomadosPorOtros.includes(t)))
+      }
+    })
+    ch.subscribe(status => {
+      if (status === 'SUBSCRIBED') ch.track({ team: misEquiposRef.current.length === 1 ? misEquiposRef.current[0] : 'ambos' })
+    })
+    presenceChRef.current = ch
+    return () => { supabase.removeChannel(ch); presenceChRef.current = null }
+  }, [listo, partido.status, partido.id])
+
+  useEffect(() => {
+    presenceChRef.current?.track({ team: misEquipos.length === 1 ? misEquipos[0] : 'ambos' })
+  }, [misEquipos])
+
+  // Fusiona en vivo lo que llega de OTRO celular: solo se toman los campos
+  // del equipo que YO no llevo (el mío nunca se pisa con lo ajeno), y los
+  // eventos (goles/tarjetas) se unen por id sin duplicar. Cada comparación
+  // devuelve el mismo valor/arreglo anterior cuando no cambió nada, para no
+  // disparar un guardado nuevo en falso (evita un ida-y-vuelta infinito entre
+  // los dos celulares).
+  const aplicarSnapRemotoParcial = useCallback((remoteSnap) => {
+    if (!remoteSnap) return
+    const mios = misEquiposRef.current
+    const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+    setStep(prev => (typeof remoteSnap.step === 'string' && remoteSnap.step !== prev) ? remoteSnap.step : prev)
+    setPeriodo(prev => (typeof remoteSnap.periodo === 'number' && remoteSnap.periodo !== prev) ? remoteSnap.periodo : prev)
+    setDuracionMinutos(prev => (typeof remoteSnap.duracionMinutos === 'number' && remoteSnap.duracionMinutos !== prev) ? remoteSnap.duracionMinutos : prev)
+    setTiempoAgotado(prev => (typeof remoteSnap.tiempoAgotado === 'boolean' && remoteSnap.tiempoAgotado !== prev) ? remoteSnap.tiempoAgotado : prev)
+    setCorriendo(prev => {
+      if (typeof remoteSnap.corriendo !== 'boolean' || remoteSnap.corriendo === prev) return prev
+      inicioEpochRef.current = null
+      return remoteSnap.corriendo
+    })
+
+    if (!mios.includes('local')) {
+      setJugadoresLocal(prev => igual(prev, remoteSnap.jugadoresLocal || []) ? prev : (remoteSnap.jugadoresLocal || []))
+      setColorLocal(prev => (remoteSnap.colorLocal ?? null) === prev ? prev : (remoteSnap.colorLocal ?? null))
+      setArqueroLocal(prev => igual(prev, remoteSnap.arqueroLocal ?? null) ? prev : (remoteSnap.arqueroLocal ?? null))
+      setHistArquerosLocal(prev => igual(prev, remoteSnap.histArquerosLocal || []) ? prev : (remoteSnap.histArquerosLocal || []))
+    }
+    if (!mios.includes('visitante')) {
+      setJugadoresVisitante(prev => igual(prev, remoteSnap.jugadoresVisitante || []) ? prev : (remoteSnap.jugadoresVisitante || []))
+      setColorVis(prev => (remoteSnap.colorVis ?? null) === prev ? prev : (remoteSnap.colorVis ?? null))
+      setArqueroVis(prev => igual(prev, remoteSnap.arqueroVis ?? null) ? prev : (remoteSnap.arqueroVis ?? null))
+      setHistArquerosVis(prev => igual(prev, remoteSnap.histArquerosVis || []) ? prev : (remoteSnap.histArquerosVis || []))
+    }
+
+    setEventos(prev => {
+      const nuevos = (remoteSnap.eventos || []).filter(e => !prev.some(p => p.id === e.id))
+      return nuevos.length === 0 ? prev : [...prev, ...nuevos]
+    })
+  }, [])
+
+  // Suscripción continua (no solo al abrir): apenas el otro celular guarda su
+  // borrador, este lo recibe y lo fusiona — así se ve en vivo lo que va
+  // llenando cada uno. Se ignora el propio eco (mi propio guardado, que
+  // también llega por este mismo canal) comparando con ultimoGuardadoPropioRef.
+  useEffect(() => {
+    if (!listo || partido.status === 'finished') return
+    const channel = supabase
+      .channel(`planilla-rapida-sync-${partido.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=eq.${partido.id}` }, (payload) => {
+        const ts = payload.new?.live_state_rapida_updated_at
+        if (!ts || ts === ultimoGuardadoPropioRef.current) return
+        aplicarSnapRemotoParcial(payload.new?.live_state_rapida)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [listo, partido.status, partido.id, aplicarSnapRemotoParcial])
 
   // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => { fetchTodo() }, [])
@@ -174,12 +310,16 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     return () => { supabase.removeChannel(channel) }
   }, [partido?.tournament_id, partido?.status, refetchRoster])
 
-  // Pantalla completa real (oculta también la barra del navegador móvil),
-  // igual que la planilla completa — se sale sola al desmontar el componente.
-  useEffect(() => {
-    document.documentElement.requestFullscreen?.().catch(() => {})
-    return () => { document.exitFullscreen?.().catch(() => {}) }
-  }, [])
+  // Antes se pedía la pantalla completa REAL del navegador (Fullscreen API)
+  // para ocultar también la barra de arriba del celular. Se quitó: cada vez
+  // que el navegador entra a ese modo, muestra SOLO (el celular, no
+  // Golmebol — no hay forma de acortarlo ni quitarlo desde el código) un
+  // aviso de "www.golmebol.com: para salir de la pantalla completa,
+  // arrastra..." que se quedaba tapando la planilla y estorbando mientras
+  // el árbitro la estaba usando. Sin este pedido, el celular ya no muestra
+  // ese aviso — la planilla sigue viéndose a pantalla completa igual (con
+  // el alto real del celular, ver 100dvh en los estilos), solo que sin
+  // forzar el modo Fullscreen del navegador.
 
   // Baja la marca de agua "Creada por GOLMEBOL" al fondo mientras esta
   // planilla está abierta (arriba tapa el header) — ver index.css.
@@ -418,7 +558,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   }
   function guardarRemotoInmediato(snap) {
     if (!navigator.onLine) return
-    supabase.from('matches').update({ live_state_rapida: snap, live_state_rapida_updated_at: new Date().toISOString() }).eq('id', partido.id).then(() => {}, () => {})
+    const ts = new Date().toISOString()
+    ultimoGuardadoPropioRef.current = ts
+    supabase.from('matches').update({ live_state_rapida: snap, live_state_rapida_updated_at: ts }).eq('id', partido.id).then(() => {}, () => {})
   }
   function guardarRemotoDebounced(snap) {
     clearTimeout(remoteTimer.current)
@@ -530,6 +672,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Asignación de camisetas ────────────────────────────────────────────
   function abrirJugador(team, index) {
+    if (equipoBloqueado(team)) return avisarBloqueado(team)
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
     setModalFoto({ team, index, jugador: arr[index] })
   }
@@ -596,6 +739,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Arquero ────────────────────────────────────────────────────────────
   function seleccionarArquero(team, jugador) {
+    if (equipoBloqueado(team)) return avisarBloqueado(team)
     const arq = { id: jugador.id, nombre: jugador.nombre, numero: jugador.numero }
     const setArq = team === 'local' ? setArqueroLocal : setArqueroVis
     const setHist = team === 'local' ? setHistArquerosLocal : setHistArquerosVis
@@ -617,6 +761,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     }
   }
   function registrarEvento(team, numero, tipo) {
+    if (equipoBloqueado(team)) return avisarBloqueado(team)
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
     const jugador = arr.find(j => (j.numero || '').trim() === numero)
     if (!jugador) { setAlertaNumero({ team, numero, tipo }); return }
@@ -919,16 +1064,40 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     </div>
   )
 
+  if (pidiendoEquipo) return (
+    <div style={{ minHeight: '100dvh', background: FONDO, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '18px', padding: '24px', fontFamily: 'system-ui,sans-serif', textAlign: 'center' }}>
+      <div style={{ color: CIAN, fontSize: '1.15rem', fontWeight: '800' }}>📋 Este partido ya lo está planillando otro celular</div>
+      <div style={{ color: '#fff', opacity: .75, fontSize: '.85rem', maxWidth: '320px' }}>Para que no se pisen, cada celular lleva un equipo — elegí cuál llevás vos:</div>
+      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {['local', 'visitante'].map(t => {
+          const disponible = equiposParaElegir.includes(t)
+          return (
+            <button key={t} disabled={!disponible} onClick={() => elegirEquipo(t)}
+              style={{ minWidth: '150px', padding: '18px 22px', borderRadius: '14px', border: 'none', fontWeight: '800', fontSize: '1rem',
+                background: disponible ? CIAN : '#2a2a2a', color: disponible ? '#001018' : '#666', cursor: disponible ? 'pointer' : 'not-allowed' }}>
+              {t === 'local' ? nombreLocal : nombreVis}
+              {!disponible && <div style={{ fontSize: '.66rem', fontWeight: '700', marginTop: '5px' }}>🔒 Ya lo están planillando</div>}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   if (step === 'colores') return (
-    <PantallaColores
-      nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
-      onElegir={(team, hex) => (team === 'local' ? setColorLocal(hex) : setColorVis(hex))}
-      onContinuar={() => setStep('asignar')}
-    />
+    <>
+      {bannerCoPlanillaje()}
+      <PantallaColores
+        nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
+        onElegir={(team, hex) => { if (equipoBloqueado(team)) return avisarBloqueado(team); team === 'local' ? setColorLocal(hex) : setColorVis(hex) }}
+        onContinuar={() => setStep('asignar')}
+      />
+    </>
   )
 
   if (step === 'asignar') return (
     <>
+      {bannerCoPlanillaje()}
       <PantallaAsignarNumeros
         nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
         jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
@@ -962,6 +1131,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   return (
     <>
+      {bannerCoPlanillaje()}
       <PantallaPartido
         nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
         jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
