@@ -172,9 +172,17 @@ function FilaPartido({ p, mostrarTorneo, paleta }) {
             <NombreEquipo nombre={p.away?.name} align="left"/>
           </div>
         </div>
-        {/* Zona 3 (clara): cancha y fecha (la hora ya se ve arriba, en el
-            centro, así que no se repite acá) */}
-        <div style={{ textAlign: 'center', background: 'rgba(243,212,122,.16)', padding: '2px 8px' }}>
+        {/* Zona 3: cancha y fecha (la hora ya se ve arriba, en el centro, así
+            que no se repite acá). Antes era una franja CLARA (fondo dorado
+            muy tenue) — de lejos o achicada se veía parecida al fondo del
+            flyer (que anda en esos mismos tonos cálidos), entonces la gente
+            la leía como algo suelto/del próximo partido en vez de la cancha
+            DE la tarjeta de arriba. Ahora es del mismo tono oscuro que la
+            franja del partido (con una línea fina arriba para separarlas
+            dentro de la misma tarjeta), así las dos zonas se leen como un
+            solo bloque — y lo que de verdad separa un partido de otro es el
+            espacio entre tarjetas, no un cambio de color adentro. */}
+        <div style={{ textAlign: 'center', background: 'rgba(0,0,0,.4)', borderTop: `1px solid ${paleta.acento}40`, padding: '2px 8px' }}>
           {/* whiteSpace:nowrap + ellipsis, igual que la zona del torneo arriba:
               si la cancha tiene un nombre largo, esta línea NO puede
               envolverse a una segunda línea — cada tarjeta debe medir
