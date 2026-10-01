@@ -36,28 +36,46 @@ function LinkFallback({ url, S }) {
 }
 
 // Botón propio de pantalla completa (en vez del que trae YouTube/Facebook
-// adentro del iframe) — ver comentario grande más abajo sobre por qué.
+// adentro del iframe) — ver comentario grande más abajo sobre por qué. Antes
+// era un círculo chiquito solo con el ícono, y en una tele (con el botón de
+// pantalla completa del navegador mismo también a la vista) la gente no
+// sabía cuál apretar. Mientras TODAVÍA no está en pantalla completa se
+// muestra grande, con el texto "Pantalla completa" al lado del ícono, bien
+// opaco, para que no haya dudas; una vez adentro, se achica a un círculo
+// (ya no hace falta gritar "yo soy el botón", solo hay que poder salir).
 function BotonPantallaCompleta({ activo, onClick }) {
+  if (activo) {
+    return (
+      <button onClick={onClick} aria-label="Salir de pantalla completa"
+        style={{ position:'absolute', top:'12px', right:'12px', zIndex:3, width:'42px', height:'42px', borderRadius:'50%',
+          border:'none', background:'rgba(0,0,0,.65)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
+        <Minimize2 size={19}/>
+      </button>
+    )
+  }
   return (
-    <button onClick={onClick} aria-label={activo ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
-      style={{ position:'absolute', top:'10px', right:'10px', zIndex:3, width:'34px', height:'34px', borderRadius:'50%',
-        border:'none', background:'rgba(0,0,0,.55)', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
-      {activo ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}
+    <button onClick={onClick} aria-label="Ver en pantalla completa"
+      style={{ position:'absolute', top:'12px', right:'12px', zIndex:3, display:'flex', alignItems:'center', gap:'7px',
+        padding:'10px 16px', borderRadius:'10px', border:'1px solid rgba(255,255,255,.35)', background:'rgba(0,0,0,.78)',
+        color:'#fff', fontSize:'.78rem', fontWeight:'800', letterSpacing:'.01em', whiteSpace:'nowrap', cursor:'pointer' }}>
+      <Maximize2 size={17}/> Pantalla completa
     </button>
   )
 }
 
-// Logo chiquito arriba a la derecha de la transmisión, como el logo de un
+// Logo chiquito arriba a la IZQUIERDA de la transmisión, como el logo de un
 // canal deportivo de verdad, con "EN VIVO" debajo (bien chiquito, para que
 // se vea como parte del mismo logo, no como una etiqueta aparte) para que
 // se note que es la transmisión (y no, por ejemplo, la repetición del gol,
 // que tiene su propia etiqueta debajo del reloj del marcador). Sin fondo
 // detrás — solo el logo encima del video, con sombra para que se lea igual
-// sobre cualquier fondo. Va justo al lado del botón de pantalla completa,
-// se queda todo el tiempo que dure la transmisión.
+// sobre cualquier fondo. Va a la izquierda (antes estaba a la derecha, al
+// lado del botón de pantalla completa) para dejarle TODO el lado derecho
+// libre a ese botón — en una tele la gente confundía cuál de los dos de
+// arriba era el de pantalla completa, así que ahora no compite con nada.
 function LogoCanal() {
   return (
-    <div style={{ position:'absolute', top:'10px', right:'54px', zIndex:4, display:'flex', flexDirection:'column', alignItems:'center', gap:'2px', pointerEvents:'none' }}>
+    <div style={{ position:'absolute', top:'10px', left:'10px', zIndex:4, display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'2px', pointerEvents:'none' }}>
       <img src="/marca/watermark-logo.png" alt="" style={{ height:'16px', width:'auto', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
       <div style={{ display:'flex', alignItems:'center', gap:'3px' }}>
         <span style={{ width:'4px', height:'4px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite', boxShadow:'0 0 2px rgba(0,0,0,.9)' }}/>
@@ -156,10 +174,14 @@ function cargarYouTubeAPI() {
 // al navegador poner en pantalla completa solo el <iframe> del reproductor,
 // y todo lo que esté AFUERA del iframe (el marcador, que es un div hermano)
 // desaparece. Por eso acá se apaga ese botón nativo (se quita
-// `allowFullScreen`) y se pone uno propio que agranda esta CAJA completa
-// (video + marcador juntos) con CSS, no con la API de pantalla completa del
-// navegador — esa API además no funciona bien para esto en Safari de
-// iPhone, así que este método funciona igual en todos los celulares.
+// `allowFullScreen`) y se pone uno propio (ver alternarPantallaCompleta) que
+// le pide al navegador la pantalla completa de VERDAD sobre esta CAJA
+// entera (video + marcador juntos, nunca el iframe solo) — eso sí tapa la
+// barra de direcciones/pestañas del navegador (importante en una
+// tele/computador, donde antes quedaban visibles). Además, siempre se activa
+// TAMBIÉN una pantalla completa por CSS como respaldo, por si la API nativa
+// no está disponible — pasa en Safari de iPhone, que no deja pedir pantalla
+// completa de un <div> cualquiera — así este botón funciona en todos lados.
 //
 // `repeticion` (opcional): { key, objetivoSegundos, segundosAtras, duracionVisible, imagenUrl, camaraLenta }
 // — cada vez que `key` cambia (LandingPage lo cambia apenas detecta un gol
@@ -201,6 +223,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
   const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
   const [mostrandoCierre, setMostrandoCierre] = useState(false) // el logo de Golmebol agrandándose, al final, de transición hacia el en vivo
+  const cajaRef = useRef(null) // la caja de afuera (video + marcador + gráficas) — a ESTA se le pide pantalla completa de verdad, nunca al iframe solo
   const iframeRef = useRef(null)
   const ytPlayerRef = useRef(null)
   // Id propio para el iframe de YouTube (puede haber varios <LiveEmbed> a la
@@ -286,6 +309,11 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   // puso en pantalla completa es justo NUESTRO iframe, lo cancelamos al
   // instante y activamos nuestra propia pantalla completa (con CSS), que sí
   // incluye el marcador porque este vive adentro de la misma caja.
+  // Este mismo evento también avisa cuando SE SALE de la pantalla completa
+  // de verdad que pedimos nosotros (ver alternarPantallaCompleta más abajo)
+  // — por ejemplo si en la tele la cierran con el control remoto en vez de
+  // con nuestro botón. Ahí hay que apagar `pantallaCompleta` para que la
+  // caja vuelva a su tamaño normal.
   useEffect(() => {
     function onFullscreenChange() {
       const el = document.fullscreenElement || document.webkitFullscreenElement
@@ -293,7 +321,9 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
         if (document.exitFullscreen) document.exitFullscreen().catch(() => {})
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
         setPantallaCompleta(true)
+        return
       }
+      if (cajaRef.current && el !== cajaRef.current) setPantallaCompleta(false)
     }
     document.addEventListener('fullscreenchange', onFullscreenChange)
     document.addEventListener('webkitfullscreenchange', onFullscreenChange)
@@ -302,6 +332,33 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
       document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
     }
   }, [])
+
+  // Pide la pantalla completa DE VERDAD (API del navegador) sobre nuestra
+  // CAJA entera (video + marcador + gráficas juntos, nunca el iframe solo —
+  // por eso no se pierde nada, a diferencia del botón nativo de
+  // YouTube/Facebook que si usa esta misma API pero solo sobre el iframe).
+  // Esto es lo que de verdad tapa la barra de direcciones y las pestañas del
+  // navegador en una tele/computador — la pantalla completa de solo CSS de
+  // abajo nunca pudo tapar eso, porque esa barra es del NAVEGADOR, no de la
+  // página. En iPhone, Safari no deja pedir pantalla completa de un <div>
+  // cualquiera (solo de un <video>), así que ahí esto falla calladito y se
+  // queda la de CSS nomás — por eso `pantallaCompleta` se prende SIEMPRE de
+  // una vez, sin esperar a ver si la API nativa funcionó.
+  function alternarPantallaCompleta() {
+    const el = cajaRef.current
+    const enFullscreenNativo = document.fullscreenElement === el || document.webkitFullscreenElement === el
+    if (pantallaCompleta || enFullscreenNativo) {
+      setPantallaCompleta(false)
+      if (document.fullscreenElement === el && document.exitFullscreen) document.exitFullscreen().catch(() => {})
+      else if (document.webkitFullscreenElement === el && document.webkitExitFullscreen) document.webkitExitFullscreen()
+      return
+    }
+    setPantallaCompleta(true)
+    try {
+      if (el?.requestFullscreen) el.requestFullscreen().catch(() => {})
+      else if (el?.webkitRequestFullscreen) el.webkitRequestFullscreen()
+    } catch { /* Safari de iPhone y similares: se queda con la pantalla completa de CSS, que alcanza igual */ }
+  }
 
   // Dispara la repetición apenas cambia `repeticion.key` (un gol nuevo):
   // 1) de una, rebobina el video en YouTube (tapado por la gráfica de
@@ -410,7 +467,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
     if (!id) return <LinkFallback url={url} S={S}/>
     const origen = typeof window !== 'undefined' ? window.location.origin : ''
     return (
-      <div style={pantallaCompleta ? cajaCompleta : cajaNormal}>
+      <div ref={cajaRef} style={pantallaCompleta ? cajaCompleta : cajaNormal}>
         <iframe ref={iframeRef} id={idIframeYoutube} src={`https://www.youtube.com/embed/${id}?enablejsapi=1&origin=${encodeURIComponent(origen)}`} title={titulo || 'En vivo'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
@@ -421,14 +478,14 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
         {mostrandoCierre && <BumperCierre/>}
-        <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
+        <BotonPantallaCompleta activo={pantallaCompleta} onClick={alternarPantallaCompleta}/>
       </div>
     )
   }
 
   if (plataforma === 'facebook') {
     return (
-      <div style={pantallaCompleta ? cajaCompleta : cajaNormal}>
+      <div ref={cajaRef} style={pantallaCompleta ? cajaCompleta : cajaNormal}>
         <iframe ref={iframeRef} src={`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=false`}
           title={titulo || 'En vivo'} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
@@ -439,7 +496,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
         {mostrandoCierre && <BumperCierre/>}
-        <BotonPantallaCompleta activo={pantallaCompleta} onClick={() => setPantallaCompleta(v => !v)}/>
+        <BotonPantallaCompleta activo={pantallaCompleta} onClick={alternarPantallaCompleta}/>
       </div>
     )
   }
