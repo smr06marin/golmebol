@@ -8,7 +8,6 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { getRondaNombre, getFaseValue } from '../lib/bracketHelpers'
 import { computeTablaGeneral, computeVallaEquipos } from '../lib/torneoTablas'
 
 const TABS = [
@@ -694,85 +693,6 @@ export default function PlayerTorneoPage() {
 
   const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
 
-  // ── Proyección en vivo del árbol (antes de que el admin cree el bracket
-  // real) — misma lógica que usa el admin para su "vista previa en vivo",
-  // pero solo lectura: quiénes clasifican hoy según la tabla, y cómo
-  // quedarían las llaves si la fase de grupos terminara ahora mismo.
-  function getClasificadosPreview() {
-    const clasificanPorGrupo = torneo?.equipos_clasifican || 2
-    const clasificados = []
-    for (const grupo of grupos) {
-      const t = getTablaGrupoPlayer(grupo.id)
-      t.slice(0, clasificanPorGrupo).forEach((row, pos) => {
-        if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc })
-      })
-    }
-    return clasificados.sort((a, b) => a.posicion - b.posicion || b.pts - a.pts || b.dg - a.dg)
-  }
-
-  function getParticipantesElimPreview(n) {
-    const directos = grupos.length > 0 ? getClasificadosPreview() : []
-    let lista = [...directos]
-    if (lista.length > n) lista = lista.slice(0, n)
-    if (lista.length < n) {
-      const idsYa = new Set(lista.map(e => e.id))
-      tablaOrdenada.forEach(row => {
-        if (lista.length >= n || !row.equipo || idsYa.has(row.equipo.id)) return
-        lista.push({ ...row.equipo, posicion: 99, grupo: directos.length > 0 ? 'Mejor perdedor' : null, pts: row.pts, dg: row.gf - row.gc, mejorPerdedor: directos.length > 0 })
-        idsYa.add(row.equipo.id)
-      })
-    }
-    return lista
-  }
-
-  // Config guardada por el admin (cupos, estilo de llaves, cómo resolver
-  // número impar, y orden movido a mano) — misma fuente de datos que usa el
-  // admin, así el árbol le sale IGUAL al jugador que al admin.
-  function getPreviewConfig() {
-    const pc = torneo?.preview_config || {}
-    return {
-      numClasifElim: pc.numClasifElim || 8,
-      estiloLlaves: pc.estiloLlaves || 'consecutivo',
-      modoImpar: pc.modoImpar || 'mejor_perdedor',
-      equipoByeId: pc.equipoByeId || null,
-      previewOrden: pc.previewOrden || null,
-    }
-  }
-
-  // Si el número de clasificados queda impar, según lo que haya elegido el
-  // admin: o entra un mejor perdedor más para completar par, o un equipo
-  // pasa directo a la siguiente ronda sin jugar esta (bye).
-  function getParticipantesConImparPreview() {
-    const { numClasifElim, modoImpar, equipoByeId } = getPreviewConfig()
-    const base = getParticipantesElimPreview(numClasifElim)
-    if (base.length < 2 || base.length % 2 === 0) return { participantes: base, byeTeam: null }
-    if (modoImpar === 'mejor_perdedor') {
-      return { participantes: getParticipantesElimPreview(numClasifElim + 1), byeTeam: null }
-    }
-    const idBye = equipoByeId && base.some(t => String(t.id) === String(equipoByeId)) ? equipoByeId : base[base.length - 1].id
-    const byeTeam = base.find(t => String(t.id) === String(idBye))
-    return { participantes: base.filter(t => String(t.id) !== String(idBye)), byeTeam }
-  }
-
-  function getParejasElimPreview() {
-    const { estiloLlaves, previewOrden } = getPreviewConfig()
-    if (estiloLlaves === 'manual') return { parejas: [], byeTeam: null } // sorteo físico: el admin todavía no armó el árbol real
-    const { participantes, byeTeam } = getParticipantesConImparPreview()
-    const mapaPreview = new Map(participantes.map(p => [String(p.id), p]))
-    const idsOrden = previewOrden && previewOrden.length === participantes.length
-      ? previewOrden.map(String)
-      : participantes.map(p => String(p.id))
-    const ordenPreview = idsOrden.map(id => mapaPreview.get(id)).filter(Boolean)
-    const parejas = []
-    const totalOrden = ordenPreview.length
-    if (estiloLlaves === 'cruzado') {
-      for (let i = 0; i < Math.floor(totalOrden / 2); i++) parejas.push([ordenPreview[i], ordenPreview[totalOrden - 1 - i]])
-    } else {
-      for (let i = 0; i < totalOrden - 1; i += 2) parejas.push([ordenPreview[i], ordenPreview[i + 1]])
-    }
-    return { parejas, byeTeam }
-  }
-
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
   // los arqueros registrados de cada equipo (fotos y nombres). A diferencia
   // de la tabla de posiciones (que en fase de grupos ya no cuenta partidos
@@ -827,14 +747,15 @@ export default function PlayerTorneoPage() {
         <div style={{ fontSize: '.72rem', color: '#5f6368', flexShrink: 0 }}>{equipos.length} equipos</div>
       </div>
 
-      {/* Tabs — "Llaves" aparece si ya hay árbol real, o si hay suficientes
-          equipos/grupos como para armar al menos una proyección en vivo.
-          "Posiciones" (grupos) se quita apenas arranca la fase de
-          eliminatorias directas — ya no aplica, lo que importa es el árbol. */}
+      {/* Tabs — "Llaves" solo aparece una vez que ya existe el árbol real
+          creado por el admin (ya no se proyecta una versión especulativa
+          antes de eso). "Posiciones" (grupos) se quita apenas arranca la
+          fase de eliminatorias directas — ya no aplica, lo que importa es
+          el árbol. */}
       <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px', overflowX: 'auto' }}>
         {(bracket.length > 0
           ? [...TABS.filter(t => t.id !== 'posiciones'), { id: 'llaves', label: '🏆 Llaves' }]
-          : (grupos.length > 0 || equipos.length >= 2) ? [...TABS, { id: 'llaves', label: '🏆 Llaves' }] : TABS
+          : TABS
         ).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -1228,116 +1149,6 @@ export default function PlayerTorneoPage() {
             </div>
           </div>
         )}
-
-        {/* ── LLAVES: proyección en vivo, mientras no exista el árbol real ── */}
-        {tab === 'llaves' && bracket.length === 0 && (() => {
-          const { parejas: parejasPreview, byeTeam: byeInicialPreview } = getParejasElimPreview()
-          if (parejasPreview.length === 0 && !byeInicialPreview) return null
-
-          // Columnas del árbol: la ronda proyectada + siguientes rondas como
-          // placeholders "Por definir" hasta el campeón — se recalcula solo
-          // con cada resultado que se registre en la fase de grupos.
-          const columnasPreview = []
-          let llavesRonda = parejasPreview.map(([a, b]) => ({ a, b }))
-          let totalRonda = parejasPreview.length * 2 + (byeInicialPreview ? 1 : 0)
-          while (true) {
-            columnasPreview.push({ total: totalRonda, fase: getFaseValue(totalRonda), llaves: llavesRonda })
-            if (llavesRonda.length <= 1) break
-            const siguienteN = Math.max(Math.floor(llavesRonda.length / 2), 1)
-            llavesRonda = Array.from({ length: siguienteN }, () => null)
-            totalRonda = Math.max(Math.floor(totalRonda / 2), 2)
-          }
-
-          const clasificanPorGrupo = torneo?.equipos_clasifican || 2
-          const calendarioPreview = torneo?.preview_calendario || {}
-
-          return (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.66rem', fontWeight: '800', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '3px 10px', letterSpacing: '.04em' }}>
-                  <span className="gm-casi" style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/>
-                  EN VIVO
-                </span>
-                <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#202124' }}>Vista previa</span>
-              </div>
-              <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '14px' }}>
-                Así quedaría el árbol si la fase de grupos terminara ahora mismo ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${parejasPreview.length * 2}`}) — se va actualizando solo con cada resultado. Todavía no es el árbol oficial: eso lo arma el admin cuando termine la fase de grupos.
-              </div>
-              {byeInicialPreview && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', padding: '8px 12px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px' }}>
-                  <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {byeInicialPreview.logo_url ? <img src={byeInicialPreview.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
-                  </div>
-                  <span style={{ fontSize: '.76rem', fontWeight: '700', color: '#1e8e3e' }}>⏭️ {byeInicialPreview.name} pasa directo a la siguiente ronda sin jugar (número impar de clasificados)</span>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
-                {columnasPreview.map((col, ci) => (
-                  <div key={ci} style={{ minWidth: '200px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
-                      {getRondaNombre(col.total).toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
-                      {col.llaves.map((ll, i) => ll ? (
-                        <div key={i} style={{ background: '#fffaf3', border: '1.5px dashed #e8710a', borderLeft: '4px dashed #e8710a', borderRadius: '10px', overflow: 'hidden' }}>
-                          {[ll.a, ll.b].map((eq, ti) => {
-                            const esMiEquipo = miEquipoId && eq?.id === miEquipoId
-                            return (
-                              <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 10px', borderBottom: ti === 0 ? '1px solid #f1e0c8' : 'none', outline: esMiEquipo ? '2px solid #1a73e8' : 'none', outlineOffset: '-2px' }}>
-                                <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {eq?.logo_url ? <img src={eq.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '.76rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{eq?.name || '— por definir —'}</div>
-                                  {eq?.grupo && <div style={{ fontSize: '.6rem', color: '#9aa0a6' }}>{eq.grupo}</div>}
-                                </div>
-                                {eq?.posicion && <span style={{ fontSize: '.62rem', color: eq.mejorPerdedor ? '#e8710a' : '#9aa0a6', fontWeight: '700', flexShrink: 0 }}>{eq.mejorPerdedor ? '🎟️' : `#${eq.posicion}`}</span>}
-                              </div>
-                            )
-                          })}
-                          <div style={{ padding: '5px 10px', background: '#f8f9fa', fontSize: '.62rem', color: '#9aa0a6' }}>
-                            {(() => {
-                              const c = calendarioPreview?.[col.fase]?.[i]
-                              if (!c?.fecha || !c?.hora) return '📅 Por definir'
-                              const d = new Date(`${c.fecha}T${c.hora}:00`)
-                              if (isNaN(d.getTime())) return '📅 Por definir'
-                              return `📅 ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} · ${fmtHoraDate(d)}`
-                            })()}
-                          </div>
-                        </div>
-                      ) : (() => {
-                        const c = calendarioPreview?.[col.fase]?.[i]
-                        const hayFecha = c?.fecha && c?.hora
-                        let textoFecha = 'Por definir'
-                        if (hayFecha) {
-                          const d = new Date(`${c.fecha}T${c.hora}:00`)
-                          if (!isNaN(d.getTime())) textoFecha = `📅 ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })} · ${fmtHoraDate(d)}`
-                        }
-                        return (
-                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.7rem', fontWeight: '600', background: '#f1f3f4' }}>
-                            <div>Por definir</div>
-                            {hayFecha && <div style={{ marginTop: '4px', fontSize: '.64rem', fontWeight: '600', color: '#9aa0a6' }}>{textoFecha}</div>}
-                          </div>
-                        )
-                      })())}
-                    </div>
-                  </div>
-                ))}
-                <div style={{ minWidth: '140px', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
-                    🏆 CAMPEÓN
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                    <div style={{ width: '100%', border: '2px dashed #ffd66b', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#e8b93a', fontSize: '.7rem', fontWeight: '700', background: '#fffaf0' }}>
-                      Por definir
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
 
         {/* ── LLAVES (árbol de eliminatorias real, solo lectura) ── */}
         {tab === 'llaves' && bracket.length > 0 && (() => {
