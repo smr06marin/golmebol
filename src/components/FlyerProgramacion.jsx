@@ -138,7 +138,16 @@ function FilaPartido({ p, mostrarTorneo, paleta }) {
 
   return (
     <div style={{ flexShrink: 0, margin: '0 18px' }}>
-      <div style={{ background: 'rgba(0,0,0,.22)', borderRadius: '9px', overflow: 'hidden' }}>
+      {/* Antes el fondo de la tarjeta era un negro muy transparente
+          (rgba(0,0,0,.22)) que, sobre todo en los temas de color oscuro (ej.
+          "Negro"), se perdía casi por completo contra el fondo del flyer —
+          quedaba todo del mismo tono y quedaban "pegados" los partidos y el
+          fondo. Ahora es bastante más opaco (así siempre se distingue, sea
+          cual sea el tema) y además lleva un borde fino del color de acento
+          de cada tema (que siempre contrasta fuerte contra el fondo), para
+          que cada tarjeta se note como un bloque propio y no se confunda
+          con el fondo ni con la tarjeta de al lado. */}
+      <div style={{ background: 'rgba(0,0,0,.55)', border: `1px solid ${paleta.acento}55`, boxShadow: '0 2px 8px rgba(0,0,0,.35)', borderRadius: '9px', overflow: 'hidden' }}>
         {/* Zona 1 (dorada): de qué torneo es — solo en el flyer "todos los torneos" */}
         {mostrarTorneo && p.tournaments?.name && (
           <div style={{ textAlign: 'center', background: paleta.acento, padding: '2px 8px' }}>
@@ -501,13 +510,15 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, canchas =
                   </div>
                 )}
 
-                {/* Partidos — reparte el espacio vertical restante en partes
-                    iguales (space-evenly) cuando la página trae menos de
-                    porPagina partidos, y "gap" asegura una separación mínima
-                    fija entre tarjetas aunque el espacio esté justo (antes,
-                    sin gap, con muchas tarjetas terminaban pegadas una con
-                    otra). */}
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', gap: '4px', padding: '2px 0' }}>
+                {/* Partidos — la separación entre tarjetas es SIEMPRE la misma
+                    (gap fijo), sin importar cuántos partidos traiga la
+                    página: antes era "justify-content: space-evenly", que
+                    repartía TODO el espacio libre entre las tarjetas, así
+                    que con pocos partidos (ej. 2 o 3) quedaban separadas por
+                    un hueco enorme y con muchos quedaban pegadas — ahora el
+                    grupo entero se centra con "justify-content: center" y la
+                    distancia entre tarjetas vecinas no cambia nunca. */}
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '9px', padding: '2px 0' }}>
                   {items.map(p => <FilaPartido key={p.id} p={p} mostrarTorneo={sinEncabezado} paleta={paleta}/>)}
                 </div>
 
