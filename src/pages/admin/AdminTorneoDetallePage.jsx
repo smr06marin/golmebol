@@ -2489,6 +2489,9 @@ export default function AdminTorneoDetallePage() {
     // caso a quién perseguir. Ver handleBloquearEquipoPorInscripcion.
     const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
     showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
+    // Ya quedaron guardados los logros — el botón de guardarlos desaparece
+    // solo (no hay que recargar la página para que se note).
+    setTorneoFinalizado(true)
   }
 
   // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
@@ -2524,7 +2527,7 @@ export default function AdminTorneoDetallePage() {
     // El sistema de puntos y algunos campos son relativamente nuevos: si en
     // este proyecto todavía falta correr su migración, no bloquea la
     // creación de la edición entera — se reintenta sin ese campo puntual.
-    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'limite_jugadores_equipo', 'duracion_tiempo_min']
+    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'limite_jugadores_equipo', 'duracion_tiempo_min', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
     while (error && camposOpcionales.some(c => (error.message || '').includes(c))) {
       const campo = camposOpcionales.find(c => (error.message || '').includes(c))
       payload = { ...payload }
@@ -5745,10 +5748,16 @@ export default function AdminTorneoDetallePage() {
                       {tercerPuestoEq && <span style={{ fontSize: '.8rem', color: '#5f6368', fontWeight: '600' }}>🥉 Tercer puesto: {tercerPuestoEq.name}</span>}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px', gap: '10px', flexWrap: 'wrap' }}>
-                      <button onClick={handleGuardarLogrosTorneo} disabled={guardandoLogros}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
-                        💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
-                      </button>
+                      {torneoFinalizado ? (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#e6f4ea', border: '1px solid #b7e1c4', borderRadius: '10px', color: '#188038', fontSize: '.85rem', fontWeight: '700' }}>
+                          ✅ Logros guardados en la hoja de vida de equipos y jugadores
+                        </span>
+                      ) : (
+                        <button onClick={handleGuardarLogrosTorneo} disabled={guardandoLogros}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                          💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
+                        </button>
+                      )}
                       {(esAdminRol || torneo.premium) && (() => {
                         // Si ya se creó una edición siguiente de este torneo, no se
                         // vuelve a mostrar el botón de crear otra (evita duplicados
