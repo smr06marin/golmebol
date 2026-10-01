@@ -1583,6 +1583,55 @@ export default function AdminTorneoDetallePage() {
     return lista
   }
 
+  // Arma los emparejamientos y las columnas del árbol de la vista previa
+  // (antes de crear el bracket real) — se usa tanto en la vista previa de
+  // afuera como dentro del chat de IA (apenas termina de armar la
+  // propuesta), para que el organizador vea EXACTAMENTE el mismo árbol en
+  // los dos lados, con el formato (partido único / ida y vuelta + margen)
+  // que le corresponde a cada fase.
+  function calcularArbolPreview() {
+    const participantesPreview = participantesPreviewLive
+    // Si arrastraste equipos a mano, se usa ese orden de siembra; si no, el
+    // orden por posición/reclasificación de siempre.
+    const mapaPreview = new Map(participantesPreview.map(p => [String(p.id), p]))
+    const idsOrden = previewOrden && previewOrden.length === participantesPreview.length
+      ? previewOrden.map(String)
+      : participantesPreview.map(p => String(p.id))
+    const ordenPreview = idsOrden.map(id => mapaPreview.get(id)).filter(Boolean)
+    const parejasPreview = []
+    const totalOrden = ordenPreview.length
+    if (estiloLlaves === 'cruzado') {
+      for (let i = 0; i < Math.floor(totalOrden / 2); i++) parejasPreview.push([ordenPreview[i], ordenPreview[totalOrden - 1 - i]])
+    } else {
+      for (let i = 0; i < totalOrden - 1; i += 2) parejasPreview.push([ordenPreview[i], ordenPreview[i + 1]])
+    }
+    const totalPreview = parejasPreview.length * 2 + (byeInicialPreviewLive ? 1 : 0)
+
+    // Arma las columnas del árbol igual que el bracket real: la ronda actual
+    // con los equipos que van clasificando, y las siguientes rondas como
+    // placeholders "Por definir" hasta llegar al campeón. Cada columna lleva
+    // su propio formato — por defecto cada ronda copia el de la anterior
+    // (empezando por el interruptor general idaVuelta en la primera), salvo
+    // que haya una excepción puntual para esa fase en idaVueltaPorFase.
+    const columnasPreview = []
+    let llavesRonda = parejasPreview.map(([a, b]) => ({ a, b }))
+    let totalRonda = totalPreview
+    let conVueltaAnterior = idaVuelta
+    while (true) {
+      const faseCol = getFaseValue(totalRonda)
+      const ovCol = idaVueltaPorFase?.[faseCol]
+      const conVueltaCol = ovCol ? !!ovCol.activo : conVueltaAnterior
+      const margenCol = (conVueltaCol && ovCol && Number.isFinite(ovCol.margen)) ? ovCol.margen : null
+      columnasPreview.push({ total: totalRonda, fase: faseCol, llaves: llavesRonda, conVuelta: conVueltaCol, margen: margenCol })
+      conVueltaAnterior = conVueltaCol
+      if (llavesRonda.length <= 1) break
+      const siguienteN = Math.max(Math.floor(llavesRonda.length / 2), 1)
+      llavesRonda = Array.from({ length: siguienteN }, () => null)
+      totalRonda = Math.max(Math.floor(totalRonda / 2), 2)
+    }
+    return { parejasPreview, totalPreview, columnasPreview }
+  }
+
   function abrirWizardElim() {
     setOrdenManual(getParticipantesElim(numClasifElim))
     setLlavesManuales([])
@@ -5605,37 +5654,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
           {/* Vista previa en vivo — se recalcula sola con cada resultado de grupos */}
           {bracket.length === 0 && (grupos.length > 0 || equipos.length >= 2) && !showWizardElim && (() => {
-            const participantesPreview = participantesPreviewLive
-            // Si arrastraste equipos a mano, se usa ese orden de siembra;
-            // si no, el orden por posición/reclasificación de siempre.
-            const mapaPreview = new Map(participantesPreview.map(p => [String(p.id), p]))
-            const idsOrden = previewOrden && previewOrden.length === participantesPreview.length
-              ? previewOrden.map(String)
-              : participantesPreview.map(p => String(p.id))
-            const ordenPreview = idsOrden.map(id => mapaPreview.get(id)).filter(Boolean)
-            const parejasPreview = []
-            const totalOrden = ordenPreview.length
-            if (estiloLlaves === 'cruzado') {
-              for (let i = 0; i < Math.floor(totalOrden / 2); i++) parejasPreview.push([ordenPreview[i], ordenPreview[totalOrden - 1 - i]])
-            } else {
-              for (let i = 0; i < totalOrden - 1; i += 2) parejasPreview.push([ordenPreview[i], ordenPreview[i + 1]])
-            }
-            const totalPreview = parejasPreview.length * 2 + (byeInicialPreviewLive ? 1 : 0)
+            const { parejasPreview, totalPreview, columnasPreview } = calcularArbolPreview()
             if (parejasPreview.length === 0 && !byeInicialPreviewLive) return null
-
-            // Arma las columnas del árbol igual que el bracket real: la ronda
-            // actual con los equipos que van clasificando, y las siguientes
-            // rondas como placeholders "Por definir" hasta llegar al campeón.
-            const columnasPreview = []
-            let llavesRonda = parejasPreview.map(([a, b]) => ({ a, b }))
-            let totalRonda = totalPreview
-            while (true) {
-              columnasPreview.push({ total: totalRonda, fase: getFaseValue(totalRonda), llaves: llavesRonda })
-              if (llavesRonda.length <= 1) break
-              const siguienteN = Math.max(Math.floor(llavesRonda.length / 2), 1)
-              llavesRonda = Array.from({ length: siguienteN }, () => null)
-              totalRonda = Math.max(Math.floor(totalRonda / 2), 2)
-            }
 
             // Cada partido (llave) tiene su propio horario — se guarda por
             // posición dentro de la ronda, no uno solo para toda la ronda
@@ -5681,8 +5701,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
                   {columnasPreview.map((col, ci) => (
                     <div key={ci} style={{ minWidth: '220px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                      <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.2px', marginBottom: '4px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
                         {getRondaNombre(col.total).toUpperCase()}
+                      </div>
+                      <div style={{ textAlign: 'center', fontSize: '.6rem', fontWeight: '700', color: col.conVuelta ? '#1a73e8' : '#9aa0a6', marginBottom: '10px' }}>
+                        {col.conVuelta ? `🔁 Ida y vuelta${col.margen ? ` · sin vuelta si la ida queda ${col.margen}+` : ''}` : '⚽ Partido único'}
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
                         {col.llaves.map((ll, i) => ll ? (
@@ -5829,7 +5852,51 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
                     {elimChatListo && <div style={{ borderTop: '1px solid #e8eaed', margin: '2px 0 4px' }}/>}
 
-                    {/* A partir de acá: revisión/ajuste de lo que armó la IA (o, si se
+                    {/* Apenas hay una propuesta lista (de la IA o manual), se ve DE UNA
+                        el árbol completo — equipos, formato por fase y la excepción de
+                        margen si la pediste — en vez de tener que cerrar este chat para
+                        recién ahí verlo armado. Los controles de ajuste fino siguen
+                        abajo, por si hay que cambiar algo a mano. */}
+                    {elimChatListo && (() => {
+                      const { parejasPreview, columnasPreview } = calcularArbolPreview()
+                      if (parejasPreview.length === 0 && !byeInicialPreviewLive) return null
+                      return (
+                        <div style={{ marginBottom: '6px' }}>
+                          <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>🏆 Así va a quedar el árbol:</div>
+                          {byeInicialPreviewLive && (
+                            <div style={{ marginBottom: '10px', padding: '7px 10px', background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '8px' }}>
+                              <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#1e8e3e' }}>⏭️ {byeInicialPreviewLive.name} pasa directo (número impar de clasificados)</span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '8px' }}>
+                            {columnasPreview.map((col, ci) => (
+                              <div key={ci} style={{ minWidth: '140px', flex: 1 }}>
+                                <div style={{ textAlign: 'center', fontSize: '.6rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1px', marginBottom: '2px', background: '#fff4e5', borderRadius: '6px', padding: '4px' }}>
+                                  {getRondaNombre(col.total).toUpperCase()}
+                                </div>
+                                <div style={{ textAlign: 'center', fontSize: '.56rem', fontWeight: '700', color: col.conVuelta ? '#1a73e8' : '#9aa0a6', marginBottom: '6px' }}>
+                                  {col.conVuelta ? `🔁 Ida y vuelta${col.margen ? ` · sin vuelta si ${col.margen}+` : ''}` : '⚽ Partido único'}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {col.llaves.map((ll, i) => (
+                                    <div key={i} style={{ background: ll ? '#fffaf3' : '#f1f3f4', border: ll ? '1px dashed #e8710a' : '1px dashed #c4c9d0', borderRadius: '8px', padding: '5px 8px', fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600' }}>
+                                      {ll ? (
+                                        <>
+                                          <div style={{ color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ll.a?.name || '—'}</div>
+                                          <div style={{ color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ll.b?.name || '—'}</div>
+                                        </>
+                                      ) : 'Por definir'}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* A partir de acá: ajuste fino de lo que armó la IA (o, si se
                         prefirió lo manual, el mismo formulario de siempre) — se
                         muestra recién cuando ya hay una propuesta lista. */}
                     {elimChatListo && <>
@@ -6047,19 +6114,32 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             // equipo que YA se sabe (ganó su llave) aunque el partido real
             // todavía no exista porque falta el rival (que es la otra llave
             // de esa misma pareja).
+            // Igual que en la vista previa: cada columna lleva su formato
+            // (partido único / ida y vuelta + margen para saltar la vuelta).
+            // Las fases YA jugadas muestran el formato real que tuvieron; las
+            // fases futuras (todavía "Por definir") muestran lo que les toca
+            // según la excepción puntual configurada para esa fase, o si no
+            // hay ninguna, el formato de la última fase jugada/calculada.
             const columnas = []
             let n = porFase[fasesExist[0]].length
             let ultimaLlavesReales = null
+            let conVueltaAnterior = idaVuelta
             for (let idx = FASE_ORDEN.indexOf(fasesExist[0]); idx < FASE_ORDEN.length; idx++) {
               const f = FASE_ORDEN[idx]
               if (porFase[f]) {
-                columnas.push({ fase: f, llaves: porFase[f] })
+                const conVueltaReal = porFase[f].some(l => l.matches.length > 1)
+                columnas.push({ fase: f, llaves: porFase[f], conVuelta: conVueltaReal })
                 n = porFase[f].length
                 ultimaLlavesReales = porFase[f]
+                conVueltaAnterior = conVueltaReal
               } else {
                 n = Math.max(Math.floor(n / 2), 1)
-                columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null), feeder: ultimaLlavesReales })
+                const ovCol = idaVueltaPorFase?.[f]
+                const conVueltaCol = ovCol ? !!ovCol.activo : conVueltaAnterior
+                const margenCol = (conVueltaCol && ovCol && Number.isFinite(ovCol.margen)) ? ovCol.margen : null
+                columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null), feeder: ultimaLlavesReales, conVuelta: conVueltaCol, margen: margenCol })
                 ultimaLlavesReales = null // el feeder solo aplica a la primera columna futura
+                conVueltaAnterior = conVueltaCol
               }
             }
 
@@ -6200,8 +6280,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
                   {columnas.map(col => (
                     <div key={col.fase} style={{ minWidth: '235px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.5px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
+                      <div style={{ textAlign: 'center', fontSize: '.7rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.5px', marginBottom: '4px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
                         {FASE_LABEL[col.fase].toUpperCase()}
+                      </div>
+                      <div style={{ textAlign: 'center', fontSize: '.6rem', fontWeight: '700', color: col.conVuelta ? '#1a73e8' : '#9aa0a6', marginBottom: '10px' }}>
+                        {col.conVuelta ? `🔁 Ida y vuelta${col.margen ? ` · sin vuelta si la ida queda ${col.margen}+` : ''}` : '⚽ Partido único'}
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
                         {col.llaves.map((ll, i) => ll ? (
