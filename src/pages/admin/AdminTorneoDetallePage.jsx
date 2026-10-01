@@ -668,6 +668,21 @@ export default function AdminTorneoDetallePage() {
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
   const [equipoByeId,      setEquipoByeId]      = useState(null) // a quién se le da el pase directo cuando modoImpar==='bye' (null = el último de la reclasificación)
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
+  // Excepción por fase al formato de ida/vuelta: por defecto TODAS las
+  // rondas siguientes copian el formato de la ronda anterior (si la ronda
+  // anterior tuvo vuelta, la siguiente también, y así) — pero el organizador
+  // puede pedir (por chat) que UNA fase puntual (ej. solo semifinal) sea
+  // ida y vuelta mientras el resto no, o al revés. Forma:
+  // { [fase]: { activo: bool, margen: number|null } } — fase ausente =
+  // se sigue usando el comportamiento de siempre (copiar la ronda anterior,
+  // o el interruptor general idaVuelta para la primera ronda). "margen" es
+  // la diferencia de gol en el primer partido de esa llave a partir de la
+  // cual ya no se juega la vuelta (null = siempre se juega la vuelta si esa
+  // fase la tiene activada).
+  const [idaVueltaPorFase, setIdaVueltaPorFase] = useState({})
+  // Traba para que el salto automático de vuelta (por diferencia de gol) no
+  // se dispare dos veces seguidas por una re-ejecución rápida del efecto.
+  const saltandoVueltaRef = useRef(false)
   // Fecha/hora planeada por ronda para la vista previa en vivo (ej. "la final
   // es el 5 de abril") — se guarda en la BD para que el jugador vea lo mismo.
   const [previewCalendario, setPreviewCalendario] = useState({})
@@ -751,12 +766,12 @@ export default function AdminTorneoDetallePage() {
     clearTimeout(previewConfigTimer.current)
     previewConfigTimer.current = setTimeout(() => {
       supabase.from('tournaments').update({
-        preview_config: { numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden, crearTercerPuesto },
+        preview_config: { numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden, crearTercerPuesto, idaVueltaPorFase },
       }).eq('id', id).then(() => {})
     }, 700)
     return () => clearTimeout(previewConfigTimer.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewConfigCargado, bracket.length, numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden, crearTercerPuesto])
+  }, [previewConfigCargado, bracket.length, numClasifElim, estiloLlaves, modoImpar, equipoByeId, previewOrden, crearTercerPuesto, idaVueltaPorFase])
 
   // Calendario planeado por ronda (fecha/hora) — también en la BD.
   const previewCalendarioTimer = useRef(null)
@@ -1086,6 +1101,7 @@ export default function AdminTorneoDetallePage() {
       if (pc.equipoByeId !== undefined) setEquipoByeId(pc.equipoByeId)
       if (pc.previewOrden)           setPreviewOrden(pc.previewOrden)
       if (pc.crearTercerPuesto)      setCrearTercerPuesto(true)
+      if (pc.idaVueltaPorFase)       setIdaVueltaPorFase(pc.idaVueltaPorFase)
     }
     if (data?.preview_calendario) setPreviewCalendario(data.preview_calendario)
     setPreviewConfigCargado(true)
@@ -1590,16 +1606,20 @@ export default function AdminTorneoDetallePage() {
         grupos.map(g => `${g.nombre}: ${getTablaGrupo(g.id).map((row, i) => `${i + 1}.${row.equipo?.name}(${row.equipo?.id}) ${row.pts}pts`).join(', ')}`).join('\n')
     }
     const reclasTxt = calcTablaGeneral().map((row, i) => `${i + 1}.${row.equipo?.name}(${row.equipo?.id})`).join(', ')
-    return `EQUIPOS PARTICIPANTES (id::nombre): ${equiposTxt}\n${grupoTxt}\nORDEN DE RECLASIFICACIÓN GENERAL (mejor a peor, para completar cupos o elegir quién pasa directo): ${reclasTxt}\nCONFIGURACIÓN ACTUAL (por si no se menciona algo y hay que mantenerla): cupos=${numClasifElim}, estilo=${estiloLlaves}, modoImpar=${modoImpar}, idaVuelta=${idaVuelta}, tercerPuesto=${crearTercerPuesto}, fecha=${fechaElim || '(sin definir)'}, hora=${horaElim}.`
+    const porFaseTxt = Object.keys(idaVueltaPorFase || {}).length > 0
+      ? Object.entries(idaVueltaPorFase).map(([f, c]) => `${f}: ${c?.activo ? `ida y vuelta${c?.margen != null ? ` (sin vuelta si la ida queda con ${c.margen}+ goles de diferencia)` : ''}` : 'partido único'}`).join(' | ')
+      : '(ninguna excepción puntual todavía — todas las rondas siguientes copian el formato de la ronda anterior)'
+    return `EQUIPOS PARTICIPANTES (id::nombre): ${equiposTxt}\n${grupoTxt}\nORDEN DE RECLASIFICACIÓN GENERAL (mejor a peor, para completar cupos o elegir quién pasa directo): ${reclasTxt}\nCONFIGURACIÓN ACTUAL (por si no se menciona algo y hay que mantenerla): cupos=${numClasifElim}, estilo=${estiloLlaves}, modoImpar=${modoImpar}, idaVuelta=${idaVuelta}, tercerPuesto=${crearTercerPuesto}, fecha=${fechaElim || '(sin definir)'}, hora=${horaElim}.\nEXCEPCIONES DE IDA/VUELTA POR FASE YA CONFIGURADAS: ${porFaseTxt}`
   }
 
   const ELIM_CHAT_INSTRUCCION = `Sos el asistente de GOLMEBOL que ayuda a un organizador a configurar cómo se juegan las eliminaciones directas de su torneo, a partir de lo que te describa en español, en texto libre. El organizador manda: tu trabajo es ACOMODAR lo que pide dentro de lo que el sistema puede hacer, no rechazarlo — casi siempre hay una forma de lograr lo que describe, aunque haya que traducirlo a otros términos.
 
 MUY IMPORTANTE — cómo funciona GOLMEBOL (para que no rechaces cosas que en realidad SÍ se pueden):
-Vos solo configurás la PRIMERA ronda (cuántos clasifican, cómo se arman esas llaves, y qué pasa si esa primera ronda queda con número impar). Las rondas SIGUIENTES (cuartos → semifinal → final) el sistema las arma SOLAS, cada vez que el organizador toca "Generar siguiente ronda", y en CADA una de esas rondas se repite automáticamente la misma regla que elegiste para el impar:
+Vos configurás la PRIMERA ronda (cuántos clasifican, cómo se arman esas llaves, y qué pasa si esa primera ronda queda con número impar) y, si hace falta, EXCEPCIONES puntuales para alguna fase más adelante. Las fases posibles, en orden, son: octavos, cuartos, semifinal, final (el sistema usa la que corresponda según cuántos equipos van quedando; si clasifican 16 arranca en octavos, si clasifican 8 arranca en cuartos, etc. — nunca hay que explicarle esto al organizador, solo entenderlo vos para armar bien la config). Las rondas SIGUIENTES a la primera el sistema las arma SOLAS (automáticamente apenas se conocen los resultados que hacen falta, o cuando el organizador toca "Generar siguiente ronda" si hace falta una decisión), y en CADA una de esas rondas se repite automáticamente la misma regla que elegiste para el impar:
 - Si en cualquier ronda (no solo la primera) sobran equipos porque quedó un número impar de vivos, automáticamente pasa directo el mejor ubicado en la reclasificación (si elegiste "bye") o entra un mejor perdedor para completar par (si elegiste "mejor_perdedor") — esto se repite ronda tras ronda sin que haya que configurarlo de nuevo.
 - Si en algún momento quedan EXACTAMENTE 3 equipos vivos, el sistema arma automáticamente una "semifinal de 3": juegan el 1° contra el 2° de la reclasificación, y el perdedor de ese partido juega un repechaje contra el 3°, cuyo ganador pasa a la final. Esto también es automático, no hay que pedirlo ni configurarlo aparte.
-Por eso, un torneo con pases directos y repechajes en varias rondas CASI SIEMPRE se logra solo con: cuántos clasifican a la primera ronda + estilo de la primera ronda + qué hacer si queda impar (bye o mejor perdedor) — el resto se va resolviendo solo, ronda a ronda, a medida que el organizador la vaya generando. Cuando el organizador describa algo así, armá esa configuración de la PRIMERA ronda y explicale en el "mensaje" que las rondas siguientes se arman solas con esa misma regla, en vez de decirle que no se puede.
+- Formato de ida y vuelta por ronda: por defecto, cada ronda siguiente COPIA el formato de la ronda anterior (si la ronda anterior se jugó a partido único, la siguiente también; si se jugó ida y vuelta, la siguiente también). Si el organizador pide que SOLO una fase puntual sea ida y vuelta (o al revés, que una fase puntual sea a partido único mientras el resto no), eso se puede: se configura como una EXCEPCIÓN para esa fase en concreto, en la clave "idaVueltaPorFase" (ver abajo). Además, para cualquier fase que juegue ida y vuelta (sea por esta excepción o porque la copió de la ronda anterior), el organizador puede pedir una regla de "ya no hace falta jugar la vuelta si la ida queda con tanta diferencia de gol" (un número de goles de diferencia en el primer partido de la llave a partir del cual el sistema cancela automáticamente la vuelta y pasa directo el que ganó la ida) — eso también se configura por fase en "idaVueltaPorFase", con la clave "margen".
+Por eso, un torneo con pases directos, repechajes y reglas de ida/vuelta distintas por ronda en varias rondas CASI SIEMPRE se logra solo con: cuántos clasifican a la primera ronda + estilo de la primera ronda + qué hacer si queda impar (bye o mejor perdedor) + las excepciones puntuales de ida/vuelta por fase que haga falta — el resto se va resolviendo solo, ronda a ronda. Cuando el organizador describa algo así, armá esa configuración completa y explicale en el "mensaje" qué quedó fijo para la primera ronda y qué excepciones quedaron guardadas para más adelante, en vez de decirle que no se puede.
 El ÚNICO límite real: en una misma ronda solo puede haber UN equipo con pase directo (no se puede repartir el pase directo entre varios equipos a la vez en la misma ronda). Si lo que pide de verdad necesita dos o más pases directos simultáneos en la MISMA ronda, ahí sí avisale con claridad qué parte no se puede tal cual la describió, y ofrecele la alternativa más parecida (por ejemplo, correr ese pase directo para la ronda siguiente, o ajustar el número de clasificados para que no sobren tantos).
 
 Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni después:
@@ -1607,10 +1627,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 {"mensaje": "...", "listo": true o false, "config": {...} o null}
 <<<FIN>>>
 
-- "mensaje": en español, corto y claro, dirigido al organizador. Si listo=false es tu pregunta puntual sobre lo mínimo que falta para poder armar el árbol (o la aclaración del único límite real de arriba, si de verdad aplica). Si listo=true es un resumen breve de lo que armaste para la primera ronda — y si el organizador describió algo de varias rondas, aclarale en una frase que las siguientes se arman solas con la misma regla de impares que eligió. Invitalo a revisar la vista previa de abajo y confirmar o pedir cambios.
-- "listo": true apenas tengas lo mínimo indispensable para la PRIMERA ronda (como mínimo cuántos clasifican) — no preguntes por fecha, 3er puesto o ida/vuelta si no los mencionó, usá un valor por defecto razonable en esos casos. No pidas que te confirme cosas de rondas futuras (eso se decide solo cuando llegue ese momento).
-- "config" (solo si listo=true), con estas claves exactas, TODAS referidas a la PRIMERA ronda:
-  numClasifElim (entero), idaVuelta (bool), estiloLlaves ("consecutivo"|"cruzado"|"manual" — "manual" SOLO si nombró enfrentamientos puntuales equipo contra equipo), modoImpar ("mejor_perdedor"|"bye" — esta regla se va a repetir en todas las rondas siguientes si vuelve a quedar impar), equipoByeId (id del equipo que pasa directo en la primera ronda si modoImpar es "bye" y lo nombró, si no null), crearTercerPuesto (bool), ordenIds (lista de TODOS los ids de los clasificados de la primera ronda en el orden de siembra que pidió, o null si no especificó un orden propio), parejasIds (lista de pares [idA,idB] SOLO si estiloLlaves es "manual", o null), fecha ("YYYY-MM-DD" o null), hora ("HH:MM" o null).
+- "mensaje": en español, corto y claro, dirigido al organizador. Si listo=false es tu pregunta puntual sobre lo mínimo que falta para poder armar el árbol (o la aclaración del único límite real de arriba, si de verdad aplica). Si listo=true es un resumen breve de lo que armaste para la primera ronda — y si el organizador describió algo de varias rondas o excepciones por fase, aclarale en una frase cuáles quedaron guardadas y para cuándo aplican. Invitalo a revisar la vista previa de abajo y confirmar o pedir cambios.
+- "listo": true apenas tengas lo mínimo indispensable para la PRIMERA ronda (como mínimo cuántos clasifican) — no preguntes por fecha, 3er puesto o ida/vuelta si no los mencionó, usá un valor por defecto razonable en esos casos. No pidas que te confirme cosas de rondas futuras (eso se decide solo cuando llegue ese momento), salvo la excepción puntual de ida/vuelta por fase que ya te haya descrito, que se guarda de una vez.
+- "config" (solo si listo=true), con estas claves exactas:
+  numClasifElim (entero, PRIMERA ronda), idaVuelta (bool, formato de la PRIMERA ronda), estiloLlaves ("consecutivo"|"cruzado"|"manual" — "manual" SOLO si nombró enfrentamientos puntuales equipo contra equipo, PRIMERA ronda), modoImpar ("mejor_perdedor"|"bye" — esta regla se va a repetir en todas las rondas siguientes si vuelve a quedar impar), equipoByeId (id del equipo que pasa directo en la primera ronda si modoImpar es "bye" y lo nombró, si no null), crearTercerPuesto (bool), ordenIds (lista de TODOS los ids de los clasificados de la primera ronda en el orden de siembra que pidió, o null si no especificó un orden propio), parejasIds (lista de pares [idA,idB] SOLO si estiloLlaves es "manual", o null), fecha ("YYYY-MM-DD" o null), hora ("HH:MM" o null), idaVueltaPorFase (objeto con SOLO las fases para las que el organizador pidió una excepción puntual distinta a "copiar la ronda anterior" — claves posibles "octavos","cuartos","semifinal","final"; cada una: {"activo": true o false (true = esa fase se juega ida y vuelta, false = esa fase se juega a partido único, pisando lo que diría la regla de copiar la ronda anterior), "margen": entero o null (diferencia de gol en la ida a partir de la cual ya no se juega la vuelta de esa fase; null = siempre se juega la vuelta si "activo" es true)} — mandá {} si no pidió ninguna excepción de este tipo, NUNCA actives "margen" para una fase que no tenga "activo": true).
 - Nunca inventes un id que no esté en la lista de equipos que te dieron.
 - Si pide algo realmente imposible (ej. más clasificados que equipos hay, o dos pases directos a la vez en la misma ronda), avisale en "mensaje" con listo=false y config=null, explicando la alternativa más cercana.`
 
@@ -1654,6 +1674,25 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setModoImpar(config?.modoImpar === 'bye' ? 'bye' : 'mejor_perdedor')
     if (config?.fecha) setFechaElim(config.fecha)
     if (config?.hora) setHoraElim(config.hora)
+
+    // Excepciones puntuales de ida/vuelta por fase (ej. "solo semifinal a ida
+    // y vuelta, sin jugar la vuelta si la ida queda 2+ goles arriba") — se
+    // van ACUMULANDO sobre lo que ya había (no se borra una excepción de un
+    // mensaje anterior solo porque este mensaje no la vuelve a mencionar).
+    const FASES_IDA_VUELTA = new Set(['octavos', 'cuartos', 'semifinal', 'final'])
+    if (config?.idaVueltaPorFase && typeof config.idaVueltaPorFase === 'object') {
+      setIdaVueltaPorFase(prev => {
+        const next = { ...prev }
+        Object.entries(config.idaVueltaPorFase).forEach(([fase, regla]) => {
+          if (!FASES_IDA_VUELTA.has(fase) || !regla || typeof regla !== 'object') return
+          const activo = !!regla.activo
+          let margen = parseInt(regla.margen, 10)
+          if (!activo || !Number.isFinite(margen) || margen < 1) margen = null
+          next[fase] = { activo, margen }
+        })
+        return next
+      })
+    }
 
     const base = getParticipantesElim(n)
     const idsValidos = new Set(base.map(t => String(t.id)))
@@ -1825,6 +1864,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const { error: errDel } = await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
       if (errDel) { showMsg(`No se pudo borrar el bracket anterior: ${errDel.message}`, 'error'); return }
 
+      // Si hay una excepción puntual de ida/vuelta configurada para la fase
+      // de esta primera ronda (ej. "que esta ronda puntual NO sea ida y
+      // vuelta aunque el interruptor general diga que sí"), manda esa
+      // excepción; si no hay ninguna para esta fase, se respeta el
+      // interruptor general idaVuelta de siempre.
+      const overrideFase1 = idaVueltaPorFase?.[fase]
+      const llevaVuelta = overrideFase1 ? !!overrideFase1.activo : idaVuelta
+
       const inserts = []
       parejas.forEach(([local, visitante], i) => {
         const { fecha, hora } = fechaHoraLlave(i)
@@ -1832,7 +1879,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           tournament_id: id, home_team_id: local.id, away_team_id: visitante.id,
           played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda, matchday: null, slot_index: i,
         })
-        if (idaVuelta) {
+        if (llevaVuelta) {
           inserts.push({
             tournament_id: id, home_team_id: visitante.id, away_team_id: local.id,
             played_at: `${fecha}T${hora}:00-05:00`, status: 'scheduled', fase, ronda: `${ronda} (vuelta)`, matchday: null, slot_index: i,
@@ -2778,7 +2825,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       showMsg(`⚠️ Recordatorio: tienen tarjetas sin pagar: ${deudoresRonda.map(d => `${d.name} (${fmt(d.deuda)})`).join(', ')} — registra los pagos en la pestaña Finanzas`, 'error')
     }
 
-    const conVuelta = est.llaves.some(l => l.matches.length > 1)
+    // Por defecto la ronda que se va a crear copia el formato (ida/vuelta o
+    // partido único) de la ronda que se acaba de jugar — salvo que haya una
+    // excepción puntual configurada para la fase de la ronda NUEVA (ver
+    // idaVueltaPorFase), en cuyo caso esa excepción manda.
+    const conVueltaCopiada = est.llaves.some(l => l.matches.length > 1)
+    const conVueltaParaFase = (fase) => {
+      const ov = idaVueltaPorFase?.[fase]
+      return ov ? !!ov.activo : conVueltaCopiada
+    }
     const baseSinFecha = { tournament_id: id, status: 'scheduled', matchday: null }
     const base = { ...baseSinFecha, played_at: `${fechaRonda}T${horaRonda}:00-05:00` }
     // Si a alguna llave del árbol ya le pusiste fecha/hora puntual (en las
@@ -2807,7 +2862,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (equiposRonda.length === 3) {
       const ordenados = rankPorReclasificacion(equiposRonda)
       inserts.push({ ...base, home_team_id: ordenados[0].id, away_team_id: ordenados[1].id, fase: 'semifinal', ronda: 'Semifinal' })
-      if (conVuelta) inserts.push({ ...base, home_team_id: ordenados[1].id, away_team_id: ordenados[0].id, fase: 'semifinal', ronda: 'Semifinal (vuelta)' })
+      if (conVueltaParaFase('semifinal')) inserts.push({ ...base, home_team_id: ordenados[1].id, away_team_id: ordenados[0].id, fase: 'semifinal', ronda: 'Semifinal (vuelta)' })
       const { error } = await supabase.from('matches').insert(inserts)
       if (error) showMsg('Error al generar la semifinal', 'error')
       else showMsg(`Semifinal de 3: ${ordenados[0].name} vs ${ordenados[1].name} — el perdedor jugará repechaje contra ${ordenados[2].name} ✓`)
@@ -2833,6 +2888,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const totalVivos = est.vivos.length + (agregoMejorPerdedor ? 1 : 0)
     const fase  = getFaseValue(totalVivos)
     const ronda = getRondaNombre(totalVivos)
+    const conVuelta = conVueltaParaFase(fase)
 
     let llaveIdx = 0
     for (let i = 0; i + 1 < equiposRonda.length; i += 2) {
@@ -2923,7 +2979,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         // espacio para el 3° y 4° puesto", guardado en crearTercerPuesto) y
         // ya no hace falta esperar a que el admin la tome acá.
         const rondaNombre = getRondaNombre(llaves.length)
-        const conVuelta = llaves.some(l => l.matches.length > 1)
+        // Copia el formato de la ronda actual salvo que haya una excepción
+        // puntual configurada para la fase que se va a crear ahora (ver
+        // idaVueltaPorFase, ej. "solo semifinal es ida y vuelta").
+        const overrideProxima = idaVueltaPorFase?.[proximaFase]
+        const conVuelta = overrideProxima ? !!overrideProxima.activo : llaves.some(l => l.matches.length > 1)
 
         for (let i = 0; i * 2 + 1 < llaves.length; i++) {
           const A = llaves[i * 2], B = llaves[i * 2 + 1]
@@ -2990,9 +3050,58 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }
   }
 
+  // Salto automático de la vuelta por diferencia de gol: si una fase tiene
+  // configurado un "margen" en idaVueltaPorFase (ej. semifinal con margen=2),
+  // apenas se juega la PRIMERA de las dos vueltas de una llave de esa fase
+  // con una diferencia de gol igual o mayor a ese margen, se borra la vuelta
+  // todavía no jugada — la llave queda decidida con ese único resultado
+  // (getLlavesPorFase ya trata una llave con un solo partido jugado como
+  // "terminada" sola, sin necesitar más cambios) y el ganador de esa ida pasa
+  // directo a la siguiente ronda, sin esperar el segundo partido.
+  async function intentarSaltarVueltaPorMargen() {
+    if (saltandoVueltaRef.current) return false
+    saltandoVueltaRef.current = true
+    try {
+      const fasesConMargen = FASE_ORDEN.filter(f => idaVueltaPorFase?.[f]?.activo && Number.isFinite(idaVueltaPorFase[f].margen))
+      if (fasesConMargen.length === 0) return false
+
+      const porFase = getLlavesPorFase()
+      const aBorrar = []
+      const resumen = []
+      fasesConMargen.forEach(fase => {
+        const margen = idaVueltaPorFase[fase].margen
+        ;(porFase[fase] || []).forEach(ll => {
+          if (ll.matches.length !== 2 || ll.terminada) return
+          const jugado = ll.matches.find(m => m.status === 'finished')
+          const pendiente = ll.matches.find(m => m.status !== 'finished')
+          if (!jugado || !pendiente) return
+          if (Math.abs(ll.golesA - ll.golesB) >= margen) {
+            aBorrar.push(pendiente.id)
+            resumen.push(`${ll.teamA.name} ${ll.golesA}-${ll.golesB} ${ll.teamB.name}`)
+          }
+        })
+      })
+      if (aBorrar.length === 0) return false
+
+      const { error } = await supabase.from('matches').delete().in('id', aBorrar)
+      if (error) { console.error('Error al saltar la vuelta por diferencia de gol:', error); return false }
+      showMsg(`🔁 Diferencia de gol suficiente — se juega sin vuelta: ${resumen.join(', ')} ✓`)
+      await Promise.all([fetchPartidos(), fetchBracket()])
+      return true
+    } finally {
+      saltandoVueltaRef.current = false
+    }
+  }
+
   useEffect(() => {
     if (bracket.length === 0) return
-    intentarAvanzarSlots()
+    ;(async () => {
+      const salto = await intentarSaltarVueltaPorMargen()
+      // Si se borró una vuelta, fetchBracket ya va a disparar este mismo
+      // efecto de nuevo con el estado actualizado — ahí sí corresponde
+      // intentar avanzar de casilla con la llave ya "terminada".
+      if (!salto) intentarAvanzarSlots()
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bracket])
 
