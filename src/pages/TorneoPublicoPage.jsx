@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
@@ -519,8 +519,11 @@ function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
 export default function TorneoPublicoPage({ tournamentId } = {}) {
   const params = useParams()
   const id = tournamentId || params.id
+  const navigate = useNavigate()
 
   const [torneo,    setTorneo]    = useState(null)
+  const [ediciones, setEdiciones] = useState([]) // otras ediciones de este mismo torneo (hermanas)
+  const [campeonVigente, setCampeonVigente] = useState(null) // campeón de la edición más reciente que ya tenga uno guardado
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
   const [goleadores, setGoleadores] = useState([])
@@ -713,6 +716,35 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       setGoleadores(gData || [])
       setSponsors(spData || [])
       fetchBracket()
+
+      // Otras ediciones de este mismo torneo (para el botón "Edición N") y el
+      // campeón vigente: si esta edición todavía no tiene uno propio (recién
+      // empezando), se muestra el de la edición completada más reciente —
+      // para que no desaparezca el campeón mientras se juega la siguiente.
+      const raizId = t?.torneo_padre_id || t?.id
+      if (raizId) {
+        const { data: edsData } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
+          .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)
+        const edicionesList = (edsData || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1))
+        setEdiciones(edicionesList)
+        if (edicionesList.length > 1) {
+          const { data: camps } = await supabase.from('tournament_logros')
+            .select('tournament_id, team_id, teams(id,name,logo_url)')
+            .in('tournament_id', edicionesList.map(e => e.id)).eq('tipo', 'campeon').limit(500)
+          const edMap = Object.fromEntries(edicionesList.map(e => [e.id, e.edicion || 1]))
+          let mejor = null
+          ;(camps || []).forEach(c => {
+            const ed = edMap[c.tournament_id] || 0
+            if (c.teams && (!mejor || ed > mejor.edicion)) mejor = { edicion: ed, tournament_id: c.tournament_id, team: c.teams }
+          })
+          setCampeonVigente(mejor)
+        } else {
+          setCampeonVigente(null)
+        }
+      } else {
+        setEdiciones([])
+        setCampeonVigente(null)
+      }
 
       // Grupos del torneo (si los tiene) para mostrar la tabla dividida
       const { data: grps } = await supabase.from('tournament_grupos').select('*').eq('tournament_id', id).order('orden')
@@ -943,8 +975,38 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                 {torneo.city      && <span style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={12}/>{torneo.city}</span>}
                 {torneo.season    && <span style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={12}/>{torneo.season}</span>}
               </div>
+              {ediciones.length > 1 && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '9px' }}>
+                  <span style={{ fontSize: '.68rem', color: 'rgba(255,255,255,.65)' }}>Ediciones:</span>
+                  {ediciones.map(e => (
+                    <button key={e.id} onClick={() => e.id !== torneo.id && navigate(`/t/${e.id}`)}
+                      title={e.name}
+                      style={{ border: 'none', borderRadius: '20px', padding: '2px 10px', fontSize: '.7rem', fontWeight: '700', cursor: e.id === torneo.id ? 'default' : 'pointer',
+                        background: e.id === torneo.id ? '#fff' : 'rgba(255,255,255,.18)', color: e.id === torneo.id ? 'var(--color-primario)' : '#fff' }}>
+                      Edición {e.edicion || 1}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Campeón vigente — de la edición completada más reciente, aunque
+              se esté jugando una edición nueva que todavía no tiene resultados */}
+          {campeonVigente?.team && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '12px', padding: '9px 14px', width: 'fit-content' }}>
+              <span style={{ fontSize: '1.3rem' }}>🏆</span>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {campeonVigente.team.logo_url ? <img src={campeonVigente.team.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
+              </div>
+              <div>
+                <div style={{ fontSize: '.6rem', fontWeight: '800', color: '#ffd54f', letterSpacing: '1.5px' }}>
+                  CAMPEÓN VIGENTE{campeonVigente.tournament_id !== torneo.id ? ` · EDICIÓN ${campeonVigente.edicion}` : ''}
+                </div>
+                <div style={{ fontWeight: '800', color: '#fff', fontSize: '.85rem' }}>{campeonVigente.team.name}</div>
+              </div>
+            </div>
+          )}
 
           {/* Stats rápidas */}
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>

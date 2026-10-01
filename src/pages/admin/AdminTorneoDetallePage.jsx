@@ -2497,14 +2497,49 @@ export default function AdminTorneoDetallePage() {
     const n = (torneo.edicion || 1) + 1
     const nombre = prompt('Nombre de la nueva edición:', `${nombreBase} (Edición ${n})`)
     if (!nombre) return
-    const { data, error } = await supabase.from('tournaments').insert({
+
+    // La edición nueva arranca con la MISMA configuración de la anterior
+    // (escudo, sistema de puntos, cupos, precios/finanzas...) — no hay que
+    // cargarla de cero. El organizador la puede cambiar después (precios,
+    // cupos, equipos) para esta edición sin afectar el historial viejo.
+    let payload = {
       name: nombre, season: torneo.season, city: torneo.city, modalidad: torneo.modalidad,
       categoria: torneo.categoria, genero: torneo.genero, formato: torneo.formato,
       status: 'active', organizador_id: torneo.organizador_id || null,
       premium: false, torneo_padre_id: torneo.torneo_padre_id || torneo.id,
       edicion: n, finanzas_config: torneo.finanzas_config || null,
-    }).select().single()
+      logo_url: torneo.logo_url || null,
+      color_primario: torneo.color_primario || null, color_secundario: torneo.color_secundario || null,
+      favicon_url: torneo.favicon_url || null,
+      equipos_permitidos: torneo.equipos_permitidos ?? 0,
+      requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true,
+      pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0,
+      limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null,
+    }
+    let { data, error } = await supabase.from('tournaments').insert(payload).select().single()
+    // El sistema de puntos y algunos campos son relativamente nuevos: si en
+    // este proyecto todavía falta correr su migración, no bloquea la
+    // creación de la edición entera — se reintenta sin ese campo puntual.
+    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'limite_jugadores_equipo', 'duracion_tiempo_min']
+    while (error && camposOpcionales.some(c => (error.message || '').includes(c))) {
+      const campo = camposOpcionales.find(c => (error.message || '').includes(c))
+      payload = { ...payload }
+      delete payload[campo]
+      ;({ data, error } = await supabase.from('tournaments').insert(payload).select().single())
+    }
     if (error) return showMsg(`Error al crear la edición: ${error.message}`, 'error')
+
+    // El dominio propio (si tenía uno) se pasa a la edición nueva: así quien
+    // entra por ese dominio siempre ve el torneo que se está jugando ahora,
+    // no el archivado. No es grave si esto falla — se puede mover a mano
+    // desde Personalización.
+    if (torneo.custom_domain) {
+      try {
+        await supabase.from('tournaments').update({ custom_domain: torneo.custom_domain }).eq('id', data.id)
+        await supabase.from('tournaments').update({ custom_domain: null }).eq('id', torneo.id)
+      } catch { /* no crítico */ }
+    }
+
     // Este torneo (el que ya terminó) se archiva solo: desaparece de la
     // lista principal de Torneos (para que no se vaya llenando edición tras
     // edición) pero NO se borra ni se toca ningún dato — sigue 100%
@@ -2516,7 +2551,7 @@ export default function AdminTorneoDetallePage() {
       const { error: errArchivar } = await supabase.from('tournaments').update({ archivado: true }).eq('id', torneo.id)
       if (errArchivar && !(errArchivar.message || '').includes('archivado')) console.error('No se pudo archivar la edición anterior:', errArchivar)
     } catch { /* falta migracion_archivar_torneos.sql — no es grave, se puede archivar a mano después */ }
-    showMsg(`${nombre} creada ✓ — este torneo queda guardado con todo su historial (y archivado, para no llenar la lista); agrega los equipos de la nueva edición`)
+    showMsg(`${nombre} creada ✓ — con el mismo escudo, sistema de puntos y configuración de ${torneo.name} (cambiá precios, cupos o equipos cuando quieras); el torneo anterior queda guardado con todo su historial y archivado`)
     navigate(`/admin/torneos/${data.id}`)
     setTab('actividad')
   }
