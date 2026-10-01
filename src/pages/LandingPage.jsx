@@ -8,6 +8,9 @@ import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, mar
 import { registrarVisita } from '../lib/visitas'
 import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
+import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
+import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
+import { computeTablaGeneral } from '../lib/torneoTablas'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
@@ -398,6 +401,24 @@ export default function LandingPage() {
     return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
   }, [streamsVivos])
 
+  // Mientras haya alguna transmisión activa, escucha los cambios en
+  // site_config casi al instante — es ahí donde vive el panel de control de
+  // /admin/config-sitio (ver en_vivo_control), así que apenas quien
+  // transmite aprieta un botón (repetición, mostrar tabla, mostrar goles),
+  // se ve acá sin que nadie tenga que recargar la página.
+  useEffect(() => {
+    if (!streamsVivos.length) return
+    const timer = { current: null }
+    const channel = supabase
+      .channel('landing-en-vivo-control')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'site_config' }, () => {
+        clearTimeout(timer.current)
+        timer.current = setTimeout(fetchSiteConfig, 300)
+      })
+      .subscribe()
+    return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
+  }, [streamsVivos.length])
+
   // Imágenes para la repetición del gol — se cargan desde /admin/config-sitio
   // (junto con el link de la transmisión en vivo), se puede subir varias y
   // van rotando en orden.
@@ -458,6 +479,55 @@ export default function LandingPage() {
   }, [partidosVivo, streamsVivos, imagenesRepeticion])
 
   useEffect(() => () => repeticionTimersRef.current.forEach(clearTimeout), [])
+
+  // Repetición MANUAL, disparada a propósito desde el panel de control de
+  // /admin/config-sitio (botón "Repetición" o "Cámara lenta") — a diferencia
+  // de la automática de arriba (que espera el retraso de la transmisión
+  // porque reacciona sola a un gol que nadie vio venir), acá quien transmite
+  // ya está viendo el video en el momento justo, así que se dispara de una,
+  // sin esperar nada. `repeticion_ts` cambia cada vez que se aprieta el
+  // botón (ver en_vivo_control); se compara contra la última marca ya
+  // procesada para no repetir la misma repetición dos veces si llega otro
+  // cambio de site_config por cualquier otro motivo.
+  const controlRepeticionRef = useRef({}) // { [streamId]: último repeticion_ts ya mostrado }
+  useEffect(() => {
+    const control = siteConfig?.en_vivo_control || {}
+    streamsVivos.forEach(s => {
+      const c = control[s.id]
+      if (!c?.repeticion_ts || controlRepeticionRef.current[s.id] === c.repeticion_ts) return
+      controlRepeticionRef.current[s.id] = c.repeticion_ts
+      const imagenUrl = imagenesRepeticion.length
+        ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
+        : null
+      repeticionContadorRef.current += 1
+      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras: Math.max(0, Number(s.segundos_repeticion) || 28), duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+    })
+  }, [siteConfig, streamsVivos, imagenesRepeticion])
+
+  // Gráfica de tabla de posiciones encima del video (también prendida desde
+  // el panel de control): se trae y calcula una sola vez por torneo (caché),
+  // reutilizando computeTablaGeneral — la misma función que usa la tabla de
+  // posiciones real del torneo — para que la gráfica en vivo muestre
+  // exactamente lo mismo que esa tabla.
+  const [tablasEnVivo, setTablasEnVivo] = useState({}) // { [tournamentId]: filas }
+  useEffect(() => {
+    const control = siteConfig?.en_vivo_control || {}
+    const idsFaltantes = [...new Set(
+      Object.values(control)
+        .filter(c => c?.overlay === 'tabla' && c.overlay_tournament_id)
+        .map(c => c.overlay_tournament_id)
+    )].filter(tid => !tablasEnVivo[tid])
+    if (!idsFaltantes.length) return
+    idsFaltantes.forEach(async tid => {
+      const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
+        supabase.from('tournaments').select('pts_victoria, pts_empate, pts_derrota').eq('id', tid).maybeSingle(),
+        supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tid),
+        supabase.from('matches').select('status, fase, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tid),
+      ])
+      const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
+      setTablasEnVivo(t => ({ ...t, [tid]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
+    })
+  }, [siteConfig, tablasEnVivo])
 
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
@@ -597,7 +667,7 @@ export default function LandingPage() {
   // migracion_site_config.sql) simplemente no se muestra nada, sin romper
   // el resto de la página.
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
   }
@@ -701,16 +771,24 @@ export default function LandingPage() {
             </span>
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-            {streamsVivos.map(s => (
-              <div key={s.id}>
-                {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
-                <LiveEmbed url={s.url} titulo={s.titulo} S={S}
-                  overlay={s.match_id ? (
-                    <MarcadorEnVivoOverlay partido={partidosVivo.find(m => m.id === s.match_id) || null}/>
-                  ) : null}
-                  repeticion={repeticiones[s.id]}/>
-              </div>
-            ))}
+            {streamsVivos.map(s => {
+              const partidoDeStream = s.match_id ? (partidosVivo.find(m => m.id === s.match_id) || null) : null
+              const controlStream = siteConfig?.en_vivo_control?.[s.id]
+              return (
+                <div key={s.id}>
+                  {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S}
+                    overlay={(
+                      <>
+                        {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
+                        {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
+                        {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]}/>}
+                      </>
+                    )}
+                    repeticion={repeticiones[s.id]}/>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

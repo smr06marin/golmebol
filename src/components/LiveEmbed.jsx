@@ -161,10 +161,12 @@ function cargarYouTubeAPI() {
 // navegador — esa API además no funciona bien para esto en Safari de
 // iPhone, así que este método funciona igual en todos los celulares.
 //
-// `repeticion` (opcional): { key, segundosAtras, duracionVisible, imagenUrl }
+// `repeticion` (opcional): { key, segundosAtras, duracionVisible, imagenUrl, camaraLenta }
 // — cada vez que `key` cambia (LandingPage lo cambia apenas detecta un gol
-// nuevo): si hay una imagen de repetición cargada (desde
-// /admin/config-sitio, rotan en orden si hay varias), esa imagen tapa el
+// nuevo, o apenas quien transmite aprieta el botón de repetición manual
+// desde el panel de control de /admin/config-sitio): si hay una imagen de
+// repetición cargada (desde /admin/config-sitio, rotan en orden si hay
+// varias), esa imagen tapa el
 // video unos segundos (con tiempo de sobra para leerla) con transición de
 // entrada y salida; mientras dura toda la repetición, debajo del reloj del
 // marcador queda la etiqueta "REPETICIÓN" para que se sepa que no es un
@@ -178,7 +180,10 @@ function cargarYouTubeAPI() {
 // del video (ver BumperCierre), para que el salto no se note. En
 // Facebook/Instagram no hay forma confiable de mover el video desde acá,
 // así que ahí solo se ven la etiqueta y las dos gráficas (apertura y
-// cierre), sin rebobinar de verdad.
+// cierre), sin rebobinar de verdad. Si `camaraLenta` viene en `true`, el
+// tramo rebobinado se reproduce a 0.5x (también solo en YouTube) — se
+// restaura la velocidad normal justo antes de volver al en vivo real, para
+// no dejar la transmisión en cámara lenta después de la repetición.
 export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
@@ -336,6 +341,11 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
       try {
         const actual = player.getCurrentTime()
         player.seekTo(Math.max(0, actual - segundosAtras), true)
+        // Cámara lenta (pedida desde el panel de control, botón aparte del de
+        // repetición normal): se nota mucho más la jugada del gol. Solo
+        // funciona en YouTube (misma limitación que el rebobinado de arriba);
+        // se restaura la velocidad normal más abajo, antes de volver al en vivo.
+        if (repeticion.camaraLenta && typeof player.setPlaybackRate === 'function') player.setPlaybackRate(0.5)
       } catch { /* si el reproductor todavía no está listo, se pierde este intento */ }
     }
 
@@ -353,6 +363,9 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
       // El salto de verdad al en vivo pasa acá, con el logo ya grande.
       if (!puedeControlarVideo) return
       try {
+        // Restaurar la velocidad normal ANTES de volver al en vivo — si quedara
+        // en 0.5x, el video en vivo real se vería en cámara lenta para siempre.
+        if (repeticion.camaraLenta && typeof player.setPlaybackRate === 'function') player.setPlaybackRate(1)
         const duracion = player.getDuration?.()
         if (duracion) player.seekTo(duracion, true)
       } catch { /* si el reproductor ya no responde, no pasa nada */ }

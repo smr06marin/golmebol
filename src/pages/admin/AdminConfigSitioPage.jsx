@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Radio, Plus, Trash2, Upload, Repeat, X } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
+import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
+import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas } from '../../lib/liveMatch'
+import { computeTablaGeneral } from '../../lib/torneoTablas'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
 const S = {
@@ -26,6 +29,13 @@ export default function AdminConfigSitioPage() {
   const [partidos, setPartidos] = useState([]) // partidos elegibles para el marcador (no finalizados)
   const [imagenesRepeticion, setImagenesRepeticion] = useState([]) // [{id, url}] — rotan en la repetición del gol
   const [subiendoImagen, setSubiendoImagen] = useState(false)
+  // Panel de control en vivo: qué gráfica extra (tabla/goles) se muestra por
+  // transmisión y el disparador de la repetición manual — ver
+  // migracion_en_vivo_control.sql. { [streamId]: { overlay, overlay_tournament_id, repeticion_ts, repeticion_camara_lenta } }
+  const [control, setControl] = useState({})
+  // Tablas de posiciones ya calculadas, en caché por torneo, para no volver a
+  // pedirlas cada vez que se prende/apaga el overlay del mismo torneo.
+  const [tablas, setTablas] = useState({})
 
   // Partidos que se pueden elegir para el marcador: cualquiera que no haya
   // terminado (para poder elegirlo desde antes de que arranque). Se marcan
@@ -34,7 +44,7 @@ export default function AdminConfigSitioPage() {
   // no arrancan. La misma lista sirve para el selector de CADA transmisión.
   async function fetchPartidos() {
     const { data } = await supabase.from('matches')
-      .select('id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
+      .select('id, tournament_id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
       .neq('status', 'finished')
       .order('played_at', { ascending: true })
       .limit(100)
@@ -47,7 +57,7 @@ export default function AdminConfigSitioPage() {
 
   async function fetchConfig() {
     setLoading(true)
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control').eq('id', true).maybeSingle()
     if (error) {
       setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql y migracion_site_config_repeticion_imagenes.sql en Supabase' : error.message, type:'error' })
       setLoading(false)
@@ -56,6 +66,7 @@ export default function AdminConfigSitioPage() {
     const lista = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
     setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20, segundos_repeticion: s.segundos_repeticion ?? 28 })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
+    setControl((data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {})
     setLoading(false)
   }
 
@@ -121,6 +132,62 @@ export default function AdminConfigSitioPage() {
     if (path) await supabase.storage.from('patrocinadores').remove([path])
   }
 
+  // Panel de control en vivo: a diferencia de "Guardar" (que sube TODO el
+  // arreglo de transmisiones de una), cada acción del panel se guarda sola,
+  // al toque — igual que las imágenes de repetición — porque esto se usa
+  // EN VIVO, durante el partido, y no tiene sentido que quien transmite
+  // tenga que acordarse de apretar "Guardar" para que el botón surta efecto.
+  // Se actualiza el estado local primero (optimista) para que el botón se
+  // sienta instantáneo, y después se manda a Supabase.
+  async function actualizarControl(streamId, cambios) {
+    const next = { ...control, [streamId]: { ...control[streamId], ...cambios } }
+    setControl(next)
+    const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) {
+      setMsg({ text: /en_vivo_control|column .* does not exist/.test(error.message||'') ? '⚠️ Falta correr migracion_en_vivo_control.sql en Supabase' : 'Error al actualizar el panel de control', type:'error' })
+    }
+  }
+
+  // Dispara una repetición manual (botón del panel) — a diferencia de la
+  // automática (que espera el retraso configurado de la transmisión porque
+  // reacciona sola a un gol), esta la aprieta a propósito quien está viendo
+  // el video, así que en la portada se dispara de una, sin esperar nada.
+  function dispararRepeticion(streamId, camaraLenta) {
+    actualizarControl(streamId, { repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta })
+  }
+
+  // Prende/apaga la gráfica de tabla de posiciones o goles encima del video.
+  // Para la tabla hace falta saber de qué torneo — se usa el del partido que
+  // ya tiene elegido esa transmisión (si tiene uno).
+  function cambiarOverlay(streamId, overlay, tournamentId) {
+    actualizarControl(streamId, { overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
+    if (overlay === 'tabla' && tournamentId) cargarTabla(tournamentId)
+  }
+
+  // Trae equipos + partidos de un torneo y calcula su tabla general una sola
+  // vez (se guarda en caché) — misma función que usa la tabla de posiciones
+  // real del torneo (AdminTorneoDetallePage/TorneoPublicoPage), para que la
+  // gráfica en vivo muestre exactamente lo mismo.
+  async function cargarTabla(tournamentId) {
+    if (!tournamentId || tablas[tournamentId]) return
+    const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
+      supabase.from('tournaments').select('pts_victoria, pts_empate, pts_derrota').eq('id', tournamentId).maybeSingle(),
+      supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tournamentId),
+      supabase.from('matches').select('status, fase, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tournamentId),
+    ])
+    const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
+    setTablas(t => ({ ...t, [tournamentId]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
+  }
+
+  // Si al entrar a esta página ya había una tabla de posiciones prendida de
+  // antes (de una sesión anterior del panel de control), la trae de una vez
+  // — si no, la vista previa de abajo se queda esperando sin mostrar nada
+  // hasta que alguien vuelva a tocar el botón.
+  useEffect(() => {
+    Object.values(control).forEach(c => { if (c?.overlay === 'tabla' && c.overlay_tournament_id) cargarTabla(c.overlay_tournament_id) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cargarTabla ya revisa su propia caché, no hace falta re-correr por eso
+  }, [control])
+
   function agregarStream() {
     setStreams(s => [...s, streamVacio()])
   }
@@ -133,6 +200,30 @@ export default function AdminConfigSitioPage() {
 
   const streamsPreview = streams.filter(s => s.activo && (s.url || '').trim())
 
+  // Arma lo que va ENCIMA del video para una transmisión: el marcador (si
+  // tiene partido elegido) siempre va; debajo de todo, la gráfica de tabla o
+  // de goles si el panel de control la tiene prendida para esta transmisión.
+  // Misma composición que arma la página de inicio pública — así esta vista
+  // previa muestra EXACTAMENTE lo que ve quien está viendo la transmisión.
+  function overlayDe(s, partidoSeleccionado) {
+    const c = control[s.id]
+    return (
+      <>
+        {partidoSeleccionado && (
+          <MarcadorEnVivoOverlay partido={{
+            home: partidoSeleccionado.home, away: partidoSeleccionado.away,
+            tournaments: partidoSeleccionado.tournaments,
+            vivo: derivarEnVivo(partidoSeleccionado),
+            colores: derivarColoresUniforme(partidoSeleccionado),
+            detalle: derivarFaltasYTarjetas(partidoSeleccionado),
+          }}/>
+        )}
+        {c?.overlay === 'goles' && partidoSeleccionado && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
+        {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]}/>}
+      </>
+    )
+  }
+
   if (loading) return <div style={{ padding:'40px', textAlign:'center', color:'#9aa0a6' }}>Cargando...</div>
 
   return (
@@ -143,6 +234,61 @@ export default function AdminConfigSitioPage() {
       {msg && (
         <div style={{ padding:'10px 14px', borderRadius:'8px', marginBottom:'16px', fontSize:'.85rem', background: msg.type==='ok'?'#e6f4ea':'#fce8e6', color: msg.type==='ok'?'#1e8e3e':'#d93025' }}>
           {msg.text}
+        </div>
+      )}
+
+      {streamsPreview.length > 0 && (
+        <div style={{ background:S.bg, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'20px', marginBottom:'20px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'700', color:'#fff', marginBottom:'4px' }}>
+            <PlayCircle size={16} color={S.green}/> Panel de control en vivo
+          </div>
+          <div style={{ fontSize:'.8rem', color:'#9aa0a6', marginBottom:'16px' }}>
+            Para usar DURANTE el partido: cada botón actúa al toque, sin tener que tocar "Guardar". Repetición dispara de una (no espera el retraso de la transmisión, porque acá lo aprietas vos mismo viendo el video).
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+            {streamsPreview.map(s => {
+              const partidoSeleccionado = partidos.find(p => p.id === s.match_id) || null
+              const c = control[s.id] || {}
+              const tieneTorneo = !!partidoSeleccionado?.tournament_id
+              return (
+                <div key={s.id} style={{ border:`1px solid ${S.border}`, borderRadius:'10px', padding:'12px' }}>
+                  <div style={{ fontSize:'.78rem', fontWeight:'700', color:'#fff', marginBottom:'10px' }}>
+                    {s.titulo || (partidoSeleccionado ? `${partidoSeleccionado.home?.name || '?'} vs ${partidoSeleccionado.away?.name || '?'}` : 'Transmisión sin título')}
+                  </div>
+
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
+                  <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
+                    <button onClick={() => dispararRepeticion(s.id, false)}
+                      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:S.green, border:'none', borderRadius:'8px', cursor:'pointer', color:'#0a0a0a', fontSize:'.8rem', fontWeight:'700' }}>
+                      <PlayCircle size={15}/> Repetición
+                    </button>
+                    <button onClick={() => dispararRepeticion(s.id, true)}
+                      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:'#2a2a2a', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontSize:'.8rem', fontWeight:'700' }}>
+                      <Gauge size={15}/> Cámara lenta
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
+                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                    <button onClick={() => cambiarOverlay(s.id, null, null)}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: !c.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
+                      <Ban size={13}/> Ninguna
+                    </button>
+                    <button onClick={() => cambiarOverlay(s.id, 'tabla', partidoSeleccionado?.tournament_id)}
+                      disabled={!tieneTorneo} title={tieneTorneo ? '' : 'Elige un partido para esta transmisión, así se sabe de qué torneo mostrar la tabla'}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'tabla' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: tieneTorneo ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: tieneTorneo ? 1 : .45 }}>
+                      <Table2 size={13}/> Tabla de posiciones
+                    </button>
+                    <button onClick={() => cambiarOverlay(s.id, 'goles', null)}
+                      disabled={!partidoSeleccionado} title={partidoSeleccionado ? '' : 'Elige un partido para esta transmisión, así se sabe de quién mostrar los goles'}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partidoSeleccionado ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: partidoSeleccionado ? 1 : .45 }}>
+                      <ListOrdered size={13}/> Goles del partido
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -281,16 +427,7 @@ export default function AdminConfigSitioPage() {
               return (
                 <div key={s.id} style={{ background:S.bg, borderRadius:'16px', padding:'16px' }}>
                   {s.titulo && <div style={{ color:'#9aa0a6', fontWeight:'700', fontSize:'.8rem', marginBottom:'10px' }}>{s.titulo}</div>}
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S}
-                    overlay={partidoSeleccionado ? (
-                      <MarcadorEnVivoOverlay partido={{
-                        home: partidoSeleccionado.home, away: partidoSeleccionado.away,
-                        tournaments: partidoSeleccionado.tournaments,
-                        vivo: derivarEnVivo(partidoSeleccionado),
-                        colores: derivarColoresUniforme(partidoSeleccionado),
-                        detalle: derivarFaltasYTarjetas(partidoSeleccionado),
-                      }}/>
-                    ) : null}/>
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)}/>
                   {s.match_id && !partidoSeleccionado?.enVivo && (
                     <div style={{ fontSize:'.7rem', color:'#9aa0a6', marginTop:'10px', textAlign:'center' }}>
                       Elegiste un partido para el marcador, pero todavía no está en vivo (el árbitro no ha empezado la planilla) — por eso no se ve acá. Apenas empiece, aparece solo.
