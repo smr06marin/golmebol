@@ -373,11 +373,19 @@ export default function App() {
     empezarCargaRol() // evita usar el rol viejo mientras se consulta el nuevo
     const email = u.email.toLowerCase()
     try {
-      const { data, error } = await supabase.from('roles_plataforma')
-        .select('rol, plan, activo').eq('email', email).maybeSingle()
+      // debe_cambiar_password: lo prende un admin cuando le resetea la
+      // contraseña a alguien desde "Usuarios y permisos" (ver
+      // migracion_debe_cambiar_password.sql) — si falta esa migración, se
+      // reintenta sin esa columna para que el login no se rompa por esto.
+      let { data, error } = await supabase.from('roles_plataforma')
+        .select('rol, plan, activo, debe_cambiar_password').eq('email', email).maybeSingle()
+      if (error && (error.message || '').includes('debe_cambiar_password')) {
+        ;({ data, error } = await supabase.from('roles_plataforma')
+          .select('rol, plan, activo').eq('email', email).maybeSingle())
+      }
       if (error) throw error
       if (data && data.activo !== false) {
-        setRol({ rol: data.rol, plan: data.plan })
+        setRol({ rol: data.rol, plan: data.plan, debeCambiarPassword: !!data.debe_cambiar_password })
         // Vincular la cuenta al rol (para que el admin vea de quién es cada torneo)
         // — con el cliente silencioso: esto corre solo en cada sesión, no es
         // una acción de la persona, no debe salir el aviso de "cambios guardados".

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone, KeyRound } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import { supabase, supabaseSilent } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { notify } from '../../lib/notify'
@@ -27,7 +27,7 @@ const MENU_COMPLETO = [
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { rol, user } = useAuthStore()
+  const { rol, user, setRol } = useAuthStore()
   const isMobile = useIsMobile()
   // Sin sistema de roles cargado (tabla no creada), todo usuario del admin es admin
   const esAdmin = rol?.rol ? rol.rol === 'admin' : true
@@ -59,6 +59,16 @@ export default function AdminLayout() {
     setShowCambiarPass(false)
     setPassActual1(''); setPassActual2('')
     notify('Contraseña actualizada ✓')
+    // Ya cambió la que le habían reseteado — que no le vuelva a salir el
+    // aviso grande. Se quita de una en la sesión (para que el aviso
+    // desaparezca al toque) y también en la base (para la próxima vez que
+    // entre). Con supabaseSilent para no disparar "Cambios guardados ✓".
+    if (rol?.debeCambiarPassword) {
+      setRol({ ...rol, debeCambiarPassword: false })
+      if (user?.email) {
+        supabaseSilent.from('roles_plataforma').update({ debe_cambiar_password: false }).eq('email', user.email.toLowerCase()).then(() => {}, () => {})
+      }
+    }
   }
 
   return (
@@ -136,8 +146,8 @@ export default function AdminLayout() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
             <button onClick={() => setShowCambiarPass(true)} title="Cambiar mi contraseña"
-              style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
-              <KeyRound size={15}/>
+              style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.78rem', fontWeight: '600' }}>
+              <KeyRound size={15}/> {!isMobile && 'Cambiar contraseña'}
             </button>
             <button onClick={() => navigate('/')}
               style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
@@ -150,6 +160,18 @@ export default function AdminLayout() {
             )}
           </div>
         </div>
+
+        {/* Aviso grande: le reseteamos la contraseña y todavía está entrando
+            con la que le mandamos — solo sale hasta que se ponga la suya. */}
+        {rol?.debeCambiarPassword && (
+          <div onClick={() => setShowCambiarPass(true)}
+            style={{ background: '#fff3e0', borderBottom: '2px solid #ff9800', padding: isMobile ? '10px 14px' : '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', flexWrap: 'wrap', textAlign: 'center' }}>
+            <KeyRound size={17} color="#e65100"/>
+            <span style={{ fontWeight: '800', color: '#e65100', fontSize: isMobile ? '.82rem' : '.95rem' }}>
+              Por seguridad, cambia tu contraseña — toca aquí
+            </span>
+          </div>
+        )}
 
         {/* Página */}
         <div style={{ flex: 1, padding: isMobile ? '14px 12px calc(84px + env(safe-area-inset-bottom))' : '24px', overflowY: 'auto', minWidth: 0 }}>

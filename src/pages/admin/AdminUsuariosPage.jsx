@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase, supabaseSilent } from '../../lib/supabase'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { UserCog, Plus, Trash2 } from 'lucide-react'
 
@@ -99,6 +99,12 @@ export default function AdminUsuariosPage() {
       const data = await res.json()
       if (data.error) showMsg('Error: ' + data.error, 'error')
       else {
+        // Que la próxima vez que esa persona entre con esta contraseña, el
+        // panel le muestre bien grande "cambiar contraseña" hasta que la
+        // cambie por una suya — sin esto, nunca se entera de que puede
+        // ponerse una propia. (supabaseSilent: esto lo hace el sistema, no
+        // la persona — no debe salir el aviso de "Cambios guardados ✓".)
+        supabaseSilent.from('roles_plataforma').update({ debe_cambiar_password: true }).eq('id', modalResetPass.id).then(() => {}, () => {})
         showMsg(`✅ Contraseña de ${modalResetPass.email} actualizada`)
         setModalResetPass(null)
         setNuevaPassOrg('')
