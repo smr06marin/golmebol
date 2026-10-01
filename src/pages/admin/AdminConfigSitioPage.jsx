@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
+import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
+import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, extraerGoles } from '../../lib/liveMatch'
 import { computeTablaGeneral } from '../../lib/torneoTablas'
 import { fmtHoraDate } from '../../lib/horaHelpers'
@@ -40,6 +42,11 @@ export default function AdminConfigSitioPage() {
   // repeticion_automatica_desactivada apaga la repetición que LandingPage dispara sola apenas
   // el árbitro marca un gol (el resumen de goles y el marcador siguen funcionando igual,
   // apagar esto solo afecta esa repetición inmediata y aproximada).
+  // logos_activos: ids de los logos de patrocinador del torneo (ver
+  // patrocinador_logos_torneo / migracion_patrocinador_logos_torneo.sql) que
+  // están prendidos AHORA en ESTA transmisión puntual — la posición/tamaño
+  // de cada logo es del torneo (se reutiliza en todos sus partidos), pero
+  // prenderlo o no es de cada transmisión.
   const [control, setControl] = useState({})
   // Tablas de posiciones ya calculadas, en caché por torneo, para no volver a
   // pedirlas cada vez que se prende/apaga el overlay del mismo torneo.
@@ -54,6 +61,18 @@ export default function AdminConfigSitioPage() {
   // prendidos hasta apagarlos), esto se apaga solo después de unos segundos.
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState({})
   const patrocinadorVistoRef = useRef({})
+  // Logos de patrocinador del TORNEO (aparte de los de arriba): se suben sin
+  // límite, quedan guardados por torneo (se repiten partido tras partido) con
+  // su posición y tamaño ya elegidos a mano, y pueden estar varios prendidos
+  // a la vez. { [tournamentId]: [{ id, url, nombre, x, y, ancho }] }
+  const [logosPorTorneo, setLogosPorTorneo] = useState({})
+  const [subiendoLogoTorneo, setSubiendoLogoTorneo] = useState(false)
+  // Qué logo se está editando (ubicando) AHORA MISMO, y en qué transmisión —
+  // mientras se edita, el cuadrito arrastrable solo lo ve quien transmite
+  // (ver EditorLogoPatrocinadorTorneo); nadie más se entera hasta "Publicar".
+  // Un solo logo a la vez en todo el panel, para no enredar el arrastre.
+  const [editandoLogo, setEditandoLogo] = useState(null) // { streamId, tournamentId, logoId } | null
+  const [posicionDraft, setPosicionDraft] = useState(null) // posición/tamaño en vivo mientras se arrastra, antes de guardar
   // Qué link se acaba de copiar (para el "✓ Copiado" de 2 segundos del botón)
   const [copiado, setCopiado] = useState(null)
   // Repetición EN ESTA MISMA pantalla — antes el video de acá no se movía al
@@ -237,7 +256,7 @@ export default function AdminConfigSitioPage() {
 
   async function fetchConfig() {
     setLoading(true)
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
     if (error) {
       setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql y migracion_site_config_repeticion_imagenes.sql en Supabase' : error.message, type:'error' })
       setLoading(false)
@@ -247,6 +266,7 @@ export default function AdminConfigSitioPage() {
     setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20, segundos_repeticion: s.segundos_repeticion ?? 28 })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setControl((data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {})
+    setLogosPorTorneo((data?.patrocinador_logos_torneo && typeof data.patrocinador_logos_torneo === 'object') ? data.patrocinador_logos_torneo : {})
     setLoading(false)
   }
 
@@ -323,6 +343,86 @@ export default function AdminConfigSitioPage() {
     setImagenesRepeticion(nuevaLista)
     const path = (img.url || '').split('/patrocinadores/')[1]?.split('?')[0]
     if (path) await supabase.storage.from('patrocinadores').remove([path])
+  }
+
+  // Logos de patrocinador del TORNEO (ver migracion_patrocinador_logos_torneo.sql):
+  // se suben uno por uno, SIN LÍMITE de cuántos, y quedan guardados en la
+  // biblioteca de ESE torneo (reutilizable en todos sus partidos). Posición
+  // de arranque: centrado-arriba, chico — después se ubica a mano con
+  // "Editar posición" antes de publicarlo.
+  async function guardarLogosTorneo(tournamentId, lista) {
+    const next = { ...logosPorTorneo, [tournamentId]: lista }
+    const { error } = await supabase.from('site_config').upsert({ id: true, patrocinador_logos_torneo: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) {
+      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_patrocinador_logos_torneo.sql en Supabase' : 'Error al guardar el logo', type:'error' })
+      return false
+    }
+    setLogosPorTorneo(next)
+    return true
+  }
+  async function subirLogoTorneo(tournamentId, file) {
+    if (!file || !tournamentId) return
+    setSubiendoLogoTorneo(true)
+    const id = crypto.randomUUID()
+    const ext = file.name.split('.').pop()
+    const path = `patrocinador-torneo/${tournamentId}/${id}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('patrocinadores').upload(path, file, { upsert: true })
+    if (uploadError) { setSubiendoLogoTorneo(false); setMsg({ text:'Error al subir el logo', type:'error' }); return }
+    const { data: urlData } = supabase.storage.from('patrocinadores').getPublicUrl(path)
+    const url = `${urlData.publicUrl}?t=${Date.now()}`
+    const listaActual = logosPorTorneo[tournamentId] || []
+    const nuevoLogo = { id, url, nombre: file.name, x: 4, y: 4, ancho: 16 }
+    const ok = await guardarLogosTorneo(tournamentId, [...listaActual, nuevoLogo])
+    setSubiendoLogoTorneo(false)
+    if (ok) { setMsg({ text:'✅ Logo agregado — ahora ubicalo con "Editar posición"', type:'ok' }); setTimeout(() => setMsg(null), 4000) }
+  }
+  async function borrarLogoTorneo(tournamentId, logo) {
+    const listaActual = logosPorTorneo[tournamentId] || []
+    const ok = await guardarLogosTorneo(tournamentId, listaActual.filter(l => l.id !== logo.id))
+    if (!ok) return
+    const path = (logo.url || '').split('/patrocinadores/')[1]?.split('?')[0]
+    if (path) await supabase.storage.from('patrocinadores').remove([path])
+    // Si estaba publicado en alguna transmisión, lo saca de ahí también —
+    // si no, quedaría un id de logo activo que ya no existe en la biblioteca.
+    streams.forEach(s => {
+      const activos = control[s.id]?.logos_activos || []
+      if (activos.includes(logo.id)) actualizarControl(s.id, { logos_activos: activos.filter(id2 => id2 !== logo.id) })
+    })
+    if (editandoLogo?.logoId === logo.id) { setEditandoLogo(null); setPosicionDraft(null) }
+  }
+
+  // Ubicar un logo: mientras se edita, SOLO lo ve quien transmite (el cuadro
+  // arrastrable de EditorLogoPatrocinadorTorneo, en la vista previa de acá
+  // abajo) — la posición de verdad (la que ya ven todos, si está publicado)
+  // no cambia hasta "Guardar posición".
+  function editarLogoTorneo(streamId, tournamentId, logo) {
+    setEditandoLogo({ streamId, tournamentId, logoId: logo.id })
+    setPosicionDraft({ x: logo.x, y: logo.y, ancho: logo.ancho })
+  }
+  function cancelarEdicionLogo() {
+    setEditandoLogo(null)
+    setPosicionDraft(null)
+  }
+  async function guardarPosicionLogo() {
+    if (!editandoLogo || !posicionDraft) return
+    const { tournamentId, logoId } = editandoLogo
+    const listaActual = logosPorTorneo[tournamentId] || []
+    const nuevaLista = listaActual.map(l => l.id === logoId ? { ...l, ...posicionDraft } : l)
+    const ok = await guardarLogosTorneo(tournamentId, nuevaLista)
+    if (ok) { setEditandoLogo(null); setPosicionDraft(null) }
+  }
+
+  // Publicar/quitar: a diferencia de la posición (que es del torneo, para
+  // todos sus partidos), esto es de CADA transmisión puntual — empezar a
+  // transmitir un partido nuevo no prende solo los logos que quedaron
+  // prendidos del partido anterior.
+  function publicarLogoEnStream(streamId, logoId) {
+    const activos = control[streamId]?.logos_activos || []
+    if (!activos.includes(logoId)) actualizarControl(streamId, { logos_activos: [...activos, logoId] })
+  }
+  function quitarLogoDeStream(streamId, logoId) {
+    const activos = control[streamId]?.logos_activos || []
+    actualizarControl(streamId, { logos_activos: activos.filter(id2 => id2 !== logoId) })
   }
 
   // Panel de control en vivo: a diferencia de "Guardar" (que sube TODO el
@@ -457,6 +557,18 @@ export default function AdminConfigSitioPage() {
             {c?.overlay === 'jugadores' && partidoSeleccionado && vivo && <JugadoresEnVivoOverlay partido={partidoSeleccionado}/>}
           </>
         )}
+        {/* Logos de patrocinador del torneo ya publicados — se ven acá
+            exactamente igual que en la página pública. El que se está
+            editando AHORA MISMO (si hay uno) se dibuja aparte, arrastrable,
+            encima de todo — ver editarLogoTorneo más abajo. */}
+        {partidoSeleccionado?.tournament_id && (
+          <PatrocinadoresTorneoOverlay logos={logosPorTorneo[partidoSeleccionado.tournament_id]} activos={c?.logos_activos}/>
+        )}
+        {editandoLogo?.streamId === s.id && posicionDraft && (
+          <EditorLogoPatrocinadorTorneo
+            logo={{ ...(logosPorTorneo[editandoLogo.tournamentId] || []).find(l => l.id === editandoLogo.logoId), ...posicionDraft }}
+            onMover={cambios => setPosicionDraft(p => ({ ...p, ...cambios }))}/>
+        )}
       </>
     )
   }
@@ -555,6 +667,64 @@ export default function AdminConfigSitioPage() {
                       {c?.repeticion_automatica_desactivada ? 'Desactivada' : 'Activada'}
                     </button>
                   </div>
+
+                  {tieneTorneo && (() => {
+                    const listaLogos = logosPorTorneo[partidoSeleccionado.tournament_id] || []
+                    return (
+                      <>
+                        <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LOGOS DE PATROCINADOR DEL TORNEO</div>
+                        <div style={{ fontSize:'.72rem', color:'#9aa0a6', marginBottom:'8px' }}>
+                          Se suben una sola vez por torneo y quedan para todos sus partidos. Subí la imagen, "Editar posición" para arrastrarla y agrandarla/achicarla en el video de arriba (ahí SOLO la ves vos), "Guardar posición" cuando quede bien, y recién "Publicar" para que la vea todo el mundo. Podés tener varias publicadas a la vez.
+                        </div>
+                        <label style={{ display:'inline-flex', alignItems:'center', gap:'6px', marginBottom:'10px', padding:'9px 14px', background:'#fff', border:'1px dashed #1a73e8', borderRadius:'8px', cursor:'pointer', color:'#1a73e8', fontSize:'.78rem', fontWeight:'700' }}>
+                          <ImagePlus size={14}/> {subiendoLogoTorneo ? 'Subiendo...' : 'Subir logo'}
+                          <input type="file" accept="image/*" hidden disabled={subiendoLogoTorneo}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) subirLogoTorneo(partidoSeleccionado.tournament_id, f); e.target.value = '' }}/>
+                        </label>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'14px' }}>
+                          {listaLogos.map(logo => {
+                            const estaPublicado = (c?.logos_activos || []).includes(logo.id)
+                            const estaEditando = editandoLogo?.streamId === s.id && editandoLogo?.logoId === logo.id
+                            return (
+                              <div key={logo.id} style={{ width:'136px', background:'#161616', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'8px' }}>
+                                <div style={{ width:'100%', height:'56px', background:'#000', borderRadius:'4px', marginBottom:'6px', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+                                  <img src={logo.url} alt="" style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain' }}/>
+                                </div>
+                                {estaEditando ? (
+                                  <div style={{ display:'flex', gap:'4px', marginBottom:'4px' }}>
+                                    <button onClick={guardarPosicionLogo}
+                                      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'3px', padding:'6px', background:S.green, border:'none', borderRadius:'6px', cursor:'pointer', color:'#0a0a0a', fontSize:'.68rem', fontWeight:'700' }}>
+                                      <Check size={11}/> Guardar
+                                    </button>
+                                    <button onClick={cancelarEdicionLogo}
+                                      style={{ padding:'6px 8px', background:'#2a2a2a', border:'none', borderRadius:'6px', cursor:'pointer', color:'#9aa0a6' }}>
+                                      <X size={11}/>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => editarLogoTorneo(s.id, partidoSeleccionado.tournament_id, logo)}
+                                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', padding:'6px', marginBottom:'4px', background:'#2a2a2a', border:'none', borderRadius:'6px', cursor:'pointer', color:'#fff', fontSize:'.68rem', fontWeight:'700' }}>
+                                    <Pencil size={11}/> Editar posición
+                                  </button>
+                                )}
+                                <div style={{ display:'flex', gap:'4px' }}>
+                                  <button onClick={() => estaPublicado ? quitarLogoDeStream(s.id, logo.id) : publicarLogoEnStream(s.id, logo.id)}
+                                    style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'3px', padding:'6px', background: estaPublicado ? S.red : S.green, border:'none', borderRadius:'6px', cursor:'pointer', color: estaPublicado ? '#fff' : '#0a0a0a', fontSize:'.68rem', fontWeight:'700' }}>
+                                    {estaPublicado ? <><EyeOff size={11}/> Quitar</> : <><Eye size={11}/> Publicar</>}
+                                  </button>
+                                  <button onClick={() => borrarLogoTorneo(partidoSeleccionado.tournament_id, logo)}
+                                    style={{ padding:'6px 8px', background:'#2a2a2a', border:'none', borderRadius:'6px', cursor:'pointer', color:'#9aa0a6' }}>
+                                    <Trash2 size={11}/>
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {!listaLogos.length && <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>Todavía no subiste ningún logo para este torneo.</div>}
+                        </div>
+                      </>
+                    )
+                  })()}
 
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
                   <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: patrocinadoresBtn.length ? '14px' : 0 }}>

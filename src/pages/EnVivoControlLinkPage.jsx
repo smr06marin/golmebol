@@ -22,6 +22,7 @@ import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
+import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas } from '../lib/liveMatch'
 import { computeTablaGeneral } from '../lib/torneoTablas'
 
@@ -47,7 +48,7 @@ export default function EnVivoControlLinkPage() {
   const control = (siteConfig?.en_vivo_control || {})[stream?.id] || {}
 
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
     if (!error) setSiteConfig(data || null)
     setCargando(false)
   }
@@ -231,6 +232,9 @@ export default function EnVivoControlLinkPage() {
                   {control.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[control.overlay_tournament_id]}/>}
                   {control.overlay === 'jugadores' && partido && vivo && <JugadoresEnVivoOverlay partido={partido}/>}
                 </>
+              )}
+              {partido?.tournament_id && (
+                <PatrocinadoresTorneoOverlay logos={siteConfig?.patrocinador_logos_torneo?.[partido.tournament_id]} activos={control.logos_activos}/>
               )}
             </>
           )}

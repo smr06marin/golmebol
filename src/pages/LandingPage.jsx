@@ -12,6 +12,7 @@ import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
+import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { computeTablaGeneral } from '../lib/torneoTablas'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
@@ -760,7 +761,7 @@ export default function LandingPage() {
   // migracion_site_config.sql) simplemente no se muestra nada, sin romper
   // el resto de la página.
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
   }
@@ -882,6 +883,14 @@ export default function LandingPage() {
                             {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]}/>}
                             {controlStream?.overlay === 'jugadores' && partidoDeStream && <JugadoresEnVivoOverlay partido={partidoDeStream}/>}
                           </>
+                        )}
+                        {/* Logos de patrocinador del torneo, ubicados y
+                            publicados a mano desde /admin/config-sitio — ver
+                            PatrocinadoresTorneoOverlay. Independiente de la
+                            publicidad rápida de arriba: pueden estar los dos
+                            a la vez. */}
+                        {partidoDeStream?.tournament_id && (
+                          <PatrocinadoresTorneoOverlay logos={siteConfig?.patrocinador_logos_torneo?.[partidoDeStream.tournament_id]} activos={controlStream?.logos_activos}/>
                         )}
                       </>
                     )}
