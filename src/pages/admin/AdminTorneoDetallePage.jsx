@@ -1677,8 +1677,9 @@ LAS PREGUNTAS QUE TENÉS QUE PLANTEAR apenas sepas cuántos clasifican (salteá 
 4. SOLO si en la pregunta 3 quedó algo a ida y vuelta (todo o alguna fase): preguntá si quiere una diferencia de gol en el partido de ida a partir de la cual ya no haga falta jugar la vuelta (y cuántos goles), o si prefiere que la vuelta se juegue siempre completa.
 5. Si se juega un partido por el tercer puesto entre los perdedores de semifinal: sí o no.
 No preguntes por la fecha/hora de los primeros partidos — usá un valor por defecto razonable y mencionalo en el resumen final; eso no hace falta decidirlo de antemano.
+Estas preguntas (las que apliquen) SIEMPRE van adentro del campo "mensaje" del bloque <<<RESPUESTA>>> de más abajo — nunca las escribas como texto suelto antes o fuera de ese bloque: tu respuesta entera, aunque solo sea para hacer preguntas, tiene que ser ese bloque y nada más.
 
-MUY IMPORTANTE — pensá antes de responder, para no contradecirte: podés escribir en texto libre, ANTES del bloque <<<RESPUESTA>>>, todas las cuentas y el razonamiento que necesites (qué preguntas ya están contestadas, cuáles faltan, qué opción conviene) — ese texto de antes el organizador NUNCA lo ve, porque el sistema solo toma lo que esté entre <<<RESPUESTA>>> y <<<FIN>>>. Pero el "mensaje" que va DENTRO de ese bloque tiene que ser ya la versión final y resuelta: nunca escribas ahí dudas, cuentas a medio hacer, ni cambios de opinión en plena frase (nada de "espera, no, déjame replantear esto"), y nunca definas la misma opción dos veces de formas distintas o contradictorias. Si te das cuenta de que algo no te cuadra, resolvelo ANTES del bloque, no dentro de él.
+MUY IMPORTANTE — pensá antes de responder, para no contradecirte: podés escribir en texto libre, ANTES del bloque <<<RESPUESTA>>>, un razonamiento BREVE (unas pocas líneas alcanzan — qué preguntas ya están contestadas, cuáles faltan, qué opción conviene) — ese texto de antes el organizador NUNCA lo ve, porque el sistema solo toma lo que esté entre <<<RESPUESTA>>> y <<<FIN>>>, pero no te extiendas ahí: guardá espacio para el bloque final, que es la parte que de verdad importa y SIEMPRE tiene que llegar a escribirse completo. El "mensaje" que va DENTRO de ese bloque tiene que ser ya la versión final y resuelta: nunca escribas ahí dudas, cuentas a medio hacer, ni cambios de opinión en plena frase (nada de "espera, no, déjame replantear esto"), y nunca definas la misma opción dos veces de formas distintas o contradictorias. Si te das cuenta de que algo no te cuadra, resolvelo ANTES del bloque, no dentro de él.
 
 Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni después:
 <<<RESPUESTA>>>
@@ -1700,8 +1701,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       // 700 se quedaba corto apenas el caso tenía varias cuentas (ej. número
       // impar + varias fases) — la IA necesita espacio para pensarlo en texto
       // libre ANTES del bloque de respuesta (ver ELIM_CHAT_INSTRUCCION) sin
-      // que el bloque final se corte a la mitad por quedarse sin tokens.
-      body: JSON.stringify({ messages: mensajes, maxTokens: 1600 }),
+      // que el bloque final se corte a la mitad por quedarse sin tokens. Con
+      // el flujo de preguntas guiadas (varias preguntas con sus opciones en
+      // un solo "mensaje") hace falta todavía más margen que antes.
+      body: JSON.stringify({ messages: mensajes, maxTokens: 2200 }),
     })
     let data
     try { data = await res.json() } catch { data = null }
@@ -1815,8 +1818,20 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         { role: 'assistant', content: elimChatMsgs[0]?.content || '...' },
         ...nuevosMensajes.slice(1),
       ]
-      const texto = await llamarIAElim(mensajesParaIA)
-      const parsed = parseRespuestaElimIA(texto)
+      // A veces la IA se extiende de más en el razonamiento libre (o se le
+      // escapa el formato) y la respuesta termina sin el bloque
+      // <<<RESPUESTA>>>...<<<FIN>>> — en vez de cortar la conversación con un
+      // error, se reintenta UNA vez con un recordatorio puntual del formato
+      // antes de rendirse de verdad.
+      let texto = await llamarIAElim(mensajesParaIA)
+      let parsed
+      try {
+        parsed = parseRespuestaElimIA(texto)
+      } catch {
+        const recordatorio = { role: 'user', content: '(Recordatorio: tu respuesta anterior no vino en el formato esperado. Respondé de nuevo, esta vez terminando SIEMPRE con el bloque <<<RESPUESTA>>>{"mensaje":"...","listo":true o false,"config":{...} o null}<<<FIN>>> tal como se te indicó, sin nada después de <<<FIN>>>.)' }
+        texto = await llamarIAElim([...mensajesParaIA, { role: 'assistant', content: texto }, recordatorio])
+        parsed = parseRespuestaElimIA(texto)
+      }
       setElimChatMsgs(prev => [...prev, { role: 'assistant', content: parsed.mensaje || '...' }])
       if (parsed.listo && parsed.config) {
         const avisos = aplicarConfigElimIA(parsed.config)
