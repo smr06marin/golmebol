@@ -2493,6 +2493,10 @@ export default function AdminTorneoDetallePage() {
 
   // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
   async function handleCrearSiguienteEdicion() {
+    // Seguro extra por si el botón se alcanza a tocar dos veces: no crea una
+    // segunda "siguiente edición" si ya existe una.
+    const yaExiste = ediciones.find(e => (e.edicion || 1) > (torneo.edicion || 1))
+    if (yaExiste) { showMsg(`Ya existe la Edición ${yaExiste.edicion || 1} de este torneo`, 'error'); return }
     const nombreBase = (torneo.name || '').replace(/\s*\(Edición \d+\)\s*$/i, '')
     const n = (torneo.edicion || 1) + 1
     const nombre = prompt('Nombre de la nueva edición:', `${nombreBase} (Edición ${n})`)
@@ -5745,12 +5749,24 @@ export default function AdminTorneoDetallePage() {
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
                         💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
                       </button>
-                      {(esAdminRol || torneo.premium) && (
-                        <button onClick={handleCrearSiguienteEdicion}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#6c35de', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
-                          🔄 Crear siguiente edición
-                        </button>
-                      )}
+                      {(esAdminRol || torneo.premium) && (() => {
+                        // Si ya se creó una edición siguiente de este torneo, no se
+                        // vuelve a mostrar el botón de crear otra (evita duplicados
+                        // por error) — en su lugar, un acceso directo a la que ya existe.
+                        const siguienteEdicion = ediciones.find(e => (e.edicion || 1) > (torneo.edicion || 1))
+                        return siguienteEdicion ? (
+                          <button onClick={() => navigate(`/admin/torneos/${siguienteEdicion.id}`)}
+                            title="Ya se creó la siguiente edición de este torneo"
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#3c4043', fontSize: '.85rem', fontWeight: '700' }}>
+                            ✅ Ya existe la Edición {siguienteEdicion.edicion || 1} — ir ahí
+                          </button>
+                        ) : (
+                          <button onClick={handleCrearSiguienteEdicion}
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#6c35de', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                            🔄 Crear siguiente edición
+                          </button>
+                        )
+                      })()}
                     </div>
                     <div style={{ fontSize: '.68rem', color: '#9aa0a6', textAlign: 'center', marginTop: '6px' }}>
                       Guarda campeón, subcampeón, tercer puesto y hasta qué fase llegó cada equipo — en el historial del equipo y de cada uno de sus jugadores
