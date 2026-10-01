@@ -342,7 +342,14 @@ export default function LandingPage() {
     const tRelog = setInterval(() => setTick(x => x + 1), 1000)
     const tRefetch = setInterval(fetchPartidosVivo, 20000)
     const tVisitas = setInterval(fetchVisitasHoy, 30000)
-    return () => { clearInterval(tRelog); clearInterval(tRefetch); clearInterval(tVisitas) }
+    // site_config trae el panel de control en vivo (en_vivo_control): el
+    // realtime de más abajo ya lo refresca casi al instante, pero este
+    // refresco de respaldo cada 5s asegura que el botón de repetición/tabla/
+    // goles igual llegue aunque el realtime de esa tabla falle por lo que
+    // sea (hay que correr migracion_realtime_site_config.sql para que
+    // funcione bien de una, esto es solo el respaldo).
+    const tControl = setInterval(fetchSiteConfig, 5000)
+    return () => { clearInterval(tRelog); clearInterval(tRefetch); clearInterval(tVisitas); clearInterval(tControl) }
   }, [])
 
   // Carrusel de fotos de escenarios y banner de patrocinadores: cada uno

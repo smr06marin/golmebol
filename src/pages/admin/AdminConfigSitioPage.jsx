@@ -207,18 +207,24 @@ export default function AdminConfigSitioPage() {
   // previa muestra EXACTAMENTE lo que ve quien está viendo la transmisión.
   function overlayDe(s, partidoSeleccionado) {
     const c = control[s.id]
+    // La gráfica de goles necesita que el partido esté REALMENTE en vivo
+    // (igual que ya exige el marcador) — si no, acá en la vista previa se
+    // vería una gráfica con datos viejos/de prueba que en la página pública
+    // nunca aparece (ahí si no está en vivo, directamente no se pinta nada),
+    // y eso es justo lo que confundía: se veía acá pero no allá.
+    const vivo = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
     return (
       <>
-        {partidoSeleccionado && (
+        {partidoSeleccionado && vivo && (
           <MarcadorEnVivoOverlay partido={{
             home: partidoSeleccionado.home, away: partidoSeleccionado.away,
             tournaments: partidoSeleccionado.tournaments,
-            vivo: derivarEnVivo(partidoSeleccionado),
+            vivo,
             colores: derivarColoresUniforme(partidoSeleccionado),
             detalle: derivarFaltasYTarjetas(partidoSeleccionado),
           }}/>
         )}
-        {c?.overlay === 'goles' && partidoSeleccionado && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
+        {c?.overlay === 'goles' && partidoSeleccionado && vivo && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
         {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]}/>}
       </>
     )
@@ -285,6 +291,11 @@ export default function AdminConfigSitioPage() {
                       <ListOrdered size={13}/> Goles del partido
                     </button>
                   </div>
+                  {partidoSeleccionado && !partidoSeleccionado.enVivo && (
+                    <div style={{ fontSize:'.68rem', color:'#f5a623', marginTop:'10px' }}>
+                      ⚠️ Este partido todavía no está en vivo (el árbitro no ha empezado la planilla) — la gráfica de goles no se ve hasta que empiece, aunque la dejes prendida de una vez.
+                    </div>
+                  )}
                 </div>
               )
             })}
