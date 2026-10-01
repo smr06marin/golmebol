@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone, KeyRound } from 'lucide-react'
+import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -39,10 +39,12 @@ export default function AdminLayout() {
     navigate('/login')
   }
 
-  // Cambiar mi propia contraseña (mientras ya estoy adentro) — para cuando
-  // un admin le resetea la contraseña a alguien (o le llega por el link de
-  // "olvidé mi contraseña") y después quiere ponerse una que recuerde mejor.
-  const [showCambiarPass, setShowCambiarPass] = useState(false)
+  // Cambiar contraseña OBLIGATORIO, de pantalla completa — sale solo una
+  // vez, justo después de que un admin le resetea la contraseña a alguien y
+  // esa persona entra con la que le dieron. No hay botón para abrirlo a
+  // voluntad en ningún otro momento (si alguien quiere cambiarla sin que se
+  // la hayan reseteado, que escriba por WhatsApp). En cuanto la cambia acá,
+  // no vuelve a salir nunca más.
   const [passActual1, setPassActual1] = useState('')
   const [passActual2, setPassActual2] = useState('')
   const [errorPass, setErrorPass]     = useState('')
@@ -56,19 +58,44 @@ export default function AdminLayout() {
     const { error } = await supabase.auth.updateUser({ password: passActual1 })
     setGuardandoPass(false)
     if (error) { setErrorPass('Error: ' + error.message); return }
-    setShowCambiarPass(false)
     setPassActual1(''); setPassActual2('')
     notify('Contraseña actualizada ✓')
-    // Ya cambió la que le habían reseteado — que no le vuelva a salir el
-    // aviso grande. Se quita de una en la sesión (para que el aviso
-    // desaparezca al toque) y también en la base (para la próxima vez que
-    // entre). Con supabaseSilent para no disparar "Cambios guardados ✓".
-    if (rol?.debeCambiarPassword) {
-      setRol({ ...rol, debeCambiarPassword: false })
-      if (user?.email) {
-        supabaseSilent.from('roles_plataforma').update({ debe_cambiar_password: false }).eq('email', user.email.toLowerCase()).then(() => {}, () => {})
-      }
+    // Se quita de una en la sesión (para que la pantalla desaparezca al
+    // toque) y también en la base (para que no vuelva a salir en la
+    // próxima entrada). Con supabaseSilent para no disparar "Cambios
+    // guardados ✓" encima del aviso de arriba.
+    setRol({ ...rol, debeCambiarPassword: false })
+    if (user?.email) {
+      supabaseSilent.from('roles_plataforma').update({ debe_cambiar_password: false }).eq('email', user.email.toLowerCase()).then(() => {}, () => {})
     }
+  }
+
+  // Pantalla completa, obligatoria — tapa TODO el panel (sidebar, menú,
+  // Outlet) hasta que la persona ponga su propia contraseña. Sin botón de
+  // "cancelar": no se puede seguir sin cambiarla.
+  if (rol?.debeCambiarPassword) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f4f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ background: '#fff', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+            <div style={{ fontSize: '2.2rem', marginBottom: '10px' }}>🔑</div>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem', marginBottom: '8px' }}>Crea tu contraseña</div>
+            <div style={{ fontSize: '.8rem', color: '#5f6368', lineHeight: 1.5 }}>
+              Por seguridad, antes de seguir crea una contraseña que solo tú conozcas
+            </div>
+          </div>
+          <input type="password" placeholder="Nueva contraseña" value={passActual1} onChange={e => setPassActual1(e.target.value)} autoFocus
+            style={{ width: '100%', background: '#fff', border: '1.5px solid #dadce0', borderRadius: '10px', padding: '12px 14px', color: '#202124', fontSize: '.95rem', outline: 'none', boxSizing: 'border-box', marginBottom: '12px' }}/>
+          <input type="password" placeholder="Repite la contraseña" value={passActual2} onChange={e => setPassActual2(e.target.value)}
+            style={{ width: '100%', background: '#fff', border: '1.5px solid #dadce0', borderRadius: '10px', padding: '12px 14px', color: '#202124', fontSize: '.95rem', outline: 'none', boxSizing: 'border-box', marginBottom: '16px' }}/>
+          {errorPass && <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.82rem', color: '#d93025', marginBottom: '16px' }}>{errorPass}</div>}
+          <button onClick={handleCambiarPassPropia} disabled={guardandoPass}
+            style={{ width: '100%', padding: '12px', background: guardandoPass ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: guardandoPass ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.95rem' }}>
+            {guardandoPass ? 'Guardando...' : 'Guardar y entrar →'}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -145,10 +172,6 @@ export default function AdminLayout() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-            <button onClick={() => setShowCambiarPass(true)} title="Cambiar mi contraseña"
-              style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.78rem', fontWeight: '600' }}>
-              <KeyRound size={15}/> {!isMobile && 'Cambiar contraseña'}
-            </button>
             <button onClick={() => navigate('/')}
               style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}>
               ← App
@@ -161,49 +184,11 @@ export default function AdminLayout() {
           </div>
         </div>
 
-        {/* Aviso grande: le reseteamos la contraseña y todavía está entrando
-            con la que le mandamos — solo sale hasta que se ponga la suya. */}
-        {rol?.debeCambiarPassword && (
-          <div onClick={() => setShowCambiarPass(true)}
-            style={{ background: '#fff3e0', borderBottom: '2px solid #ff9800', padding: isMobile ? '10px 14px' : '10px 24px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', flexWrap: 'wrap', textAlign: 'center' }}>
-            <KeyRound size={17} color="#e65100"/>
-            <span style={{ fontWeight: '800', color: '#e65100', fontSize: isMobile ? '.82rem' : '.95rem' }}>
-              Por seguridad, cambia tu contraseña — toca aquí
-            </span>
-          </div>
-        )}
-
         {/* Página */}
         <div style={{ flex: 1, padding: isMobile ? '14px 12px calc(84px + env(safe-area-inset-bottom))' : '24px', overflowY: 'auto', minWidth: 0 }}>
           <Outlet />
         </div>
       </div>
-
-      {showCambiarPass && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '360px', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
-            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <KeyRound size={17}/> Cambiar mi contraseña
-            </div>
-            <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '16px' }}>{user?.email}</div>
-            <input type="password" placeholder="Nueva contraseña" value={passActual1} onChange={e => setPassActual1(e.target.value)} autoFocus
-              style={{ width: '100%', background: '#fff', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '10px 12px', color: '#202124', fontSize: '.9rem', outline: 'none', boxSizing: 'border-box', marginBottom: '10px' }}/>
-            <input type="password" placeholder="Repite la contraseña" value={passActual2} onChange={e => setPassActual2(e.target.value)}
-              style={{ width: '100%', background: '#fff', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '10px 12px', color: '#202124', fontSize: '.9rem', outline: 'none', boxSizing: 'border-box', marginBottom: '14px' }}/>
-            {errorPass && <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '9px 12px', fontSize: '.8rem', color: '#d93025', marginBottom: '14px' }}>{errorPass}</div>}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={() => { setShowCambiarPass(false); setPassActual1(''); setPassActual2(''); setErrorPass('') }}
-                style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem', fontWeight: '600' }}>
-                Cancelar
-              </button>
-              <button onClick={handleCambiarPassPropia} disabled={guardandoPass}
-                style={{ flex: 1, padding: '10px', background: guardandoPass ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: guardandoPass ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.85rem' }}>
-                {guardandoPass ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
