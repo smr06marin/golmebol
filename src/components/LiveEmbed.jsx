@@ -92,11 +92,14 @@ function LogoCanal() {
 // momento nuevo del partido sino la jugada de hace unos segundos. Solo
 // dispara la repetición cuando la transmisión ya tiene su marcador (ver
 // LandingPage), así que siempre hay reloj arriba del cual colgar esto.
-function EtiquetaRepeticion() {
+// `texto` (opcional): para el resumen de goles del entretiempo (ver
+// LandingPage), en vez de la palabra "REPETICIÓN" se muestra el jugador y
+// el minuto de ESE gol puntual, para saber cuál de todos se está viendo.
+function EtiquetaRepeticion({ texto }) {
   return (
     <div style={{ position:'absolute', top:'64px', left:'50%', transform:'translateX(-50%)', zIndex:5, display:'flex', alignItems:'center', gap:'6px', background:'rgba(6,6,8,.92)', borderRadius:'7px', padding:'4px 10px', pointerEvents:'none', boxShadow:'0 2px 10px rgba(0,0,0,.45)' }}>
       <span style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite' }}/>
-      <span style={{ fontSize:'clamp(.55rem,2.2vw,.66rem)', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>REPETICIÓN</span>
+      <span style={{ fontSize:'clamp(.55rem,2.2vw,.66rem)', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap' }}>{texto || 'REPETICIÓN'}</span>
     </div>
   )
 }
@@ -183,7 +186,8 @@ function cargarYouTubeAPI() {
 // no está disponible — pasa en Safari de iPhone, que no deja pedir pantalla
 // completa de un <div> cualquiera — así este botón funciona en todos lados.
 //
-// `repeticion` (opcional): { key, objetivoSegundos, segundosAtras, duracionVisible, imagenUrl, camaraLenta }
+// `repeticion` (opcional): { key, objetivoSegundos, segundosAtras, duracionVisible,
+// imagenUrl, camaraLenta, etiqueta, ultimoDeSerie, onFinSegmento }
 // — cada vez que `key` cambia (LandingPage lo cambia apenas detecta un gol
 // nuevo, o apenas quien transmite aprieta el botón de repetición manual
 // desde el panel de control de /admin/config-sitio o desde el link de
@@ -211,6 +215,13 @@ function cargarYouTubeAPI() {
 // tramo rebobinado se reproduce a 0.5x (también solo en YouTube) — se
 // restaura la velocidad normal justo antes de volver al en vivo real, para
 // no dejar la transmisión en cámara lenta después de la repetición.
+// `etiqueta` (opcional) cambia el texto "REPETICIÓN" de la etiquetita por
+// otra cosa — lo usa el resumen de goles del entretiempo para mostrar el
+// jugador y el minuto de cada gol en vez de la palabra genérica.
+// `ultimoDeSerie` (opcional, default true): en `false`, en vez del cierre
+// normal (logo + volver al en vivo) solo avisa con `onFinSegmento` cuando
+// termina — así el resumen de goles del entretiempo puede encadenar varios
+// goles seguidos sin volver al en vivo hasta el último.
 //
 // `ref` (opcional, con forwardRef): expone `getCurrentTime()` — en qué
 // segundo de la transmisión está este reproductor AHORA MISMO. Lo usa el
@@ -439,33 +450,48 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
       timers.push(setTimeout(() => setFaseBumper(null), HOLD_BUMPER_MS + SALE_BUMPER_MS))
     }
 
-    timers.push(setTimeout(() => setMostrandoCierre(true), msCierreInicio))
-    // El salto de verdad al en vivo pasa acá, con el logo ya grande.
-    // getDuration() puede devolver 0/undefined un instante si el reproductor
-    // todavía está buffering o terminando el seek de la repetición (más
-    // probable con WiFi inestable de cancha) — antes, si fallaba una sola
-    // vez, el video se quedaba atrasado del en vivo para siempre. Ahora se
-    // reintenta varias veces antes de darnos por vencidos.
-    timers.push(setTimeout(function intentarVolverAlVivo(intentosRestantes = 6) {
-      if (!puedeControlarVideo) return
-      try {
-        // Restaurar la velocidad normal ANTES de volver al en vivo — si quedara
-        // en 0.5x, el video en vivo real se vería en cámara lenta para siempre.
-        if (repeticion.camaraLenta && typeof player.setPlaybackRate === 'function') player.setPlaybackRate(1)
-        const duracion = player.getDuration?.()
-        if (duracion) {
-          player.seekTo(duracion, true)
-        } else if (intentosRestantes > 0) {
-          timers.push(setTimeout(() => intentarVolverAlVivo(intentosRestantes - 1), 300))
-        } else {
-          console.warn('[LiveEmbed] no se pudo volver al en vivo después de la repetición: getDuration() no respondió')
-        }
-      } catch { /* si el reproductor ya no responde, no pasa nada */ }
-    }, msCierreSeek))
-    timers.push(setTimeout(() => {
-      setMostrandoCierre(false)
-      setMostrandoEtiqueta(false)
-    }, msCierreFin))
+    // `ultimoDeSerie` (opcional, default true): en el resumen de goles del
+    // entretiempo (ver LandingPage), cada gol de la lista menos el último
+    // viene con esto en `false` — en vez del cierre normal (logo
+    // agrandándose + saltar al en vivo), simplemente avisa con
+    // `onFinSegmento` para que el que llama arme el siguiente gol de la
+    // lista (con su propio `key`, lo que vuelve a disparar este mismo
+    // efecto). Recién el ÚLTIMO gol de la lista hace el cierre de verdad y
+    // vuelve al en vivo, exactamente como una repetición normal.
+    if (repeticion.ultimoDeSerie === false) {
+      timers.push(setTimeout(() => {
+        setMostrandoEtiqueta(false)
+        repeticion.onFinSegmento?.()
+      }, msCierreInicio))
+    } else {
+      timers.push(setTimeout(() => setMostrandoCierre(true), msCierreInicio))
+      // El salto de verdad al en vivo pasa acá, con el logo ya grande.
+      // getDuration() puede devolver 0/undefined un instante si el reproductor
+      // todavía está buffering o terminando el seek de la repetición (más
+      // probable con WiFi inestable de cancha) — antes, si fallaba una sola
+      // vez, el video se quedaba atrasado del en vivo para siempre. Ahora se
+      // reintenta varias veces antes de darnos por vencidos.
+      timers.push(setTimeout(function intentarVolverAlVivo(intentosRestantes = 6) {
+        if (!puedeControlarVideo) return
+        try {
+          // Restaurar la velocidad normal ANTES de volver al en vivo — si quedara
+          // en 0.5x, el video en vivo real se vería en cámara lenta para siempre.
+          if (repeticion.camaraLenta && typeof player.setPlaybackRate === 'function') player.setPlaybackRate(1)
+          const duracion = player.getDuration?.()
+          if (duracion) {
+            player.seekTo(duracion, true)
+          } else if (intentosRestantes > 0) {
+            timers.push(setTimeout(() => intentarVolverAlVivo(intentosRestantes - 1), 300))
+          } else {
+            console.warn('[LiveEmbed] no se pudo volver al en vivo después de la repetición: getDuration() no respondió')
+          }
+        } catch { /* si el reproductor ya no responde, no pasa nada */ }
+      }, msCierreSeek))
+      timers.push(setTimeout(() => {
+        setMostrandoCierre(false)
+        setMostrandoEtiqueta(false)
+      }, msCierreFin))
+    }
 
     return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe disparar cuando cambia la key, no en cada render
@@ -484,7 +510,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
         <LogoCanal/>
-        {mostrandoEtiqueta && <EtiquetaRepeticion/>}
+        {mostrandoEtiqueta && <EtiquetaRepeticion texto={repeticion?.etiqueta}/>}
         {faseBumper && repeticion?.imagenUrl && (
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}
@@ -502,7 +528,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
           style={{ position:'absolute', inset:0, width:'100%', height:'100%', border:'none' }}/>
         {overlay}
         <LogoCanal/>
-        {mostrandoEtiqueta && <EtiquetaRepeticion/>}
+        {mostrandoEtiqueta && <EtiquetaRepeticion texto={repeticion?.etiqueta}/>}
         {faseBumper && repeticion?.imagenUrl && (
           <BumperRepeticion fase={faseBumper} imagenUrl={repeticion.imagenUrl}/>
         )}

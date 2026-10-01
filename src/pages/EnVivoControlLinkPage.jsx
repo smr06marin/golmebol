@@ -151,6 +151,35 @@ export default function EnVivoControlLinkPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [control.repeticion_ts])
 
+  // Resumen de goles del entretiempo — mismo patrón que LandingPage: el
+  // panel de /admin/config-sitio ya guardó el segundo exacto de cada gol del
+  // primer tiempo (resumen_goles) y avisó una sola vez (resumen_ts) al
+  // llegar el descanso; acá solo se encadenan uno detrás de otro.
+  const resumenVistoRef = useRef(null)
+  function mostrarGolDeResumen(goles, indice) {
+    const gol = goles[indice]
+    if (!gol || typeof gol.segundo !== 'number' || !isFinite(gol.segundo)) {
+      if (indice + 1 < goles.length) mostrarGolDeResumen(goles, indice + 1)
+      return
+    }
+    const etiqueta = `${gol.jugador || 'Gol'}${gol.minuto ? ' · ' + gol.minuto + "'" : ''}`
+    setRepeticion({
+      key: Date.now(),
+      objetivoSegundos: gol.segundo,
+      duracionVisible: 10,
+      etiqueta,
+      ultimoDeSerie: indice === goles.length - 1,
+      onFinSegmento: () => mostrarGolDeResumen(goles, indice + 1),
+    })
+  }
+  useEffect(() => {
+    const goles = Array.isArray(control.resumen_goles) ? control.resumen_goles : []
+    if (!control.resumen_ts || resumenVistoRef.current === control.resumen_ts || !goles.length) return
+    resumenVistoRef.current = control.resumen_ts
+    mostrarGolDeResumen(goles, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [control.resumen_ts])
+
   // Publicidad de patrocinador: aparece unos segundos y se apaga sola.
   const patrocinadorVistoRef = useRef(null)
   useEffect(() => {
