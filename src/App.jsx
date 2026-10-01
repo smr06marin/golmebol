@@ -45,6 +45,7 @@ const AdminPerfilOrganizadorPage = lazy(() => import('./pages/admin/AdminPerfilO
 const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
 const PlanillarLinkPage       = lazy(() => import('./pages/PlanillarLinkPage'))
 const DeudoresTarjetasLinkPage = lazy(() => import('./pages/DeudoresTarjetasLinkPage'))
+const EnVivoControlLinkPage   = lazy(() => import('./pages/EnVivoControlLinkPage'))
 const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
 const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
 const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
@@ -508,6 +509,11 @@ export default function App() {
           {/* Link fijo por torneo (no vence) para ver deudores de tarjetas,
               filtrar por equipo y registrar sus pagos — sin login */}
           <Route path="/deudores-tarjetas/:token" element={<DeudoresTarjetasLinkPage/>}/>
+          {/* Panel de control en vivo por link — para manejar la transmisión
+              (repetición, cámara lenta, tabla/goles/jugadores, patrocinador)
+              desde otro celular, sin iniciar sesión. El token se genera por
+              transmisión desde /admin/config-sitio. */}
+          <Route path="/en-vivo-control/:token" element={<EnVivoControlLinkPage/>}/>
           {/* Listado público de escenarios (antes la landing solo llevaba al
               primer escenario que trajera la consulta, así que con más de
               uno creado los demás no se veían) */}

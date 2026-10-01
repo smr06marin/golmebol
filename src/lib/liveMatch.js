@@ -157,6 +157,26 @@ export function extraerGoles(match) {
   return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
 }
 
+// Nómina (número + nombre) de cada equipo, sacada del mismo snapshot en vivo
+// — para la gráfica de "jugadores" del panel de control en vivo. Mismo
+// snapshot que ya usan extraerGoles/extraerTarjetas (el árbitro la carga al
+// armar la planilla, sea completa o rápida), así que no hace falta pedir
+// nada nuevo a la base de datos.
+export function extraerJugadores(match) {
+  if (!match) return { local: [], visitante: [] }
+  const candidatos = []
+  if (match.live_state)        candidatos.push({ snap: match.live_state,        updatedAt: match.live_state_updated_at })
+  if (match.live_state_rapida) candidatos.push({ snap: match.live_state_rapida, updatedAt: match.live_state_rapida_updated_at })
+  if (candidatos.length === 0) return { local: [], visitante: [] }
+  candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+  const snap = candidatos[0].snap
+  if (!snap) return { local: [], visitante: [] }
+  // Solo los que de verdad tienen nombre cargado — la planilla deja casillas
+  // vacías de relleno hasta completar 12, y esas no sirven para mostrar.
+  const limpiar = arr => (arr || []).filter(j => (j?.nombre || '').trim()).map(j => ({ numero: j.numero ?? '', nombre: j.nombre }))
+  return { local: limpiar(snap.jugadoresLocal), visitante: limpiar(snap.jugadoresVisitante) }
+}
+
 // Tarjetas (amarilla/azul/roja) del partido, sacadas del mismo snapshot en
 // vivo — para mostrarlas en el detalle del partido en la pantalla de inicio
 // (antes solo se mostraban los goles, las tarjetas quedaban registradas bien

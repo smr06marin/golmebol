@@ -10,6 +10,8 @@ import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
+import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
+import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import { computeTablaGeneral } from '../lib/torneoTablas'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
@@ -507,7 +509,12 @@ export default function LandingPage() {
         ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
         : null
       repeticionContadorRef.current += 1
-      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras: Math.max(0, Number(s.segundos_repeticion) || 28), duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+      // repeticion_segundos_atras: el ajuste con los botones -/+ del panel de
+      // control, para "devolver hasta donde quiera" en vez del valor fijo
+      // configurado — si no vino (repetición disparada desde una versión
+      // vieja del panel, o nunca se tocó el ajuste), se usa el configurado.
+      const segundosAtras = Math.max(0, Number(c.repeticion_segundos_atras ?? s.segundos_repeticion) || 28)
+      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
     })
   }, [siteConfig, streamsVivos, imagenesRepeticion])
 
@@ -535,6 +542,23 @@ export default function LandingPage() {
       setTablasEnVivo(t => ({ ...t, [tid]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
     })
   }, [siteConfig, tablasEnVivo])
+
+  // Publicidad de un patrocinador (botón del panel de control, aparte de los
+  // patrocinadores oficiales que ya rotan solos en el banner de abajo): a
+  // diferencia de tabla/goles/jugadores, esto no se queda prendido — aparece
+  // unos segundos encima del video y se apaga solo.
+  const patrocinadorVistoRef = useRef({}) // { [streamId]: último patrocinador_ts ya mostrado }
+  const [patrocinadoresMostrando, setPatrocinadoresMostrando] = useState({}) // { [streamId]: patrocinadorId }
+  useEffect(() => {
+    const control = siteConfig?.en_vivo_control || {}
+    streamsVivos.forEach(s => {
+      const c = control[s.id]
+      if (!c?.patrocinador_ts || patrocinadorVistoRef.current[s.id] === c.patrocinador_ts) return
+      patrocinadorVistoRef.current[s.id] = c.patrocinador_ts
+      setPatrocinadoresMostrando(m => ({ ...m, [s.id]: c.patrocinador_id }))
+      setTimeout(() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null })), 8000)
+    })
+  }, [siteConfig, streamsVivos])
 
   async function fetchStats() {
     const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
@@ -781,6 +805,8 @@ export default function LandingPage() {
             {streamsVivos.map(s => {
               const partidoDeStream = s.match_id ? (partidosVivo.find(m => m.id === s.match_id) || null) : null
               const controlStream = siteConfig?.en_vivo_control?.[s.id]
+              const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
+              const sponsorMostrando = patrocinadorIdMostrando ? patrocinadores.find(p => p.id === patrocinadorIdMostrando) : null
               return (
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
@@ -788,8 +814,13 @@ export default function LandingPage() {
                     overlay={(
                       <>
                         {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
-                        {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
-                        {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]}/>}
+                        {sponsorMostrando ? <PatrocinadorEnVivoOverlay patrocinador={sponsorMostrando}/> : (
+                          <>
+                            {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
+                            {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]}/>}
+                            {controlStream?.overlay === 'jugadores' && partidoDeStream && <JugadoresEnVivoOverlay partido={partidoDeStream}/>}
+                          </>
+                        )}
                       </>
                     )}
                     repeticion={repeticiones[s.id]}/>

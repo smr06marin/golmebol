@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, Minus } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
+import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
+import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas } from '../../lib/liveMatch'
 import { computeTablaGeneral } from '../../lib/torneoTablas'
 import { fmtHoraDate } from '../../lib/horaHelpers'
@@ -36,6 +38,24 @@ export default function AdminConfigSitioPage() {
   // Tablas de posiciones ya calculadas, en caché por torneo, para no volver a
   // pedirlas cada vez que se prende/apaga el overlay del mismo torneo.
   const [tablas, setTablas] = useState({})
+  // Patrocinadores reales del negocio (/admin/patrocinadores) — un botón por
+  // cada uno en el panel, para mostrar su publicidad encima del video cuando
+  // Sebas quiera (no son las imágenes de la repetición del gol, que son
+  // aparte y rotan solas).
+  const [patrocinadoresBtn, setPatrocinadoresBtn] = useState([])
+  // Qué patrocinador se está mostrando AHORA MISMO en la vista previa, por
+  // transmisión — a diferencia de tabla/goles/jugadores (que quedan
+  // prendidos hasta apagarlos), esto se apaga solo después de unos segundos.
+  const [patrocinadorMostrando, setPatrocinadorMostrando] = useState({})
+  const patrocinadorVistoRef = useRef({})
+  // Ajuste de "cuánto rebobina" ANTES de apretar Repetición — por transmisión,
+  // arranca en el valor configurado para esa transmisión y Sebas lo puede
+  // subir/bajar de a 5s con los botones -/+ cada vez que quiera repetir una
+  // jugada más de cerca o más de lejos, sin tener que entrar a cambiar la
+  // configuración guardada.
+  const [ajusteSegundos, setAjusteSegundos] = useState({})
+  // Qué link se acaba de copiar (para el "✓ Copiado" de 2 segundos del botón)
+  const [copiado, setCopiado] = useState(null)
 
   // Partidos que se pueden elegir para el marcador: cualquiera que no haya
   // terminado (para poder elegirlo desde antes de que arranque). Se marcan
@@ -53,7 +73,26 @@ export default function AdminConfigSitioPage() {
     setPartidos(conVivo)
   }
 
-  useEffect(() => { fetchConfig(); fetchPartidos() }, [])
+  async function fetchPatrocinadoresBtn() {
+    const { data } = await supabase.from('patrocinadores_golmebol').select('id, nombre, logo_url').eq('activo', true).order('orden')
+    setPatrocinadoresBtn(data || [])
+  }
+
+  useEffect(() => { fetchConfig(); fetchPartidos(); fetchPatrocinadoresBtn() }, [])
+
+  // Apenas cambia la marca de tiempo de "mostrar este patrocinador" (botón
+  // del panel), lo prende acá en la vista previa durante unos segundos y
+  // después se apaga solo — mismo patrón que usa LandingPage para la
+  // repetición manual.
+  const TIEMPO_PATROCINADOR_MS = 8000
+  useEffect(() => {
+    Object.entries(control).forEach(([streamId, c]) => {
+      if (!c?.patrocinador_ts || patrocinadorVistoRef.current[streamId] === c.patrocinador_ts) return
+      patrocinadorVistoRef.current[streamId] = c.patrocinador_ts
+      setPatrocinadorMostrando(m => ({ ...m, [streamId]: c.patrocinador_id }))
+      setTimeout(() => setPatrocinadorMostrando(m => ({ ...m, [streamId]: null })), TIEMPO_PATROCINADOR_MS)
+    })
+  }, [control])
 
   async function fetchConfig() {
     setLoading(true)
@@ -70,11 +109,15 @@ export default function AdminConfigSitioPage() {
     setLoading(false)
   }
 
-  async function guardar() {
-    setGuardando(true); setMsg(null)
+  // Arma el payload de en_vivo_streams a partir de un arreglo dado (no
+  // siempre el `streams` del estado — ver generarLinkControl, que necesita
+  // guardar de una el token recién creado sin esperar a que React aplique el
+  // setStreams antes de leer el estado, cosa que no pasa en la misma línea).
+  async function guardarStreamsArray(arr, { silencioso } = {}) {
+    if (!silencioso) { setGuardando(true); setMsg(null) }
     const payload = {
       id: true,
-      en_vivo_streams: streams.map(s => ({
+      en_vivo_streams: arr.map(s => ({
         id: s.id,
         url: (s.url || '').trim() || null,
         titulo: (s.titulo || '').trim() || null,
@@ -82,19 +125,28 @@ export default function AdminConfigSitioPage() {
         activo: !!s.activo,
         retraso_segundos: Number(s.retraso_segundos) || 20,
         segundos_repeticion: Number(s.segundos_repeticion) || 28,
+        control_token: s.control_token || null,
       })),
       updated_at: new Date().toISOString(),
     }
     const { error } = await supabase.from('site_config').upsert(payload, { onConflict: 'id' })
-    setGuardando(false)
+    if (!silencioso) setGuardando(false)
     if (error) {
       const msgError = /en_vivo_streams/.test(error.message||'') || /column .* does not exist/.test(error.message||'')
         ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql en Supabase'
         : 'Error al guardar: ' + error.message
-      setMsg({ text: msgError, type:'error' }); return
+      setMsg({ text: msgError, type:'error' })
+      return false
     }
-    setMsg({ text: '✅ Guardado', type:'ok' })
-    setTimeout(() => setMsg(null), 3000)
+    if (!silencioso) {
+      setMsg({ text: '✅ Guardado', type:'ok' })
+      setTimeout(() => setMsg(null), 3000)
+    }
+    return true
+  }
+
+  async function guardar() {
+    await guardarStreamsArray(streams)
   }
 
   // Imágenes para la repetición del gol: se suben y se borran de una vez
@@ -148,20 +200,57 @@ export default function AdminConfigSitioPage() {
     }
   }
 
+  // Valor actual del ajuste de "cuánto rebobina" para una transmisión —
+  // arranca en lo que tenga configurado esa transmisión (segundos_repeticion)
+  // hasta que Sebas lo mueva con los botones -/+.
+  function segundosAtrasDe(s) {
+    const base = Math.max(0, Number(s.segundos_repeticion) || 28)
+    return ajusteSegundos[s.id] ?? base
+  }
+  function ajustarSegundos(streamId, delta) {
+    setAjusteSegundos(a => {
+      const s = streams.find(x => x.id === streamId)
+      const actual = a[streamId] ?? Math.max(0, Number(s?.segundos_repeticion) || 28)
+      return { ...a, [streamId]: Math.max(0, actual + delta) }
+    })
+  }
+
   // Dispara una repetición manual (botón del panel) — a diferencia de la
   // automática (que espera el retraso configurado de la transmisión porque
   // reacciona sola a un gol), esta la aprieta a propósito quien está viendo
   // el video, así que en la portada se dispara de una, sin esperar nada.
-  function dispararRepeticion(streamId, camaraLenta) {
-    actualizarControl(streamId, { repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta })
+  // `repeticion_segundos_atras` manda el valor que se ajustó con los
+  // botones -/+ de arriba — así Sebas puede "devolver hasta donde quiera" en
+  // cada repetición, sin tener que cambiar la configuración guardada.
+  function dispararRepeticion(s, camaraLenta) {
+    actualizarControl(s.id, { repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta, repeticion_segundos_atras: segundosAtrasDe(s) })
   }
 
-  // Prende/apaga la gráfica de tabla de posiciones o goles encima del video.
-  // Para la tabla hace falta saber de qué torneo — se usa el del partido que
-  // ya tiene elegido esa transmisión (si tiene uno).
+  // Prende/apaga la gráfica de tabla de posiciones, goles o jugadores encima
+  // del video. Para la tabla hace falta saber de qué torneo — se usa el del
+  // partido que ya tiene elegido esa transmisión (si tiene uno).
   function cambiarOverlay(streamId, overlay, tournamentId) {
     actualizarControl(streamId, { overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
     if (overlay === 'tabla' && tournamentId) cargarTabla(tournamentId)
+  }
+
+  // Muestra la publicidad de un patrocinador encima del video unos segundos
+  // — a diferencia de los overlays de arriba, este no se queda prendido: se
+  // apaga solo (ver el efecto que escucha patrocinador_ts más arriba).
+  function mostrarPatrocinador(streamId, patrocinadorId) {
+    actualizarControl(streamId, { patrocinador_id: patrocinadorId, patrocinador_ts: Date.now() })
+  }
+
+  // Genera (o reutiliza) el link para manejar el panel de control desde otro
+  // celular, sin necesidad de iniciar sesión — se guarda de una vez en
+  // Supabase (no espera al botón "Guardar" de más abajo, para no compartir
+  // por error un link que todavía no quedó guardado).
+  async function generarLinkControl(streamId) {
+    const actual = streams.find(s => s.id === streamId)
+    if (actual?.control_token) return // ya tiene uno — no hace falta generar otro
+    const next = streams.map(s => s.id === streamId ? { ...s, control_token: crypto.randomUUID() } : s)
+    setStreams(next)
+    await guardarStreamsArray(next, { silencioso: true })
   }
 
   // Trae equipos + partidos de un torneo y calcula su tabla general una sola
@@ -207,12 +296,13 @@ export default function AdminConfigSitioPage() {
   // previa muestra EXACTAMENTE lo que ve quien está viendo la transmisión.
   function overlayDe(s, partidoSeleccionado) {
     const c = control[s.id]
-    // La gráfica de goles necesita que el partido esté REALMENTE en vivo
-    // (igual que ya exige el marcador) — si no, acá en la vista previa se
-    // vería una gráfica con datos viejos/de prueba que en la página pública
-    // nunca aparece (ahí si no está en vivo, directamente no se pinta nada),
-    // y eso es justo lo que confundía: se veía acá pero no allá.
+    // La gráfica de goles/jugadores necesita que el partido esté REALMENTE en
+    // vivo (igual que ya exige el marcador) — si no, acá en la vista previa
+    // se vería una gráfica con datos viejos/de prueba que en la página
+    // pública nunca aparece (ahí si no está en vivo, directamente no se
+    // pinta nada), y eso es justo lo que confundía: se veía acá pero no allá.
     const vivo = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
+    const patrocinador = patrocinadorMostrando[s.id] ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando[s.id]) : null
     return (
       <>
         {partidoSeleccionado && vivo && (
@@ -224,8 +314,16 @@ export default function AdminConfigSitioPage() {
             detalle: derivarFaltasYTarjetas(partidoSeleccionado),
           }}/>
         )}
-        {c?.overlay === 'goles' && partidoSeleccionado && vivo && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
-        {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]}/>}
+        {/* La publicidad de un patrocinador tapa, mientras dura, cualquier
+            otra gráfica de abajo (tabla/goles/jugadores) — son mutuamente
+            excluyentes en este mismo espacio para no amontonar texto. */}
+        {patrocinador ? <PatrocinadorEnVivoOverlay patrocinador={patrocinador}/> : (
+          <>
+            {c?.overlay === 'goles' && partidoSeleccionado && vivo && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
+            {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]}/>}
+            {c?.overlay === 'jugadores' && partidoSeleccionado && vivo && <JugadoresEnVivoOverlay partido={partidoSeleccionado}/>}
+          </>
+        )}
       </>
     )
   }
@@ -256,26 +354,57 @@ export default function AdminConfigSitioPage() {
               const partidoSeleccionado = partidos.find(p => p.id === s.match_id) || null
               const c = control[s.id] || {}
               const tieneTorneo = !!partidoSeleccionado?.tournament_id
+              const linkControl = s.control_token ? `${window.location.origin}/en-vivo-control/${s.control_token}` : null
               return (
                 <div key={s.id} style={{ border:`1px solid ${S.border}`, borderRadius:'10px', padding:'12px' }}>
                   <div style={{ fontSize:'.78rem', fontWeight:'700', color:'#fff', marginBottom:'10px' }}>
                     {s.titulo || (partidoSeleccionado ? `${partidoSeleccionado.home?.name || '?'} vs ${partidoSeleccionado.away?.name || '?'}` : 'Transmisión sin título')}
                   </div>
 
-                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LINK PARA MANEJAR DESDE OTRO CELULAR</div>
+                  {linkControl ? (
+                    <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
+                      <input readOnly value={linkControl} onFocus={e => e.target.select()}
+                        style={{ flex:1, background:'#161616', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'9px 10px', color:'#9aa0a6', fontSize:'.72rem' }}/>
+                      <button onClick={() => { navigator.clipboard?.writeText(linkControl); setCopiado(s.id); setTimeout(() => setCopiado(c2 => c2 === s.id ? null : c2), 2000) }}
+                        style={{ display:'flex', alignItems:'center', gap:'5px', padding:'9px 12px', background:'#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700', whiteSpace:'nowrap' }}>
+                        {copiado === s.id ? <><Check size={13} color={S.green}/> Copiado</> : <><Copy size={13}/> Copiar</>}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => generarLinkControl(s.id)}
+                      style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'14px', padding:'9px 14px', background:'#fff', border:'1px dashed #1a73e8', borderRadius:'8px', cursor:'pointer', color:'#1a73e8', fontSize:'.78rem', fontWeight:'700' }}>
+                      <Link2 size={14}/> Generar link de control
+                    </button>
+                  )}
+
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN — rebobina {segundosAtrasDe(s)}s</div>
+                  <div style={{ display:'flex', gap:'6px', marginBottom:'8px' }}>
+                    <button onClick={() => ajustarSegundos(s.id, -5)}
+                      style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'38px', padding:'8px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff' }}>
+                      <Minus size={14}/>
+                    </button>
+                    <button onClick={() => ajustarSegundos(s.id, 5)}
+                      style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'38px', padding:'8px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff' }}>
+                      <Plus size={14}/>
+                    </button>
+                    <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', color:'#9aa0a6' }}>
+                      más alto = repite desde más atrás
+                    </div>
+                  </div>
                   <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
-                    <button onClick={() => dispararRepeticion(s.id, false)}
+                    <button onClick={() => dispararRepeticion(s, false)}
                       style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:S.green, border:'none', borderRadius:'8px', cursor:'pointer', color:'#0a0a0a', fontSize:'.8rem', fontWeight:'700' }}>
                       <PlayCircle size={15}/> Repetición
                     </button>
-                    <button onClick={() => dispararRepeticion(s.id, true)}
+                    <button onClick={() => dispararRepeticion(s, true)}
                       style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:'#2a2a2a', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontSize:'.8rem', fontWeight:'700' }}>
                       <Gauge size={15}/> Cámara lenta
                     </button>
                   </div>
 
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
-                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: patrocinadoresBtn.length ? '14px' : 0 }}>
                     <button onClick={() => cambiarOverlay(s.id, null, null)}
                       style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: !c.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
                       <Ban size={13}/> Ninguna
@@ -290,10 +419,30 @@ export default function AdminConfigSitioPage() {
                       style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partidoSeleccionado ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: partidoSeleccionado ? 1 : .45 }}>
                       <ListOrdered size={13}/> Goles del partido
                     </button>
+                    <button onClick={() => cambiarOverlay(s.id, 'jugadores', null)}
+                      disabled={!partidoSeleccionado} title={partidoSeleccionado ? '' : 'Elige un partido para esta transmisión, así se sabe la nómina de quién mostrar'}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partidoSeleccionado ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: partidoSeleccionado ? 1 : .45 }}>
+                      <Users size={13}/> Jugadores
+                    </button>
                   </div>
+
+                  {patrocinadoresBtn.length > 0 && (
+                    <>
+                      <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
+                      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                        {patrocinadoresBtn.map(p => (
+                          <button key={p.id} onClick={() => mostrarPatrocinador(s.id, p.id)}
+                            style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
+                            <Megaphone size={13}/> {p.nombre}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
                   {partidoSeleccionado && !partidoSeleccionado.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#f5a623', marginTop:'10px' }}>
-                      ⚠️ Este partido todavía no está en vivo (el árbitro no ha empezado la planilla) — la gráfica de goles no se ve hasta que empiece, aunque la dejes prendida de una vez.
+                      ⚠️ Este partido todavía no está en vivo (el árbitro no ha empezado la planilla) — las gráficas de goles/jugadores no se ven hasta que empiece, aunque las dejes prendidas de una vez.
                     </div>
                   )}
                 </div>
