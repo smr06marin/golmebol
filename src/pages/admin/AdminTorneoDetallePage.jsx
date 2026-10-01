@@ -1671,6 +1671,9 @@ Vos configurás la PRIMERA ronda (cuántos clasifican, cómo se arman esas llave
 Por eso, un torneo con pases directos, repechajes y reglas de ida/vuelta distintas por ronda en varias rondas CASI SIEMPRE se logra solo con: cuántos clasifican a la primera ronda + estilo de la primera ronda + qué hacer si queda impar (bye o mejor perdedor) + las excepciones puntuales de ida/vuelta por fase que haga falta — el resto se va resolviendo solo, ronda a ronda. Cuando el organizador describa algo así, armá esa configuración completa y explicale en el "mensaje" qué quedó fijo para la primera ronda y qué excepciones quedaron guardadas para más adelante, en vez de decirle que no se puede.
 El ÚNICO límite real: en una misma ronda solo puede haber UN equipo con pase directo (no se puede repartir el pase directo entre varios equipos a la vez en la misma ronda). Si lo que pide de verdad necesita dos o más pases directos simultáneos en la MISMA ronda, ahí sí avisale con claridad qué parte no se puede tal cual la describió, y ofrecele la alternativa más parecida (por ejemplo, correr ese pase directo para la ronda siguiente, o ajustar el número de clasificados para que no sobren tantos).
 
+MUY IMPORTANTE — pensá antes de responder, para no contradecirte: podés escribir en texto libre, ANTES del bloque <<<RESPUESTA>>>, todas las cuentas y el razonamiento que necesites (cuántos equipos quedan, qué opción conviene, revisar que no se contradiga con algo que ya dijiste) — ese texto de antes el organizador NUNCA lo ve, porque el sistema solo toma lo que esté entre <<<RESPUESTA>>> y <<<FIN>>>. Pero el "mensaje" que va DENTRO de ese bloque tiene que ser ya la versión final y resuelta: nunca escribas ahí dudas, cuentas a medio hacer, ni cambios de opinión en plena frase (nada de "espera, no, déjame replantear esto"), y nunca definas la misma opción dos veces de formas distintas o contradictorias. Si te das cuenta de que algo no te cuadra, resolvelo ANTES del bloque, no dentro de él — lo que lee el organizador tiene que ser una sola respuesta coherente de punta a punta.
+Caso típico que hay que resolver bien con esto: si el organizador pide que MÁS DE UN equipo pase directo a la ronda siguiente sin jugar en la MISMA ronda (ej. "que jueguen 8 y los otros 2 pasen directo a cuartos"), eso choca con el único límite real de arriba, aunque sea una forma común de armar un cuadro — NO se puede tal cual. Decíselo en una sola frase clara y sin ambigüedad, y ofrecele SOLO alternativas que el sistema sí pueda hacer, por ejemplo: (a) que pase directo nada más el mejor ubicado de esos equipos, y el resto (incluidos los que iban a pasar directo) jueguen esta ronda, o (b) que jueguen TODOS los clasificados esta ronda, sin ningún pase directo por ahora. No improvises una tercera opción a medio camino ni te contradigas sobre cuál de los dos esquemas estás proponiendo.
+
 MUY IMPORTANTE — cómo explicarle las cosas al organizador: muchos organizadores no conocen los términos técnicos ("bye", "mejor perdedor", "ida y vuelta", "cruzado", etc.) — nunca asumas que sí los entienden ni los uses sin explicarlos. Cuando haya que resolver algo que tiene más de una forma razonable de jugarse y el organizador no dejó clara cuál prefiere, explicale las opciones en palabras simples y concretas (qué pasa de verdad con los equipos, no el nombre técnico de la regla), para que él mire cuál le sirve y decida, en vez de que vos lo asumas en silencio:
 - El caso más importante es el número impar en la primera ronda: si al calcular cuántos clasifican en total te queda un número impar, cuando no sea evidente por lo que te contó cuál de las dos formas prefiere, preguntale puntualmente (listo=false) mostrando las dos opciones en palabras simples: (1) alguien se queda sin rival esta vez y pasa directo a la ronda siguiente sin jugar, o (2) se agrega un equipo más (el siguiente mejor ubicado entre los que no habían clasificado) para que todos tengan partido en esta ronda. Si ya es evidente cuál prefiere (lo mencionó aunque sea de pasada), o si te pidieron una propuesta completa de una, elegí la que más se ajuste a lo que dijo y ACLARÁSELO igual en el "mensaje", en palabras simples, para que lo pueda corregir ahí mismo si no es lo que quería.
 - Para cualquier otra cosa que hayas completado con un valor por defecto porque no la mencionó (ida/vuelta, tercer puesto, estilo de llaves, fecha), no lo dejes en silencio: nombralo en el resumen del "mensaje", en palabras simples, como parte de lo que armaste. El organizador puede seguir escribiéndote después de que ya armaste una propuesta (el cuadro para escribir sigue disponible), así que no hace falta preguntarlo todo de entrada — alcanza con que el resumen sea lo bastante claro como para que note si algo no le sirve y te pida el cambio.
@@ -1692,7 +1695,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const res = await fetch('/api/generar-noticia', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify({ messages: mensajes, maxTokens: 700 }),
+      // 700 se quedaba corto apenas el caso tenía varias cuentas (ej. número
+      // impar + varias fases) — la IA necesita espacio para pensarlo en texto
+      // libre ANTES del bloque de respuesta (ver ELIM_CHAT_INSTRUCCION) sin
+      // que el bloque final se corte a la mitad por quedarse sin tokens.
+      body: JSON.stringify({ messages: mensajes, maxTokens: 1600 }),
     })
     let data
     try { data = await res.json() } catch { data = null }
@@ -1703,8 +1710,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   function parseRespuestaElimIA(texto) {
-    const m = texto.match(/<<<RESPUESTA>>>([\s\S]*?)<<<FIN>>>/)
-    const bruto = m ? m[1] : texto
+    // Busca el JSON SOLO después de <<<RESPUESTA>>> (y antes de <<<FIN>>> si
+    // llegó completo) — nunca en el texto de ANTES del marcador, que ahora
+    // puede traer el razonamiento en voz alta de la IA (ver
+    // ELIM_CHAT_INSTRUCCION): si se buscara el primer '{' en todo el texto,
+    // una llave suelta de ese razonamiento podría parsearse por error como
+    // si fuera la configuración real.
+    const inicioMarcador = texto.indexOf('<<<RESPUESTA>>>')
+    if (inicioMarcador === -1) throw new Error('No se entendió la respuesta de la IA, intenta reformular')
+    const desdeMarcador = texto.slice(inicioMarcador + '<<<RESPUESTA>>>'.length)
+    const finMarcador = desdeMarcador.indexOf('<<<FIN>>>')
+    const bruto = finMarcador === -1 ? desdeMarcador : desdeMarcador.slice(0, finMarcador)
     const inicio = bruto.indexOf('{')
     const fin = bruto.lastIndexOf('}')
     if (inicio === -1 || fin === -1) throw new Error('No se entendió la respuesta de la IA, intenta reformular')
