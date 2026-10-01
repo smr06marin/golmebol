@@ -723,8 +723,15 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       // para que no desaparezca el campeón mientras se juega la siguiente.
       const raizId = t?.torneo_padre_id || t?.id
       if (raizId) {
-        const { data: edsData } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
+        let { data: edsData, error: errEds } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
           .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)
+        if (errEds && (errEds.message || '').includes('archivado')) {
+          // Falta migracion_archivar_torneos.sql: se reintenta sin esa columna
+          // para que el botón de ediciones y el campeón vigente no se queden
+          // sin mostrar solo por eso.
+          ;({ data: edsData } = await supabase.from('tournaments').select('id, name, edicion, status')
+            .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`))
+        }
         const edicionesList = (edsData || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1))
         setEdiciones(edicionesList)
         if (edicionesList.length > 1) {

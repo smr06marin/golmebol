@@ -1085,8 +1085,15 @@ export default function AdminTorneoDetallePage() {
   const fetchEdiciones = useCallback(async () => {
     if (!torneo?.id) return
     const raizId = torneo.torneo_padre_id || torneo.id
-    const { data } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
+    let { data, error } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
       .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)
+    if (error && (error.message || '').includes('archivado')) {
+      // Falta migracion_archivar_torneos.sql: se reintenta sin esa columna
+      // para que la lista de ediciones (y el campeón vigente) no desaparezcan
+      // solo porque todavía no se corrió esa migración en Supabase.
+      data = (await supabase.from('tournaments').select('id, name, edicion, status')
+        .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)).data
+    }
     setEdiciones((data || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1)))
   }, [torneo?.id, torneo?.torneo_padre_id])
 
@@ -2553,12 +2560,21 @@ export default function AdminTorneoDetallePage() {
     // disponible desde "Ver archivados" en Torneos, o desde el link
     // "Ver ediciones" que va a aparecer en la edición nueva. Si esto falla
     // (por ejemplo si falta la migración), no frena la creación de la
-    // edición nueva — solo no se oculta sola de la lista.
+    // edición nueva — pero se avisa claro (antes quedaba solo en la consola,
+    // invisible, y el torneo viejo se quedaba sin archivar sin que se notara).
+    let faltaMigracionArchivar = false
     try {
       const { error: errArchivar } = await supabase.from('tournaments').update({ archivado: true }).eq('id', torneo.id)
-      if (errArchivar && !(errArchivar.message || '').includes('archivado')) console.error('No se pudo archivar la edición anterior:', errArchivar)
-    } catch { /* falta migracion_archivar_torneos.sql — no es grave, se puede archivar a mano después */ }
-    showMsg(`${nombre} creada ✓ — con el mismo escudo, sistema de puntos y configuración de ${torneo.name} (cambiá precios, cupos o equipos cuando quieras); el torneo anterior queda guardado con todo su historial y archivado`)
+      if (errArchivar) {
+        if ((errArchivar.message || '').includes('archivado')) faltaMigracionArchivar = true
+        else console.error('No se pudo archivar la edición anterior:', errArchivar)
+      }
+    } catch { faltaMigracionArchivar = true }
+    if (faltaMigracionArchivar) {
+      showMsg(`${nombre} creada ✓, pero el torneo anterior NO se pudo archivar porque falta correr migracion_archivar_torneos.sql en Supabase — mientras tanto vas a ver los dos en la lista de Torneos (podés archivarlo a mano apenas corras esa migración)`, 'error')
+    } else {
+      showMsg(`${nombre} creada ✓ — con el mismo escudo, sistema de puntos y configuración de ${torneo.name} (cambiá precios, cupos o equipos cuando quieras); el torneo anterior queda guardado con todo su historial y archivado`)
+    }
     navigate(`/admin/torneos/${data.id}`)
     setTab('actividad')
   }
