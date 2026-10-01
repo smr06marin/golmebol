@@ -257,6 +257,22 @@ export default function EnVivoControlLinkPage() {
               <Gauge size={17}/> Cámara lenta
             </button>
           </div>
+
+          {/* Repetición automática por gol (la que dispara sola la página pública
+              apenas el árbitro marca un gol, calculando un punto aproximado) — se
+              puede apagar para que los goles del árbitro SOLO actualicen el marcador
+              (eso sigue siempre, en tiempo real) sin disparar ninguna repetición
+              sola; ahí uno se encarga de todas a mano, con los botones de arriba,
+              en el momento exacto que quiera. */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginTop:'10px', padding:'10px 12px', background:'#161616', border:`1px solid ${S.border}`, borderRadius:'10px' }}>
+            <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>
+              Repetición automática al marcar un gol el árbitro (el marcador siempre se actualiza solo, esto es solo la repetición)
+            </div>
+            <button onClick={() => actualizarControl({ repeticion_automatica_desactivada: !control.repeticion_automatica_desactivada })}
+              style={{ flexShrink:0, padding:'8px 12px', background: control.repeticion_automatica_desactivada ? '#2a2a2a' : S.green, border:'none', borderRadius:'8px', cursor:'pointer', color: control.repeticion_automatica_desactivada ? '#9aa0a6' : '#0a0a0a', fontSize:'.76rem', fontWeight:'700', whiteSpace:'nowrap' }}>
+              {control.repeticion_automatica_desactivada ? 'Desactivada' : 'Activada'}
+            </button>
+          </div>
         </div>
 
         <div style={{ marginTop:'14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>

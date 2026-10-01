@@ -34,9 +34,12 @@ export default function AdminConfigSitioPage() {
   // Panel de control en vivo: qué gráfica extra (tabla/goles) se muestra por
   // transmisión y el disparador de la repetición manual — ver
   // migracion_en_vivo_control.sql. { [streamId]: { overlay, overlay_tournament_id, repeticion_ts,
-  // repeticion_camara_lenta, repeticion_objetivo_segundos, resumen_goles, resumen_ts } } —
-  // resumen_goles/resumen_ts son el resumen automático de goles del entretiempo (ver el
-  // efecto más abajo que los guarda solo y los dispara solo).
+  // repeticion_camara_lenta, repeticion_objetivo_segundos, repeticion_automatica_desactivada,
+  // resumen_goles, resumen_ts } } — resumen_goles/resumen_ts son el resumen automático de
+  // goles del entretiempo (ver el efecto más abajo que los guarda solo y los dispara solo);
+  // repeticion_automatica_desactivada apaga la repetición que LandingPage dispara sola apenas
+  // el árbitro marca un gol (el resumen de goles y el marcador siguen funcionando igual,
+  // apagar esto solo afecta esa repetición inmediata y aproximada).
   const [control, setControl] = useState({})
   // Tablas de posiciones ya calculadas, en caché por torneo, para no volver a
   // pedirlas cada vez que se prende/apaga el overlay del mismo torneo.
@@ -534,6 +537,22 @@ export default function AdminConfigSitioPage() {
                     <button onClick={() => dispararRepeticion(s, true)}
                       style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:'#2a2a2a', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontSize:'.8rem', fontWeight:'700' }}>
                       <Gauge size={15}/> Cámara lenta
+                    </button>
+                  </div>
+
+                  {/* Repetición automática por gol (la que dispara sola LandingPage
+                      apenas el árbitro marca un gol, calculando un punto aproximado) —
+                      se puede apagar para que los goles del árbitro SOLO actualicen el
+                      marcador (eso sigue siempre, en tiempo real) sin disparar ninguna
+                      repetición sola; ahí uno se encarga de todas a mano, con los
+                      botones de arriba, en el momento exacto que quiera. */}
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'14px', padding:'10px 12px', background:'#161616', border:`1px solid ${S.border}`, borderRadius:'8px' }}>
+                    <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>
+                      Repetición automática al marcar un gol el árbitro (el marcador siempre se actualiza solo, esto es solo la repetición)
+                    </div>
+                    <button onClick={() => actualizarControl(s.id, { repeticion_automatica_desactivada: !c?.repeticion_automatica_desactivada })}
+                      style={{ flexShrink:0, padding:'8px 12px', background: c?.repeticion_automatica_desactivada ? '#2a2a2a' : S.green, border:'none', borderRadius:'8px', cursor:'pointer', color: c?.repeticion_automatica_desactivada ? '#9aa0a6' : '#0a0a0a', fontSize:'.76rem', fontWeight:'700', whiteSpace:'nowrap' }}>
+                      {c?.repeticion_automatica_desactivada ? 'Desactivada' : 'Activada'}
                     </button>
                   </div>
 

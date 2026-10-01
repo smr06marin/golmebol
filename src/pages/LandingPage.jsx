@@ -453,6 +453,15 @@ export default function LandingPage() {
   // falta al video para "alcanzar" el momento del gol, así que cuando por
   // fin se dispara, el gol ya pasó en la transmisión y el rebobinado sí lo
   // agarra.
+  //
+  // repeticion_automatica_desactivada (botón nuevo en el panel de control):
+  // apaga ESTA repetición automática y aproximada, nada más — el marcador
+  // sigue actualizándose solo en tiempo real pase lo que pase acá, y el
+  // resumen de goles del entretiempo (ver AdminConfigSitioPage) también
+  // sigue guardando los goles igual. Con esto apagado, cada repetición se
+  // dispara a mano desde el panel (botón "Repetición"), con el punto exacto
+  // que Sebas elija devolviéndose con la barra de YouTube — más preciso que
+  // el cálculo aproximado de acá.
   const golesAnterioresRef = useRef({}) // { [matchId]: { local, vis } }
   const repeticionContadorRef = useRef(0)
   const repeticionTimersRef = useRef([]) // ids de los setTimeout de espera, para limpiarlos si el componente se desmonta
@@ -465,7 +474,14 @@ export default function LandingPage() {
       if (!partido?.vivo) return
       const anterior = golesAnterioresRef.current[s.match_id]
       const actual = { local: partido.vivo.golesLocal || 0, vis: partido.vivo.golesVis || 0 }
-      if (anterior && (actual.local > anterior.local || actual.vis > anterior.vis)) {
+      // repeticion_automatica_desactivada (botón del panel de control): el
+      // marcador de arriba (partido.vivo) se sigue actualizando siempre, en
+      // tiempo real, pase lo que pase acá — esto SOLO apaga la repetición
+      // que se dispara sola y aproximada; con esto apagado, Sebas se encarga
+      // de todas a mano, con el botón de Repetición, en el momento exacto
+      // que él vea que corresponde.
+      const automaticaApagada = !!(siteConfig?.en_vivo_control || {})[s.id]?.repeticion_automatica_desactivada
+      if (anterior && !automaticaApagada && (actual.local > anterior.local || actual.vis > anterior.vis)) {
         const imagenUrl = imagenesRepeticion.length
           ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
           : null
@@ -485,7 +501,7 @@ export default function LandingPage() {
       }
       golesAnterioresRef.current[s.match_id] = actual
     })
-  }, [partidosVivo, streamsVivos, imagenesRepeticion])
+  }, [partidosVivo, streamsVivos, imagenesRepeticion, siteConfig])
 
   useEffect(() => () => repeticionTimersRef.current.forEach(clearTimeout), [])
 
