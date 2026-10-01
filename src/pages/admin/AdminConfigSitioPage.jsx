@@ -56,6 +56,15 @@ export default function AdminConfigSitioPage() {
   const [ajusteSegundos, setAjusteSegundos] = useState({})
   // Qué link se acaba de copiar (para el "✓ Copiado" de 2 segundos del botón)
   const [copiado, setCopiado] = useState(null)
+  // Repetición EN ESTA MISMA pantalla — antes el video de acá no se movía al
+  // apretar "Repetición" (solo se avisaba a los demás), así que Sebas no
+  // tenía forma de ver hasta qué parte rebobinaba antes de que lo vieran los
+  // demás. Ahora el video de este panel rebobina al mismo tiempo que el del
+  // público, con el mismo ajuste de segundos — mismo patrón que ya usa
+  // LandingPage para la repetición manual.
+  const [repeticiones, setRepeticiones] = useState({})
+  const repeticionVistaRef = useRef({})
+  const repeticionContadorRef = useRef(0)
 
   // Partidos que se pueden elegir para el marcador: cualquiera que no haya
   // terminado (para poder elegirlo desde antes de que arranque). Se marcan
@@ -93,6 +102,25 @@ export default function AdminConfigSitioPage() {
       setTimeout(() => setPatrocinadorMostrando(m => ({ ...m, [streamId]: null })), TIEMPO_PATROCINADOR_MS)
     })
   }, [control])
+
+  // Apenas cambia repeticion_ts (botón "Repetición"/"Cámara lenta" de acá
+  // mismo, o disparada desde el link de control en otro celular), rebobina
+  // también el video de ESTA pantalla, para que se vea con los propios ojos
+  // hasta dónde llegó el rebobinado — antes de que termine de verse en la
+  // página pública.
+  useEffect(() => {
+    Object.entries(control).forEach(([streamId, c]) => {
+      if (!c?.repeticion_ts || repeticionVistaRef.current[streamId] === c.repeticion_ts) return
+      repeticionVistaRef.current[streamId] = c.repeticion_ts
+      const imagenUrl = imagenesRepeticion.length
+        ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
+        : null
+      repeticionContadorRef.current += 1
+      const s = streams.find(x => x.id === streamId)
+      const segundosAtras = Math.max(0, Number(c.repeticion_segundos_atras ?? s?.segundos_repeticion) || 28)
+      setRepeticiones(r => ({ ...r, [streamId]: { key: Date.now(), segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+    })
+  }, [control, streams, imagenesRepeticion])
 
   async function fetchConfig() {
     setLoading(true)
@@ -361,6 +389,20 @@ export default function AdminConfigSitioPage() {
                     {s.titulo || (partidoSeleccionado ? `${partidoSeleccionado.home?.name || '?'} vs ${partidoSeleccionado.away?.name || '?'}` : 'Transmisión sin título')}
                   </div>
 
+                  {/* El video va JUSTO acá, pegado a los botones de abajo, y
+                      ahora rebobina en vivo cuando se aprieta Repetición —
+                      así se ve con los propios ojos hasta qué parte llegó el
+                      rebobinado, en vez de confiar a ciegas en el número de
+                      segundos. */}
+                  <div style={{ marginBottom:'14px' }}>
+                    <LiveEmbed url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
+                  </div>
+                  {s.match_id && !partidoSeleccionado?.enVivo && (
+                    <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>
+                      Elegiste un partido para el marcador, pero todavía no está en vivo (el árbitro no ha empezado la planilla) — por eso no se ve acá. Apenas empiece, aparece solo.
+                    </div>
+                  )}
+
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LINK PARA MANEJAR DESDE OTRO CELULAR</div>
                   {linkControl ? (
                     <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
@@ -389,7 +431,7 @@ export default function AdminConfigSitioPage() {
                       <Plus size={14}/>
                     </button>
                     <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', color:'#9aa0a6' }}>
-                      más alto = repite desde más atrás
+                      más alto = repite desde más atrás. Al apretar, mira el video de acá arriba: rebobina igual que lo que ve el público.
                     </div>
                   </div>
                   <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
@@ -578,27 +620,12 @@ export default function AdminConfigSitioPage() {
         </label>
       </div>
 
-      {streamsPreview.length > 0 && (
-        <div style={{ marginTop:'24px' }}>
-          <div style={{ fontSize:'.8rem', color:'#5f6368', fontWeight:'600', marginBottom:'10px' }}>Vista previa (así se ve en la página de inicio):</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
-            {streamsPreview.map(s => {
-              const partidoSeleccionado = partidos.find(p => p.id === s.match_id) || null
-              return (
-                <div key={s.id} style={{ background:S.bg, borderRadius:'16px', padding:'16px' }}>
-                  {s.titulo && <div style={{ color:'#9aa0a6', fontWeight:'700', fontSize:'.8rem', marginBottom:'10px' }}>{s.titulo}</div>}
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)}/>
-                  {s.match_id && !partidoSeleccionado?.enVivo && (
-                    <div style={{ fontSize:'.7rem', color:'#9aa0a6', marginTop:'10px', textAlign:'center' }}>
-                      Elegiste un partido para el marcador, pero todavía no está en vivo (el árbitro no ha empezado la planilla) — por eso no se ve acá. Apenas empiece, aparece solo.
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* La vista previa del video (con overlays y repetición) ya se ve
+          arriba, adentro de "Panel de control en vivo" — antes había otra
+          acá abajo, aparte, pero era OTRO reproductor sin conectar: al
+          apretar Repetición ese de acá no se movía, y daba la sensación de
+          que no estaba funcionando. Un solo reproductor por transmisión, no
+          dos. */}
     </div>
   )
 }
