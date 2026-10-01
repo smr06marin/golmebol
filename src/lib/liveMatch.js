@@ -303,3 +303,46 @@ export function marcadorGlobal(match, hermano) {
   const otroVisitante = invertido ? otro.local      : otro.visitante
   return { local: propio.local + otroLocal, visitante: propio.visitante + otroVisitante, hayHermano: true }
 }
+
+// ── Varios partidos en una misma transmisión ────────────────────────────
+// Antes cada transmisión (site_config.en_vivo_streams) solo podía tener UN
+// partido para el marcador (match_id). Ahora puede tener varios
+// (match_ids) — para cuando en una misma cancha se juegan varios partidos
+// seguidos sin cortar la transmisión — y el marcador va cambiando solo al
+// que el árbitro tenga abierto en la planilla en cada momento. match_id se
+// sigue leyendo para las transmisiones que se armaron antes de que
+// existiera match_ids, así ninguna se queda sin marcador por este cambio.
+
+// Ids de partidos configurados para una transmisión, en el orden en que se
+// agregaron — ese orden es el que se usa para decidir cuál es "el que
+// sigue" cuando ninguno está en vivo todavía.
+export function idsPartidosDeStream(stream) {
+  if (Array.isArray(stream?.match_ids) && stream.match_ids.length > 0) return stream.match_ids
+  return stream?.match_id ? [stream.match_id] : []
+}
+
+// De una lista de partidos (los configurados en la transmisión), elige cuál
+// mostrar ahora mismo: el que está en vivo (el árbitro ya tiene la planilla
+// abierta); si ninguno está en vivo todavía, el próximo que no se ha
+// jugado (para que se vea "A vs B" mientras arranca); si ya se jugaron
+// todos, el último (para que el marcador final se quede en pantalla en vez
+// de desaparecer de un momento a otro).
+export function elegirPartidoActivo(candidatos) {
+  if (!candidatos || candidatos.length === 0) return null
+  const enVivo = candidatos.find(p => derivarEnVivo(p))
+  if (enVivo) return enVivo
+  const pendiente = candidatos.find(p => p.status !== 'finished')
+  if (pendiente) return pendiente
+  return candidatos[candidatos.length - 1]
+}
+
+// Junta los dos pasos de arriba cuando ya se tiene cargada una lista de
+// partidos disponibles (por ejemplo, los no finalizados que ya trae la
+// página) — saca los ids de la transmisión y elige, de esos, cuál está en
+// esa lista.
+export function partidoActivoDeStream(stream, partidosDisponibles) {
+  const ids = idsPartidosDeStream(stream)
+  if (ids.length === 0) return null
+  const candidatos = ids.map(id => (partidosDisponibles || []).find(p => p.id === id)).filter(Boolean)
+  return elegirPartidoActivo(candidatos)
+}

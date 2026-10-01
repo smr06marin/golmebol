@@ -9,7 +9,7 @@ import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
-import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, extraerGoles } from '../../lib/liveMatch'
+import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, extraerGoles, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
 import { computeTablaGeneral } from '../../lib/torneoTablas'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
@@ -22,7 +22,7 @@ const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'blo
 const NOMBRE_PLATAFORMA = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', otro: 'Enlace genérico (se mostrará un botón "Ver en vivo")' }
 
 function streamVacio() {
-  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, activo: true, retraso_segundos: 20, segundos_repeticion: 28 }
+  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, match_ids: [], activo: true, retraso_segundos: 20, segundos_repeticion: 28 }
 }
 
 export default function AdminConfigSitioPage() {
@@ -218,18 +218,18 @@ export default function AdminConfigSitioPage() {
   // lista.
   useEffect(() => {
     streams.forEach(s => {
-      if (!s.activo || !s.match_id) return
-      const partido = partidos.find(p => p.id === s.match_id)
+      if (!s.activo) return
+      const partido = partidoActivoDeStream(s, partidos)
       if (!partido) return
       const vivo = derivarEnVivo(partido)
       if (!vivo) return
 
       if (vivo.periodo === 1) {
         const golesActuales = extraerGoles(partido).filter(g => g.periodo === 1)
-        const anteriores = golesGuardadosRef.current[s.match_id] || []
+        const anteriores = golesGuardadosRef.current[partido.id] || []
         const nuevos = golesNuevos(golesActuales, anteriores)
         if (nuevos.length) {
-          golesGuardadosRef.current[s.match_id] = golesActuales // marcado de una, antes de esperar, para no procesar los mismos goles dos veces si este efecto vuelve a correr mientras tanto
+          golesGuardadosRef.current[partido.id] = golesActuales // marcado de una, antes de esperar, para no procesar los mismos goles dos veces si este efecto vuelve a correr mientras tanto
           const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 20) * 1000
           const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
           nuevos.forEach(gol => {
@@ -246,8 +246,8 @@ export default function AdminConfigSitioPage() {
       // gol guardado), se avisa una sola vez para que arranque solo el
       // resumen en la página pública — aunque el descanso dure un rato y
       // este efecto se siga corriendo mientras tanto, no se repite.
-      if (vivo.descanso && !descansoDisparadoRef.current[s.match_id] && (control[s.id]?.resumen_goles || []).length > 0) {
-        descansoDisparadoRef.current[s.match_id] = true
+      if (vivo.descanso && !descansoDisparadoRef.current[partido.id] && (control[s.id]?.resumen_goles || []).length > 0) {
+        descansoDisparadoRef.current[partido.id] = true
         actualizarControl(s.id, { resumen_ts: Date.now() })
       }
     })
@@ -283,6 +283,7 @@ export default function AdminConfigSitioPage() {
         url: (s.url || '').trim() || null,
         titulo: (s.titulo || '').trim() || null,
         match_id: s.match_id || null,
+        match_ids: Array.isArray(s.match_ids) && s.match_ids.length > 0 ? s.match_ids : null,
         activo: !!s.activo,
         retraso_segundos: Number(s.retraso_segundos) || 20,
         segundos_repeticion: Number(s.segundos_repeticion) || 28,
@@ -596,7 +597,7 @@ export default function AdminConfigSitioPage() {
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
             {streamsPreview.map(s => {
-              const partidoSeleccionado = partidos.find(p => p.id === s.match_id) || null
+              const partidoSeleccionado = partidoActivoDeStream(s, partidos)
               const c = control[s.id] || {}
               const tieneTorneo = !!partidoSeleccionado?.tournament_id
               const linkControl = s.control_token ? `${window.location.origin}/en-vivo-control/${s.control_token}` : null
@@ -614,7 +615,7 @@ export default function AdminConfigSitioPage() {
                   <div style={{ marginBottom:'14px' }}>
                     <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
                   </div>
-                  {s.match_id && !partidoSeleccionado?.enVivo && (
+                  {idsPartidosDeStream(s).length > 0 && !partidoSeleccionado?.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>
                       Elegiste un partido para el marcador, pero todavía no está en vivo (el árbitro no ha empezado la planilla) — por eso no se ve acá. Apenas empiece, aparece solo.
                     </div>
@@ -839,17 +840,51 @@ export default function AdminConfigSitioPage() {
                 </div>
 
                 <div>
-                  <label style={lbl}>Marcador encima del video (opcional)</label>
-                  <select value={s.match_id || ''} onChange={e => actualizarStream(s.id, 'match_id', e.target.value || null)} style={inp}>
-                    <option value="">— Sin marcador (solo el video) —</option>
-                    {partidos.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.enVivo ? '🔴 ' : ''}{p.tournaments?.name ? p.tournaments.name + ' — ' : ''}{p.home?.name || '?'} vs {p.away?.name || '?'}{p.played_at ? ' · ' + fmtHoraDate(p.played_at) : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <label style={lbl}>Partidos con marcador en esta transmisión (opcional)</label>
+                  <div style={{ fontSize:'.72rem', color:'#5f6368', marginBottom:'8px' }}>
+                    Agrega los partidos que se juegan seguidos en esta misma transmisión (por ejemplo, los 3 partidos del día en esa cancha, sin cortar el video entre uno y otro) — el marcador va cambiando solo al que el árbitro tenga abierto en la planilla en cada momento; cuando termina uno y el árbitro abre el siguiente, el marcador salta solo.
+                  </div>
+                  {(() => {
+                    const ids = idsPartidosDeStream(s)
+                    const agregados = ids.map(id => partidos.find(p => p.id === id)).filter(Boolean)
+                    const yaJugados = ids.length - agregados.length
+                    const disponibles = partidos.filter(p => !ids.includes(p.id))
+                    return (
+                      <>
+                        {agregados.length > 0 && (
+                          <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom:'10px' }}>
+                            {agregados.map(p => (
+                              <div key={p.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'7px 10px' }}>
+                                <span style={{ fontSize:'.78rem', color:'#202124' }}>
+                                  {p.enVivo ? '🔴 ' : ''}{p.tournaments?.name ? p.tournaments.name + ' — ' : ''}{p.home?.name || '?'} vs {p.away?.name || '?'}{p.played_at ? ' · ' + fmtHoraDate(p.played_at) : ''}
+                                </span>
+                                <button type="button" onClick={() => actualizarStream(s.id, 'match_ids', ids.filter(id => id !== p.id))}
+                                  aria-label="Quitar este partido de la transmisión"
+                                  style={{ display:'flex', background:'none', border:'none', color:'#d93025', cursor:'pointer', padding:'2px' }}>
+                                  <X size={14}/>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {yaJugados > 0 && (
+                          <div style={{ fontSize:'.7rem', color:'#5f6368', marginBottom:'10px' }}>
+                            + {yaJugados} partido{yaJugados > 1 ? 's' : ''} ya jugado{yaJugados > 1 ? 's' : ''} en esta transmisión (quedan contados igual, no hace falta hacer nada con ellos).
+                          </div>
+                        )}
+                        <select value="" onChange={e => { if (e.target.value) actualizarStream(s.id, 'match_ids', [...ids, e.target.value]) }} style={inp}>
+                          <option value="">{agregados.length > 0 || yaJugados > 0 ? '+ Agregar otro partido…' : '— Sin marcador (solo el video) —'}</option>
+                          {disponibles.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.enVivo ? '🔴 ' : ''}{p.tournaments?.name ? p.tournaments.name + ' — ' : ''}{p.home?.name || '?'} vs {p.away?.name || '?'}{p.played_at ? ' · ' + fmtHoraDate(p.played_at) : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )
+                  })()}
                   <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
-                    Si eliges el partido que se transmite acá, se muestra su marcador en vivo (el mismo que ya sube el árbitro desde la planilla) como una barra encima del video. Aparece solo, apenas el árbitro empieza a cargar el partido.
+                    Si eliges el partido (o partidos) que se transmiten acá, se muestra su marcador en vivo (el mismo que ya sube el árbitro desde la planilla) como una barra encima del video. Aparece solo, apenas el árbitro empieza a cargar el partido.
                   </div>
                 </div>
               </div>

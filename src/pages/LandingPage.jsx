@@ -4,7 +4,7 @@ import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, Arrow
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
@@ -398,7 +398,7 @@ export default function LandingPage() {
   // 20s del refresco normal) — así, apenas el árbitro anota un gol, la
   // repetición sale de una y no varios segundos tarde.
   useEffect(() => {
-    const hayMarcadorActivo = streamsVivos.some(s => s.match_id)
+    const hayMarcadorActivo = streamsVivos.some(s => idsPartidosDeStream(s).length > 0)
     if (!hayMarcadorActivo) return
     const timer = { current: null }
     const channel = supabase
@@ -470,10 +470,9 @@ export default function LandingPage() {
 
   useEffect(() => {
     streamsVivos.forEach(s => {
-      if (!s.match_id) return
-      const partido = partidosVivo.find(m => m.id === s.match_id)
+      const partido = partidoActivoDeStream(s, partidosVivo)
       if (!partido?.vivo) return
-      const anterior = golesAnterioresRef.current[s.match_id]
+      const anterior = golesAnterioresRef.current[partido.id]
       const actual = { local: partido.vivo.golesLocal || 0, vis: partido.vivo.golesVis || 0 }
       // repeticion_automatica_desactivada (botón del panel de control): el
       // marcador de arriba (partido.vivo) se sigue actualizando siempre, en
@@ -500,7 +499,7 @@ export default function LandingPage() {
         }, retrasoMs)
         repeticionTimersRef.current.push(timerId)
       }
-      golesAnterioresRef.current[s.match_id] = actual
+      golesAnterioresRef.current[partido.id] = actual
     })
   }, [partidosVivo, streamsVivos, imagenesRepeticion, siteConfig])
 
@@ -866,7 +865,7 @@ export default function LandingPage() {
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             {streamsVivos.map(s => {
-              const partidoDeStream = s.match_id ? (partidosVivo.find(m => m.id === s.match_id) || null) : null
+              const partidoDeStream = partidoActivoDeStream(s, partidosVivo)
               const controlStream = siteConfig?.en_vivo_control?.[s.id]
               const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
               const sponsorMostrando = patrocinadorIdMostrando ? patrocinadores.find(p => p.id === patrocinadorIdMostrando) : null
