@@ -471,22 +471,21 @@ export default function LandingPage() {
   }
 
   async function fetchTorneosActivos() {
-    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at, archivado').eq('status', 'active')
-    if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, archivado').eq('status', 'active')
-    if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season').eq('status', 'active')
-    // Una edición archivada (porque ya se creó la siguiente) no se muestra
-    // en el feed principal — solo se vería la edición vigente de cada torneo.
-    if (torsRes.data) torsRes = { ...torsRes, data: torsRes.data.filter(t => !t.archivado) }
+    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active')
+    if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, torneo_padre_id, edicion').eq('status', 'active')
+    const torsRaw = torsRes.data || []
     const [{ data: tts }, { data: ms }] = await Promise.all([
       supabase.from('tournament_teams').select('tournament_id'),
       supabase.from('matches').select('tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'),
     ])
-    const tors = torsRes.data
+    // Una edición archivada (porque ya se creó la siguiente) no se muestra
+    // en el feed principal — solo se ve la edición vigente de cada torneo.
+    const tors = torsRaw.filter(t => !t.archivado)
     const cuentaEq = {}
     ;(tts || []).forEach(t => { cuentaEq[t.tournament_id] = (cuentaEq[t.tournament_id] || 0) + 1 })
     const FASES = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: 'Gran final' }
     const PESO  = { octavos: 1, cuartos: 2, semifinal: 3, final: 4 }
-    setTorneos((tors || []).map(t => {
+    const base = tors.map(t => {
       const mts = (ms || []).filter(m => m.tournament_id === t.id)
       const elim = mts.filter(m => m.fase && m.fase !== 'grupo').sort((a, b) => (PESO[b.fase] || 0) - (PESO[a.fase] || 0))[0]
       const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
@@ -502,7 +501,43 @@ export default function LandingPage() {
       const finalizado = mts.some(m => m.fase === 'final' && m.status === 'finished')
       const campeon = finalizado ? calcularCampeon(mts) : null
       return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado, campeon }
-    }))
+    })
+
+    // Campeón vigente: la edición que se está jugando ahora todavía no tiene
+    // campeón propio (recién empieza) — se muestra el de la edición anterior
+    // ya finalizada en vez de dejar la tarjeta vacía. Ojo: tournament_logros
+    // no tiene relación declarada hacia teams en Supabase, así que se busca
+    // el equipo en una consulta aparte (ver TorneoPublicoPage).
+    const sinCampeonPropio = base.filter(t => !t.campeon)
+    if (sinCampeonPropio.length > 0) {
+      const raizPorId = Object.fromEntries(torsRaw.map(t => [t.id, t.torneo_padre_id || t.id]))
+      const edicionPorId = Object.fromEntries(torsRaw.map(t => [t.id, t.edicion || 1]))
+      const raizRelevantes = new Set(sinCampeonPropio.map(t => raizPorId[t.id]))
+      const idsRelevantes = torsRaw.filter(t => raizRelevantes.has(raizPorId[t.id])).map(t => t.id)
+      if (idsRelevantes.length > 0) {
+        const { data: camps } = await supabase.from('tournament_logros').select('tournament_id, team_id').in('tournament_id', idsRelevantes).eq('tipo', 'campeon').limit(1000)
+        const mejorPorRaiz = {}
+        ;(camps || []).forEach(c => {
+          if (!c.team_id) return
+          const raiz = raizPorId[c.tournament_id]
+          const ed = edicionPorId[c.tournament_id] || 0
+          if (!mejorPorRaiz[raiz] || ed > mejorPorRaiz[raiz].edicion) mejorPorRaiz[raiz] = { edicion: ed, team_id: c.team_id }
+        })
+        const teamIds = [...new Set(Object.values(mejorPorRaiz).map(m => m.team_id))]
+        if (teamIds.length > 0) {
+          const { data: teamsData } = await supabase.from('teams').select('id,name,logo_url').in('id', teamIds)
+          const teamById = Object.fromEntries((teamsData || []).map(tm => [tm.id, tm]))
+          Object.values(mejorPorRaiz).forEach(m => { m.team = teamById[m.team_id] || null })
+        }
+        base.forEach(t => {
+          if (t.campeon) return
+          const mejor = mejorPorRaiz[raizPorId[t.id]]
+          if (mejor) t.campeonVigente = mejor
+        })
+      }
+    }
+
+    setTorneos(base)
   }
 
   // Conteo público de visitas a la tabla de cada torneo, solo de hoy (ver
@@ -745,6 +780,15 @@ export default function LandingPage() {
                       <span style={{ fontSize: '.6rem', fontWeight: 900, color: S.gold, letterSpacing: '.08em' }}>🏆 CAMPEÓN</span>
                       <Escudo logo_url={t.campeon.logo_url} name={t.campeon.name} size={46} radius={12}/>
                       <span style={{ fontSize: tamNombreTorneo(t.campeon.name), fontWeight: 800, color: S.text, textAlign: 'center', maxWidth: '100%', lineHeight: 1.25, wordBreak: 'break-word', padding: '0 4px' }}>{t.campeon.name}</span>
+                    </div>
+                  ) : !t.finalizado && t.campeonVigente?.team ? (
+                    // Esta edición todavía no tiene su propio campeón (recién
+                    // empieza) — se muestra el de la edición anterior ya
+                    // finalizada, para que la tarjeta no se vea vacía.
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '.6rem', fontWeight: 900, color: S.gold, letterSpacing: '.08em' }}>🏆 CAMPEÓN VIGENTE</span>
+                      <Escudo logo_url={t.campeonVigente.team.logo_url} name={t.campeonVigente.team.name} size={46} radius={12}/>
+                      <span style={{ fontSize: tamNombreTorneo(t.campeonVigente.team.name), fontWeight: 800, color: S.text, textAlign: 'center', maxWidth: '100%', lineHeight: 1.25, wordBreak: 'break-word', padding: '0 4px' }}>{t.campeonVigente.team.name}</span>
                     </div>
                   ) : (
                     <div style={{ flex: 1, minHeight: 0 }}/>
