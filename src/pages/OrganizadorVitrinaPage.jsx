@@ -259,18 +259,29 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
 
     if (representativos.length > 0) {
       const todosLosIds = ts.map(t => t.id)
+      // Ojo: NO se puede pedir "teams(...)" embebido acá — tournament_logros
+      // no tiene una relación declarada hacia teams en Supabase (solo hacia
+      // tournaments y players), así que ese embed falla en silencio. Se hace
+      // en dos pasos: primero el campeón (team_id) de cada linaje, después
+      // se buscan esos equipos aparte.
       const { data: camps } = await supabase.from('tournament_logros')
-        .select('tournament_id, team_id, teams(id,name,logo_url)')
+        .select('tournament_id, team_id')
         .in('tournament_id', todosLosIds).eq('tipo', 'campeon').limit(1000)
       const edicionPorId = Object.fromEntries((ts || []).map(t => [t.id, t.edicion || 1]))
       const raizPorId = Object.fromEntries((ts || []).map(t => [t.id, t.torneo_padre_id || t.id]))
       const mejorPorRaiz = {}
       ;(camps || []).forEach(c => {
-        if (!c.teams) return
+        if (!c.team_id) return
         const raiz = raizPorId[c.tournament_id]
         const ed = edicionPorId[c.tournament_id] || 0
-        if (!mejorPorRaiz[raiz] || ed > mejorPorRaiz[raiz].edicion) mejorPorRaiz[raiz] = { edicion: ed, team: c.teams }
+        if (!mejorPorRaiz[raiz] || ed > mejorPorRaiz[raiz].edicion) mejorPorRaiz[raiz] = { edicion: ed, team_id: c.team_id }
       })
+      const teamIds = [...new Set(Object.values(mejorPorRaiz).map(m => m.team_id))]
+      if (teamIds.length > 0) {
+        const { data: teamsData } = await supabase.from('teams').select('id,name,logo_url').in('id', teamIds)
+        const teamById = Object.fromEntries((teamsData || []).map(tm => [tm.id, tm]))
+        Object.values(mejorPorRaiz).forEach(m => { m.team = teamById[m.team_id] || null })
+      }
       representativos.forEach(t => {
         const raizId = t.torneo_padre_id || t.id
         t.campeonVigente = mejorPorRaiz[raizId] || null

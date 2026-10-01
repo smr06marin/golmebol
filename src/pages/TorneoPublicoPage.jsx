@@ -735,15 +735,26 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         const edicionesList = (edsData || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1))
         setEdiciones(edicionesList)
         if (edicionesList.length > 1) {
+          // Ojo: NO se puede pedir "teams(...)" embebido acá — tournament_logros
+          // no tiene una relación declarada hacia teams en Supabase (solo hacia
+          // tournaments y players), así que ese embed falla en silencio y nunca
+          // llegaba ningún campeón. Se hace en dos pasos: primero el campeón
+          // (team_id) de la edición más reciente que ya tenga uno, después se
+          // busca ese equipo aparte.
           const { data: camps } = await supabase.from('tournament_logros')
-            .select('tournament_id, team_id, teams(id,name,logo_url)')
+            .select('tournament_id, team_id')
             .in('tournament_id', edicionesList.map(e => e.id)).eq('tipo', 'campeon').limit(500)
           const edMap = Object.fromEntries(edicionesList.map(e => [e.id, e.edicion || 1]))
           let mejor = null
           ;(camps || []).forEach(c => {
+            if (!c.team_id) return
             const ed = edMap[c.tournament_id] || 0
-            if (c.teams && (!mejor || ed > mejor.edicion)) mejor = { edicion: ed, tournament_id: c.tournament_id, team: c.teams }
+            if (!mejor || ed > mejor.edicion) mejor = { edicion: ed, tournament_id: c.tournament_id, team_id: c.team_id }
           })
+          if (mejor) {
+            const { data: teamData } = await supabase.from('teams').select('id,name,logo_url').eq('id', mejor.team_id).maybeSingle()
+            mejor.team = teamData || null
+          }
           setCampeonVigente(mejor)
         } else {
           setCampeonVigente(null)
