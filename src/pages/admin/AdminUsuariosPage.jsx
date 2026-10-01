@@ -24,6 +24,12 @@ export default function AdminUsuariosPage() {
   const [msg,      setMsg]      = useState(null)
   const [errorTabla, setErrorTabla] = useState(false)
 
+  // ── Resetear contraseña (organizador/árbitro/admin) sin depender de que
+  // la persona revise su correo — igual que ya se puede con los jugadores.
+  const [modalResetPass, setModalResetPass]   = useState(null) // usuario (fila de roles_plataforma)
+  const [nuevaPassOrg,   setNuevaPassOrg]     = useState('')
+  const [loadingResetOrg, setLoadingResetOrg] = useState(false)
+
   useEffect(() => { fetchUsuarios() }, [])
 
   function showMsg(text, type = 'ok') {
@@ -62,6 +68,45 @@ export default function AdminUsuariosPage() {
     await supabase.from('roles_plataforma').delete().eq('id', u.id)
     fetchUsuarios()
     showMsg('Rol eliminado')
+  }
+
+  function generarPasswordAleatoria() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+    let out = ''
+    for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)]
+    return out
+  }
+
+  function abrirResetPassword(u) {
+    setModalResetPass(u)
+    setNuevaPassOrg(generarPasswordAleatoria())
+  }
+
+  // Cambia la contraseña de OTRA cuenta (sin depender de que le llegue un
+  // correo y lo abra) — llama a una función en Supabase que corre con
+  // permisos de administrador, igual que el reseteo de jugadores.
+  async function handleResetPasswordUsuario() {
+    if (!modalResetPass?.user_id) return
+    if (!nuevaPassOrg || nuevaPassOrg.length < 6) return showMsg('Mínimo 6 caracteres', 'error')
+    setLoadingResetOrg(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('https://obvlyexpbbdhxwijjqyd.supabase.co/functions/v1/reset-password-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ user_id: modalResetPass.user_id, nueva_password: nuevaPassOrg }),
+      })
+      const data = await res.json()
+      if (data.error) showMsg('Error: ' + data.error, 'error')
+      else {
+        showMsg(`✅ Contraseña de ${modalResetPass.email} actualizada`)
+        setModalResetPass(null)
+        setNuevaPassOrg('')
+      }
+    } catch (e) {
+      showMsg('Error: ' + e.message, 'error')
+    }
+    setLoadingResetOrg(false)
   }
 
   return (
@@ -127,6 +172,16 @@ export default function AdminUsuariosPage() {
               </div>
               <span style={{ fontSize: '.72rem', fontWeight: '600', color: info.color, background: info.bg, borderRadius: '12px', padding: '3px 12px', flexShrink: 0 }}>{info.label}</span>
               {!u.activo && <span style={{ fontSize: '.7rem', color: '#d93025', fontWeight: '600', flexShrink: 0 }}>Desactivado</span>}
+              {u.user_id ? (
+                <button onClick={() => abrirResetPassword(u)}
+                  style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.72rem', flexShrink: 0 }}>
+                  🔐 Resetear contraseña
+                </button>
+              ) : (
+                <span title="Todavía no ha creado su cuenta (debe entrar al menos una vez con 'Crear cuenta')" style={{ fontSize: '.68rem', color: '#9aa0a6', flexShrink: 0 }}>
+                  Sin cuenta aún
+                </span>
+              )}
               <button onClick={() => handleToggleActivo(u)}
                 style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem', flexShrink: 0 }}>
                 {u.activo ? 'Desactivar' : 'Activar'}
@@ -139,6 +194,34 @@ export default function AdminUsuariosPage() {
           )
         })}
       </div>
+
+      {modalResetPass && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '380px', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+            <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '6px' }}>🔐 Resetear contraseña</div>
+            <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '16px', lineHeight: 1.5 }}>
+              Nueva contraseña para <b>{modalResetPass.email}</b> — después de guardar, copiala y envíasela (por WhatsApp, por ejemplo). Ya queda activa de una, sin que la persona tenga que abrir ningún correo.
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <input value={nuevaPassOrg} onChange={e => setNuevaPassOrg(e.target.value)} style={{ ...input, flex: 1 }}/>
+              <button type="button" onClick={() => setNuevaPassOrg(generarPasswordAleatoria())} title="Generar otra"
+                style={{ padding: '8px 12px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', fontSize: '.9rem' }}>
+                🎲
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => setModalResetPass(null)}
+                style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem', fontWeight: '600' }}>
+                Cancelar
+              </button>
+              <button onClick={handleResetPasswordUsuario} disabled={loadingResetOrg}
+                style={{ flex: 1, padding: '10px', background: loadingResetOrg ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: loadingResetOrg ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.85rem' }}>
+                {loadingResetOrg ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
