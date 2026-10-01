@@ -91,13 +91,33 @@ const PedirEscenarioPage          = lazy(() => import('./pages/PedirEscenarioPag
 // Correos que siempre son admin (respaldo por si la tabla de roles falla)
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 
+// Fuerza que el navegador pida la página de nuevo AL SERVIDOR, ignorando
+// cualquier copia que tenga guardada. Antes, para recuperarse de un deploy
+// viejo, se usaba solo window.location.reload() — pero en el navegador
+// normal de algunos celulares/PCs (no en modo incógnito, que no tiene nada
+// guardado todavía) el caché del navegador seguía entregando la página
+// vieja incluso después de "recargar", así que la persona volvía a ver el
+// mismo error una y otra vez sin saber por qué (ni cómo arreglarlo). Al
+// agregar un parámetro único a la URL, el navegador lo trata como una
+// dirección distinta a la que tiene guardada y SÍ va a buscar la versión
+// nueva al servidor, sin que la persona tenga que saber qué es un caché.
+function recargarSinCache() {
+  try {
+    const url = new URL(window.location.href)
+    url.searchParams.set('_v', Date.now().toString())
+    window.location.replace(url.toString())
+  } catch {
+    window.location.reload()
+  }
+}
+
 // Si tras un deploy el navegador tiene una versión vieja y un módulo diferido ya
 // no existe (chunk 404), recargamos una vez para traer la versión nueva.
 if (typeof window !== 'undefined') {
   window.addEventListener('vite:preloadError', () => {
     if (!sessionStorage.getItem('golmebol_chunk_reload')) {
       sessionStorage.setItem('golmebol_chunk_reload', '1')
-      window.location.reload()
+      recargarSinCache()
     }
   })
 }
@@ -118,7 +138,7 @@ class ErrorBoundary extends Component {
     const esChunkViejo = /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|error loading dynamically imported module/i.test(msg)
     if (esChunkViejo && !sessionStorage.getItem('golmebol_reload_chunk')) {
       sessionStorage.setItem('golmebol_reload_chunk', '1')
-      window.location.reload()
+      recargarSinCache()
     }
   }
   render() {
@@ -130,7 +150,7 @@ class ErrorBoundary extends Component {
           <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '8px' }}>Algo salió mal</div>
           <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '8px' }}>Recarga la página para continuar. Si sigue pasando, avísanos por WhatsApp.</div>
           <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginBottom: '18px', wordBreak: 'break-word' }}>{String(this.state.error?.message || this.state.error)}</div>
-          <button onClick={() => window.location.reload()}
+          <button onClick={() => recargarSinCache()}
             style={{ width: '100%', padding: '12px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.9rem' }}>
             🔄 Recargar
           </button>
@@ -415,7 +435,7 @@ export default function App() {
     <ErrorBoundary>
     <GlobalToast/>
     {hayVersionNueva && (
-      <div onClick={() => window.location.reload()}
+      <div onClick={() => recargarSinCache()}
         style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#1a73e8', color: '#fff', textAlign: 'center', padding: '10px 16px', fontSize: '.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'system-ui, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
         🔄 Hay una versión nueva de Golmebol — toca para actualizar
       </div>

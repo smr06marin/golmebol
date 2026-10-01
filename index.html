@@ -38,12 +38,28 @@
          sitio está realmente caído por otra razón). -->
     <script>
       (function () {
+        // Recarga pidiendo la página de nuevo AL SERVIDOR, ignorando cualquier
+        // copia guardada en el navegador. Un reload común a veces no alcanza
+        // en el navegador normal (no pasa en modo incógnito, que no tiene nada
+        // guardado): el caché del navegador puede seguir devolviendo la misma
+        // página vieja, y la persona ve el mismo problema otra vez sin saber
+        // que es cosa del caché. Agregar un parámetro único a la URL hace que
+        // el navegador la trate como una dirección distinta a la guardada.
+        function recargarSinCache() {
+          try {
+            var url = new URL(window.location.href)
+            url.searchParams.set('_v', Date.now().toString())
+            window.location.replace(url.toString())
+          } catch (e) {
+            window.location.reload()
+          }
+        }
         setTimeout(function () {
           try {
             var root = document.getElementById('root')
             if (root && root.childElementCount === 0 && !sessionStorage.getItem('golmebol_watchdog_reload')) {
               sessionStorage.setItem('golmebol_watchdog_reload', '1')
-              window.location.reload()
+              recargarSinCache()
             }
           } catch (e) {}
         }, 5000)
