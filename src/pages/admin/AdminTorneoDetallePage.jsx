@@ -1674,9 +1674,9 @@ LAS PREGUNTAS QUE TENÉS QUE PLANTEAR apenas sepas cuántos clasifican (salteá 
 1. SOLO si ese número queda IMPAR: explicá las dos formas posibles de resolverlo y preguntá cuál prefiere — (a) alguien se queda sin rival esta vez y pasa directo a la ronda siguiente sin jugar, o (b) se agrega un equipo más (el siguiente mejor ubicado entre los que no habían clasificado) para que todos tengan partido esta ronda. Si el número es par, no preguntes esto.
 2. Cómo se arman los cruces: (a) por posición en orden (1° contra 2°, 3° contra 4°...) o (b) cruzados, el mejor contra el peor (1° contra el último, 2° contra el anteúltimo...).
 3. Formato de los partidos: (a) todos a partido único, (b) todos ida y vuelta, o (c) ida y vuelta solo en alguna fase puntual (preguntale cuál) mientras el resto es a partido único.
-4. SOLO si en la pregunta 3 quedó algo a ida y vuelta (todo o alguna fase): preguntá si quiere una diferencia de gol en el partido de ida a partir de la cual ya no haga falta jugar la vuelta (y cuántos goles), o si prefiere que la vuelta se juegue siempre completa.
-5. Si se juega un partido por el tercer puesto entre los perdedores de semifinal: sí o no.
+4. Si se juega un partido por el tercer puesto entre los perdedores de semifinal: sí o no.
 No preguntes por la fecha/hora de los primeros partidos — usá un valor por defecto razonable y mencionalo en el resumen final; eso no hace falta decidirlo de antemano.
+Sobre la diferencia de gol para saltar la vuelta (el "margen" que puede llevar una fase a ida y vuelta): NO la preguntes de entrada, casi ningún torneo la usa — dejala siempre en null (se juega siempre la vuelta completa) salvo que el organizador la pida por su cuenta en cualquier momento (ej. "si la ida queda con 2 de diferencia que no se juegue la vuelta"); ahí sí configurásela tal cual la pidió, para esa fase.
 Estas preguntas (las que apliquen) SIEMPRE van adentro del campo "mensaje" del bloque <<<RESPUESTA>>> de más abajo — nunca las escribas como texto suelto antes o fuera de ese bloque: tu respuesta entera, aunque solo sea para hacer preguntas, tiene que ser ese bloque y nada más.
 
 MUY IMPORTANTE — pensá antes de responder, para no contradecirte: podés escribir en texto libre, ANTES del bloque <<<RESPUESTA>>>, un razonamiento BREVE (unas pocas líneas alcanzan — qué preguntas ya están contestadas, cuáles faltan, qué opción conviene) — ese texto de antes el organizador NUNCA lo ve, porque el sistema solo toma lo que esté entre <<<RESPUESTA>>> y <<<FIN>>>, pero no te extiendas ahí: guardá espacio para el bloque final, que es la parte que de verdad importa y SIEMPRE tiene que llegar a escribirse completo. El "mensaje" que va DENTRO de ese bloque tiene que ser ya la versión final y resuelta: nunca escribas ahí dudas, cuentas a medio hacer, ni cambios de opinión en plena frase (nada de "espera, no, déjame replantear esto"), y nunca definas la misma opción dos veces de formas distintas o contradictorias. Si te das cuenta de que algo no te cuadra, resolvelo ANTES del bloque, no dentro de él.
@@ -1686,10 +1686,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 {"mensaje": "...", "listo": true o false, "config": {...} o null}
 <<<FIN>>>
 
-- "listo": true recién cuando tengas cuántos clasifican Y ya quedaron resueltas las preguntas de la lista de arriba que apliquen a este caso (la 1 y la 4 no siempre aplican) — resueltas porque el organizador las contestó, o porque ya eran evidentes por lo que describió sin que se las preguntaras. Mientras falte alguna, "listo" tiene que ser false.
+- "listo": true recién cuando tengas cuántos clasifican Y ya quedaron resueltas las preguntas de la lista de arriba que apliquen a este caso (la 1 no siempre aplica) — resueltas porque el organizador las contestó, o porque ya eran evidentes por lo que describió sin que se las preguntaras. Mientras falte alguna, "listo" tiene que ser false.
 - "mensaje": en español, corto y claro. Si listo=false: SOLO la lista de preguntas que todavía faltan (nunca repitas una ya contestada), cada una con sus opciones en palabras simples — o la aclaración del único límite real de arriba, si de verdad aplica. Si listo=true: un resumen breve de toda la configuración ya armada, en palabras simples (incluida la fecha que se usó por defecto si no la dieron), invitando a revisar la vista previa de abajo y a pedir cambios si algo no sirve (el cuadro para escribir sigue disponible después de esto, así que no hace falta que el resumen cubra cada detalle, alcanza con que sea claro).
 - "config" (solo si listo=true), con estas claves exactas:
-  numClasifElim (entero, PRIMERA ronda), idaVuelta (bool, formato de la PRIMERA ronda), estiloLlaves ("consecutivo"|"cruzado"|"manual" — "manual" SOLO si nombró enfrentamientos puntuales equipo contra equipo, PRIMERA ronda), modoImpar ("mejor_perdedor"|"bye" — esta regla se va a repetir en todas las rondas siguientes si vuelve a quedar impar), equipoByeId (id del equipo que pasa directo en la primera ronda si modoImpar es "bye" y lo nombró, si no null), crearTercerPuesto (bool), ordenIds (lista de TODOS los ids de los clasificados de la primera ronda en el orden de siembra que pidió, o null si no especificó un orden propio), parejasIds (lista de pares [idA,idB] SOLO si estiloLlaves es "manual", o null), fecha ("YYYY-MM-DD" o null), hora ("HH:MM" o null), idaVueltaPorFase (objeto con SOLO las fases para las que el organizador pidió una excepción puntual distinta a "copiar la ronda anterior" — claves posibles "octavos","cuartos","semifinal","final"; cada una: {"activo": true o false (true = esa fase se juega ida y vuelta, false = esa fase se juega a partido único, pisando lo que diría la regla de copiar la ronda anterior), "margen": entero o null (diferencia de gol en la ida a partir de la cual ya no se juega la vuelta de esa fase; null = siempre se juega la vuelta si "activo" es true)} — mandá {} si no pidió ninguna excepción de este tipo, NUNCA actives "margen" para una fase que no tenga "activo": true).
+  numClasifElim (entero, PRIMERA ronda), idaVuelta (bool, formato de la PRIMERA ronda), estiloLlaves ("consecutivo"|"cruzado"|"manual" — "manual" SOLO si nombró enfrentamientos puntuales equipo contra equipo, PRIMERA ronda), modoImpar ("mejor_perdedor"|"bye" — esta regla se va a repetir en todas las rondas siguientes si vuelve a quedar impar), equipoByeId (id del equipo que pasa directo en la primera ronda si modoImpar es "bye" y lo nombró, si no null), crearTercerPuesto (bool), ordenIds (lista de TODOS los ids de los clasificados de la primera ronda en el orden de siembra que pidió, o null si no especificó un orden propio), parejasIds (lista de pares [idA,idB] SOLO si estiloLlaves es "manual", o null), fecha ("YYYY-MM-DD" o null), hora ("HH:MM" o null), idaVueltaPorFase (objeto que REEMPLAZA COMPLETO cualquier excepción guardada antes — no es acumulativo: tenés que incluir TODAS las excepciones que tienen que seguir valiendo de ahora en más, sean nuevas o ya existentes de mensajes anteriores que el organizador no pidió cambiar, y dejar afuera las que ya no corresponden. Claves posibles "octavos","cuartos","semifinal","final"; cada una: {"activo": true o false (true = esa fase se juega ida y vuelta, false = esa fase se juega a partido único, pisando lo que diría la regla de copiar la ronda anterior), "margen": entero o null (diferencia de gol en la ida a partir de la cual ya no se juega la vuelta de esa fase; null = siempre se juega la vuelta si "activo" es true)}. Mandá {} (vacío) si el organizador no pidió ninguna excepción puntual, o si pidió un formato parejo para TODO el torneo (ej. "todo a partido único" o "todo ida y vuelta") — eso vacía cualquier excepción por fase que hubiera quedado guardada antes, porque ya no corresponde. NUNCA actives "margen" para una fase que no tenga "activo": true).
 - Nunca inventes un id que no esté en la lista de equipos que te dieron.
 - Si pide algo realmente imposible (ej. más clasificados que equipos hay, o dos pases directos a la vez en la misma ronda), avisale en "mensaje" con listo=false y config=null, explicando la alternativa más cercana — nunca le ofrezcas como opción algo que en el fondo no se pueda.`
 
@@ -1750,22 +1750,26 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (config?.hora) setHoraElim(config.hora)
 
     // Excepciones puntuales de ida/vuelta por fase (ej. "solo semifinal a ida
-    // y vuelta, sin jugar la vuelta si la ida queda 2+ goles arriba") — se
-    // van ACUMULANDO sobre lo que ya había (no se borra una excepción de un
-    // mensaje anterior solo porque este mensaje no la vuelve a mencionar).
+    // y vuelta, sin jugar la vuelta si la ida queda 2+ goles arriba") — la IA
+    // manda siempre el estado COMPLETO que tiene que quedar vigente (ver
+    // ELIM_CHAT_INSTRUCCION), así que acá se REEMPLAZA entero, no se mezcla
+    // con lo que había antes: si el organizador pide un formato parejo para
+    // todo el torneo ("todo partido único", "todo ida y vuelta"), la IA manda
+    // {} y eso debe borrar cualquier excepción vieja que hubiera quedado
+    // guardada de una fase puntual, en vez de dejarla como un resabio que
+    // después genera confusión (ida y vuelta "fantasma" en una fase que el
+    // organizador ya dijo que no quería).
     const FASES_IDA_VUELTA = new Set(['octavos', 'cuartos', 'semifinal', 'final'])
     if (config?.idaVueltaPorFase && typeof config.idaVueltaPorFase === 'object') {
-      setIdaVueltaPorFase(prev => {
-        const next = { ...prev }
-        Object.entries(config.idaVueltaPorFase).forEach(([fase, regla]) => {
-          if (!FASES_IDA_VUELTA.has(fase) || !regla || typeof regla !== 'object') return
-          const activo = !!regla.activo
-          let margen = parseInt(regla.margen, 10)
-          if (!activo || !Number.isFinite(margen) || margen < 1) margen = null
-          next[fase] = { activo, margen }
-        })
-        return next
+      const next = {}
+      Object.entries(config.idaVueltaPorFase).forEach(([fase, regla]) => {
+        if (!FASES_IDA_VUELTA.has(fase) || !regla || typeof regla !== 'object') return
+        const activo = !!regla.activo
+        let margen = parseInt(regla.margen, 10)
+        if (!activo || !Number.isFinite(margen) || margen < 1) margen = null
+        next[fase] = { activo, margen }
       })
+      setIdaVueltaPorFase(next)
     }
 
     const base = getParticipantesElim(n)
