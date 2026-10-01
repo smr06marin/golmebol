@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, Minus } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
@@ -48,23 +48,22 @@ export default function AdminConfigSitioPage() {
   // prendidos hasta apagarlos), esto se apaga solo después de unos segundos.
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState({})
   const patrocinadorVistoRef = useRef({})
-  // Ajuste de "cuánto rebobina" ANTES de apretar Repetición — por transmisión,
-  // arranca en el valor configurado para esa transmisión y Sebas lo puede
-  // subir/bajar de a 5s con los botones -/+ cada vez que quiera repetir una
-  // jugada más de cerca o más de lejos, sin tener que entrar a cambiar la
-  // configuración guardada.
-  const [ajusteSegundos, setAjusteSegundos] = useState({})
   // Qué link se acaba de copiar (para el "✓ Copiado" de 2 segundos del botón)
   const [copiado, setCopiado] = useState(null)
   // Repetición EN ESTA MISMA pantalla — antes el video de acá no se movía al
   // apretar "Repetición" (solo se avisaba a los demás), así que Sebas no
   // tenía forma de ver hasta qué parte rebobinaba antes de que lo vieran los
   // demás. Ahora el video de este panel rebobina al mismo tiempo que el del
-  // público, con el mismo ajuste de segundos — mismo patrón que ya usa
+  // público, hasta el mismo punto exacto — mismo patrón que ya usa
   // LandingPage para la repetición manual.
   const [repeticiones, setRepeticiones] = useState({})
   const repeticionVistaRef = useRef({})
   const repeticionContadorRef = useRef(0)
+  // Una referencia al <LiveEmbed> de cada transmisión (puede haber varias a
+  // la vez) — para poder preguntarle "¿en qué segundo estás?" justo cuando
+  // se aprieta Repetición/Cámara lenta, después de que Sebas se devolvió a
+  // mano con la barra nativa de YouTube hasta la jugada que quiere repetir.
+  const liveEmbedRefs = useRef({})
 
   // Partidos que se pueden elegir para el marcador: cualquiera que no haya
   // terminado (para poder elegirlo desde antes de que arranque). Se marcan
@@ -117,8 +116,8 @@ export default function AdminConfigSitioPage() {
         : null
       repeticionContadorRef.current += 1
       const s = streams.find(x => x.id === streamId)
-      const segundosAtras = Math.max(0, Number(c.repeticion_segundos_atras ?? s?.segundos_repeticion) || 28)
-      setRepeticiones(r => ({ ...r, [streamId]: { key: Date.now(), segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+      const segundosAtras = Math.max(0, Number(s?.segundos_repeticion) || 28)
+      setRepeticiones(r => ({ ...r, [streamId]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
     })
   }, [control, streams, imagenesRepeticion])
 
@@ -228,30 +227,22 @@ export default function AdminConfigSitioPage() {
     }
   }
 
-  // Valor actual del ajuste de "cuánto rebobina" para una transmisión —
-  // arranca en lo que tenga configurado esa transmisión (segundos_repeticion)
-  // hasta que Sebas lo mueva con los botones -/+.
-  function segundosAtrasDe(s) {
-    const base = Math.max(0, Number(s.segundos_repeticion) || 28)
-    return ajusteSegundos[s.id] ?? base
-  }
-  function ajustarSegundos(streamId, delta) {
-    setAjusteSegundos(a => {
-      const s = streams.find(x => x.id === streamId)
-      const actual = a[streamId] ?? Math.max(0, Number(s?.segundos_repeticion) || 28)
-      return { ...a, [streamId]: Math.max(0, actual + delta) }
-    })
-  }
-
   // Dispara una repetición manual (botón del panel) — a diferencia de la
   // automática (que espera el retraso configurado de la transmisión porque
   // reacciona sola a un gol), esta la aprieta a propósito quien está viendo
   // el video, así que en la portada se dispara de una, sin esperar nada.
-  // `repeticion_segundos_atras` manda el valor que se ajustó con los
-  // botones -/+ de arriba — así Sebas puede "devolver hasta donde quiera" en
-  // cada repetición, sin tener que cambiar la configuración guardada.
+  // Ya no se calcula "cuánto rebobinar": Sebas se devuelve él mismo con la
+  // barra del video de arriba (controles nativos de YouTube) hasta la
+  // jugada que quiere repetir, y acá se lee justo ese segundo
+  // (`getCurrentTime()`, expuesto por LiveEmbed) para mandárselo a todo el
+  // mundo tal cual — `repeticion_objetivo_segundos`. Si por algo no se pudo
+  // leer (video no es de YouTube, o el reproductor no respondió todavía),
+  // se manda sin ese dato y LiveEmbed cae de vuelta al valor configurado
+  // para esa transmisión.
   function dispararRepeticion(s, camaraLenta) {
-    actualizarControl(s.id, { repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta, repeticion_segundos_atras: segundosAtrasDe(s) })
+    const t = liveEmbedRefs.current[s.id]?.getCurrentTime?.()
+    const objetivo = (typeof t === 'number' && isFinite(t)) ? t : null
+    actualizarControl(s.id, { repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta, repeticion_objetivo_segundos: objetivo })
   }
 
   // Prende/apaga la gráfica de tabla de posiciones, goles o jugadores encima
@@ -395,7 +386,7 @@ export default function AdminConfigSitioPage() {
                       rebobinado, en vez de confiar a ciegas en el número de
                       segundos. */}
                   <div style={{ marginBottom:'14px' }}>
-                    <LiveEmbed url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
+                    <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
                   </div>
                   {s.match_id && !partidoSeleccionado?.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>
@@ -420,19 +411,9 @@ export default function AdminConfigSitioPage() {
                     </button>
                   )}
 
-                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN — rebobina {segundosAtrasDe(s)}s</div>
-                  <div style={{ display:'flex', gap:'6px', marginBottom:'8px' }}>
-                    <button onClick={() => ajustarSegundos(s.id, -5)}
-                      style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'38px', padding:'8px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff' }}>
-                      <Minus size={14}/>
-                    </button>
-                    <button onClick={() => ajustarSegundos(s.id, 5)}
-                      style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'38px', padding:'8px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff' }}>
-                      <Plus size={14}/>
-                    </button>
-                    <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', color:'#9aa0a6' }}>
-                      más alto = repite desde más atrás. Al apretar, mira el video de acá arriba: rebobina igual que lo que ve el público.
-                    </div>
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
+                  <div style={{ fontSize:'.72rem', color:'#9aa0a6', marginBottom:'8px' }}>
+                    Devuélvete con la barra del video de arriba hasta la jugada que quieras repetir, pausalo ahí, y aprieta uno de estos dos — se muestra desde ese mismo punto.
                   </div>
                   <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
                     <button onClick={() => dispararRepeticion(s, false)}

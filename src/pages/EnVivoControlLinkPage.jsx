@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { PlayCircle, Gauge, Table2, ListOrdered, Ban, Users, Megaphone, Minus, Plus } from 'lucide-react'
+import { PlayCircle, Gauge, Table2, ListOrdered, Ban, Users, Megaphone } from 'lucide-react'
 import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
@@ -34,9 +34,12 @@ export default function EnVivoControlLinkPage() {
   const [partido, setPartido] = useState(null)
   const [patrocinadoresBtn, setPatrocinadoresBtn] = useState([])
   const [tablas, setTablas] = useState({})
-  const [ajusteSegundos, setAjusteSegundos] = useState(null)
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
   const [repeticion, setRepeticion] = useState(null)
+  // Referencia al <LiveEmbed> de este stream — para leer, justo al apretar
+  // Repetición/Cámara lenta, en qué segundo de la transmisión quedó después
+  // de que quien opera se devolvió a mano con la barra nativa de YouTube.
+  const liveEmbedRef = useRef(null)
 
   const stream = useMemo(() => (
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams.find(s => s.control_token && s.control_token === token) : null
@@ -93,12 +96,6 @@ export default function EnVivoControlLinkPage() {
 
   const vivo = partido ? derivarEnVivo(partido) : null
 
-  // Ajuste de "cuánto rebobina" — arranca en lo configurado para esta
-  // transmisión apenas se conoce el stream.
-  useEffect(() => {
-    if (stream && ajusteSegundos == null) setAjusteSegundos(Math.max(0, Number(stream.segundos_repeticion) || 28))
-  }, [stream, ajusteSegundos])
-
   async function actualizarControl(cambios) {
     if (!stream) return
     const next = { ...(siteConfig?.en_vivo_control || {}), [stream.id]: { ...control, ...cambios } }
@@ -106,8 +103,13 @@ export default function EnVivoControlLinkPage() {
     await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
   }
 
+  // Ya no se calcula "cuánto rebobinar": se lee el segundo exacto donde
+  // quedó el video después de que quien opera lo devolvió a mano con la
+  // barra nativa de YouTube, y se manda tal cual para que todos salten ahí.
   function dispararRepeticion(camaraLenta) {
-    actualizarControl({ repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta, repeticion_segundos_atras: ajusteSegundos })
+    const t = liveEmbedRef.current?.getCurrentTime?.()
+    const objetivo = (typeof t === 'number' && isFinite(t)) ? t : null
+    actualizarControl({ repeticion_ts: Date.now(), repeticion_camara_lenta: camaraLenta, repeticion_objetivo_segundos: objetivo })
   }
 
   function cambiarOverlay(overlay, tournamentId) {
@@ -144,7 +146,8 @@ export default function EnVivoControlLinkPage() {
     repeticionVistaRef.current = control.repeticion_ts
     const imagenUrl = imagenesRepeticion.length ? imagenesRepeticion[repContadorRef.current % imagenesRepeticion.length].url : null
     repContadorRef.current += 1
-    setRepeticion({ key: Date.now(), segundosAtras: Math.max(0, Number(control.repeticion_segundos_atras ?? stream?.segundos_repeticion) || 28), duracionVisible: 12, imagenUrl, camaraLenta: !!control.repeticion_camara_lenta })
+    const segundosAtras = Math.max(0, Number(stream?.segundos_repeticion) || 28)
+    setRepeticion({ key: Date.now(), objetivoSegundos: control.repeticion_objetivo_segundos, segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!control.repeticion_camara_lenta })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [control.repeticion_ts])
 
@@ -184,7 +187,7 @@ export default function EnVivoControlLinkPage() {
         <div style={{ color:'#fff', fontWeight:'900', fontSize:'1rem', marginBottom:'2px' }}>Panel de control en vivo</div>
         <div style={{ color:'#9aa0a6', fontSize:'.8rem', marginBottom:'16px' }}>{stream.titulo || (partido ? `${partido.home?.name || '?'} vs ${partido.away?.name || '?'}` : 'Transmisión')}</div>
 
-        <LiveEmbed url={stream.url} titulo={stream.titulo} S={S}
+        <LiveEmbed ref={liveEmbedRef} url={stream.url} titulo={stream.titulo} S={S}
           overlay={(
             <>
               {partido && vivo && (
@@ -211,19 +214,9 @@ export default function EnVivoControlLinkPage() {
         )}
 
         <div style={{ marginTop:'20px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
-          <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN — rebobina {ajusteSegundos ?? ''}s</div>
-          <div style={{ display:'flex', gap:'6px', marginBottom:'10px' }}>
-            <button onClick={() => setAjusteSegundos(v => Math.max(0, (v ?? 0) - 5))}
-              style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'44px', padding:'10px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff' }}>
-              <Minus size={16}/>
-            </button>
-            <button onClick={() => setAjusteSegundos(v => (v ?? 0) + 5)}
-              style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'44px', padding:'10px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff' }}>
-              <Plus size={16}/>
-            </button>
-            <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.68rem', color:'#9aa0a6', textAlign:'center' }}>
-              más alto = repite desde más atrás
-            </div>
+          <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
+          <div style={{ fontSize:'.74rem', color:'#9aa0a6', marginBottom:'10px' }}>
+            Devuélvete con la barra del video de arriba hasta la jugada que quieras repetir, pausalo ahí, y aprieta uno de estos dos — se muestra desde ese mismo punto.
           </div>
           <div style={{ display:'flex', gap:'8px', marginBottom:'4px' }}>
             <button onClick={() => dispararRepeticion(false)}

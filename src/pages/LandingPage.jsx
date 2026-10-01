@@ -509,12 +509,16 @@ export default function LandingPage() {
         ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
         : null
       repeticionContadorRef.current += 1
-      // repeticion_segundos_atras: el ajuste con los botones -/+ del panel de
-      // control, para "devolver hasta donde quiera" en vez del valor fijo
-      // configurado — si no vino (repetición disparada desde una versión
-      // vieja del panel, o nunca se tocó el ajuste), se usa el configurado.
-      const segundosAtras = Math.max(0, Number(c.repeticion_segundos_atras ?? s.segundos_repeticion) || 28)
-      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+      // repeticion_objetivo_segundos: el segundo exacto de la transmisión al
+      // que se devolvió quien transmite con la barra de YouTube en su propio
+      // panel — se salta directo ahí, en vez de calcular "tantos segundos
+      // para atrás" (eso solo lo usa la repetición automática del gol, arriba,
+      // que no tiene un punto elegido a mano). Si no vino (transmisión que no
+      // es de YouTube, o el reproductor de quien transmite no respondió a
+      // tiempo), LiveEmbed cae de vuelta al valor configurado para esta
+      // transmisión.
+      const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
+      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
     })
   }, [siteConfig, streamsVivos, imagenesRepeticion])
 

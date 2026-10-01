@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from 'react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 
 // Saca el ID del video de cualquier formato de link de YouTube: watch?v=,
@@ -161,19 +161,24 @@ function cargarYouTubeAPI() {
 // navegador — esa API además no funciona bien para esto en Safari de
 // iPhone, así que este método funciona igual en todos los celulares.
 //
-// `repeticion` (opcional): { key, segundosAtras, duracionVisible, imagenUrl, camaraLenta }
+// `repeticion` (opcional): { key, objetivoSegundos, segundosAtras, duracionVisible, imagenUrl, camaraLenta }
 // — cada vez que `key` cambia (LandingPage lo cambia apenas detecta un gol
 // nuevo, o apenas quien transmite aprieta el botón de repetición manual
-// desde el panel de control de /admin/config-sitio): si hay una imagen de
-// repetición cargada (desde /admin/config-sitio, rotan en orden si hay
-// varias), esa imagen tapa el
+// desde el panel de control de /admin/config-sitio o desde el link de
+// control en otro celular): si hay una imagen de repetición cargada (desde
+// /admin/config-sitio, rotan en orden si hay varias), esa imagen tapa el
 // video unos segundos (con tiempo de sobra para leerla) con transición de
 // entrada y salida; mientras dura toda la repetición, debajo del reloj del
 // marcador queda la etiqueta "REPETICIÓN" para que se sepa que no es un
-// momento nuevo del partido. En YouTube, además, el video de verdad se
-// rebobina `segundosAtras` (usando la IFrame Player API en vez del <iframe>
-// a secas) — bastante hacia atrás, para que el rebobinado caiga ANTES de la
-// jugada del gol y no en medio de la celebración — y, una vez que
+// momento nuevo del partido. En YouTube, además, el video de verdad salta
+// (usando la IFrame Player API en vez del <iframe> a secas): si viene
+// `objetivoSegundos` (repetición MANUAL — Sebas ya se devolvió él mismo con
+// la barra del video en su propio panel hasta donde quería, y eso es
+// justo el punto que hay que mostrarle a todo el mundo), salta directo a
+// ese segundo exacto de la transmisión; si no, usa `segundosAtras` (gol
+// automático — ver LandingPage: ahí no hay un punto elegido a mano, así que
+// se calcula rebobinando una cantidad fija configurada desde antes) y
+// rebobina esa cantidad desde el momento en que llega el aviso. Una vez que
 // desaparece la imagen del patrocinador, se ven `duracionVisible` segundos
 // de juego antes de volver solo al momento en vivo real — ese regreso
 // siempre queda de transición con el logo de Golmebol agrandándose encima
@@ -184,7 +189,13 @@ function cargarYouTubeAPI() {
 // tramo rebobinado se reproduce a 0.5x (también solo en YouTube) — se
 // restaura la velocidad normal justo antes de volver al en vivo real, para
 // no dejar la transmisión en cámara lenta después de la repetición.
-export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
+//
+// `ref` (opcional, con forwardRef): expone `getCurrentTime()` — en qué
+// segundo de la transmisión está este reproductor AHORA MISMO. Lo usa el
+// panel de control (admin o el link de otro celular) para leer hasta dónde
+// se devolvió Sebas a mano con la barra de YouTube, justo antes de armar la
+// repetición manual.
+const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion }, ref) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
@@ -197,6 +208,13 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   // "adopta" un iframe ya existente de forma confiable cuando se le pasa el
   // ID en texto (así lo documenta YouTube), no la referencia al elemento.
   const idIframeYoutube = `yt-player-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+
+  // Le da al panel de control (que renderiza este componente) una forma de
+  // preguntar "¿en qué segundo de la transmisión está este video ahora?" —
+  // así sabe hasta dónde se devolvió Sebas a mano con la barra de YouTube.
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => (typeof ytPlayerRef.current?.getCurrentTime === 'function' ? ytPlayerRef.current.getCurrentTime() : null),
+  }), [])
 
   useEffect(() => {
     if (plataforma !== 'instagram') return
@@ -311,6 +329,10 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
     //    desaparece la imagen del patrocinador (no antes, y no se le resta
     //    nada por el tiempo que dura esa imagen) — esto es lo que pidió
     //    Sebas: 12 segundos de repetición ya con el video visible.
+    // objetivoSegundos (repetición MANUAL): un segundo exacto de la
+    // transmisión al que saltar, en vez de calcular "tantos segundos para
+    // atrás" — Sebas ya se devolvió él mismo con la barra de YouTube en su
+    // panel hasta la jugada que quiere mostrar, y este es justo ese punto.
     const segundosAtras = repeticion.segundosAtras || repeticion.segundos || 20
     const duracionVisible = repeticion.duracionVisible || 12
     const timers = []
@@ -339,8 +361,10 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
     const puedeControlarVideo = plataforma === 'youtube' && typeof player?.seekTo === 'function' && typeof player?.getCurrentTime === 'function'
     if (puedeControlarVideo) {
       try {
-        const actual = player.getCurrentTime()
-        player.seekTo(Math.max(0, actual - segundosAtras), true)
+        const destino = (typeof repeticion.objetivoSegundos === 'number' && isFinite(repeticion.objetivoSegundos))
+          ? repeticion.objetivoSegundos
+          : player.getCurrentTime() - segundosAtras
+        player.seekTo(Math.max(0, destino), true)
         // Cámara lenta (pedida desde el panel de control, botón aparte del de
         // repetición normal): se nota mucho más la jugada del gol. Solo
         // funciona en YouTube (misma limitación que el rebobinado de arriba);
@@ -428,4 +452,6 @@ export default function LiveEmbed({ url, titulo, S, overlay, repeticion }) {
   }
 
   return <LinkFallback url={url} S={S}/>
-}
+})
+
+export default LiveEmbed
