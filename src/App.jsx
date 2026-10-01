@@ -361,6 +361,12 @@ export default function App() {
   const { setUser, setLoading, setRol, empezarCargaRol, user } = useAuthStore()
   useConfirmarSalida()
   const hayVersionNueva = useVersionCheck()
+  // Cuando un organizador/admin toca el link de "recuperar contraseña" que le
+  // llega por correo, Supabase arma sola una sesión temporal y dispara este
+  // evento — hay que detectarlo para mostrarle el formulario de "crea tu
+  // nueva contraseña" en /login EN VEZ de mandarlo derecho al panel (que es
+  // lo que pasaría igual, porque esa sesión también cuenta como "ya logueado").
+  const [enRecuperacion, setEnRecuperacion] = useState(false)
 
   async function cargarRol(u) {
     if (!u?.email) { setRol(null); return }
@@ -423,7 +429,8 @@ export default function App() {
       setLoading(false)
       cargarRol(session?.user)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setEnRecuperacion(true)
       setUser(session?.user ?? null)
       setLoading(false)
       cargarRol(session?.user)
@@ -453,7 +460,7 @@ export default function App() {
           <Route path="/test-tarjetas" element={<TestTarjetas/>}/>
 
           {/* Login admin */}
-          <Route path="/login" element={user ? <Navigate to="/admin" replace/> : <LoginPage/>}/>
+          <Route path="/login" element={(user && !enRecuperacion) ? <Navigate to="/admin" replace/> : <LoginPage enRecuperacion={enRecuperacion} onRecuperada={() => setEnRecuperacion(false)}/>}/>
 
           {/* Panel Admin */}
           <Route path="/admin" element={<ProtectedRoute><AdminLayout/></ProtectedRoute>}>

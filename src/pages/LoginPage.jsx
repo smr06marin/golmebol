@@ -65,7 +65,7 @@ function isFaceIdAvailable() {
 
 // ─────────────────────────────────────────────────────────────
 
-export default function LoginPage() {
+export default function LoginPage({ enRecuperacion, onRecuperada }) {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
@@ -74,6 +74,20 @@ export default function LoginPage() {
   const [lastUser, setLastUser] = useState(null)          // { userId, email }
   const [showRegisterFace, setShowRegisterFace] = useState(false)
   const [pendingSession, setPendingSession] = useState(null)
+
+  // ── Recuperar contraseña (organizador/admin) ───────────────
+  const [showRecuperar, setShowRecuperar]       = useState(false)
+  const [emailRecuperar, setEmailRecuperar]     = useState('')
+  const [loadingRecuperar, setLoadingRecuperar] = useState(false)
+  const [mensajeRecuperar, setMensajeRecuperar] = useState('')
+  const [linkEnviado, setLinkEnviado]           = useState(false)
+
+  // ── Crear nueva contraseña (viene del link del correo) ─────
+  const [nuevaPass, setNuevaPass]   = useState('')
+  const [nuevaPass2, setNuevaPass2] = useState('')
+  const [loadingNueva, setLoadingNueva] = useState(false)
+  const [errorNueva, setErrorNueva]     = useState('')
+  const [passActualizada, setPassActualizada] = useState(false)
 
   useEffect(() => {
     setFaceAvailable(isFaceIdAvailable())
@@ -149,6 +163,79 @@ export default function LoginPage() {
     if (error) setMensaje('Error: ' + error.message)
     else setMensaje('✅ Cuenta creada. Si te llega un correo de confirmación, ábrelo antes de entrar')
     setLoading(false)
+  }
+
+  // ── Pedir link para recuperar contraseña ───────────────────
+  async function handleEnviarRecuperacion() {
+    if (!emailRecuperar.trim()) { setMensajeRecuperar('Escribe tu correo'); return }
+    setLoadingRecuperar(true)
+    setMensajeRecuperar('')
+    const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperar.trim().toLowerCase(), {
+      redirectTo: `${window.location.origin}/login`,
+    })
+    setLoadingRecuperar(false)
+    if (error) setMensajeRecuperar('Error: ' + error.message)
+    else setLinkEnviado(true)
+  }
+
+  // ── Guardar la nueva contraseña (ya con la sesión de recuperación activa) ──
+  async function handleGuardarNuevaPass() {
+    if (!nuevaPass || nuevaPass.length < 6) { setErrorNueva('Mínimo 6 caracteres'); return }
+    if (nuevaPass !== nuevaPass2) { setErrorNueva('Las contraseñas no coinciden'); return }
+    setLoadingNueva(true)
+    setErrorNueva('')
+    const { error } = await supabase.auth.updateUser({ password: nuevaPass })
+    setLoadingNueva(false)
+    if (error) { setErrorNueva('Error: ' + error.message); return }
+    setPassActualizada(true)
+  }
+
+  // ── Pantalla: crear nueva contraseña (llegó del link del correo) ──
+  if (enRecuperacion) {
+    return (
+      <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem' }}>
+        <h1 style={{
+          fontFamily: 'var(--font-display)', fontSize: '3rem', letterSpacing: '.2em',
+          background: 'linear-gradient(90deg, #00ddd0, #9955ff)', WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent', marginBottom: '1.5rem', textAlign: 'center',
+        }}>
+          GOLMEBOL
+        </h1>
+        {!passActualizada ? (
+          <>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '.08em', color: '#00ddd0', marginBottom: '.6rem', textAlign: 'center' }}>
+              CREA TU NUEVA CONTRASEÑA
+            </div>
+            <input type="password" placeholder="Nueva contraseña" value={nuevaPass}
+              onChange={e => setNuevaPass(e.target.value)} autoFocus
+              style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '.8rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
+            />
+            <input type="password" placeholder="Repite la contraseña" value={nuevaPass2}
+              onChange={e => setNuevaPass2(e.target.value)}
+              style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '1rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
+            />
+            {errorNueva && <p style={{ marginBottom: '1rem', color: '#ff6b6b', textAlign: 'center', fontSize: '.85rem' }}>{errorNueva}</p>}
+            <button onClick={handleGuardarNuevaPass} disabled={loadingNueva} style={{
+              width: '100%', padding: '.75rem', background: 'var(--color-primary)', border: 'none',
+              borderRadius: '8px', color: '#000', fontFamily: 'var(--font-display)', fontSize: '1.1rem', cursor: 'pointer',
+            }}>
+              {loadingNueva ? 'GUARDANDO...' : 'GUARDAR CONTRASEÑA'}
+            </button>
+          </>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '.6rem' }}>✅</div>
+            <div style={{ color: 'rgba(255,255,255,.8)', marginBottom: '1.2rem', fontSize: '.9rem' }}>Contraseña actualizada</div>
+            <button onClick={onRecuperada} style={{
+              width: '100%', padding: '.75rem', background: 'var(--color-primary)', border: 'none',
+              borderRadius: '8px', color: '#000', fontFamily: 'var(--font-display)', fontSize: '1.1rem', cursor: 'pointer',
+            }}>
+              IR AL PANEL →
+            </button>
+          </div>
+        )}
+      </div>
+    )
   }
 
   // ── UI ────────────────────────────────────────────────────
@@ -242,8 +329,43 @@ export default function LoginPage() {
       />
       <input type="password" placeholder="Contraseña" value={password}
         onChange={e => setPassword(e.target.value)}
-        style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '1rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
+        style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '.5rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
       />
+
+      <button type="button" onClick={() => { setShowRecuperar(s => !s); setLinkEnviado(false); setMensajeRecuperar('') }} style={{
+        display: 'block', marginBottom: '1rem', background: 'none', border: 'none',
+        color: 'rgba(255,255,255,.4)', fontSize: '.8rem', cursor: 'pointer', textDecoration: 'underline',
+      }}>
+        ¿Olvidaste tu contraseña?
+      </button>
+
+      {showRecuperar && (
+        <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem' }}>
+          {!linkEnviado ? (
+            <>
+              <div style={{ fontSize: '.78rem', color: 'rgba(255,255,255,.6)', marginBottom: '.6rem' }}>
+                Escribe el correo con el que te registraste y te mandamos un link para crear una nueva contraseña
+              </div>
+              <input type="email" placeholder="tu@email.com" value={emailRecuperar}
+                onChange={e => setEmailRecuperar(e.target.value)}
+                style={{ display: 'block', width: '100%', padding: '.6rem', marginBottom: '.6rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '.9rem', boxSizing: 'border-box' }}
+              />
+              {mensajeRecuperar && <p style={{ marginBottom: '.6rem', color: '#ff6b6b', fontSize: '.8rem' }}>{mensajeRecuperar}</p>}
+              <button onClick={handleEnviarRecuperacion} disabled={loadingRecuperar} style={{
+                width: '100%', padding: '.6rem', background: 'var(--color-primary)', border: 'none',
+                borderRadius: '8px', color: '#000', fontFamily: 'var(--font-display)', fontSize: '.95rem', cursor: 'pointer',
+              }}>
+                {loadingRecuperar ? 'ENVIANDO...' : 'ENVIAR LINK'}
+              </button>
+            </>
+          ) : (
+            <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.75)', textAlign: 'center', lineHeight: 1.5 }}>
+              📩 Listo — revisa <b>{emailRecuperar}</b> (y la carpeta de spam) y toca el link para crear tu nueva contraseña
+            </div>
+          )}
+        </div>
+      )}
+
       <button onClick={handleLogin} disabled={loading} style={{
         width: '100%', padding: '.75rem',
         background: 'var(--color-primary)', border: 'none',
