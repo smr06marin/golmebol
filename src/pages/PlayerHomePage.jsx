@@ -300,7 +300,7 @@ export default function PlayerHomePage() {
             color: '#d93025', bg: '#fff8f8',
             accion: {
               label: '📲 Renovar',
-              fn: () => window.open(`https://wa.me/573226490055?text=${encodeURIComponent('Hola! Quiero renovar mi membresía de PREDIX Golmebol 🎯')}`, '_blank')
+              fn: () => window.open(`https://wa.me/573178940448?text=${encodeURIComponent('Hola! Quiero renovar mi membresía de PREDIX Golmebol 🎯')}`, '_blank')
             },
           })
         }
@@ -392,7 +392,7 @@ export default function PlayerHomePage() {
   // para mandarla a imprimir.
   function handleImprimirAcrilico() {
     const texto = `Hola! Quiero imprimir mi tarjeta en acrílico 🖨️🃏. Soy ${player.name} (cédula ${player.numero_cedula}).`
-    window.open(`https://wa.me/573226490055?text=${encodeURIComponent(texto)}`, '_blank')
+    window.open(`https://wa.me/573178940448?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   function getPosicionTipo(p) {
@@ -572,7 +572,7 @@ export default function PlayerHomePage() {
             style={{ width: '100%', padding: '14px', background: 'linear-gradient(90deg, #00ddd0, #1a73e8)', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '800', fontSize: '1rem', marginBottom: '12px' }}>
             🎯 ENTRAR A PREDIX →
           </button>
-          <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`)}`}
+          <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`)}`}
             target="_blank" rel="noopener noreferrer"
             style={{ display: 'block', padding: '12px', background: 'rgba(37,211,102,.15)', border: '1px solid rgba(37,211,102,.4)', borderRadius: '12px', color: '#25d366', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', marginBottom: '12px' }}>
             📲 ¿Juegas en un equipo? Escríbenos

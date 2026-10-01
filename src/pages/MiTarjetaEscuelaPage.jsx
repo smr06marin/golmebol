@@ -96,7 +96,7 @@ export default function MiTarjetaEscuelaPage() {
   // descarga la tarjeta desde ahí para mandarla a imprimir.
   function handleImprimirAcrilico() {
     const texto = `Hola! Quiero imprimir mi tarjeta en acrílico 🖨️🃏. Soy ${jugador.name}${jugador.numero_cedula ? ` (cédula ${jugador.numero_cedula})` : ''}${escuelaNombre ? `, de la escuela ${escuelaNombre}` : ''}.`
-    window.open(`https://wa.me/573226490055?text=${encodeURIComponent(texto)}`, '_blank')
+    window.open(`https://wa.me/573178940448?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   if (loading) return (
@@ -110,7 +110,7 @@ export default function MiTarjetaEscuelaPage() {
         <div style={{ fontSize:'.85rem', color:S.text2, marginBottom:'20px', lineHeight:1.5 }}>
           Tu cuenta no quedó bien vinculada. Escríbenos por WhatsApp con tu número de documento para arreglarlo.
         </div>
-        <a href={`https://wa.me/573226490055?text=${encodeURIComponent('Hola, no puedo ver mi tarjeta de jugador de escuela')}`} target="_blank" rel="noreferrer"
+        <a href={`https://wa.me/573178940448?text=${encodeURIComponent('Hola, no puedo ver mi tarjeta de jugador de escuela')}`} target="_blank" rel="noreferrer"
           style={{ display:'inline-block', padding:'10px 20px', background:S.cyan, color:'#07070e', borderRadius:'10px', textDecoration:'none', fontWeight:'700', fontSize:'.85rem' }}>
           💬 Escribir por WhatsApp
         </a>

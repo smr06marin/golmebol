@@ -18,7 +18,7 @@ const inp = {
 }
 
 const WA_LINK = (texto) =>
-  `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
+  `https://wa.me/573178940448?text=${encodeURIComponent(texto)}`
 
 function ErrorBox({ error }) {
   if (!error) return null

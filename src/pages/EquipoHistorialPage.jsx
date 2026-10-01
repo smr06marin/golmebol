@@ -773,7 +773,7 @@ export default function EquipoHistorialPage() {
                   {cupoLleno && (
                     <div style={{ marginTop:'10px' }}>
                       <div style={{ fontSize:'.76rem', color:S.muted, marginBottom:'8px' }}>Ya llegaste al límite de jugadores de este torneo. Para inscribir uno más, pedile al organizador que te habilite un cupo extra.</div>
-                      <a href={`https://wa.me/573226490055?text=${encodeURIComponent(mensajeWa)}`} target="_blank" rel="noreferrer"
+                      <a href={`https://wa.me/573178940448?text=${encodeURIComponent(mensajeWa)}`} target="_blank" rel="noreferrer"
                         style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:'#25d366', borderRadius:'8px', padding:'8px 14px', color:'#04250f', fontSize:'.78rem', fontWeight:'800', textDecoration:'none' }}>
                         📲 Pedir cupo extra por WhatsApp
                       </a>

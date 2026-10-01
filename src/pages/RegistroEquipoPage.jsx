@@ -489,7 +489,7 @@ export default function RegistroEquipoPage() {
           Este link de registro ya venció (es válido por {horasValidez === 24 ? '1 día' : `${Math.round(horasValidez / 24)} días`} desde que se envió).
           Pide a Golmebol que te comparta uno nuevo para seguir inscribiendo jugadores del equipo <strong>{equipo.name}</strong> en el torneo <strong>{torneo.name}</strong>.
         </div>
-        <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Quiero registrar otro jugador, ¿me podrías enviar el link? Equipo: ${equipo.name} — Torneo: ${torneo.name}`)}`}
+        <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola! Quiero registrar otro jugador, ¿me podrías enviar el link? Equipo: ${equipo.name} — Torneo: ${torneo.name}`)}`}
           target="_blank" rel="noopener noreferrer"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25D366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
           📲 Escribir a Golmebol por WhatsApp

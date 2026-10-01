@@ -298,7 +298,7 @@ function construirRankingTorneo(modo, torneoId, { preds, duelosArr, posturasArr,
   return Object.values(rankMap).sort((a, b) => b.puntos - a.puntos)
 }
 
-const WA_PREDIX = (texto) => `https://wa.me/573226490055?text=${encodeURIComponent(texto)}`
+const WA_PREDIX = (texto) => `https://wa.me/573178940448?text=${encodeURIComponent(texto)}`
 
 // ── Rondas (fechas de apertura/cierre/fin por torneo, las pone el admin) ──
 // Mismo criterio que en el panel de admin: el estado se calcula de las 3

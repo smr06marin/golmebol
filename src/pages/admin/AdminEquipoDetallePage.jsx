@@ -972,7 +972,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   </button>
                 )}
                 {!modoLectura && !esPrincipal && (
-                  <a href={`https://wa.me/573226490055?text=${encodeURIComponent(`Hola! Soy organizador y quiero pedir permiso para editar los datos del dueño del equipo "${equipo.name}". Datos actuales: ${equipo.representante_nombre || 'sin nombre'}${equipo.representante_cedula ? ` · cédula ${equipo.representante_cedula}` : ''}${equipo.representante_telefono ? ` · tel ${equipo.representante_telefono}` : ''}`)}`}
+                  <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola! Soy organizador y quiero pedir permiso para editar los datos del dueño del equipo "${equipo.name}". Datos actuales: ${equipo.representante_nombre || 'sin nombre'}${equipo.representante_cedula ? ` · cédula ${equipo.representante_cedula}` : ''}${equipo.representante_telefono ? ` · tel ${equipo.representante_telefono}` : ''}`)}`}
                     target="_blank" rel="noreferrer"
                     style={{ fontSize: '.68rem', color: '#e8710a', ...GLASS_INSET, borderRadius: '20px', padding: '3px 10px', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     🔒 Solicitar cambio

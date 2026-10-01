@@ -13,6 +13,9 @@ function base64ToBuffer(base64) {
 const RP_ID   = window.location.hostname        // ej: "golmebol.vercel.app"
 const RP_NAME = 'Golmebol'
 
+const WA_LINK = (texto) =>
+  `https://wa.me/573178940448?text=${encodeURIComponent(texto)}`
+
 async function registerFaceId(userId, email) {
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const credential = await navigator.credentials.create({
@@ -75,12 +78,9 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
   const [showRegisterFace, setShowRegisterFace] = useState(false)
   const [pendingSession, setPendingSession] = useState(null)
 
-  // ── Recuperar contraseña (organizador/admin) ───────────────
-  const [showRecuperar, setShowRecuperar]       = useState(false)
-  const [emailRecuperar, setEmailRecuperar]     = useState('')
-  const [loadingRecuperar, setLoadingRecuperar] = useState(false)
-  const [mensajeRecuperar, setMensajeRecuperar] = useState('')
-  const [linkEnviado, setLinkEnviado]           = useState(false)
+  // ── Recuperar contraseña (organizador/admin): no es self-service — se le
+  // pide que escriba por WhatsApp para que un admin se la resetee a mano.
+  const [showRecuperar, setShowRecuperar] = useState(false)
 
   // ── Crear nueva contraseña (viene del link del correo) ─────
   const [nuevaPass, setNuevaPass]   = useState('')
@@ -163,19 +163,6 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
     if (error) setMensaje('Error: ' + error.message)
     else setMensaje('✅ Cuenta creada. Si te llega un correo de confirmación, ábrelo antes de entrar')
     setLoading(false)
-  }
-
-  // ── Pedir link para recuperar contraseña ───────────────────
-  async function handleEnviarRecuperacion() {
-    if (!emailRecuperar.trim()) { setMensajeRecuperar('Escribe tu correo'); return }
-    setLoadingRecuperar(true)
-    setMensajeRecuperar('')
-    const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperar.trim().toLowerCase(), {
-      redirectTo: `${window.location.origin}/login`,
-    })
-    setLoadingRecuperar(false)
-    if (error) setMensajeRecuperar('Error: ' + error.message)
-    else setLinkEnviado(true)
   }
 
   // ── Guardar la nueva contraseña (ya con la sesión de recuperación activa) ──
@@ -332,7 +319,7 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
         style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '.5rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
       />
 
-      <button type="button" onClick={() => { setShowRecuperar(s => !s); setLinkEnviado(false); setMensajeRecuperar('') }} style={{
+      <button type="button" onClick={() => setShowRecuperar(s => !s)} style={{
         display: 'block', marginBottom: '1rem', background: 'none', border: 'none',
         color: 'rgba(255,255,255,.4)', fontSize: '.8rem', cursor: 'pointer', textDecoration: 'underline',
       }}>
@@ -340,29 +327,15 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
       </button>
 
       {showRecuperar && (
-        <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem' }}>
-          {!linkEnviado ? (
-            <>
-              <div style={{ fontSize: '.78rem', color: 'rgba(255,255,255,.6)', marginBottom: '.6rem' }}>
-                Escribe el correo con el que te registraste y te mandamos un link para crear una nueva contraseña
-              </div>
-              <input type="email" placeholder="tu@email.com" value={emailRecuperar}
-                onChange={e => setEmailRecuperar(e.target.value)}
-                style={{ display: 'block', width: '100%', padding: '.6rem', marginBottom: '.6rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '.9rem', boxSizing: 'border-box' }}
-              />
-              {mensajeRecuperar && <p style={{ marginBottom: '.6rem', color: '#ff6b6b', fontSize: '.8rem' }}>{mensajeRecuperar}</p>}
-              <button onClick={handleEnviarRecuperacion} disabled={loadingRecuperar} style={{
-                width: '100%', padding: '.6rem', background: 'var(--color-primary)', border: 'none',
-                borderRadius: '8px', color: '#000', fontFamily: 'var(--font-display)', fontSize: '.95rem', cursor: 'pointer',
-              }}>
-                {loadingRecuperar ? 'ENVIANDO...' : 'ENVIAR LINK'}
-              </button>
-            </>
-          ) : (
-            <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.75)', textAlign: 'center', lineHeight: 1.5 }}>
-              📩 Listo — revisa <b>{emailRecuperar}</b> (y la carpeta de spam) y toca el link para crear tu nueva contraseña
-            </div>
-          )}
+        <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.7)', marginBottom: '.8rem', lineHeight: 1.5 }}>
+            Escríbenos por WhatsApp y te ayudamos a restablecerla
+          </div>
+          <a href={WA_LINK(`Hola! Olvidé mi contraseña de Golmebol (correo: ${email || 'escribir aquí'}). Ayúdenme a restablecerla 🙏`)}
+            target="_blank" rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '.7rem', background: '#25d366', borderRadius: '8px', color: '#fff', fontWeight: '700', fontSize: '.85rem', textDecoration: 'none' }}>
+            📲 Escribir a Golmebol
+          </a>
         </div>
       )}
 
