@@ -471,8 +471,12 @@ export default function LandingPage() {
   }
 
   async function fetchTorneosActivos() {
-    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at').eq('status', 'active')
+    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at, archivado').eq('status', 'active')
+    if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, archivado').eq('status', 'active')
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season').eq('status', 'active')
+    // Una edición archivada (porque ya se creó la siguiente) no se muestra
+    // en el feed principal — solo se vería la edición vigente de cada torneo.
+    if (torsRes.data) torsRes = { ...torsRes, data: torsRes.data.filter(t => !t.archivado) }
     const [{ data: tts }, { data: ms }] = await Promise.all([
       supabase.from('tournament_teams').select('tournament_id'),
       supabase.from('matches').select('tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'),

@@ -229,19 +229,62 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
 
   async function fetchTodo() {
     setLoading(true)
-    const [{ data: p }, { data: ts }, { data: sp }] = await Promise.all([
+    const [{ data: p }, torsRes, { data: sp }] = await Promise.all([
       supabase.from('organizador_perfiles').select('*').eq('organizador_id', id).maybeSingle(),
-      supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, categoria, city, season, fecha_inicio').eq('organizador_id', id).order('created_at', { ascending: false }),
+      supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, categoria, city, season, fecha_inicio, torneo_padre_id, edicion, archivado').eq('organizador_id', id).order('created_at', { ascending: false }),
       supabase.from('organizador_sponsors').select('*').eq('organizador_id', id).order('orden', { ascending: true }),
     ])
+    let ts = torsRes.data
+    if (torsRes.error) {
+      // Falta migracion_archivar_torneos.sql: se reintenta sin esa columna
+      ;({ data: ts } = await supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, categoria, city, season, fecha_inicio, torneo_padre_id, edicion').eq('organizador_id', id).order('created_at', { ascending: false }))
+    }
     setPerfil(p)
-    setTorneos(ts || [])
+
+    // Varias ediciones del MISMO torneo no se listan todas por separado acá
+    // (saturaría la vitrina pública) — solo la más reciente de cada una,
+    // mostrando el campeón vigente (el de la última edición ya finalizada,
+    // aunque sea una anterior) como insignia en su tarjeta.
+    const porLinaje = {}
+    ;(ts || []).forEach(t => {
+      const raizId = t.torneo_padre_id || t.id
+      if (!porLinaje[raizId]) porLinaje[raizId] = []
+      porLinaje[raizId].push(t)
+    })
+    const representativos = Object.values(porLinaje).map(grupo => {
+      const sinArchivar = grupo.filter(t => !t.archivado)
+      const candidatos = sinArchivar.length > 0 ? sinArchivar : grupo
+      return candidatos.sort((a, b) => (b.edicion || 1) - (a.edicion || 1))[0]
+    })
+
+    if (representativos.length > 0) {
+      const todosLosIds = ts.map(t => t.id)
+      const { data: camps } = await supabase.from('tournament_logros')
+        .select('tournament_id, team_id, teams(id,name,logo_url)')
+        .in('tournament_id', todosLosIds).eq('tipo', 'campeon').limit(1000)
+      const edicionPorId = Object.fromEntries((ts || []).map(t => [t.id, t.edicion || 1]))
+      const raizPorId = Object.fromEntries((ts || []).map(t => [t.id, t.torneo_padre_id || t.id]))
+      const mejorPorRaiz = {}
+      ;(camps || []).forEach(c => {
+        if (!c.teams) return
+        const raiz = raizPorId[c.tournament_id]
+        const ed = edicionPorId[c.tournament_id] || 0
+        if (!mejorPorRaiz[raiz] || ed > mejorPorRaiz[raiz].edicion) mejorPorRaiz[raiz] = { edicion: ed, team: c.teams }
+      })
+      representativos.forEach(t => {
+        const raizId = t.torneo_padre_id || t.id
+        t.campeonVigente = mejorPorRaiz[raizId] || null
+      })
+    }
+
+    setTorneos(representativos)
     setSponsors(sp || [])
 
     // Conteo de equipos inscritos por torneo (para el detalle de cada
-    // tarjeta) — una sola consulta extra en vez de una por torneo.
-    if (ts?.length) {
-      const { data: tt } = await supabase.from('tournament_teams').select('tournament_id').in('tournament_id', ts.map(t => t.id))
+    // tarjeta) — una sola consulta extra en vez de una por torneo. Solo de
+    // los torneos que se muestran (la edición vigente de cada uno).
+    if (representativos.length) {
+      const { data: tt } = await supabase.from('tournament_teams').select('tournament_id').in('tournament_id', representativos.map(t => t.id))
       const conteo = {}
       for (const row of (tt || [])) conteo[row.tournament_id] = (conteo[row.tournament_id] || 0) + 1
       setEquiposPorTorneo(conteo)
@@ -433,6 +476,11 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
                     {t.fecha_inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> {formatearFecha(t.fecha_inicio)}</span>}
                     {t.categoria && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Tag size={12}/> {t.categoria}</span>}
                   </div>
+                  {t.campeonVigente?.team && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.7rem', color: '#8a6d00', background: '#fff8e1', border: '1px solid #ffe29b', borderRadius: '8px', padding: '5px 8px', marginBottom: '4px' }}>
+                      🏆 Campeón vigente: <b>{t.campeonVigente.team.name}</b>
+                    </div>
+                  )}
                   <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: colorPrimario, fontWeight: '700', fontSize: '.78rem', paddingTop: '6px' }}>
                     Ver detalles <ChevronRight size={14}/>
                   </div>
