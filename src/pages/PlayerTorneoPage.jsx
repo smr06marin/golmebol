@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { computeTablaGeneral, computeVallaEquipos } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo } from '../lib/torneoTablas'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -668,7 +668,7 @@ export default function PlayerTorneoPage() {
   function getTablaGrupoPlayer(grupoId) {
     const P = getPuntosTorneo(torneo)
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    const partGrupo = partidos.filter(p => (p.fase === 'grupo' || !p.fase) && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+    const partGrupo = conMarcadorEnVivo(partidos).filter(p => (p.fase === 'grupo' || !p.fase) && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
     const t = {}
     eqIds.forEach(eid => {
       const eq = equipos.find(e => e.id === eid)
@@ -692,6 +692,10 @@ export default function PlayerTorneoPage() {
   }
 
   const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
+  // Goleadores con los goles del partido en vivo sumados encima (ver
+  // mergeGoleadoresConVivo) — así el ranking también se actualiza solo
+  // mientras el árbitro va llenando la planilla, sin esperar el guardado final.
+  const goleadoresConVivo = mergeGoleadoresConVivo(goleadores, partidos, equipos)
 
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
   // los arqueros registrados de cada equipo (fotos y nombres). A diferencia
@@ -1131,7 +1135,7 @@ export default function PlayerTorneoPage() {
               titulo="⚽ Goleadores"
               statLabel="goles" statColor="#ffd54a"
               vacio="Sin goles aún"
-              rows={goleadores.map(g => ({
+              rows={goleadoresConVivo.map(g => ({
                 id: `${g.player_id}-${g.team_id}`,
                 nombre: g.player_name,
                 foto: g.photo_url,

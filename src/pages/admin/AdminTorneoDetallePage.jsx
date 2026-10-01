@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
-import { computeTablaGeneral, computeVallaEquipos } from '../../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo } from '../../lib/torneoTablas'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
@@ -1475,7 +1475,7 @@ export default function AdminTorneoDetallePage() {
   function getTablaGrupo(grupoId) {
     const P = getPuntosTorneo(torneo)
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    const partGrupo = partidos.filter(p => p.fase === 'grupo' && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+    const partGrupo = conMarcadorEnVivo(partidos).filter(p => p.fase === 'grupo' && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
     const tabla = {}
     eqIds.forEach(eid => {
       const eq = equipos.find(e => e.id === eid)
@@ -1506,7 +1506,7 @@ export default function AdminTorneoDetallePage() {
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
     const matchIds = partidos.filter(p => p.fase === 'grupo' && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id) && p.status === 'finished').map(p => p.id)
     const map = {}
-    goleadores.forEach(g => {
+    goleadoresConVivo.forEach(g => {
       if (!eqIds.includes(g.team_id)) return
       if (!map[g.player_id]) map[g.player_id] = { ...g }
       else { map[g.player_id].total_goals += g.total_goals || 0 }
@@ -3220,6 +3220,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   function calcTablaGeneral() {
     return computeTablaGeneral(equipos, partidos, torneo)
   }
+
+  // Goleadores con los goles del partido en vivo sumados encima (ver
+  // mergeGoleadoresConVivo) — así el ranking también se actualiza solo
+  // mientras el árbitro va llenando la planilla, sin esperar el guardado final.
+  const goleadoresConVivo = mergeGoleadoresConVivo(goleadores, partidos, equipos)
 
   // ── CALENDARIO ──────────────────────────────────────
 
@@ -5633,7 +5638,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <RankingPoster
                 statLabel="goles" statColor="#ffd54a"
                 vacio="No hay estadísticas aún."
-                rows={goleadores.map(g => ({
+                rows={goleadoresConVivo.map(g => ({
                   id: `${g.player_id}-${g.team_id}`,
                   nombre: g.player_name,
                   foto: g.photo_url,

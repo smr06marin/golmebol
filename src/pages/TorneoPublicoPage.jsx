@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
-import { computeTablaGeneral, computeVallaEquipos } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
@@ -816,12 +816,16 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // Tabla de posiciones
   const P = getPuntosTorneo(torneo)
   const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
+  // Goleadores con los goles del partido en vivo sumados encima (ver
+  // mergeGoleadoresConVivo) — así el ranking también se actualiza solo
+  // mientras el árbitro va llenando la planilla, sin esperar el guardado final.
+  const goleadoresConVivo = mergeGoleadoresConVivo(goleadores, partidos, equipos)
 
   // Tabla de un grupo específico — solo cuenta partidos entre equipos de ese
   // mismo grupo en fase de grupos (misma lógica que usa el jugador/admin).
   function getTablaGrupo(grupoId) {
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    const partGrupo = partidos.filter(p => (!p.fase || p.fase === 'grupo') && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+    const partGrupo = conMarcadorEnVivo(partidos).filter(p => (!p.fase || p.fase === 'grupo') && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
     const t = {}
     eqIds.forEach(eid => {
       const eq = equipos.find(e => e.id === eid)
@@ -1300,7 +1304,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
             titulo="⚽ Top goleadores"
             statLabel="goles" statColor="#ffd54a"
             vacio="Sin estadísticas aún"
-            rows={goleadores.map(g => ({
+            rows={goleadoresConVivo.map(g => ({
               id: `${g.player_id}-${g.team_id}`,
               nombre: g.player_name,
               foto: g.photo_url,

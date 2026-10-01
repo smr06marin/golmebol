@@ -157,6 +157,46 @@ export function extraerGoles(match) {
   return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
 }
 
+// Igual que extraerGoles, pero con el player_id y el team_id REALES (no
+// 'local'/'visitante') — para poder sumar estos goles a la tabla de
+// goleadores del torneo (que se identifica por player_id) mientras el
+// partido se sigue jugando, sin esperar a que el árbitro guarde el
+// resultado final. Como se vuelve a derivar del snapshot completo cada
+// vez, si el árbitro borra un gol que había metido por error, el gol
+// simplemente deja de aparecer acá en el próximo snapshot — no hace falta
+// ningún manejo especial para las correcciones.
+export function extraerGolesConJugador(match) {
+  if (!match) return []
+  const candidatos = []
+  if (match.live_state)        candidatos.push({ snap: match.live_state,        updatedAt: match.live_state_updated_at,        tipo: 'completa' })
+  if (match.live_state_rapida) candidatos.push({ snap: match.live_state_rapida, updatedAt: match.live_state_rapida_updated_at, tipo: 'rapida' })
+  if (candidatos.length === 0) return []
+  candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+  const { snap, tipo } = candidatos[0]
+  if (!snap) return []
+
+  let goles = []
+  if (tipo === 'rapida') {
+    goles = (snap.eventos || []).filter(e => e.tipo === 'goal').map(e => ({
+      teamId: e.team === 'local' ? match.home_team_id : match.away_team_id,
+      jugadorId: e.jugadorId || null,
+      jugadorNombre: e.jugadorNombre || 'Jugador',
+      minuto: e.minuto || null, periodo: e.periodo || 1,
+    }))
+  } else {
+    const buscar = (arr, numero) => (arr || []).find(j => String(j.numero) === String(numero))
+    ;(snap.golesLocal || []).filter(Boolean).forEach(g => {
+      const j = buscar(snap.jugadoresLocal, g.numero)
+      goles.push({ teamId: match.home_team_id, jugadorId: j?.id || null, jugadorNombre: j?.nombre || 'Jugador', minuto: g.minuto || null, periodo: g.periodo || 1 })
+    })
+    ;(snap.golesVisitante || []).filter(Boolean).forEach(g => {
+      const j = buscar(snap.jugadoresVisitante, g.numero)
+      goles.push({ teamId: match.away_team_id, jugadorId: j?.id || null, jugadorNombre: j?.nombre || 'Jugador', minuto: g.minuto || null, periodo: g.periodo || 1 })
+    })
+  }
+  return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+}
+
 // Nómina (número + nombre) de cada equipo, sacada del mismo snapshot en vivo
 // — para la gráfica de "jugadores" del panel de control en vivo. Mismo
 // snapshot que ya usan extraerGoles/extraerTarjetas (el árbitro la carga al
