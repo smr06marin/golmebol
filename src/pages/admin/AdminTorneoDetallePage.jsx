@@ -5738,7 +5738,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           </div>
                         ) : (
                           <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '10px', textAlign: 'center', color: '#9aa0a6', fontSize: '.72rem', fontWeight: '600', background: '#f1f3f4' }}>
-                            Por definir
+                            {/* Un "Por definir" por cada CUPO de equipo de esta llave (2),
+                                no uno solo por partido — para que el conteo de cuadros de
+                                esta ronda futura coincida con cuántos equipos van a llegar
+                                a jugarla (ej. 8 en cuartos si vienen 16 de octavos). */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '2px' }}>
+                              <div>Por definir</div>
+                              <div>Por definir</div>
+                            </div>
                             <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
                               <input type="date" value={previewCalendario?.[col.fase]?.[i]?.fecha || ''}
                                 onChange={e => actualizarCalendarioLlave(col.fase, i, 'fecha', e.target.value)}
@@ -5831,19 +5838,22 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     )}
                     <div ref={elimChatEndRef}/>
 
-                    {!elimChatListo && (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input value={elimChatInput} onChange={e => setElimChatInput(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviarMensajeElim()}
-                          placeholder="Ej: que clasifiquen 8, cruzados, y si quedan impares que pase un mejor perdedor más..."
-                          style={{ flex: 1, background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '9px 14px', fontSize: '.82rem', outline: 'none', color: '#202124' }}
-                          disabled={elimChatLoading}/>
-                        <button onClick={enviarMensajeElim} disabled={elimChatLoading || !elimChatInput.trim()}
-                          style={{ padding: '9px 14px', background: elimChatInput.trim() ? '#1a73e8' : '#f1f3f4', border: 'none', borderRadius: '10px', cursor: elimChatInput.trim() ? 'pointer' : 'not-allowed', color: elimChatInput.trim() ? '#fff' : '#9aa0a6', display: 'flex', alignItems: 'center' }}>
-                          <Send size={16}/>
-                        </button>
-                      </div>
-                    )}
+                    {/* El cuadro para escribirle sigue disponible AUNQUE ya haya una
+                        propuesta lista (elimChatListo) — así, si algo del árbol de
+                        abajo salió distinto a lo que pediste, se lo decís acá mismo
+                        ("cambia la semifinal a partido único", etc.) y la IA ajusta
+                        la MISMA propuesta sin tener que empezar de cero. */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input value={elimChatInput} onChange={e => setElimChatInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviarMensajeElim()}
+                        placeholder={elimChatListo ? 'Ej: cambia la semifinal a partido único, o pon la final el 20 de abril...' : 'Ej: que clasifiquen 8, cruzados, y si quedan impares que pase un mejor perdedor más...'}
+                        style={{ flex: 1, background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '9px 14px', fontSize: '.82rem', outline: 'none', color: '#202124' }}
+                        disabled={elimChatLoading}/>
+                      <button onClick={enviarMensajeElim} disabled={elimChatLoading || !elimChatInput.trim()}
+                        style={{ padding: '9px 14px', background: elimChatInput.trim() ? '#1a73e8' : '#f1f3f4', border: 'none', borderRadius: '10px', cursor: elimChatInput.trim() ? 'pointer' : 'not-allowed', color: elimChatInput.trim() ? '#fff' : '#9aa0a6', display: 'flex', alignItems: 'center' }}>
+                        <Send size={16}/>
+                      </button>
+                    </div>
                     {!elimChatListo && (
                       <button onClick={() => setElimChatListo(true)} style={{ alignSelf: 'flex-start', fontSize: '.72rem', color: '#9aa0a6', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                         Prefiero armarlo manualmente
@@ -5877,15 +5887,18 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                 <div style={{ textAlign: 'center', fontSize: '.56rem', fontWeight: '700', color: col.conVuelta ? '#1a73e8' : '#9aa0a6', marginBottom: '6px' }}>
                                   {col.conVuelta ? `🔁 Ida y vuelta${col.margen ? ` · sin vuelta si ${col.margen}+` : ''}` : '⚽ Partido único'}
                                 </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                                   {col.llaves.map((ll, i) => (
-                                    <div key={i} style={{ background: ll ? '#fffaf3' : '#f1f3f4', border: ll ? '1px dashed #e8710a' : '1px dashed #c4c9d0', borderRadius: '8px', padding: '5px 8px', fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600' }}>
-                                      {ll ? (
-                                        <>
-                                          <div style={{ color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ll.a?.name || '—'}</div>
-                                          <div style={{ color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ll.b?.name || '—'}</div>
-                                        </>
-                                      ) : 'Por definir'}
+                                    // Un cuadro POR EQUIPO (no uno por partido con los dos
+                                    // adentro) — así octavos muestra 16 cuadros, cuartos 8,
+                                    // semifinal 4, etc., agrupados de a 2 para ver quién
+                                    // juega contra quién, igual que un árbol de verdad.
+                                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                      {[ll?.a, ll?.b].map((eq, ti) => (
+                                        <div key={ti} style={{ background: eq ? '#fffaf3' : '#f1f3f4', border: eq ? '1px solid #e8710a' : '1px dashed #c4c9d0', borderRadius: '7px', padding: '6px 9px', fontSize: '.68rem', fontWeight: '600', color: eq ? '#202124' : '#9aa0a6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {eq?.name || 'Por definir'}
+                                        </div>
+                                      ))}
                                     </div>
                                   ))}
                                 </div>
@@ -6364,7 +6377,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                     </div>
                                   ))}
                                 </div>
-                              ) : 'Por definir'}
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                  <div>Por definir</div>
+                                  <div>Por definir</div>
+                                </div>
+                              )}
                               <div style={{ fontSize: '.62rem', fontWeight: '500', color: '#9aa0a6', marginTop: '4px', marginBottom: '4px' }}>
                                 Podés ponerle fecha/hora desde ya
                               </div>
