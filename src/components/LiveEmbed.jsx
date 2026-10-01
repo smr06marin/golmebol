@@ -440,15 +440,26 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
     }
 
     timers.push(setTimeout(() => setMostrandoCierre(true), msCierreInicio))
-    timers.push(setTimeout(() => {
-      // El salto de verdad al en vivo pasa acá, con el logo ya grande.
+    // El salto de verdad al en vivo pasa acá, con el logo ya grande.
+    // getDuration() puede devolver 0/undefined un instante si el reproductor
+    // todavía está buffering o terminando el seek de la repetición (más
+    // probable con WiFi inestable de cancha) — antes, si fallaba una sola
+    // vez, el video se quedaba atrasado del en vivo para siempre. Ahora se
+    // reintenta varias veces antes de darnos por vencidos.
+    timers.push(setTimeout(function intentarVolverAlVivo(intentosRestantes = 6) {
       if (!puedeControlarVideo) return
       try {
         // Restaurar la velocidad normal ANTES de volver al en vivo — si quedara
         // en 0.5x, el video en vivo real se vería en cámara lenta para siempre.
         if (repeticion.camaraLenta && typeof player.setPlaybackRate === 'function') player.setPlaybackRate(1)
         const duracion = player.getDuration?.()
-        if (duracion) player.seekTo(duracion, true)
+        if (duracion) {
+          player.seekTo(duracion, true)
+        } else if (intentosRestantes > 0) {
+          timers.push(setTimeout(() => intentarVolverAlVivo(intentosRestantes - 1), 300))
+        } else {
+          console.warn('[LiveEmbed] no se pudo volver al en vivo después de la repetición: getDuration() no respondió')
+        }
       } catch { /* si el reproductor ya no responde, no pasa nada */ }
     }, msCierreSeek))
     timers.push(setTimeout(() => {
