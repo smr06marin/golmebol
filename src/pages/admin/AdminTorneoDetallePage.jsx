@@ -17,7 +17,7 @@ import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPo
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 
@@ -675,6 +675,20 @@ export default function AdminTorneoDetallePage() {
   // hasta entonces no hay que guardar nada, para no pisar lo guardado con los
   // valores por defecto de arranque.
   const [previewConfigCargado, setPreviewConfigCargado] = useState(false)
+
+  // Chat con IA para armar las eliminatorias: reemplaza el formulario manual
+  // de antes — el organizador describe en texto libre cómo las quiere jugar
+  // y la IA aplica eso a las MISMAS variables de arriba (numClasifElim,
+  // estiloLlaves, etc.), así que la vista previa y la creación real de
+  // partidos siguen funcionando exactamente igual que siempre.
+  const [elimChatMsgs,    setElimChatMsgs]    = useState([]) // [{role:'user'|'assistant', content}]
+  const [elimChatInput,   setElimChatInput]   = useState('')
+  const [elimChatLoading, setElimChatLoading] = useState(false)
+  const [elimChatListo,   setElimChatListo]   = useState(false) // true cuando ya hay una propuesta (de la IA o manual) lista para revisar y confirmar
+  const elimChatEndRef = useRef(null)
+  useEffect(() => {
+    elimChatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [elimChatMsgs, elimChatLoading])
 
   // Cupos sugeridos para la vista previa en vivo del árbol: si hay grupos,
   // "clasifican X por grupo" × cantidad de grupos; si aún no se creó el
@@ -1557,6 +1571,144 @@ export default function AdminTorneoDetallePage() {
     setOrdenManual(getParticipantesElim(numClasifElim))
     setLlavesManuales([])
     setShowWizardElim(true)
+    setElimChatMsgs([{ role: 'assistant', content: '¡Hola! Contame cómo querés que se jueguen las eliminaciones directas: cuántos equipos clasifican, si van cruzados (el mejor contra el peor) o por posición, qué hacemos si quedan impares, si ya tenés algún enfrentamiento puntual en mente, ida y vuelta o partido único, y la fecha de los primeros partidos. Yo te armo el árbol — después lo revisás acá abajo antes de confirmar.' }])
+    setElimChatInput('')
+    setElimChatListo(false)
+  }
+
+  // ── Chat de IA para armar las eliminatorias ──────────────────────────
+  // Arma el mismo contexto (equipos, grupos, tabla, reclasificación) que ya
+  // usa el formulario manual, y le pide a la IA que devuelva su propuesta
+  // en un bloque de JSON fijo — así se puede aplicar directo a las mismas
+  // variables de siempre sin tener que reinventar la lógica de llaves.
+  function construirContextoElimIA() {
+    const equiposTxt = equipos.map(e => `${e.id}::${e.name}`).join(' | ') || 'Sin equipos'
+    let grupoTxt = 'No hay fase de grupos — es un torneo directo de eliminación.'
+    if (grupos.length > 0) {
+      const porGrupo = torneo?.equipos_clasifican || clasificanPorGrupo
+      grupoTxt = `Clasifican ${porGrupo} por grupo (configurado). Tabla actual por grupo (posición.equipo(id) puntos):\n` +
+        grupos.map(g => `${g.nombre}: ${getTablaGrupo(g.id).map((row, i) => `${i + 1}.${row.equipo?.name}(${row.equipo?.id}) ${row.pts}pts`).join(', ')}`).join('\n')
+    }
+    const reclasTxt = calcTablaGeneral().map((row, i) => `${i + 1}.${row.equipo?.name}(${row.equipo?.id})`).join(', ')
+    return `EQUIPOS PARTICIPANTES (id::nombre): ${equiposTxt}\n${grupoTxt}\nORDEN DE RECLASIFICACIÓN GENERAL (mejor a peor, para completar cupos o elegir quién pasa directo): ${reclasTxt}\nCONFIGURACIÓN ACTUAL (por si no se menciona algo y hay que mantenerla): cupos=${numClasifElim}, estilo=${estiloLlaves}, modoImpar=${modoImpar}, idaVuelta=${idaVuelta}, tercerPuesto=${crearTercerPuesto}, fecha=${fechaElim || '(sin definir)'}, hora=${horaElim}.`
+  }
+
+  const ELIM_CHAT_INSTRUCCION = `Sos el asistente de GOLMEBOL que ayuda a un organizador a configurar cómo se juegan las eliminaciones directas de su torneo, a partir de lo que te describa en español, en texto libre.
+
+Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni después:
+<<<RESPUESTA>>>
+{"mensaje": "...", "listo": true o false, "config": {...} o null}
+<<<FIN>>>
+
+- "mensaje": en español, corto y claro, dirigido al organizador. Si listo=false es tu pregunta puntual sobre lo mínimo que falta para poder armar el árbol. Si listo=true es un resumen breve de lo que armaste, invitando a revisar la vista previa de abajo y confirmar o pedir cambios.
+- "listo": true apenas tengas lo mínimo indispensable (como mínimo cuántos clasifican) — no preguntes por fecha, 3er puesto o ida/vuelta si no los mencionó, usá un valor por defecto razonable en esos casos.
+- "config" (solo si listo=true), con estas claves exactas:
+  numClasifElim (entero), idaVuelta (bool), estiloLlaves ("consecutivo"|"cruzado"|"manual" — "manual" SOLO si nombró enfrentamientos puntuales equipo contra equipo), modoImpar ("mejor_perdedor"|"bye"), equipoByeId (id del equipo que pasa directo si modoImpar es "bye" y lo nombró, si no null), crearTercerPuesto (bool), ordenIds (lista de TODOS los ids de los clasificados en el orden de siembra que pidió, o null si no especificó un orden propio), parejasIds (lista de pares [idA,idB] SOLO si estiloLlaves es "manual", o null), fecha ("YYYY-MM-DD" o null), hora ("HH:MM" o null).
+- Nunca inventes un id que no esté en la lista de equipos que te dieron.
+- Si pide algo imposible (ej. más clasificados que equipos hay), avisale en "mensaje" con listo=false y config=null.`
+
+  async function llamarIAElim(mensajes) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/generar-noticia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ messages: mensajes, maxTokens: 700 }),
+    })
+    let data
+    try { data = await res.json() } catch { data = null }
+    if (!res.ok) throw new Error(`La IA no respondió (${data?.error?.message || `${res.status} ${res.statusText}`})`)
+    const texto = data?.content?.[0]?.text
+    if (!texto) throw new Error('La IA devolvió una respuesta vacía, intenta de nuevo')
+    return texto
+  }
+
+  function parseRespuestaElimIA(texto) {
+    const m = texto.match(/<<<RESPUESTA>>>([\s\S]*?)<<<FIN>>>/)
+    const bruto = m ? m[1] : texto
+    const inicio = bruto.indexOf('{')
+    const fin = bruto.lastIndexOf('}')
+    if (inicio === -1 || fin === -1) throw new Error('No se entendió la respuesta de la IA, intenta reformular')
+    return JSON.parse(bruto.slice(inicio, fin + 1))
+  }
+
+  // Aplica lo que armó la IA a las MISMAS variables que usa el formulario
+  // manual de siempre — así la vista previa y el botón de "crear de verdad"
+  // de más abajo funcionan igual sea que la config haya salido del chat o
+  // de tocar los menús a mano.
+  function aplicarConfigElimIA(config) {
+    const avisos = []
+    const maxCupos = Math.max(equipos.length, 2)
+    let n = parseInt(config?.numClasifElim, 10)
+    if (!Number.isFinite(n) || n < 2) n = numClasifElim
+    if (n > maxCupos) { avisos.push(`Pediste ${n} clasificados pero solo hay ${maxCupos} equipos — se ajustó a ${maxCupos}.`); n = maxCupos }
+    setNumClasifElim(n)
+    setIdaVuelta(!!config?.idaVuelta)
+    setCrearTercerPuesto(!!config?.crearTercerPuesto)
+    setModoImpar(config?.modoImpar === 'bye' ? 'bye' : 'mejor_perdedor')
+    if (config?.fecha) setFechaElim(config.fecha)
+    if (config?.hora) setHoraElim(config.hora)
+
+    const base = getParticipantesElim(n)
+    const idsValidos = new Set(base.map(t => String(t.id)))
+
+    if (config?.estiloLlaves === 'manual' && Array.isArray(config.parejasIds) && config.parejasIds.length > 0) {
+      setEstiloLlaves('manual')
+      setOrdenManual(base)
+      const usados = new Set()
+      const pares = []
+      config.parejasIds.forEach(par => {
+        if (!Array.isArray(par) || par.length !== 2) return
+        const [a, b] = par.map(String)
+        if (!idsValidos.has(a) || !idsValidos.has(b) || a === b || usados.has(a) || usados.has(b)) return
+        const eqA = base.find(t => String(t.id) === a)
+        const eqB = base.find(t => String(t.id) === b)
+        if (!eqA || !eqB) return
+        usados.add(a); usados.add(b)
+        pares.push([eqA, eqB])
+      })
+      if (pares.length === 0) avisos.push('No pude armar ninguna llave válida con los equipos que nombraste — revisalo abajo y armalo arrastrando.')
+      setLlavesManuales(pares)
+    } else {
+      setEstiloLlaves(config?.estiloLlaves === 'cruzado' ? 'cruzado' : 'consecutivo')
+      if (config?.equipoByeId && idsValidos.has(String(config.equipoByeId))) setEquipoByeId(String(config.equipoByeId))
+      else setEquipoByeId(null)
+      if (Array.isArray(config?.ordenIds) && config.ordenIds.length === base.length) {
+        const idsOrden = config.ordenIds.map(String)
+        const sonLosMismos = idsOrden.every(x => idsValidos.has(x)) && new Set(idsOrden).size === idsOrden.length
+        setPreviewOrden(sonLosMismos ? idsOrden : null)
+        if (!sonLosMismos) avisos.push('El orden que pediste no coincidía exactamente con los clasificados — se usó el orden automático.')
+      } else {
+        setPreviewOrden(null)
+      }
+    }
+    setElimChatListo(true)
+    return avisos
+  }
+
+  async function enviarMensajeElim() {
+    if (!elimChatInput.trim() || elimChatLoading) return
+    const userMsg = { role: 'user', content: elimChatInput.trim() }
+    const nuevosMensajes = [...elimChatMsgs, userMsg]
+    setElimChatMsgs(nuevosMensajes)
+    setElimChatInput('')
+    setElimChatLoading(true)
+    try {
+      const mensajesParaIA = [
+        { role: 'user', content: [{ type: 'text', text: ELIM_CHAT_INSTRUCCION + '\n\nCONTEXTO:\n' + construirContextoElimIA(), cache_control: { type: 'ephemeral' } }] },
+        { role: 'assistant', content: elimChatMsgs[0]?.content || '...' },
+        ...nuevosMensajes.slice(1),
+      ]
+      const texto = await llamarIAElim(mensajesParaIA)
+      const parsed = parseRespuestaElimIA(texto)
+      setElimChatMsgs(prev => [...prev, { role: 'assistant', content: parsed.mensaje || '...' }])
+      if (parsed.listo && parsed.config) {
+        const avisos = aplicarConfigElimIA(parsed.config)
+        if (avisos.length > 0) setElimChatMsgs(prev => [...prev, { role: 'assistant', content: `⚠️ ${avisos.join(' ')}` }])
+      }
+    } catch (e) {
+      setElimChatMsgs(prev => [...prev, { role: 'assistant', content: `⚠️ ${e.message}` }])
+    }
+    setElimChatLoading(false)
   }
 
   function cambiarCuposElim(n) {
@@ -5514,11 +5666,57 @@ export default function AdminTorneoDetallePage() {
                 onClick={e => e.target === e.currentTarget && setShowWizardElim(false)}>
                 <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '640px', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,.25)' }}>
                   <div style={{ padding: '16px 22px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>⚡ ¿Cómo se juegan las eliminaciones directas?</div>
+                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <MessageSquare size={16} color="#e8710a"/> ⚡ ¿Cómo se juegan las eliminaciones directas?
+                    </div>
                     <button onClick={() => setShowWizardElim(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={20}/></button>
                   </div>
-                  <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
+                    {/* Chat: contale en texto libre cómo querés que se jueguen y la
+                        IA arma la configuración de abajo (mismas variables de
+                        siempre) — reemplaza el formulario manual como primer paso. */}
+                    {elimChatMsgs.map((m, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                        <div style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px', background: m.role === 'user' ? '#1a73e8' : '#f1f3f4', color: m.role === 'user' ? '#fff' : '#202124', fontSize: '.82rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                          {m.content}
+                        </div>
+                      </div>
+                    ))}
+                    {elimChatLoading && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <div style={{ background: '#f1f3f4', borderRadius: '12px 12px 12px 2px', padding: '10px 16px', fontSize: '.82rem', color: '#9aa0a6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> Pensando...
+                        </div>
+                      </div>
+                    )}
+                    <div ref={elimChatEndRef}/>
+
+                    {!elimChatListo && (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input value={elimChatInput} onChange={e => setElimChatInput(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviarMensajeElim()}
+                          placeholder="Ej: que clasifiquen 8, cruzados, y si quedan impares que pase un mejor perdedor más..."
+                          style={{ flex: 1, background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '9px 14px', fontSize: '.82rem', outline: 'none', color: '#202124' }}
+                          disabled={elimChatLoading}/>
+                        <button onClick={enviarMensajeElim} disabled={elimChatLoading || !elimChatInput.trim()}
+                          style={{ padding: '9px 14px', background: elimChatInput.trim() ? '#1a73e8' : '#f1f3f4', border: 'none', borderRadius: '10px', cursor: elimChatInput.trim() ? 'pointer' : 'not-allowed', color: elimChatInput.trim() ? '#fff' : '#9aa0a6', display: 'flex', alignItems: 'center' }}>
+                          <Send size={16}/>
+                        </button>
+                      </div>
+                    )}
+                    {!elimChatListo && (
+                      <button onClick={() => setElimChatListo(true)} style={{ alignSelf: 'flex-start', fontSize: '.72rem', color: '#9aa0a6', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                        Prefiero armarlo manualmente
+                      </button>
+                    )}
+
+                    {elimChatListo && <div style={{ borderTop: '1px solid #e8eaed', margin: '2px 0 4px' }}/>}
+
+                    {/* A partir de acá: revisión/ajuste de lo que armó la IA (o, si se
+                        prefirió lo manual, el mismo formulario de siempre) — se
+                        muestra recién cuando ya hay una propuesta lista. */}
+                    {elimChatListo && <>
                     {/* 1. Cupos */}
                     <div style={{ marginBottom: '18px' }}>
                       <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '8px' }}>1. ¿Cuántos equipos clasifican?</div>
@@ -5682,13 +5880,16 @@ export default function AdminTorneoDetallePage() {
                         ⚠️ Ya existe un bracket: al crear uno nuevo se borran los partidos de eliminatorias anteriores.
                       </div>
                     )}
+                    </>}
                   </div>
                   <div style={{ padding: '14px 22px', borderTop: '1px solid #e8eaed', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexShrink: 0 }}>
                     <button onClick={() => setShowWizardElim(false)} style={{ padding: '9px 18px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
-                    <button onClick={handleGenerarEliminatorias} disabled={generandoElim}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 22px', background: generandoElim ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: generandoElim ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
-                      <GitBranch size={15}/> {generandoElim ? 'Creando...' : 'Crear árbol de eliminatorias'}
-                    </button>
+                    {elimChatListo && (
+                      <button onClick={handleGenerarEliminatorias} disabled={generandoElim}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 22px', background: generandoElim ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '8px', cursor: generandoElim ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                        <GitBranch size={15}/> {generandoElim ? 'Creando...' : 'Crear árbol de eliminatorias'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
