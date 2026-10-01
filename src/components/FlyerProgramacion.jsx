@@ -195,7 +195,19 @@ function BandaChevron({ arriba, paleta }) {
   )
 }
 
-export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }) {
+// Clave de agrupación por día, a partir de la fecha/hora REAL del partido
+// (no de un string formateado) — así nunca depende del idioma ni del
+// formato de muestra. Siempre son dígitos (YYYY-MM-DD), que ordenan bien
+// como texto, salvo "sin-fecha" para los partidos que todavía no tienen
+// fecha puesta — como empieza con una letra, ordena solo DESPUÉS de
+// cualquier fecha real (comparación de texto plana, sin lógica aparte).
+function diaKeyDe(p) {
+  if (!p.played_at) return 'sin-fecha'
+  const d = new Date(p.played_at)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export default function FlyerProgramacion({ torneo, equipos, partidos, canchas = [], onClose }) {
   const flyerRef = useRef(null)
   const wrapperRef = useRef(null)
   const [escalaPreview, setEscalaPreview] = useState(1)
@@ -207,6 +219,35 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
     return hayProximos ? 'proximos' : 'jugados'
   })
   const [pagina, setPagina] = useState(0)
+
+  // Filtros de día / escenario / cancha — para armar un flyer de SOLO esa
+  // combinación (ej. "el sábado, en Centegol, cancha 2") en vez de uno con
+  // TODOS los partidos mezclados, que es lo que se estaba "enredando"
+  // cuando hay varias canchas o varios escenarios jugando el mismo torneo.
+  // Son en CASCADA: cambiar el día resetea escenario y cancha (las
+  // opciones de abajo dependen de lo elegido arriba), para no quedar con
+  // una combinación que ya no tiene ningún partido.
+  const [filtroDia, setFiltroDia] = useState('todos')
+  const [filtroEscenario, setFiltroEscenario] = useState('todos')
+  const [filtroCancha, setFiltroCancha] = useState('todos')
+
+  // El filtro de ESCENARIO solo tiene sentido si nos pasaron la lista de
+  // canchas del torneo (con su campo "escenario") — eso solo está
+  // disponible cuando el flyer se pide desde el detalle de UN torneo. Desde
+  // el calendario general (que puede juntar partidos de varios torneos) no
+  // se manda, y ahí el flyer igual permite filtrar por día y por cancha
+  // (usando el nombre de cancha tal cual quedó guardado en el partido).
+  const hayEscenarios = canchas.length > 0
+  const canchaPorNombre = useMemo(() => new Map(canchas.filter(c => c.nombre).map(c => [c.nombre, c])), [canchas])
+  function escenarioDe(p) {
+    if (!p.location) return 'Sin sede'
+    return canchaPorNombre.get(p.location)?.escenario || 'Sin sede'
+  }
+
+  function cambiarModo(m) { setModo(m); setFiltroDia('todos'); setFiltroEscenario('todos'); setFiltroCancha('todos'); setPagina(0) }
+  function cambiarDia(v) { setFiltroDia(v); setFiltroEscenario('todos'); setFiltroCancha('todos'); setPagina(0) }
+  function cambiarEscenario(v) { setFiltroEscenario(v); setFiltroCancha('todos'); setPagina(0) }
+  function cambiarCancha(v) { setFiltroCancha(v); setPagina(0) }
 
   // Sin torneo (viene null desde el calendario cuando junta partidos de
   // VARIOS torneos): no hay encabezado propio que mostrar — nada de
@@ -222,14 +263,56 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
   // Los partidos siempre quedan ordenados por fecha/hora real ascendente
   // (ordenarPartidos), así que si hay partidos el sábado y el domingo,
   // primero salen todos los del sábado en orden de hora y después los del
-  // domingo — sin importar de qué torneo sea cada uno.
-  const ordenados = useMemo(() => ordenarPartidos(partidos, modo), [partidos, modo])
+  // domingo — sin importar de qué torneo sea cada uno. Los filtros de
+  // día/escenario/cancha de abajo se aplican DESPUÉS, en cascada, sobre
+  // esa misma lista ya ordenada — así el orden final no cambia, solo se
+  // va recortando la lista.
+  const porModo = useMemo(() => ordenarPartidos(partidos, modo), [partidos, modo])
+
+  const diasOpciones = useMemo(() => {
+    const mapa = new Map()
+    porModo.forEach(p => {
+      const key = diaKeyDe(p)
+      if (!mapa.has(key)) mapa.set(key, key === 'sin-fecha' ? 'Sin fecha' : formatFechaCorta(new Date(p.played_at)))
+    })
+    return Array.from(mapa.entries()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  }, [porModo])
+  const partidosDelDia = useMemo(() => filtroDia === 'todos' ? porModo : porModo.filter(p => diaKeyDe(p) === filtroDia), [porModo, filtroDia])
+
+  const escenariosOpciones = useMemo(() => {
+    if (!hayEscenarios) return []
+    const set = new Set(partidosDelDia.map(escenarioDe))
+    return Array.from(set).sort((a, b) => a === 'Sin sede' ? 1 : b === 'Sin sede' ? -1 : a.localeCompare(b))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidosDelDia, hayEscenarios, canchaPorNombre])
+  const partidosDelEscenario = useMemo(() => {
+    if (!hayEscenarios || filtroEscenario === 'todos') return partidosDelDia
+    return partidosDelDia.filter(p => escenarioDe(p) === filtroEscenario)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidosDelDia, filtroEscenario, hayEscenarios, canchaPorNombre])
+
+  const canchasOpciones = useMemo(() => {
+    const set = new Set(partidosDelEscenario.map(p => p.location || 'Sin cancha'))
+    return Array.from(set).sort((a, b) => a === 'Sin cancha' ? 1 : b === 'Sin cancha' ? -1 : a.localeCompare(b))
+  }, [partidosDelEscenario])
+  const ordenados = useMemo(() => {
+    if (filtroCancha === 'todos') return partidosDelEscenario
+    return partidosDelEscenario.filter(p => (p.location || 'Sin cancha') === filtroCancha)
+  }, [partidosDelEscenario, filtroCancha])
+
   const paginas = useMemo(() => trocear(ordenados, porPagina), [ordenados, porPagina])
   const totalPaginas = paginas.length
   const paginaActual = Math.min(pagina, totalPaginas - 1)
   const items = paginas[paginaActual] || []
 
-  function cambiarModo(m) { setModo(m); setPagina(0) }
+  // Para mostrar en el flyer QUÉ recorte es (ej. "SÁB 20 SEP · CENTEGOL ·
+  // CANCHA 2"), cuando el organizador filtró a algo puntual — así el
+  // afiche mismo deja claro a qué partidos corresponde.
+  const filtroTxt = [
+    filtroDia !== 'todos' ? (diasOpciones.find(([k]) => k === filtroDia)?.[1]) : null,
+    hayEscenarios && filtroEscenario !== 'todos' ? filtroEscenario : null,
+    filtroCancha !== 'todos' ? filtroCancha : null,
+  ].filter(Boolean).join(' · ')
 
   // El flyer (flyerRef) SIEMPRE mide ANCHOxALTO de verdad — nunca se achica
   // por CSS — porque html2canvas necesita que su tamaño de layout real
@@ -311,9 +394,35 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
           ))}
         </div>
 
+        {/* Filtros de día / escenario / cancha — para armar un flyer de SOLO
+            esa combinación en vez de uno con todo mezclado. En cascada: las
+            opciones de escenario dependen del día elegido, y las de cancha
+            dependen del día + escenario elegidos. */}
+        {partidos.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+            <select value={filtroDia} onChange={e => cambiarDia(e.target.value)}
+              style={{ flex: '1 1 130px', padding: '8px 10px', borderRadius: '8px', border: '1px solid #dadce0', fontSize: '.8rem', fontWeight: '600', color: '#5f6368', background: '#fff', cursor: 'pointer' }}>
+              <option value="todos">Todos los días</option>
+              {diasOpciones.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+            {hayEscenarios && (
+              <select value={filtroEscenario} onChange={e => cambiarEscenario(e.target.value)}
+                style={{ flex: '1 1 130px', padding: '8px 10px', borderRadius: '8px', border: '1px solid #dadce0', fontSize: '.8rem', fontWeight: '600', color: '#5f6368', background: '#fff', cursor: 'pointer' }}>
+                <option value="todos">Todos los escenarios</option>
+                {escenariosOpciones.map(esc => <option key={esc} value={esc}>{esc}</option>)}
+              </select>
+            )}
+            <select value={filtroCancha} onChange={e => cambiarCancha(e.target.value)}
+              style={{ flex: '1 1 130px', padding: '8px 10px', borderRadius: '8px', border: '1px solid #dadce0', fontSize: '.8rem', fontWeight: '600', color: '#5f6368', background: '#fff', cursor: 'pointer' }}>
+              <option value="todos">Todas las canchas</option>
+              {canchasOpciones.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        )}
+
         {items.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: '#9aa0a6', background: '#f8f9fa', borderRadius: '12px' }}>
-            No hay {modo === 'jugados' ? 'partidos jugados' : 'próximos partidos'} para mostrar.
+            No hay {modo === 'jugados' ? 'partidos jugados' : 'próximos partidos'} para mostrar{filtroTxt ? ` con ese filtro (${filtroTxt})` : ''}.
           </div>
         ) : (
           <>
@@ -380,6 +489,15 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, onClose }
                     <div style={{ display: 'inline-block', border: `1.5px solid ${paleta.acento}`, borderRadius: '16px', padding: '2px 14px', marginTop: '7px' }}>
                       <span style={{ color: '#fff', fontSize: '11px', fontWeight: 900, letterSpacing: '1.2px' }}>{titulo}</span>
                     </div>
+                    {/* Si se filtró a un día/escenario/cancha puntual, el
+                        afiche mismo lo deja claro (ej. "SÁB 20 SEP ·
+                        CENTEGOL · CANCHA 2") en vez de mostrar solo "PRÓXIMOS
+                        PARTIDOS" sin aclarar a qué recorte corresponde. */}
+                    {filtroTxt && (
+                      <div style={{ color: '#fff', fontSize: '10.5px', fontWeight: 700, letterSpacing: '.3px', marginTop: '6px', textTransform: 'uppercase', opacity: .92 }}>
+                        {filtroTxt}
+                      </div>
+                    )}
                   </div>
                 )}
 

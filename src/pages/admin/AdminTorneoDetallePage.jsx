@@ -4072,7 +4072,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         />
       )}
 
-      {showFlyerProgramacion && <FlyerProgramacion torneo={torneo} equipos={equipos} partidos={partidos} onClose={() => setShowFlyerProgramacion(false)}/>}
+      {showFlyerProgramacion && <FlyerProgramacion torneo={torneo} equipos={equipos} partidos={partidos} canchas={canchas} onClose={() => setShowFlyerProgramacion(false)}/>}
 
       {/* Confirmación al eliminar un partido — avisa qué más se borra */}
       {partidoAEliminar && (() => {
