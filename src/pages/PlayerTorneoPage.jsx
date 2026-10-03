@@ -309,8 +309,12 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
   const infoTeam = [team.city, team.categoria, team.modalidad, team.genero].filter(Boolean).join(' · ')
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto' }}>
+        {/* Encabezado fijo (sticky): si el equipo tiene muchos jugadores y hay
+            que bajar para verlos a todos, la X para cerrar y pasar a ver otro
+            equipo no se puede quedar escondida arriba del scroll — por eso
+            siempre queda visible, sin importar cuánto se baje. */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', padding: '20px 18px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: '#f1f3f4', border: '1px solid #e8eaed', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {team.logo_url ? <img src={team.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={16} color="#9aa0a6"/>}
@@ -323,6 +327,7 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
           <button onClick={onClose} style={{ background: '#f1f3f4', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', color: '#5f6368', fontSize: '1rem', fontWeight: '700', flexShrink: 0 }}>✕</button>
         </div>
 
+        <div style={{ padding: '0 18px 28px' }}>
         {stats && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', margin: '14px 0', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 6px' }}>
             {[['PJ', stats.pj], ['PG', stats.pg], ['PE', stats.pe], ['PP', stats.pp], ['GF', stats.gf], ['GC', stats.gc], ['PTS', stats.pts]].map(([label, val]) => (
@@ -372,6 +377,7 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
             })}
           </div>
         )}
+        </div>
       </div>
     </div>
   )
