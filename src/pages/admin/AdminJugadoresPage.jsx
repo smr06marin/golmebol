@@ -254,6 +254,17 @@ export default function AdminJugadoresPage() {
   const [msg,             setMsg]             = useState(null)
   const [search,          setSearch]          = useState('')
   const [filtroMembresia, setFiltroMembresia] = useState('todos')
+  // El cuadro de búsqueda escribe en searchInput de una, sin esperar nada,
+  // para que teclear nunca se sienta trabado. "search" (la que de verdad
+  // filtra la lista de abajo, el trabajo pesado) se actualiza un toque
+  // después (200ms) — así, con muchos jugadores cargados, el filtro no se
+  // recalcula en CADA tecla sino solo cuando la persona hace una pausa
+  // corta al escribir.
+  const [searchInput, setSearchInput] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 200)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   // Flujo "cédula primero": al crear un jugador nuevo, lo primero que se
   // pide es la cédula para revisar si esa persona ya existe en Golmebol
@@ -342,6 +353,14 @@ export default function AdminJugadoresPage() {
     () => jugadores.filter(j => j.verificado === false && j.activo_membresia),
     [jugadores]
   )
+
+  // Pintar de una las filas de TODOS los que calzan con la búsqueda es lo
+  // que de verdad ponía lenta la página con muchos jugadores — cada fila
+  // trae fotos y varios botones, y el navegador se traba armando cientos de
+  // golpe. Alcanza con mostrar los primeros y pedir afinar la búsqueda si
+  // hay más — ver nota debajo de la lista.
+  const MOSTRAR_MAX = 60
+  const visibles = useMemo(() => filtered.slice(0, MOSTRAR_MAX), [filtered])
 
   if (rol?.rol === 'organizador') return null
 
@@ -1080,7 +1099,7 @@ export default function AdminJugadoresPage() {
       )}
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre o cédula..."
+        <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Buscar por nombre o cédula..."
           style={{ ...inp, maxWidth: '300px' }}/>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {[
@@ -1105,7 +1124,7 @@ export default function AdminJugadoresPage() {
             <Users size={40} style={{ opacity: .3, display: 'block', margin: '0 auto 12px' }}/>
             <div style={{ fontSize: '.875rem' }}>{search ? 'No se encontraron jugadores' : 'No hay jugadores en esta categoría'}</div>
           </div>
-        ) : filtered.map((j, i) => {
+        ) : visibles.map((j, i) => {
           const dias        = diasRestantes(j.fecha_vencimiento)
           const vencida     = dias !== null && dias <= 0
           const porVencer   = dias !== null && dias > 0 && dias <= 7
@@ -1204,6 +1223,11 @@ export default function AdminJugadoresPage() {
             </div>
           )
         })}
+        {filtered.length > visibles.length && (
+          <div style={{ padding: '14px', textAlign: 'center', color: '#5f6368', fontSize: '.8rem', borderTop: '1px solid #f1f3f4' }}>
+            Mostrando {visibles.length} de {filtered.length} — sigue escribiendo para afinar la búsqueda.
+          </div>
+        )}
       </div>
     </div>
   )
