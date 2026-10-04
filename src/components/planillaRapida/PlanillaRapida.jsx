@@ -34,6 +34,40 @@ function fusionarJugadores(actual, fresco) {
   return [...actualizados, ...sinRegistro]
 }
 
+// Firma de "lo que se edita a mano" en la planilla (números, colores, arqueros):
+// sirve para saber si la plantilla cambió de verdad (y no solo flags de deuda/
+// foto que cada celular recalcula por su cuenta desde la base de datos).
+function firmaPlantilla(s) {
+  const j = arr => (arr || []).map(x => [x.id || '', x.nombre || '', x.numero || ''])
+  const a = x => x ? [x.id || '', x.nombre || '', x.numero || ''] : null
+  return JSON.stringify([j(s.jugadoresLocal), j(s.jugadoresVisitante), s.colorLocal ?? null, s.colorVis ?? null, a(s.arqueroLocal), a(s.arqueroVis), (s.histArquerosLocal || []).map(a), (s.histArquerosVis || []).map(a)])
+}
+
+// Toma la lista de jugadores que mandó otro celular (con sus números) pero
+// conserva lo que ESTE celular sabe mejor: los flags de deuda de tarjeta/foto
+// (se recalculan desde la base de datos y pueden estar más al día acá) y los
+// jugadores que solo yo tengo todavía (recién registrados).
+function adoptarJugadoresRemotos(local, remoto) {
+  const rem = remoto || []
+  const norm = n => (n || '').trim().toLowerCase()
+  const porId = new Map(local.filter(j => j.id).map(j => [j.id, j]))
+  const porNombreConId = new Map(local.filter(j => j.id).map(j => [norm(j.nombre), j]))
+  const usados = new Set()
+  const resultado = rem.map(r => {
+    const l = r.id ? porId.get(r.id) : porNombreConId.get(norm(r.nombre))
+    if (!l) return r
+    usados.add(l.id)
+    return { ...r, id: l.id, debeTarjeta: l.debeTarjeta, debeFoto: l.debeFoto }
+  })
+  const idsRem = new Set(rem.filter(j => j.id).map(j => j.id))
+  const nombresSinIdRem = new Set(rem.filter(j => !j.id).map(j => norm(j.nombre)))
+  local.forEach(l => {
+    if (l.id) { if (!idsRem.has(l.id) && !usados.has(l.id)) resultado.push(l) }
+    else if (!nombresSinIdRem.has(norm(l.nombre))) resultado.push(l)
+  })
+  return JSON.stringify(resultado) === JSON.stringify(local) ? local : resultado
+}
+
 // Planilla RÁPIDA — independiente de PlanillaPartido.jsx (esa no se toca).
 // Pensada para cuando NO hay planillador dedicado: los mismos árbitros la
 // llevan desde el celular. Mismo destino final de datos (match_events,
@@ -80,145 +114,210 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
   const deudaDetalleRef = useRef({}) // último deudaDetalle conocido, para no perder el flag "debeTarjeta" al refrescar el roster en vivo
-  const ultimoGuardadoPropioRef = useRef(null) // marca de tiempo del último guardado que hice YO — para no confundir mi propio eco (al recibirlo por realtime) con un cambio real de otro celular
 
-  // ── Co-planillaje entre dos celulares ────────────────────────────────────
-  // Cuando SOLO un árbitro tiene la planilla abierta (el 99% de los casos)
-  // esto no cambia nada: misEquipos trae los dos equipos y todo funciona
-  // exactamente igual que antes. Apenas se detecta OTRO celular presente en
-  // este mismo partido, cada uno pasa a llevar UN equipo (se le pregunta
-  // cuál), y el equipo del otro celular queda bloqueado acá: no se puede
-  // tocar (se avisa "ya lo están planillando") y en cambio se actualiza solo,
-  // en vivo, con lo que el otro celular va cargando — así nunca los dos
-  // terminan anotando lo mismo.
+  // ── Co-planillaje: dos (o más) celulares con LA MISMA planilla ───────────
+  // Los celulares ya NO se reparten un equipo cada uno: todos ven y pueden
+  // tocar TODO, y lo que hace uno (cronómetro, números, arquero, goles,
+  // tarjetas, jugadores nuevos) aparece al instante en los demás.
+  //
+  // Cómo se evita que se pisen entre ellos (cada celular guarda su borrador
+  // completo en matches.live_state_rapida y todos escuchan los cambios):
+  //  · Goles/tarjetas/faltas: se UNEN por id (nadie pierde lo que anotó el
+  //    otro). Para que borrar uno por error también se propague, cada borrado
+  //    queda en "eventosEliminados" (si no, el otro celular lo "resucitaría").
+  //  · Cronómetro: lleva su propia versión (relojV), un CONTADOR (no la hora
+  //    del celular: los celulares casi nunca tienen la hora exacta igual, y
+  //    comparar horas hacía que uno ignorara al otro). Cada acción de reloj
+  //    (arrancar/pausar/2do tiempo) sube el contador; se adopta el reloj del
+  //    otro celular si su contador es mayor (si empatan, gana un criterio
+  //    fijo igual en los dos). Quien hizo la última acción además va
+  //    corrigiendo la deriva: cada ~8 s manda los segundos exactos y los
+  //    demás se ajustan si se separaron más de 2 s — así los relojes son EL
+  //    MISMO, no dos independientes.
+  //  · Números/colores/arqueros: otro contador (plantillaV), mismo criterio:
+  //    gana la edición más reciente, sin perder jugadores nuevos de ninguno.
   const deviceIdRef = useRef(idUnico())
-  const [misEquipos, setMisEquipos] = useState(['local', 'visitante'])
-  const misEquiposRef = useRef(misEquipos)
-  useEffect(() => { misEquiposRef.current = misEquipos }, [misEquipos])
-  const [pidiendoEquipo, setPidiendoEquipo] = useState(false)
-  const pidiendoEquipoRef = useRef(false)
-  useEffect(() => { pidiendoEquipoRef.current = pidiendoEquipo }, [pidiendoEquipo])
-  const [equiposParaElegir, setEquiposParaElegir] = useState(['local', 'visitante'])
-  const presenceChRef = useRef(null)
-  const yaDetectoPeerRef = useRef(false)
+  const [otrosCelulares, setOtrosCelulares] = useState(0)
+  const [eventosEliminados, setEventosEliminados] = useState([]) // ids de eventos borrados (lápidas para la unión)
+  const eventosEliminadosRef = useRef([])
+  useEffect(() => { eventosEliminadosRef.current = eventosEliminados }, [eventosEliminados])
+  const relojVRef = useRef(0)        // contador de la última acción de reloj conocida (mía o ajena)
+  const relojAutorRef = useRef('')   // celular que hizo esa última acción de reloj (el que corrige la deriva)
+  const relojFirmaRef = useRef('')   // estado actual del reloj (para desempatar), se mantiene al día en cada render
+  const plantillaVRef = useRef(0)    // contador de la última edición de números/colores/arqueros conocida
+  const plantillaAutorRef = useRef('')
+  const plantillaSigRef = useRef('') // firma de la plantilla ya conocida — para detectar ediciones propias reales
+  const vistosMsRef = useRef(new Set()) // marcas de tiempo de guardados ya procesados (propios o ajenos): evita reprocesar el mismo
+  const finalizandoRef = useRef(false)  // este celular está guardando el resultado final (no confundir con "otro celular lo cerró")
+  const cierreRemotoRef = useRef(false)
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose })
+  useEffect(() => { relojFirmaRef.current = `${corriendo}|${periodo}|${tiempoAgotado}|${duracionMinutos}` })
+  // Toda acción de reloj hecha en ESTE celular: sube el contador y se vuelve
+  // el "dueño" de la corrección de deriva.
+  function nuevaAccionReloj() { relojVRef.current += 1; relojAutorRef.current = deviceIdRef.current }
 
   const nombreLocal = partido.home?.name || 'Local'
   const nombreVis = partido.away?.name || 'Visitante'
 
-  function equipoBloqueado(team) { return !misEquipos.includes(team) }
-  function avisarBloqueado(team) {
-    alert(`🔒 El equipo ${team === 'local' ? nombreLocal : nombreVis} ya lo está planillando otro celular — se va a actualizar solo acá en vivo, no hace falta anotarlo de nuevo.`)
-  }
-  function elegirEquipo(team) {
-    setMisEquipos([team])
-    setPidiendoEquipo(false)
-  }
   function bannerCoPlanillaje() {
-    if (misEquipos.length !== 1) return null
-    const propio = misEquipos[0] === 'local' ? nombreLocal : nombreVis
-    const otro = misEquipos[0] === 'local' ? nombreVis : nombreLocal
+    if (otrosCelulares < 1) return null
     return (
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#0b3d2e', color: '#7CFFB2', fontSize: '.7rem', fontWeight: '700', textAlign: 'center', padding: '5px 8px' }}>
-        📋 Vos llevás {propio} · {otro} lo lleva el otro celular — se actualiza solo, en vivo
+        👥 {otrosCelulares + 1} celulares con esta planilla · todo se ve igual en todos, en vivo
       </div>
     )
   }
 
-  // Presencia: cada celular avisa qué equipo lleva (o "ambos" si sigue solo).
-  // Al ver aparecer OTRO celular por primera vez, si yo seguía en modo "ambos"
-  // (no elegí nada todavía) me toca elegir cuál llevo. Si el otro celular ya
-  // reclamó un equipo puntual y yo seguía en "ambos", lo suelto solo (sin
-  // preguntar) para no pisarle lo que ya está cargando.
+  // Presencia: solo para saber cuántos celulares hay con esta planilla abierta
+  // (y mostrar el aviso de arriba). Ya no se pide elegir equipo.
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
     const ch = supabase.channel(`planilla-rapida-presencia-${partido.id}`, { config: { presence: { key: deviceIdRef.current } } })
     ch.on('presence', { event: 'sync' }, () => {
-      const estado = ch.presenceState()
-      const otros = Object.entries(estado).filter(([k]) => k !== deviceIdRef.current).map(([, arr]) => arr[arr.length - 1])
-      const tomadosPorOtros = otros.map(o => o?.team).filter(t => t === 'local' || t === 'visitante')
-
-      if (otros.length > 0 && !yaDetectoPeerRef.current && misEquiposRef.current.length === 2) {
-        yaDetectoPeerRef.current = true
-        const disponibles = ['local', 'visitante'].filter(t => !tomadosPorOtros.includes(t))
-        if (disponibles.length === 0) {
-          alert('Los dos equipos de este partido ya los está planillando cada uno desde su celular.')
-        } else {
-          setEquiposParaElegir(disponibles)
-          setPidiendoEquipo(true)
-        }
-      }
-
-      if (tomadosPorOtros.length > 0 && misEquiposRef.current.length === 2 && !pidiendoEquipoRef.current) {
-        setMisEquipos(prev => prev.filter(t => !tomadosPorOtros.includes(t)))
-      }
+      setOtrosCelulares(Object.keys(ch.presenceState()).filter(k => k !== deviceIdRef.current).length)
     })
-    ch.subscribe(status => {
-      if (status === 'SUBSCRIBED') ch.track({ team: misEquiposRef.current.length === 1 ? misEquiposRef.current[0] : 'ambos' })
-    })
-    presenceChRef.current = ch
-    return () => { supabase.removeChannel(ch); presenceChRef.current = null }
+    ch.subscribe(status => { if (status === 'SUBSCRIBED') ch.track({ desde: Date.now() }) })
+    return () => { supabase.removeChannel(ch) }
   }, [listo, partido.status, partido.id])
 
-  useEffect(() => {
-    presenceChRef.current?.track({ team: misEquipos.length === 1 ? misEquipos[0] : 'ambos' })
-  }, [misEquipos])
-
-  // Fusiona en vivo lo que llega de OTRO celular: solo se toman los campos
-  // del equipo que YO no llevo (el mío nunca se pisa con lo ajeno), y los
-  // eventos (goles/tarjetas) se unen por id sin duplicar. Cada comparación
-  // devuelve el mismo valor/arreglo anterior cuando no cambió nada, para no
-  // disparar un guardado nuevo en falso (evita un ida-y-vuelta infinito entre
-  // los dos celulares).
-  const aplicarSnapRemotoParcial = useCallback((remoteSnap) => {
-    if (!remoteSnap) return
-    const mios = misEquiposRef.current
-    const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
-
-    setStep(prev => (typeof remoteSnap.step === 'string' && remoteSnap.step !== prev) ? remoteSnap.step : prev)
-    setPeriodo(prev => (typeof remoteSnap.periodo === 'number' && remoteSnap.periodo !== prev) ? remoteSnap.periodo : prev)
-    setDuracionMinutos(prev => (typeof remoteSnap.duracionMinutos === 'number' && remoteSnap.duracionMinutos !== prev) ? remoteSnap.duracionMinutos : prev)
-    setTiempoAgotado(prev => (typeof remoteSnap.tiempoAgotado === 'boolean' && remoteSnap.tiempoAgotado !== prev) ? remoteSnap.tiempoAgotado : prev)
-    setCorriendo(prev => {
-      if (typeof remoteSnap.corriendo !== 'boolean' || remoteSnap.corriendo === prev) return prev
-      inicioEpochRef.current = null
-      return remoteSnap.corriendo
-    })
-
-    if (!mios.includes('local')) {
-      setJugadoresLocal(prev => igual(prev, remoteSnap.jugadoresLocal || []) ? prev : (remoteSnap.jugadoresLocal || []))
-      setColorLocal(prev => (remoteSnap.colorLocal ?? null) === prev ? prev : (remoteSnap.colorLocal ?? null))
-      setArqueroLocal(prev => igual(prev, remoteSnap.arqueroLocal ?? null) ? prev : (remoteSnap.arqueroLocal ?? null))
-      setHistArquerosLocal(prev => igual(prev, remoteSnap.histArquerosLocal || []) ? prev : (remoteSnap.histArquerosLocal || []))
-    }
-    if (!mios.includes('visitante')) {
-      setJugadoresVisitante(prev => igual(prev, remoteSnap.jugadoresVisitante || []) ? prev : (remoteSnap.jugadoresVisitante || []))
-      setColorVis(prev => (remoteSnap.colorVis ?? null) === prev ? prev : (remoteSnap.colorVis ?? null))
-      setArqueroVis(prev => igual(prev, remoteSnap.arqueroVis ?? null) ? prev : (remoteSnap.arqueroVis ?? null))
-      setHistArquerosVis(prev => igual(prev, remoteSnap.histArquerosVis || []) ? prev : (remoteSnap.histArquerosVis || []))
-    }
-
-    setEventos(prev => {
-      const nuevos = (remoteSnap.eventos || []).filter(e => !prev.some(p => p.id === e.id))
-      return nuevos.length === 0 ? prev : [...prev, ...nuevos]
-    })
+  // El otro celular ya guardó el resultado final: esta planilla no puede
+  // seguir (volvería a guardar los mismos goles/tarjetas dos veces).
+  const cierreRemoto = useCallback(() => {
+    if (finalizandoRef.current || cierreRemotoRef.current) return
+    cierreRemotoRef.current = true
+    try { localStorage.removeItem(localKey) } catch (e) {}
+    alert('✅ Este partido ya lo guardó el otro celular. Se cierra esta planilla.')
+    onCloseRef.current && onCloseRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Suscripción continua (no solo al abrir): apenas el otro celular guarda su
-  // borrador, este lo recibe y lo fusiona — así se ve en vivo lo que va
-  // llenando cada uno. Se ignora el propio eco (mi propio guardado, que
-  // también llega por este mismo canal) comparando con ultimoGuardadoPropioRef.
+  // Fusiona en vivo lo que llega de OTRO celular (por realtime o por el
+  // chequeo de respaldo de más abajo). Cada setter devuelve el mismo valor
+  // anterior si no cambió nada, para no disparar guardados en falso (evita un
+  // ida-y-vuelta infinito entre los celulares).
+  const procesarRemoto = useCallback((snap, ms) => {
+    if (!snap || snap.autor === deviceIdRef.current) return
+    if (ms) {
+      if (vistosMsRef.current.has(ms)) return
+      vistosMsRef.current.add(ms)
+      if (vistosMsRef.current.size > 500) vistosMsRef.current = new Set([ms])
+    }
+
+    // 1) Goles/tarjetas/faltas: unión por id, menos los borrados (de cualquiera de los dos)
+    const elimRemotos = Array.isArray(snap.eventosEliminados) ? snap.eventosEliminados : []
+    if (elimRemotos.length > 0) {
+      setEventosEliminados(prev => {
+        const nuevos = elimRemotos.filter(id => !prev.includes(id))
+        return nuevos.length > 0 ? [...prev, ...nuevos] : prev
+      })
+    }
+    setEventos(prev => {
+      const elim = new Set([...eventosEliminadosRef.current, ...elimRemotos])
+      let res = prev.filter(e => !elim.has(e.id))
+      let cambio = res.length !== prev.length
+      ;(snap.eventos || []).filter(r => !elim.has(r.id)).forEach(r => {
+        const i = res.findIndex(e => e.id === r.id)
+        if (i === -1) { res = [...res, r]; cambio = true }
+        else if (!res[i].jugadorId && r.jugadorId) { res = res.map((e, k) => k === i ? { ...e, jugadorId: r.jugadorId } : e); cambio = true }
+      })
+      return cambio ? res : prev
+    })
+
+    // 2) Etapa de la planilla: solo se adelanta (colores → asignar → partido),
+    // nunca se arrastra hacia atrás a quien está viendo la lista a mitad de partido.
+    const RANGO = { colores: 0, asignar: 1, partido: 2 }
+    setStep(prev => ((RANGO[snap.step] ?? -1) > (RANGO[prev] ?? 0)) ? snap.step : prev)
+
+    // 3) Cronómetro / tiempo
+    const relojRemoto = Number(snap.relojV) > 1e11 ? 0 : (snap.relojV || 0) // (versiones viejas guardadas con hora: se ignoran)
+    const firmaRelojRemoto = `${!!snap.corriendo}|${snap.periodo}|${!!snap.tiempoAgotado}|${snap.duracionMinutos}`
+    const gana = relojRemoto > relojVRef.current ||
+      (relojRemoto === relojVRef.current && relojRemoto > 0 && (snap.relojAutor || '') > relojAutorRef.current && firmaRelojRemoto !== relojFirmaRef.current)
+    if (gana) {
+      relojVRef.current = relojRemoto
+      relojAutorRef.current = snap.relojAutor || ''
+      pararAlarma()
+      const segs = typeof snap.segundos === 'number' ? snap.segundos : 0
+      inicioEpochRef.current = snap.corriendo ? Date.now() - segs * 1000 : null
+      if (typeof snap.duracionMinutos === 'number') setDuracionMinutos(snap.duracionMinutos)
+      if (typeof snap.periodo === 'number') setPeriodo(snap.periodo)
+      setTiempoAgotado(!!snap.tiempoAgotado)
+      setSegundos(segs)
+      setCorriendo(!!snap.corriendo)
+    } else if (relojRemoto === relojVRef.current && snap.corriendo && snap.relojAutor && snap.relojAutor === snap.autor && inicioEpochRef.current != null) {
+      // Corrección de deriva: el celular que arrancó el reloj manda sus
+      // segundos exactos; si el mío se separó más de 2 s, me ajusto.
+      const segsRemotos = typeof snap.segundos === 'number' ? snap.segundos : null
+      const misSegs = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
+      if (segsRemotos != null && Math.abs(segsRemotos - misSegs) > 2) {
+        inicioEpochRef.current = Date.now() - segsRemotos * 1000
+        setSegundos(segsRemotos)
+      }
+    }
+
+    // 4) Números, colores y arqueros: gana la edición más reciente, sin perder jugadores nuevos
+    const plantillaRemota = Number(snap.plantillaV) > 1e11 ? 0 : (snap.plantillaV || 0)
+    const firmaRemota = firmaPlantilla(snap)
+    const ganaPlantilla = plantillaRemota > plantillaVRef.current ||
+      (plantillaRemota === plantillaVRef.current && plantillaRemota > 0 && (snap.plantillaAutor || '') > plantillaAutorRef.current && firmaRemota !== plantillaSigRef.current)
+    if (ganaPlantilla) {
+      plantillaVRef.current = plantillaRemota
+      plantillaAutorRef.current = snap.plantillaAutor || ''
+      plantillaSigRef.current = firmaRemota
+      setJugadoresLocal(prev => adoptarJugadoresRemotos(prev, snap.jugadoresLocal))
+      setJugadoresVisitante(prev => adoptarJugadoresRemotos(prev, snap.jugadoresVisitante))
+      setColorLocal(prev => (snap.colorLocal ?? null) === prev ? prev : (snap.colorLocal ?? null))
+      setColorVis(prev => (snap.colorVis ?? null) === prev ? prev : (snap.colorVis ?? null))
+      const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+      setArqueroLocal(prev => igual(prev, snap.arqueroLocal ?? null) ? prev : (snap.arqueroLocal ?? null))
+      setArqueroVis(prev => igual(prev, snap.arqueroVis ?? null) ? prev : (snap.arqueroVis ?? null))
+      setHistArquerosLocal(prev => igual(prev, snap.histArquerosLocal || []) ? prev : (snap.histArquerosLocal || []))
+      setHistArquerosVis(prev => igual(prev, snap.histArquerosVis || []) ? prev : (snap.histArquerosVis || []))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Suscripción continua (no solo al abrir): apenas otro celular guarda, este
+  // lo recibe por realtime y lo fusiona.
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
     const channel = supabase
       .channel(`planilla-rapida-sync-${partido.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: `id=eq.${partido.id}` }, (payload) => {
-        const ts = payload.new?.live_state_rapida_updated_at
-        if (!ts || ts === ultimoGuardadoPropioRef.current) return
-        aplicarSnapRemotoParcial(payload.new?.live_state_rapida)
+        const nuevo = payload.new
+        if (nuevo?.status === 'finished') { cierreRemoto(); return }
+        const ts = nuevo?.live_state_rapida_updated_at
+        procesarRemoto(nuevo?.live_state_rapida, ts ? new Date(ts).getTime() : null)
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [listo, partido.status, partido.id, aplicarSnapRemotoParcial])
+  }, [listo, partido.status, partido.id, procesarRemoto, cierreRemoto])
+
+  // Respaldo: si el realtime del celular se cae o se demora (señal mala, app
+  // en 2do plano), cada 3 s se revisa si hay un guardado más nuevo del otro
+  // celular — primero solo la marca de tiempo (liviano) y solo si cambió se
+  // trae el borrador completo.
+  useEffect(() => {
+    if (!listo || partido.status === 'finished') return
+    let ocupado = false
+    async function revisar() {
+      if (ocupado || document.visibilityState === 'hidden' || !navigator.onLine) return
+      ocupado = true
+      try {
+        const { data } = await supabase.from('matches').select('status, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle()
+        if (!data) return
+        if (data.status === 'finished') { cierreRemoto(); return }
+        const ms = data.live_state_rapida_updated_at ? new Date(data.live_state_rapida_updated_at).getTime() : null
+        if (!ms || vistosMsRef.current.has(ms)) return
+        const { data: completo } = await supabase.from('matches').select('live_state_rapida').eq('id', partido.id).maybeSingle()
+        procesarRemoto(completo?.live_state_rapida, ms)
+      } catch (e) { /* sin señal: se reintenta en el siguiente ciclo */ } finally { ocupado = false }
+    }
+    const t = setInterval(revisar, 3000)
+    document.addEventListener('visibilitychange', revisar)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', revisar) }
+  }, [listo, partido.status, partido.id, procesarRemoto, cierreRemoto])
 
   // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => { fetchTodo() }, [])
@@ -309,6 +408,23 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [partido?.tournament_id, partido?.status, refetchRoster])
+
+  // Respaldo de jugadores nuevos y pagos de tarjetas: el realtime de esas dos
+  // tablas depende de que estén habilitadas en Supabase, y si no lo están (o
+  // el celular pierde el websocket) la planilla quedaba con la lista vieja.
+  // Cada 8 s y al volver a la app se revisa de nuevo — así un jugador recién
+  // registrado aparece solo y una tarjeta pagada se desbloquea sola.
+  useEffect(() => {
+    if (!listo || partido.status === 'finished') return
+    function refrescar() {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return
+      refetchRoster()
+      refetchDeudaTarjetas()
+    }
+    const t = setInterval(refrescar, 8000)
+    document.addEventListener('visibilitychange', refrescar)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refrescar) }
+  }, [listo, partido.status, refetchRoster, refetchDeudaTarjetas])
 
   // Antes se pedía la pantalla completa REAL del navegador (Fullscreen API)
   // para ocultar también la barra de arriba del celular. Se quitó: cada vez
@@ -478,6 +594,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setHistArquerosLocal(snap.histArquerosLocal || [])
     setHistArquerosVis(snap.histArquerosVis || [])
     setEventos(snap.eventos || [])
+    setEventosEliminados(snap.eventosEliminados || [])
+    relojVRef.current = Number(snap.relojV) > 1e11 ? 0 : (snap.relojV || 0)
+    relojAutorRef.current = snap.relojAutor || ''
+    plantillaVRef.current = Number(snap.plantillaV) > 1e11 ? 0 : (snap.plantillaV || 0)
+    plantillaAutorRef.current = snap.plantillaAutor || ''
+    plantillaSigRef.current = firmaPlantilla(snap)
     setPeriodo(snap.periodo || 1)
     const durFinal = snap.duracionMinutos || dur
     setDuracionMinutos(durFinal)
@@ -554,17 +676,26 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Autoguardado (borrador local + remoto) ────────────────────────────
   function construirSnap() {
-    return { jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, periodo, segundos, corriendo, tiempoAgotado, duracionMinutos, step, savedAt: new Date().toISOString() }
+    const base = { jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis }
+    // Si la plantilla cambió de verdad por una edición de ESTE celular, se le
+    // sube la versión (así gana frente a una copia más vieja del otro celular).
+    const firma = firmaPlantilla(base)
+    if (firma !== plantillaSigRef.current) { plantillaSigRef.current = firma; plantillaVRef.current += 1; plantillaAutorRef.current = deviceIdRef.current }
+    // Con el reloj andando, los segundos exactos salen del ancla de hora real
+    // (no del último "tick" pintado) — así el otro celular arranca igualito.
+    let segs = segundos
+    if (corriendo && inicioEpochRef.current != null) segs = Math.min(duracionMinutos * 60, Math.floor((Date.now() - inicioEpochRef.current) / 1000))
+    return { ...base, eventos, eventosEliminados, periodo, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
   }
   function guardarRemotoInmediato(snap) {
     if (!navigator.onLine) return
     const ts = new Date().toISOString()
-    ultimoGuardadoPropioRef.current = ts
+    vistosMsRef.current.add(new Date(ts).getTime()) // para no tratar mi propio guardado como si fuera del otro celular
     supabase.from('matches').update({ live_state_rapida: snap, live_state_rapida_updated_at: ts }).eq('id', partido.id).then(() => {}, () => {})
   }
   function guardarRemotoDebounced(snap) {
     clearTimeout(remoteTimer.current)
-    remoteTimer.current = setTimeout(() => guardarRemotoInmediato(snap), 1200)
+    remoteTimer.current = setTimeout(() => guardarRemotoInmediato(snap), 350)
   }
 
   useEffect(() => {
@@ -573,7 +704,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
     guardarRemotoDebounced(snap)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, periodo, tiempoAgotado, duracionMinutos, step])
+  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step])
 
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
@@ -582,6 +713,23 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (corriendo && segundos % 8 === 0) guardarRemotoInmediato(snap)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segundos])
+
+  // Cualquier cambio del RELOJ (arrancar, pausar, cambiar de tiempo, se acabó
+  // el tiempo) se manda de inmediato, sin esperar el autoguardado — así el
+  // otro celular arranca/pausa casi al mismo instante.
+  const relojPrevRef = useRef(null)
+  useEffect(() => {
+    if (!listo || partido.status === 'finished') return
+    const firma = `${corriendo}|${periodo}|${tiempoAgotado}|${duracionMinutos}`
+    if (relojPrevRef.current === null) { relojPrevRef.current = firma; return }
+    if (relojPrevRef.current === firma) return
+    relojPrevRef.current = firma
+    const snap = construirSnap()
+    try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
+    clearTimeout(remoteTimer.current)
+    guardarRemotoInmediato(snap)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listo, corriendo, periodo, tiempoAgotado, duracionMinutos])
 
   // ── Cronómetro ─────────────────────────────────────────────────────────
   // Se ancla a la hora real (Date.now), no a "ir sumando 1 cada segundo": así,
@@ -596,7 +744,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       const limite = duracionMinutos * 60
       const elapsed = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
       setSegundos(elapsed >= limite ? limite : elapsed)
-      if (elapsed >= limite && !tiempoAgotado) { setTiempoAgotado(true); setCorriendo(false); iniciarAlarma() }
+      if (elapsed >= limite && !tiempoAgotado) { nuevaAccionReloj(); setTiempoAgotado(true); setCorriendo(false); iniciarAlarma() }
     }
 
     const id = setInterval(recalcular, 1000)
@@ -638,6 +786,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   function toggleCronometro() {
     pararAlarma()
+    nuevaAccionReloj()
     if (corriendo) inicioEpochRef.current = null // se pausa: al reanudar se recalcula el ancla desde el segundo actual
     setCorriendo(c => !c)
   }
@@ -647,13 +796,22 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   // quede correcto al retomarlo, guarda el borrador ya mismo y sale. Al volver
   // a entrar a este mismo partido, la planilla se restaura tal cual quedó.
   function pausarYSalir() {
+    // Con otro celular todavía planillando, salir de ESTE no pausa ni "suspende"
+    // el partido: el otro sigue con el reloj y todo lo cargado.
+    if (otrosCelulares > 0) {
+      if (!window.confirm('Vas a salir de esta planilla SIN guardar el resultado.\n\nEl otro celular sigue con el partido (reloj, goles y tarjetas siguen igual). Podés volver a entrar cuando quieras.\n\n¿Continuar?')) return
+      pararAlarma()
+      guardarRemotoInmediato(construirSnap())
+      onClose && onClose()
+      return
+    }
     const seguiaCorriendo = corriendo
     if (!window.confirm(seguiaCorriendo
       ? 'Se va a pausar el cronómetro y salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir jugando el tiempo que falta.\n\n¿Continuar?'
       : 'Vas a salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir donde quedó.\n\n¿Continuar?')) return
     pararAlarma()
     inicioEpochRef.current = null
-    if (seguiaCorriendo) setCorriendo(false)
+    if (seguiaCorriendo) { nuevaAccionReloj(); setCorriendo(false) }
     // pausado:true → para que este partido deje de salir en "en vivo" en la
     // pantalla de inicio hasta que el árbitro vuelva a entrar y siga jugando
     // (el próximo guardado automático ya no manda este campo, así que vuelve
@@ -667,12 +825,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (periodo === 2) return
     pararAlarma()
     inicioEpochRef.current = null
+    nuevaAccionReloj()
     setPeriodo(2); setSegundos(0); setTiempoAgotado(false); setCorriendo(false)
   }
 
   // ── Asignación de camisetas ────────────────────────────────────────────
   function abrirJugador(team, index) {
-    if (equipoBloqueado(team)) return avisarBloqueado(team)
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
     setModalFoto({ team, index, jugador: arr[index] })
   }
@@ -739,7 +897,6 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Arquero ────────────────────────────────────────────────────────────
   function seleccionarArquero(team, jugador) {
-    if (equipoBloqueado(team)) return avisarBloqueado(team)
     const arq = { id: jugador.id, nombre: jugador.nombre, numero: jugador.numero }
     const setArq = team === 'local' ? setArqueroLocal : setArqueroVis
     const setHist = team === 'local' ? setHistArquerosLocal : setHistArquerosVis
@@ -761,7 +918,6 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     }
   }
   function registrarEvento(team, numero, tipo) {
-    if (equipoBloqueado(team)) return avisarBloqueado(team)
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
     const jugador = arr.find(j => (j.numero || '').trim() === numero)
     if (!jugador) { setAlertaNumero({ team, numero, tipo }); return }
@@ -769,6 +925,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   }
   function quitarEvento(_team, id) {
     setEventos(prev => prev.filter(e => e.id !== id))
+    setEventosEliminados(prev => prev.includes(id) ? prev : [...prev, id]) // para que el otro celular también lo borre
   }
   function resolverAlertaApellido(nombreApellido) {
     const { team, numero, tipo } = alertaNumero
@@ -799,6 +956,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
 
   // ── Guardado final ─────────────────────────────────────────────────────
   async function guardarFinal({ informeTexto, mvpId }) {
+    finalizandoRef.current = true
     setGuardandoDB(true)
     const golesLocalTotal = eventos.filter(e => e.team === 'local' && e.tipo === 'goal').length
     const golesVisTotal = eventos.filter(e => e.team === 'visitante' && e.tipo === 'goal').length
@@ -994,6 +1152,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   // porque no se jugó — solo el resultado, el tipo y (si es W) la foto del
   // equipo que sí se presentó.
   async function guardarFinalEspecial({ tipo, equipoGana, foto }) {
+    finalizandoRef.current = true
     setGuardandoDB(true)
     const golesLocalTotal = tipo === 'w' ? (equipoGana === 'local' ? 3 : 0) : 0
     const golesVisTotal   = tipo === 'w' ? (equipoGana === 'visitante' ? 3 : 0) : 0
@@ -1064,32 +1223,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     </div>
   )
 
-  if (pidiendoEquipo) return (
-    <div style={{ minHeight: '100dvh', background: FONDO, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '18px', padding: '24px', fontFamily: 'system-ui,sans-serif', textAlign: 'center' }}>
-      <div style={{ color: CIAN, fontSize: '1.15rem', fontWeight: '800' }}>📋 Este partido ya lo está planillando otro celular</div>
-      <div style={{ color: '#fff', opacity: .75, fontSize: '.85rem', maxWidth: '320px' }}>Para que no se pisen, cada celular lleva un equipo — elegí cuál llevás vos:</div>
-      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {['local', 'visitante'].map(t => {
-          const disponible = equiposParaElegir.includes(t)
-          return (
-            <button key={t} disabled={!disponible} onClick={() => elegirEquipo(t)}
-              style={{ minWidth: '150px', padding: '18px 22px', borderRadius: '14px', border: 'none', fontWeight: '800', fontSize: '1rem',
-                background: disponible ? CIAN : '#2a2a2a', color: disponible ? '#001018' : '#666', cursor: disponible ? 'pointer' : 'not-allowed' }}>
-              {t === 'local' ? nombreLocal : nombreVis}
-              {!disponible && <div style={{ fontSize: '.66rem', fontWeight: '700', marginTop: '5px' }}>🔒 Ya lo están planillando</div>}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-
   if (step === 'colores') return (
     <>
       {bannerCoPlanillaje()}
       <PantallaColores
         nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
-        onElegir={(team, hex) => { if (equipoBloqueado(team)) return avisarBloqueado(team); team === 'local' ? setColorLocal(hex) : setColorVis(hex) }}
+        onElegir={(team, hex) => { team === 'local' ? setColorLocal(hex) : setColorVis(hex) }}
         onContinuar={() => setStep('asignar')}
       />
     </>
