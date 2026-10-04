@@ -46,6 +46,7 @@ const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
 const PlanillarLinkPage       = lazy(() => import('./pages/PlanillarLinkPage'))
 const DeudoresTarjetasLinkPage = lazy(() => import('./pages/DeudoresTarjetasLinkPage'))
 const EnVivoControlLinkPage   = lazy(() => import('./pages/EnVivoControlLinkPage'))
+const OverlayEnVivoPage        = lazy(() => import('./pages/OverlayEnVivoPage'))
 const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
 const ArbitroHomePage         = lazy(() => import('./pages/ArbitroHomePage'))
 const ArbitroLiderPage        = lazy(() => import('./pages/ArbitroLiderPage'))
@@ -451,7 +452,7 @@ export default function App() {
     <ErrorBoundary>
     <GlobalToast/>
     {hayVersionNueva && (
-      <div onClick={() => recargarSinCache()}
+      <div className="gm-banner-version" onClick={() => recargarSinCache()}
         style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#1a73e8', color: '#fff', textAlign: 'center', padding: '10px 16px', fontSize: '.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'system-ui, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
         🔄 Hay una versión nueva de Golmebol — toca para actualizar
       </div>
@@ -514,6 +515,8 @@ export default function App() {
               desde otro celular, sin iniciar sesión. El token se genera por
               transmisión desde /admin/config-sitio. */}
           <Route path="/en-vivo-control/:token" element={<EnVivoControlLinkPage/>}/>
+          {/* Overlay transparente para OBS (Fuente de navegador): solo los gráficos de la transmisión */}
+          <Route path="/overlay/:streamId" element={<OverlayEnVivoPage/>}/>
           {/* Listado público de escenarios (antes la landing solo llevaba al
               primer escenario que trajera la consulta, así que con más de
               uno creado los demás no se veían) */}

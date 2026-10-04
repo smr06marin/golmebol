@@ -638,6 +638,24 @@ export default function AdminConfigSitioPage() {
                     </button>
                   )}
 
+                  {/* Link del overlay transparente para OBS: se agrega en OBS como
+                      "Fuente de navegador" (1920x1080) encima de la cámara, y los
+                      gráficos de esta transmisión salen DENTRO del video de YouTube.
+                      Usa el id de la transmisión, no el token de control — solo
+                      muestra gráficos, no deja manejar nada. */}
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LINK PARA OBS (GRÁFICOS DENTRO DE YOUTUBE)</div>
+                  <div style={{ display:'flex', gap:'8px', marginBottom:'6px' }}>
+                    <input readOnly value={`${window.location.origin}/overlay/${s.id}`} onFocus={e => e.target.select()}
+                      style={{ flex:1, background:'#161616', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'9px 10px', color:'#9aa0a6', fontSize:'.72rem' }}/>
+                    <button onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/overlay/${s.id}`); setCopiado(`obs-${s.id}`); setTimeout(() => setCopiado(c2 => c2 === `obs-${s.id}` ? null : c2), 2000) }}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'9px 12px', background:'#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700', whiteSpace:'nowrap' }}>
+                      {copiado === `obs-${s.id}` ? <><Check size={13} color={S.green}/> Copiado</> : <><Copy size={13}/> Copiar</>}
+                    </button>
+                  </div>
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', lineHeight:1.45 }}>
+                    En OBS: Fuentes → + → Navegador, pega este link, ancho 1920 y alto 1080, y pónlo encima de la cámara. Fondo transparente: lo que prendas o apagues en este panel se ve en el video de YouTube. (La repetición y cámara lenta de abajo solo funcionan en golmebol.com, no dentro de OBS.)
+                  </div>
+
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
                   <div style={{ fontSize:'.72rem', color:'#9aa0a6', marginBottom:'8px' }}>
                     Devuélvete con la barra del video de arriba hasta la jugada que quieras repetir, pausalo ahí, y aprieta uno de estos dos — se muestra desde ese mismo punto.
