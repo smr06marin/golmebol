@@ -24,14 +24,32 @@ function filaVacia() {
 // Mezcla la lista fresca de la BD con la que ya tiene el árbitro en pantalla:
 // conserva los números ya asignados y las filas "sin registro" que agregó a
 // mano, y solo suma jugadores nuevos (recién registrados) o fotos nuevas.
+//
+// OJO (bug grave corregido): antes esta función devolvía SOLO la lista fresca
+// + las filas sin registro. Si la consulta a la BD fallaba (señal mala en la
+// cancha → llega vacía) o devolvía menos gente, TODOS los jugadores con id
+// desaparecían de la planilla junto con sus números. Ahora:
+//  · una lista fresca vacía/inválida se ignora (no se toca nada);
+//  · un jugador con número asignado NUNCA se descarta, aunque no venga en la
+//    lista fresca (el número ya está en uso en el partido).
 function fusionarJugadores(actual, fresco) {
+  if (!Array.isArray(fresco) || fresco.length === 0) return actual
   const porId = new Map(actual.filter(j => j.id).map(j => [j.id, j]))
+  const idsFrescos = new Set(fresco.map(b => b.id))
   const actualizados = fresco.map(b => {
     const existente = porId.get(b.id)
-    return existente ? { ...b, numero: existente.numero } : b
+    return existente ? { ...existente, ...b, numero: existente.numero } : b
   })
+  const conNumeroFueraDeLista = actual.filter(j => j.id && !idsFrescos.has(j.id) && String(j.numero || '').trim() !== '')
   const sinRegistro = actual.filter(j => !j.id)
-  return [...actualizados, ...sinRegistro]
+  const resultado = [...actualizados, ...conNumeroFueraDeLista, ...sinRegistro]
+  // Si no cambió nada de verdad, se devuelve la MISMA referencia (no dispara autoguardados en falso).
+  return JSON.stringify(resultado) === JSON.stringify(actual) ? actual : resultado
+}
+
+// Cuántos jugadores tienen número asignado (para detectar "borrones" masivos).
+function contarNumeros(arr) {
+  return (arr || []).filter(j => String(j?.numero || '').trim() !== '').length
 }
 
 // Firma de "lo que se edita a mano" en la planilla (números, colores, arqueros):
@@ -153,6 +171,22 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose })
   useEffect(() => { relojFirmaRef.current = `${corriendo}|${periodo}|${tiempoAgotado}|${duracionMinutos}` })
+  // Copias "al día" del estado (para leerlas desde callbacks con dependencias vacías)
+  const jugLocalRef = useRef([])
+  const jugVisRef = useRef([])
+  const segundosRef = useRef(0)
+  const restituirRef = useRef(null)   // guarda YA el estado de este celular (se usa para "curar" un borrado masivo que llegó de otro celular)
+  const ultimoAjenoRef = useRef(0)    // última vez (hora local) que llegó algo de OTRO celular: indica que hay otro planillando
+  jugLocalRef.current = jugadoresLocal
+  jugVisRef.current = jugadoresVisitante
+  segundosRef.current = segundos
+  // No se sube NADA a la base de datos hasta haber consultado lo que ya hay allá:
+  // antes, abrir la planilla con un borrador viejo del celular lo subía de una y
+  // le PISABA a todos (incluida la pantalla en vivo) los números, goles y el reloj.
+  const sincronizadoRef = useRef(false)
+  const [sincronizado, setSincronizado] = useState(false)
+  function marcarSincronizado() { if (!sincronizadoRef.current) { sincronizadoRef.current = true; setSincronizado(true) } }
+  useEffect(() => { const t = setTimeout(marcarSincronizado, 10000); return () => clearTimeout(t) }, [])
   // Toda acción de reloj hecha en ESTE celular: sube el contador y se vuelve
   // el "dueño" de la corrección de deriva.
   function nuevaAccionReloj() { relojVRef.current += 1; relojAutorRef.current = deviceIdRef.current }
@@ -198,6 +232,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   // ida-y-vuelta infinito entre los celulares).
   const procesarRemoto = useCallback((snap, ms) => {
     if (!snap || snap.autor === deviceIdRef.current) return
+    ultimoAjenoRef.current = Date.now() // hay otro celular activo (se usa al "Suspender", ver pausarYSalir)
     if (ms) {
       if (vistosMsRef.current.has(ms)) return
       vistosMsRef.current.add(ms)
@@ -261,7 +296,18 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const firmaRemota = firmaPlantilla(snap)
     const ganaPlantilla = plantillaRemota > plantillaVRef.current ||
       (plantillaRemota === plantillaVRef.current && plantillaRemota > 0 && (snap.plantillaAutor || '') > plantillaAutorRef.current && firmaRemota !== plantillaSigRef.current)
-    if (ganaPlantilla) {
+    // Defensa contra "borrones": una edición normal cambia UN número a la vez.
+    // Si lo que llega le quita 2 o más números de golpe a lo que este celular
+    // tiene, es una copia vieja/vacía/dañada (ej. otro celular con la lista
+    // sin cargar): NO se adopta. En cambio este celular re-impone su plantilla
+    // con versión más alta, y así también "cura" a los demás y a la base de datos.
+    const numerosAqui = contarNumeros(jugLocalRef.current) + contarNumeros(jugVisRef.current)
+    const numerosRemotos = contarNumeros(snap.jugadoresLocal) + contarNumeros(snap.jugadoresVisitante)
+    if (ganaPlantilla && numerosAqui - numerosRemotos > 1) {
+      plantillaVRef.current = Math.max(plantillaVRef.current, plantillaRemota) + 1
+      plantillaAutorRef.current = deviceIdRef.current
+      setTimeout(() => { restituirRef.current && restituirRef.current() }, 0)
+    } else if (ganaPlantilla) {
       plantillaVRef.current = plantillaRemota
       plantillaAutorRef.current = snap.plantillaAutor || ''
       plantillaSigRef.current = firmaRemota
@@ -309,9 +355,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         if (!data) return
         if (data.status === 'finished') { cierreRemoto(); return }
         const ms = data.live_state_rapida_updated_at ? new Date(data.live_state_rapida_updated_at).getTime() : null
-        if (!ms || vistosMsRef.current.has(ms)) return
-        const { data: completo } = await supabase.from('matches').select('live_state_rapida').eq('id', partido.id).maybeSingle()
+        if (!ms || vistosMsRef.current.has(ms)) { marcarSincronizado(); return }
+        const { data: completo, error: errCompleto } = await supabase.from('matches').select('live_state_rapida').eq('id', partido.id).maybeSingle()
+        if (errCompleto) return
         procesarRemoto(completo?.live_state_rapida, ms)
+        marcarSincronizado()
       } catch (e) { /* sin señal: se reintenta en el siguiente ciclo */ } finally { ocupado = false }
     }
     const t = setInterval(revisar, 3000)
@@ -343,9 +391,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   // tocar goles/números/eventos ya cargados) — igual que en la planilla completa.
   const refetchDeudaTarjetas = useCallback(async () => {
     if (!partido?.tournament_id || !finanzasConfig) return
-    const { data } = await supabase.from('player_match_stats')
+    const { data, error: errDeuda } = await supabase.from('player_match_stats')
       .select('player_id, match_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid')
       .eq('tournament_id', partido.tournament_id)
+    if (errDeuda || !Array.isArray(data)) return // sin señal: no se tocan los avisos de deuda
     const matchesInfo = await fetchMatchesInfo((data || []).map(s => s.match_id))
     const { idsDebenTarjeta, detallePorJugador, idsEquipos } = construirDeudaTarjetas(data, finanzasConfig, matchesInfo)
     setDeudaDetalle(detallePorJugador)
@@ -385,6 +434,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
     ])
+    // Si CUALQUIERA de las consultas falló (señal mala, timeout) no se toca la
+    // lista: una respuesta vacía por error NO significa "no hay jugadores".
+    if (jugsL.error || jugsV.error || sancionesDB.error || !Array.isArray(jugsL.data) || !Array.isArray(jugsV.data)) return
     const hoyIso = new Date().toISOString()
     const idsSancionados = new Set((sancionesDB?.data || [])
       .filter(s => (!s.fecha_fin || s.fecha_fin > hoyIso) && (s.partidos_pendientes === null || s.partidos_pendientes === undefined || s.partidos_pendientes > 0))
@@ -568,6 +620,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       setJugadoresLocal(prev => fusionarJugadores(prev, baseLocal))
       setJugadoresVisitante(prev => fusionarJugadores(prev, baseVis))
     }
+    // Ya se consultó lo que hay en la base de datos: desde ahora sí se puede subir.
+    if (!liveDB?.error) marcarSincronizado()
   }
 
   // Un borrador (local o remoto) puede traer jugadores sin el flag de deuda
@@ -687,8 +741,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (corriendo && inicioEpochRef.current != null) segs = Math.min(duracionMinutos * 60, Math.floor((Date.now() - inicioEpochRef.current) / 1000))
     return { ...base, eventos, eventosEliminados, periodo, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
   }
+  // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
+  restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
   function guardarRemotoInmediato(snap) {
-    if (!navigator.onLine) return
+    if (!navigator.onLine || !sincronizadoRef.current) return
     const ts = new Date().toISOString()
     vistosMsRef.current.add(new Date(ts).getTime()) // para no tratar mi propio guardado como si fuera del otro celular
     supabase.from('matches').update({ live_state_rapida: snap, live_state_rapida_updated_at: ts }).eq('id', partido.id).then(() => {}, () => {})
@@ -704,7 +760,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
     guardarRemotoDebounced(snap)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step])
+  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, sincronizado])
 
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
@@ -741,6 +797,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundos * 1000
 
     function recalcular() {
+      // Si el ancla se borró mientras el reloj seguía andando (ej. al aplicar un
+      // borrador del otro celular), se rehace desde el segundo que se ve. Antes,
+      // con el ancla en null el cálculo daba un tiempo enorme y el reloj saltaba
+      // al final con la alarma, parando el partido para todos.
+      if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundosRef.current * 1000
       const limite = duracionMinutos * 60
       const elapsed = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
       setSegundos(elapsed >= limite ? limite : elapsed)
@@ -797,8 +858,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   // a entrar a este mismo partido, la planilla se restaura tal cual quedó.
   function pausarYSalir() {
     // Con otro celular todavía planillando, salir de ESTE no pausa ni "suspende"
-    // el partido: el otro sigue con el reloj y todo lo cargado.
-    if (otrosCelulares > 0) {
+    // el partido: el otro sigue con el reloj y todo lo cargado. Además de la
+    // presencia (que puede tardar o fallar con mala señal) se mira si el otro
+    // celular mandó algo hace poco: antes, salir de un celular "de apoyo" cuando
+    // la presencia no había cargado PAUSABA el reloj en todos los celulares.
+    const hayOtroActivo = otrosCelulares > 0 || (Date.now() - ultimoAjenoRef.current < 25000)
+    if (hayOtroActivo) {
       if (!window.confirm('Vas a salir de esta planilla SIN guardar el resultado.\n\nEl otro celular sigue con el partido (reloj, goles y tarjetas siguen igual). Podés volver a entrar cuando quieras.\n\n¿Continuar?')) return
       pararAlarma()
       guardarRemotoInmediato(construirSnap())

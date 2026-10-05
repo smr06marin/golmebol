@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatTiempo } from './estilosRapida'
 
 // Cronómetro flotante y arrastrable (mismo mecanismo que la planilla completa:
@@ -15,6 +15,30 @@ export default function CronometroCentral({
     y: typeof window !== 'undefined' ? Math.max(8, window.innerHeight / 2 - 90) : 200,
   }))
   const dragRef = useRef(null)
+
+  // Pausar y pasar a 2T exigen DOBLE TOQUE (dos toques seguidos en menos de
+  // 0,6 s): un toque suelto por error ya no detiene el reloj del partido.
+  // Iniciar sigue siendo un toque normal. Con un solo toque el botón avisa
+  // "otra vez" por un instante.
+  const ultimoToqueRef = useRef({ pausa: 0, periodo: 0 })
+  const [aviso, setAviso] = useState(null) // 'pausa' | 'periodo' | null
+  const avisoTimerRef = useRef(null)
+  useEffect(() => () => clearTimeout(avisoTimerRef.current), [])
+  function doble(clave, accion) {
+    const ahora = Date.now()
+    if (ahora - ultimoToqueRef.current[clave] < 600) {
+      ultimoToqueRef.current[clave] = 0
+      clearTimeout(avisoTimerRef.current)
+      setAviso(null)
+      accion()
+      return
+    }
+    ultimoToqueRef.current[clave] = ahora
+    setAviso(clave)
+    clearTimeout(avisoTimerRef.current)
+    avisoTimerRef.current = setTimeout(() => setAviso(null), 1200)
+  }
+  function tocarReloj() { if (corriendo) doble('pausa', onToggle); else onToggle() }
 
   function onDragStart(e) {
     const t = e.touches ? e.touches[0] : e
@@ -76,14 +100,14 @@ export default function CronometroCentral({
           </div>
         )}
         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: mini ? '6px' : '10px' }}>
-          <button onClick={onToggle}
-            style={{ padding: mini ? '5px 12px' : '8px 16px', background: 'rgba(255,255,255,.92)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: fondo, fontSize: mini ? '.75rem' : '.85rem', fontWeight: '800' }}>
-            {corriendo ? '⏸ Pausar' : '▶️ Iniciar'}
+          <button onClick={tocarReloj} title={corriendo ? 'Doble toque para pausar' : 'Iniciar'}
+            style={{ padding: mini ? '5px 12px' : '8px 16px', background: aviso === 'pausa' ? '#ffdd44' : 'rgba(255,255,255,.92)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: aviso === 'pausa' ? '#222' : fondo, fontSize: mini ? '.75rem' : '.85rem', fontWeight: '800' }}>
+            {corriendo ? (aviso === 'pausa' ? '⏸ ¡Otra vez!' : '⏸ Pausar ×2') : '▶️ Iniciar'}
           </button>
           {periodo === 1 && (
-            <button onClick={onCambiarPeriodo}
-              style={{ padding: mini ? '5px 10px' : '8px 12px', background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: mini ? '.68rem' : '.78rem', fontWeight: '700' }}>
-              2T →
+            <button onClick={() => doble('periodo', onCambiarPeriodo)} title="Doble toque para pasar al 2do tiempo"
+              style={{ padding: mini ? '5px 10px' : '8px 12px', background: aviso === 'periodo' ? '#ffdd44' : 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: aviso === 'periodo' ? '#222' : '#fff', fontSize: mini ? '.68rem' : '.78rem', fontWeight: '700' }}>
+              {aviso === 'periodo' ? '¡Otra vez!' : '2T →'}
             </button>
           )}
         </div>
