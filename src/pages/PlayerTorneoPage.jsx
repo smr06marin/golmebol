@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe } from '../lib/torneoTablas'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -682,12 +682,14 @@ export default function PlayerTorneoPage() {
     })
     partGrupo.filter(p => p.status === 'finished').forEach(p => {
       if (t[p.home_team_id]) {
+        if (p._enVivo) t[p.home_team_id].enVivo = enVivoDe(p, true, t[p.away_team_id]?.equipo?.name)
         t[p.home_team_id].pj++; t[p.home_team_id].gf += p.home_score||0; t[p.home_team_id].gc += p.away_score||0
         if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += P.victoria }
         else if (p.home_score === p.away_score) { t[p.home_team_id].pe++; t[p.home_team_id].pts += P.empate }
         else { t[p.home_team_id].pp++; t[p.home_team_id].pts += P.derrota }
       }
       if (t[p.away_team_id]) {
+        if (p._enVivo) t[p.away_team_id].enVivo = enVivoDe(p, false, t[p.home_team_id]?.equipo?.name)
         t[p.away_team_id].pj++; t[p.away_team_id].gf += p.away_score||0; t[p.away_team_id].gc += p.home_score||0
         if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += P.victoria }
         else if (p.away_score === p.home_score) { t[p.away_team_id].pe++; t[p.away_team_id].pts += P.empate }
@@ -1148,6 +1150,7 @@ export default function PlayerTorneoPage() {
                 teamName: g.team_name,
                 teamLogo: g.team_logo,
                 valor: g.total_goals,
+                vivo: g.golesVivo || 0,
                 sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_blue||0)>0?` · 🟦${g.total_blue}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
               }))}
             />

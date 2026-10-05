@@ -22,6 +22,18 @@ export function conMarcadorEnVivo(partidos) {
   })
 }
 
+// Para que quien mire la tabla sepa que un equipo tiene el partido EN JUEGO
+// (y que sus números son provisionales hasta que se guarde el resultado):
+// devuelve { gf, gc, rival } de ese equipo en el partido en vivo, o undefined
+// si el partido no está en vivo. Las tablas lo pegan en la fila como `enVivo`
+// y TablaPosiciones lo dibuja (punto rojo + marcador + aviso arriba).
+export function enVivoDe(p, esLocal, nombreRival) {
+  if (!p?._enVivo) return undefined
+  return esLocal
+    ? { gf: p.home_score || 0, gc: p.away_score || 0, rival: nombreRival || p.away?.name || '' }
+    : { gf: p.away_score || 0, gc: p.home_score || 0, rival: nombreRival || p.home?.name || '' }
+}
+
 // Tabla general de posiciones: solo cuenta partidos finalizados (o en vivo,
 // ver conMarcadorEnVivo) de fase de grupos (o sin fase asignada todavía).
 export function computeTablaGeneral(equipos, partidos, torneo) {
@@ -30,12 +42,14 @@ export function computeTablaGeneral(equipos, partidos, torneo) {
   equipos.forEach(e => { tabla[e.id] = { equipo: e, pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
   conMarcadorEnVivo(partidos).filter(p => p.status === 'finished' && (!p.fase || p.fase === 'grupo')).forEach(p => {
     if (tabla[p.home_team_id]) {
+      if (p._enVivo) tabla[p.home_team_id].enVivo = enVivoDe(p, true, tabla[p.away_team_id]?.equipo?.name)
       tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
       if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
       else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
       else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
     }
     if (tabla[p.away_team_id]) {
+      if (p._enVivo) tabla[p.away_team_id].enVivo = enVivoDe(p, false, tabla[p.home_team_id]?.equipo?.name)
       tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score || 0; tabla[p.away_team_id].gc += p.home_score || 0
       if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
       else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
@@ -93,6 +107,7 @@ export function mergeGoleadoresConVivo(goleadoresDB, partidos, equipos) {
     const fila = resultado.find(g => g.player_id === playerId)
     if (fila) {
       fila.total_goals = (fila.total_goals || 0) + info.goles
+      fila.golesVivo = info.goles // cuántos de esos goles son del partido que se está jugando (provisionales)
     } else {
       const equipo = (equipos || []).find(e => e.id === info.teamId)
       resultado.push({
@@ -100,6 +115,7 @@ export function mergeGoleadoresConVivo(goleadoresDB, partidos, equipos) {
         player_name: info.nombre, photo_url: null,
         team_name: equipo?.name || '', team_logo: equipo?.logo_url || null,
         total_goals: info.goles, partidos_jugados: 0, total_yellow: 0, total_blue: 0, total_red: 0,
+        golesVivo: info.goles,
       })
     }
   })

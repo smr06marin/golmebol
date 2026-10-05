@@ -20,6 +20,7 @@ export default function TablaEnVivoOverlay({ filas }) {
     }}>
       <div style={{ fontSize: 'clamp(.52rem, 2.2vw, .62rem)', fontWeight: 900, color: '#f5a623', letterSpacing: '.08em', marginBottom: '4px' }}>
         🏆 TABLA DE POSICIONES
+        {top.some(f => f.enVivo) && <span style={{ color: ROJO_VIVO, marginLeft: '8px' }}>● EN VIVO · PROVISIONAL</span>}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
         {top.map((f, i) => (
@@ -29,6 +30,7 @@ export default function TablaEnVivoOverlay({ filas }) {
             </span>
             <span style={{ fontSize: 'clamp(.56rem, 2.3vw, .7rem)', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {f.equipo?.name || '—'}
+              {f.enVivo && <span style={{ color: ROJO_VIVO, fontWeight: 900, fontSize: '.85em', marginLeft: '6px' }}>● {f.enVivo.gf}-{f.enVivo.gc}</span>}
             </span>
             <span style={{ fontSize: 'clamp(.5rem, 2vw, .6rem)', fontWeight: 600, color: '#9aa0a6', flexShrink: 0 }}>
               PJ {f.pj}

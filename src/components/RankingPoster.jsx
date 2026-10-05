@@ -29,6 +29,20 @@ function LogoEquipo({ logo, name, size = 44 }) {
   )
 }
 
+// rows[].vivo (opcional): cuántos de los puntos/goles de esa fila vienen de un
+// partido que se está JUGANDO ahora (provisional). Se marca con un chip rojo.
+const ROJO = '#ff5a52'
+const ESTILO_VIVO = `@keyframes gmVivoPulso2 { 0%,100% { opacity: 1; transform: scale(1) } 50% { opacity: .35; transform: scale(.7) } }`
+function ChipVivo({ n }) {
+  if (!n) return null
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(255,90,82,.16)', border: '1px solid rgba(255,90,82,.55)', color: ROJO, borderRadius: '10px', padding: '1px 7px', fontSize: '.56rem', fontWeight: 900, letterSpacing: '.05em', whiteSpace: 'nowrap' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ROJO, animation: 'gmVivoPulso2 1.2s ease-in-out infinite' }}/>
+      +{n} EN VIVO
+    </span>
+  )
+}
+
 function FilaTop({ r, pos, statColor, statLabel }) {
   const medalla = pos === 1 ? '#ffd54a' : pos === 2 ? '#c9d1de' : '#d08a4e'
   const partes = (r.nombre || '').trim().split(/\s+/)
@@ -48,6 +62,7 @@ function FilaTop({ r, pos, statColor, statLabel }) {
           {statLabel && <span style={{ color: statColor, fontWeight: 700, fontSize: '.62rem', letterSpacing: '.08em', textTransform: 'uppercase', opacity: .85 }}>{statLabel}</span>}
           {r.sub && <span style={{ color: '#8b93a5', fontSize: '.62rem', marginLeft: '3px' }}>{r.sub}</span>}
         </div>
+        {r.vivo > 0 && <div style={{ marginTop: '4px' }}><ChipVivo n={r.vivo}/></div>}
       </div>
       {/* Foto de la tarjeta (o muñeco si no tiene) */}
       <div style={{ width: '104px', flexShrink: 0, background: '#1a2030', overflow: 'hidden', display: 'flex', alignItems: r.foto ? 'stretch' : 'flex-end', justifyContent: 'center' }}>
@@ -72,6 +87,7 @@ function FilaCompacta({ r, pos, statColor, statLabel, ultima }) {
         <div style={{ color: '#e8ecf4', fontWeight: 700, fontSize: '.82rem', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre}</div>
         {r.sub && <div style={{ color: '#8b93a5', fontSize: '.62rem' }}>{r.sub}</div>}
       </div>
+      {r.vivo > 0 && <div style={{ flexShrink: 0 }}><ChipVivo n={r.vivo}/></div>}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '4px' }}>
         <span style={{ color: statColor, fontWeight: 900, fontSize: '.92rem' }}>{r.valor}</span>
         {statLabel && <span style={{ color: statColor, fontWeight: 700, fontSize: '.58rem', textTransform: 'uppercase', opacity: .8 }}>{statLabel}</span>}
@@ -91,12 +107,22 @@ export default function RankingPoster({ titulo, rows, statLabel, statColor = '#f
 
   const visibles = verTodos ? rows : rows.slice(0, 10)
   const ocultas  = rows.length - 10
+  const hayVivo  = rows.some(r => r.vivo > 0)
 
   return (
     <div style={{ background: 'linear-gradient(165deg,#151a28,#0c0f18)', border: '1px solid #232b3d', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
       {titulo && (
         <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,.08)', color: '#fff', fontWeight: 800, fontSize: '.8rem', letterSpacing: '.14em', textTransform: 'uppercase' }}>
           {titulo}
+        </div>
+      )}
+      {hayVivo && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,90,82,.12)', borderBottom: '1px solid rgba(255,90,82,.4)', padding: '8px 16px' }}>
+          <style>{ESTILO_VIVO}</style>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: ROJO, flexShrink: 0, animation: 'gmVivoPulso2 1.2s ease-in-out infinite' }}/>
+          <span style={{ color: '#fff', fontSize: '.68rem', lineHeight: 1.35 }}>
+            <b style={{ color: ROJO, letterSpacing: '.06em' }}>EN VIVO</b> · Hay partido en juego: los goles marcados en rojo son de ahora. <b>Provisional</b> hasta que termine el partido.
+          </span>
         </div>
       )}
       {visibles.map((r, i) => i < 3
