@@ -20,6 +20,7 @@ import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
+import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
 
 // Le pone un límite de tiempo a una consulta a Supabase para que un botón
 // nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
@@ -591,7 +592,8 @@ export default function AdminTorneoDetallePage() {
   const [editandoPartidoForm, setEditandoPartidoForm] = useState(null)
   const [formEditPartido,     setFormEditPartido]     = useState({})
 
-  const [subTab,          setSubTab]          = useState(draftJornada ? 'jornada' : 'partidos')
+  // Se recuerda (por torneo) en qué sub-pestaña estaba, para no perderla si el celular recarga la página.
+  const [subTab,          setSubTab]          = useEstadoUI(`gm_ui_torneo_${id}_subtab`, draftJornada ? 'jornada' : 'partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
   const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
@@ -918,7 +920,8 @@ export default function AdminTorneoDetallePage() {
   const [jugadoresEquipoId,setJugadoresEquipoId]= useState(null)
   const [moviendoJugadorId, setMoviendoJugadorId] = useState(null) // id de la inscripción (tournament_player_registrations) con el selector de "mover a otro equipo" abierto
   const [verDesact,        setVerDesact]        = useState(false)
-  const [abiertosJornada,  setAbiertosJornada]  = useState({})
+  const [abiertosJornada,  setAbiertosJornada]  = useEstadoUI(`gm_ui_torneo_${id}_jornadas`, {})
+  useRestaurarScroll(`gm_ui_torneo_${id}_scroll`, !loading)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   // La planilla abierta queda marcada en la URL (?planilla=<id>). Así, sin

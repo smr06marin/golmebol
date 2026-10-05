@@ -6,6 +6,7 @@ import PlanillaPartido from '../components/PlanillaPartido'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { useEstadoUI, useRestaurarScroll } from '../hooks/useEstadoUI'
 
 const inp ={ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
@@ -445,16 +446,18 @@ export default function ArbitroLiderPage() {
   const [lider,    setLider]    = useState(null)
   const [partidos, setPartidos] = useState([])
   const [arbitros, setArbitros] = useState([])
-  const [tab,      setTab]      = useState('sin_asignar')
+  // Pestaña y torneo escogidos se recuerdan: si el celular recarga la página al volver de WhatsApp, no hay que volver a escogerlos.
+  const [tab,      setTab]      = useEstadoUI('gm_ui_lider_tab', 'sin_asignar')
   const [loading,  setLoading]  = useState(true)
   const [showNuevo,setShowNuevo]= useState(false)
   const [msg,      setMsg]      = useState(null)
   const [uploading,setUploading]= useState(null)
   const [busqArb,      setBusqArb]      = useState('')
-  const [torneoFiltro, setTorneoFiltro] = useState('')
+  const [torneoFiltro, setTorneoFiltro] = useEstadoUI('gm_ui_lider_torneo', '')
   const [modalRec,     setModalRec]     = useState(null)
   const [reclamosMap,  setReclamosMap]  = useState({})
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  useRestaurarScroll('gm_ui_lider_scroll', !loading)
   const liderRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
   function abrirPlanilla(p) {
@@ -531,6 +534,7 @@ export default function ArbitroLiderPage() {
       .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
       .order('played_at', { ascending: true })
     setPartidos(data||[])
+    setTorneoFiltro(f => (f && !(data||[]).some(p => p.tournament_id === f)) ? '' : f) // el torneo recordado ya no tiene partidos
     // Cargar reclamos por partido
     const { data: recs } = await supabase.from('arbitro_reclamos').select('match_id, estado, arbitro_id')
     const rm = {}

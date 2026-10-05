@@ -9,6 +9,7 @@ import PlanillaPartido from '../../components/PlanillaPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { notify } from '../../lib/notify'
+import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
 
 function TeamLogo({ logo_url, name, size = 32 }) {
   if (logo_url) return <img src={logo_url} style={{ width: size, height: size, objectFit: 'contain' }}/>
@@ -68,13 +69,17 @@ export default function AdminCalendarioPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [partidos,        setPartidos]        = useState([])
   const [loading,         setLoading]         = useState(true)
-  const [filtro,          setFiltro]          = useState('todos')
-  const [torneoFiltro,    setTorneoFiltro]    = useState('')
+  // Lo que la persona dejó puesto (Pendientes/Jugados, torneo, jornadas
+  // abiertas y hasta dónde bajó) se recuerda: si el celular recarga la página
+  // al volver de WhatsApp (o de copiar un link), todo queda donde estaba en
+  // vez de tener que escoger el torneo y buscar el partido otra vez.
+  const [filtro,          setFiltro]          = useEstadoUI('gm_ui_calendario_filtro', 'todos')
+  const [torneoFiltro,    setTorneoFiltro]    = useEstadoUI('gm_ui_calendario_torneo', '')
   const [torneos,         setTorneos]         = useState([])
   const [flyerPartido,    setFlyerPartido]    = useState(null)
   const [flyerGrupo,      setFlyerGrupo]      = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
-  const [abiertos,        setAbiertos]        = useState({})
+  const [abiertos,        setAbiertos]        = useEstadoUI('gm_ui_calendario_abiertos', {})
 
   // Arma el "torneo" que se le pasa al flyer de programación: si todos los
   // partidos del grupo son del mismo torneo, usa su nombre/escudo/etc (así
@@ -112,18 +117,20 @@ export default function AdminCalendarioPage() {
   function cerrarPlanilla() {
     setPlanillaPartido(null)
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
-    fetchTodo()
+    fetchTodo(true)
   }
 
-  async function fetchTodo() {
-    setLoading(true)
+  // silencioso = true: refresca la lista SIN la pantalla de "Cargando..." (que
+  // encoge la página y te manda arriba del todo).
+  async function fetchTodo(silencioso = false) {
+    if (!silencioso) setLoading(true)
 
     // El organizador solo ve el calendario de sus propios torneos
     if (esOrganizador) {
       const { data: misTorneos } = await supabase.from('tournaments').select('id,name').eq('organizador_id', user?.id)
       const torneoIds = (misTorneos || []).map(t => t.id)
       if (torneoIds.length === 0) {
-        setPartidos([]); setTorneos([]); setLoading(false); return
+        setPartidos([]); setTorneos([]); setTorneoFiltro(''); setLoading(false); return
       }
       const { data: pts } = await supabase.from('matches')
         .select('*, tournaments(id,name,modalidad,logo_url,season,categoria), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
@@ -131,6 +138,7 @@ export default function AdminCalendarioPage() {
         .order('played_at', { ascending: true })
       setPartidos(pts || [])
       setTorneos(misTorneos || [])
+      setTorneoFiltro(f => (f && !(misTorneos || []).some(t => t.id === f)) ? '' : f) // el torneo recordado ya no existe/no es mío
       setLoading(false)
       return
     }
@@ -143,6 +151,7 @@ export default function AdminCalendarioPage() {
     ])
     setPartidos(pts || [])
     setTorneos(trs || [])
+    setTorneoFiltro(f => (f && !(trs || []).some(t => t.id === f)) ? '' : f) // el torneo recordado ya no está activo
     setLoading(false)
   }
 
@@ -171,6 +180,8 @@ export default function AdminCalendarioPage() {
     .filter(p => torneoFiltro ? p.tournament_id === torneoFiltro : true)
 
   const jornadas = agruparPorJornada(filtrados)
+  // Vuelve a la misma altura donde estaba cuando la lista ya cargó
+  useRestaurarScroll('gm_ui_calendario_scroll', !loading && jornadas.length > 0)
 
   return (
     <div>
