@@ -893,6 +893,7 @@ export default function AdminTorneoDetallePage() {
   const [tarjetasAPagar,   setTarjetasAPagar]   = useState([]) // [{player_id, color, nombre}] a marcar pagadas junto con este pago
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
+  const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
   const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
   const [guardandoEdicionMov, setGuardandoEdicionMov] = useState(false)
   const [modalLinkDeudores, setModalLinkDeudores] = useState(null) // { link, password } al abrir el cuadro de "Link deudores de tarjetas"
@@ -2236,9 +2237,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const jugados = partidos.filter(p => p.status === 'finished' && p.tipo_resultado !== 'w')
     const partidosW = partidos.filter(p => p.status === 'finished' && p.tipo_resultado === 'w')
 
+    // Inscripción por JUGADOR: la cuenta de cada equipo = jugadores inscritos
+    // (activos) × tarifa, así que crece sola a medida que registran jugadores.
+    const modoJugador = fc.inscripcion_modo === 'jugador'
+    const tarifaJug   = fc.inscripcion_jugador || 0
     const porEquipo = {}
     equipos.forEach(e => {
-      porEquipo[e.id] = { equipo: e, inscripcion: fc.inscripcion || 0, arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosMultas: 0, pagosInscripcion: 0 }
+      const inscritos = modoJugador ? jugadores.filter(j => j.team_id === e.id && j.activo !== false).length : 0
+      const pagadosJug = modoJugador ? jugadores.filter(j => j.team_id === e.id && j.activo !== false && j.inscripcion_pagada === true).length : 0
+      porEquipo[e.id] = { equipo: e, modoJugador, tarifaJug, inscritos, pagadosJug, inscripcion: modoJugador ? inscritos * tarifaJug : (fc.inscripcion || 0), arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosMultas: 0, pagosInscripcion: 0 }
     })
 
     jugados.forEach(m => {
@@ -2415,6 +2422,47 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     fetchFinanzas()
   }
 
+  // ── Inscripción POR JUGADOR ───────────────────────────────────────────────
+  // Marcar pagado = (1) un abono en torneo_finanzas con player_id (para que
+  // descuente de la cuenta del equipo y salga en "Movimientos") y (2) la marca
+  // inscripcion_pagada en la inscripción del jugador, que es lo que leen las
+  // planillas para desbloquearlo. Si la marca falla, se deshace el abono.
+  async function pagarInscripcionJugadores(equipo, regs) {
+    const fc = torneo?.finanzas_config || {}
+    const tarifa = fc.inscripcion_jugador || 0
+    const pendientes = regs.filter(j => j.inscripcion_pagada !== true)
+    if (pendientes.length === 0) return
+    if (tarifa <= 0) return showMsg('Primero configura la tarifa de inscripción por jugador (botón de precios)', 'error')
+    setPagandoInscJug(true)
+    const { data: movs, error } = await supabase.from('torneo_finanzas').insert(pendientes.map(j => ({
+      tournament_id: id, team_id: equipo.id, player_id: j.player_id, tipo: 'abono_inscripcion', monto: tarifa,
+      concepto: `Inscripción — ${j.players?.name || 'jugador'}`,
+    }))).select('id')
+    if (error) { setPagandoInscJug(false); return showMsg('Error al registrar el pago: ' + error.message, 'error') }
+    const { error: e2 } = await supabase.from('tournament_player_registrations')
+      .update({ inscripcion_pagada: true, inscripcion_pagada_at: new Date().toISOString() })
+      .in('id', pendientes.map(j => j.id))
+    if (e2) {
+      await supabase.from('torneo_finanzas').delete().in('id', (movs || []).map(m => m.id))
+      setPagandoInscJug(false)
+      return showMsg('No se pudo marcar el pago (¿ejecutaste migracion_inscripcion_por_jugador.sql en Supabase?)', 'error')
+    }
+    setPagandoInscJug(false)
+    showMsg(pendientes.length === 1 ? `Pago de ${pendientes[0].players?.name || 'jugador'} registrado ✓ — ya sale en la planilla` : `${pendientes.length} jugadores pagados ✓ — ya salen en la planilla`)
+    fetchFinanzas(); fetchJugadores()
+  }
+
+  async function deshacerPagoInscripcionJugador(equipo, j) {
+    if (!confirm(`¿Deshacer el pago de inscripción de ${j.players?.name || 'este jugador'}? Volverá a quedar bloqueado en la planilla.`)) return
+    setPagandoInscJug(true)
+    await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('team_id', equipo.id).eq('player_id', j.player_id).eq('tipo', 'abono_inscripcion')
+    const { error } = await supabase.from('tournament_player_registrations').update({ inscripcion_pagada: false, inscripcion_pagada_at: null }).eq('id', j.id)
+    setPagandoInscJug(false)
+    if (error) return showMsg('No se pudo deshacer el pago: ' + error.message, 'error')
+    showMsg('Pago deshecho ✓')
+    fetchFinanzas(); fetchJugadores()
+  }
+
   async function handleEliminarPago(mv) {
     if (!confirm('¿Eliminar este pago?')) return
     await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
@@ -2576,7 +2624,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   function abrirConfigFin() {
     const fc = torneo?.finanzas_config || {}
     setFormFin({
-      inscripcion: fc.inscripcion || 0, arbitraje_equipo: fc.arbitraje_equipo || 0,
+      inscripcion: fc.inscripcion || 0, inscripcion_modo: fc.inscripcion_modo === 'jugador' ? 'jugador' : 'equipo', inscripcion_jugador: fc.inscripcion_jugador || 0, arbitraje_equipo: fc.arbitraje_equipo || 0,
       valor_w_presenta: fc.valor_w_presenta || 0, multa_no_presenta: fc.multa_no_presenta || 0,
       precio_amarilla: fc.precio_amarilla || 0, precio_azul: fc.precio_azul || 0, precio_roja: fc.precio_roja || 0,
       pago_cancha_partido: fc.pago_cancha_partido || 0, pago_cancha_w: fc.pago_cancha_w || 0,
@@ -2594,7 +2642,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   async function handleGuardarConfigFin() {
     setGuardandoFin(true)
     const fc = { ...(torneo?.finanzas_config || {}), llevar_cuentas: true }
-    Object.keys(formFin).forEach(k => { fc[k] = parseFloat(formFin[k]) || 0 })
+    Object.keys(formFin).forEach(k => { fc[k] = k === 'inscripcion_modo' ? (formFin[k] === 'jugador' ? 'jugador' : 'equipo') : (parseFloat(formFin[k]) || 0) })
     const { error } = await supabase.from('tournaments').update({ finanzas_config: fc }).eq('id', id)
     if (error) { setGuardandoFin(false); return showMsg('Error al guardar precios: ' + error.message, 'error') }
 
@@ -6502,12 +6550,28 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
               {showConfigFin && (
                 <div style={{ marginTop: '16px' }}>
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '.7rem', fontWeight: '600', color: '#5f6368', marginBottom: '6px' }}>📝 Cobro de la inscripción</div>
+                    <div style={{ display: 'inline-flex', gap: '4px', background: '#f1f3f4', borderRadius: '8px', padding: '3px' }}>
+                      {[{ id: 'equipo', t: 'Por equipo' }, { id: 'jugador', t: 'Por jugador' }].map(o => (
+                        <button key={o.id} type="button" onClick={() => setFormFin(f => ({ ...f, inscripcion_modo: o.id }))}
+                          style={{ padding: '7px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: '700', background: (formFin.inscripcion_modo || 'equipo') === o.id ? '#1a73e8' : 'transparent', color: (formFin.inscripcion_modo || 'equipo') === o.id ? '#fff' : '#5f6368' }}>
+                          {o.t}
+                        </button>
+                      ))}
+                    </div>
+                    {formFin.inscripcion_modo === 'jugador' && (
+                      <div style={{ fontSize: '.7rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.4 }}>La cuenta de cada equipo crece con cada jugador inscrito. En la planilla, el jugador queda bloqueado hasta que marques su pago aquí en Finanzas.</div>
+                    )}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
                     {[
                       { k: 'precio_amarilla',      l: '🟨 Tarjeta amarilla' },
                       { k: 'precio_azul',          l: '🟦 Tarjeta azul' },
                       { k: 'precio_roja',          l: '🟥 Tarjeta roja' },
-                      { k: 'inscripcion',          l: '📝 Inscripción por equipo' },
+                      formFin.inscripcion_modo === 'jugador'
+                        ? { k: 'inscripcion_jugador', l: '📝 Inscripción por JUGADOR' }
+                        : { k: 'inscripcion',         l: '📝 Inscripción por equipo' },
                       { k: 'arbitraje_equipo',     l: '🧑‍⚖️ Arbitraje por equipo/partido' },
                       { k: 'valor_w_presenta',     l: '🏆 Cobro al que gana por W' },
                       { k: 'multa_no_presenta',    l: '⛔ Multa al que no se presenta' },
@@ -6653,7 +6717,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
               {fin.filas.map((r, i) => (
                 <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0 || r.inscripcion > 0; return (
+                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0 || r.inscripcion > 0 || (r.modoJugador && r.inscritos > 0); return (
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
                     onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -6698,7 +6762,59 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     </div>
                   </div>
                   )})()}
-                  {equipoFinAbierto === r.equipo.id && r.inscripcion > 0 && (() => {
+                  {equipoFinAbierto === r.equipo.id && r.modoJugador && r.inscritos > 0 && (() => {
+                    const regs = jugadores.filter(j => j.team_id === r.equipo.id && j.activo !== false).sort((a, b) => (a.players?.name || '').localeCompare(b.players?.name || ''))
+                    const migracionLista = regs.length === 0 || 'inscripcion_pagada' in regs[0]
+                    const pendientes = regs.filter(j => j.inscripcion_pagada !== true)
+                    const sueltos = movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'abono_inscripcion' && !m.player_id)
+                    const totalSueltos = sueltos.reduce((a, m) => a + (m.monto || 0), 0)
+                    return (
+                    <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa', borderBottom: '1px solid #e8eaed' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                        <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', flex: 1, minWidth: '180px' }}>
+                          INSCRIPCIÓN POR JUGADOR — {r.pagadosJug} de {r.inscritos} pagaron · {fmt(r.tarifaJug)} c/u
+                        </div>
+                        {pendientes.length > 0 && migracionLista && r.tarifaJug > 0 && (
+                          <button disabled={pagandoInscJug} onClick={() => pagarInscripcionJugadores(r.equipo, regs)}
+                            style={{ background: '#6c35de', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '.72rem', fontWeight: '700', cursor: pagandoInscJug ? 'wait' : 'pointer', opacity: pagandoInscJug ? .6 : 1 }}>
+                            💵 Pagar todos los pendientes ({pendientes.length} · {fmt(pendientes.length * r.tarifaJug)})
+                          </button>
+                        )}
+                      </div>
+                      {r.tarifaJug <= 0 && <div style={{ fontSize: '.72rem', color: '#d93025', marginBottom: '6px' }}>Falta configurar la tarifa por jugador (botón de precios, arriba).</div>}
+                      {!migracionLista && <div style={{ fontSize: '.72rem', color: '#d93025', marginBottom: '6px' }}>Falta ejecutar migracion_inscripcion_por_jugador.sql en Supabase para poder marcar pagos.</div>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {regs.map(j => {
+                          const pago = j.inscripcion_pagada === true
+                          return (
+                            <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.78rem' }}>
+                              <span style={{ flex: 1, minWidth: 0, color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.players?.name || 'Jugador'}</span>
+                              {pago ? (
+                                <>
+                                  <span style={{ fontSize: '.7rem', fontWeight: '700', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 9px' }}>✓ Pagó {fmt(r.tarifaJug)}</span>
+                                  <button disabled={pagandoInscJug} onClick={() => deshacerPagoInscripcionJugador(r.equipo, j)}
+                                    style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 8px', fontSize: '.66rem', color: '#5f6368', cursor: 'pointer' }}>Deshacer</button>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontSize: '.7rem', fontWeight: '700', color: '#d93025', background: '#fce8e6', borderRadius: '10px', padding: '2px 9px' }}>Debe {fmt(r.tarifaJug)}</span>
+                                  <button disabled={pagandoInscJug || !migracionLista || r.tarifaJug <= 0} onClick={() => pagarInscripcionJugadores(r.equipo, [j])}
+                                    style={{ background: '#6c35de', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '.7rem', fontWeight: '700', cursor: 'pointer', opacity: (pagandoInscJug || !migracionLista || r.tarifaJug <= 0) ? .5 : 1 }}>💵 Pagó</button>
+                                </>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {totalSueltos > 0 && (
+                        <div style={{ marginTop: '8px', fontSize: '.7rem', color: '#5f6368', lineHeight: 1.4 }}>
+                          Abonos sueltos del equipo: <b style={{ color: '#6c35de' }}>{fmt(totalSueltos)}</b> (bajan la deuda del equipo, pero no desbloquean jugadores: hay que marcar a cada uno).
+                        </div>
+                      )}
+                    </div>
+                    )
+                  })()}
+                  {equipoFinAbierto === r.equipo.id && !r.modoJugador && r.inscripcion > 0 && (() => {
                     const historialInscripcion = movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'abono_inscripcion').sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                     return (
                     <div style={{ padding: '8px 16px 12px 48px', background: '#fafafa', borderBottom: (r.w > 0 || r.multas > 0 || r.tarjetasDetalle.length > 0) ? '1px solid #e8eaed' : 'none' }}>

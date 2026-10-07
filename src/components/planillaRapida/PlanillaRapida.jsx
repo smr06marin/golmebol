@@ -75,7 +75,7 @@ function adoptarJugadoresRemotos(local, remoto) {
     const l = r.id ? porId.get(r.id) : porNombreConId.get(norm(r.nombre))
     if (!l) return r
     usados.add(l.id)
-    return { ...r, id: l.id, debeTarjeta: l.debeTarjeta, debeFoto: l.debeFoto }
+    return { ...r, id: l.id, debeTarjeta: l.debeTarjeta, debeFoto: l.debeFoto, debeInscripcion: l.debeInscripcion }
   })
   const idsRem = new Set(rem.filter(j => j.id).map(j => j.id))
   const nombresSinIdRem = new Set(rem.filter(j => !j.id).map(j => norm(j.nombre)))
@@ -84,6 +84,14 @@ function adoptarJugadoresRemotos(local, remoto) {
     else if (!nombresSinIdRem.has(norm(l.nombre))) resultado.push(l)
   })
   return JSON.stringify(resultado) === JSON.stringify(local) ? local : resultado
+}
+
+// Torneos con inscripción POR JUGADOR: el jugador queda bloqueado (sin número)
+// hasta que el organizador marque su pago en Finanzas. Solo se bloquea si la
+// columna inscripcion_pagada existe (migración corrida): si no, no se bloquea
+// a nadie por error.
+function debeInscripcionReg(r, fc) {
+  return fc?.inscripcion_modo === 'jugador' && r && ('inscripcion_pagada' in r) && r.inscripcion_pagada !== true
 }
 
 // Planilla RÁPIDA — independiente de PlanillaPartido.jsx (esa no se toca).
@@ -131,6 +139,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const alarmaRef = useRef(null)
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
+  const finanzasConfigRef = useRef(null) // config de finanzas más reciente (para el refresco en vivo del roster)
   const deudaDetalleRef = useRef({}) // último deudaDetalle conocido, para no perder el flag "debeTarjeta" al refrescar el roster en vivo
 
   // ── Co-planillaje: dos (o más) celulares con LA MISMA planilla ───────────
@@ -421,6 +430,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   }, [partido?.tournament_id, refetchDeudaTarjetas])
 
   useEffect(() => { deudaDetalleRef.current = deudaDetalle }, [deudaDetalle])
+  useEffect(() => { finanzasConfigRef.current = finanzasConfig }, [finanzasConfig])
 
   // Si el admin/organizador registra (o inscribe) un jugador nuevo en
   // alguno de los dos equipos MIENTRAS esta planilla está abierta, se suma
@@ -445,9 +455,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
     const mapJug = data => (data || [])
       .filter(r => !idsSancionados.has(r.players?.id))
-      .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players) }))
+      .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players), debeInscripcion: debeInscripcionReg(r, finanzasConfigRef.current) }))
     setJugadoresLocal(prev => fusionarJugadores(prev, mapJug(jugsL.data)))
     setJugadoresVisitante(prev => fusionarJugadores(prev, mapJug(jugsV.data)))
+    // Si le marcaron el pago de inscripción al jugador que tiene abierto el modal, se desbloquea solo.
+    const idsInscDeben = new Set([...jugsL.data, ...jugsV.data].filter(r => debeInscripcionReg(r, finanzasConfigRef.current)).map(r => r.players?.id))
+    setModalFoto(prev => (prev?.jugador?.debeInscripcion && prev.jugador.id && !idsInscDeben.has(prev.jugador.id)) ? { ...prev, jugador: { ...prev.jugador, debeInscripcion: false } } : prev)
   }, [partido?.tournament_id, partido?.home_team_id, partido?.away_team_id, partido?.status])
 
   useEffect(() => {
@@ -565,7 +578,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     }
 
     const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
-    const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players) }))
+    const mapJug = data => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players), debeInscripcion: debeInscripcionReg(r, fcTorneoDeuda) }))
     let baseLocal = mapJug(jugsL.data)
     let baseVis = mapJug(jugsV.data)
     const idsDebenFoto = new Set([...(jugsL.data||[]), ...(jugsV.data||[])].filter(r => tieneFotoPendiente(r.players)).map(r => r.players?.id))
@@ -1309,9 +1322,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         onVolverColores={() => setStep('colores')}
         onContinuar={() => { setStep('partido'); setVolviendoDesdePartido(false) }}
         volviendoDesdePartido={volviendoDesdePartido}
+        tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0}
       />
       {modalFoto && (
-        <ModalFotoNumero jugador={modalFoto.jugador} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
+        <ModalFotoNumero jugador={modalFoto.jugador} tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
           onConfirmar={confirmarNumero} onQuitar={quitarNumero} onCerrar={() => setModalFoto(null)}/>
       )}
     </>

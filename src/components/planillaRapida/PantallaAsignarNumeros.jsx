@@ -1,6 +1,6 @@
 import { FONDO, PANEL, BORDE, TEXTO, TEXTO_TENUE, VERDE, btnPrimario } from './estilosRapida'
 
-function FilaJugador({ j, color, onAbrir }) {
+function FilaJugador({ j, color, onAbrir, tarifaInscripcion }) {
   const foto = j.photo_face_url || j.photo_url
   const asignado = (j.numero || '').trim() !== ''
   return (
@@ -18,6 +18,11 @@ function FilaJugador({ j, color, onAbrir }) {
             ⚠️ DEBE TARJETA
           </span>
         )}
+        {j.debeInscripcion && (
+          <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '.7rem', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '5px', padding: '2px 7px' }}>
+            💵 INSCRIPCIÓN SIN PAGAR{tarifaInscripcion > 0 ? ` · $${tarifaInscripcion.toLocaleString('es-CO')}` : ''}
+          </span>
+        )}
         {j.debeFoto && (
           <span style={{ display: 'inline-block', marginTop: '4px', marginLeft: '4px', fontSize: '.7rem', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '5px', padding: '2px 7px' }}>
             📸 CAMBIAR FOTO
@@ -33,11 +38,11 @@ function FilaJugador({ j, color, onAbrir }) {
   )
 }
 
-function BloqueEquipo({ titulo, color, jugadores, onAbrir }) {
+function BloqueEquipo({ titulo, color, jugadores, onAbrir, tarifaInscripcion }) {
   return (
     <div style={{ background: PANEL, border: `1px solid ${BORDE}`, borderRadius: '14px', marginBottom: '14px', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', fontSize: '.82rem', fontWeight: '800', color, background: 'rgba(255,255,255,.03)' }}>{titulo}</div>
-      {jugadores.map((j, i) => <FilaJugador key={j.id || 'sr' + i} j={j} color={color} onAbrir={() => onAbrir(i)}/>)}
+      {jugadores.map((j, i) => <FilaJugador key={j.id || 'sr' + i} j={j} color={color} onAbrir={() => onAbrir(i)} tarifaInscripcion={tarifaInscripcion}/>)}
     </div>
   )
 }
@@ -51,7 +56,7 @@ function BloqueEquipo({ titulo, color, jugadores, onAbrir }) {
 // (ver AlertaNumeroDesconocido.jsx), que no pasa por esta pantalla.
 export default function PantallaAsignarNumeros({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
-  onAbrirJugador, onContinuar, onVolverColores, volviendoDesdePartido,
+  onAbrirJugador, onContinuar, onVolverColores, volviendoDesdePartido, tarifaInscripcion = 0,
 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -64,9 +69,9 @@ export default function PantallaAsignarNumeros({
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ maxWidth: '480px', margin: '0 auto', padding: '14px 12px' }}>
           <BloqueEquipo titulo={`🏠 ${nombreLocal}`} color={colorLocal} jugadores={jugadoresLocal}
-            onAbrir={i => onAbrirJugador('local', i)}/>
+            onAbrir={i => onAbrirJugador('local', i)} tarifaInscripcion={tarifaInscripcion}/>
           <BloqueEquipo titulo={`🚩 ${nombreVis}`} color={colorVis} jugadores={jugadoresVisitante}
-            onAbrir={i => onAbrirJugador('visitante', i)}/>
+            onAbrir={i => onAbrirJugador('visitante', i)} tarifaInscripcion={tarifaInscripcion}/>
         </div>
       </div>
 

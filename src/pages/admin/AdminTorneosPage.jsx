@@ -19,7 +19,7 @@ const FIN_EMPTY = {
   llevar_cuentas: false,
   precio_amarilla: '', precio_azul: '', precio_roja: '',
   arbitraje_equipo: '', valor_w_presenta: '', multa_no_presenta: '',
-  inscripcion: '', pago_cancha_partido: '', pago_cancha_w: '',
+  inscripcion: '', inscripcion_modo: 'equipo', inscripcion_jugador: '', pago_cancha_partido: '', pago_cancha_w: '',
   pago_arbitro_partido: '', pago_arbitro_w: '',
 }
 const MODALIDADES = Array.from({ length: 10 }, (_, i) => `Fútbol ${i + 2}`) // Fútbol 2 al 11
@@ -172,6 +172,9 @@ export default function AdminTorneosPage() {
       valor_w_presenta:     num(fin.valor_w_presenta),
       multa_no_presenta:    num(fin.multa_no_presenta),
       inscripcion:          num(fin.inscripcion),
+      // 'equipo' (valor fijo por equipo, como siempre) o 'jugador' (cada jugador inscrito suma esta tarifa a la cuenta del equipo)
+      inscripcion_modo:     fin.inscripcion_modo === 'jugador' ? 'jugador' : 'equipo',
+      inscripcion_jugador:  num(fin.inscripcion_jugador),
       pago_cancha_partido:  num(fin.pago_cancha_partido),
       pago_cancha_w:        num(fin.pago_cancha_w),
       pago_arbitro_partido: num(fin.pago_arbitro_partido),
@@ -270,6 +273,8 @@ export default function AdminTorneosPage() {
       valor_w_presenta:     fc.valor_w_presenta || '',
       multa_no_presenta:    fc.multa_no_presenta || '',
       inscripcion:          fc.inscripcion || '',
+      inscripcion_modo:     fc.inscripcion_modo === 'jugador' ? 'jugador' : 'equipo',
+      inscripcion_jugador:  fc.inscripcion_jugador || '',
       pago_cancha_partido:  fc.pago_cancha_partido || '',
       pago_cancha_w:        fc.pago_cancha_w || '',
       pago_arbitro_partido: fc.pago_arbitro_partido || '',
@@ -490,7 +495,29 @@ export default function AdminTorneosPage() {
               {fin.llevar_cuentas && (
                 <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '14px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '16px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
-                    <div><label style={label}>Inscripción por equipo ($)</label><input type="number" min="0" value={fin.inscripcion} onChange={e => setFin(f => ({ ...f, inscripcion: e.target.value }))} style={input} placeholder="0"/></div>
+                    <div>
+                      <label style={label}>Cobro de la inscripción</label>
+                      <div style={{ display: 'flex', gap: '4px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '3px', marginBottom: '8px' }}>
+                        {[{ id: 'equipo', t: 'Por equipo' }, { id: 'jugador', t: 'Por jugador' }].map(o => (
+                          <button key={o.id} type="button" onClick={() => setFin(f => ({ ...f, inscripcion_modo: o.id }))}
+                            style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: '700', background: (fin.inscripcion_modo || 'equipo') === o.id ? '#1a73e8' : 'transparent', color: (fin.inscripcion_modo || 'equipo') === o.id ? '#fff' : '#5f6368' }}>
+                            {o.t}
+                          </button>
+                        ))}
+                      </div>
+                      {fin.inscripcion_modo === 'jugador' ? (
+                        <>
+                          <label style={label}>Inscripción por jugador ($)</label>
+                          <input type="number" min="0" value={fin.inscripcion_jugador} onChange={e => setFin(f => ({ ...f, inscripcion_jugador: e.target.value }))} style={input} placeholder="0"/>
+                          <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Cada jugador que se inscriba suma esta tarifa a la cuenta de su equipo. En la planilla, un jugador no puede recibir número hasta que se marque su pago en Finanzas.</div>
+                        </>
+                      ) : (
+                        <>
+                          <label style={label}>Inscripción por equipo ($)</label>
+                          <input type="number" min="0" value={fin.inscripcion} onChange={e => setFin(f => ({ ...f, inscripcion: e.target.value }))} style={input} placeholder="0"/>
+                        </>
+                      )}
+                    </div>
                     <div><label style={label}>Arbitraje que paga cada equipo por partido ($)</label><input type="number" min="0" value={fin.arbitraje_equipo} onChange={e => setFin(f => ({ ...f, arbitraje_equipo: e.target.value }))} style={input} placeholder="0"/></div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>

@@ -5,7 +5,7 @@ import { PANEL, BORDE, TEXTO, TEXTO_TENUE, btnPrimario, btnSecundario, VERDE } f
 // es el jugador correcto, y el número de camiseta se escribe justo debajo.
 // Si es un jugador SIN registro (fila agregada a mano) también deja escribir
 // el apellido/nombre acá mismo.
-export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombre = {}, onConfirmar, onQuitar, onCerrar, onPagarEnCancha }) {
+export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombre = {}, onConfirmar, onQuitar, onCerrar, onPagarEnCancha, tarifaInscripcion = 0 }) {
   const [numero, setNumero] = useState(jugador?.numero || '')
   const [nombre, setNombre] = useState(jugador?.nombre || '')
   const [confirmandoPago, setConfirmandoPago] = useState(false)
@@ -14,7 +14,11 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
   const foto = jugador?.photo_face_url || jugador?.photo_url
   const esSinRegistro = !jugador?.id
   const debeTarjeta = !!jugador?.debeTarjeta
-  const puedeConfirmar = !debeTarjeta && numero.trim() && (!esSinRegistro || nombre.trim())
+  // Inscripción por jugador sin pagar: bloqueado igual que la deuda de tarjeta,
+  // pero acá el árbitro no cobra nada — se libera cuando el organizador marca el pago en Finanzas.
+  const debeInscripcion = !!jugador?.debeInscripcion
+  const bloqueado = debeTarjeta || debeInscripcion
+  const puedeConfirmar = !bloqueado && numero.trim() && (!esSinRegistro || nombre.trim())
   const iconoTipo = { Amarilla: '🟨', Azul: '🟦', Roja: '🟥' }
   const totalDeuda = deudaItems.reduce((a, it) => a + (it.monto || 0), 0)
 
@@ -93,6 +97,14 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
               <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, marginTop: '8px' }}>No se le puede poner número hasta ponerse al día. En cuanto se registre el pago, se libera solo — sin recargar.</div>
             )}
           </div>
+        ) : debeInscripcion ? (
+          <div style={{ background: 'rgba(232,113,10,.12)', border: '1px solid rgba(232,113,10,.5)', borderRadius: '12px', padding: '12px 14px', marginBottom: '18px', textAlign: 'left' }}>
+            <div style={{ fontWeight: '800', color: '#ffa94d', fontSize: '.82rem', marginBottom: '6px' }}>💵 Inscripción sin pagar</div>
+            {tarifaInscripcion > 0 && (
+              <div style={{ fontSize: '.78rem', color: TEXTO, fontWeight: '700', marginBottom: '6px' }}>Cobro por jugador: ${tarifaInscripcion.toLocaleString('es-CO')}</div>
+            )}
+            <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, lineHeight: 1.4 }}>No se le puede poner número hasta que pague su inscripción. En cuanto el organizador registre el pago en Finanzas, se libera solo — sin recargar.</div>
+          </div>
         ) : (
           <>
             <div style={{ fontSize: '.72rem', color: TEXTO_TENUE, marginBottom: '6px', fontWeight: '600' }}>Número de camiseta</div>
@@ -104,10 +116,10 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
 
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={onCerrar} style={{ ...btnSecundario, flex: 1 }}>Cancelar</button>
-          {!debeTarjeta && jugador?.numero && (
+          {!bloqueado && jugador?.numero && (
             <button onClick={onQuitar} style={{ ...btnSecundario, flex: 1, color: '#d93025', borderColor: 'rgba(217,48,37,.4)' }}>Quitar N°</button>
           )}
-          {!debeTarjeta && (
+          {!bloqueado && (
             <button onClick={() => puedeConfirmar && onConfirmar(numero.trim(), nombre.trim())} disabled={!puedeConfirmar}
               style={{ ...btnPrimario, flex: 1, background: VERDE, opacity: puedeConfirmar ? 1 : .5 }}>
               ✓ Confirmar

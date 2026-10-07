@@ -567,6 +567,11 @@ export default function RegistroEquipoPage() {
         <div style={{ display: 'inline-block', background: 'rgba(255,255,255,.2)', borderRadius: '20px', padding: '3px 14px' }}>
           <span style={{ color: '#fff', fontSize: '.82rem', fontWeight: '600' }}>🏆 {torneo.name}</span>
         </div>
+        {torneo.finanzas_config?.inscripcion_modo === 'jugador' && torneo.finanzas_config?.inscripcion_jugador > 0 && (
+          <div style={{ marginTop: '10px', color: 'rgba(255,255,255,.9)', fontSize: '.76rem', lineHeight: 1.4 }}>
+            💵 Inscripción por jugador: <b>${Number(torneo.finanzas_config.inscripcion_jugador).toLocaleString('es-CO')}</b> · el jugador queda habilitado para jugar cuando se registre su pago
+          </div>
+        )}
       </div>
 
       <div style={{ maxWidth: '480px', margin: '0 auto', padding: '24px 16px' }}>

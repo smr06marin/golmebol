@@ -44,7 +44,27 @@ function conRellenoA12(jugs) {
 // tocar nada de lo que el árbitro ya lleva cargado (números, tarjetas,
 // faltas): lo mete en la primera fila vacía (id: null) que quede del relleno
 // de conRellenoA12, y si ya no quedan filas vacías, lo agrega al final.
+// Torneos con inscripción POR JUGADOR: el jugador queda bloqueado (sin número)
+// hasta que el organizador marque su pago en Finanzas. Solo se bloquea si la
+// columna inscripcion_pagada existe (migración corrida).
+function debeInscripcionReg(r, fc) {
+  return fc?.inscripcion_modo === 'jugador' && !!r && ('inscripcion_pagada' in r) && r.inscripcion_pagada !== true
+}
+
 function fusionarNuevosJugadores(actual, fresco) {
+  // Los jugadores que ya estaban conservan todo lo que el árbitro cargó; lo
+  // único que se refresca es el aviso de inscripción sin pagar (puede
+  // haberse pagado, o venir viejo de un borrador guardado).
+  const frescoPorId = new Map(fresco.filter(j => j.id).map(j => [j.id, j]))
+  let cambioFlag = false
+  const conFlags = actual.map(j => {
+    if (!j.id) return j
+    const f = frescoPorId.get(j.id)
+    if (!f || f.debeInscripcion === undefined || !!j.debeInscripcion === f.debeInscripcion) return j
+    cambioFlag = true
+    return { ...j, debeInscripcion: f.debeInscripcion }
+  })
+  if (cambioFlag) actual = conFlags
   const idsActuales = new Set(actual.filter(j => j.id).map(j => j.id))
   const nuevos = fresco.filter(j => j.id && !idsActuales.has(j.id))
   if (nuevos.length === 0) return actual
@@ -155,6 +175,29 @@ function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
           transition: 'all .12s ease',
         }}/>
     </td>
+  )
+}
+
+// Aviso de "inscripción sin pagar" (torneos con cobro por jugador). Acá no se
+// cobra nada: el pago lo marca el organizador en Finanzas y el jugador se
+// libera solo.
+function ModalInscripcionJugador({ jugador, tarifa, onClose }) {
+  return (
+    <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: '1.6rem', marginBottom: '4px' }}>💵</div>
+        <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>{jugador?.nombre || 'Jugador'}</div>
+        <div style={{ fontSize: '.82rem', color: '#5f6368', marginBottom: '14px' }}>
+          Su inscripción no está pagada. No puede salir con número de camiseta en esta planilla hasta que el organizador registre su pago en Finanzas — se libera solo, sin recargar.
+        </div>
+        {tarifa > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid #eee', fontWeight: '800', fontSize: '.95rem' }}>
+            <span>Cobro por jugador</span><span>${tarifa.toLocaleString('es-CO')}</span>
+          </div>
+        )}
+        <button onClick={onClose} style={{ marginTop: '16px', width: '100%', padding: '11px', borderRadius: '10px', border: 'none', background: '#202124', color: '#fff', fontWeight: '700', cursor: 'pointer' }}>Entendido</button>
+      </div>
+    </div>
   )
 }
 
@@ -534,6 +577,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [logEdicion,         setLogEdicion]         = useState([]) // historial de ediciones después de cerrada
   const [deudaDetalle,       setDeudaDetalle]       = useState({}) // player_id -> [{tipo, cantidad, monto, fecha, home_team_id, away_team_id}]
   const [equiposNombre,      setEquiposNombre]      = useState({}) // team_id -> name (para mostrar rival en el detalle de deuda)
+  const torneoFcRef = useRef(null) // finanzas_config del torneo (para refrescar el bloqueo por inscripción sin re-crear callbacks)
+  const [modalInscripcionJugador, setModalInscripcionJugador] = useState(null) // jugador clickeado: inscripción por jugador sin pagar
   const [modalDeudaJugador,  setModalDeudaJugador]  = useState(null) // jugador clickeado para ver detalle de tarjeta(s) sin pagar
 
   const [hubopenales,      setHuboPenales]      = useState(false)
@@ -988,7 +1033,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
     const mapJug = (data) => (data || [])
       .filter(r => !idsSancionados.has(r.players?.id))
-      .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: false, debeFoto: tieneFotoPendiente(r.players) }))
+      .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: false, debeFoto: tieneFotoPendiente(r.players), debeInscripcion: torneoFcRef.current ? debeInscripcionReg(r, torneoFcRef.current) : undefined }))
     setJugadoresLocal(prev => fusionarNuevosJugadores(prev, mapJug(jugsL.data)))
     setJugadoresVisitante(prev => fusionarNuevosJugadores(prev, mapJug(jugsV.data)))
   }, [partido?.tournament_id, partido?.home_team_id, partido?.away_team_id, partido?.status])
@@ -1003,6 +1048,20 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [partido?.tournament_id, partido?.status, refetchRosterNuevos])
+
+  // Inscripción por JUGADOR: se revisa al abrir y cada 10 s (y al volver a la
+  // app) si ya marcaron el pago de alguien en Finanzas — el realtime puede no
+  // estar habilitado, y un borrador viejo puede traer el bloqueo desactualizado.
+  useEffect(() => { torneoFcRef.current = torneo?.finanzas_config || null }, [torneo])
+  const modoInscJugador = torneo?.finanzas_config?.inscripcion_modo === 'jugador'
+  useEffect(() => {
+    if (!modoInscJugador || !partido?.tournament_id || partido.status === 'finished') return
+    refetchRosterNuevos()
+    const t = setInterval(refetchRosterNuevos, 10000)
+    const alVolver = () => { if (document.visibilityState === 'visible') refetchRosterNuevos() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', alVolver) }
+  }, [modoInscJugador, partido?.tournament_id, partido?.status, refetchRosterNuevos])
 
   useEffect(() => {
     const close = () => setDropdownOpen(null)
@@ -1177,7 +1236,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     // por el admin como "debe cambiarla" (tarjeta, perfil o cédula).
     const tieneFotoPendiente = (p) => !!(p?.foto_cambiar_tarjeta || p?.foto_cambiar_perfil || p?.foto_cambiar_cedula_frontal || p?.foto_cambiar_cedula_trasera)
 
-    const mapJug = (data) => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players) }))
+    const mapJug = (data) => (data || []).map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', faltasPeriodo: [], amarilla: false, azul: false, roja: false, posicion_futbol5: r.players?.posicion_futbol5 || '', posicion_futbol7: r.players?.posicion_futbol7 || '', posicion_futbol11: r.players?.posicion_futbol11 || '', debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players), debeInscripcion: debeInscripcionReg(r, torneoData?.finanzas_config) }))
 
     let jugsLocalBase, jugsVisBase
     if (yaJugado) {
@@ -1953,12 +2012,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   {esPortero && <span style={{ fontSize: '6px', color: '#1a73e8', fontWeight: '700' }}> (portero natural)</span>}
                   {esMVP     && <span style={{ fontSize: '6px', color: '#e8710a', fontWeight: '700' }}> ⭐MVP</span>}
                   {j.debeTarjeta && <span onClick={() => setModalDeudaJugador(j)} title="Click para ver qué tarjeta debe" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '4px', padding: '1px 4px', cursor: 'pointer' }}>⚠️ DEBE TARJETA</span>}
+                  {j.debeInscripcion && <span onClick={() => setModalInscripcionJugador(j)} title="Inscripción sin pagar — click para ver el detalle" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '4px', padding: '1px 4px', cursor: 'pointer' }}>💵 INSCRIPCIÓN SIN PAGAR</span>}
                   {j.debeFoto && <span title="El admin marcó una de sus fotos (tarjeta, perfil o cédula) para cambiar" style={{ display: 'inline-block', marginLeft: '3px', fontSize: '6px', fontWeight: '800', color: '#fff', background: '#e8710a', borderRadius: '4px', padding: '1px 4px' }}>📸 CAMBIAR FOTO</span>}
                 </td>
                 {(hayArqueroEquipo || sinRegistro) ? (
                   j.debeTarjeta ? (
                     <td onClick={() => setModalDeudaJugador(j)} title="Debe tarjeta sin pagar — no puede registrar número hasta ponerse al día. Click para ver el detalle." style={{ ...cell, background: '#ffd6d6', padding: '1px', cursor: 'pointer' }}>
                       {j.numero ? <span style={{ fontSize: '9px', fontWeight: '800', color: '#d93025' }}>{j.numero} 🔒</span> : <span style={{ fontSize: '12px' }}>🔒</span>}
+                    </td>
+                  ) : j.debeInscripcion ? (
+                    <td onClick={() => setModalInscripcionJugador(j)} title="Inscripción sin pagar — no puede registrar número hasta que se marque su pago en Finanzas. Click para ver el detalle." style={{ ...cell, background: '#ffe8cc', padding: '1px', cursor: 'pointer' }}>
+                      {j.numero ? <span style={{ fontSize: '9px', fontWeight: '800', color: '#e8710a' }}>{j.numero} 🔒</span> : <span style={{ fontSize: '12px' }}>🔒</span>}
                     </td>
                   ) : (
                     <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
@@ -2155,6 +2219,12 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <ModalEspecial tipo={showEspecial} partido={partido} onConfirmar={handleConfirmarEspecial} onCancelar={() => setShowEspecial(null)}/>
       )}
 
+      {modalInscripcionJugador && (() => {
+        // Se cierra solo en cuanto el organizador marca el pago en Finanzas.
+        const actual = [...jugadoresLocal, ...jugadoresVisitante].find(x => x.id === modalInscripcionJugador.id)
+        if (!actual?.debeInscripcion) return null
+        return <ModalInscripcionJugador jugador={actual} tarifa={torneo?.finanzas_config?.inscripcion_jugador || 0} onClose={() => setModalInscripcionJugador(null)}/>
+      })()}
       {modalDeudaJugador && (
         <ModalDeudaTarjeta jugador={modalDeudaJugador} items={deudaDetalle[modalDeudaJugador.id] || []} equiposNombre={equiposNombre} onClose={() => setModalDeudaJugador(null)}/>
       )}
