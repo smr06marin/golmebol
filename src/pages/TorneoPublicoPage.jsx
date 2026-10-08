@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio } from 'lucide-react'
@@ -11,6 +11,9 @@ import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
+import { traerPartidosTorneo, derivarBracket } from '../lib/partidosPublicos'
+import { cargarTorneoPublico } from '../lib/torneoPublicoDatos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
@@ -585,30 +588,19 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       .channel(`publico-torneo-${id}-matches`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches', filter: `tournament_id=eq.${id}` }, () => {
         clearTimeout(refetchTimer.current)
-        refetchTimer.current = setTimeout(() => { fetchPartidos(); fetchBracket() }, 600)
+        refetchTimer.current = setTimeout(() => { fetchPartidos() }, 600)
       })
       .subscribe()
     return () => { clearTimeout(refetchTimer.current); supabase.removeChannel(channel) }
   }, [id])
 
+  // Un solo viaje a la base: el árbol de eliminatorias sale de estos mismos
+  // partidos (antes se pedía aparte, descargando otra vez los partidos de
+  // llaves con todas sus columnas).
   async function fetchPartidos() {
-    const { data } = await supabase
-      .from('matches')
-      .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-      .eq('tournament_id', id)
-      .order('played_at', { ascending: true })
-    setPartidos(data || [])
-  }
-
-  // Todos los partidos de eliminatorias (todas las fases) para armar el árbol completo.
-  async function fetchBracket() {
-    const { data } = await supabase
-      .from('matches')
-      .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-      .eq('tournament_id', id)
-      .neq('fase', 'grupo')
-      .order('ronda').order('played_at', { ascending: true })
-    setBracket(data || [])
+    const data = await traerPartidosTorneo(id)
+    setPartidos(data)
+    setBracket(derivarBracket(data))
   }
 
   // Agrupa los partidos del bracket en llaves por fase, con marcador global y ganador
@@ -705,110 +697,155 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     abrirRoster(row.equipo, { pj: row.pj, pg: row.pg, pe: row.pe, pp: row.pp, gf: row.gf, gc: row.gc, pts: row.pts })
   }
 
+  function aplicarBaseTorneo(d) {
+    setTorneo(d.t)
+    setEquipos(d.equipos)
+    setPartidos(d.partidos)
+    setBracket(derivarBracket(d.partidos))
+    if (d.goleadores !== undefined) setGoleadores(d.goleadores)
+    if (d.sponsors !== undefined) setSponsors(d.sponsors)
+    setGrupos(d.grupos)
+    setGrupoEquipos(d.grupoEquipos)
+  }
+
+  // Copia de lo último visto de ESTE torneo: se pinta antes del primer
+  // fotograma (useLayoutEffect), así no hay ni un parpadeo de "Cargando...".
+  useLayoutEffect(() => {
+    const cache = leerCacheRapido(`torneo_${id}`)
+    if (cache?.t) { aplicarBaseTorneo(cache); setLoading(false) }
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carga rápida de la página pública: lo que se necesita para pintar la TABLA
+  // y los GOLEADORES (torneo, equipos, partidos, goleadores, patrocinadores y
+  // grupos) se pide TODO a la vez y la página se muestra apenas llega. Lo
+  // demás (otras ediciones, campeón vigente, arqueros para la valla) se trae
+  // después, en segundo plano, sin hacer esperar a nadie — antes eran ~8
+  // consultas una detrás de otra y la tabla no salía hasta que terminaba la
+  // última. Además se guarda una copia de lo último visto: al volver a entrar
+  // se pinta al instante y los datos frescos la reemplazan enseguida.
   useEffect(() => {
-    async function fetchAll() {
-      setLoading(true)
-      const [{ data: t }, { data: teData }, { data: pData }, { data: gData }, { data: spData }] = await Promise.all([
-        supabase.from('tournaments').select('*').eq('id', id).single(),
-        supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', id),
-        supabase.from('matches').select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('tournament_id', id).order('played_at', { ascending: true }),
-        supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false }),
-        supabase.from('tournament_sponsors').select('*').eq('tournament_id', id).order('orden', { ascending: true }),
-      ])
-      setTorneo(t)
-      setEquipos((teData || []).map(d => ({ ...d.teams })))
-      setPartidos(pData || [])
-      setGoleadores(gData || [])
-      setSponsors(spData || [])
-      fetchBracket()
+    let cancelado = false
+    const claveCache = `torneo_${id}`
 
-      // Otras ediciones de este mismo torneo (para el botón "Edición N") y el
-      // campeón vigente: si esta edición todavía no tiene uno propio (recién
-      // empezando), se muestra el de la edición completada más reciente —
-      // para que no desaparezca el campeón mientras se juega la siguiente.
+    // Otras ediciones de este mismo torneo (para el botón "Edición N") y el
+    // campeón vigente: si esta edición todavía no tiene uno propio (recién
+    // empezando), se muestra el de la edición completada más reciente —
+    // para que no desaparezca el campeón mientras se juega la siguiente.
+    async function cargarEdiciones(t) {
       const raizId = t?.torneo_padre_id || t?.id
-      if (raizId) {
-        let { data: edsData, error: errEds } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
-          .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)
-        if (errEds && (errEds.message || '').includes('archivado')) {
-          // Falta migracion_archivar_torneos.sql: se reintenta sin esa columna
-          // para que el botón de ediciones y el campeón vigente no se queden
-          // sin mostrar solo por eso.
-          ;({ data: edsData } = await supabase.from('tournaments').select('id, name, edicion, status')
-            .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`))
-        }
-        const edicionesList = (edsData || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1))
-        setEdiciones(edicionesList)
-        if (edicionesList.length > 1) {
-          // Ojo: NO se puede pedir "teams(...)" embebido acá — tournament_logros
-          // no tiene una relación declarada hacia teams en Supabase (solo hacia
-          // tournaments y players), así que ese embed falla en silencio y nunca
-          // llegaba ningún campeón. Se hace en dos pasos: primero el campeón
-          // (team_id) de la edición más reciente que ya tenga uno, después se
-          // busca ese equipo aparte.
-          const { data: camps } = await supabase.from('tournament_logros')
-            .select('tournament_id, team_id')
-            .in('tournament_id', edicionesList.map(e => e.id)).eq('tipo', 'campeon').limit(500)
-          const edMap = Object.fromEntries(edicionesList.map(e => [e.id, e.edicion || 1]))
-          let mejor = null
-          ;(camps || []).forEach(c => {
-            if (!c.team_id) return
-            const ed = edMap[c.tournament_id] || 0
-            if (!mejor || ed > mejor.edicion) mejor = { edicion: ed, tournament_id: c.tournament_id, team_id: c.team_id }
-          })
-          if (mejor) {
-            const { data: teamData } = await supabase.from('teams').select('id,name,logo_url').eq('id', mejor.team_id).maybeSingle()
-            mejor.team = teamData || null
-          }
-          setCampeonVigente(mejor)
-        } else {
-          setCampeonVigente(null)
-        }
-      } else {
-        setEdiciones([])
-        setCampeonVigente(null)
+      if (!raizId) { setEdiciones([]); setCampeonVigente(null); return }
+      let { data: edsData, error: errEds } = await supabase.from('tournaments').select('id, name, edicion, archivado, status')
+        .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`)
+      if (errEds && (errEds.message || '').includes('archivado')) {
+        // Falta migracion_archivar_torneos.sql: se reintenta sin esa columna
+        // para que el botón de ediciones y el campeón vigente no se queden
+        // sin mostrar solo por eso.
+        ;({ data: edsData } = await supabase.from('tournaments').select('id, name, edicion, status')
+          .or(`id.eq.${raizId},torneo_padre_id.eq.${raizId}`))
       }
-
-      // Grupos del torneo (si los tiene) para mostrar la tabla dividida
-      const { data: grps } = await supabase.from('tournament_grupos').select('*').eq('tournament_id', id).order('orden')
-      setGrupos(grps || [])
-      if (grps?.length) {
-        const { data: ge } = await supabase.from('grupo_equipos').select('*, teams(id,name,logo_url)').in('grupo_id', grps.map(g => g.id))
-        setGrupoEquipos(ge || [])
-      } else {
-        setGrupoEquipos([])
+      if (cancelado) return
+      const edicionesList = (edsData || []).sort((a, b) => (a.edicion || 1) - (b.edicion || 1))
+      setEdiciones(edicionesList)
+      if (edicionesList.length <= 1) { setCampeonVigente(null); return }
+      // Ojo: NO se puede pedir "teams(...)" embebido acá — tournament_logros
+      // no tiene una relación declarada hacia teams en Supabase (solo hacia
+      // tournaments y players), así que ese embed falla en silencio y nunca
+      // llegaba ningún campeón. Se hace en dos pasos: primero el campeón
+      // (team_id) de la edición más reciente que ya tenga uno, después se
+      // busca ese equipo aparte.
+      const { data: camps } = await supabase.from('tournament_logros')
+        .select('tournament_id, team_id')
+        .in('tournament_id', edicionesList.map(e => e.id)).eq('tipo', 'campeon').limit(500)
+      const edMap = Object.fromEntries(edicionesList.map(e => [e.id, e.edicion || 1]))
+      let mejor = null
+      ;(camps || []).forEach(c => {
+        if (!c.team_id) return
+        const ed = edMap[c.tournament_id] || 0
+        if (!mejor || ed > mejor.edicion) mejor = { edicion: ed, tournament_id: c.tournament_id, team_id: c.team_id }
+      })
+      if (mejor) {
+        const { data: teamData } = await supabase.from('teams').select('id,name,logo_url').eq('id', mejor.team_id).maybeSingle()
+        mejor.team = teamData || null
       }
+      if (!cancelado) setCampeonVigente(mejor)
+    }
 
-      // Arqueros de cada equipo del torneo (para la valla menos vencida)
-      const teamIds = (teData || []).map(d => d.teams?.id).filter(Boolean)
-      if (teamIds.length > 0) {
-        const { data: tpData } = await supabase
-          .from('team_players')
-          .select('team_id, player_id')
-          .in('team_id', teamIds)
-        const hydrated = await hydratePlayersPublico(tpData || [], {
-          columns: 'id, name, photo_url, photo_face_url, posicion_futbol5, posicion_futbol7, posicion_futbol11',
-        })
-        const modalidad = t?.modalidad || ''
-        const campoPos = modalidad.includes('11') ? 'posicion_futbol11' : modalidad.includes('7') ? 'posicion_futbol7' : 'posicion_futbol5'
-        const arqueros = hydrated
-          .filter(tp => tp.players && (tp.players[campoPos] === 'Portero' || tp.players.posicion_futbol5 === 'Portero' || tp.players.posicion_futbol7 === 'Portero' || tp.players.posicion_futbol11 === 'Portero'))
-          .map(tp => ({ team_id: tp.team_id, ...tp.players }))
-        setPorteros(arqueros)
-      } else {
-        setPorteros([])
-      }
+    // Arqueros de cada equipo del torneo (para la valla menos vencida)
+    async function cargarPorteros(equiposTorneo, t) {
+      const teamIds = (equiposTorneo || []).map(e => e?.id).filter(Boolean)
+      if (teamIds.length === 0) { setPorteros([]); return }
+      const { data: tpData } = await supabase.from('team_players').select('team_id, player_id').in('team_id', teamIds)
+      const hydrated = await hydratePlayersPublico(tpData || [], {
+        columns: 'id, name, photo_url, photo_face_url, posicion_futbol5, posicion_futbol7, posicion_futbol11',
+      })
+      if (cancelado) return
+      const modalidad = t?.modalidad || ''
+      const campoPos = modalidad.includes('11') ? 'posicion_futbol11' : modalidad.includes('7') ? 'posicion_futbol7' : 'posicion_futbol5'
+      const arqueros = hydrated
+        .filter(tp => tp.players && (tp.players[campoPos] === 'Portero' || tp.players.posicion_futbol5 === 'Portero' || tp.players.posicion_futbol7 === 'Portero' || tp.players.posicion_futbol11 === 'Portero'))
+        .map(tp => ({ team_id: tp.team_id, ...tp.players }))
+      setPorteros(arqueros)
+    }
 
+    async function fetchAll() {
+      // Si hay copia guardada ya se pintó (useLayoutEffect de arriba); si no, pantalla de carga.
+      const cache = leerCacheRapido(claveCache)
+      if (!cache?.t) setLoading(true)
+
+      // Los datos pueden venir ya adelantados (al pasar por la tarjeta del
+      // torneo en la portada) o pedirse ahora: es el mismo pedido, sin duplicar.
+      const r = await cargarTorneoPublico(id)
+      if (cancelado) return
+      const t = r.base.t
+      // Sin señal y ya se estaba mostrando la copia guardada: se deja esa, no se borra.
+      if (!t && cache?.t && r.errorTorneo) return
+
+      // La tabla sale YA; goleadores y patrocinadores se suman cuando llegan.
+      aplicarBaseTorneo({ ...r.base, goleadores: cache?.t ? undefined : [], sponsors: cache?.t ? undefined : [] })
       setLoading(false)
+      r.extras.then(ex => {
+        if (cancelado) return
+        setGoleadores(ex.goleadores)
+        setSponsors(ex.sponsors)
+      }).catch(() => {})
+
+      // Segundo plano: no frena la tabla ni los goleadores.
+      if (t) {
+        cargarEdiciones(t).catch(() => {})
+        cargarPorteros(r.base.equipos, t).catch(() => {})
+      } else {
+        setEdiciones([]); setCampeonVigente(null); setPorteros([])
+      }
     }
     fetchAll()
+    return () => { cancelado = true }
   }, [id])
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00ddd0', fontFamily: 'system-ui', fontSize: '1rem', letterSpacing: '.1em' }}>
-      Cargando...
-    </div>
-  )
+  if (loading) {
+    // Mientras llegan los datos se muestra YA el nombre y el escudo del torneo
+    // (la portada los dejó guardados) y la silueta de la tabla, en vez de una
+    // pantalla vacía con "Cargando...": se siente como que la página ya abrió.
+    const previo = (leerCacheRapido('landing_torneos') || []).find(x => String(x.id) === String(id))
+    return (
+      <div style={{ minHeight: '100vh', background: '#07070e', color: '#fff', fontFamily: 'system-ui' }} role="status" aria-label="Cargando torneo">
+        <style>{`@keyframes gmEsqTorneo { 0%,100% { opacity: .35 } 50% { opacity: .75 } }`}</style>
+        <div style={{ padding: '28px 16px 20px', textAlign: 'center', borderBottom: '1px solid #1c2233' }}>
+          <div style={{ width: 64, height: 64, borderRadius: 14, margin: '0 auto 10px', background: '#151a28', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: previo?.logo_url ? 'none' : 'gmEsqTorneo 1.3s ease-in-out infinite' }}>
+            {previo?.logo_url && <img src={previo.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}/>}
+          </div>
+          {previo?.name
+            ? <div style={{ fontWeight: 900, fontSize: '1.15rem', letterSpacing: '.02em' }}>{previo.name}</div>
+            : <div style={{ width: 180, height: 18, borderRadius: 6, margin: '0 auto', background: '#151a28', animation: 'gmEsqTorneo 1.3s ease-in-out infinite' }}/>}
+          <div style={{ color: '#00ddd0', fontSize: '.7rem', letterSpacing: '.18em', marginTop: 8 }}>CARGANDO TABLA…</div>
+        </div>
+        <div style={{ maxWidth: 560, margin: '18px auto 0', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} style={{ height: 44, borderRadius: 10, background: '#111522', border: '1px solid #1c2233', animation: 'gmEsqTorneo 1.3s ease-in-out infinite', animationDelay: `${i * .08}s` }}/>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   if (!torneo) return (
     <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9aa0a6', fontFamily: 'system-ui' }}>

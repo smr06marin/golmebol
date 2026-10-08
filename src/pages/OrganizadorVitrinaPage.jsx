@@ -5,6 +5,7 @@ import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake
 import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
 import { GiSoccerBall } from 'react-icons/gi'
 import { PantallaCargando } from '../components/PantallaCargando'
+import { precargarPaginaTorneo, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
 // Escudo del equipo (logo o iniciales) — versión chica para las tarjetas de
@@ -179,6 +180,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
   const [detalleVivoId, setDetalleVivoId] = useState(null)
 
   useEffect(() => { if (id) fetchTodo() }, [id])
+  useEffect(() => { const h = setTimeout(precargarPaginaTorneo, 1500); return () => clearTimeout(h) }, [])
 
   useEffect(() => {
     if (torneos.length) fetchPartidosVivo()
@@ -441,7 +443,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
                 <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', textAlign: 'center', color: '#9aa0a6', fontSize: '.62rem', fontWeight: '700', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                   Toca para ver quién anotó <GiSoccerBall size={10}/>
                 </div>
-                <Link to={`/t/${m.tournament_id}`} className="gm-hover" style={{ display: 'block', textAlign: 'center', width: '100%', padding: '9px', borderRadius: '9px', border: '1px solid #d93025', background: 'transparent', color: '#d93025', fontSize: '.75rem', fontWeight: '800', textDecoration: 'none', boxSizing: 'border-box' }}>
+                <Link to={`/t/${m.tournament_id}`} {...propsPrefetchTorneo(m.tournament_id)} className="gm-hover" style={{ display: 'block', textAlign: 'center', width: '100%', padding: '9px', borderRadius: '9px', border: '1px solid #d93025', background: 'transparent', color: '#d93025', fontSize: '.75rem', fontWeight: '800', textDecoration: 'none', boxSizing: 'border-box' }}>
                   VER TORNEO
                 </Link>
               </div>
@@ -471,7 +473,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '18px' }}>
             {torneos.map(t => (
-              <Link key={t.id} to={`/t/${t.id}`} className="gm-vit-card" style={{ ...s.card, display: 'flex', flexDirection: 'column', textDecoration: 'none', color: 'inherit' }}>
+              <Link key={t.id} to={`/t/${t.id}`} {...propsPrefetchTorneo(t.id)} className="gm-vit-card" style={{ ...s.card, display: 'flex', flexDirection: 'column', textDecoration: 'none', color: 'inherit' }}>
                 <div style={{ height: '96px', background: `linear-gradient(135deg, ${colorSecundario}, ${colorPrimario})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   {t.logo_url ? <img src={t.logo_url} style={{ width: '56px', height: '56px', objectFit: 'contain' }}/> : <Trophy size={30} color="#fff"/>}
                 </div>

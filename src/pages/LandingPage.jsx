@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
@@ -6,7 +6,10 @@ import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
-import LiveEmbed from '../components/LiveEmbed'
+import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
+// El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
+// una transmisión en vivo: se descarga aparte, sin frenar la portada.
+const LiveEmbed = lazy(() => import('../components/LiveEmbed'))
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
@@ -14,6 +17,7 @@ import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { computeTablaGeneral } from '../lib/torneoTablas'
+import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
@@ -39,7 +43,7 @@ function Escudo({ logo_url, name, size = 40, radius = 10 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: radius, background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {logo_url
-        ? <img src={logo_url} alt={name || ''} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
+        ? <img src={logo_url} alt={name || ''} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
   )
@@ -288,17 +292,21 @@ function calcularCampeon(mts) {
 
 export default function LandingPage() {
   const navigate = useNavigate()
-  const [stats, setStats] = useState({ torneos: 0, jugadores: 0, equipos: 0, goles: 0 })
-  const [torneos, setTorneos] = useState([])
+  // Lo último que se vio queda guardado: al volver a entrar la portada se pinta
+  // de una (números, torneos, escenarios, patrocinadores) y lo fresco llega
+  // detrás y lo reemplaza — antes todo arrancaba vacío hasta terminar las consultas.
+  const [stats, setStats] = useState(() => leerCacheRapido('landing_stats') || { torneos: 0, jugadores: 0, equipos: 0, goles: 0 })
+  const [torneos, setTorneos] = useState(() => leerCacheRapido('landing_torneos') || [])
+  const [torneosCargados, setTorneosCargados] = useState(() => !!leerCacheRapido('landing_torneos'))
   const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
-  const [escenarios, setEscenarios] = useState([])
+  const [escenarios, setEscenarios] = useState(() => leerCacheRapido('landing_escenarios') || [])
   const [escenarioIdx, setEscenarioIdx] = useState(0) // qué foto de escenario se muestra ahora en el carrusel
-  const [escuelas, setEscuelas] = useState([])
+  const [escuelas, setEscuelas] = useState(() => leerCacheRapido('landing_escuelas') || [])
   const [tick, setTick] = useState(0)
   const [siteConfig, setSiteConfig] = useState(null)
-  const [patrocinadores, setPatrocinadores] = useState([])
+  const [patrocinadores, setPatrocinadores] = useState(() => leerCacheRapido('landing_patrocinadores') || [])
   const [patroIdx, setPatroIdx] = useState(0) // qué patrocinador se muestra ahora en el banner
   const [patroDetalle, setPatroDetalle] = useState(null) // patrocinador abierto en el modal de detalle
 
@@ -310,6 +318,14 @@ export default function LandingPage() {
   // computador sin pantalla táctil no había forma de moverlo.
   const scrollerRef = useRef(null)
   const arrastreRef = useRef({ activo: false, x: 0, scrollLeft: 0, movido: false })
+
+  // Con la portada ya pintada, en un rato libre se baja el código de la página
+  // del torneo: así "Ver torneo" no espera descarga, solo los datos.
+  useEffect(() => {
+    const ric = window.requestIdleCallback
+    const h = ric ? ric(precargarPaginaTorneo, { timeout: 2500 }) : setTimeout(precargarPaginaTorneo, 1200)
+    return () => { if (ric) window.cancelIdleCallback?.(h); else clearTimeout(h) }
+  }, [])
 
   function iniciarArrastre(e) {
     const el = scrollerRef.current
@@ -622,25 +638,56 @@ export default function LandingPage() {
     })
   }, [siteConfig, streamsVivos])
 
+  // Los 4 números de arriba se calculan EN la base (función stats_inicio, ver
+  // migracion_rendimiento_publico.sql) — antes se descargaban todos los
+  // partidos terminados de la plataforma solo para sumar los goles, y eso
+  // crece con cada partido. Si la función todavía no existe, se usa la forma
+  // vieja para que la portada siga funcionando.
   async function fetchStats() {
-    const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
-      supabase.from('tournaments').select('id', { count: 'exact', head: true }),
-      supabase.from('players_publico').select('id', { count: 'exact', head: true }),
-      supabase.from('teams').select('id', { count: 'exact', head: true }),
-      supabase.from('matches').select('home_score, away_score').eq('status', 'finished'),
-    ])
-    const goles = (golesData || []).reduce((s, m) => s + (m.home_score || 0) + (m.away_score || 0), 0)
-    setStats({ torneos: cTorneos || 0, jugadores: cJugadores || 0, equipos: cEquipos || 0, goles })
+    let nuevo = null
+    const rpc = await supabase.rpc('stats_inicio')
+    if (!rpc.error && rpc.data) {
+      const d = typeof rpc.data === 'string' ? JSON.parse(rpc.data) : rpc.data
+      nuevo = { torneos: d.torneos || 0, jugadores: d.jugadores || 0, equipos: d.equipos || 0, goles: d.goles || 0 }
+    } else {
+      const [{ count: cTorneos }, { count: cJugadores }, { count: cEquipos }, { data: golesData }] = await Promise.all([
+        supabase.from('tournaments').select('id', { count: 'exact', head: true }),
+        supabase.from('players_publico').select('id', { count: 'exact', head: true }),
+        supabase.from('teams').select('id', { count: 'exact', head: true }),
+        supabase.from('matches').select('home_score, away_score').eq('status', 'finished'),
+      ])
+      const goles = (golesData || []).reduce((s, m) => s + (m.home_score || 0) + (m.away_score || 0), 0)
+      nuevo = { torneos: cTorneos || 0, jugadores: cJugadores || 0, equipos: cEquipos || 0, goles }
+    }
+    setStats(nuevo)
+    guardarCacheRapido('landing_stats', nuevo)
   }
 
   async function fetchTorneosActivos() {
-    let torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active')
+    try { await fetchTorneosActivosInterno() } finally { setTorneosCargados(true) }
+  }
+
+  // Los tres pedidos salen A LA VEZ y solo de torneos activos (antes se traían
+  // los partidos y equipos de TODOS los torneos que han existido, y recién
+  // después de terminar la primera consulta). Si la base no acepta el filtro
+  // por torneo activo, se cae a la consulta de antes.
+  async function fetchTorneosActivosInterno() {
+    const COLS_PARTIDO = 'tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
+    const [torsRes0, ttsF, msF] = await Promise.all([
+      supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'),
+      supabase.from('tournament_teams').select('tournament_id, tournaments!inner(status)').eq('tournaments.status', 'active'),
+      supabase.from('matches').select(`${COLS_PARTIDO}, tournaments!inner(status)`).eq('tournaments.status', 'active'),
+    ])
+    let torsRes = torsRes0
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, torneo_padre_id, edicion').eq('status', 'active')
     const torsRaw = torsRes.data || []
-    const [{ data: tts }, { data: ms }] = await Promise.all([
-      supabase.from('tournament_teams').select('tournament_id'),
-      supabase.from('matches').select('tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'),
-    ])
+    let tts = ttsF.data, ms = msF.data
+    if (ttsF.error || msF.error || !tts || !ms) {
+      ;[{ data: tts }, { data: ms }] = await Promise.all([
+        supabase.from('tournament_teams').select('tournament_id'),
+        supabase.from('matches').select(COLS_PARTIDO),
+      ])
+    }
     // Una edición archivada (porque ya se creó la siguiente) no se muestra
     // en el feed principal — solo se ve la edición vigente de cada torneo.
     const tors = torsRaw.filter(t => !t.archivado)
@@ -701,6 +748,7 @@ export default function LandingPage() {
     }
 
     setTorneos(base)
+    guardarCacheRapido('landing_torneos', base)
   }
 
   // Conteo público de visitas a la tabla de cada torneo, solo de hoy (ver
@@ -738,6 +786,7 @@ export default function LandingPage() {
     // TODOS los escenarios activos, no solo los primeros 6.
     const { data } = await supabase.from('escenarios').select('id, name, city, logo_url, imagen_fondo_url').eq('activo', true)
     setEscenarios(data || [])
+    if (data) guardarCacheRapido('landing_escenarios', data)
   }
 
   // Patrocinadores oficiales de Golmebol — banner que rota cada 5s en la
@@ -748,11 +797,13 @@ export default function LandingPage() {
     const { data, error } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden').order('created_at')
     if (error) return
     setPatrocinadores(data || [])
+    guardarCacheRapido('landing_patrocinadores', data || [])
   }
 
   async function fetchEscuelas() {
     const { data } = await supabase.from('teams').select('id, name, logo_url, categoria').eq('tipo', 'escuela').limit(6)
     setEscuelas(data || [])
+    if (data) guardarCacheRapido('landing_escuelas', data)
   }
 
   // Link de "en vivo" (YouTube/Facebook/Instagram) que se configura desde
@@ -872,6 +923,7 @@ export default function LandingPage() {
               return (
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
+                  <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
                   <LiveEmbed url={s.url} titulo={s.titulo} S={S}
                     overlay={(
                       <>
@@ -894,6 +946,7 @@ export default function LandingPage() {
                       </>
                     )}
                     repeticion={repeticiones[s.id]}/>
+                  </Suspense>
                 </div>
               )
             })}
@@ -908,7 +961,14 @@ export default function LandingPage() {
             <Trophy size={18} color={S.green}/> Torneos en juego
           </h2>
         </div>
-        {torneosOrdenados.length === 0 ? (
+        {torneosOrdenados.length === 0 && !torneosCargados ? (
+          <div style={{ display: 'flex', gap: '14px', padding: '0 16px', overflow: 'hidden' }} aria-hidden="true">
+            <style>{`@keyframes gmEsqueleto { 0%,100% { opacity: .45 } 50% { opacity: .9 } }`}</style>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{ flex: '0 0 250px', height: '170px', borderRadius: '16px', background: S.card, border: `1px solid ${S.border}`, animation: 'gmEsqueleto 1.3s ease-in-out infinite', animationDelay: `${i * .15}s` }}/>
+            ))}
+          </div>
+        ) : torneosOrdenados.length === 0 ? (
           <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
             No hay torneos activos en este momento.
           </div>
@@ -946,7 +1006,7 @@ export default function LandingPage() {
                 : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
-                <button key={t.id} className="gm-hover" onClick={() => { if (arrastreRef.current.movido) return; navigate('/t/' + t.id) }} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
+                <button key={t.id} className="gm-hover" {...propsPrefetchTorneo(t.id)} onClick={() => { if (arrastreRef.current.movido) return; prefetchTorneoPublico(t.id); navigate('/t/' + t.id) }} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
                   <div style={{ marginBottom: '12px' }}>
                     <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
                       {badge.txt}
@@ -1030,7 +1090,7 @@ export default function LandingPage() {
                 <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', textAlign: 'center', color: S.muted, fontSize: '.62rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                   Toca para ver quién anotó <GiSoccerBall size={10}/>
                 </div>
-                <button className="gm-hover" onClick={() => navigate('/t/' + m.tournament_id)} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
+                <button className="gm-hover" {...propsPrefetchTorneo(m.tournament_id)} onClick={() => { prefetchTorneoPublico(m.tournament_id); navigate('/t/' + m.tournament_id) }} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
                   VER TORNEO
                 </button>
               </div>
