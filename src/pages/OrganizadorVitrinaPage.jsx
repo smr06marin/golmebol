@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase'
 import { Globe, Trophy, MapPin, Calendar, ChevronRight, CalendarCheck, Handshake, Users, ShieldCheck, Mail, Phone, ArrowRight, Tag, Radio, X } from 'lucide-react'
 import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
 import { GiSoccerBall } from 'react-icons/gi'
-import { PantallaCargando } from '../components/PantallaCargando'
+import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
+import { guardarCacheRapido } from '../lib/cacheRapido'
 import { precargarPaginaTorneo, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
@@ -161,7 +162,7 @@ function formatearFecha(iso) {
 // montado como ruta hermana dentro del mismo dominio (ver
 // DominioPersonalizadoGate), igual que /reservar y /pedir si hay un
 // escenario vinculado.
-export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
+export default function OrganizadorVitrinaPage({ organizadorId, identidad } = {}) {
   const params = useParams()
   const id = organizadorId || params.organizadorId
 
@@ -170,6 +171,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
   const [equiposPorTorneo, setEquiposPorTorneo] = useState({})
   const [sponsors, setSponsors] = useState([])
   const [loading, setLoading] = useState(true)
+  const [entradaLista, setEntradaLista] = useState(false) // el logo terminó de llenarse de color
 
   // Partidos en vivo de CUALQUIERA de los torneos de este organizador —
   // antes esto solo salía en golmebol.com; ahora también sale directo en la
@@ -242,6 +244,7 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
       ;({ data: ts } = await supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, categoria, city, season, fecha_inicio, torneo_padre_id, edicion').eq('organizador_id', id).order('created_at', { ascending: false }))
     }
     setPerfil(p)
+    if (p) guardarCacheRapido(`identidad_organizador_${id}`, { name: p.nombre_publico || '', logo_url: p.logo_url || null })
 
     // Varias ediciones del MISMO torneo no se listan todas por separado acá
     // (saturaría la vitrina pública) — solo la más reciente de cada una,
@@ -320,10 +323,10 @@ export default function OrganizadorVitrinaPage({ organizadorId } = {}) {
     links.forEach(link => { link.href = perfil.favicon_url })
   }, [perfil?.favicon_url])
 
-  // Pantalla de carga con el logo de Golmebol — la misma que usa el resto
-  // de la app, así el visitante ve la marca mientras carga y después entra
-  // a la vitrina propia del organizador.
-  if (loading) return <PantallaCargando/>
+  // Pantalla de carga con el LOGO DEL ORGANIZADOR grande, en blanco y negro
+  // llenándose de color; cuando está lleno se entra a la vitrina. En su
+  // dominio propio, abajo va el logo de Golmebol pequeño como marca de agua.
+  if (loading || !entradaLista) return <PantallaCargaTorneo key={id} tipo="organizador" id={id} identidad={identidad} listo={!loading} onTerminar={() => setEntradaLista(true)}/>
 
   const colorPrimario   = perfil?.color_primario   || '#22c55e'
   const colorSecundario = perfil?.color_secundario || '#0f172a'

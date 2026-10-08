@@ -3,6 +3,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import MarcaGolmebol from './MarcaGolmebol'
+import PantallaCargaTorneo from './PantallaCargaTorneo'
 import BotonVolverInicio from './BotonVolverInicio'
 
 const TorneoPublicoPage      = lazy(() => import('../pages/TorneoPublicoPage'))
@@ -57,6 +58,8 @@ export default function DominioPersonalizadoGate({ children }) {
   const [estado, setEstado] = useState(hostPropio ? 'ok' : (vinculoGuardado?.estado || 'cargando')) // ok | cargando | torneo | organizador | sin_vincular
   const [torneoId, setTorneoId] = useState(vinculoGuardado?.torneoId || null)
   const [organizadorId, setOrganizadorId] = useState(vinculoGuardado?.organizadorId || null)
+  // Nombre y logo de la página de este dominio (para la pantalla de carga con su logo grande).
+  const [identidad, setIdentidad] = useState(vinculoGuardado?.identidad || null)
 
   useEffect(() => {
     if (hostPropio) return
@@ -65,14 +68,26 @@ export default function DominioPersonalizadoGate({ children }) {
       // ilike (no eq) para que un dominio guardado con mayúsculas por error
       // igual haga match, además de compararlo ya sin "www.".
       // 1. ¿El dominio es de UN torneo puntual? (feature original)
-      const { data: t } = await supabase.from('tournaments').select('id').ilike('custom_domain', hostnameBase).maybeSingle()
+      const { data: t } = await supabase.from('tournaments').select('id, name, logo_url').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
-      if (t?.id) { setTorneoId(t.id); setEstado('torneo'); guardarCacheRapido(claveDominio, { estado: 'torneo', torneoId: t.id }); return }
+      if (t?.id) {
+        const ident = { name: t.name || '', logo_url: t.logo_url || null }
+        setIdentidad(ident); setTorneoId(t.id); setEstado('torneo')
+        guardarCacheRapido(`identidad_torneo_${t.id}`, ident)
+        guardarCacheRapido(claveDominio, { estado: 'torneo', torneoId: t.id, identidad: ident })
+        return
+      }
 
       // 2. ¿El dominio es la vitrina de un organizador (varios torneos)?
-      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').ilike('custom_domain', hostnameBase).maybeSingle()
+      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id, nombre_publico, logo_url').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
-      if (o?.organizador_id) { setOrganizadorId(o.organizador_id); setEstado('organizador'); guardarCacheRapido(claveDominio, { estado: 'organizador', organizadorId: o.organizador_id }); return }
+      if (o?.organizador_id) {
+        const ident = { name: o.nombre_publico || '', logo_url: o.logo_url || null }
+        setIdentidad(ident); setOrganizadorId(o.organizador_id); setEstado('organizador')
+        guardarCacheRapido(`identidad_organizador_${o.organizador_id}`, ident)
+        guardarCacheRapido(claveDominio, { estado: 'organizador', organizadorId: o.organizador_id, identidad: ident })
+        return
+      }
 
       setEstado('sin_vincular')
     }
@@ -83,7 +98,8 @@ export default function DominioPersonalizadoGate({ children }) {
   if (hostPropio) return children
 
   if (estado === 'cargando') {
-    return <div style={loadingStyle}>CARGANDO...</div>
+    // Todavía no se sabe de quién es este dominio: solo la marca de agua de Golmebol, sin textos.
+    return <PantallaCargaTorneo esperando quieto/>
   }
 
   if (estado === 'sin_vincular') {
@@ -113,7 +129,7 @@ export default function DominioPersonalizadoGate({ children }) {
     // (MemoryRouter para contexto de router fuera del BrowserRouter; el id
     // llega por prop).
     return (
-      <Suspense fallback={<div style={loadingStyle}>CARGANDO...</div>}>
+      <Suspense fallback={<PantallaCargaTorneo quieto tipo="torneo" id={torneoId} identidad={identidad}/>}>
         <MemoryRouter initialEntries={[`/t/${torneoId}`]}>
           <TorneoPublicoPage tournamentId={torneoId} />
         </MemoryRouter>
@@ -130,14 +146,14 @@ export default function DominioPersonalizadoGate({ children }) {
   // también funcione, no solo los links que salen desde la vitrina.
   const pathnameActual = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/'
   return (
-    <Suspense fallback={<div style={loadingStyle}>CARGANDO...</div>}>
+    <Suspense fallback={<PantallaCargaTorneo quieto tipo="organizador" id={organizadorId} identidad={identidad}/>}>
       <MemoryRouter initialEntries={[pathnameActual]}>
         <Routes>
-          <Route path="/" element={<OrganizadorVitrinaPage organizadorId={organizadorId} />} />
+          <Route path="/" element={<OrganizadorVitrinaPage organizadorId={organizadorId} identidad={identidad} />} />
           <Route path="/t/:id" element={<TorneoPublicoPage />} />
           <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>} />
           <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>} />
-          <Route path="*" element={<OrganizadorVitrinaPage organizadorId={organizadorId} />} />
+          <Route path="*" element={<OrganizadorVitrinaPage organizadorId={organizadorId} identidad={identidad} />} />
         </Routes>
         <BotonVolverInicio/>
       </MemoryRouter>
