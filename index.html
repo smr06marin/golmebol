@@ -24,10 +24,23 @@
     <link rel="dns-prefetch" href="https://obvlyexpbbdhxwijjqyd.supabase.co"/>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Fondo oscuro desde el primer instante (antes salía blanco hasta que
+         cargaba el CSS de la app) y tipografías SIN bloquear la pantalla: la
+         hoja de Google Fonts se pide en segundo plano y el texto aparece de
+         una con la letra del sistema hasta que llega la de Golmebol. -->
+    <style>html,body{background:#07070e}</style>
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Bebas+Neue&family=Poppins:wght@900&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800;900&family=Bebas+Neue&family=Poppins:wght@900&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <title>Golmebol</title>
   </head>
   <body>

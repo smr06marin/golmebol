@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import MarcaGolmebol from './MarcaGolmebol'
 import BotonVolverInicio from './BotonVolverInicio'
 
@@ -46,9 +47,16 @@ export default function DominioPersonalizadoGate({ children }) {
   // que no importe cuál de los dos haya quedado como el real.
   const hostnameBase = hostname.replace(/^www\./, '')
 
-  const [estado, setEstado] = useState(hostPropio ? 'ok' : 'cargando') // ok | cargando | torneo | organizador | sin_vincular
-  const [torneoId, setTorneoId] = useState(null)
-  const [organizadorId, setOrganizadorId] = useState(null)
+  // A qué torneo/organizador pertenece este dominio casi nunca cambia: se
+  // recuerda la última respuesta (1 mes) para arrancar YA con la página del
+  // torneo, sin esperar las consultas de resolución (que son dos viajes a la
+  // base uno detrás de otro). Igual se vuelve a verificar en segundo plano y,
+  // si el dominio cambió de dueño, se corrige solo.
+  const claveDominio = `dominio_${hostnameBase}`
+  const vinculoGuardado = hostPropio ? null : leerCacheRapido(claveDominio, 30 * 24 * 60 * 60 * 1000)
+  const [estado, setEstado] = useState(hostPropio ? 'ok' : (vinculoGuardado?.estado || 'cargando')) // ok | cargando | torneo | organizador | sin_vincular
+  const [torneoId, setTorneoId] = useState(vinculoGuardado?.torneoId || null)
+  const [organizadorId, setOrganizadorId] = useState(vinculoGuardado?.organizadorId || null)
 
   useEffect(() => {
     if (hostPropio) return
@@ -59,12 +67,12 @@ export default function DominioPersonalizadoGate({ children }) {
       // 1. ¿El dominio es de UN torneo puntual? (feature original)
       const { data: t } = await supabase.from('tournaments').select('id').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
-      if (t?.id) { setTorneoId(t.id); setEstado('torneo'); return }
+      if (t?.id) { setTorneoId(t.id); setEstado('torneo'); guardarCacheRapido(claveDominio, { estado: 'torneo', torneoId: t.id }); return }
 
       // 2. ¿El dominio es la vitrina de un organizador (varios torneos)?
       const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
-      if (o?.organizador_id) { setOrganizadorId(o.organizador_id); setEstado('organizador'); return }
+      if (o?.organizador_id) { setOrganizadorId(o.organizador_id); setEstado('organizador'); guardarCacheRapido(claveDominio, { estado: 'organizador', organizadorId: o.organizador_id }); return }
 
       setEstado('sin_vincular')
     }
