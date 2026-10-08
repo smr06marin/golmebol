@@ -14,6 +14,7 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import { traerPartidosTorneo, derivarBracket } from '../lib/partidosPublicos'
 import { cargarTorneoPublico } from '../lib/torneoPublicoDatos'
+import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
@@ -541,6 +542,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   const [bracket,   setBracket]   = useState([]) // partidos de eliminatorias (todas las fases), para el árbol público
   const [sponsors,  setSponsors]  = useState([])
   const [loading,   setLoading]   = useState(true)
+  const [datosListos, setDatosListos] = useState(false) // llegaron los datos; la pantalla de carga termina de llenarse y suelta
   const [tab,       setTab]       = useState('posiciones')
 
   // Partidos en vivo de ESTE torneo — antes esto solo existía en la página
@@ -712,7 +714,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // fotograma (useLayoutEffect), así no hay ni un parpadeo de "Cargando...".
   useLayoutEffect(() => {
     const cache = leerCacheRapido(`torneo_${id}`)
-    if (cache?.t) { aplicarBaseTorneo(cache); setLoading(false) }
+    if (cache?.t) { aplicarBaseTorneo(cache); setDatosListos(true) } // la animación de entrada se muestra SIEMPRE; con copia guardada solo se llena más rápido
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Carga rápida de la página pública: lo que se necesita para pintar la TABLA
@@ -788,9 +790,8 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     }
 
     async function fetchAll() {
-      // Si hay copia guardada ya se pintó (useLayoutEffect de arriba); si no, pantalla de carga.
       const cache = leerCacheRapido(claveCache)
-      if (!cache?.t) setLoading(true)
+      setDatosListos(!!cache?.t); setLoading(true)
 
       // Los datos pueden venir ya adelantados (al pasar por la tarjeta del
       // torneo en la portada) o pedirse ahora: es el mismo pedido, sin duplicar.
@@ -802,7 +803,8 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
       // La tabla sale YA; goleadores y patrocinadores se suman cuando llegan.
       aplicarBaseTorneo({ ...r.base, goleadores: cache?.t ? undefined : [], sponsors: cache?.t ? undefined : [] })
-      setLoading(false)
+      // El logo termina de llenarse y recién ahí se entra (siempre, haya o no copia guardada).
+      setDatosListos(true)
       r.extras.then(ex => {
         if (cancelado) return
         setGoleadores(ex.goleadores)
@@ -821,31 +823,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     return () => { cancelado = true }
   }, [id])
 
-  if (loading) {
-    // Mientras llegan los datos se muestra YA el nombre y el escudo del torneo
-    // (la portada los dejó guardados) y la silueta de la tabla, en vez de una
-    // pantalla vacía con "Cargando...": se siente como que la página ya abrió.
-    const previo = (leerCacheRapido('landing_torneos') || []).find(x => String(x.id) === String(id))
-    return (
-      <div style={{ minHeight: '100vh', background: '#07070e', color: '#fff', fontFamily: 'system-ui' }} role="status" aria-label="Cargando torneo">
-        <style>{`@keyframes gmEsqTorneo { 0%,100% { opacity: .35 } 50% { opacity: .75 } }`}</style>
-        <div style={{ padding: '28px 16px 20px', textAlign: 'center', borderBottom: '1px solid #1c2233' }}>
-          <div style={{ width: 64, height: 64, borderRadius: 14, margin: '0 auto 10px', background: '#151a28', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: previo?.logo_url ? 'none' : 'gmEsqTorneo 1.3s ease-in-out infinite' }}>
-            {previo?.logo_url && <img src={previo.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}/>}
-          </div>
-          {previo?.name
-            ? <div style={{ fontWeight: 900, fontSize: '1.15rem', letterSpacing: '.02em' }}>{previo.name}</div>
-            : <div style={{ width: 180, height: 18, borderRadius: 6, margin: '0 auto', background: '#151a28', animation: 'gmEsqTorneo 1.3s ease-in-out infinite' }}/>}
-          <div style={{ color: '#00ddd0', fontSize: '.7rem', letterSpacing: '.18em', marginTop: 8 }}>CARGANDO TABLA…</div>
-        </div>
-        <div style={{ maxWidth: 560, margin: '18px auto 0', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={{ height: 44, borderRadius: 10, background: '#111522', border: '1px solid #1c2233', animation: 'gmEsqTorneo 1.3s ease-in-out infinite', animationDelay: `${i * .08}s` }}/>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <PantallaCargaTorneo key={id} id={id} listo={datosListos} onTerminar={() => setLoading(false)}/>
 
   if (!torneo) return (
     <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9aa0a6', fontFamily: 'system-ui' }}>
