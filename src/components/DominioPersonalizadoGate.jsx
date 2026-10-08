@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import MarcaGolmebol from './MarcaGolmebol'
 import PantallaCargaTorneo from './PantallaCargaTorneo'
+import { aplicarMarcaPagina } from '../lib/marcaPagina'
 import BotonVolverInicio from './BotonVolverInicio'
 
 const TorneoPublicoPage      = lazy(() => import('../pages/TorneoPublicoPage'))
@@ -68,10 +69,10 @@ export default function DominioPersonalizadoGate({ children }) {
       // ilike (no eq) para que un dominio guardado con mayúsculas por error
       // igual haga match, además de compararlo ya sin "www.".
       // 1. ¿El dominio es de UN torneo puntual? (feature original)
-      const { data: t } = await supabase.from('tournaments').select('id, name, logo_url').ilike('custom_domain', hostnameBase).maybeSingle()
+      const { data: t } = await supabase.from('tournaments').select('id, name, logo_url, favicon_url').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
       if (t?.id) {
-        const ident = { name: t.name || '', logo_url: t.logo_url || null }
+        const ident = { name: t.name || '', logo_url: t.logo_url || null, favicon_url: t.favicon_url || null }
         setIdentidad(ident); setTorneoId(t.id); setEstado('torneo')
         guardarCacheRapido(`identidad_torneo_${t.id}`, ident)
         guardarCacheRapido(claveDominio, { estado: 'torneo', torneoId: t.id, identidad: ident })
@@ -79,10 +80,10 @@ export default function DominioPersonalizadoGate({ children }) {
       }
 
       // 2. ¿El dominio es la vitrina de un organizador (varios torneos)?
-      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id, nombre_publico, logo_url').ilike('custom_domain', hostnameBase).maybeSingle()
+      const { data: o } = await supabase.from('organizador_perfiles').select('organizador_id, nombre_publico, logo_url, favicon_url').ilike('custom_domain', hostnameBase).maybeSingle()
       if (cancelado) return
       if (o?.organizador_id) {
-        const ident = { name: o.nombre_publico || '', logo_url: o.logo_url || null }
+        const ident = { name: o.nombre_publico || '', logo_url: o.logo_url || null, favicon_url: o.favicon_url || null }
         setIdentidad(ident); setOrganizadorId(o.organizador_id); setEstado('organizador')
         guardarCacheRapido(`identidad_organizador_${o.organizador_id}`, ident)
         guardarCacheRapido(claveDominio, { estado: 'organizador', organizadorId: o.organizador_id, identidad: ident })
@@ -94,6 +95,13 @@ export default function DominioPersonalizadoGate({ children }) {
     resolver()
     return () => { cancelado = true }
   }, [hostname, hostPropio])
+
+  // Título e ícono de la pestaña = los de ESTA página (no los de Golmebol), apenas
+  // se conocen: es lo que el navegador guarda en el historial / buscador.
+  useEffect(() => {
+    if (hostPropio || !identidad) return
+    aplicarMarcaPagina({ titulo: identidad.name, iconoUrl: identidad.favicon_url || identidad.logo_url })
+  }, [hostPropio, identidad?.name, identidad?.logo_url, identidad?.favicon_url])
 
   if (hostPropio) return children
 

@@ -15,6 +15,7 @@ import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import { traerPartidosTorneo, derivarBracket } from '../lib/partidosPublicos'
 import { cargarTorneoPublico } from '../lib/torneoPublicoDatos'
 import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
+import { aplicarMarcaPagina, esHostPropioGolmebol } from '../lib/marcaPagina'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
@@ -662,18 +663,14 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   useEffect(() => { registrarVisita('torneo_publico', id) }, [id])
 
   // Favicon dinámico del torneo (no se revierte al salir)
+  // En un dominio propio (ej. centegol.com) el título y el ícono son SIEMPRE los del
+  // torneo (si no tiene favicon, se usa su logo), nunca los de Golmebol.
   useEffect(() => {
-    if (!torneo?.favicon_url) return
-    const links = document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon']")
-    if (links.length === 0) {
-      const link = document.createElement('link')
-      link.rel = 'icon'
-      link.href = torneo.favicon_url
-      document.head.appendChild(link)
-      return
-    }
-    links.forEach(link => { link.href = torneo.favicon_url })
-  }, [torneo?.favicon_url])
+    if (!torneo) return
+    const propio = esHostPropioGolmebol()
+    const icono = torneo.favicon_url || (propio ? null : torneo.logo_url)
+    aplicarMarcaPagina({ titulo: propio ? null : torneo.name, iconoUrl: icono })
+  }, [torneo?.favicon_url, torneo?.logo_url, torneo?.name])
 
   async function abrirRoster(team, stats) {
     if (!team?.id) return

@@ -42,6 +42,32 @@
       />
     </noscript>
     <title>Golmebol</title>
+    <!-- Dominio propio de un organizador/torneo (ej. centegol.com): si ya se
+         visitó antes, el título y el ícono de ESA página se ponen desde el
+         primer instante (antes de que cargue React), para que el navegador no
+         guarde "Golmebol" + su logo en el historial/buscador. Lo guarda
+         DominioPersonalizadoGate en localStorage (gm_cache_dominio_<host>). -->
+    <script>
+      (function () {
+        try {
+          var h = location.hostname.toLowerCase()
+          if (h === 'localhost' || h === '127.0.0.1' || h.slice(-12) === 'golmebol.com' || h.slice(-11) === '.vercel.app') return
+          var raw = localStorage.getItem('gm_cache_dominio_' + h.replace(/^www\./, ''))
+          if (!raw) return
+          var o = JSON.parse(raw)
+          var ident = o && o.v && o.v.identidad
+          if (!ident || Date.now() - o.t > 30 * 24 * 60 * 60 * 1000) return
+          if (ident.name) document.title = ident.name
+          var url = ident.favicon_url || ident.logo_url
+          if (url) {
+            var viejos = document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon'], link[rel='apple-touch-icon']")
+            for (var i = 0; i < viejos.length; i++) viejos[i].parentNode.removeChild(viejos[i])
+            var a = document.createElement('link'); a.rel = 'icon'; a.href = url; document.head.appendChild(a)
+            var b = document.createElement('link'); b.rel = 'apple-touch-icon'; b.href = url; document.head.appendChild(b)
+          }
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

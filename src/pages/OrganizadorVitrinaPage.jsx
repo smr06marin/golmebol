@@ -6,6 +6,7 @@ import { FaWhatsapp, FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
 import { GiSoccerBall } from 'react-icons/gi'
 import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
 import { guardarCacheRapido } from '../lib/cacheRapido'
+import { aplicarMarcaPagina, esHostPropioGolmebol } from '../lib/marcaPagina'
 import { precargarPaginaTorneo, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
@@ -244,7 +245,7 @@ export default function OrganizadorVitrinaPage({ organizadorId, identidad } = {}
       ;({ data: ts } = await supabase.from('tournaments').select('id, name, logo_url, modalidad, genero, categoria, city, season, fecha_inicio, torneo_padre_id, edicion').eq('organizador_id', id).order('created_at', { ascending: false }))
     }
     setPerfil(p)
-    if (p) guardarCacheRapido(`identidad_organizador_${id}`, { name: p.nombre_publico || '', logo_url: p.logo_url || null })
+    if (p) guardarCacheRapido(`identidad_organizador_${id}`, { name: p.nombre_publico || '', logo_url: p.logo_url || null, favicon_url: p.favicon_url || null })
 
     // Varias ediciones del MISMO torneo no se listan todas por separado acá
     // (saturaría la vitrina pública) — solo la más reciente de cada una,
@@ -310,18 +311,13 @@ export default function OrganizadorVitrinaPage({ organizadorId, identidad } = {}
   }
 
   // Favicon dinámico del organizador (mismo patrón que TorneoPublicoPage)
+  // En su dominio propio (ej. centegol.com) el título y el ícono son los del
+  // organizador (si no tiene favicon, se usa su logo), nunca los de Golmebol.
   useEffect(() => {
-    if (!perfil?.favicon_url) return
-    const links = document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon']")
-    if (links.length === 0) {
-      const link = document.createElement('link')
-      link.rel = 'icon'
-      link.href = perfil.favicon_url
-      document.head.appendChild(link)
-      return
-    }
-    links.forEach(link => { link.href = perfil.favicon_url })
-  }, [perfil?.favicon_url])
+    if (!perfil) return
+    const propio = esHostPropioGolmebol()
+    aplicarMarcaPagina({ titulo: propio ? null : perfil.nombre_publico, iconoUrl: perfil.favicon_url || (propio ? null : perfil.logo_url) })
+  }, [perfil?.favicon_url, perfil?.logo_url, perfil?.nombre_publico])
 
   // Pantalla de carga con el LOGO DEL ORGANIZADOR grande, en blanco y negro
   // llenándose de color; cuando está lleno se entra a la vitrina. En su
