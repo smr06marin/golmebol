@@ -1,5 +1,10 @@
 {
     "rewrites": [
+      {
+        "source": "/((?!api/|assets/)[^.]*)",
+        "has": [{ "type": "host", "value": "^(?!.*golmebol\\.com$)(?!.*\\.vercel\\.app$)(?!localhost).+$" }],
+        "destination": "/api/pagina"
+      },
       { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
     ],
     "headers": [
