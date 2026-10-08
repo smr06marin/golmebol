@@ -248,6 +248,100 @@ const DIAS_SEMANA = [
 ]
 // Se muestran en el orden habitual lunes→domingo (distinto al índice de getDay)
 const DIAS_SEMANA_UI = [1, 2, 3, 4, 5, 6, 0].map(i => DIAS_SEMANA[i])
+
+// ── Rotación de equipos: días, horas y canchas ────────────────────────────
+// Cuando hay varios escenarios/canchas y se juega varios días, hay que
+// "turnear" a los equipos para que no le toque siempre la misma cancha, el
+// mismo horario o el mismo día al mismo equipo. Esta función mira todo lo que
+// ya tiene programado el equipo en el torneo (jugado o por jugar) y devuelve:
+//  · ultima: día, hora y cancha de su programación anterior más reciente;
+//  · alerta: texto si ya jugó 2 o más veces en esta cancha (del MISMO
+//    escenario) / a esta hora / en este día de la semana.
+function listaEs(piezas) {
+  if (piezas.length <= 1) return piezas.join('')
+  return `${piezas.slice(0, -1).join(', ')} y ${piezas[piezas.length - 1]}`
+}
+// Identifica la cancha de un partido guardado. Dos escenarios pueden tener
+// una "Cancha 1" cada uno y son canchas DISTINTAS: por eso se compara primero
+// por la cancha exacta (matches.cancha_id, que ya sabe de qué escenario es).
+// En partidos viejos que solo guardaron el nombre se deduce SOLO si ese nombre
+// es único entre las canchas del torneo; si el mismo nombre existe en dos
+// escenarios no hay forma de saber cuál era, y ese partido no se cuenta como
+// "misma cancha" (null) para no dar avisos falsos.
+function claveCanchaPartido(m, canchasTorneo) {
+  if (m?.cancha_id != null && m.cancha_id !== '') return `id:${m.cancha_id}`
+  if (!m?.location) return null
+  const coinc = (canchasTorneo || []).filter(c => c.nombre === m.location)
+  if (coinc.length === 1) return `id:${coinc[0].id}`
+  if (coinc.length > 1) return null
+  return `txt:${m.location}`
+}
+function etiquetaCancha(c) {
+  return c ? `${c.escenario ? c.escenario + ' · ' : ''}${c.nombre}` : ''
+}
+function etiquetaCanchaPartido(m, canchasTorneo) {
+  const k = claveCanchaPartido(m, canchasTorneo)
+  const c = k?.startsWith('id:') ? (canchasTorneo || []).find(x => `id:${x.id}` === k) : null
+  return c ? etiquetaCancha(c) : (m?.location || 'sin cancha')
+}
+
+function analizarRotacionEquipo(partidosTorneo, teamId, { fecha, hora, canchaId, excluirId } = {}, canchasTorneo = []) {
+  if (!teamId) return null
+  const suyos = (partidosTorneo || []).filter(m =>
+    m.id !== excluirId && m.played_at && !m.tipo_resultado && (m.home_team_id === teamId || m.away_team_id === teamId))
+  if (suyos.length === 0) return { ultima: null, alerta: null }
+
+  // "Última programación" = la más reciente ANTES del partido que se está
+  // armando (si todavía no hay fecha, la más reciente de todas).
+  const objetivo = fecha ? new Date(`${fecha}T${hora || '00:00'}:00-05:00`).getTime() : Infinity
+  const previos = suyos.filter(m => new Date(m.played_at).getTime() < objetivo)
+    .sort((a, b) => new Date(b.played_at) - new Date(a.played_at))
+  const u = previos[0] || null
+  let ultima = null
+  if (u) {
+    const d = new Date(u.played_at)
+    const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    ultima = `${d.toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })} · ${fmtHora12(hhmm)} · ${etiquetaCanchaPartido(u, canchasTorneo)}`
+  }
+
+  const diaObj = fecha ? DIAS_SEMANA[new Date(fecha + 'T00:00:00').getDay()] : null
+  const horaNum = hora ? parseInt(hora, 10) : NaN
+  const claveObjetivo = canchaId != null && canchaId !== '' ? `id:${canchaId}` : null
+  const canchaObj = claveObjetivo ? canchasTorneo.find(c => `id:${c.id}` === claveObjetivo) : null
+  const vCancha = claveObjetivo ? suyos.filter(m => claveCanchaPartido(m, canchasTorneo) === claveObjetivo).length : 0
+  const vHora = !isNaN(horaNum) ? suyos.filter(m => new Date(m.played_at).getHours() === horaNum).length : 0
+  const vDia = diaObj ? suyos.filter(m => DIAS_SEMANA[new Date(m.played_at).getDay()].key === diaObj.key).length : 0
+  const piezas = []
+  if (vCancha >= 2) piezas.push(`${vCancha} veces en ${etiquetaCancha(canchaObj) || 'esta cancha'}`)
+  if (vHora >= 2) piezas.push(`${vHora} veces a las ${fmtHora12(`${String(horaNum).padStart(2, '0')}:00`)}`)
+  if (vDia >= 2) piezas.push(`${vDia} veces un ${diaObj.label.toLowerCase()}`)
+  return { ultima, alerta: piezas.length ? `ya jugó ${listaEs(piezas)}` : null }
+}
+
+// Bloque de avisos de rotación para un partido: una línea gris con la última
+// programación de cada equipo y, si repite cancha/hora/día, un aviso naranja
+// por equipo. items: [{ nombre, a: resultado de analizarRotacionEquipo }]
+function AvisosRotacion({ items }) {
+  const conUltima = items.filter(it => it.a?.ultima)
+  const conAlerta = items.filter(it => it.a?.alerta)
+  if (conUltima.length === 0 && conAlerta.length === 0) return null
+  return (
+    <>
+      {conUltima.length > 0 && (
+        <div style={{ fontSize: '.7rem', color: '#5f6368', paddingLeft: '10px', lineHeight: 1.45 }}>
+          🕘 Último partido — {conUltima.map((it, i) => (
+            <span key={i}>{i > 0 && <span style={{ color: '#bdbdbd' }}> &nbsp;|&nbsp; </span>}<b style={{ color: '#3c4043' }}>{it.nombre}</b>: {it.a.ultima}</span>
+          ))}
+        </div>
+      )}
+      {conAlerta.map((it, i) => (
+        <div key={i} style={{ fontSize: '.72rem', color: '#e8710a', fontWeight: '600', paddingLeft: '10px', lineHeight: 1.45 }}>
+          ⚠️ {it.nombre} {it.a.alerta} — conviene rotarlo
+        </div>
+      ))}
+    </>
+  )
+}
 // Horas que se pueden marcar como horario específico de un día (5am–11pm,
 // suficiente para torneos amateur de fútbol 5/7/11).
 const HORAS_CHIP = Array.from({ length: 19 }, (_, i) => `${String(i + 5).padStart(2, '0')}:00`)
@@ -595,7 +689,7 @@ export default function AdminTorneoDetallePage() {
   // Se recuerda (por torneo) en qué sub-pestaña estaba, para no perderla si el celular recarga la página.
   const [subTab,          setSubTab]          = useEstadoUI(`gm_ui_torneo_${id}_subtab`, draftJornada ? 'jornada' : 'partidos')
   const [showFormPartido, setShowFormPartido] = useState(false)
-  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
+  const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', cancha_id: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
   const [nuevaCancha,     setNuevaCancha]     = useState('')
   const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
@@ -3299,7 +3393,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setLoadingPartido(true)
     const base = {
       tournament_id: id,
-      location: formPartido.location || null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
+      location: formPartido.location || null, cancha_id: formPartido.cancha_id ? String(formPartido.cancha_id) : null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
       fase: formPartido.fase || 'grupo', status: 'scheduled',
       arbitro1_id: formPartido.arbitro1_id || null, arbitro2_id: formPartido.arbitro2_id || null, arbitro3_id: formPartido.arbitro3_id || null,
     }
@@ -3315,12 +3409,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (conVuelta) {
       inserts.push({ ...base, home_team_id: formPartido.away_team_id, away_team_id: formPartido.home_team_id, played_at: null, ronda: 'Vuelta' })
     }
-    const { error } = await supabase.from('matches').insert(inserts)
+    let { error } = await supabase.from('matches').insert(inserts)
+    if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').insert(inserts.map(({ cancha_id, ...resto }) => resto)))
     if (error) showMsg('Error al crear partido', 'error')
     else {
       showMsg(conVuelta ? 'Partido de ida creado ✓ — ponle fecha a la vuelta cuando la sepas' : 'Partido creado ✓')
       setShowFormPartido(false)
-      setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
+      setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', cancha_id: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
       fetchPartidos()
     }
     setLoadingPartido(false)
@@ -3396,13 +3491,23 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
   async function handleGuardarEditPartido() {
     if (!formEditPartido.played_at || !formEditPartido.hora) return showMsg('Fecha y hora son obligatorias', 'error')
-    const { error } = await supabase.from('matches').update({
+    const cambios = {
       played_at: `${formEditPartido.played_at}T${formEditPartido.hora}:00-05:00`,
-      location: formEditPartido.location || null, matchday: formEditPartido.matchday ? parseInt(formEditPartido.matchday) : null,
+      location: formEditPartido.location || null, cancha_id: formEditPartido.cancha_id ? String(formEditPartido.cancha_id) : null,
+      matchday: formEditPartido.matchday ? parseInt(formEditPartido.matchday) : null,
       fase: formEditPartido.fase || 'grupo',
-    }).eq('id', editandoPartidoForm.id)
+    }
+    let { error } = await supabase.from('matches').update(cambios).eq('id', editandoPartidoForm.id)
+    if (error && (error.message || '').includes('cancha_id')) { const { cancha_id, ...sinId } = cambios; ({ error } = await supabase.from('matches').update(sinId).eq('id', editandoPartidoForm.id)) }
     if (error) { showMsg(`Error al guardar: ${error.message}`, 'error'); return }
     showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos(); fetchBracket()
+  }
+
+  // Cancha exacta (escenario + cancha) de un partido guardado, para precargarla
+  // en el formulario de edición ('' si no se puede saber cuál era).
+  function idCanchaDePartido(m) {
+    const k = claveCanchaPartido(m, canchas)
+    return k && k.startsWith('id:') ? k.slice(3) : ''
   }
 
   function generarJornada() {
@@ -3674,6 +3779,23 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       sumarHistorial(m.away_team_id, horaStr)
     })
 
+    // Lo mismo con la CANCHA: cuántas veces ha jugado cada equipo en cada
+    // cancha EXACTA (escenario + cancha, no solo el nombre) —
+    // así, entre los cupos libres, se prefiere la cancha donde esa pareja ha
+    // jugado MENOS y no le toca siempre el mismo campo al mismo equipo.
+    const historialCancha = {}
+    function sumarHistorialCancha(teamId, claveCancha) {
+      if (!teamId || !claveCancha) return
+      historialCancha[teamId] = historialCancha[teamId] || {}
+      historialCancha[teamId][claveCancha] = (historialCancha[teamId][claveCancha] || 0) + 1
+    }
+    partidos.forEach(m => {
+      if (!m.played_at) return
+      const k = claveCanchaPartido(m, canchas) // escenario + cancha, no solo el nombre
+      sumarHistorialCancha(m.home_team_id, k)
+      sumarHistorialCancha(m.away_team_id, k)
+    })
+
     // Cancha + hora, por cada fecha por separado. Cada cancha aporta sus
     // PROPIAS horas para ese día (slotsDeFecha), así que si la cancha 1
     // juega sábado a las 7,8,9 y la cancha 2 ese sábado solo a las 7 y las
@@ -3725,7 +3847,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           return
         }
         const elegido = candidatos
-          .map(s => ({ s, peso: (historialHora[p.local.id]?.[s.hora] || 0) + (historialHora[p.visitante.id]?.[s.hora] || 0) + Math.random() * 0.001 }))
+          .map(s => ({ s, peso:
+            (historialHora[p.local.id]?.[s.hora] || 0) + (historialHora[p.visitante.id]?.[s.hora] || 0) +
+            (historialCancha[p.local.id]?.[`id:${s.cancha.id}`] || 0) + (historialCancha[p.visitante.id]?.[`id:${s.cancha.id}`] || 0) +
+            Math.random() * 0.001 }))
           .sort((a, b) => a.peso - b.peso)[0].s
         delete libre[`${elegido.cancha.id}|${elegido.hora}`]
         p.hora = elegido.hora
@@ -3734,6 +3859,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         delete p._minHora
         sumarHistorial(p.local.id, elegido.hora)
         sumarHistorial(p.visitante.id, elegido.hora)
+        sumarHistorialCancha(p.local.id, `id:${elegido.cancha.id}`)
+        sumarHistorialCancha(p.visitante.id, `id:${elegido.cancha.id}`)
       })
     })
 
@@ -3783,11 +3910,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (fechaErr) { showMsg('Error al crear jornada', 'error'); setLoadingPartido(false); return }
     const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
       tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
-      played_at: `${p.fecha || configJornada.fecha}T${p.hora || '08:00'}:00-05:00`, location: p.cancha?.nombre || null,
+      played_at: `${p.fecha || configJornada.fecha}T${p.hora || '08:00'}:00-05:00`, location: p.cancha?.nombre || null, cancha_id: p.cancha ? String(p.cancha.id) : null,
       matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id,
       status: 'scheduled', fase: 'grupo',
     }))
-    const { error } = await supabase.from('matches').insert(inserts)
+    let { error } = await supabase.from('matches').insert(inserts)
+    // Falta migracion_cancha_id_partidos.sql: se guarda igual, sin la cancha exacta.
+    if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').insert(inserts.map(({ cancha_id, ...resto }) => resto)))
     if (error) showMsg('Error al guardar partidos', 'error')
     else { showMsg(`Jornada creada con ${inserts.length} partidos ✓`); salirJornada(); fetchPartidos(); fetchFechas() }
     setLoadingPartido(false)
@@ -4388,7 +4517,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div><label style={labelStyle}>Fecha *</label><input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/></div>
                 <div><label style={labelStyle}>Hora *</label><input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/></div>
               </div>
-              <div><label style={labelStyle}>Cancha</label><select value={formEditPartido.location || ''} onChange={e => setFormEditPartido(p => ({ ...p, location: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
+              <div><label style={labelStyle}>Cancha</label><select value={formEditPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormEditPartido(p => ({ ...p, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">{formEditPartido.location && !formEditPartido.cancha_id ? `${formEditPartido.location} (elige escenario)` : 'Seleccionar...'}</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: '-10px' }}>
+                {(() => {
+                  const opts = { fecha: formEditPartido.played_at, hora: formEditPartido.hora, canchaId: formEditPartido.cancha_id, excluirId: editandoPartidoForm.id }
+                  return <AvisosRotacion items={[
+                    { nombre: editandoPartidoForm.home?.name, a: analizarRotacionEquipo(partidos, editandoPartidoForm.home_team_id, opts, canchas) },
+                    { nombre: editandoPartidoForm.away?.name, a: analizarRotacionEquipo(partidos, editandoPartidoForm.away_team_id, opts, canchas) },
+                  ]}/>
+                })()}
+              </div>
               <div><label style={labelStyle}>Jornada #</label><input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
               <div><label style={labelStyle}>Fase</label><select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
               {arbitrosAdmin.length > 0 && <>
@@ -4963,10 +5101,22 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
                       <div><label style={labelStyle}>Fecha *</label><input type="date" value={formPartido.played_at} onChange={e => setFormPartido(f => ({ ...f, played_at: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.hora} onChange={e => setFormPartido(f => ({ ...f, hora: e.target.value }))} style={inputStyle}/></div>
-                      <div><label style={labelStyle}>Cancha</label><select value={formPartido.location} onChange={e => setFormPartido(f => ({ ...f, location: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
+                      <div><label style={labelStyle}>Cancha</label><select value={formPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormPartido(f => ({ ...f, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
                       <div><label style={labelStyle}>Fase</label><select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
                     </div>
+                    {formPartido.home_team_id && formPartido.away_team_id && formPartido.home_team_id !== formPartido.away_team_id && (() => {
+                      const opts = { fecha: formPartido.played_at, hora: formPartido.hora, canchaId: formPartido.cancha_id }
+                      const eqL = equipos.find(e => e.id === formPartido.home_team_id), eqV = equipos.find(e => e.id === formPartido.away_team_id)
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: '-10px' }}>
+                          <AvisosRotacion items={[
+                            { nombre: eqL?.name, a: analizarRotacionEquipo(partidos, formPartido.home_team_id, opts, canchas) },
+                            { nombre: eqV?.name, a: analizarRotacionEquipo(partidos, formPartido.away_team_id, opts, canchas) },
+                          ]}/>
+                        </div>
+                      )
+                    })()}
                     {formPartido.fase !== 'grupo' && (
                       <div>
                         <label style={labelStyle}>¿Se juega ida y vuelta?</label>
@@ -5082,7 +5232,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                 </div>
                               </div>
                               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {!esJugado && <button onClick={() => { const { fecha, hora } = playedAtToLocal(p.played_at); setFormEditPartido({played_at:fecha,hora,location:p.location||'',matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️ Editar</button>}
+                                {!esJugado && <button onClick={() => { const { fecha, hora } = playedAtToLocal(p.played_at); setFormEditPartido({played_at:fecha,hora,location:p.location||'',cancha_id:idCanchaDePartido(p),matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️ Editar</button>}
                                 <button onClick={() => abrirPlanilla(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', fontWeight: '600', display:'flex', alignItems:'center', gap:'4px' }}>
                                   {esJugado ? '✏️ Resultado' : <><Check size={12}/> Resultado</>}
                                 </button>
@@ -5365,6 +5515,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             ⚠️ Estos equipos ya se enfrentaron {veces} {veces > 1 ? 'veces' : 'vez'} en este torneo — puedes dejarlo igual o arrastrar otro equipo
                           </div>
                         )}
+                        {!p.descanso && p.visitante && (() => {
+                          const opts = { fecha: p.fecha || configJornada.fecha, hora: p.hora || '', canchaId: p.cancha?.id }
+                          return <AvisosRotacion items={[
+                            { nombre: p.local?.name, a: analizarRotacionEquipo(partidos, p.local?.id, opts, canchas) },
+                            { nombre: p.visitante?.name, a: analizarRotacionEquipo(partidos, p.visitante?.id, opts, canchas) },
+                          ]}/>
+                        })()}
                       </div>
                       )
                     })}
@@ -6437,7 +6594,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               <div style={{ padding: '5px 10px', background: '#f8f9fa', borderTop: '1px solid #f1f3f4', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                                 {ll.matches.map((m, mi) => m.status !== 'finished' && (
                                   <button key={m.id}
-                                    onClick={e => { e.stopPropagation(); const { fecha, hora } = playedAtToLocal(m.played_at); setFormEditPartido({ played_at: fecha, hora, location: m.location || '', matchday: m.matchday || '', fase: m.fase || 'grupo' }); setEditandoPartidoForm(m) }}
+                                    onClick={e => { e.stopPropagation(); const { fecha, hora } = playedAtToLocal(m.played_at); setFormEditPartido({ played_at: fecha, hora, location: m.location || '', cancha_id: idCanchaDePartido(m), matchday: m.matchday || '', fase: m.fase || 'grupo' }); setEditandoPartidoForm(m) }}
                                     style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 9px', cursor: 'pointer', color: '#5f6368', fontSize: '.65rem' }}>
                                     ✏️ {ll.matches.length > 1 ? (mi === 0 ? 'Ida' : 'Vuelta') : 'Fecha/cancha'}
                                   </button>
