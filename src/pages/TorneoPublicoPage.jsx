@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
@@ -158,7 +158,7 @@ const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 // Misma tabla azul de siempre, pero colapsable con un encabezado — para
 // mostrar un grupo a la vez sin saturar la pantalla cuando el torneo tiene
 // varios grupos.
-function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo }) {
+function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican }) {
   const [abierto, setAbierto] = useState(defaultOpen)
   return (
     <div>
@@ -173,7 +173,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo }) {
       </button>
       {abierto && (
         <div style={{ marginTop: '8px' }}>
-          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo}/>
+          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican}/>
         </div>
       )}
     </div>
@@ -865,7 +865,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         else { t[p.away_team_id].pp++; t[p.away_team_id].pts += P.derrota }
       }
     })
-    return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    return agregarForma(Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc)), partGrupo)
   }
 
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con
@@ -935,7 +935,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                 {torneo.genero    && <span style={{ fontSize: '.8rem', background: 'rgba(255,255,255,.15)', color: '#fff', borderRadius: '20px', padding: '3px 12px' }}>{torneo.genero}</span>}
                 {torneo.categoria && <span style={{ fontSize: '.8rem', background: 'rgba(255,255,255,.15)', color: '#fff', borderRadius: '20px', padding: '3px 12px' }}>{torneo.categoria}</span>}
                 {torneo.city      && <span style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={12}/>{torneo.city}</span>}
-                {torneo.season    && <span style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={12}/>{torneo.season}</span>}
+                {torneo.season    && <span style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={12}/>{/^\d+$/.test(String(torneo.season).trim()) ? `Temporada ${String(torneo.season).trim()}` : torneo.season}</span>}
               </div>
               {ediciones.length > 1 && (
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '9px' }}>
@@ -1035,7 +1035,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           grupos.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {grupos.map(g => (
-                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo}/>
+                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0}/>
               ))}
               <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo}/>
             </div>

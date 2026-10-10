@@ -45,11 +45,26 @@ const ESTILO_TABLA = `
 }
 `
 
+// Últimos resultados del equipo (hasta 5): verde = ganó, gris = empató, rojo = perdió.
+// Se lee de izquierda (más viejo) a derecha (más reciente).
+const COLOR_FORMA = { G: '#34c47c', E: '#8a97b3', P: '#ff5a52' }
+const TEXTO_FORMA = { G: 'Ganó', E: 'Empató', P: 'Perdió' }
+function FormaReciente({ forma }) {
+  if (!forma || forma.length === 0) return null
+  return (
+    <span aria-label={'Últimos resultados: ' + forma.map(f => TEXTO_FORMA[f]).join(', ')} style={{ display: 'flex', gap: '3px', marginTop: '3px' }}>
+      {forma.map((f, i) => (
+        <span key={i} title={TEXTO_FORMA[f]} style={{ width: 13, height: 13, borderRadius: '50%', background: COLOR_FORMA[f], color: '#fff', fontSize: '.5rem', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, opacity: i === forma.length - 1 ? 1 : .85, boxShadow: i === forma.length - 1 ? '0 0 0 1.5px rgba(255,255,255,.55)' : 'none' }}>{f}</span>
+      ))}
+    </span>
+  )
+}
+
 function PuntoVivo({ size = 7 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: ROJO, display: 'inline-block', flexShrink: 0, animation: 'gmVivoPulso 1.2s ease-in-out infinite' }}/>
 }
 
-export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo }) {
+export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0 }) {
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
       {vacio}
@@ -59,6 +74,10 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
   // Si algún equipo tiene el partido EN JUEGO, la tabla ya lo está sumando
   // (provisional): se avisa arriba y la fila de cada equipo se marca en rojo.
   const hayVivo = rows.some(r => r.enVivo)
+  // Ya se jugó algo en esta tabla: recién ahí tiene sentido marcar zonas y
+  // opacar a quien todavía no ha jugado.
+  const hayJuego = rows.some(r => r.pj > 0)
+  const nZona = hayJuego && clasifican > 0 && clasifican < rows.length ? clasifican : 0
 
   return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '12px 10px 14px', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
@@ -89,14 +108,16 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
         {rows.map((row, i) => {
           const dif = (row.gf || 0) - (row.gc || 0)
           const esMio = miEquipoId && row.equipo.id === miEquipoId
+          const enZona = nZona > 0 && i < nZona
+          const sinJugar = hayJuego && row.pj === 0
           return (
             <div key={row.equipo.id} onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
               className="gm-tp-grid gm-tp-fila"
-              style={{ padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default',
+              style={{ padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default', opacity: sinJugar ? .6 : 1,
                 background: row.enVivo ? 'rgba(255,90,82,.10)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
                 border: row.enVivo ? '1px solid rgba(255,90,82,.6)' : esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
               {/* Posición */}
-              <div className="gm-tp-pos" style={{ background: '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
+              <div className="gm-tp-pos" style={{ background: enZona ? '#22b86a' : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
               {/* Equipo */}
               <div className="gm-tp-eq" style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, paddingLeft: '2px' }}>
                 <LogoCircular logo={row.equipo.logo_url} name={row.equipo.name}/>
@@ -107,6 +128,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
                       <PuntoVivo size={6}/> EN VIVO · {row.enVivo.gf}-{row.enVivo.gc}{row.enVivo.rival ? ` vs ${row.enVivo.rival}` : ''}
                     </span>
                   )}
+                  <FormaReciente forma={row.forma}/>
                 </div>
               </div>
               {/* Números */}
@@ -120,6 +142,22 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           )
         })}
       </div>
+      {(nZona > 0 || rows.some(r => r.forma && r.forma.length > 0)) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px', padding: '10px 6px 0', color: '#8fa5cf', fontSize: '.64rem', fontWeight: 700 }}>
+          {nZona > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: '#22b86a', display: 'inline-block' }}/> Clasifican los {nZona} primeros
+            </span>
+          )}
+          {rows.some(r => r.forma && r.forma.length > 0) && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ color: COLOR_FORMA.G }}>G</span>
+              <span style={{ color: COLOR_FORMA.E }}>E</span>
+              <span style={{ color: COLOR_FORMA.P }}>P</span> últimos 5 partidos
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

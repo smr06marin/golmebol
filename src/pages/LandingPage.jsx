@@ -819,13 +819,33 @@ export default function LandingPage() {
   // Torneos en juego primero (los más visitados hoy, de primero), y los ya
   // finalizados de últimos en la fila — así se ven todos pero el orden
   // premia lo que la gente está consultando en el momento.
+  // Un torneo "Por comenzar" (sin fecha jugada ni fase) NO está en juego:
+  // se separa para que la tarjeta no diga "EN JUEGO" cuando aún no arranca.
+  const esPorComenzar = t => !t.finalizado && t.estado === 'Por comenzar'
   const torneosOrdenados = useMemo(() => {
-    const enJuego = torneos.filter(t => !t.finalizado)
-      .sort((a, b) => (visitasHoy[b.id] || 0) - (visitasHoy[a.id] || 0) || b.equipos - a.equipos)
+    const masVisto = (a, b) => (visitasHoy[b.id] || 0) - (visitasHoy[a.id] || 0) || b.equipos - a.equipos
+    const idsVivo = new Set(partidosVivo.map(m => m.tournament_id))
+    const enJuego = torneos.filter(t => !t.finalizado && !esPorComenzar(t))
+      .sort((a, b) => (idsVivo.has(b.id) ? 1 : 0) - (idsVivo.has(a.id) ? 1 : 0) || masVisto(a, b))
+    const porComenzar = torneos.filter(esPorComenzar).sort(masVisto)
     const finalizados = torneos.filter(t => t.finalizado)
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-    return [...enJuego, ...finalizados]
-  }, [torneos, visitasHoy])
+    return [...enJuego, ...porComenzar, ...finalizados]
+  }, [torneos, visitasHoy, partidosVivo])
+
+  const [filtroTorneos, setFiltroTorneos] = useState('todos') // todos | juego | comenzar | finalizados
+  const conteoTorneos = useMemo(() => ({
+    todos: torneosOrdenados.length,
+    juego: torneosOrdenados.filter(t => !t.finalizado && !esPorComenzar(t)).length,
+    comenzar: torneosOrdenados.filter(esPorComenzar).length,
+    finalizados: torneosOrdenados.filter(t => t.finalizado).length,
+  }), [torneosOrdenados])
+  const torneosFiltrados = useMemo(() => {
+    if (filtroTorneos === 'juego') return torneosOrdenados.filter(t => !t.finalizado && !esPorComenzar(t))
+    if (filtroTorneos === 'comenzar') return torneosOrdenados.filter(esPorComenzar)
+    if (filtroTorneos === 'finalizados') return torneosOrdenados.filter(t => t.finalizado)
+    return torneosOrdenados
+  }, [torneosOrdenados, filtroTorneos])
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
@@ -958,9 +978,27 @@ export default function LandingPage() {
       <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 0 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', padding: '0 16px' }}>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trophy size={18} color={S.green}/> Torneos en juego
+            <Trophy size={18} color={S.green}/> Torneos
           </h2>
         </div>
+        {torneosOrdenados.length > 0 && (
+          <div className="gm-scrollx" style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 16px 14px' }}>
+            {[
+              ['todos', 'Todos'],
+              ['juego', 'En juego'],
+              ['comenzar', 'Por comenzar'],
+              ['finalizados', 'Finalizados'],
+            ].filter(([k]) => k === 'todos' || conteoTorneos[k] > 0).map(([k, txt]) => {
+              const activo = filtroTorneos === k
+              return (
+                <button key={k} onClick={() => { setFiltroTorneos(k); if (scrollerRef.current) scrollerRef.current.scrollLeft = 0 }}
+                  style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: '999px', border: `1px solid ${activo ? S.green : S.border}`, background: activo ? 'rgba(111,207,61,.15)' : 'transparent', color: activo ? S.green : S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  {txt} <span style={{ opacity: .75 }}>{conteoTorneos[k]}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
         {torneosOrdenados.length === 0 && !torneosCargados ? (
           <div style={{ display: 'flex', gap: '14px', padding: '0 16px', overflow: 'hidden' }} aria-hidden="true">
             <style>{`@keyframes gmEsqueleto { 0%,100% { opacity: .45 } 50% { opacity: .9 } }`}</style>
@@ -999,11 +1037,12 @@ export default function LandingPage() {
               onMouseLeave={terminarArrastre}
               style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity', cursor: 'grab' }}
             >
-            {torneosOrdenados.map(t => {
+            {torneosFiltrados.map(t => {
               const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
               const inicio = fmtFecha(t.created_at)
               const badge = t.finalizado ? { txt: 'FINALIZADO', bg: 'rgba(138,138,138,.18)', color: S.muted }
                 : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
+                : esPorComenzar(t) ? { txt: 'POR COMENZAR', bg: 'rgba(245,166,35,.15)', color: S.gold }
                 : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
               return (
                 <button key={t.id} className="gm-hover" {...propsPrefetchTorneo(t.id)} onClick={() => { if (arrastreRef.current.movido) return; prefetchTorneoPublico(t.id); navigate('/t/' + t.id) }} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
@@ -1018,8 +1057,8 @@ export default function LandingPage() {
                   <div style={{ fontWeight: 800, fontSize: tamNombreTorneo(t.name), textAlign: 'center', marginBottom: '10px', lineHeight: 1.25, wordBreak: 'break-word' }}>{t.name}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '8px' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
-                    {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> Inició: {inicio}</span>}
-                    {!t.finalizado && <span style={{ color: S.green, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.estado}</span>}
+                    {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> {esPorComenzar(t) ? 'Creado' : 'Inició'}: {inicio}</span>}
+                    {!t.finalizado && !esPorComenzar(t) && <span style={{ color: S.green, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.estado}</span>}
                   </div>
                   {t.finalizado && t.campeon ? (
                     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '8px' }}>
