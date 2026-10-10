@@ -46,13 +46,15 @@ join players p on p.id = r.registrado_por and p.es_arbitro_lider = true
 where m.tournament_id is not null
 on conflict do nothing;
 
--- 3) Si hay UN solo coordinador, es quien dirige todos los torneos que no están finalizados.
+-- 3) Si hay UN solo coordinador, es quien asignó los árbitros de los torneos donde ya hay árbitros asignados.
+--    (Un torneo donde nunca se asignó ningún árbitro NO se le atribuye.)
 insert into torneo_coordinadores (tournament_id, coordinador_id)
-select t.id, c.id
-from tournaments t
+select distinct m.tournament_id, c.id
+from matches m
 cross join (select id from players where es_arbitro_lider = true) c
 where (select count(*) from players where es_arbitro_lider = true) = 1
-  and coalesce(t.status, 'active') <> 'finished'
+  and m.tournament_id is not null
+  and (m.arbitro1_id is not null or m.arbitro2_id is not null or m.arbitro3_id is not null)
 on conflict do nothing;
 
 -- Revisar el resultado (opcional):

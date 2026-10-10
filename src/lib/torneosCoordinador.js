@@ -36,9 +36,9 @@ export function clasificarTorneos({ partidos = [], torneosInfo = null, misTorneo
     if (t && (t.status === 'finished' || t.archivado)) { clasif[tid] = 'cerrado'; return }
     if ((misTorneos && misTorneos.has(tid)) || inferidos.has(tid)) { clasif[tid] = 'mio'; return }
     if (!iniciados.has(tid)) { clasif[tid] = 'nuevo'; return }
-    // Sin la tabla torneo_coordinadores (migración sin correr) no se sabe qué torneos son de este coordinador:
-    // en ese caso no se oculta nada por "ajeno" para no dejarlo sin sus torneos.
-    clasif[tid] = misTorneos ? 'ajeno' : 'mio'
+    // Ya inició y nunca lo manejó → lo dirige otro. (Sin la tabla torneo_coordinadores, por correr la
+    // migración, solo cuenta lo que se deduce de los partidos; con "Yo lo dirijo" no hay problema una vez corrida.)
+    clasif[tid] = 'ajeno'
   })
   return clasif
 }
