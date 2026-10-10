@@ -7,6 +7,7 @@ import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useEstadoUI, useRestaurarScroll } from '../hooks/useEstadoUI'
+import { clasificarTorneos } from '../lib/torneosCoordinador'
 
 const inp ={ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
@@ -457,10 +458,15 @@ export default function ArbitroLiderPage() {
   const [modalRec,     setModalRec]     = useState(null)
   const [reclamosMap,  setReclamosMap]  = useState({})
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  // Qué torneos ve este coordinador (ver lib/torneosCoordinador.js)
+  const [torneosInfo, setTorneosInfo] = useState(null)   // { [id]: { status, archivado } } (null = no se pudo leer)
+  const [misTorneos,  setMisTorneos]  = useState(null)   // Set de torneos que ya manejó (null = falta correr la migración)
+  const [verAjenos,   setVerAjenos]   = useState(false)  // mostrar también los torneos en curso de otros coordinadores
   useRestaurarScroll('gm_ui_lider_scroll', !loading)
   const liderRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
   function abrirPlanilla(p) {
+    reclamarTorneo(p.tournament_id)
     setPlanillaPartido(p)
     // Copia liviana del partido para poder reabrir la planilla DE INMEDIATO
     // si el celular recarga la página, sin esperar la red — la planilla misma
@@ -535,8 +541,17 @@ export default function ArbitroLiderPage() {
       .order('played_at', { ascending: true })
     setPartidos(data||[])
     setTorneoFiltro(f => (f && !(data||[]).some(p => p.tournament_id === f)) ? '' : f) // el torneo recordado ya no tiene partidos
+    // Estado de cada torneo (activo / finalizado / archivado) y los que este coordinador ya manejó.
+    // Si algo de esto falla, no se oculta nada: mejor ver de más que quedarse sin torneos.
+    let rT = await supabase.from('tournaments').select('id, status, archivado')
+    if (rT.error) rT = await supabase.from('tournaments').select('id, status') // sin la columna archivado
+    if (!rT.error) setTorneosInfo(Object.fromEntries((rT.data||[]).map(t => [t.id, { status: t.status, archivado: !!t.archivado }])))
+    if (liderRef.current) {
+      const rC = await supabase.from('torneo_coordinadores').select('tournament_id').eq('coordinador_id', liderRef.current.id)
+      setMisTorneos(rC.error ? null : new Set((rC.data||[]).map(r => r.tournament_id)))
+    }
     // Cargar reclamos por partido
-    const { data: recs } = await supabase.from('arbitro_reclamos').select('match_id, estado, arbitro_id')
+    const { data: recs } = await supabase.from('arbitro_reclamos').select('match_id, estado, arbitro_id, registrado_por')
     const rm = {}
     ;(recs||[]).forEach(r => { if (!rm[r.match_id]) rm[r.match_id] = []; rm[r.match_id].push(r) })
     setReclamosMap(rm)
@@ -558,13 +573,35 @@ export default function ArbitroLiderPage() {
     setArbitros((data||[]).map(a=>({...a, stats:countMap[a.id]||{total:0,jugados:0}})))
   }
 
+  // Anota que este coordinador maneja el torneo (asignó árbitros, abrió una planilla, etc.).
+  // Si la tabla aún no existe (migración sin correr) no pasa nada.
+  async function reclamarTorneo(tournamentId) {
+    const yo = liderRef.current
+    if (!yo || !tournamentId) return
+    if (misTorneos && misTorneos.has(tournamentId)) return
+    const { error } = await supabase.from('torneo_coordinadores')
+      .upsert({ tournament_id: tournamentId, coordinador_id: yo.id }, { onConflict: 'tournament_id,coordinador_id', ignoreDuplicates: true })
+    if (!error) setMisTorneos(prev => new Set([...(prev || []), tournamentId]))
+    return !error
+  }
+
+  // Botón "Yo lo dirijo" de la lista de otros torneos
+  async function marcarComoMio(tournamentId, nombre) {
+    const ok = await reclamarTorneo(tournamentId)
+    if (ok) showMsgFn(`Ahora diriges ${nombre || 'este torneo'}`)
+    else showMsgFn('No se pudo marcar el torneo. Revisa tu conexión (o que la migración de coordinadores esté corrida)', 'err')
+  }
+  const torneoDePartido = matchId => partidos.find(p => p.id === matchId)?.tournament_id
+
   async function handleGuardarAsignacion(matchId, seleccion) {
     await supabase.from('matches').update(seleccion).eq('id',matchId)
+    reclamarTorneo(torneoDePartido(matchId))
     fetchPartidos()
   }
 
   async function handleToggleSinPlanillador(matchId, valor) {
     await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId)
+    reclamarTorneo(torneoDePartido(matchId))
     fetchPartidos()
   }
 
@@ -618,6 +655,7 @@ export default function ArbitroLiderPage() {
         referencia_id: rec?.id,
       })
     }
+    reclamarTorneo(partido.tournament_id)
     showMsgFn('Reclamo registrado — árbitro notificado')
     setModalRec(null)
     fetchPartidos()
@@ -625,15 +663,25 @@ export default function ArbitroLiderPage() {
 
   if (loading) return <div style={{ minHeight:'100vh',background:'#07070e',display:'flex',alignItems:'center',justifyContent:'center',color:'#00ddd0' }}>Cargando...</div>
 
-  // Filtrar por torneo
-  const partsFiltrados = torneoFiltro ? partidos.filter(p=>p.tournament_id===torneoFiltro) : partidos
+  // Solo torneos que este coordinador maneja y torneos nuevos que aún no inician
+  const clasif = clasificarTorneos({
+    partidos, torneosInfo, misTorneos, yoId: lider?.id,
+    reclamos: Object.values(reclamosMap).flat(),
+  })
+  const idsAjenos = Object.keys(clasif).filter(t => clasif[t] === 'ajeno')
+  const visible = p => { const c = clasif[p.tournament_id]; return c === 'mio' || c === 'nuevo' || (verAjenos && c === 'ajeno') }
+  const partidosVis = partidos.filter(visible)
+
+  // Filtrar por torneo (si el recordado ya no se muestra, vale "todos")
+  const filtroVigente = torneoFiltro && partidosVis.some(p => p.tournament_id === torneoFiltro) ? torneoFiltro : ''
+  const partsFiltrados = filtroVigente ? partidosVis.filter(p=>p.tournament_id===filtroVigente) : partidosVis
 
   const sinAsignar = partsFiltrados.filter(p=>p.status!=='finished'&&!p.arbitro1_id&&!p.arbitro2_id&&!p.arbitro3_id)
   const asignados  = partsFiltrados.filter(p=>p.status!=='finished'&&(p.arbitro1_id||p.arbitro2_id||p.arbitro3_id))
   const jugados    = partsFiltrados.filter(p=>p.status==='finished')
   const pendTodos  = partsFiltrados.filter(p=>p.status!=='finished')
 
-  const torneos = [...new Map(partidos.map(p=>[p.tournament_id,p.tournaments])).values()]
+  const torneos = [...new Map(partidosVis.map(p=>[p.tournament_id,p.tournaments])).values()]
 
   const tabData = {
     sin_asignar: { lista:sinAsignar, color:'#e8710a', empty:'Todos los partidos tienen árbitro asignado' },
@@ -706,15 +754,47 @@ export default function ArbitroLiderPage() {
              horizontal no responde y los torneos de más quedaban invisibles */
           <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'12px' }}>
             <button onClick={()=>setTorneoFiltro('')}
-              style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.72rem', whiteSpace:'nowrap', background:!torneoFiltro?'#1a73e8':'#111827', color:!torneoFiltro?'#fff':'#7a9ab5' }}>
-              Todos ({partidos.filter(p=> tab==='sin_asignar'?p.status!=='finished'&&!p.arbitro1_id : tab==='asignados'?p.status!=='finished'&&(p.arbitro1_id||p.arbitro2_id) : p.status==='finished').length})
+              style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.72rem', whiteSpace:'nowrap', background:!filtroVigente?'#1a73e8':'#111827', color:!filtroVigente?'#fff':'#7a9ab5' }}>
+              Todos ({partidosVis.filter(p=> tab==='sin_asignar'?p.status!=='finished'&&!p.arbitro1_id : tab==='asignados'?p.status!=='finished'&&(p.arbitro1_id||p.arbitro2_id) : p.status==='finished').length})
             </button>
             {torneos.map(t=>(
               <button key={t.id} onClick={()=>setTorneoFiltro(t.id)}
-                style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontSize:'.72rem', whiteSpace:'nowrap', background:torneoFiltro===t.id?'#1a73e8':'#111827', color:torneoFiltro===t.id?'#fff':'#7a9ab5' }}>
-                {t.name}
+                style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontSize:'.72rem', whiteSpace:'nowrap', background:filtroVigente===t.id?'#1a73e8':'#111827', color:filtroVigente===t.id?'#fff':'#7a9ab5' }}>
+                {t.name}{clasif[t.id]==='nuevo' ? ' · nuevo' : clasif[t.id]==='ajeno' ? ' · otro coord.' : ''}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Torneos ya iniciados que dirige otro coordinador: ocultos, con salida por si hace falta */}
+        {tab !== 'arbitros' && idsAjenos.length > 0 && (
+          <div style={{ marginBottom:'12px' }}>
+            <button onClick={()=>setVerAjenos(v=>!v)}
+              style={{ background:'none', border:'1px dashed #1e2d3d', borderRadius:'10px', padding:'7px 12px', color:'#7a9ab5', fontSize:'.72rem', cursor:'pointer', fontFamily:'inherit', width:'100%' }}>
+              {verAjenos
+                ? 'Ocultar los torneos que dirigen otros coordinadores'
+                : `Ver ${idsAjenos.length} torneo${idsAjenos.length === 1 ? '' : 's'} en curso que no dirijo (de otros coordinadores)`}
+            </button>
+            {verAjenos && (
+              <div style={{ marginTop:'8px', background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', overflow:'hidden' }}>
+                {idsAjenos.map(tid => {
+                  const t = partidos.find(p => p.tournament_id === tid)?.tournaments
+                  return (
+                    <div key={tid} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', borderBottom:'1px solid #1e2d3d' }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:'.8rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t?.name || 'Torneo'}</div>
+                        <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>En curso · lo dirige otro coordinador</div>
+                      </div>
+                      <button onClick={()=>marcarComoMio(tid, t?.name)}
+                        style={{ flexShrink:0, background:'rgba(249,168,37,.15)', border:'1px solid #f9a825', borderRadius:'8px', padding:'6px 12px', color:'#f9a825', fontSize:'.72rem', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
+                        👑 Yo lo dirijo
+                      </button>
+                    </div>
+                  )
+                })}
+                <div style={{ fontSize:'.64rem', color:'#4b5a6b', padding:'8px 12px', lineHeight:1.4 }}>Sus partidos ya se ven abajo. Si le das «Yo lo dirijo» pasa a ser tuyo y te sigue saliendo siempre. Si asignas árbitros o abres una planilla ahí, también pasa a ser tuyo.</div>
+              </div>
+            )}
           </div>
         )}
 
