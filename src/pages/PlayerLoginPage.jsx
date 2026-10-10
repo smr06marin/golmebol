@@ -226,12 +226,21 @@ export default function PlayerLoginPage() {
         // mismo un perfil mínimo con los datos que ya puso el organizador
         // (nombre/teléfono) y seguimos el mismo flujo de siempre (verificar
         // nombre y crear contraseña) como si fuera cualquier jugador nuevo.
-        const { data: equipoDueno } = await supabase.from('teams')
-          .select('name, representante_nombre, representante_telefono')
-          .eq('representante_cedula', cedula.trim())
-          .not('representante_nombre', 'is', null)
-          .limit(1)
-          .maybeSingle()
+        // Se busca por función (búsqueda exacta por esta cédula): la tabla de equipos ya no se puede leer
+        // en bloque desde fuera. Con la base sin migrar, se usa la consulta de antes.
+        let equipoDueno = null
+        const rDueno = await supabase.rpc('dueno_equipo_por_cedula', { p_cedula: cedula.trim() })
+        if (!rDueno.error) {
+          equipoDueno = rDueno.data || null
+        } else {
+          const { data: legacy } = await supabase.from('teams')
+            .select('name, representante_nombre, representante_telefono')
+            .eq('representante_cedula', cedula.trim())
+            .not('representante_nombre', 'is', null)
+            .limit(1)
+            .maybeSingle()
+          equipoDueno = legacy || null
+        }
         if (equipoDueno) {
           const { data: nuevo, error: errCrear } = await supabase.from('players').insert({
             name: equipoDueno.representante_nombre,

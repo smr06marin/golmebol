@@ -129,10 +129,18 @@ export default function RegistroEquipoPage() {
   useEffect(() => { fetchDatos() }, [token, tournamentId])
 
   async function fetchDatos() {
-    const [{ data: eq }, { data: tor }] = await Promise.all([
-      supabase.from('teams').select('*').eq('registro_token', token).single(),
-      supabase.from('tournaments').select('*').eq('id', tournamentId).single(),
+    // PRIVACIDAD: el equipo se pide por función (devuelve solo lo que esta pantalla usa, sin la cédula ni el
+    // teléfono del representante) y el torneo por la vista pública (sin el link/contraseña de deudores).
+    // Si la migración aún no se corrió en la base, se usa la consulta de antes.
+    const faltaAlgo = e => !!e && (e.code === '42P01' || e.code === 'PGRST205' || e.code === 'PGRST202' || /does not exist|schema cache|could not find/i.test(e.message || ''))
+    let [rEq, rTor] = await Promise.all([
+      supabase.rpc('info_registro_equipo', { p_token: token }),
+      supabase.from('tournaments_publico').select('*').eq('id', tournamentId).single(),
     ])
+    if (faltaAlgo(rEq.error))  rEq  = await supabase.from('teams').select('*').eq('registro_token', token).single()
+    if (faltaAlgo(rTor.error)) rTor = await supabase.from('tournaments').select('*').eq('id', tournamentId).single()
+    const eq = rEq.error ? null : rEq.data
+    const tor = rTor.error ? null : rTor.data
     setEquipo(eq)
     setTorneo(tor)
     if (eq) {
@@ -185,7 +193,22 @@ export default function RegistroEquipoPage() {
     // Solo el DUEÑO/representante registrado del equipo puede desactivar
     // jugadores — así, si este mismo link se lo pasan a otros jugadores del
     // equipo, ellos no pueden desactivar a nadie, solo el dueño.
-    if (equipo.representante_cedula && String(equipo.representante_cedula).trim() !== authCedula.trim()) {
+    // (La cédula del representante ya no se descarga al celular: se pregunta a la base "¿es esta cédula la suya?".
+    //  Con la base sin migrar, equipo.representante_cedula sí viene y se compara aquí como antes.)
+    let esRepresentante
+    if (equipo.representante_cedula !== undefined) {
+      esRepresentante = !equipo.representante_cedula || String(equipo.representante_cedula).trim() === authCedula.trim()
+    } else {
+      const { data: okRep, error: errRep } = await supabase.rpc('es_representante_equipo', { p_token: token, p_cedula: authCedula.trim() })
+      if (errRep) {
+        await supabaseVerify.auth.signOut()
+        setErrorDesactivar('No se pudo verificar que seas el representante del equipo. Revisa tu conexión e intenta de nuevo — no se desactivó nada.')
+        setDesactivando(false)
+        return
+      }
+      esRepresentante = okRep !== false
+    }
+    if (!esRepresentante) {
       await supabaseVerify.auth.signOut()
       setErrorDesactivar('Solo el dueño/representante del equipo puede desactivar jugadores. Si necesitas hacer este cambio, pídeselo a él.')
       setDesactivando(false)

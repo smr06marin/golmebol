@@ -50,7 +50,12 @@ export default function RegistroEscuelaPage() {
 
   async function fetchEscuela() {
     setLoading(true)
-    const { data } = await supabase.from('teams').select('*').eq('id', escuelaId).eq('tipo', 'escuela').maybeSingle()
+    // Vista pública (sin los datos privados del representante); con la base sin migrar, la tabla como antes.
+    let rEsc = await supabase.from('teams_publico').select('*').eq('id', escuelaId).eq('tipo', 'escuela').maybeSingle()
+    if (rEsc.error && (rEsc.error.code === '42P01' || rEsc.error.code === 'PGRST205' || /does not exist|schema cache|could not find/i.test(rEsc.error.message || ''))) {
+      rEsc = await supabase.from('teams').select('*').eq('id', escuelaId).eq('tipo', 'escuela').maybeSingle()
+    }
+    const data = rEsc.error ? null : rEsc.data
     if (!data) setNotFound(true)
     setEscuela(data)
     setLoading(false)
