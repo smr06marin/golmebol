@@ -29,7 +29,7 @@ async function esperarListoParaCapturar(container) {
 // Galería) o, si eso no está disponible, lo descarga como antes.
 // `opcionesCanvas` son las opciones de html2canvas propias de cada flyer
 // (scale, backgroundColor, width, height...).
-export async function descargarFlyer(container, { filename, opcionesCanvas = {}, shareTitle } = {}) {
+export async function descargarFlyer(container, { filename, opcionesCanvas = {}, shareTitle, shareText } = {}) {
   if (!container) return
   await esperarListoParaCapturar(container)
   const { default: html2canvas } = await import('html2canvas')
@@ -41,7 +41,7 @@ export async function descargarFlyer(container, { filename, opcionesCanvas = {},
     const file = new File([blob], filename, { type: 'image/png' })
     if (navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: shareTitle || filename })
+        await navigator.share({ files: [file], title: shareTitle || filename, ...(shareText ? { text: shareText } : {}) })
         return
       } catch (e) {
         // La persona cerró/canceló la hoja de compartir — no forzar además

@@ -5,6 +5,7 @@ import { cargarJugadorPublico, posicionDeJugador } from '../lib/perfilPublico'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import { cargarUniverso, puestosJugador, MIN_PJ_TASA } from '../lib/rankings'
 import { esHostPropioGolmebol } from '../lib/marcaPagina'
+import TarjetaResumenJugador from '../components/TarjetaResumenJugador'
 import {
   C, useVolver, BotonVolver, BotonCompartir, Escudo, FotoJugador, Numero, Pestanas,
   Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, ChipPuesto,
@@ -100,7 +101,10 @@ export default function JugadorPublicoPage() {
         <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px 16px 18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
             <BotonVolver onClick={volver}/>
-            <BotonCompartir titulo={jugador.name} ruta={`/j/${jugador.id}`}/>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <TarjetaResumenJugador jugador={jugador} totales={totales} puestos={puestos} equipoActual={equipoActual} posicion={posicion} arq={arq}/>
+              <BotonCompartir titulo={jugador.name} ruta={`/j/${jugador.id}`}/>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
