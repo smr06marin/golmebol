@@ -6,6 +6,8 @@ import { GiSoccerBall } from 'react-icons/gi'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
+import RankingArqueros from '../components/RankingArqueros'
+import { cargarArquerosTorneo } from '../lib/perfilPublico'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma } from '../lib/torneoTablas'
@@ -552,6 +554,16 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   const [loading,   setLoading]   = useState(true)
   const [datosListos, setDatosListos] = useState(false) // llegaron los datos; la pantalla de carga termina de llenarse y suelta
   const [tab,       setTab]       = useState('posiciones')
+  // Ranking de arqueros: se carga al abrir la pestaña Goleadores (no antes, para no frenar la tabla)
+  const [arquerosRank, setArquerosRank] = useState([])
+  useEffect(() => {
+    if (tab !== 'goleadores' || !id) return
+    let cancelado = false
+    cargarArquerosTorneo(id)
+      .then(r => { if (!cancelado) setArquerosRank(r) })
+      .catch(() => { if (!cancelado) setArquerosRank([]) })
+    return () => { cancelado = true }
+  }, [tab, id])
 
   // Partidos en vivo de ESTE torneo — antes esto solo existía en la página
   // de inicio de Golmebol (golmebol.com), así que en el dominio propio de un
@@ -1352,6 +1364,13 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
               sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
             }))}
           />
+          {arquerosRank.length > 0 && (
+            <div style={{ marginTop: '16px' }}>
+              <RankingArqueros rows={arquerosRank}
+                equipos={Object.fromEntries((equipos || []).map(e => [e.id, e]))}
+                onClickFila={r => navigate(`/j/${r.id}`)}/>
+            </div>
+          )}
           <div style={{ marginTop: '16px' }}>
             <VallaEquipos rows={vallaEquipos}/>
           </div>

@@ -7,6 +7,8 @@ import { construirDeudaTarjetas, fetchMatchesInfo } from '../lib/tarjetasDeuda'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { comprimirImagen } from '../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido'
+import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
+import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador } from '../lib/penales'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -573,6 +575,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [arbitrosReg,        setArbitrosReg]        = useState([])
   const [hayCambios,         setHayCambios]         = useState(false)
   const [showMVP,            setShowMVP]            = useState(false)
+  // Penales: eliminatoria empatada → se pregunta si se definió por penales antes de pedir el MVP.
+  const [preguntaPenales,    setPreguntaPenales]    = useState(false)
+  const [mostrarPenales,     setMostrarPenales]     = useState(false)
+  const [penalesDeclinado,   setPenalesDeclinado]   = useState(false)
+  const [tandaPenales,       setTandaPenales]       = useState(null) // { kicks, penalesLocal, penalesVisitante, ganador }
   const [mvpId,              setMvpId]              = useState('')
   const [showEspecial,       setShowEspecial]       = useState(null)
   const [logEdicion,         setLogEdicion]         = useState([]) // historial de ediciones después de cerrada
@@ -1471,7 +1478,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (arbitro3) { updatePartido.arbitro3 = arbitro3; if(arb3Obj) updatePartido.arbitro3_id = arb3Obj.id }
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
     if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
-    if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = penalesGanador }
+    if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = normalizarGanador(penalesGanador) }
     let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
     // Si la BD no tiene alguna columna opcional (falta una migración), se quita
     // esa columna y se reintenta: el RESULTADO nunca se debe quedar sin subir
@@ -1617,9 +1624,20 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       return
     }
 
+    // Detalle de cada cobro de la tanda (de aquí salen los penales atajados del
+    // arquero). Si falta la migración, el partido igual queda guardado y se avisa.
+    let avisoPenales = ''
+    if (tandaPenales?.kicks?.length && !tipoPartido) {
+      await supabase.from('partido_penales').delete().eq('match_id', partido.id)
+      const { error: errPen } = await supabase.from('partido_penales').insert(
+        filasParaGuardar(partido.id, partido.tournament_id, tandaPenales.kicks, { local: partido.home_team_id, visitante: partido.away_team_id }))
+      if (errPen) avisoPenales = '⚠️ El resultado y el marcador de penales SÍ se guardaron, pero el detalle de cada cobro NO (' + errPen.message + '). Avisa al organizador: falta ejecutar la migración de penales en Supabase.'
+    }
+
     try { localStorage.removeItem(localKey) } catch(e) {}
     setHayDatosLocales(false)
     setGuardandoDB(false)
+    if (avisoPenales) alert(avisoPenales)
     onGuardarResultado(golesLocalTotal, golesVisTotal)
     onClose()
   }
@@ -1679,6 +1697,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       setShowInforme({ motivo: 'roja', continuar: 'mvp' })
       return
     }
+    abrirMVP()
+  }
+
+  // Último paso antes del MVP: si es una eliminatoria que quedó empatada (global,
+  // si es la vuelta de una llave) y todavía no se anotaron penales, se pregunta.
+  function abrirMVP() {
+    const empate = necesitaPreguntarPenales({
+      fase: partido.fase,
+      golesLocal: golesLocal.filter(Boolean).length,
+      golesVis: golesVisitante.filter(Boolean).length,
+      globalLlave,
+    })
+    if (empate && !tandaPenales && !hubopenales && !penalesDeclinado) { setPreguntaPenales(true); return }
     setShowMVP(true)
   }
 
@@ -1747,7 +1778,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const pendiente = showInforme
     setShowInforme(null)
     if (pendiente?.continuarEspecial) await guardarEnDB(pendiente.continuarEspecial, null)
-    else if (pendiente?.continuar === 'mvp') setShowMVP(true)
+    else if (pendiente?.continuar === 'mvp') abrirMVP()
   }
 
   function formatTiempo(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}` }
@@ -2216,6 +2247,29 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <FirmaCanvas titulo={firmaModal.replace('principal-', '')} onSave={img => setFirmas(prev => ({ ...prev, [firmaModal.replace('principal-', '')]: img }))} onClose={() => setFirmaModal(null)}/>
       )}
 
+      {preguntaPenales && !mostrarPenales && (
+        <PreguntaPenales
+          nombreLocal={partido.home?.name} nombreVis={partido.away?.name}
+          marcadorTexto={`${golesLocal.filter(Boolean).length} - ${golesVisitante.filter(Boolean).length}`}
+          onSi={() => setMostrarPenales(true)}
+          onNo={() => { setPreguntaPenales(false); setPenalesDeclinado(true); setShowMVP(true) }}
+          onCerrar={() => setPreguntaPenales(false)}
+        />
+      )}
+      {preguntaPenales && mostrarPenales && (
+        <PlanillaPenales
+          nombreLocal={partido.home?.name} nombreVis={partido.away?.name}
+          jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
+          arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
+          onConfirmar={t => {
+            setTandaPenales(t); setHuboPenales(true)
+            setPenalesLocal(String(t.penalesLocal)); setPenalesVisitante(String(t.penalesVisitante))
+            setPenalesGanador(t.ganador === 'home' ? 'local' : 'visitante')
+            setMostrarPenales(false); setPreguntaPenales(false); setShowMVP(true)
+          }}
+          onCerrar={() => setMostrarPenales(false)}
+        />
+      )}
       {showMVP && (
         <ModalMVP jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante} partido={partido} mvpGuardado={mvpId} onGuardar={handleGuardarMVP} onSaltear={() => setShowMVP(false)}/>
       )}

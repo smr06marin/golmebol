@@ -13,6 +13,8 @@ import { FONDO, CIAN, formatTiempo } from './estilosRapida'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeuda'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../../lib/statsPartido'
+import PlanillaPenales, { PreguntaPenales } from '../PlanillaPenales'
+import { necesitaPreguntarPenales, filasParaGuardar } from '../../lib/penales'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -129,6 +131,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const [alertaFaltas, setAlertaFaltas] = useState(null) // { team }
   const [mostrarCierre, setMostrarCierre] = useState(false)
   const [mostrarEspecial, setMostrarEspecial] = useState(false)
+  // Penales: al guardar una eliminatoria empatada se pregunta si se definió por penales.
+  const [cierrePendiente, setCierrePendiente] = useState(null) // datos del cierre mientras se contesta
+  const [mostrarPenales, setMostrarPenales] = useState(false)
   const [guardandoDB, setGuardandoDB] = useState(false)
   const [finanzasConfig, setFinanzasConfig] = useState(null) // se guarda para poder recalcular la deuda en vivo
   const [registroSimple, setRegistroSimple] = useState(false) // torneo con registro simple (ej. internacionales): jugadores sin registro en la planilla quedan inscritos solos al guardar
@@ -1034,7 +1039,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   }
 
   // ── Guardado final ─────────────────────────────────────────────────────
-  async function guardarFinal({ informeTexto, mvpId }) {
+  async function guardarFinal({ informeTexto, mvpId }, tanda = null) {
     finalizandoRef.current = true
     setGuardandoDB(true)
     const golesLocalTotal = eventos.filter(e => e.team === 'local' && e.tipo === 'goal').length
@@ -1113,11 +1118,28 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       if (error) erroresGuardado.push('Eventos: ' + error.message)
     }
 
-    const { error: errPartido } = await supabase.from('matches').update({
+    const updateFinal = {
       home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished',
       live_state_rapida: null, live_state_rapida_updated_at: null,
-    }).eq('id', partido.id)
+    }
+    // Definido por penales: marcador y ganador ('home'/'away', como lo lee el resto de la plataforma)
+    if (tanda) {
+      updateFinal.penales_local = tanda.penalesLocal
+      updateFinal.penales_visitante = tanda.penalesVisitante
+      updateFinal.penales_ganador = tanda.ganador
+    }
+    const { error: errPartido } = await supabase.from('matches').update(updateFinal).eq('id', partido.id)
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
+
+    // Detalle de cada cobro (de aquí salen los penales atajados del arquero).
+    // Si falta la migración, el partido igual se guarda y se avisa al final.
+    let avisoPenales = ''
+    if (tanda?.kicks?.length) {
+      await supabase.from('partido_penales').delete().eq('match_id', partido.id)
+      const { error: errPen } = await supabase.from('partido_penales').insert(
+        filasParaGuardar(partido.id, partido.tournament_id, tanda.kicks, { local: partido.home_team_id, visitante: partido.away_team_id }))
+      if (errPen) avisoPenales = '⚠️ El resultado y el marcador de penales SÍ se guardaron, pero el detalle de cada cobro NO (' + errPen.message + '). Avisa al organizador: falta ejecutar la migración de penales en Supabase.'
+    }
 
     await supabase.from('partido_arqueros').delete().eq('match_id', partido.id)
     const arqRows = []
@@ -1222,8 +1244,21 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     try { localStorage.removeItem(localKey) } catch (e) {}
     setGuardandoDB(false)
     setMostrarCierre(false)
+    if (avisoPenales) alert(avisoPenales)
     onGuardarResultado && onGuardarResultado(golesLocalTotal, golesVisTotal)
     onClose && onClose()
+  }
+
+  // Antes de guardar: si es una eliminatoria empatada se pregunta si se definió por
+  // penales (y, si sí, se abre la planilla de penales). Lo demás se guarda directo.
+  function intentarFinalizar(datos) {
+    const gl = eventosLocal.filter(e => e.tipo === 'goal').length
+    const gv = eventosVis.filter(e => e.tipo === 'goal').length
+    if (necesitaPreguntarPenales({ fase: partido?.fase, golesLocal: gl, golesVis: gv, globalLlave })) {
+      setCierrePendiente(datos)
+      return
+    }
+    guardarFinal(datos)
   }
 
   // ── Guardado de partido por W o Desierto (no se jugó) ──────────────────
@@ -1388,7 +1423,25 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
         <ModalCierrePartido
           nombreLocal={nombreLocal} nombreVis={nombreVis} arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
           hayRoja={hayRoja} jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
-          guardando={guardandoDB} onFinalizar={guardarFinal} onCerrar={() => setMostrarCierre(false)}
+          guardando={guardandoDB} onFinalizar={intentarFinalizar} onCerrar={() => setMostrarCierre(false)}
+        />
+      )}
+      {cierrePendiente && !mostrarPenales && (
+        <PreguntaPenales
+          nombreLocal={nombreLocal} nombreVis={nombreVis}
+          marcadorTexto={`${eventosLocal.filter(e => e.tipo === 'goal').length} - ${eventosVis.filter(e => e.tipo === 'goal').length}`}
+          onSi={() => setMostrarPenales(true)}
+          onNo={() => { const d = cierrePendiente; setCierrePendiente(null); guardarFinal(d) }}
+          onCerrar={() => setCierrePendiente(null)}
+        />
+      )}
+      {cierrePendiente && mostrarPenales && (
+        <PlanillaPenales
+          nombreLocal={nombreLocal} nombreVis={nombreVis}
+          jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
+          arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
+          onConfirmar={tanda => { const d = cierrePendiente; setMostrarPenales(false); setCierrePendiente(null); guardarFinal(d, tanda) }}
+          onCerrar={() => setMostrarPenales(false)}
         />
       )}
       {mostrarEspecial && (

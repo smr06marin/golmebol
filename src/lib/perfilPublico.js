@@ -106,17 +106,61 @@ export async function cargarEquipoPublico(id) {
   return { equipo, totales: tot, forma, jugados, proximos, torneos, plantilla, campeonatos, subcampeonatos, terceros }
 }
 
+// ── ARQUERO ─────────────────────────────────────────────────────────────────
+// Goles que recibió el EQUIPO del jugador en ese partido (null si no se sabe).
+// Se calcula con el marcador del partido, no con goals_conceded, porque ese campo
+// solo se anota al último arquero que tapó: si hubo cambio, el primero quedaba en 0.
+export function golesContraEquipo(s) {
+  const m = s?.matches
+  if (!m || m.home_score == null || m.away_score == null || !m.home?.id) return null
+  const esLocal = s.team_id === m.home.id
+  return (esLocal ? m.away_score : m.home_score) || 0
+}
+
+// ¿Su posición registrada es portero (en cualquier modalidad)?
+export function esPortero(j) {
+  if (!j) return false
+  return [j.posicion, j.posicion_futbol5, j.posicion_futbol7, j.posicion_futbol11].some(p => /portero|arquero/i.test(String(p || '')))
+}
+
+// Datos de arquero a partir de sus filas de estadísticas. Un partido cuenta como
+// "de arquero" si ese día atajó (fue_arquero).
+// penales: filas de partido_penales donde fue el arquero (o null si la tabla no existe todavía).
+// Los goles de la tanda de penales NO entran en goles recibidos: solo las atajadas se suman aparte.
+export function calcularArquero(stats, jugador, penales) {
+  const arq = (stats || []).filter(s => s.fue_arquero)
+  const pj = arq.length
+  let recibidos = 0, arcosEnCero = 0, golesComoArquero = 0, racha = 0, rachaMax = 0
+  const cron = arq.slice().sort((a, b) => new Date(a.matches?.played_at || a.created_at || 0) - new Date(b.matches?.played_at || b.created_at || 0))
+  cron.forEach(s => {
+    recibidos += s.goals_conceded || 0
+    golesComoArquero += s.goals_scored || 0
+    if (golesContraEquipo(s) === 0) { arcosEnCero++; racha++; if (racha > rachaMax) rachaMax = racha } else racha = 0
+  })
+  const total = (stats || []).length
+  return {
+    es: esPortero(jugador) || (pj > 0 && pj * 2 >= total),
+    pj, recibidos, arcosEnCero, golesComoArquero,
+    promedio: pj > 0 ? recibidos / pj : 0,
+    pctArcoEnCero: pj > 0 ? Math.round((arcosEnCero / pj) * 100) : 0,
+    rachaMax, rachaActual: racha,
+    penalesEnfrentados: penales ? penales.length : null,
+    penalesAtajados: penales ? penales.filter(r => r.resultado === 'atajado').length : null,
+  }
+}
+
 // ── JUGADOR ─────────────────────────────────────────────────────────────────
 export async function cargarJugadorPublico(id) {
   const { data: jug, error } = await supabase.from('players_publico').select(COLS_JUGADOR).eq('id', id).maybeSingle()
   if (error) throw error
   if (!jug) return { jugador: null }
 
-  const [rStats, rLogros] = await Promise.all([
+  const [rStats, rLogros, rPen] = await Promise.all([
     supabase.from('player_match_stats')
       .select('match_id, team_id, tournament_id, goals_scored, yellow_cards, blue_cards, red_cards, team_result, fue_arquero, goals_conceded, created_at, matches(id, played_at, home_score, away_score, fase, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)), teams(id, name, logo_url), tournaments(id, name, modalidad, season)')
       .eq('player_id', id),
     supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id, tournaments(name, season)').eq('player_id', id),
+    supabase.from('partido_penales').select('match_id, resultado').eq('arquero_id', id),
   ])
 
   const stats = (rStats.data || []).slice().sort((a, b) =>
@@ -137,6 +181,11 @@ export async function cargarJugadorPublico(id) {
     const key = s.tournament_id || 'sin'
     const t = (porTorneoMap[key] = porTorneoMap[key] || { torneo: s.tournaments || null, equipo: s.teams || null, pj: 0, goles: 0, amarillas: 0, rojas: 0 })
     t.pj++; t.goles += g; t.amarillas += (s.yellow_cards || 0) + (s.blue_cards || 0); t.rojas += s.red_cards || 0
+    if (s.fue_arquero) {
+      t.arqPj = (t.arqPj || 0) + 1
+      t.arqRecibidos = (t.arqRecibidos || 0) + (s.goals_conceded || 0)
+      if (golesContraEquipo(s) === 0) t.arqCero = (t.arqCero || 0) + 1
+    }
   })
   // ¿De cuántos partidos de su equipo participó? Jugar = quedar anotado en la
   // planilla; los partidos en que estuvo en la plantilla pero no se anotó no
@@ -172,8 +221,63 @@ export async function cargarJugadorPublico(id) {
   // Equipo actual = el de su partido más reciente
   const equipoActual = stats.find(s => s.teams?.id)?.teams || null
 
-  const partidos = stats.map(s => ({ ...s, es_mvp: mvpPartidos.has(s.match_id) }))
+  const partidos = stats.map(s => ({ ...s, es_mvp: mvpPartidos.has(s.match_id), gcEquipo: golesContraEquipo(s) }))
   const campeonatos = logros.filter(l => l.tipo === 'campeon' || l.tipo === 'campeonato')
 
-  return { jugador: jug, totales: tot, porTorneo, partidos, equipoActual, campeonatos, logros }
+  // Si la tabla de penales todavía no existe (falta la migración) rPen trae error: se ignora.
+  const arquero = calcularArquero(stats, jug, rPen.error ? null : (rPen.data || []))
+
+  return { jugador: jug, totales: tot, porTorneo, partidos, equipoActual, campeonatos, logros, arquero }
+}
+
+// ── RANKING DE ARQUEROS DE UN TORNEO ────────────────────────────────────────
+// Una fila por arquero: partidos en que atajó, goles recibidos, arcos en cero y
+// penales atajados en tandas. Los nombres salen de players_publico (vista segura).
+// Devuelve [] si nadie ha atajado todavía.
+export async function cargarArquerosTorneo(tournamentId) {
+  const [rStats, rPen] = await Promise.all([
+    supabase.from('player_match_stats')
+      .select('player_id, team_id, goals_conceded, matches(home_score, away_score, home_team_id, away_team_id)')
+      .eq('tournament_id', tournamentId).eq('fue_arquero', true).limit(3000),
+    supabase.from('partido_penales').select('arquero_id, resultado').eq('tournament_id', tournamentId),
+  ])
+  if (rStats.error) throw rStats.error
+
+  const por = {}
+  ;(rStats.data || []).forEach(s => {
+    if (!s.player_id) return
+    const x = (por[s.player_id] = por[s.player_id] || { id: s.player_id, pj: 0, recibidos: 0, arcosEnCero: 0, equipos: {}, penAtajados: 0, penEnfrentados: 0 })
+    x.pj++
+    x.recibidos += s.goals_conceded || 0
+    x.equipos[s.team_id] = (x.equipos[s.team_id] || 0) + 1
+    const m = s.matches
+    if (m && m.home_score != null && m.away_score != null) {
+      const gc = (s.team_id === m.home_team_id ? m.away_score : m.home_score) || 0
+      if (gc === 0) x.arcosEnCero++
+    }
+  })
+  if (!rPen.error) {
+    ;(rPen.data || []).forEach(r => {
+      const x = r.arquero_id && por[r.arquero_id]
+      if (!x) return
+      x.penEnfrentados++
+      if (r.resultado === 'atajado') x.penAtajados++
+    })
+  }
+  const lista = Object.values(por)
+  if (lista.length === 0) return []
+
+  let hid = lista.map(x => ({ player_id: x.id }))
+  try { hid = await hydratePlayersPublico(hid, { columns: 'id, name, photo_url, photo_face_url' }) } catch { /* sin nombres: se muestran como "Arquero" */ }
+  const jugador = Object.fromEntries(hid.map(h => [h.player_id, h.players]))
+
+  return lista.map(x => {
+    const j = jugador[x.id]
+    const teamId = Object.entries(x.equipos).sort((a, b) => b[1] - a[1])[0]?.[0] || null // el equipo donde más atajó
+    return {
+      id: x.id, name: j?.name || 'Arquero', foto: j?.photo_face_url || j?.photo_url || null, teamId,
+      pj: x.pj, recibidos: x.recibidos, arcosEnCero: x.arcosEnCero, promedio: x.pj > 0 ? x.recibidos / x.pj : 0,
+      penAtajados: x.penAtajados, penEnfrentados: x.penEnfrentados,
+    }
+  })
 }

@@ -22,6 +22,7 @@ const TABS = [
 ]
 
 const META_GOLES = [10, 25, 50, 100]
+const META_ARCOS = [1, 3, 5, 10]
 
 export default function JugadorPublicoPage() {
   const { id } = useParams()
@@ -63,6 +64,10 @@ export default function JugadorPublicoPage() {
   if (!datos?.jugador) return <NoEncontrado que="este jugador"/>
 
   const { jugador, totales, porTorneo, partidos, equipoActual, campeonatos } = datos
+  // Modo arquero: si su posición es portero o atajó en la mayoría de sus partidos, el perfil
+  // muestra lo que a un arquero le importa (arcos en cero, goles recibidos, penales atajados).
+  const arq = datos.arquero?.es ? datos.arquero : null
+  const proximaMetaArco = arq ? META_ARCOS.find(m => arq.arcosEnCero < m) : null
   const posicion = posicionDeJugador(jugador, partidos[0]?.tournaments?.modalidad)
   const promedio = totales.pj > 0 ? (totales.goles / totales.pj).toFixed(2) : '0.00'
   const proximaMeta = META_GOLES.find(m => totales.goles < m)
@@ -96,10 +101,21 @@ export default function JugadorPublicoPage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '8px', marginTop: '18px' }}>
-            <Numero valor={totales.pj} etiqueta="Partidos" color="#fff"/>
-            <Numero valor={totales.goles} etiqueta="Goles" color="#fde68a"/>
-            <Numero valor={totales.amarillas} etiqueta="Amarillas" color="#fff"/>
-            <Numero valor={totales.mvp} etiqueta="MVP" color="#a7f3d0"/>
+            {arq ? (
+              <>
+                <Numero valor={arq.pj} etiqueta="Partidos 🧤" color="#fff"/>
+                <Numero valor={arq.arcosEnCero} etiqueta="Arcos en cero" color="#a7f3d0"/>
+                <Numero valor={arq.recibidos} etiqueta="Goles recibidos" color="#fff"/>
+                <Numero valor={arq.pj > 0 ? arq.promedio.toFixed(1) : '0.0'} etiqueta="Prom. recibidos" color="#fde68a"/>
+              </>
+            ) : (
+              <>
+                <Numero valor={totales.pj} etiqueta="Partidos" color="#fff"/>
+                <Numero valor={totales.goles} etiqueta="Goles" color="#fde68a"/>
+                <Numero valor={totales.amarillas} etiqueta="Amarillas" color="#fff"/>
+                <Numero valor={totales.mvp} etiqueta="MVP" color="#a7f3d0"/>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -115,17 +131,31 @@ export default function JugadorPublicoPage() {
               <>
                 <Tarjeta titulo="Rendimiento">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', textAlign: 'center' }}>
-                    {[
+                    {(arq ? [
+                      { v: `${arq.pctArcoEnCero}%`, e: 'Partidos con arco en cero' },
+                      { v: arq.rachaMax, e: 'Racha sin recibir gol' },
+                      { v: arq.penalesEnfrentados == null ? '—' : `${arq.penalesAtajados}/${arq.penalesEnfrentados}`, e: 'Penales atajados' },
+                    ] : [
                       { v: promedio, e: 'Goles por partido' },
                       { v: totales.hatTricks, e: 'Hat-tricks' },
                       { v: totales.rojas, e: 'Rojas' },
-                    ].map((x, i) => (
+                    ]).map((x, i) => (
                       <div key={x.e} style={{ padding: '14px 6px', borderLeft: i ? `1px solid ${C.soft}` : 'none' }}>
                         <div style={{ fontSize: '1.4rem', fontWeight: 800, color: C.text }}>{x.v}</div>
                         <div style={{ fontSize: '.68rem', color: C.muted, fontWeight: 600 }}>{x.e}</div>
                       </div>
                     ))}
                   </div>
+                  {arq && arq.golesComoArquero > 0 && (
+                    <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
+                      ⚽ <b style={{ color: C.text }}>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero
+                    </div>
+                  )}
+                  {arq && arq.rachaActual > 1 && (
+                    <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.win, textAlign: 'center', fontWeight: 700 }}>
+                      🧤 Racha actual: {arq.rachaActual} partidos seguidos sin recibir gol
+                    </div>
+                  )}
                   {totales.deEquipo > 0 && (
                     <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
                       Jugó <b style={{ color: C.text }}>{totales.pj} de {totales.deEquipo}</b> partidos de su equipo ({Math.round((totales.pj / totales.deEquipo) * 100)}%)
@@ -147,7 +177,7 @@ export default function JugadorPublicoPage() {
                         <div style={{ fontSize: '.72rem', color: C.muted }}>{t.equipo?.name || ''}{t.equipo?.name ? ' · ' : ''}{t.deEquipo ? `jugó ${t.pj} de ${t.deEquipo} partidos` : `${t.pj} ${t.pj === 1 ? 'partido' : 'partidos'}`}</div>
                       </div>
                       <div style={{ textAlign: 'right', fontSize: '.8rem', color: C.text2, whiteSpace: 'nowrap' }}>
-                        <b style={{ color: C.text }}>{t.goles}</b> ⚽{t.amarillas > 0 ? <span style={{ color: C.gold }}> · {t.amarillas} 🟨</span> : null}{t.rojas > 0 ? <span style={{ color: C.loss }}> · {t.rojas} 🟥</span> : null}
+                        {arq && t.arqPj ? <><b style={{ color: C.text }}>{t.arqCero || 0}</b> 🧤 en cero · {t.arqRecibidos || 0} recib.</> : <><b style={{ color: C.text }}>{t.goles}</b> ⚽</>}{t.amarillas > 0 ? <span style={{ color: C.gold }}> · {t.amarillas} 🟨</span> : null}{t.rojas > 0 ? <span style={{ color: C.loss }}> · {t.rojas} 🟥</span> : null}
                       </div>
                       <ChevronRight size={16} color={C.faint}/>
                     </div>
@@ -177,6 +207,8 @@ export default function JugadorPublicoPage() {
                       {m?.home?.name && m?.away?.name ? <>{m.home.name} <b style={{ color: C.text }}>{m.home_score ?? 0} - {m.away_score ?? 0}</b> {m.away.name}</> : (s.teams?.name || '')}
                     </div>
                     <div style={{ fontSize: '.78rem', whiteSpace: 'nowrap', color: C.text2 }}>
+                      {s.fue_arquero && s.gcEquipo === 0 && <b style={{ color: C.win }} title="Su equipo no recibió gol">🧤 arco en cero </b>}
+                      {s.fue_arquero && s.gcEquipo !== 0 && (s.goals_conceded || 0) > 0 && <span>🧤 {s.goals_conceded} recib. </span>}
                       {(s.goals_scored || 0) > 0 && <b style={{ color: C.text }}>{s.goals_scored} ⚽ </b>}
                       {(s.yellow_cards || 0) + (s.blue_cards || 0) > 0 && <span>🟨 </span>}
                       {(s.red_cards || 0) > 0 && <span>🟥 </span>}
@@ -191,6 +223,31 @@ export default function JugadorPublicoPage() {
 
         {tab === 'logros' && (
           <>
+            {arq && (
+              <Tarjeta titulo="Muro: arcos en cero">
+                <div style={{ padding: '14px 16px' }}>
+                  {META_ARCOS.map(meta => {
+                    const logrado = arq.arcosEnCero >= meta
+                    const pct = Math.min(100, Math.round((arq.arcosEnCero / meta) * 100))
+                    return (
+                      <div key={meta} style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', fontWeight: 700, color: logrado ? C.win : C.text2, marginBottom: '5px' }}>
+                          <span>{logrado ? '✅' : '🧤'} {meta} {meta === 1 ? 'arco en cero' : 'arcos en cero'}</span><span>{Math.min(arq.arcosEnCero, meta)}/{meta}</span>
+                        </div>
+                        <div style={{ height: 7, borderRadius: 4, background: C.soft, overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: logrado ? C.win : 'var(--color-primario, #1a73e8)', borderRadius: 4 }}/>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {!proximaMetaArco && <div style={{ fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>Superó todas las metas</div>}
+                  <div style={{ fontSize: '.78rem', color: C.muted, textAlign: 'center', marginTop: '6px' }}>
+                    Mejor racha sin recibir gol: <b style={{ color: C.text }}>{arq.rachaMax}</b> {arq.rachaMax === 1 ? 'partido' : 'partidos'}
+                  </div>
+                </div>
+              </Tarjeta>
+            )}
+            {!arq && (
             <Tarjeta titulo="Camino a los goles">
               <div style={{ padding: '14px 16px' }}>
                 {META_GOLES.map(meta => {
@@ -210,11 +267,14 @@ export default function JugadorPublicoPage() {
                 {!proximaMeta && <div style={{ fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>Superó todas las metas</div>}
               </div>
             </Tarjeta>
+            )}
             <Tarjeta titulo="Reconocimientos">
-              {totales.mvp === 0 && totales.hatTricks === 0 && campeonatos.length === 0
+              {totales.mvp === 0 && totales.hatTricks === 0 && campeonatos.length === 0 && !(arq && (arq.penalesAtajados > 0 || arq.golesComoArquero > 0))
                 ? <Vacio>Aún no tiene reconocimientos</Vacio>
                 : (
                   <div style={{ padding: '6px 0' }}>
+                    {arq && arq.penalesAtajados > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🧤 <b>{arq.penalesAtajados}</b> {arq.penalesAtajados === 1 ? 'penal atajado' : 'penales atajados'} en tandas</div>}
+                    {arq && arq.golesComoArquero > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⚽ <b>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero</div>}
                     {totales.mvp > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⭐ <b>{totales.mvp}</b> {totales.mvp === 1 ? 'vez' : 'veces'} jugador del partido</div>}
                     {totales.hatTricks > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🎩 <b>{totales.hatTricks}</b> {totales.hatTricks === 1 ? 'hat-trick' : 'hat-tricks'}</div>}
                     {campeonatos.map(l => (
