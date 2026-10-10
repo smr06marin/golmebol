@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { MapPin, Trophy, ChevronRight } from 'lucide-react'
 import { cargarEquipoPublico, posicionDeJugador, resultadoPara } from '../lib/perfilPublico'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
+import { cargarUniverso, puestosEquipo, MIN_PJ_TASA } from '../lib/rankings'
 import { useFavoritos } from '../lib/favoritos'
 import { esHostPropioGolmebol } from '../lib/marcaPagina'
 import BotonEstrella from '../components/BotonEstrella'
 import {
   C, useVolver, BotonVolver, BotonCompartir, Escudo, FotoJugador, ChipForma, Numero, Pestanas,
-  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, fmtHora,
+  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, fmtHora, ChipPuesto,
 } from '../components/PerfilPublicoUI'
 
 // ── Perfil PÚBLICO de un equipo (/e/:id) ────────────────────────────────────
@@ -91,6 +92,24 @@ export default function EquipoPublicoPage() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(false)
   const [tab, setTab] = useState('resumen')
+  // Puestos ("top") frente a los demás equipos: de toda la plataforma y de cada torneo.
+  const claveP = `puestos_equipo_${id}`
+  const [puestos, setPuestos] = useState(() => leerCacheRapido(claveP))
+  const hayEquipo = !!datos?.equipo
+
+  useEffect(() => {
+    let cancelado = false
+    setPuestos(leerCacheRapido(claveP))
+    if (!hayEquipo) return
+    cargarUniverso()
+      .then(u => {
+        if (cancelado) return
+        const p = puestosEquipo(u, id)
+        if (p) { setPuestos(p); guardarCacheRapido(claveP, p) }
+      })
+      .catch(() => { /* sin puestos: el perfil se ve igual */ })
+    return () => { cancelado = true }
+  }, [id, hayEquipo])
 
   useEffect(() => {
     let cancelado = false
@@ -126,6 +145,8 @@ export default function EquipoPublicoPage() {
   const { equipo, totales, forma, jugados, proximos, torneos, plantilla, campeonatos, subcampeonatos, terceros } = datos
   const titulos = campeonatos.length
   const dif = totales.gf - totales.gc
+  const PL = puestos?.plataforma || {}            // puestos entre todos los equipos
+  const PT = tid => puestos?.torneos?.[tid] || {}  // puestos en un torneo
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', paddingBottom: '70px' }}>
@@ -152,11 +173,11 @@ export default function EquipoPublicoPage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '8px', marginTop: '18px' }}>
-            <Numero valor={totales.pj} etiqueta="PJ" color="#fff"/>
-            <Numero valor={totales.g} etiqueta="G" color="#a7f3d0"/>
+            <Numero valor={totales.pj} etiqueta="PJ" color="#fff" puesto={PL.pj}/>
+            <Numero valor={totales.g} etiqueta="G" color="#a7f3d0" puesto={PL.g}/>
             <Numero valor={totales.e} etiqueta="E" color="#fff"/>
-            <Numero valor={totales.p} etiqueta="P" color="#fecaca"/>
-            <Numero valor={`${dif > 0 ? '+' : ''}${dif}`} etiqueta="DG" color="#fde68a"/>
+            <Numero valor={totales.p} etiqueta="P" color="#fecaca" puesto={PL.p}/>
+            <Numero valor={`${dif > 0 ? '+' : ''}${dif}`} etiqueta="DG" color="#fde68a" puesto={PL.dg}/>
           </div>
           {forma.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px' }}>
@@ -177,19 +198,41 @@ export default function EquipoPublicoPage() {
                 <FilaPartido p={proximo} equipoId={equipo.id} navigate={navigate}/>
               </Tarjeta>
             )}
-            <Tarjeta titulo={`Palmarés${titulos ? ` · ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` : ''}`}>
+            <Tarjeta titulo={`Palmarés${titulos ? ` · ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` : ''}`} aside={<ChipPuesto p={PL.camp}/>}>
               <Palmares campeonatos={campeonatos} subcampeonatos={subcampeonatos} terceros={terceros} navigate={navigate}/>
             </Tarjeta>
             <Tarjeta titulo="Últimos resultados" aside={jugados.length > 5 ? <button onClick={() => setTab('partidos')} style={{ border: 'none', background: 'none', color: 'var(--color-primario, #1a73e8)', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'none' }}>Ver todos</button> : null}>
               {jugados.length === 0 ? <Vacio>Aún no ha jugado partidos</Vacio> : jugados.slice(0, 5).map(p => <FilaPartido key={p.id} p={p} equipoId={equipo.id} navigate={navigate}/>)}
             </Tarjeta>
             {totales.pj > 0 && (
-              <Tarjeta titulo="Goles">
+              <Tarjeta titulo="Goles y puntos">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', textAlign: 'center' }}>
-                  <div style={{ padding: '14px' }}><div style={{ fontSize: '1.5rem', fontWeight: 800, color: C.win }}>{totales.gf}</div><div style={{ fontSize: '.7rem', color: C.muted, fontWeight: 600 }}>A favor · {(totales.gf / totales.pj).toFixed(1)} por partido</div></div>
-                  <div style={{ padding: '14px', borderLeft: `1px solid ${C.soft}` }}><div style={{ fontSize: '1.5rem', fontWeight: 800, color: C.loss }}>{totales.gc}</div><div style={{ fontSize: '.7rem', color: C.muted, fontWeight: 600 }}>En contra · {(totales.gc / totales.pj).toFixed(1)} por partido</div></div>
+                  <div style={{ padding: '14px 8px' }}>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: C.win }}>{totales.gf}</div>
+                    <div style={{ fontSize: '.7rem', color: C.muted, fontWeight: 600 }}>A favor · {(totales.gf / totales.pj).toFixed(1)} por partido</div>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '7px' }}>
+                      <ChipPuesto p={PL.gf} etiqueta="Total"/><ChipPuesto p={PL.gfpp} etiqueta="Por partido"/>
+                    </div>
+                  </div>
+                  <div style={{ padding: '14px 8px', borderLeft: `1px solid ${C.soft}` }}>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: C.loss }}>{totales.gc}</div>
+                    <div style={{ fontSize: '.7rem', color: C.muted, fontWeight: 600 }}>En contra · {(totales.gc / totales.pj).toFixed(1)} por partido</div>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '7px' }}>
+                      <ChipPuesto p={PL.gc} etiqueta="Total"/><ChipPuesto p={PL.gcpp} etiqueta="Por partido"/>
+                    </div>
+                  </div>
                 </div>
+                {PL.pts && (
+                  <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
+                    Puntos (3 por victoria, 1 por empate): <b style={{ color: C.text }}>{totales.g * 3 + totales.e}</b> <ChipPuesto p={PL.pts}/>
+                  </div>
+                )}
               </Tarjeta>
+            )}
+            {Object.keys(PL).length > 0 && (
+              <div style={{ fontSize: '.68rem', color: C.faint, lineHeight: 1.5, padding: '0 4px 16px' }}>
+                <b>Puestos:</b> en la cabecera y en goles se compara con todos los equipos de Golmebol; en cada torneo (pestaña Torneos), con los de ese torneo. En derrotas y goles en contra el #1 es quien menos tiene. Los promedios cuentan desde {MIN_PJ_TASA} partidos.
+              </div>
             )}
           </>
         )}
@@ -244,6 +287,11 @@ export default function EquipoPublicoPage() {
                   <div style={{ fontSize: '.72rem', color: C.muted }}>
                     {t.pj > 0 ? `${t.pj} PJ · ${t.g}G ${t.e}E ${t.p}P · ${t.gf}-${t.gc}` : 'Sin partidos jugados'}
                   </div>
+                  {t.pj > 0 && (
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '5px' }}>
+                      {[['pts', 'Puntos'], ['gf', 'Goles a favor'], ['gc', 'Goles en contra']].map(([k, et]) => PT(t.id)[k] ? <ChipPuesto key={k} p={PT(t.id)[k]} etiqueta={et}/> : null)}
+                    </div>
+                  )}
                 </div>
                 {campeonatos.some(l => l.tournament_id === t.id) && <Trophy size={16} color="#f9a825"/>}
                 <ChevronRight size={16} color={C.faint}/>

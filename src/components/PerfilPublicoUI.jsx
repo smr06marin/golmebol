@@ -75,11 +75,30 @@ export function ChipForma({ letra, size = 24 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: bg, color: fg, border: `1.5px solid ${fg}`, fontSize: size * 0.46 + 'px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{letra}</span>
 }
 
-export function Numero({ valor, etiqueta, color = C.text }) {
+// Chip de puesto: "#3 de 48". Oro el 1°, verde del 2° al 3°, gris el resto.
+// claro=true → versión para fondo oscuro/degradado (cabecera). etiqueta → texto antes (ej. "Goles").
+// p = { n, de } (null/undefined = no se pinta nada, así un dato sin puesto no deja un hueco raro).
+export function ChipPuesto({ p, claro = false, etiqueta }) {
+  if (!p || !p.n) return null
+  const oro = p.n === 1, top = p.n <= 3
+  const fondo = claro ? (oro ? '#fde68a' : 'rgba(255,255,255,.22)') : (oro ? '#fef3c7' : top ? '#e6f4ea' : '#f1f3f4')
+  const color = claro ? (oro ? '#6b4700' : '#fff') : (oro ? '#92400e' : top ? '#1e8e3e' : '#5f6368')
   return (
-    <div style={{ background: 'rgba(255,255,255,.14)', borderRadius: '12px', padding: '9px 6px', textAlign: 'center', minWidth: 0 }}>
+    <span title={`Puesto ${p.n} de ${p.de}`}
+      style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', background: fondo, color, borderRadius: '10px', padding: '1px 7px', fontSize: '.64rem', fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap' }}>
+      {etiqueta && <span style={{ fontWeight: 600, opacity: .85 }}>{etiqueta}</span>}
+      <span>#{p.n}</span>
+      <span style={{ fontWeight: 600, opacity: .8 }}>de {p.de}</span>
+    </span>
+  )
+}
+
+export function Numero({ valor, etiqueta, color = C.text, puesto }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,.14)', borderRadius: '12px', padding: '9px 4px', textAlign: 'center', minWidth: 0 }}>
       <div style={{ fontSize: '1.25rem', fontWeight: 800, color, lineHeight: 1 }}>{valor}</div>
       <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'rgba(255,255,255,.75)', letterSpacing: '.06em', textTransform: 'uppercase', marginTop: '4px' }}>{etiqueta}</div>
+      {puesto && <div style={{ marginTop: '5px' }}><ChipPuesto p={puesto} claro/></div>}
     </div>
   )
 }

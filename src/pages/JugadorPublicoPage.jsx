@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { cargarJugadorPublico, posicionDeJugador } from '../lib/perfilPublico'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
+import { cargarUniverso, puestosJugador, MIN_PJ_TASA } from '../lib/rankings'
 import { esHostPropioGolmebol } from '../lib/marcaPagina'
 import {
   C, useVolver, BotonVolver, BotonCompartir, Escudo, FotoJugador, Numero, Pestanas,
-  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha,
+  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, ChipPuesto,
 } from '../components/PerfilPublicoUI'
 
 // ── Perfil PÚBLICO de un jugador (/j/:id) ───────────────────────────────────
@@ -34,6 +35,25 @@ export default function JugadorPublicoPage() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(false)
   const [tab, setTab] = useState('resumen')
+  // Puestos ("top") frente a los demás jugadores: de toda la plataforma y de cada torneo.
+  // Llegan detrás del perfil (hay que comparar con todos); se guardan para pintar al instante la próxima vez.
+  const claveP = `puestos_jugador_${id}`
+  const [puestos, setPuestos] = useState(() => leerCacheRapido(claveP))
+  const hayJugador = !!datos?.jugador
+
+  useEffect(() => {
+    let cancelado = false
+    setPuestos(leerCacheRapido(claveP))
+    if (!hayJugador) return
+    cargarUniverso()
+      .then(u => {
+        if (cancelado) return
+        const p = puestosJugador(u, id)
+        if (p) { setPuestos(p); guardarCacheRapido(claveP, p) }
+      })
+      .catch(() => { /* sin puestos: el perfil se ve igual */ })
+    return () => { cancelado = true }
+  }, [id, hayJugador])
 
   useEffect(() => {
     let cancelado = false
@@ -71,6 +91,8 @@ export default function JugadorPublicoPage() {
   const posicion = posicionDeJugador(jugador, partidos[0]?.tournaments?.modalidad)
   const promedio = totales.pj > 0 ? (totales.goles / totales.pj).toFixed(2) : '0.00'
   const proximaMeta = META_GOLES.find(m => totales.goles < m)
+  const PL = puestos?.plataforma || {}            // puestos en toda la plataforma
+  const PT = tid => puestos?.torneos?.[tid] || {}  // puestos en un torneo
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', paddingBottom: '70px' }}>
@@ -103,17 +125,17 @@ export default function JugadorPublicoPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '8px', marginTop: '18px' }}>
             {arq ? (
               <>
-                <Numero valor={arq.pj} etiqueta="Partidos 🧤" color="#fff"/>
-                <Numero valor={arq.arcosEnCero} etiqueta="Arcos en cero" color="#a7f3d0"/>
-                <Numero valor={arq.recibidos} etiqueta="Goles recibidos" color="#fff"/>
-                <Numero valor={arq.pj > 0 ? arq.promedio.toFixed(1) : '0.0'} etiqueta="Prom. recibidos" color="#fde68a"/>
+                <Numero valor={arq.pj} etiqueta="Partidos 🧤" color="#fff" puesto={PL.arqPj}/>
+                <Numero valor={arq.arcosEnCero} etiqueta="Arcos en cero" color="#a7f3d0" puesto={PL.arqCero}/>
+                <Numero valor={arq.recibidos} etiqueta="Goles recibidos" color="#fff" puesto={PL.arqRec}/>
+                <Numero valor={arq.pj > 0 ? arq.promedio.toFixed(1) : '0.0'} etiqueta="Prom. recibidos" color="#fde68a" puesto={PL.arqProm}/>
               </>
             ) : (
               <>
-                <Numero valor={totales.pj} etiqueta="Partidos" color="#fff"/>
-                <Numero valor={totales.goles} etiqueta="Goles" color="#fde68a"/>
-                <Numero valor={totales.amarillas} etiqueta="Amarillas" color="#fff"/>
-                <Numero valor={totales.mvp} etiqueta="MVP" color="#a7f3d0"/>
+                <Numero valor={totales.pj} etiqueta="Partidos" color="#fff" puesto={PL.pj}/>
+                <Numero valor={totales.goles} etiqueta="Goles" color="#fde68a" puesto={PL.goles}/>
+                <Numero valor={totales.amarillas} etiqueta="Amarillas" color="#fff" puesto={PL.amarillas}/>
+                <Numero valor={totales.mvp} etiqueta="MVP" color="#a7f3d0" puesto={PL.mvp}/>
               </>
             )}
           </div>
@@ -132,23 +154,24 @@ export default function JugadorPublicoPage() {
                 <Tarjeta titulo="Rendimiento">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', textAlign: 'center' }}>
                     {(arq ? [
-                      { v: `${arq.pctArcoEnCero}%`, e: 'Partidos con arco en cero' },
-                      { v: arq.rachaMax, e: 'Racha sin recibir gol' },
-                      { v: arq.penalesEnfrentados == null ? '—' : `${arq.penalesAtajados}/${arq.penalesEnfrentados}`, e: 'Penales atajados' },
+                      { k: 'arqPct', v: `${arq.pctArcoEnCero}%`, e: 'Partidos con arco en cero' },
+                      { k: 'racha', v: arq.rachaMax, e: 'Racha sin recibir gol' },
+                      { k: 'penAt', v: arq.penalesEnfrentados == null ? '—' : `${arq.penalesAtajados}/${arq.penalesEnfrentados}`, e: 'Penales atajados' },
                     ] : [
-                      { v: promedio, e: 'Goles por partido' },
-                      { v: totales.hatTricks, e: 'Hat-tricks' },
-                      { v: totales.rojas, e: 'Rojas' },
+                      { k: 'gpp', v: promedio, e: 'Goles por partido' },
+                      { k: 'hat', v: totales.hatTricks, e: 'Hat-tricks' },
+                      { k: 'rojas', v: totales.rojas, e: 'Rojas' },
                     ]).map((x, i) => (
                       <div key={x.e} style={{ padding: '14px 6px', borderLeft: i ? `1px solid ${C.soft}` : 'none' }}>
                         <div style={{ fontSize: '1.4rem', fontWeight: 800, color: C.text }}>{x.v}</div>
                         <div style={{ fontSize: '.68rem', color: C.muted, fontWeight: 600 }}>{x.e}</div>
+                        {PL[x.k] && <div style={{ marginTop: '6px' }}><ChipPuesto p={PL[x.k]}/></div>}
                       </div>
                     ))}
                   </div>
                   {arq && arq.golesComoArquero > 0 && (
                     <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
-                      ⚽ <b style={{ color: C.text }}>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero
+                      ⚽ <b style={{ color: C.text }}>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero <ChipPuesto p={PL.golesArq}/>
                     </div>
                   )}
                   {arq && arq.rachaActual > 1 && (
@@ -163,7 +186,7 @@ export default function JugadorPublicoPage() {
                   )}
                   {(totales.g + totales.e + totales.p) > 0 && (
                     <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
-                      Con su equipo: <b style={{ color: C.win }}>{totales.g} ganados</b> · {totales.e} empatados · <b style={{ color: C.loss }}>{totales.p} perdidos</b>
+                      Con su equipo: <b style={{ color: C.win }}>{totales.g} ganados</b> <ChipPuesto p={PL.g}/> · {totales.e} empatados · <b style={{ color: C.loss }}>{totales.p} perdidos</b>
                     </div>
                   )}
                 </Tarjeta>
@@ -175,6 +198,14 @@ export default function JugadorPublicoPage() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontWeight: 700, fontSize: '.86rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.torneo?.name || 'Torneo'}</div>
                         <div style={{ fontSize: '.72rem', color: C.muted }}>{t.equipo?.name || ''}{t.equipo?.name ? ' · ' : ''}{t.deEquipo ? `jugó ${t.pj} de ${t.deEquipo} partidos` : `${t.pj} ${t.pj === 1 ? 'partido' : 'partidos'}`}</div>
+                        {t.torneo?.id && (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '5px' }}>
+                            {(arq && t.arqPj
+                              ? [['arqCero', '🧤 En cero'], ['arqProm', 'Prom. recib.'], ['pj', 'PJ'], ['amarillas', '🟨'], ['rojas', '🟥']]
+                              : [['goles', '⚽'], ['pj', 'PJ'], ['mvp', 'MVP'], ['amarillas', '🟨'], ['rojas', '🟥']]
+                            ).map(([k, et]) => PT(t.torneo.id)[k] ? <ChipPuesto key={k} p={PT(t.torneo.id)[k]} etiqueta={et}/> : null)}
+                          </div>
+                        )}
                       </div>
                       <div style={{ textAlign: 'right', fontSize: '.8rem', color: C.text2, whiteSpace: 'nowrap' }}>
                         {arq && t.arqPj ? <><b style={{ color: C.text }}>{t.arqCero || 0}</b> 🧤 en cero · {t.arqRecibidos || 0} recib.</> : <><b style={{ color: C.text }}>{t.goles}</b> ⚽</>}{t.amarillas > 0 ? <span style={{ color: C.gold }}> · {t.amarillas} 🟨</span> : null}{t.rojas > 0 ? <span style={{ color: C.loss }}> · {t.rojas} 🟥</span> : null}
@@ -183,6 +214,12 @@ export default function JugadorPublicoPage() {
                     </div>
                   ))}
                 </Tarjeta>
+
+                {Object.keys(PL).length > 0 && (
+                  <div style={{ fontSize: '.68rem', color: C.faint, lineHeight: 1.5, padding: '0 4px 16px' }}>
+                    <b>Puestos:</b> en la cabecera y el rendimiento se compara con todos los jugadores de Golmebol; en cada torneo, con los de ese torneo. En tarjetas y goles recibidos el #1 es quien menos tiene. Los promedios cuentan desde {MIN_PJ_TASA} partidos.
+                  </div>
+                )}
               </>
             )}
           </>
@@ -224,7 +261,7 @@ export default function JugadorPublicoPage() {
         {tab === 'logros' && (
           <>
             {arq && (
-              <Tarjeta titulo="Muro: arcos en cero">
+              <Tarjeta titulo="Muro: arcos en cero" aside={<ChipPuesto p={PL.arqCero}/>}>
                 <div style={{ padding: '14px 16px' }}>
                   {META_ARCOS.map(meta => {
                     const logrado = arq.arcosEnCero >= meta
@@ -242,13 +279,13 @@ export default function JugadorPublicoPage() {
                   })}
                   {!proximaMetaArco && <div style={{ fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>Superó todas las metas</div>}
                   <div style={{ fontSize: '.78rem', color: C.muted, textAlign: 'center', marginTop: '6px' }}>
-                    Mejor racha sin recibir gol: <b style={{ color: C.text }}>{arq.rachaMax}</b> {arq.rachaMax === 1 ? 'partido' : 'partidos'}
+                    Mejor racha sin recibir gol: <b style={{ color: C.text }}>{arq.rachaMax}</b> {arq.rachaMax === 1 ? 'partido' : 'partidos'} <ChipPuesto p={PL.racha}/>
                   </div>
                 </div>
               </Tarjeta>
             )}
             {!arq && (
-            <Tarjeta titulo="Camino a los goles">
+            <Tarjeta titulo="Camino a los goles" aside={<ChipPuesto p={PL.goles} etiqueta="Goles"/>}>
               <div style={{ padding: '14px 16px' }}>
                 {META_GOLES.map(meta => {
                   const logrado = totales.goles >= meta
@@ -273,10 +310,11 @@ export default function JugadorPublicoPage() {
                 ? <Vacio>Aún no tiene reconocimientos</Vacio>
                 : (
                   <div style={{ padding: '6px 0' }}>
-                    {arq && arq.penalesAtajados > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🧤 <b>{arq.penalesAtajados}</b> {arq.penalesAtajados === 1 ? 'penal atajado' : 'penales atajados'} en tandas</div>}
-                    {arq && arq.golesComoArquero > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⚽ <b>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero</div>}
-                    {totales.mvp > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⭐ <b>{totales.mvp}</b> {totales.mvp === 1 ? 'vez' : 'veces'} jugador del partido</div>}
-                    {totales.hatTricks > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🎩 <b>{totales.hatTricks}</b> {totales.hatTricks === 1 ? 'hat-trick' : 'hat-tricks'}</div>}
+                    {arq && arq.penalesAtajados > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🧤 <b>{arq.penalesAtajados}</b> {arq.penalesAtajados === 1 ? 'penal atajado' : 'penales atajados'} en tandas <ChipPuesto p={PL.penAt}/></div>}
+                    {arq && arq.golesComoArquero > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⚽ <b>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero <ChipPuesto p={PL.golesArq}/></div>}
+                    {totales.mvp > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⭐ <b>{totales.mvp}</b> {totales.mvp === 1 ? 'vez' : 'veces'} jugador del partido <ChipPuesto p={PL.mvp}/></div>}
+                    {totales.hatTricks > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🎩 <b>{totales.hatTricks}</b> {totales.hatTricks === 1 ? 'hat-trick' : 'hat-tricks'} <ChipPuesto p={PL.hat}/></div>}
+                    {campeonatos.length > 0 && PL.camp && <div style={{ padding: '4px 16px 8px', fontSize: '.78rem', color: C.muted }}>Títulos: <b style={{ color: C.text }}>{campeonatos.length}</b> <ChipPuesto p={PL.camp}/></div>}
                     {campeonatos.map(l => (
                       <div key={l.id} role="link" tabIndex={0} onClick={() => l.tournament_id && navigate(`/t/${l.tournament_id}`)} style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2, cursor: 'pointer' }}>
                         🏆 Campeón · <b>{l.tournaments?.name || 'Torneo'}</b>
