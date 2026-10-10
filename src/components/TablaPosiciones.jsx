@@ -26,6 +26,25 @@ const ROJO = '#ff5a52'
 // Estilos del indicador EN VIVO (punto que parpadea). Una sola vez por página.
 const ESTILO_VIVO = `@keyframes gmVivoPulso { 0%,100% { opacity: 1; transform: scale(1) } 50% { opacity: .35; transform: scale(.7) } }`
 
+// Diseño por pantalla. En computador/tablet: una sola línea por equipo (como siempre).
+// En celular la línea única dejaba ~15px para el nombre ("LA M...", "EL C..."): ahora
+// cada equipo ocupa DOS líneas — arriba el nombre completo (hasta 2 renglones) y los
+// PUNTOS, abajo PJ PG PE PP GF GC +/- alineados bajo sus encabezados. No se quita ningún dato.
+const ESTILO_TABLA = `
+.gm-tp-grid { display: grid; grid-template-columns: ${COLS}; gap: 3px; align-items: center; }
+.gm-tp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  .gm-tp-grid { grid-template-columns: 30px repeat(7, minmax(0, 1fr)) 42px; column-gap: 3px; }
+  .gm-tp-fila { row-gap: 6px; }
+  .gm-tp-eqh { display: none; }
+  .gm-tp-pos { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+  .gm-tp-eq  { grid-column: 2 / 9; grid-row: 1; }
+  .gm-tp-pts { grid-column: 9; grid-row: 1; }
+  .gm-tp-n   { grid-row: 2; font-size: .8rem !important; }
+  .gm-tp-name { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.15; font-size: .84rem !important; word-break: break-word; }
+}
+`
+
 function PuntoVivo({ size = 7 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: ROJO, display: 'inline-block', flexShrink: 0, animation: 'gmVivoPulso 1.2s ease-in-out infinite' }}/>
 }
@@ -43,7 +62,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
 
   return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '12px 10px 14px', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
-      {hayVivo && <style>{ESTILO_VIVO}</style>}
+      <style>{ESTILO_TABLA + (hayVivo ? ESTILO_VIVO : '')}</style>
       {titulo && (
         <div style={{ textAlign: 'center', color: '#fff', fontWeight: 900, fontSize: '1rem', letterSpacing: '.12em', textTransform: 'uppercase', padding: '6px 0 12px' }}>
           {titulo}
@@ -58,8 +77,8 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
         </div>
       )}
       {/* Encabezados */}
-      <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: '3px', alignItems: 'center', padding: '0 4px 7px' }}>
-        <div/><div/>
+      <div className="gm-tp-grid" style={{ padding: '0 4px 7px' }}>
+        <div/><div className="gm-tp-eqh"/>
         {['PJ','PG','PE','PP','GF','GC','+/-'].map(h => (
           <div key={h} style={{ textAlign: 'center', color: '#7fb3ff', fontWeight: 800, fontSize: '.6rem', letterSpacing: '.05em' }}>{h}</div>
         ))}
@@ -72,16 +91,17 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           const esMio = miEquipoId && row.equipo.id === miEquipoId
           return (
             <div key={row.equipo.id} onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
-              style={{ display: 'grid', gridTemplateColumns: COLS, gap: '3px', alignItems: 'center', padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default',
+              className="gm-tp-grid gm-tp-fila"
+              style={{ padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default',
                 background: row.enVivo ? 'rgba(255,90,82,.10)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
                 border: row.enVivo ? '1px solid rgba(255,90,82,.6)' : esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
               {/* Posición */}
-              <div style={{ background: '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
+              <div className="gm-tp-pos" style={{ background: '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
               {/* Equipo */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, paddingLeft: '2px' }}>
+              <div className="gm-tp-eq" style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, paddingLeft: '2px' }}>
                 <LogoCircular logo={row.equipo.logo_url} name={row.equipo.name}/>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ color: '#fff', fontWeight: esMio ? 800 : 700, fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.equipo.name}</span>
+                  <span className="gm-tp-name" title={row.equipo.name} style={{ color: '#fff', fontWeight: esMio ? 800 : 700, fontSize: '.78rem' }}>{row.equipo.name}</span>
                   {row.enVivo && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '1px', color: ROJO, fontWeight: 800, fontSize: '.58rem', letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <PuntoVivo size={6}/> EN VIVO · {row.enVivo.gf}-{row.enVivo.gc}{row.enVivo.rival ? ` vs ${row.enVivo.rival}` : ''}
@@ -91,11 +111,11 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
               </div>
               {/* Números */}
               {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
-                <div key={j} style={{ textAlign: 'center', color: '#dbe6fa', fontWeight: 600, fontSize: '.75rem' }}>{v}</div>
+                <div key={j} className="gm-tp-n" style={{ textAlign: 'center', color: '#dbe6fa', fontWeight: 600, fontSize: '.75rem' }}>{v}</div>
               ))}
-              <div style={{ textAlign: 'center', color: dif > 0 ? '#7ee2a8' : dif < 0 ? '#ff9d9d' : '#dbe6fa', fontWeight: 700, fontSize: '.72rem' }}>{dif > 0 ? `+${dif}` : dif}</div>
+              <div className="gm-tp-n" style={{ textAlign: 'center', color: dif > 0 ? '#7ee2a8' : dif < 0 ? '#ff9d9d' : '#dbe6fa', fontWeight: 700, fontSize: '.72rem' }}>{dif > 0 ? `+${dif}` : dif}</div>
               {/* Puntos */}
-              <div style={{ background: row.enVivo ? ROJO : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.85rem', textAlign: 'center', padding: '4px 0' }}>{row.pts}</div>
+              <div className="gm-tp-pts" style={{ background: row.enVivo ? ROJO : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.85rem', textAlign: 'center', padding: '4px 0' }}>{row.pts}</div>
             </div>
           )
         })}
