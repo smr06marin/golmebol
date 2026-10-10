@@ -159,7 +159,7 @@ export async function cargarJugadorPublico(id) {
     supabase.from('player_match_stats')
       .select('match_id, team_id, tournament_id, goals_scored, yellow_cards, blue_cards, red_cards, team_result, fue_arquero, goals_conceded, created_at, matches(id, played_at, home_score, away_score, fase, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)), teams(id, name, logo_url), tournaments(id, name, modalidad, season)')
       .eq('player_id', id),
-    supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id, tournaments(name, season)').eq('player_id', id),
+    supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id, team_id, tournaments(name, season)').eq('player_id', id),
     supabase.from('partido_penales').select('match_id, resultado').eq('arquero_id', id),
   ])
 

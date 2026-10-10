@@ -6,6 +6,7 @@ import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import { cargarUniverso, puestosJugador, MIN_PJ_TASA } from '../lib/rankings'
 import { esHostPropioGolmebol } from '../lib/marcaPagina'
 import TarjetaResumenJugador from '../components/TarjetaResumenJugador'
+import { armarPalmares, resumenPalmares } from '../lib/palmaresJugador'
 import {
   C, useVolver, BotonVolver, BotonCompartir, Escudo, FotoJugador, Numero, Pestanas,
   Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, ChipPuesto,
@@ -93,6 +94,8 @@ export default function JugadorPublicoPage() {
   const promedio = totales.pj > 0 ? (totales.goles / totales.pj).toFixed(2) : '0.00'
   const proximaMeta = META_GOLES.find(m => totales.goles < m)
   const PL = puestos?.plataforma || {}            // puestos en toda la plataforma
+  const palmares = armarPalmares(datos.logros, partidos, porTorneo)
+  const palmaresLogros = palmares.filas.filter(f => f.tipo !== 'participo')
   const PT = tid => puestos?.torneos?.[tid] || {}  // puestos en un torneo
 
   return (
@@ -102,7 +105,7 @@ export default function JugadorPublicoPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
             <BotonVolver onClick={volver}/>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <TarjetaResumenJugador jugador={jugador} totales={totales} puestos={puestos} equipoActual={equipoActual} posicion={posicion} arq={arq}/>
+              <TarjetaResumenJugador jugador={jugador} totales={totales} puestos={puestos} equipoActual={equipoActual} posicion={posicion} arq={arq} porTorneo={porTorneo} logros={datos.logros} partidos={partidos}/>
               <BotonCompartir titulo={jugador.name} ruta={`/j/${jugador.id}`}/>
             </div>
           </div>
@@ -309,8 +312,32 @@ export default function JugadorPublicoPage() {
               </div>
             </Tarjeta>
             )}
+            {palmaresLogros.length > 0 && (
+              <Tarjeta titulo="Palmarés" aside={<span style={{ fontSize: '.7rem', color: C.muted, fontWeight: 600 }}>{resumenPalmares(palmares.conteo).slice(0, 2).join(' · ')}</span>}>
+                <div style={{ padding: '4px 0' }}>
+                  {palmaresLogros.map((f, i) => {
+                    const estiloFase = f.metal === 'oro' ? { background: '#fde68a', color: '#78350f' }
+                      : f.metal === 'plata' ? { background: '#e5e7eb', color: '#374151' }
+                      : f.metal === 'bronce' ? { background: '#fed7aa', color: '#7c2d12' }
+                      : { background: C.soft, color: C.text2 }
+                    return (
+                      <div key={`${f.torneoId}-${i}`} role="link" tabIndex={0}
+                        onClick={() => f.torneoId && navigate(`/t/${f.torneoId}`)}
+                        onKeyDown={e => { if (e.key === 'Enter' && f.torneoId) navigate(`/t/${f.torneoId}`) }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', cursor: f.torneoId ? 'pointer' : 'default' }}>
+                        <span style={{ flexShrink: 0, minWidth: 98, textAlign: 'center', fontSize: '.64rem', fontWeight: 800, letterSpacing: '.04em', borderRadius: 6, padding: '4px 8px', ...estiloFase }}>{f.etiqueta}</span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: '.86rem', fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.torneo}</div>
+                          <div style={{ fontSize: '.72rem', color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[f.equipo?.name, f.season].filter(Boolean).join(' · ')}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </Tarjeta>
+            )}
             <Tarjeta titulo="Reconocimientos">
-              {totales.mvp === 0 && totales.hatTricks === 0 && campeonatos.length === 0 && !(arq && (arq.penalesAtajados > 0 || arq.golesComoArquero > 0))
+              {totales.mvp === 0 && totales.hatTricks === 0 && campeonatos.length === 0 && palmares.premios.length === 0 && !(arq && (arq.penalesAtajados > 0 || arq.golesComoArquero > 0))
                 ? <Vacio>Aún no tiene reconocimientos</Vacio>
                 : (
                   <div style={{ padding: '6px 0' }}>
@@ -319,9 +346,9 @@ export default function JugadorPublicoPage() {
                     {totales.mvp > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⭐ <b>{totales.mvp}</b> {totales.mvp === 1 ? 'vez' : 'veces'} jugador del partido <ChipPuesto p={PL.mvp}/></div>}
                     {totales.hatTricks > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🎩 <b>{totales.hatTricks}</b> {totales.hatTricks === 1 ? 'hat-trick' : 'hat-tricks'} <ChipPuesto p={PL.hat}/></div>}
                     {campeonatos.length > 0 && PL.camp && <div style={{ padding: '4px 16px 8px', fontSize: '.78rem', color: C.muted }}>Títulos: <b style={{ color: C.text }}>{campeonatos.length}</b> <ChipPuesto p={PL.camp}/></div>}
-                    {campeonatos.map(l => (
-                      <div key={l.id} role="link" tabIndex={0} onClick={() => l.tournament_id && navigate(`/t/${l.tournament_id}`)} style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2, cursor: 'pointer' }}>
-                        🏆 Campeón · <b>{l.tournaments?.name || 'Torneo'}</b>
+                    {palmares.premios.map(p => (
+                      <div key={p.tipo} style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>
+                        🎖️ <b>{p.etiqueta.charAt(0) + p.etiqueta.slice(1).toLowerCase()}</b>{p.n > 1 ? ` ×${p.n}` : ''}{p.n === 1 && p.torneos[0] ? ` · ${p.torneos[0]}` : ''}
                       </div>
                     ))}
                   </div>
