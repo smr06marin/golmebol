@@ -76,7 +76,7 @@ as $$
 declare v teams%rowtype;
 begin
   if nullif(trim(coalesce(p_token, '')), '') is null then return null; end if;
-  select * into v from teams where registro_token = trim(p_token) limit 1;
+  select * into v from teams where registro_token::text = trim(p_token) limit 1;
   if not found then return null; end if;
   return jsonb_build_object(
     'id', v.id,
@@ -100,7 +100,7 @@ as $$
 declare v teams%rowtype;
 begin
   if nullif(trim(coalesce(p_token, '')), '') is null then return false; end if;
-  select * into v from teams where registro_token = trim(p_token) limit 1;
+  select * into v from teams where registro_token::text = trim(p_token) limit 1;
   if not found then return false; end if;
   if nullif(trim(coalesce(v.representante_cedula, '')), '') is null then return true; end if;
   return trim(v.representante_cedula) = trim(coalesce(p_cedula, ''));
