@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera } from 'lucide-react'
 import { compartirOBajarBlob } from '../lib/flyerDescarga'
 import { armarModelo, dibujarTarjeta, temaDesdeImagen } from '../lib/tarjetaCanvas'
+import { focoDeFoto } from '../lib/focoRostro'
 
 // ── "Mi tarjeta": imagen del resumen del jugador, lista para compartir ──────
 // Botón en el perfil público del jugador. Arma una imagen vertical 9:16 (1080×1920,
@@ -104,8 +105,11 @@ export default function TarjetaResumenJugador({ jugador, totales, puestos, equip
     ])
     const escudosCache = {}
     idsEq.forEach((id, i) => { if (escudosFilas[i]) escudosCache[id] = escudosFilas[i] })
+    // Dónde está la cara en la foto (para que se vean los ojos). La primera vez en un celular puede
+    // tardar un poco (baja el detector); si pasa de 4 s se usa el encuadre normal y la próxima vez ya queda guardado.
+    const foco = foto ? await Promise.race([focoDeFoto(fotoUrl, foto), new Promise(ok => setTimeout(() => ok(null), 4000))]) : null
     const canvas = document.createElement('canvas')
-    dibujarTarjeta(canvas, { ...modelo, foto, escudo, qr, tema: temaDesdeImagen(escudo), escudosCache })
+    dibujarTarjeta(canvas, { ...modelo, foto, foco, escudo, qr, tema: temaDesdeImagen(escudo), escudosCache })
     const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'))
     if (!blob) throw new Error('No se pudo crear la imagen')
     archivoRef.current = { blob, clave: claveAhora }

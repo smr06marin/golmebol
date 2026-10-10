@@ -107,16 +107,16 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
 
   const cifras = arq
     ? [
-        { valor: arq.pj, etiqueta: 'Partidos', puesto: PL.arqPj },
+        { valor: totales.pj, etiqueta: 'Partidos', puesto: PL.pj },
+        { valor: totales.g || 0, etiqueta: 'Ganados', puesto: PL.g },
         { valor: arq.arcosEnCero, etiqueta: 'Arcos en 0', puesto: PL.arqCero },
-        { valor: arq.recibidos, etiqueta: 'Goles rec.', puesto: PL.arqRec },
         { valor: arq.pj > 0 ? arq.promedio.toFixed(1) : '0.0', etiqueta: 'Prom. rec.', puesto: PL.arqProm },
       ]
     : [
         { valor: totales.pj, etiqueta: 'Partidos', puesto: PL.pj },
+        { valor: totales.g || 0, etiqueta: 'Ganados', puesto: PL.g },
         { valor: totales.goles, etiqueta: 'Goles', puesto: PL.goles },
         { valor: totales.mvp, etiqueta: 'MVP', puesto: PL.mvp },
-        { valor: totales.amarillas, etiqueta: 'Amarillas', puesto: null },
       ]
 
   const partidosResultado = (totales.g || 0) + (totales.e || 0) + (totales.p || 0)
@@ -215,14 +215,21 @@ function rectRedondo(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-function cubrir(ctx, img, x, y, w, h, py = 0.5) {
-  if (!img) return
-  const r = Math.max(w / img.width, h / img.height)
-  const dw = img.width * r, dh = img.height * r
-  ctx.save()
-  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip()
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) * py, dw, dh)
-  ctx.restore()
+// Encuadre de la foto dentro del recuadro (w×h). Con `foco` (dónde está la cara, ver focoRostro.js)
+// se acomoda para que se vean los OJOS bien arriba y la cara completa; si la cara sale chica se
+// acerca (zoom). Sin foco: encuadre de siempre (arriba de la foto).
+export function encuadreFoto(iw, ih, w, h, foco) {
+  const r0 = Math.max(w / iw, h / ih)
+  if (!foco) return { r: r0, dx: (w - iw * r0) / 2, dy: (h - ih * r0) * 0.18 }
+  const CARA_IDEAL = 104                       // ancho de la cara en la tarjeta (px de 360)
+  const rCara = CARA_IDEAL / Math.max(1, foco.ancho * iw)
+  const r = Math.min(Math.max(r0, rCara), r0 * 2.2)
+  const OJOS_Y = h * 0.33                      // dónde quedan los ojos (arriba del nombre)
+  let dx = w / 2 - foco.cx * iw * r
+  let dy = OJOS_Y - foco.ojos * ih * r
+  dx = Math.min(0, Math.max(w - iw * r, dx))
+  dy = Math.min(0, Math.max(h - ih * r, dy))
+  return { r, dx, dy }
 }
 
 function contener(ctx, img, x, y, w, h) {
@@ -293,7 +300,10 @@ export function dibujarTarjeta(canvas, d) {
   gf.addColorStop(0, rgbCss(tema.alto)); gf.addColorStop(0.6, rgbCss(tema.medio)); gf.addColorStop(1, fondo)
   ctx.fillStyle = gf
   ctx.fillRect(0, 0, W, FOTO_H)
-  if (d.foto) cubrir(ctx, d.foto, 0, 0, W, FOTO_H, 0.18)
+  if (d.foto) {
+    const e = encuadreFoto(d.foto.width, d.foto.height, W, FOTO_H, d.foco)
+    ctx.drawImage(d.foto, e.dx, e.dy, d.foto.width * e.r, d.foto.height * e.r)
+  }
   else {
     // sin foto: silueta
     ctx.fillStyle = 'rgba(255,255,255,.14)'
