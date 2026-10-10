@@ -19,6 +19,7 @@ import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverl
 import { computeTablaGeneral } from '../lib/torneoTablas'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
+import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
@@ -39,12 +40,32 @@ const S = {
   muted:   '#8a8a8a',
 }
 
-// Atributos por los que se puede filtrar el carrusel de torneos (clave del filtro → columna de `tournaments`).
-const CAMPOS_FILTRO_TORNEO = {
-  modalidad: { col: 'modalidad', titulo: 'Deporte' },
-  ciudad:    { col: 'city',      titulo: 'Ciudad' },
-  categoria: { col: 'categoria', titulo: 'Categoría' },
-  genero:    { col: 'genero',    titulo: 'Género' },
+// Filtros del carrusel de torneos, en el orden en que se muestran. Ubicación primero
+// (país → departamento → ciudad) y luego deporte, categoría y género.
+const FILTROS_TORNEO = [
+  { k: 'pais',      titulo: 'País' },
+  { k: 'dep',       titulo: 'Departamento' },
+  { k: 'mun',       titulo: 'Ciudad' },
+  { k: 'modalidad', titulo: 'Deporte' },
+  { k: 'categoria', titulo: 'Categoría' },
+  { k: 'genero',    titulo: 'Género' },
+]
+const FILTROS_VACIOS = { pais: '', dep: '', mun: '', modalidad: '', categoria: '', genero: '' }
+
+// Cada valor se compara por una CLAVE normalizada (sin tildes, mayúsculas ni signos) y se
+// muestra con su ETIQUETA: así "ARMENIA", "Armenia" y "ARMENIA-QUINDIO/ COLOMBIA" son un solo
+// "Armenia", y "2014-2015" = "2014/2015". La ubicación usa códigos DANE (ver lib/ubicaciones).
+function atributosTorneo(t) {
+  const u = ubicacionDeTorneo(t)
+  const simple = v => { const label = tituloSiGrita(v); const key = claveTexto(label); return key ? { key, label } : null }
+  return {
+    pais: { key: u.pais, label: u.paisLabel },
+    dep:  u.depKey ? { key: u.depKey, label: u.depLabel } : null,
+    mun:  u.munKey ? { key: u.munKey, label: u.munLabel, extra: u.depLabel } : null,
+    modalidad: simple(t.modalidad),
+    categoria: simple(t.categoria),
+    genero:    simple(t.genero),
+  }
 }
 
 function Escudo({ logo_url, name, size = 40, radius = 10 }) {
@@ -688,12 +709,15 @@ export default function LandingPage() {
   // por torneo activo, se cae a la consulta de antes.
   async function fetchTorneosActivosInterno() {
     const COLS_PARTIDO = 'tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
-    const [torsRes0, ttsF, msF] = await Promise.all([
-      supabase.from('tournaments').select('id, name, logo_url, modalidad, city, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'),
+    const [torsRes00, ttsF, msF] = await Promise.all([
+      supabase.from('tournaments').select('id, name, logo_url, modalidad, city, pais, departamento, municipio_codigo, vereda, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'),
       supabase.from('tournament_teams').select('tournament_id, tournaments!inner(status)').eq('tournaments.status', 'active'),
       supabase.from('matches').select(`${COLS_PARTIDO}, tournaments!inner(status)`).eq('tournaments.status', 'active'),
     ])
-    let torsRes = torsRes0
+    let torsRes = torsRes00
+    // Si todavía no se corrió migracion_ubicacion_torneos.sql faltan las columnas de ubicación: se pide sin ellas
+    // (la ciudad escrita sí llega y se interpreta sola). Y si falla también, se cae a la consulta mínima de antes.
+    if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, city, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active')
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, torneo_padre_id, edicion').eq('status', 'active')
     const torsRaw = torsRes.data || []
     let tts = ttsF.data, ms = msF.data
@@ -850,24 +874,51 @@ export default function LandingPage() {
 
   const [filtroTorneos, setFiltroTorneos] = useState('todos') // todos | juego | comenzar | finalizados
 
-  // Filtros por atributo del torneo (modalidad/deporte, ciudad, categoría, género).
-  // Las opciones salen de los propios torneos: un filtro solo aparece si hay al
-  // menos 2 valores distintos para elegir (con un solo valor no filtraría nada).
-  const [filtrosAttr, setFiltrosAttr] = useState({ modalidad: '', ciudad: '', categoria: '', genero: '' })
-  const normAttr = v => String(v || '').trim().toLowerCase()
+  // Filtros por atributo, EN CASCADA: las opciones de cada lista salen solo de los torneos que
+  // cumplen lo que ya se escogió en las demás (si eliges Quindío, en Ciudad solo salen ciudades
+  // de Quindío y en Categoría solo las que existen allá). Una lista solo se muestra si hay al
+  // menos 2 opciones para elegir (o si ya tiene algo elegido).
+  const [filtrosAttr, setFiltrosAttr] = useState(FILTROS_VACIOS)
+  const atributosPorId = useMemo(() => new Map(torneos.map(t => [t.id, atributosTorneo(t)])), [torneos])
+  const cumpleFiltros = (a, ignorar) => FILTROS_TORNEO.every(({ k }) => k === ignorar || !filtrosAttr[k] || a[k]?.key === filtrosAttr[k])
   const opcionesAttr = useMemo(() => {
     const out = {}
-    Object.entries(CAMPOS_FILTRO_TORNEO).forEach(([k, { col }]) => {
+    FILTROS_TORNEO.forEach(({ k }) => {
       const m = new Map()
-      torneos.forEach(t => { const v = normAttr(t[col]); if (v && !m.has(v)) m.set(v, String(t[col]).trim()) })
-      out[k] = [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
+      atributosPorId.forEach(a => {
+        if (!cumpleFiltros(a, k) || !a[k]) return
+        const cur = m.get(a[k].key) || { key: a[k].key, label: a[k].label, extra: a[k].extra, n: 0 }
+        cur.n++
+        m.set(a[k].key, cur)
+      })
+      const lista = [...m.values()].sort((x, y) => x.label.localeCompare(y.label, 'es'))
+      // Dos ciudades con el mismo nombre en distintos departamentos: se distinguen con el departamento.
+      const repetidas = new Set(lista.filter((o, i) => lista.findIndex(p => p.label === o.label) !== i).map(o => o.label))
+      out[k] = lista.map(o => ({ ...o, texto: `${o.label}${repetidas.has(o.label) && o.extra ? ` — ${o.extra}` : ''} (${o.n})` }))
     })
     return out
-  }, [torneos])
+  }, [atributosPorId, filtrosAttr])
   const hayFiltroAttr = Object.values(filtrosAttr).some(Boolean)
-  const torneosPorAttr = useMemo(() => torneosOrdenados.filter(t =>
-    Object.entries(CAMPOS_FILTRO_TORNEO).every(([k, { col }]) => !filtrosAttr[k] || normAttr(t[col]) === filtrosAttr[k])
-  ), [torneosOrdenados, filtrosAttr])
+
+  function cambiarFiltroAttr(k, v) {
+    setFiltrosAttr(f => {
+      const nuevo = { ...f, [k]: v }
+      if (k === 'pais') { nuevo.dep = ''; nuevo.mun = '' } // al cambiar de país/departamento se borran los niveles de abajo
+      if (k === 'dep') nuevo.mun = ''
+      return nuevo
+    })
+    if (scrollerRef.current) scrollerRef.current.scrollLeft = 0
+  }
+  // Seguridad: si una selección ya no está entre las opciones posibles, se limpia.
+  useEffect(() => {
+    const invalidos = FILTROS_TORNEO.filter(({ k }) => filtrosAttr[k] && !(opcionesAttr[k] || []).some(o => o.key === filtrosAttr[k]))
+    if (invalidos.length) setFiltrosAttr(f => { const n = { ...f }; invalidos.forEach(({ k }) => { n[k] = '' }); return n })
+  }, [opcionesAttr])
+
+  const torneosPorAttr = useMemo(() => torneosOrdenados.filter(t => {
+    const a = atributosPorId.get(t.id)
+    return !a || cumpleFiltros(a)
+  }), [torneosOrdenados, atributosPorId, filtrosAttr])
 
   const conteoTorneos = useMemo(() => ({
     todos: torneosPorAttr.length,
@@ -1036,18 +1087,18 @@ export default function LandingPage() {
             })}
           </div>
         )}
-        {torneosOrdenados.length > 0 && Object.values(opcionesAttr).some(o => o.length > 1) && (
+        {torneosOrdenados.length > 0 && FILTROS_TORNEO.some(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k]) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '0 16px 14px', alignItems: 'center' }}>
-            {Object.entries(CAMPOS_FILTRO_TORNEO).filter(([k]) => opcionesAttr[k].length > 1).map(([k, { titulo }]) => (
+            {FILTROS_TORNEO.filter(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k]).map(({ k, titulo }) => (
               <select key={k} value={filtrosAttr[k]} aria-label={`Filtrar por ${titulo.toLowerCase()}`}
-                onChange={e => { const v = e.target.value; setFiltrosAttr(f => ({ ...f, [k]: v })); if (scrollerRef.current) scrollerRef.current.scrollLeft = 0 }}
+                onChange={e => cambiarFiltroAttr(k, e.target.value)}
                 style={{ maxWidth: '100%', padding: '7px 12px', borderRadius: '999px', border: `1px solid ${filtrosAttr[k] ? S.green : S.border}`, background: filtrosAttr[k] ? 'rgba(111,207,61,.12)' : S.card, color: filtrosAttr[k] ? S.green : S.text2, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                 <option value="">{titulo}: todos</option>
-                {opcionesAttr[k].map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                {opcionesAttr[k].map(o => <option key={o.key} value={o.key}>{o.texto}</option>)}
               </select>
             ))}
             {hayFiltroAttr && (
-              <button onClick={() => setFiltrosAttr({ modalidad: '', ciudad: '', categoria: '', genero: '' })}
+              <button onClick={() => setFiltrosAttr(FILTROS_VACIOS)}
                 style={{ padding: '7px 12px', borderRadius: '999px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>
                 Limpiar filtros
               </button>
@@ -1117,6 +1168,7 @@ export default function LandingPage() {
                   <div style={{ fontWeight: 800, fontSize: tamNombreTorneo(t.name), textAlign: 'center', marginBottom: '10px', lineHeight: 1.25, wordBreak: 'break-word' }}>{t.name}</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '8px' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
+                    {textoUbicacion(t) && <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}><MapPin size={12} style={{ flexShrink: 0 }}/><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{textoUbicacion(t)}</span></span>}
                     {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> {esPorComenzar(t) ? 'Creado' : 'Inició'}: {inicio}</span>}
                     {!t.finalizado && !esPorComenzar(t) && <span style={{ color: S.green, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.estado}</span>}
                   </div>
