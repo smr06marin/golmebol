@@ -258,12 +258,19 @@ export default function EquipoHistorialPage() {
     setSubiendoFoto(jugador.id)
     const archivo = await comprimirImagen(file)
     const ext  = archivo.name.split('.').pop()
-    const path = `fotos/${jugador.id}_tarjeta.${ext}`
+    // Esta es la FOTO DE PERFIL del jugador (players.photo_face_url): la que se ve en el
+    // torneo, la planilla y las listas. Antes se guardaba en photo_url (la de la tarjeta),
+    // y como el torneo muestra primero la de perfil, el cambio del dueño nunca se veía.
+    const path = `fotos/${jugador.id}_perfil.${ext}`
     const { error } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
     if (error) { setSubiendoFoto(null); return showMsg('Error al subir la foto', 'error') }
     const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
-    await supabase.from('players').update({ photo_url: urlData.publicUrl, foto_cambiar_tarjeta: false }).eq('id', jugador.id)
-    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, photo_url: urlData.publicUrl } : j))
+    // ?v=: la ruta del archivo es la misma al reemplazar la foto, y sin esto el navegador
+    // y la red de Supabase siguen mostrando la foto vieja guardada.
+    const nuevaUrl = `${urlData.publicUrl}?v=${Date.now()}`
+    const { error: errDb } = await supabase.from('players').update({ photo_face_url: nuevaUrl, foto_cambiar_perfil: false }).eq('id', jugador.id)
+    if (errDb) { setSubiendoFoto(null); return showMsg('La foto se subió pero no se pudo guardar', 'error') }
+    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, photo_face_url: nuevaUrl } : j))
     setSubiendoFoto(null)
     showMsg('Foto actualizada ✓')
   }
@@ -679,7 +686,7 @@ export default function EquipoHistorialPage() {
                   <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
                     {jugs.map(j => (
                       <span key={j.id} style={{ fontSize:'.74rem', color:S.text2, background:S.card2, borderRadius:'20px', padding:'4px 12px', display:'flex', alignItems:'center', gap:'5px', fontWeight:'500' }}>
-                        {j.players?.photo_url && <img src={j.players.photo_url} style={{ width:'16px', height:'16px', borderRadius:'50%', objectFit:'cover' }}/>}
+                        {(j.players?.photo_face_url || j.players?.photo_url) && <img src={j.players.photo_face_url || j.players.photo_url} style={{ width:'16px', height:'16px', borderRadius:'50%', objectFit:'cover' }}/>}
                         {j.players?.name}
                       </span>
                     ))}
@@ -794,7 +801,7 @@ export default function EquipoHistorialPage() {
                           {candidatosAgregar.map(j => (
                             <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:S.card2, borderRadius:'8px', padding:'6px 10px' }}>
                               <div style={{ width:'26px', height:'26px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:S.border, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={12} color={S.muted}/>}
+                                {(j.photo_face_url || j.photo_url) ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={12} color={S.muted}/>}
                               </div>
                               <div style={{ flex:1, minWidth:0, fontSize:'.78rem', color:S.text, fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{j.name}</div>
                               <button onClick={() => handleAgregarJugadorTorneo(j, torneoSel)} disabled={agregandoJugadorId === j.id}
@@ -826,7 +833,7 @@ export default function EquipoHistorialPage() {
                           <div style={{ width:'38px', height:'38px', borderRadius:'50%', padding: tieneTag ? '2px' : '0',
                             background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
                             <div style={{ width:'100%', height:'100%', borderRadius:'50%', background:S.card2, overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', border: tieneTag ? `2px solid ${S.card}` : 'none' }}>
-                              {j.photo_url ? <img src={j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
+                              {(j.photo_face_url || j.photo_url) ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
                             </div>
                           </div>
                           {esDueno && (
