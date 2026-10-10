@@ -67,7 +67,7 @@ export default function ArbitroPerfilPage() {
     }
 
     // Compañeros árbitros
-    const { data:allArbs } = await supabase.from('players').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true')
+    const { data:allArbs } = await supabase.from('jugadores_basico').select('id,name').or('rol.eq.arbitro,es_arbitro.eq.true')
     const arbsMap = {}; (allArbs||[]).forEach(a=>{ arbsMap[a.id]=a.name })
 
     setPartidos((pts||[]).map(p=>({

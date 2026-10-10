@@ -1081,7 +1081,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     try { const stored = localStorage.getItem(arbitrosKey); if (stored) setArbitrosTorneo(JSON.parse(stored)) } catch(e) {}
     // Cargar árbitros registrados en BD y arqueros
     ;(async () => {
-      const { data } = await supabase.from('players').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
+      const { data } = await supabase.from('jugadores_basico').select('id,name,photo_face_url,photo_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
       setArbitrosReg(data || [])
       // Precargar arqueros si ya fueron guardados
       const { data: arqData } = await supabase.from('partido_arqueros').select('*').eq('match_id', partido.id).order('orden')

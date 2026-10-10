@@ -582,7 +582,7 @@ export default function PlayerApuestasPage() {
       // predijo cada quien en cada partido, no solo el total de puntos.
       supabase.from('predicciones').select('*, goleador:goleador_id(name)'),
       supabase.from('predix_duelos').select('*').order('created_at', { ascending: false }),
-      supabase.from('players').select('id, name, photo_face_url, photo_url, user_id, es_arbitro, rol').eq('activo_membresia', true).order('name'),
+      supabase.from('jugadores_basico').select('id, name, photo_face_url, photo_url, user_id, es_arbitro, rol').eq('activo_membresia', true).order('name'),
       supabase.from('predix_posturas').select('*').order('created_at', { ascending: true }),
       supabase.from('predix_posturas_cruces').select('*'),
       supabase.from('predix_suscripciones').select('*, predix_planes(nombre, tipo)'),
@@ -640,7 +640,7 @@ export default function PlayerApuestasPage() {
     // Nombre/foto de todos los jugadores — el ranking en sí se arma en vivo
     // con useMemo (construirRankingTorneo) según el modo y el torneo que se
     // elija, sin tener que volver a pedirle nada a Supabase al cambiar el filtro.
-    const { data: playersInfo } = await supabase.from('players').select('id, name, photo_face_url, photo_url')
+    const { data: playersInfo } = await supabase.from('jugadores_basico').select('id, name, photo_face_url, photo_url')
     const infoMap = {}
     ;(playersInfo || []).forEach(pl => { infoMap[pl.id] = { nombre: pl.name, foto: pl.photo_face_url || pl.photo_url } })
     setInfoJugadores(infoMap)

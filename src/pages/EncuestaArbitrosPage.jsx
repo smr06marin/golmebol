@@ -466,7 +466,7 @@ export default function EncuestaArbitrosPage() {
   }
 
   async function fetchArbitros() {
-    const { data } = await supabase.from('players').select('id,name,photo_url,photo_face_url,es_arbitro,es_arbitro_lider,rol').or('rol.eq.arbitro,es_arbitro.eq.true')
+    const { data } = await supabase.from('jugadores_basico').select('id,name,photo_url,photo_face_url,es_arbitro,es_arbitro_lider,rol').or('rol.eq.arbitro,es_arbitro.eq.true')
     setArbitros(data||[])
   }
 

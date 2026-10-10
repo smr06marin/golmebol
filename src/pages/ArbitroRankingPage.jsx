@@ -325,7 +325,7 @@ export default function ArbitroRankingPage() {
   }
 
   async function fetchArbitros() {
-    const { data } = await supabase.from('players').select('id,name,photo_url,photo_face_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
+    const { data } = await supabase.from('jugadores_basico').select('id,name,photo_url,photo_face_url').or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
     setArbitros(data||[])
   }
   async function fetchEvals() {
