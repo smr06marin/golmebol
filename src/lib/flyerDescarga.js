@@ -29,15 +29,20 @@ async function esperarListoParaCapturar(container) {
 // Galería) o, si eso no está disponible, lo descarga como antes.
 // `opcionesCanvas` son las opciones de html2canvas propias de cada flyer
 // (scale, backgroundColor, width, height...).
-export async function descargarFlyer(container, { filename, opcionesCanvas = {}, shareTitle, shareText } = {}) {
-  if (!container) return
+// Se divide en dos pasos para poder dejar la imagen YA hecha de antemano
+// (tarjeta del jugador): capturar → compartir/descargar.
+export async function capturarFlyerBlob(container, opcionesCanvas = {}) {
+  if (!container) return null
   await esperarListoParaCapturar(container)
   const { default: html2canvas } = await import('html2canvas')
   const canvas = await html2canvas(container, { useCORS: true, allowTaint: true, ...opcionesCanvas })
-
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+  return blob || null
+}
 
-  if (blob && navigator.canShare && navigator.share) {
+export async function compartirOBajarBlob(blob, { filename, shareTitle, shareText } = {}) {
+  if (!blob) return
+  if (navigator.canShare && navigator.share) {
     const file = new File([blob], filename, { type: 'image/png' })
     if (navigator.canShare({ files: [file] })) {
       try {
@@ -53,10 +58,16 @@ export async function descargarFlyer(container, { filename, opcionesCanvas = {},
 
   // Respaldo (computador, o navegadores sin Web Share de archivos): el link
   // de descarga de toda la vida.
-  const url = blob ? URL.createObjectURL(blob) : canvas.toDataURL('image/png')
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.download = filename
   a.href = url
   a.click()
-  if (blob) setTimeout(() => URL.revokeObjectURL(url), 4000)
+  setTimeout(() => URL.revokeObjectURL(url), 4000)
+}
+
+export async function descargarFlyer(container, { filename, opcionesCanvas = {}, shareTitle, shareText } = {}) {
+  if (!container) return
+  const blob = await capturarFlyerBlob(container, opcionesCanvas)
+  await compartirOBajarBlob(blob, { filename, shareTitle, shareText })
 }

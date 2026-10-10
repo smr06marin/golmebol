@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera } from 'lucide-react'
-import { descargarFlyer } from '../lib/flyerDescarga'
+import { capturarFlyerBlob, compartirOBajarBlob } from '../lib/flyerDescarga'
 
 // ── "Mi tarjeta": imagen del resumen del jugador, lista para compartir ──────
 // Un botón en el perfil público del jugador. Al tocarlo se arma una imagen
@@ -241,53 +241,111 @@ function Lienzo({ jugador, totales, puestos, equipoActual, posicion, arq, qr, te
   )
 }
 
-export default function TarjetaResumenJugador({ jugador, totales, puestos, equipoActual, posicion, arq, estilo }) {
-  const [generando, setGenerando] = useState(false)
-  const [extra, setExtra] = useState({ qr: null, tema: TEMA_GOLMEBOL })
-  const lienzoRef = useRef(null)
+// Foto/escudo como imagen incrustada (data:): así la captura no depende de la red ni de permisos CORS
+async function aDataUrl(url) {
+  if (!url) return null
+  try {
+    const r = await fetch(url, { mode: 'cors', cache: 'force-cache' })
+    if (!r.ok) return url
+    const blob = await r.blob()
+    return await new Promise(ok => { const f = new FileReader(); f.onload = () => ok(f.result); f.onerror = () => ok(url); f.readAsDataURL(blob) })
+  } catch { return url }
+}
 
-  useEffect(() => {
-    if (!generando) return
-    let cancelado = false
-    ;(async () => {
-      try {
-        const [tema, qr] = await Promise.all([
-          temaDesdeEscudo(equipoActual?.logo_url),
-          // QR hacia el perfil (si falla, la tarjeta sale igual sin QR)
-          import('qrcode')
-            .then(({ default: QRCode }) => QRCode.toDataURL(`${window.location.origin}/j/${jugador.id}`, { width: 240, margin: 1, color: { dark: '#050b1f', light: '#ffffff' } }))
-            .catch(() => null),
-        ])
-        if (cancelado) return
-        setExtra({ qr, tema })
-        // dos cuadros de espera para que el lienzo oculto ya esté pintado antes de capturarlo
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-        if (!cancelado && lienzoRef.current) {
-          await descargarFlyer(lienzoRef.current, {
-            filename: `golmebol_${(jugador.name || 'jugador').replace(/\s+/g, '_')}.png`,
-            opcionesCanvas: { scale: 3, backgroundColor: null, width: W, height: H },
-            shareTitle: `${jugador.name} · Golmebol`,
-            shareText: `Mi resumen en Golmebol 👉 ${window.location.origin}/j/${jugador.id}`,
-          })
-        }
-      } catch (e) {
-        console.error('No se pudo generar la tarjeta:', e)
-      } finally {
-        if (!cancelado) setGenerando(false)
-      }
+async function cargarFuentes() {
+  try {
+    await Promise.all([
+      document.fonts.load("600 22px 'Barlow Condensed'"),
+      document.fonts.load("800 34px 'Barlow Condensed'"),
+      document.fonts.load("900 48px 'Barlow Condensed'"),
+      document.fonts.load("900 12px 'Poppins'"),
+    ])
+  } catch { /* se usa la letra de respaldo */ }
+}
+
+// RÁPIDO: al entrar al perfil, en segundo plano, se deja TODO listo (librería de imagen, QR,
+// color del escudo, fotos) y hasta la imagen ya hecha. Al tocar "Mi tarjeta" solo se comparte.
+export default function TarjetaResumenJugador({ jugador, totales, puestos, equipoActual, posicion, arq, estilo }) {
+  const [ocupado, setOcupado] = useState(false)
+  const [assets, setAssets] = useState(null)         // { qr, tema, foto, escudo }
+  const lienzoRef = useRef(null)
+  const preparacionRef = useRef(null)                // promesa de la preparación (una sola vez)
+  const archivoRef = useRef(null)                    // { blob, clave }: imagen ya hecha
+  const generandoRef = useRef(null)                  // promesa de la imagen en curso
+
+  const fotoUrl = jugador.photo_face_url || jugador.photo_url
+  const logoUrl = equipoActual?.logo_url || null
+  // Si cambian estos datos (ej. llegan los puestos), la imagen se rehace
+  const clave = JSON.stringify([jugador.id, fotoUrl, logoUrl, equipoActual?.name, posicion, totales, arq && [arq.pj, arq.arcosEnCero, arq.recibidos], puestos?.plataforma])
+
+  function preparar() {
+    if (preparacionRef.current) return preparacionRef.current
+    preparacionRef.current = (async () => {
+      const [foto, escudo, qr] = await Promise.all([
+        aDataUrl(fotoUrl),
+        aDataUrl(logoUrl),
+        import('qrcode')
+          .then(({ default: QRCode }) => QRCode.toDataURL(`${window.location.origin}/j/${jugador.id}`, { width: 240, margin: 1, color: { dark: '#050b1f', light: '#ffffff' } }))
+          .catch(() => null),
+        import('html2canvas').catch(() => null),   // se descarga ya, no cuando se toca el botón
+        cargarFuentes(),
+      ])
+      const tema = await temaDesdeEscudo(escudo)
+      const r = { qr, tema, foto, escudo }
+      setAssets(r)
+      return r
     })()
-    return () => { cancelado = true }
-  }, [generando, jugador.id, jugador.name, equipoActual?.logo_url])
+    return preparacionRef.current
+  }
+
+  async function generarArchivo() {
+    await preparar()
+    // dos cuadros de espera: el lienzo oculto ya está pintado con los datos actuales
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    if (!lienzoRef.current) throw new Error('lienzo no listo')
+    const claveAhora = clave
+    const blob = await capturarFlyerBlob(lienzoRef.current, { scale: 3, backgroundColor: null, width: W, height: H })
+    archivoRef.current = blob ? { blob, clave: claveAhora } : null
+    return archivoRef.current
+  }
+
+  // Preparación + imagen hecha de antemano, un momento después de abrir el perfil (sin estorbar)
+  useEffect(() => {
+    archivoRef.current = null
+    const t = setTimeout(() => {
+      generandoRef.current = generarArchivo().catch(() => null).finally(() => { generandoRef.current = null })
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [clave]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function compartir() {
+    setOcupado(true)
+    try {
+      if (generandoRef.current) await generandoRef.current
+      let hecho = archivoRef.current && archivoRef.current.clave === clave ? archivoRef.current : null
+      if (!hecho) hecho = await generarArchivo()
+      await compartirOBajarBlob(hecho?.blob, {
+        filename: `golmebol_${(jugador.name || 'jugador').replace(/\s+/g, '_')}.png`,
+        shareTitle: `${jugador.name} · Golmebol`,
+        shareText: `Mi resumen en Golmebol 👉 ${window.location.origin}/j/${jugador.id}`,
+      })
+    } catch (e) {
+      console.error('No se pudo generar la tarjeta:', e)
+    } finally {
+      setOcupado(false)
+    }
+  }
 
   return (
     <>
-      <button type="button" onClick={() => setGenerando(true)} disabled={generando} aria-label="Compartir mi tarjeta como imagen"
+      <button type="button" onClick={compartir} disabled={ocupado} aria-label="Compartir mi tarjeta como imagen"
         style={estilo || { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '999px', border: '1px solid rgba(255,255,255,.35)', background: 'rgba(255,255,255,.16)', color: '#fff', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer' }}>
-        <Camera size={15}/> {generando ? 'Generando…' : 'Mi tarjeta'}
+        <Camera size={15}/> {ocupado ? 'Generando…' : 'Mi tarjeta'}
       </button>
-      {generando && (
+      {assets && (
         <div aria-hidden="true" style={{ position: 'fixed', left: '-10000px', top: 0, pointerEvents: 'none' }}>
-          <Lienzo lienzoRef={lienzoRef} jugador={jugador} totales={totales} puestos={puestos} equipoActual={equipoActual} posicion={posicion} arq={arq} qr={extra.qr} tema={extra.tema}/>
+          <Lienzo lienzoRef={lienzoRef} jugador={{ ...jugador, photo_face_url: assets.foto, photo_url: assets.foto }} totales={totales} puestos={puestos}
+            equipoActual={equipoActual ? { ...equipoActual, logo_url: assets.escudo } : equipoActual} posicion={posicion} arq={arq} qr={assets.qr} tema={assets.tema}/>
         </div>
       )}
     </>

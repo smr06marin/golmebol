@@ -12,6 +12,7 @@ import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
+import { cargarRostersTorneo, cargarRosterEquipo } from '../lib/rosterTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import { traerPartidosTorneo, derivarBracket } from '../lib/partidosPublicos'
@@ -244,6 +245,8 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Cargando jugadores...</div>
+        ) : rosterModal.error ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#d93025', fontSize: '.85rem' }}>No se pudo cargar la plantilla. Revisa tu conexión y vuelve a tocar el equipo.</div>
         ) : jugadores.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Este equipo aún no tiene jugadores registrados en este torneo</div>
         ) : (
@@ -691,20 +694,26 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     aplicarMarcaPagina({ titulo: propio ? null : torneo.name, iconoUrl: icono })
   }, [torneo?.favicon_url, torneo?.logo_url, torneo?.name])
 
+  // Plantillas de todos los equipos del torneo, ya cargadas en segundo plano:
+  // al tocar un equipo se muestran al instante. Si aún no llegaron, se pide solo ese equipo.
+  const rostersRef = useRef({ listos: false, fresco: false, porEquipo: {} })
+
   async function abrirRoster(team, stats) {
     if (!team?.id) return
+    const pre = rostersRef.current
+    // Con la copia guardada solo se usa el equipo si ya estaba en ella (un equipo nuevo se pide aparte)
+    if (pre.listos && (pre.fresco || pre.porEquipo[team.id])) {
+      setRosterModal({ team, jugadores: pre.porEquipo[team.id] || [], loading: false, stats })
+      return
+    }
     setRosterModal({ team, jugadores: [], loading: true, stats })
-    const { data } = await supabase
-      .from('tournament_player_registrations')
-      .select('player_id')
-      .eq('tournament_id', id)
-      .eq('team_id', team.id)
-      .eq('activo', true)
-    const hydrated = await hydratePlayersPublico(data || [], {
-      columns: 'id, name, photo_url, photo_face_url, es_elite, es_profesional, es_mayor_35, etiqueta_personalizada',
-    })
-    const jugadores = hydrated.map(r => r.players).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    setRosterModal({ team, jugadores, loading: false, stats })
+    try {
+      const jugadores = await cargarRosterEquipo(id, team.id)
+      setRosterModal(prev => (prev && prev.team?.id === team.id ? { team, jugadores, loading: false, stats } : prev))
+    } catch (e) {
+      console.error('No se pudo cargar la plantilla:', e)
+      setRosterModal(prev => (prev && prev.team?.id === team.id ? { team, jugadores: [], loading: false, stats, error: true } : prev))
+    }
   }
 
   // Al tocar un equipo en la tabla de posiciones: misma ficha de siempre
@@ -744,6 +753,8 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   useEffect(() => {
     let cancelado = false
     const claveCache = `torneo_${id}`
+    const copiaRoster = leerCacheRapido(`roster_${id}`)
+    rostersRef.current = copiaRoster ? { listos: true, fresco: false, porEquipo: copiaRoster } : { listos: false, fresco: false, porEquipo: {} }
 
     // Otras ediciones de este mismo torneo (para el botón "Edición N") y el
     // campeón vigente: si esta edición todavía no tiene uno propio (recién
@@ -831,6 +842,12 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       if (t) {
         cargarEdiciones(t).catch(() => {})
         cargarPorteros(r.base.equipos, t).catch(() => {})
+        // Plantillas de todos los equipos: así abrir un equipo desde la tabla es instantáneo
+        cargarRostersTorneo(id).then(porEquipo => {
+          if (cancelado) return
+          rostersRef.current = { listos: true, fresco: true, porEquipo }
+          guardarCacheRapido(`roster_${id}`, porEquipo)
+        }).catch(e => console.error('No se pudieron precargar las plantillas:', e))
       } else {
         setEdiciones([]); setCampeonVigente(null); setPorteros([])
       }
