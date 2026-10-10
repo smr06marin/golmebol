@@ -95,8 +95,8 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
     ? [
         { valor: totales.pj, etiqueta: 'Partidos', puesto: PL.pj },
         { valor: totales.g || 0, etiqueta: 'Ganados', puesto: PL.g },
-        { valor: arq.arcosEnCero, etiqueta: 'Arcos en 0', puesto: PL.arqCero },
-        { valor: arq.pj > 0 ? arq.promedio.toFixed(1) : '0.0', etiqueta: 'Prom. rec.', puesto: PL.arqProm },
+        { valor: arq.arcosEnCero, etiqueta: 'Arcos en 0', puesto: PL.arqCero, unidad: 'arqueros' },
+        { valor: arq.pj > 0 ? arq.promedio.toFixed(1) : '0.0', etiqueta: 'Prom. rec.', puesto: PL.arqProm, unidad: 'arqueros' },
       ]
     : [
         { valor: totales.pj, etiqueta: 'Partidos', puesto: PL.pj },
@@ -120,8 +120,8 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
         { valor: partidosResultado > 0 ? `${Math.round(((totales.g || 0) / partidosResultado) * 100)}%` : '—', etiqueta: '% victorias' },
       ]
 
-  // Reconocimientos: SOLO lo que no se ve ya en las cifras de arriba (el MVP, los goles y los puestos
-  // frente a los demás ya están arriba). Cada uno dice qué es, cuántas veces y dónde.
+  // Reconocimientos: SOLO de torneos finalizados y SOLO lo que no se ve ya en las cifras de arriba
+  // (el MVP, los goles y los puestos frente a los demás ya están arriba). Cada uno dice qué es, cuántas veces y dónde.
   const PRIMERO = new Set(['goleador', 'valla_menos_vencida', 'mejor_jugador', 'mejor_arquero', 'mejor_portero'])
   const TITULOS = {
     goleador:            ['GOLEADOR DEL TORNEO', 'GOLEADOR DE TORNEOS'],
@@ -138,14 +138,13 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
     const detalle = p.torneos.length === 0 ? '' : p.n === 1 || p.torneos.length === 1 ? p.torneos[0] : `${p.torneos[0]} +${p.n - 1}`
     reconocimientos.push({ valor: PRIMERO.has(p.tipo) && p.n === 1 ? '1°' : String(p.n), titulo: p.n === 1 ? uno : varios, detalle })
   })
-  if (arq && arq.penalesAtajados > 0) reconocimientos.push({ valor: String(arq.penalesAtajados), titulo: arq.penalesAtajados === 1 ? 'PENAL ATAJADO' : 'PENALES ATAJADOS', detalle: 'en tandas de penales' })
-  if (arq && arq.golesComoArquero > 0) reconocimientos.push({ valor: String(arq.golesComoArquero), titulo: arq.golesComoArquero === 1 ? 'GOL COMO ARQUERO' : 'GOLES COMO ARQUERO', detalle: 'jugando de portero' })
-  // Podio dentro de un torneo (1.º a 3.º) cuando el torneo no tiene su premio guardado todavía
+  // Podio dentro de un torneo FINALIZADO (1.º a 3.º) cuando todavía no tiene guardado su premio
+  const cerrados = new Set(palmares.cerrados)
   const claveT = arq ? 'arqCero' : 'goles'
   const deTorneo = []
   torneosJugados.forEach(t => {
     const p = (puestos?.torneos?.[t.torneo.id] || {})[claveT]
-    if (!p || p.n > 3 || p.de < 6) return
+    if (!cerrados.has(t.torneo.id) || !p || p.n > 3 || p.de < 6) return
     if (claveT === 'goles' && p.n === 1 && goleadorEn.has(t.torneo.id)) return   // ya sale como "Goleador del torneo"
     deTorneo.push({ n: p.n, valor: `${p.n}°`, titulo: arq ? 'EN ARCOS EN 0' : 'EN GOLES DEL TORNEO', detalle: String(t.torneo.name || '') })
   })
@@ -259,13 +258,13 @@ function etiquetaFase(ctx, f, x, cy, w, tema, h = 17, tamMax = 8) {
     ctx.fillStyle = g
     rectRedondo(ctx, x, y, w, h, 4); ctx.fill()
   } else {
-    const participo = f.tipo === 'participo' || f.tipo === 'fase_grupos'
+    const participo = f.tipo === 'fase_grupos'
     ctx.lineWidth = 1
     ctx.strokeStyle = participo ? 'rgba(255,255,255,.34)' : rgbCss(tema.acento, .9)
     rectRedondo(ctx, x + .5, y + .5, w - 1, h - 1, 4); ctx.stroke()
   }
   ctx.restore()
-  const color = f.metal ? METALES[f.metal].texto : (f.tipo === 'participo' || f.tipo === 'fase_grupos') ? 'rgba(255,255,255,.7)' : rgbCss(tema.acento)
+  const color = f.metal ? METALES[f.metal].texto : f.tipo === 'fase_grupos' ? 'rgba(255,255,255,.7)' : rgbCss(tema.acento)
   let tam = tamMax
   fuente(ctx, 900, tam, TEXTO)
   while (tam > 5 && anchoTexto(ctx, f.etiqueta, 0.6) > w - 8) { tam -= 0.5; fuente(ctx, 900, tam, TEXTO) }
@@ -353,10 +352,18 @@ export function dibujarTarjeta(canvas, d) {
     if (i > 0) { ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(20 + celda * i, 258, 1, 66) }
     texto(ctx, String(c.valor), cx, 286, { peso: 800, tam: 34, fam: TITULAR, align: 'center' })
     texto(ctx, c.etiqueta.toUpperCase(), cx, 299, { peso: 800, tam: 7.5, color: rgbCss(tema.suave), align: 'center', esp: 0.9 })
+    // Posición en el ranking: "12° RANKING" + "de 1641 jugadores" (así se entiende que es un puesto)
     const p = puestoVisible(c.puesto)
     if (p) {
-      texto(ctx, `#${p.n}`, cx, 316, { peso: 800, tam: 15, fam: TITULAR, color: acento, align: 'center' })
-      texto(ctx, `de ${p.de}`, cx, 326, { peso: 700, tam: 7, color: rgbCss(tema.suave, 0.8), align: 'center' })
+      const num = `${p.n}°`
+      fuente(ctx, 800, 15, TITULAR)
+      const wn = ctx.measureText(num).width
+      fuente(ctx, 800, 6.5, TEXTO)
+      const wr = anchoTexto(ctx, 'RANKING', 0.6)
+      const x0 = cx - (wn + 3 + wr) / 2
+      texto(ctx, num, x0, 316, { peso: 800, tam: 15, fam: TITULAR, color: acento })
+      texto(ctx, 'RANKING', x0 + wn + 3, 316, { peso: 800, tam: 6.5, color: rgbCss(tema.suave), esp: 0.6 })
+      texto(ctx, `de ${p.de} ${c.unidad || 'jugadores'}`, cx, 326, { peso: 700, tam: 6.8, color: rgbCss(tema.suave, 0.85), align: 'center', maxW: celda - 2 })
     }
   })
 
@@ -420,9 +427,8 @@ export function dibujarTarjeta(canvas, d) {
     if (y0 + usado + altoDe(i) > finFilas) break
     usado += altoDe(i); caben++
   }
-  // "Participó" es lo de menos: si no entra, se omite sin avisar. Si se corta un logro de verdad,
-  // se deja una línea para "+ N más en mi perfil".
-  const importantes = filas.filter(f => f.tipo !== 'participo').length
+  // Si no entran todas las filas, se deja una línea para "+ N más en mi perfil".
+  const importantes = filas.length
   let hayMas = false
   if (caben < importantes) {
     hayMas = true
@@ -437,7 +443,7 @@ export function dibujarTarjeta(canvas, d) {
       const cy = yy + 12
       etiquetaFase(ctx, f, 20, cy, PILL, tema, 17, 8)
       const xt = 20 + PILL + 9
-      const sub = [f.season ? String(f.season) : '', f.tipo === 'participo' && f.pj ? `${f.pj} PJ · ${f.goles || 0} G` : ''].filter(Boolean).join(' · ')
+      const sub = f.season ? String(f.season) : ''
       texto(ctx, f.torneo, xt, cy - 1.5, { peso: 800, tam: 14, fam: TITULAR, maxW: W - 20 - xt })
       let xs = xt
       const esc = f.equipo?.id && d.escudosCache?.[f.equipo.id]

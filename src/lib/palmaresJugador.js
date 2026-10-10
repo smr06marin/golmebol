@@ -28,8 +28,6 @@ const PREMIOS = {
   fair_play:     'JUEGO LIMPIO',
 }
 
-const RANGO_PARTICIPO = 8
-
 // logros: filas de tournament_logros del jugador (con tournaments(name, season) y, si hay, team_id)
 // partidos: filas de player_match_stats del jugador (con teams y tournament_id) — para saber con qué equipo
 // porTorneo: resumen por torneo del perfil (para listar los torneos donde jugó y no tienen fase guardada)
@@ -62,17 +60,8 @@ export function armarPalmares(logros = [], partidos = [], porTorneo = []) {
   })
   const filas = Object.values(mejorPorClave)
 
-  // Torneos donde jugó pero no tienen fase guardada (torneo en juego o sin cerrar)
-  const conFase = new Set(filas.map(f => f.torneoId).filter(Boolean))
-  ;(porTorneo || []).forEach(t => {
-    const id = t?.torneo?.id
-    if (!id || conFase.has(id)) return
-    filas.push({
-      tipo: 'participo', etiqueta: 'PARTICIPÓ', rango: RANGO_PARTICIPO, metal: null,
-      torneoId: id, torneo: t.torneo.name || 'Torneo', season: t.torneo.season || '', equipo: t.equipo || null,
-      pj: t.pj, goles: t.goles,
-    })
-  })
+  // OJO: solo cuentan los torneos YA FINALIZADOS (los que tienen su fase guardada al cerrar el torneo).
+  // Un torneo en juego no aparece en el palmarés ni en los reconocimientos.
 
   filas.sort((a, b) => a.rango - b.rango
     || String(b.season || '').localeCompare(String(a.season || ''))
@@ -100,7 +89,7 @@ export function armarPalmares(logros = [], partidos = [], porTorneo = []) {
   const posPremio = t => { const i = ORDEN_PREMIOS.indexOf(t); return i < 0 ? 99 : i }
   const premios = Object.values(premiosMap).sort((a, b) => posPremio(a.tipo) - posPremio(b.tipo))
 
-  return { filas, conteo, premios }
+  return { filas, conteo, premios, cerrados: [...new Set(filas.map(f => f.torneoId).filter(Boolean))] }
 }
 
 // "2 títulos · 1 subcampeonato · 3 semifinales" (solo lo que tiene)
