@@ -109,11 +109,11 @@ export default function PantallaCargaTorneo({ tipo = 'torneo', id, identidad, li
     <div role="status" aria-label="Cargando" style={{ position: 'relative', minHeight: '100vh', background: '#07070e', color: '#fff', fontFamily: 'system-ui', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 22, padding: 24, boxSizing: 'border-box' }}>
       <div style={{ position: 'relative', width: TAM, height: TAM, opacity: mostrarLogo ? 1 : 0, transition: 'opacity .25s' }}>
         {/* base: blanco y negro */}
-        <div style={{ position: 'absolute', inset: 0, filter: 'grayscale(1) brightness(.62) contrast(1.05)', opacity: .9 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, filter: 'grayscale(1) brightness(.62) contrast(1.05)', opacity: .9 }}>
           {mostrarLogo && contenido('#8a8f98')}
         </div>
         {/* encima: a color, revelado de abajo hacia arriba */}
-        <div ref={colorRef} style={{ position: 'absolute', inset: 0, clipPath: 'inset(100% 0 0 0)', willChange: 'clip-path', filter: 'drop-shadow(0 0 18px rgba(0,221,208,.28))' }}>
+        <div ref={colorRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, clipPath: 'inset(100% 0 0 0)', willChange: 'clip-path', filter: 'drop-shadow(0 0 18px rgba(0,221,208,.28))' }}>
           {mostrarLogo && contenido('#00ddd0')}
         </div>
       </div>
