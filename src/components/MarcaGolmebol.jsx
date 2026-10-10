@@ -1,22 +1,30 @@
-// Marca de agua de la plataforma: un sello pequeño y fijo con el logo y el
-// texto "Creada por GOLMEBOL", visible en todas las páginas. Se monta una
-// sola vez en App.jsx (igual que SessionGuard) para que aparezca en toda la
-// app sin tener que tocar cada página. pointer-events: none para que nunca
-// tape un botón real, aunque visualmente quede encima de algo.
+import { useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { Home } from 'lucide-react'
+
+// Sello de la plataforma: logo + "Creada por GOLMEBOL", visible en todas las
+// páginas. Se monta una sola vez en App.jsx (igual que SessionGuard).
 //
-// Va arriba a la derecha (no abajo): casi todas las pantallas de la app
-// tienen algo fijo pegado abajo (la barra inferior del admin/celular, el
-// botón circular de cerrar la planilla, las barras de navegación del sitio
-// público, el carrito de escenarios, etc.) — abajo a la derecha SIEMPRE
-// terminaba tapando alguno de esos elementos. Arriba a la derecha está
-// libre en prácticamente todas las pantallas (el sidebar del admin es
-// izquierdo, y no hay barras superiores fijas de ese lado).
+// DOS versiones:
 //
-// EXCEPCIÓN: en las planillas (PlanillaRapida/PlanillaPartido) arriba SÍ
-// está ocupado por el header (Jugadores/Suspender/W/Finalizar) y tapaba
-// esos botones. Esas pantallas le agregan la clase "gm-planilla-abierta"
-// a <body> mientras están montadas — la regla en index.css baja la marca
-// abajo solo en ese caso, sin tocar el resto de la app.
+//  1) MarcaEstatica — el sello de siempre, arriba a la derecha y con
+//     pointer-events: none para que nunca tape un botón real (en las planillas
+//     se baja abajo, ver index.css). Se usa en toda la app y en los dominios
+//     propios de organizadores (ahí se monta fuera del router, por eso no usa
+//     hooks de router).
+//
+//  2) MarcaConInicio — en las páginas PÚBLICAS de golmebol.com (tabla de un
+//     torneo, vitrina de organizador, escenarios, reservas, historial de equipo,
+//     records) el MISMO sello pasa a ser el botón "ir al inicio de Golmebol":
+//       · lleva una casita al lado del texto para que se entienda que es un botón;
+//       · va abajo a la izquierda, no arriba a la derecha: arriba chocaba con las
+//         pestañas de la tabla (Posiciones/Resultados/Próximos/Calendario) y, siendo
+//         clicable, las habría bloqueado;
+//       · los primeros segundos se ve completo y después se encoge a logo + casita
+//         (más transparente) para no estorbar;
+//       · queda por debajo de modales/ventanas (z-index menor) y respeta la barra
+//         de gestos de abajo (safe-area; en Android vale 0).
+//     En la portada ("/") y en el resto de rutas se ve el sello estático.
 const imgStyle = { height: '13px', width: 'auto', display: 'block', opacity: 0.95 }
 
 const textStyle = {
@@ -27,11 +35,67 @@ const textStyle = {
   whiteSpace: 'nowrap',
 }
 
-export default function MarcaGolmebol() {
+const RUTAS_PUBLICAS = [/^\/t\/[^/]+/, /^\/organizador\/[^/]+/, /^\/reservar\/[^/]+/, /^\/pedir\/[^/]+/, /^\/equipos\/[^/]+/, /^\/escenarios\/?$/, /^\/records\/?$/]
+
+function MarcaEstatica() {
   return (
     <div className="gm-marca-golmebol" aria-hidden="true">
       <img src="/marca/watermark-logo.png" alt="" style={imgStyle} />
       <span style={textStyle}>Creada por GOLMEBOL</span>
     </div>
   )
+}
+
+function MarcaConInicio() {
+  const { pathname } = useLocation()
+  const esPublica = RUTAS_PUBLICAS.some(r => r.test(pathname))
+  const [expandido, setExpandido] = useState(true)
+
+  // En cada página pública se ve completo unos segundos y luego se encoge.
+  useEffect(() => {
+    setExpandido(true)
+    const t = setTimeout(() => setExpandido(false), 5000)
+    return () => clearTimeout(t)
+  }, [pathname])
+
+  if (!esPublica) return <MarcaEstatica />
+
+  return (
+    <Link
+      to="/"
+      aria-label="Ir al inicio de Golmebol"
+      title="Ir al inicio de Golmebol"
+      style={{
+        position: 'fixed',
+        left: '10px',
+        bottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
+        zIndex: 450,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        height: '34px',
+        padding: expandido ? '0 11px 0 9px' : '0 10px 0 9px',
+        borderRadius: '999px',
+        background: 'rgba(10, 10, 16, .78)',
+        border: '1px solid rgba(255,255,255,.16)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        boxShadow: '0 2px 8px rgba(0,0,0,.3)',
+        textDecoration: 'none',
+        opacity: expandido ? 1 : 0.68,
+        transition: 'opacity .3s ease',
+        WebkitTapHighlightColor: 'transparent',
+        userSelect: 'none',
+      }}
+    >
+      <img src="/marca/watermark-logo.png" alt="" style={{ ...imgStyle, height: '15px' }} />
+      {expandido && <span style={textStyle}>Creada por GOLMEBOL</span>}
+      <span style={{ width: '1px', height: '15px', background: 'rgba(255,255,255,.25)', flexShrink: 0 }} />
+      <Home size={15} strokeWidth={2.4} color="#fff" style={{ flexShrink: 0 }} />
+    </Link>
+  )
+}
+
+export default function MarcaGolmebol({ conInicio = false }) {
+  return conInicio ? <MarcaConInicio /> : <MarcaEstatica />
 }

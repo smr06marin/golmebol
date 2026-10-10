@@ -6,7 +6,6 @@ import { useVersionCheck } from './hooks/useVersionCheck'
 import GlobalToast from './components/GlobalToast'
 import SessionGuard from './components/SessionGuard'
 import MarcaGolmebol from './components/MarcaGolmebol'
-import BotonInicioGolmebol from './components/BotonInicioGolmebol'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
 import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
 import { PantallaCargando } from './components/PantallaCargando'
@@ -461,8 +460,7 @@ export default function App() {
     <DominioPersonalizadoGate>
     <BrowserRouter>
       <SessionGuard/>
-      <MarcaGolmebol/>
-      <BotonInicioGolmebol/>
+      <MarcaGolmebol conInicio/>
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>
 
