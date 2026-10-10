@@ -181,12 +181,12 @@ export default function PlayerLoginPage() {
     }
   }
 
-  async function handleBuscarCedula(e) {
-    e.preventDefault()
-    if (!cedula.trim()) { setError('Ingresa tu número de cédula'); return }
-    setLoading(true); setError('')
-    try {
-      await conTimeout((async () => {
+  // Error "la función no existe todavía en la base" → se usa el camino de antes.
+  const faltaFuncion = (err) => !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''))
+
+  // Camino anterior (lee `players` directo). Solo se usa si la base aún no tiene
+  // las funciones login_buscar_cedula / login_verificar_nombre.
+  async function buscarCedulaLegacy() {
       // OJO: no usamos .single() acá — si por algún motivo quedaron dos filas con
       // la misma cédula (bug conocido, ver migracion_fusionar_cedulas_duplicadas.sql),
       // .single() revienta con 0 resultados y la persona ve "cédula no registrada"
@@ -261,6 +261,29 @@ export default function PlayerLoginPage() {
         // quien YA está registrado como jugador o dueño de equipo.
         setStep('no_registrado')
       }
+  }
+
+  async function handleBuscarCedula(e) {
+    e.preventDefault()
+    if (!cedula.trim()) { setError('Ingresa tu número de cédula'); return }
+    setLoading(true); setError('')
+    try {
+      await conTimeout((async () => {
+        // La búsqueda se hace en el servidor: solo devuelve lo mínimo (si existe,
+        // si ya tiene cuenta, sus roles y el PRIMER nombre). El nombre completo
+        // solo se entrega después de verificar la identidad.
+        const r = await supabase.rpc('login_buscar_cedula', { p_cedula: cedula.trim() })
+        if (r.error) {
+          if (faltaFuncion(r.error)) { await buscarCedulaLegacy(); return }
+          throw r.error
+        }
+        const p = r.data
+        if (p && p.encontrado) {
+          setPlayer({ ...p, name: p.nombre_corto || '', user_id: p.tiene_cuenta ? 'tiene-cuenta' : null })
+          setStep(p.tiene_cuenta ? 'login' : 'verificar_nombre')
+        } else {
+          setStep('no_registrado')
+        }
       })())
     } catch (err) {
       setError(msgFalla(err))
@@ -270,16 +293,41 @@ export default function PlayerLoginPage() {
   }
 
   // Compara lo que escribió contra el nombre guardado (sin tildes ni mayúsculas)
-  function handleVerificarNombre(e) {
+  async function handleVerificarNombre(e) {
     e.preventDefault()
     const normalizar = s => (s || '').toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').trim()
     const escrito  = normalizar(nombreVerif).split(/\s+/).filter(Boolean)
-    const guardado = normalizar(player?.name).split(/\s+/).filter(Boolean)
     if (escrito.length < 2) { setError('Escribe tu nombre y tu primer apellido'); return }
-    const coincide = escrito.every(palabra => guardado.includes(palabra))
-    if (!coincide) { setError('Los datos no coinciden con el jugador registrado. Verifica tu nombre y primer apellido, o escríbenos por WhatsApp.'); return }
-    setError('')
-    setStep('crear_pass')
+    setLoading(true); setError('')
+    try {
+      await conTimeout((async () => {
+        let ok
+        const r = await supabase.rpc('login_verificar_nombre', { p_cedula: cedula.trim(), p_nombre: nombreVerif })
+        if (r.error) {
+          if (!faltaFuncion(r.error)) throw r.error
+          // Base sin migrar: comparación de antes, en el navegador
+          const guardado = normalizar(player?.name).split(/\s+/).filter(Boolean)
+          ok = escrito.every(palabra => guardado.includes(palabra))
+        } else {
+          ok = !!r.data?.ok
+          if (ok && r.data.nombre) setPlayer(prev => ({ ...prev, name: r.data.nombre }))
+        }
+        if (!ok) { setError('Los datos no coinciden con el jugador registrado. Verifica tu nombre y primer apellido, o escríbenos por WhatsApp.'); return }
+        setError('')
+        setStep('crear_pass')
+      })())
+    } catch (err) {
+      setError(msgFalla(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Une la cuenta recién creada con el jugador (la función del servidor revisa que
+  // el email de la sesión sea {cédula}@golmebol.com). Si no existe, camino de antes.
+  async function vincularCuenta(playerId, userId) {
+    const r = await supabase.rpc('vincular_auth_player', { p_player_id: playerId })
+    if (r.error) await supabase.from('players').update({ user_id: userId }).eq('id', playerId)
   }
 
   async function handleLogin(e) {
@@ -337,7 +385,7 @@ export default function PlayerLoginPage() {
             setError('Ya existe una cuenta con esta cédula pero no coincide con esta contraseña. Si ya la habías creado antes, usa esa contraseña, o escríbenos por WhatsApp para restablecerla.')
             return
           }
-          if (!player.user_id) await supabase.from('players').update({ user_id: signInData.user.id }).eq('id', player.id)
+          if (!player.user_id) await vincularCuenta(player.id, signInData.user.id)
           await registrarSesionDispositivo(player.id)
           const splashData = await fetchSplashData(player.id)
           setSplash(splashData)
@@ -346,7 +394,7 @@ export default function PlayerLoginPage() {
         setError('Error: ' + authError.message)
         return
       }
-      await supabase.from('players').update({ user_id: authData.user.id }).eq('id', player.id)
+      await vincularCuenta(player.id, authData.user.id)
       await registrarSesionDispositivo(player.id)
       const splashData = await fetchSplashData(player.id)
       setSplash(splashData)
