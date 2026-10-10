@@ -441,6 +441,77 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
   )
 }
 
+// ── Selector de torneo ──────────────────────────────────────────────────────
+// Antes eran decenas de botones apilados, difícil de escoger. Ahora es UN botón que
+// abre una lista con buscador: solo los torneos que tienen partidos en la pestaña
+// actual, primero los que tienen partido más próximo, con cuántos partidos y cuándo es el siguiente.
+function fmtDiaCorto(d) {
+  try { return new Date(d).toLocaleDateString('es-CO', { weekday:'short', day:'numeric', month:'short' }).replace('.', '') } catch (e) { return '' }
+}
+function SelectorTorneo({ opciones, valor, totalTodos, onCambiar, etiquetaFecha }) {
+  const [abierto, setAbierto] = useState(false)
+  const [q, setQ] = useState('')
+  const actual = opciones.find(o => o.id === valor)
+  const lista = opciones.filter(o => !q.trim() || o.name.toLowerCase().includes(q.trim().toLowerCase()))
+  const elegir = id => { onCambiar(id); setAbierto(false); setQ('') }
+  return (
+    <>
+      <button onClick={()=>setAbierto(true)}
+        style={{ width:'100%', display:'flex', alignItems:'center', gap:'10px', background:'#111827', border:`1px solid ${valor?'#1a73e8':'#1e2d3d'}`, borderRadius:'12px', padding:'10px 14px', cursor:'pointer', fontFamily:'inherit', textAlign:'left', marginBottom:'12px' }}>
+        <Trophy size={16} color={valor?'#1a73e8':'#7a9ab5'}/>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:'.6rem', color:'#7a9ab5', fontWeight:'700', letterSpacing:'.06em', textTransform:'uppercase' }}>Torneo</div>
+          <div style={{ fontSize:'.86rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{actual ? actual.name : `Todos los torneos (${opciones.length})`}</div>
+        </div>
+        <span style={{ fontSize:'.72rem', fontWeight:'800', color:'#7a9ab5' }}>{actual ? actual.n : totalTodos}</span>
+        <ChevronDown size={16} color="#7a9ab5"/>
+      </button>
+
+      {abierto && (
+        <div onClick={()=>{ setAbierto(false); setQ('') }} style={{ position:'fixed', inset:0, zIndex:900, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:'100%', maxWidth:'700px', maxHeight:'82vh', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'18px 18px 0 0', display:'flex', flexDirection:'column' }}>
+            <div style={{ padding:'14px 16px 10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ fontWeight:'800', fontSize:'.95rem', color:'#e8f4fd' }}>Escoge un torneo</div>
+              <button onClick={()=>{ setAbierto(false); setQ('') }} aria-label="Cerrar" style={{ background:'none', border:'none', color:'#7a9ab5', cursor:'pointer', padding:'4px' }}><X size={20}/></button>
+            </div>
+            {opciones.length > 6 && (
+              <div style={{ padding:'0 16px 10px' }}>
+                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar torneo…" style={{ ...inp, padding:'10px 12px' }}/>
+              </div>
+            )}
+            <div style={{ overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'0 12px 18px' }}>
+              {!q.trim() && (
+                <button onClick={()=>elegir('')}
+                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', background:!valor?'rgba(26,115,232,.15)':'#111827', border:`1px solid ${!valor?'#1a73e8':'#1e2d3d'}`, borderRadius:'10px', padding:'12px', marginBottom:'6px', cursor:'pointer', fontFamily:'inherit', color:'#e8f4fd', fontWeight:'700', fontSize:'.84rem' }}>
+                  <span>Todos los torneos</span><span style={{ color:'#7a9ab5' }}>{totalTodos}</span>
+                </button>
+              )}
+              {lista.length === 0 && <div style={{ textAlign:'center', color:'#7a9ab5', fontSize:'.8rem', padding:'20px' }}>Ningún torneo coincide</div>}
+              {lista.map((o, i) => (
+                <div key={o.id}>
+                {o.vencido && (i === 0 || !lista[i-1].vencido) && i > 0 && (
+                  <div style={{ fontSize:'.62rem', fontWeight:'800', color:'#8a6d3b', letterSpacing:'.06em', textTransform:'uppercase', margin:'12px 4px 6px' }}>Fechas ya pasadas, sin jugarse</div>
+                )}
+                <button onClick={()=>elegir(o.id)}
+                  style={{ width:'100%', display:'flex', alignItems:'center', gap:'10px', background:valor===o.id?'rgba(26,115,232,.15)':'#111827', border:`1px solid ${valor===o.id?'#1a73e8':'#1e2d3d'}`, borderRadius:'10px', padding:'11px 12px', marginBottom:'6px', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:'.84rem', fontWeight:'700', color:'#e8f4fd', lineHeight:1.25, overflowWrap:'anywhere' }}>
+                      {o.name}{o.tag ? <span style={{ marginLeft:'6px', fontSize:'.6rem', fontWeight:'800', color:'#f9a825', background:'rgba(249,168,37,.14)', borderRadius:'8px', padding:'1px 6px', verticalAlign:'middle' }}>{o.tag}</span> : null}
+                    </div>
+                    {o.fecha && <div style={{ fontSize:'.66rem', color:o.vencido?'#8a6d3b':'#7a9ab5', marginTop:'2px' }}>{o.vencido ? `Último sin jugar: ${fmtDiaCorto(o.fecha)}` : `${etiquetaFecha} ${fmtDiaCorto(o.fecha)}`}</div>}
+                  </div>
+                  <span style={{ fontSize:'.78rem', fontWeight:'800', color:'#e8f4fd', background:'#1e2d3d', borderRadius:'10px', padding:'2px 9px' }}>{o.n}</span>
+                </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function ArbitroLiderPage() {
   const navigate   = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -683,6 +754,31 @@ export default function ArbitroLiderPage() {
 
   const torneos = [...new Map(partidosVis.map(p=>[p.tournament_id,p.tournaments])).values()]
 
+  // Opciones del selector: solo torneos con partidos en la pestaña actual
+  const enPestana = p => tab==='sin_asignar' ? (p.status!=='finished'&&!p.arbitro1_id&&!p.arbitro2_id&&!p.arbitro3_id)
+                       : tab==='asignados'   ? (p.status!=='finished'&&(p.arbitro1_id||p.arbitro2_id||p.arbitro3_id))
+                       : p.status==='finished'
+  const pendiente = tab !== 'jugados'
+  const inicioHoy = new Date(); inicioHoy.setHours(0,0,0,0)
+  const opcionesTorneo = torneos.map(t => {
+    const ps = partidosVis.filter(p => p.tournament_id === t.id && enPestana(p))
+    const fechas = ps.map(p => p.played_at).filter(Boolean).sort()
+    // pendientes: la fecha del próximo partido (>= hoy); si todos están vencidos, el último. Jugados: el más reciente.
+    const proximas = fechas.filter(f => new Date(f) >= inicioHoy)
+    const fecha = pendiente ? (proximas[0] || fechas[fechas.length-1] || null) : (fechas[fechas.length-1] || null)
+    return { id:t.id, name:t.name, n:ps.length, fecha, vencido: pendiente && !proximas.length && !!fechas.length,
+             tag: clasif[t.id]==='nuevo' ? 'nuevo' : clasif[t.id]==='ajeno' ? 'otro coord.' : '' }
+  })
+  .filter(o => o.n > 0 || o.id === filtroVigente)
+  .sort((a,b) => {
+    if (pendiente) { // primero los que tienen partido próximo; los vencidos al final
+      if (a.vencido !== b.vencido) return a.vencido ? 1 : -1
+      return (new Date(a.fecha||8.64e15) - new Date(b.fecha||8.64e15)) || a.name.localeCompare(b.name)
+    }
+    return (new Date(b.fecha||0) - new Date(a.fecha||0)) || a.name.localeCompare(b.name)
+  })
+  const totalTab = partidosVis.filter(enPestana).length
+
   const tabData = {
     sin_asignar: { lista:sinAsignar, color:'#e8710a', empty:'Todos los partidos tienen árbitro asignado' },
     asignados:   { lista:asignados,  color:'#1e8e3e', empty:'Sin partidos asignados pendientes' },
@@ -748,22 +844,10 @@ export default function ArbitroLiderPage() {
           ))}
         </div>
 
-        {/* Filtro torneo (solo para tabs de partidos) */}
-        {tab !== 'arbitros' && torneos.length > 1 && (
-          /* flexWrap en vez de scroll lateral: en algunos celulares el scroll
-             horizontal no responde y los torneos de más quedaban invisibles */
-          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'12px' }}>
-            <button onClick={()=>setTorneoFiltro('')}
-              style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'600', fontSize:'.72rem', whiteSpace:'nowrap', background:!filtroVigente?'#1a73e8':'#111827', color:!filtroVigente?'#fff':'#7a9ab5' }}>
-              Todos ({partidosVis.filter(p=> tab==='sin_asignar'?p.status!=='finished'&&!p.arbitro1_id : tab==='asignados'?p.status!=='finished'&&(p.arbitro1_id||p.arbitro2_id) : p.status==='finished').length})
-            </button>
-            {torneos.map(t=>(
-              <button key={t.id} onClick={()=>setTorneoFiltro(t.id)}
-                style={{ flexShrink:0, padding:'5px 14px', borderRadius:'20px', border:'none', cursor:'pointer', fontSize:'.72rem', whiteSpace:'nowrap', background:filtroVigente===t.id?'#1a73e8':'#111827', color:filtroVigente===t.id?'#fff':'#7a9ab5' }}>
-                {t.name}{clasif[t.id]==='nuevo' ? ' · nuevo' : clasif[t.id]==='ajeno' ? ' · otro coord.' : ''}
-              </button>
-            ))}
-          </div>
+        {/* Filtro torneo (solo para tabs de partidos): un selector con buscador en vez de decenas de botones */}
+        {tab !== 'arbitros' && opcionesTorneo.length > 1 && (
+          <SelectorTorneo opciones={opcionesTorneo} valor={filtroVigente} totalTodos={totalTab}
+            onCambiar={setTorneoFiltro} etiquetaFecha={pendiente ? 'Próximo:' : 'Último:'}/>
         )}
 
         {/* Torneos ya iniciados que dirige otro coordinador: ocultos, con salida por si hace falta */}
