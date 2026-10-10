@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { conPlayers } from '../../lib/planillaJugadores'
 import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../../lib/predix'
 import PantallaColores from './PantallaColores'
 import PantallaAsignarNumeros from './PantallaAsignarNumeros'
@@ -446,8 +447,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const refetchRoster = useCallback(async () => {
     if (!partido?.tournament_id || partido.status === 'finished') return
     const [jugsL, jugsV, sancionesDB] = await Promise.all([
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
     ])
     // Si CUALQUIERA de las consultas falló (señal mala, timeout) no se toca la
@@ -539,8 +540,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // fotos, modalidad del torneo, y reviso si hay un borrador remoto más
     // nuevo (por ejemplo si otro árbitro guardó desde otro celular).
     const [jugsL, jugsV, torn, liveDB, sancionesDB, tarjetasDB] = await Promise.all([
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       supabase.from('tournaments').select('modalidad, finanzas_config, registro_simple, duracion_tiempo_min').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado

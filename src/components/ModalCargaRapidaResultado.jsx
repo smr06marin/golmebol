@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { conPlayers } from '../lib/planillaJugadores'
 import { resolverPrediccionesPartido } from '../lib/predix'
 import { limpiarStatsObsoletas } from '../lib/statsPartido'
 
@@ -141,8 +142,8 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
       // los inscritos en ESTE torneo — el mismo patrón que ya usan bien
       // PlanillaPartido.jsx y PlanillaRapida.jsx.
       const [{ data: tpLocal }, { data: tpVis }, { data: statsExistentes }, { data: eventosSinRegistro }] = await Promise.all([
-        supabase.from('tournament_player_registrations').select('player_id, players(id,name)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-        supabase.from('tournament_player_registrations').select('player_id, players(id,name)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+        conPlayers(supabase.from('tournament_player_registrations').select('player_id').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name'),
+        conPlayers(supabase.from('tournament_player_registrations').select('player_id').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name'),
         supabase.from('player_match_stats').select('*').eq('match_id', partido.id),
         supabase.from('match_events').select('team_id, player_nombre, event_type').eq('match_id', partido.id).is('player_id', null).not('player_nombre', 'is', null),
       ])

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { conPlayers } from '../lib/planillaJugadores'
 import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../lib/predix'
 import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
@@ -1030,8 +1031,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const refetchRosterNuevos = useCallback(async () => {
     if (!partido?.tournament_id || partido.status === 'finished' || yaJugadoRef.current) return
     const [jugsL, jugsV, sancionesDB] = await Promise.all([
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
     ])
     const hoyIso = new Date().toISOString()
@@ -1184,11 +1185,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
 
     const [jugsL, jugsV, torn, eventos, statsDB, logrosDB, liveDB, editLogDB, sancionesDB, tarjetasDB] = await Promise.all([
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true),
-      supabase.from('tournament_player_registrations').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
+      conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       supabase.from('tournaments').select('*').eq('id', partido.tournament_id).single(),
       supabase.from('match_events').select('*').eq('match_id', partido.id).order('created_at', { ascending: true }),
-      supabase.from('player_match_stats').select('*, players(id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera)').eq('match_id', partido.id),
+      conPlayers(supabase.from('player_match_stats').select('*').eq('match_id', partido.id), 'id,name,numero_cedula,posicion_futbol5,posicion_futbol7,posicion_futbol11,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       supabase.from('tournament_logros').select('*').eq('match_id', partido.id).eq('tipo', 'mvp').maybeSingle(),
       // Snapshot que haya dejado guardado OTRO celular (árbitro/admin) llenando esta misma planilla
       supabase.from('matches').select('live_state, live_state_updated_at, firmas, capitan_local, capitan_visitante').eq('id', partido.id).maybeSingle(),
