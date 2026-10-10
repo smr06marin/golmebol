@@ -144,10 +144,10 @@ export default function PartidosDelDia({ partidosVivo = [] }) {
       if (!mapa.has(m.tournament_id)) mapa.set(m.tournament_id, { id: m.tournament_id, torneo: m.tournaments, partidos: [] })
       mapa.get(m.tournament_id).partidos.push(m)
     })
-    const lista = [...mapa.values()]
+    const porTorneo = [...mapa.values()]
     // Los torneos con algo en vivo van primero; el resto por la hora de su primer partido.
-    lista.sort((a, b) => (b.partidos.some(m => vivoPorId.has(m.id)) ? 1 : 0) - (a.partidos.some(m => vivoPorId.has(m.id)) ? 1 : 0))
-    return lista
+    porTorneo.sort((a, b) => (b.partidos.some(m => vivoPorId.has(m.id)) ? 1 : 0) - (a.partidos.some(m => vivoPorId.has(m.id)) ? 1 : 0))
+    return porTorneo
   }, [lista, filtro, vivoPorId, favoritos])
 
   function etiquetaRonda(g) {
