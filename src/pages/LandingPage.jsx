@@ -39,6 +39,14 @@ const S = {
   muted:   '#8a8a8a',
 }
 
+// Atributos por los que se puede filtrar el carrusel de torneos (clave del filtro → columna de `tournaments`).
+const CAMPOS_FILTRO_TORNEO = {
+  modalidad: { col: 'modalidad', titulo: 'Deporte' },
+  ciudad:    { col: 'city',      titulo: 'Ciudad' },
+  categoria: { col: 'categoria', titulo: 'Categoría' },
+  genero:    { col: 'genero',    titulo: 'Género' },
+}
+
 function Escudo({ logo_url, name, size = 40, radius = 10 }) {
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   return (
@@ -102,7 +110,7 @@ function eventosDelPartido(m) {
 // se lee del mismo snapshot que ya sube en tiempo real la planilla del
 // árbitro (matches.live_state / live_state_rapida), sin depender de que el
 // jugador quede registrado en el torneo.
-function LiveMatchDetalle({ m, onClose }) {
+function LiveMatchDetalle({ m, onClose, onVerTorneo }) {
   // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
   // Android el gesto de scroll dentro del modal se "escapa" hacia la página
   // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
@@ -190,6 +198,11 @@ function LiveMatchDetalle({ m, onClose }) {
             </div>
           )}
         </div>
+        {onVerTorneo && (
+          <button onClick={onVerTorneo} style={{ width: '100%', marginTop: '14px', padding: '12px', borderRadius: '10px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer' }}>
+            VER TORNEO
+          </button>
+        )}
       </div>
     </div>
   )
@@ -301,6 +314,7 @@ export default function LandingPage() {
   const [torneosCargados, setTorneosCargados] = useState(() => !!leerCacheRapido('landing_torneos'))
   const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
+  const [senalVivo, setSenalVivo] = useState(0) // sube cada vez que tocan "VER EN VIVO": la lista de partidos salta al filtro En vivo
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
   const [escenarios, setEscenarios] = useState(() => leerCacheRapido('landing_escenarios') || [])
   const [escenarioIdx, setEscenarioIdx] = useState(0) // qué foto de escenario se muestra ahora en el carrusel
@@ -675,7 +689,7 @@ export default function LandingPage() {
   async function fetchTorneosActivosInterno() {
     const COLS_PARTIDO = 'tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
     const [torsRes0, ttsF, msF] = await Promise.all([
-      supabase.from('tournaments').select('id, name, logo_url, modalidad, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'),
+      supabase.from('tournaments').select('id, name, logo_url, modalidad, city, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'),
       supabase.from('tournament_teams').select('tournament_id, tournaments!inner(status)').eq('tournaments.status', 'active'),
       supabase.from('matches').select(`${COLS_PARTIDO}, tournaments!inner(status)`).eq('tournaments.status', 'active'),
     ])
@@ -835,18 +849,40 @@ export default function LandingPage() {
   }, [torneos, visitasHoy, partidosVivo])
 
   const [filtroTorneos, setFiltroTorneos] = useState('todos') // todos | juego | comenzar | finalizados
+
+  // Filtros por atributo del torneo (modalidad/deporte, ciudad, categoría, género).
+  // Las opciones salen de los propios torneos: un filtro solo aparece si hay al
+  // menos 2 valores distintos para elegir (con un solo valor no filtraría nada).
+  const [filtrosAttr, setFiltrosAttr] = useState({ modalidad: '', ciudad: '', categoria: '', genero: '' })
+  const normAttr = v => String(v || '').trim().toLowerCase()
+  const opcionesAttr = useMemo(() => {
+    const out = {}
+    Object.entries(CAMPOS_FILTRO_TORNEO).forEach(([k, { col }]) => {
+      const m = new Map()
+      torneos.forEach(t => { const v = normAttr(t[col]); if (v && !m.has(v)) m.set(v, String(t[col]).trim()) })
+      out[k] = [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'))
+    })
+    return out
+  }, [torneos])
+  const hayFiltroAttr = Object.values(filtrosAttr).some(Boolean)
+  const torneosPorAttr = useMemo(() => torneosOrdenados.filter(t =>
+    Object.entries(CAMPOS_FILTRO_TORNEO).every(([k, { col }]) => !filtrosAttr[k] || normAttr(t[col]) === filtrosAttr[k])
+  ), [torneosOrdenados, filtrosAttr])
+
   const conteoTorneos = useMemo(() => ({
-    todos: torneosOrdenados.length,
-    juego: torneosOrdenados.filter(t => !t.finalizado && !esPorComenzar(t)).length,
-    comenzar: torneosOrdenados.filter(esPorComenzar).length,
-    finalizados: torneosOrdenados.filter(t => t.finalizado).length,
-  }), [torneosOrdenados])
+    todos: torneosPorAttr.length,
+    juego: torneosPorAttr.filter(t => !t.finalizado && !esPorComenzar(t)).length,
+    comenzar: torneosPorAttr.filter(esPorComenzar).length,
+    finalizados: torneosPorAttr.filter(t => t.finalizado).length,
+  }), [torneosPorAttr])
+  // Si el estado elegido se quedó sin torneos al filtrar por otro atributo, vuelve a "Todos".
+  useEffect(() => { if (filtroTorneos !== 'todos' && conteoTorneos[filtroTorneos] === 0) setFiltroTorneos('todos') }, [filtroTorneos, conteoTorneos])
   const torneosFiltrados = useMemo(() => {
-    if (filtroTorneos === 'juego') return torneosOrdenados.filter(t => !t.finalizado && !esPorComenzar(t))
-    if (filtroTorneos === 'comenzar') return torneosOrdenados.filter(esPorComenzar)
-    if (filtroTorneos === 'finalizados') return torneosOrdenados.filter(t => t.finalizado)
-    return torneosOrdenados
-  }, [torneosOrdenados, filtroTorneos])
+    if (filtroTorneos === 'juego') return torneosPorAttr.filter(t => !t.finalizado && !esPorComenzar(t))
+    if (filtroTorneos === 'comenzar') return torneosPorAttr.filter(esPorComenzar)
+    if (filtroTorneos === 'finalizados') return torneosPorAttr.filter(t => t.finalizado)
+    return torneosPorAttr
+  }, [torneosPorAttr, filtroTorneos])
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 
@@ -902,7 +938,7 @@ export default function LandingPage() {
             <button className="gm-hover" onClick={() => scrollA(torneosRef)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
               VER TORNEOS <ArrowRight size={16}/>
             </button>
-            <button className="gm-hover" onClick={() => scrollA(vivoRef)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
+            <button className="gm-hover" onClick={() => { setSenalVivo(n => n + 1); scrollA(vivoRef) }} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
               <Radio size={15} color={S.red}/> VER EN VIVO
             </button>
           </div>
@@ -1000,6 +1036,29 @@ export default function LandingPage() {
             })}
           </div>
         )}
+        {torneosOrdenados.length > 0 && Object.values(opcionesAttr).some(o => o.length > 1) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '0 16px 14px', alignItems: 'center' }}>
+            {Object.entries(CAMPOS_FILTRO_TORNEO).filter(([k]) => opcionesAttr[k].length > 1).map(([k, { titulo }]) => (
+              <select key={k} value={filtrosAttr[k]} aria-label={`Filtrar por ${titulo.toLowerCase()}`}
+                onChange={e => { const v = e.target.value; setFiltrosAttr(f => ({ ...f, [k]: v })); if (scrollerRef.current) scrollerRef.current.scrollLeft = 0 }}
+                style={{ maxWidth: '100%', padding: '7px 12px', borderRadius: '999px', border: `1px solid ${filtrosAttr[k] ? S.green : S.border}`, background: filtrosAttr[k] ? 'rgba(111,207,61,.12)' : S.card, color: filtrosAttr[k] ? S.green : S.text2, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <option value="">{titulo}: todos</option>
+                {opcionesAttr[k].map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+              </select>
+            ))}
+            {hayFiltroAttr && (
+              <button onClick={() => setFiltrosAttr({ modalidad: '', ciudad: '', categoria: '', genero: '' })}
+                style={{ padding: '7px 12px', borderRadius: '999px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        )}
+        {torneosOrdenados.length > 0 && torneosFiltrados.length === 0 && (
+          <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
+            Ningún torneo coincide con estos filtros.
+          </div>
+        )}
         {torneosOrdenados.length === 0 && !torneosCargados ? (
           <div style={{ display: 'flex', gap: '14px', padding: '0 16px', overflow: 'hidden' }} aria-hidden="true">
             <style>{`@keyframes gmEsqueleto { 0%,100% { opacity: .45 } 50% { opacity: .9 } }`}</style>
@@ -1012,7 +1071,7 @@ export default function LandingPage() {
             No hay torneos activos en este momento.
           </div>
         ) : (
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', display: torneosFiltrados.length === 0 ? 'none' : 'block' }}>
             <button
               className="gm-carousel-flecha"
               onClick={() => moverCarrusel(-1)}
@@ -1088,58 +1147,9 @@ export default function LandingPage() {
         )}
       </div>
 
-      {/* ── Partidos del día (todos los torneos), con favoritos — debajo de los torneos ── */}
-      <PartidosDelDia partidosVivo={partidosVivo}/>
-
-      {/* ── Partidos en vivo ── */}
-      <div ref={vivoRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '44px 16px 8px' }}>
-        <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Radio size={17} color={S.red}/> Partidos en vivo
-        </h2>
-        {partidosVivo.length === 0 ? (
-          <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
-            No hay partidos en vivo en este momento.
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
-            {partidosVivo.map(m => (
-              <div key={m.id} style={{ background: S.card, border: `1px solid ${S.red}55`, borderRadius: '16px', padding: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '.65rem', fontWeight: 900, padding: '4px 9px', borderRadius: '999px', background: 'rgba(229,67,61,.15)', color: S.red, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
-                  </span>
-                  <span style={{ fontSize: '.68rem', color: S.muted, fontWeight: 700 }}>{labelPartido(m)}</span>
-                </div>
-                {m.tournaments?.name && (
-                  <div style={{ fontSize: '.66rem', color: S.green, fontWeight: 800, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <Trophy size={11}/> {m.tournaments.name}
-                  </div>
-                )}
-                <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
-                    <Escudo logo_url={m.home?.logo_url} name={m.home?.name} size={34}/>
-                    <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.home?.name}</span>
-                  </div>
-                  <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: '1.3rem' }}>{m.vivo.golesLocal} - {m.vivo.golesVis}</div>
-                    <div style={{ fontSize: '.6rem', color: S.red, fontWeight: 800, marginTop: '2px' }}>{m.vivo.descanso ? 'DESCANSO' : m.vivo.reloj}</div>
-                    {m.global && <div style={{ fontSize: '.6rem', color: S.gold, fontWeight: 800, marginTop: '2px' }}>Global {m.global.local}-{m.global.visitante}</div>}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
-                    <Escudo logo_url={m.away?.logo_url} name={m.away?.name} size={34}/>
-                    <span style={{ fontSize: '.68rem', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>{m.away?.name}</span>
-                  </div>
-                </div>
-                <div onClick={() => setDetalleVivoId(m.id)} style={{ cursor: 'pointer', textAlign: 'center', color: S.muted, fontSize: '.62rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                  Toca para ver quién anotó <GiSoccerBall size={10}/>
-                </div>
-                <button className="gm-hover" {...propsPrefetchTorneo(m.tournament_id)} onClick={() => { prefetchTorneoPublico(m.tournament_id); navigate('/t/' + m.tournament_id) }} style={{ width: '100%', padding: '9px', borderRadius: '9px', border: `1px solid ${S.red}`, background: 'transparent', color: S.red, fontSize: '.75rem', fontWeight: 800, cursor: 'pointer' }}>
-                  VER TORNEO
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* ── Partidos (hoy / por día) con los que están en vivo ya incluidos; "VER EN VIVO" del inicio baja hasta acá ── */}
+      <div ref={vivoRef}>
+        <PartidosDelDia partidosVivo={partidosVivo} onVerDetalleVivo={setDetalleVivoId} senalVivo={senalVivo}/>
       </div>
 
       {/* ── Escenarios / Escuelas ── */}
@@ -1231,7 +1241,8 @@ export default function LandingPage() {
       </div>
 
       {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && (
-        <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}/>
+        <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}
+          onVerTorneo={() => { const tid = partidosVivo.find(p => p.id === detalleVivoId)?.tournament_id; setDetalleVivoId(null); if (tid) { prefetchTorneoPublico(tid); navigate('/t/' + tid) } }}/>
       )}
 
       {patroDetalle && (

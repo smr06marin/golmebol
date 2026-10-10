@@ -60,7 +60,7 @@ const ESTILO = `
 .gm-pd-chips::-webkit-scrollbar { display: none }
 `
 
-export default function PartidosDelDia({ partidosVivo = [] }) {
+export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, senalVivo = 0 }) {
   const navigate = useNavigate()
   const { ids: favoritos, esFavorito, alternar } = useFavoritos()
   const [offset, setOffset] = useState(0)
@@ -71,7 +71,7 @@ export default function PartidosDelDia({ partidosVivo = [] }) {
 
   const vivoPorId = useMemo(() => {
     const m = new Map()
-    partidosVivo.forEach(p => { if (p.id && p.vivo) m.set(p.id, p.vivo) })
+    partidosVivo.forEach(p => { if (p.id && p.vivo) m.set(p.id, p) }) // el partido completo: trae .vivo (marcador/reloj) y .global (ida y vuelta)
     return m
   }, [partidosVivo])
   const nVivos = partidosVivo.length
@@ -116,6 +116,13 @@ export default function PartidosDelDia({ partidosVivo = [] }) {
     return () => { cancelado = true; if (timer) clearInterval(timer) }
   }, [offset, nVivos])
 
+  // "VER EN VIVO" del inicio: vuelve a hoy y deja solo los partidos en juego.
+  useEffect(() => {
+    if (!senalVivo) return
+    setOffset(0)
+    setFiltro(nVivos > 0 ? 'vivo' : 'todos')
+  }, [senalVivo])
+
   const estadoDe = m => vivoPorId.has(m.id) ? 'vivo' : m.status === 'finished' ? 'final' : 'proximo'
 
   const conteo = useMemo(() => {
@@ -129,6 +136,9 @@ export default function PartidosDelDia({ partidosVivo = [] }) {
     })
     return c
   }, [lista, vivoPorId, favoritos])
+
+  // Si estaba en "En vivo" y el último partido terminó, vuelve a "Todos" en vez de quedar vacío.
+  useEffect(() => { if (filtro === 'vivo' && conteo.vivo === 0) setFiltro('todos') }, [filtro, conteo.vivo])
 
   const grupos = useMemo(() => {
     const visibles = lista.filter(m => {
@@ -225,11 +235,13 @@ export default function PartidosDelDia({ partidosVivo = [] }) {
               </button>
               {g.partidos.map(m => {
                 const e = estadoDe(m)
-                const v = vivoPorId.get(m.id)
+                const pv = vivoPorId.get(m.id)
+                const v = pv?.vivo
                 const favL = esFavorito(m.home_team_id), favV = esFavorito(m.away_team_id)
                 return (
-                  <div key={m.id} className="gm-pd-fila" role="link" tabIndex={0} onClick={() => abrir(m)}
-                    onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(m) } }}
+                  <div key={m.id} className="gm-pd-fila" role="link" tabIndex={0}
+                    onClick={() => (e === 'vivo' && onVerDetalleVivo ? onVerDetalleVivo(m.id) : abrir(m))}
+                    onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); e === 'vivo' && onVerDetalleVivo ? onVerDetalleVivo(m.id) : abrir(m) } }}
                     {...propsPrefetchTorneo(m.tournament_id)}
                     style={{ background: (favL || favV) ? 'rgba(111,207,61,.06)' : undefined }}>
                     <BotonEstrella activo={favL} onClick={() => alternar(m.home_team_id)} nombre={m.home?.name}/>
@@ -242,6 +254,8 @@ export default function PartidosDelDia({ partidosVivo = [] }) {
                         <>
                           <div style={{ fontWeight: 900, fontSize: '1.05rem', color: S.red }}>{v.golesLocal} - {v.golesVis}</div>
                           <div style={{ fontSize: '.58rem', fontWeight: 800, color: S.red, animation: 'gmPdPulso 1.2s ease-in-out infinite' }}>{v.descanso ? 'DESCANSO' : (v.reloj || 'EN VIVO')}</div>
+                          {pv.global && <div style={{ fontSize: '.55rem', fontWeight: 800, color: S.gold }}>Global {pv.global.local}-{pv.global.visitante}</div>}
+                          {onVerDetalleVivo && <div style={{ fontSize: '.52rem', fontWeight: 700, color: S.muted, marginTop: 1 }}>ver goles ›</div>}
                         </>
                       ) : e === 'final' ? (
                         <>
