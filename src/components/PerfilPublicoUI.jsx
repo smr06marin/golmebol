@@ -75,19 +75,30 @@ export function ChipForma({ letra, size = 24 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: bg, color: fg, border: `1.5px solid ${fg}`, fontSize: size * 0.46 + 'px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{letra}</span>
 }
 
-// Chip de puesto: "#3 de 48". Oro el 1°, verde del 2° al 3°, gris el resto.
+// Chip de puesto en el ranking: "3° ranking de 48". Oro el 1°, verde del 2° al 3°, gris el resto.
 // claro=true → versión para fondo oscuro/degradado (cabecera). etiqueta → texto antes (ej. "Goles").
+// apilado=true → dos renglones ("3° RANKING" / "de 48"), para cuadros angostos como los números de la cabecera.
 // p = { n, de } (null/undefined = no se pinta nada, así un dato sin puesto no deja un hueco raro).
-export function ChipPuesto({ p, claro = false, etiqueta }) {
+export function ChipPuesto({ p, claro = false, etiqueta, apilado = false }) {
   if (!p || !p.n) return null
   const oro = p.n === 1, top = p.n <= 3
   const fondo = claro ? (oro ? '#fde68a' : 'rgba(255,255,255,.22)') : (oro ? '#fef3c7' : top ? '#e6f4ea' : '#f1f3f4')
   const color = claro ? (oro ? '#6b4700' : '#fff') : (oro ? '#92400e' : top ? '#1e8e3e' : '#5f6368')
+  const titulo = `Puesto ${p.n} del ranking, de ${p.de}`
+  if (apilado) {
+    return (
+      <span title={titulo}
+        style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', background: fondo, color, borderRadius: '10px', padding: '3px 8px', lineHeight: 1.25, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '.72rem', fontWeight: 800 }}>{p.n}° <span style={{ fontSize: '.5rem', letterSpacing: '.08em', textTransform: 'uppercase' }}>ranking</span></span>
+        <span style={{ fontSize: '.56rem', fontWeight: 600, opacity: .85 }}>de {p.de}</span>
+      </span>
+    )
+  }
   return (
-    <span title={`Puesto ${p.n} de ${p.de}`}
+    <span title={titulo}
       style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', background: fondo, color, borderRadius: '10px', padding: '1px 7px', fontSize: '.64rem', fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap' }}>
       {etiqueta && <span style={{ fontWeight: 600, opacity: .85 }}>{etiqueta}</span>}
-      <span>#{p.n}</span>
+      <span>{p.n}° ranking</span>
       <span style={{ fontWeight: 600, opacity: .8 }}>de {p.de}</span>
     </span>
   )
@@ -98,7 +109,7 @@ export function Numero({ valor, etiqueta, color = C.text, puesto }) {
     <div style={{ background: 'rgba(255,255,255,.14)', borderRadius: '12px', padding: '9px 4px', textAlign: 'center', minWidth: 0 }}>
       <div style={{ fontSize: '1.25rem', fontWeight: 800, color, lineHeight: 1 }}>{valor}</div>
       <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'rgba(255,255,255,.75)', letterSpacing: '.06em', textTransform: 'uppercase', marginTop: '4px' }}>{etiqueta}</div>
-      {puesto && <div style={{ marginTop: '5px' }}><ChipPuesto p={puesto} claro/></div>}
+      {puesto && <div style={{ marginTop: '5px' }}><ChipPuesto p={puesto} claro apilado/></div>}
     </div>
   )
 }
