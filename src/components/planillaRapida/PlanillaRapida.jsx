@@ -12,6 +12,7 @@ import ModalPartidoEspecialRapida from './ModalPartidoEspecialRapida'
 import { FONDO, CIAN, formatTiempo } from './estilosRapida'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeuda'
 import { comprimirImagen } from '../../lib/imageCompress'
+import { limpiarStatsObsoletas, borrarStatsDePartido } from '../../lib/statsPartido'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -1165,6 +1166,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (statsRows.length > 0) {
       const { error } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
       if (error) erroresGuardado.push('Estadísticas: ' + error.message)
+      else await limpiarStatsObsoletas(partido.id, statsRows.map(r => r.player_id))
     }
 
     // Sanción automática por tarjeta roja: mínimo 1 fecha, igual que en la
@@ -1265,6 +1267,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // se está reeditando un partido que antes sí se había jugado.
     await supabase.from('match_events').delete().eq('match_id', partido.id)
     await supabase.from('partido_arqueros').delete().eq('match_id', partido.id)
+    // Y nadie jugó: fuera también las estadísticas individuales de ese guardado previo.
+    await borrarStatsDePartido(partido.id)
 
     const updatePartido = {
       home_score: golesLocalTotal, away_score: golesVisTotal, status: 'finished',

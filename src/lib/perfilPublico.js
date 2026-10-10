@@ -114,7 +114,7 @@ export async function cargarJugadorPublico(id) {
 
   const [rStats, rLogros] = await Promise.all([
     supabase.from('player_match_stats')
-      .select('id, match_id, team_id, tournament_id, goals_scored, yellow_cards, blue_cards, red_cards, team_result, fue_arquero, goals_conceded, created_at, matches(id, played_at, home_score, away_score, fase, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)), teams(id, name, logo_url), tournaments(id, name, modalidad, season)')
+      .select('match_id, team_id, tournament_id, goals_scored, yellow_cards, blue_cards, red_cards, team_result, fue_arquero, goals_conceded, created_at, matches(id, played_at, home_score, away_score, fase, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)), teams(id, name, logo_url), tournaments(id, name, modalidad, season)')
       .eq('player_id', id),
     supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id, tournaments(name, season)').eq('player_id', id),
   ])
@@ -138,6 +138,35 @@ export async function cargarJugadorPublico(id) {
     const t = (porTorneoMap[key] = porTorneoMap[key] || { torneo: s.tournaments || null, equipo: s.teams || null, pj: 0, goles: 0, amarillas: 0, rojas: 0 })
     t.pj++; t.goles += g; t.amarillas += (s.yellow_cards || 0) + (s.blue_cards || 0); t.rojas += s.red_cards || 0
   })
+  // ¿De cuántos partidos de su equipo participó? Jugar = quedar anotado en la
+  // planilla; los partidos en que estuvo en la plantilla pero no se anotó no
+  // suman a "jugados", pero SÍ cuentan en el total del equipo.
+  const equiposPorTorneo = {}
+  stats.forEach(s => {
+    if (!s.tournament_id || !s.team_id) return
+    ;(equiposPorTorneo[s.tournament_id] = equiposPorTorneo[s.tournament_id] || new Set()).add(s.team_id)
+  })
+  const idsTorneos = Object.keys(equiposPorTorneo)
+  let partidosEquipo = null
+  if (idsTorneos.length > 0) {
+    const { data: ms, error: errMs } = await supabase.from('matches')
+      .select('id, tournament_id, home_team_id, away_team_id')
+      .in('tournament_id', idsTorneos).eq('status', 'finished').limit(3000)
+    if (!errMs && ms) {
+      partidosEquipo = { total: 0, porTorneo: {} }
+      ms.forEach(m => {
+        const eqs = equiposPorTorneo[m.tournament_id]
+        if (!eqs || !(eqs.has(m.home_team_id) || eqs.has(m.away_team_id))) return
+        partidosEquipo.total++
+        partidosEquipo.porTorneo[m.tournament_id] = (partidosEquipo.porTorneo[m.tournament_id] || 0) + 1
+      })
+    }
+  }
+  Object.entries(porTorneoMap).forEach(([tid, t]) => {
+    const de = partidosEquipo?.porTorneo[tid]
+    t.deEquipo = de == null ? null : Math.max(de, t.pj)
+  })
+  tot.deEquipo = partidosEquipo ? Math.max(partidosEquipo.total, tot.pj) : null
   const porTorneo = Object.values(porTorneoMap).sort((a, b) => b.goles - a.goles || b.pj - a.pj)
 
   // Equipo actual = el de su partido más reciente

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { resolverPrediccionesPartido } from '../lib/predix'
+import { limpiarStatsObsoletas } from '../lib/statsPartido'
 
 // Carga rápida de resultado — pensada para el ORGANIZADOR, para cuando el
 // árbitro no llenó ninguna planilla y hay que meter los datos a mano desde
@@ -294,6 +295,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
       if (statsRows.length > 0) {
         const { error } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
         if (error) erroresGuardado.push('Estadísticas: ' + error.message)
+        else await limpiarStatsObsoletas(partido.id, statsRows.map(r => r.player_id))
       }
 
       // Sanción automática por tarjeta roja — mismo criterio que las otras

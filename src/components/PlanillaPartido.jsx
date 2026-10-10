@@ -6,6 +6,7 @@ import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../lib/tarjetasDeuda'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { comprimirImagen } from '../lib/imageCompress'
+import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -1550,6 +1551,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (statsRows.length > 0) {
       const { error: errStats } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
       if (errStats) erroresGuardado.push('Estadísticas: ' + errStats.message)
+      else await limpiarStatsObsoletas(partido.id, statsRows.map(r => r.player_id))
+    } else if (tipoPartido) {
+      // W o desierto sin nadie anotado: nadie jugó, se limpian estadísticas de un guardado previo.
+      await borrarStatsDePartido(partido.id)
     }
 
     // Sanción automática por tarjeta roja: mínimo 1 fecha de suspensión, sin

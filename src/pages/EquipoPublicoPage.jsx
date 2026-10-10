@@ -225,6 +225,9 @@ export default function EquipoPublicoPage() {
                     <span style={{ textAlign: 'center', fontSize: '.8rem', color: j.amarillas > 0 ? C.gold : C.faint }}>{j.amarillas}</span>
                   </div>
                 ))}
+                <div style={{ padding: '10px 16px', fontSize: '.68rem', color: C.faint, lineHeight: 1.4 }}>
+                  PJ = partidos en los que quedó anotado en la planilla. Estar en la plantilla sin jugar no suma partido.
+                </div>
               </>
             )}
           </Tarjeta>

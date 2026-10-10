@@ -126,6 +126,11 @@ export default function JugadorPublicoPage() {
                       </div>
                     ))}
                   </div>
+                  {totales.deEquipo > 0 && (
+                    <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
+                      Jugó <b style={{ color: C.text }}>{totales.pj} de {totales.deEquipo}</b> partidos de su equipo ({Math.round((totales.pj / totales.deEquipo) * 100)}%)
+                    </div>
+                  )}
                   {(totales.g + totales.e + totales.p) > 0 && (
                     <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
                       Con su equipo: <b style={{ color: C.win }}>{totales.g} ganados</b> · {totales.e} empatados · <b style={{ color: C.loss }}>{totales.p} perdidos</b>
@@ -139,7 +144,7 @@ export default function JugadorPublicoPage() {
                       style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 16px', borderBottom: `1px solid ${C.soft}`, cursor: t.torneo?.id ? 'pointer' : 'default' }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontWeight: 700, fontSize: '.86rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.torneo?.name || 'Torneo'}</div>
-                        <div style={{ fontSize: '.72rem', color: C.muted }}>{t.equipo?.name || ''}{t.equipo?.name ? ' · ' : ''}{t.pj} {t.pj === 1 ? 'partido' : 'partidos'}</div>
+                        <div style={{ fontSize: '.72rem', color: C.muted }}>{t.equipo?.name || ''}{t.equipo?.name ? ' · ' : ''}{t.deEquipo ? `jugó ${t.pj} de ${t.deEquipo} partidos` : `${t.pj} ${t.pj === 1 ? 'partido' : 'partidos'}`}</div>
                       </div>
                       <div style={{ textAlign: 'right', fontSize: '.8rem', color: C.text2, whiteSpace: 'nowrap' }}>
                         <b style={{ color: C.text }}>{t.goles}</b> ⚽{t.amarillas > 0 ? <span style={{ color: C.gold }}> · {t.amarillas} 🟨</span> : null}{t.rojas > 0 ? <span style={{ color: C.loss }}> · {t.rojas} 🟥</span> : null}
@@ -155,12 +160,12 @@ export default function JugadorPublicoPage() {
 
         {tab === 'partidos' && (
           <Tarjeta titulo={`Partidos · ${partidos.length}`}>
-            {partidos.length === 0 ? <Vacio>Aún no tiene partidos registrados</Vacio> : partidos.map(s => {
+            {partidos.length === 0 ? <Vacio>Aún no tiene partidos registrados</Vacio> : partidos.map((s, i) => {
               const m = s.matches
               const resultado = s.team_result === 'win' ? 'G' : s.team_result === 'loss' ? 'P' : s.team_result === 'draw' ? 'E' : null
               const color = resultado === 'G' ? [C.win, C.winBg] : resultado === 'P' ? [C.loss, C.lossBg] : [C.draw, C.drawBg]
               return (
-                <div key={s.id} role="link" tabIndex={0} onClick={() => s.tournament_id && navigate(`/t/${s.tournament_id}`)}
+                <div key={s.match_id || i} role="link" tabIndex={0} onClick={() => s.tournament_id && navigate(`/t/${s.tournament_id}`)}
                   style={{ padding: '11px 16px', borderBottom: `1px solid ${C.soft}`, cursor: s.tournament_id ? 'pointer' : 'default' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', fontSize: '.66rem', color: C.faint, fontWeight: 600, marginBottom: '6px' }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.tournaments?.name || 'Torneo'}</span>
