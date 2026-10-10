@@ -6,6 +6,9 @@
 // miEquipoId (opcional): resalta la fila de ese equipo
 // titulo (opcional): encabezado dentro de la tarjeta
 
+import { useFavoritos } from '../lib/favoritos'
+import BotonEstrella from './BotonEstrella'
+
 function LogoCircular({ logo, name, size = 30 }) {
   if (logo) return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.4)' }}>
@@ -65,6 +68,7 @@ function PuntoVivo({ size = 7 }) {
 }
 
 export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0 }) {
+  const { esFavorito, alternar } = useFavoritos()
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
       {vacio}
@@ -130,6 +134,9 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
                   )}
                   <FormaReciente forma={row.forma}/>
                 </div>
+                <span style={{ marginLeft: 'auto' }}>
+                  <BotonEstrella activo={esFavorito(row.equipo.id)} onClick={() => alternar(row.equipo.id)} nombre={row.equipo.name} size={15} area={26} colorOff="#5f82c4"/>
+                </span>
               </div>
               {/* Números */}
               {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (

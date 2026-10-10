@@ -18,6 +18,7 @@ import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { computeTablaGeneral } from '../lib/torneoTablas'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
+import PartidosDelDia from '../components/PartidosDelDia'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
@@ -973,6 +974,9 @@ export default function LandingPage() {
           </div>
         </div>
       )}
+
+      {/* ── Partidos del día (todos los torneos), con favoritos ── */}
+      <PartidosDelDia partidosVivo={partidosVivo}/>
 
       {/* ── Torneos en juego (carrusel horizontal) ── */}
       <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 0 8px' }}>
