@@ -975,9 +975,6 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* ── Partidos del día (todos los torneos), con favoritos ── */}
-      <PartidosDelDia partidosVivo={partidosVivo}/>
-
       {/* ── Torneos en juego (carrusel horizontal) ── */}
       <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 0 8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', padding: '0 16px' }}>
@@ -1090,6 +1087,9 @@ export default function LandingPage() {
           </div>
         )}
       </div>
+
+      {/* ── Partidos del día (todos los torneos), con favoritos — debajo de los torneos ── */}
+      <PartidosDelDia partidosVivo={partidosVivo}/>
 
       {/* ── Partidos en vivo ── */}
       <div ref={vivoRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '44px 16px 8px' }}>

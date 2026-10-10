@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio } from 'lucide-react'
+import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio, ArrowLeft } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
@@ -922,6 +922,14 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       <div style={s.header}>
         <div style={{ position: 'absolute', inset: 0, opacity: .07, backgroundImage: 'radial-gradient(circle at 20% 50%, #fff 1px, transparent 1px), radial-gradient(circle at 80% 20%, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }}/>
         <div style={s.headerInner}>
+          {/* Volver al inicio de Golmebol — solo en golmebol.com (en el dominio propio
+              de un organizador "/" ya es su propia página y no hay inicio de Golmebol). */}
+          {esHostPropioGolmebol() && (
+            <button onClick={() => navigate('/')} aria-label="Volver al inicio de Golmebol"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '16px', padding: '7px 14px 7px 10px', borderRadius: '999px', border: '1px solid rgba(255,255,255,.35)', background: 'rgba(255,255,255,.16)', color: '#fff', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+              <ArrowLeft size={16}/> Inicio
+            </button>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: 'rgba(255,255,255,.18)', border: '2px solid rgba(255,255,255,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
               {torneo.logo_url
