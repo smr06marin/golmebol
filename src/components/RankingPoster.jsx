@@ -43,13 +43,14 @@ function ChipVivo({ n }) {
   )
 }
 
-function FilaTop({ r, pos, statColor, statLabel }) {
+function FilaTop({ r, pos, statColor, statLabel, onClick }) {
   const medalla = pos === 1 ? '#ffd54a' : pos === 2 ? '#c9d1de' : '#d08a4e'
   const partes = (r.nombre || '').trim().split(/\s+/)
   const linea1 = partes[0] || ''
   const linea2 = partes.slice(1).join(' ')
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', height: '92px', borderBottom: '1px solid rgba(255,255,255,.07)', background: 'linear-gradient(90deg, rgba(255,255,255,.03), transparent 55%)' }}>
+    <div role={onClick ? 'link' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick} onKeyDown={onClick ? (e => { if (e.key === 'Enter') onClick() }) : undefined}
+      style={{ display: 'flex', alignItems: 'stretch', height: '92px', borderBottom: '1px solid rgba(255,255,255,.07)', background: 'linear-gradient(90deg, rgba(255,255,255,.03), transparent 55%)', cursor: onClick ? 'pointer' : 'default' }}>
       {/* Posición + nombre */}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 10px 0 16px' }}>
         <div style={{ fontSize: '.62rem', fontWeight: 900, color: medalla, letterSpacing: '.18em', marginBottom: '2px' }}>{pos}°</div>
@@ -78,9 +79,10 @@ function FilaTop({ r, pos, statColor, statLabel }) {
   )
 }
 
-function FilaCompacta({ r, pos, statColor, statLabel, ultima }) {
+function FilaCompacta({ r, pos, statColor, statLabel, ultima, onClick }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', borderBottom: ultima ? 'none' : '1px solid rgba(255,255,255,.06)' }}>
+    <div role={onClick ? 'link' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick} onKeyDown={onClick ? (e => { if (e.key === 'Enter') onClick() }) : undefined}
+      style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', borderBottom: ultima ? 'none' : '1px solid rgba(255,255,255,.06)', cursor: onClick ? 'pointer' : 'default' }}>
       <div style={{ width: '26px', flexShrink: 0, fontWeight: 800, fontSize: '.78rem', color: '#7d8598', textAlign: 'center' }}>{pos}°</div>
       <div style={{ flexShrink: 0 }}><LogoEquipo logo={r.teamLogo} name={r.teamName} size={24}/></div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -96,7 +98,8 @@ function FilaCompacta({ r, pos, statColor, statLabel, ultima }) {
   )
 }
 
-export default function RankingPoster({ titulo, rows, statLabel, statColor = '#ffd54a', vacio = 'Sin datos aún' }) {
+// onClickFila (opcional): al tocar una fila se llama con esa fila (ej. para abrir el perfil del jugador).
+export default function RankingPoster({ titulo, rows, statLabel, statColor = '#ffd54a', vacio = 'Sin datos aún', onClickFila }) {
   const [verTodos, setVerTodos] = useState(false)
 
   if (!rows || rows.length === 0) return (
@@ -126,8 +129,8 @@ export default function RankingPoster({ titulo, rows, statLabel, statColor = '#f
         </div>
       )}
       {visibles.map((r, i) => i < 3
-        ? <FilaTop key={r.id} r={r} pos={i + 1} statColor={statColor} statLabel={statLabel}/>
-        : <FilaCompacta key={r.id} r={r} pos={i + 1} statColor={statColor} statLabel={statLabel} ultima={i === visibles.length - 1 && !(rows.length > 10)}/>
+        ? <FilaTop key={r.id} r={r} pos={i + 1} statColor={statColor} statLabel={statLabel} onClick={onClickFila ? () => onClickFila(r) : undefined}/>
+        : <FilaCompacta key={r.id} r={r} pos={i + 1} statColor={statColor} statLabel={statLabel} ultima={i === visibles.length - 1 && !(rows.length > 10)} onClick={onClickFila ? () => onClickFila(r) : undefined}/>
       )}
       {rows.length > 10 && (
         <button onClick={() => setVerTodos(v => !v)}

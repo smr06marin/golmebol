@@ -11,6 +11,8 @@ const TorneoPublicoPage      = lazy(() => import('../pages/TorneoPublicoPage'))
 const OrganizadorVitrinaPage = lazy(() => import('../pages/OrganizadorVitrinaPage'))
 const ReservarEscenarioPage  = lazy(() => import('../pages/ReservarEscenarioPage'))
 const PedirEscenarioPage     = lazy(() => import('../pages/PedirEscenarioPage'))
+const EquipoPublicoPage      = lazy(() => import('../pages/EquipoPublicoPage'))
+const JugadorPublicoPage     = lazy(() => import('../pages/JugadorPublicoPage'))
 
 function esHostPropio(hostname) {
   const h = (hostname || '').toLowerCase()
@@ -138,8 +140,16 @@ export default function DominioPersonalizadoGate({ children }) {
     // llega por prop).
     return (
       <Suspense fallback={<PantallaCargaTorneo quieto tipo="torneo" id={torneoId} identidad={identidad}/>}>
-        <MemoryRouter initialEntries={[`/t/${torneoId}`]}>
-          <TorneoPublicoPage tournamentId={torneoId} />
+        {/* Además de la tabla del torneo, el visitante puede entrar al perfil
+            público de un equipo (/e/:id) o de un jugador (/j/:id) sin salir de
+            este dominio. Si abrió un link directo a uno de esos perfiles, se
+            arranca ahí; si no, en el torneo. */}
+        <MemoryRouter initialEntries={[/^\/(e|j)\/[^/]+/.test(window.location.pathname) ? window.location.pathname : `/t/${torneoId}`]}>
+          <Routes>
+            <Route path="/e/:id" element={<EquipoPublicoPage/>} />
+            <Route path="/j/:id" element={<JugadorPublicoPage/>} />
+            <Route path="*" element={<TorneoPublicoPage tournamentId={torneoId} />} />
+          </Routes>
         </MemoryRouter>
         <MarcaGolmebol/>
       </Suspense>
@@ -159,6 +169,8 @@ export default function DominioPersonalizadoGate({ children }) {
         <Routes>
           <Route path="/" element={<OrganizadorVitrinaPage organizadorId={organizadorId} identidad={identidad} />} />
           <Route path="/t/:id" element={<TorneoPublicoPage />} />
+          <Route path="/e/:id" element={<EquipoPublicoPage/>} />
+          <Route path="/j/:id" element={<JugadorPublicoPage/>} />
           <Route path="/reservar/:escenarioId" element={<ReservarEscenarioPage/>} />
           <Route path="/pedir/:escenarioId" element={<PedirEscenarioPage/>} />
           <Route path="*" element={<OrganizadorVitrinaPage organizadorId={organizadorId} identidad={identidad} />} />

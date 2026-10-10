@@ -183,7 +183,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, cla
 // Modal con foto grande + nombre de cada jugador REGISTRADO de un equipo en
 // este torneo — para que cualquiera pueda verificar en cancha quién sí está
 // inscrito.
-function RosterModal({ rosterModal, onClose, torneoNombre }) {
+function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJugador }) {
   // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
   // Android el gesto de scroll dentro del modal se "escapa" hacia la página
   // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
@@ -230,6 +230,12 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
           </div>
         )}
 
+        {onVerEquipo && team.id && (
+          <button onClick={() => onVerEquipo(team.id)}
+            style={{ width: '100%', marginBottom: '14px', padding: '11px', borderRadius: '10px', border: 'none', background: 'var(--color-primario, #1a73e8)', color: '#fff', fontWeight: 700, fontSize: '.84rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Ver perfil completo del equipo →
+          </button>
+        )}
         <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '18px', lineHeight: 1.5 }}>
           Jugadores registrados de <b>{team.name}</b> en <b>{torneoNombre}</b>.
         </div>
@@ -243,7 +249,8 @@ function RosterModal({ rosterModal, onClose, torneoNombre }) {
             {jugadores.map(j => {
               const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
               return (
-              <div key={j.id} style={{ textAlign: 'center' }}>
+              <div key={j.id} role={onVerJugador ? 'link' : undefined} tabIndex={onVerJugador ? 0 : undefined} onClick={onVerJugador ? () => onVerJugador(j.id) : undefined}
+                style={{ textAlign: 'center', cursor: onVerJugador ? 'pointer' : 'default' }}>
                 {/* Aro de color tipo "historia de Instagram" alrededor de la foto,
                     para resaltar de un vistazo a los jugadores con alguna etiqueta */}
                 <div style={{ width: '92px', height: '92px', borderRadius: '50%', margin: '0 auto', padding: tieneTag ? '3px' : '0',
@@ -1332,8 +1339,10 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
             titulo="⚽ Top goleadores"
             statLabel="goles" statColor="#ffd54a"
             vacio="Sin estadísticas aún"
+            onClickFila={r => r.playerId && navigate(`/j/${r.playerId}`)}
             rows={goleadoresConVivo.map(g => ({
               id: `${g.player_id}-${g.team_id}`,
+              playerId: g.player_id,
               nombre: g.player_name,
               foto: g.photo_url,
               teamName: g.team_name,
@@ -1390,7 +1399,9 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         </div>
       </div>
 
-      <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name}/>
+      <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name}
+        onVerEquipo={eid => { setRosterModal(null); navigate(`/e/${eid}`) }}
+        onVerJugador={jid => { setRosterModal(null); navigate(`/j/${jid}`) }}/>
       <PartidoDetalleModal partido={partidoDetalle} onClose={() => setPartidoDetalle(null)}/>
       {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}/>}
     </div>

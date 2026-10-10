@@ -27,6 +27,8 @@ const AdminSponsorsPage       = lazy(() => import('./pages/admin/AdminSponsorsPa
 const AdminPatrocinadoresPage = lazy(() => import('./pages/admin/AdminPatrocinadoresPage'))
 const AdminEquipoDetallePage  = lazy(() => import('./pages/admin/AdminEquipoDetallePage'))
 const EquipoHistorialPage     = lazy(() => import('./pages/EquipoHistorialPage'))
+const EquipoPublicoPage       = lazy(() => import('./pages/EquipoPublicoPage'))
+const JugadorPublicoPage      = lazy(() => import('./pages/JugadorPublicoPage'))
 const AdminTorneoDetallePage  = lazy(() => import('./pages/admin/AdminTorneoDetallePage'))
 const AdminTarjetasPage       = lazy(() => import('./pages/admin/AdminTarjetasPage'))
 const AdminNoticiasPage       = lazy(() => import('./pages/admin/AdminNoticiasPage'))
@@ -467,6 +469,9 @@ export default function App() {
           {/* Inicio público */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/records" element={<RecordsPage />} />
+          {/* Perfiles públicos (sin login): equipo y jugador */}
+          <Route path="/e/:id" element={<EquipoPublicoPage />} />
+          <Route path="/j/:id" element={<JugadorPublicoPage />} />
           <Route path="/test-tarjetas" element={<TestTarjetas/>}/>
 
           {/* Login admin */}

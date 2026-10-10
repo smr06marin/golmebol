@@ -35,7 +35,7 @@ const textStyle = {
   whiteSpace: 'nowrap',
 }
 
-const RUTAS_PUBLICAS = [/^\/t\/[^/]+/, /^\/organizador\/[^/]+/, /^\/reservar\/[^/]+/, /^\/pedir\/[^/]+/, /^\/equipos\/[^/]+/, /^\/escenarios\/?$/, /^\/records\/?$/]
+const RUTAS_PUBLICAS = [/^\/t\/[^/]+/, /^\/organizador\/[^/]+/, /^\/reservar\/[^/]+/, /^\/pedir\/[^/]+/, /^\/equipos\/[^/]+/, /^\/e\/[^/]+/, /^\/j\/[^/]+/, /^\/escenarios\/?$/, /^\/records\/?$/]
 
 function MarcaEstatica() {
   return (
