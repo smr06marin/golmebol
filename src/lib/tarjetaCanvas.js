@@ -17,7 +17,6 @@ const TITULAR = "'Barlow Condensed', 'Bebas Neue', 'Arial Narrow', system-ui, sa
 const MARCA = "'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
 const TEXTO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
 
-const ETIQUETAS_PUESTO = { goles: 'GOLES', mvp: 'MVP', pj: 'PARTIDOS', arqCero: 'ARCOS EN 0', arqPj: 'PARTIDOS' }
 
 // ── Colores de la tarjeta = colores del escudo del equipo ───────────────────
 function hslARgb(h, s, l) {
@@ -80,19 +79,6 @@ export function temaDesdeImagen(img) {
 // ── Modelo: qué datos lleva la tarjeta (sin dibujar nada) ───────────────────
 const puestoVisible = p => (p && p.n && p.de && p.n / p.de <= 0.5 ? p : null)
 
-function mejorPuesto(puestos, arq) {
-  const PL = puestos?.plataforma || {}
-  const claves = arq ? ['arqCero', 'arqPj'] : ['goles', 'mvp', 'pj']
-  let mejor = null
-  claves.forEach(k => {
-    const p = PL[k]
-    if (!p || !p.n || !p.de) return
-    const r = p.n / p.de
-    if (!mejor || r < mejor.r) mejor = { k, n: p.n, de: p.de, r }
-  })
-  return mejor && mejor.r <= 0.5 ? { ...mejor, etiqueta: ETIQUETAS_PUESTO[mejor.k] } : null
-}
-
 function partirNombre(nombre) {
   const w = (nombre || '').trim().split(/\s+/).filter(Boolean)
   if (w.length <= 1) return [w[0] || '', '']
@@ -134,27 +120,36 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
         { valor: partidosResultado > 0 ? `${Math.round(((totales.g || 0) / partidosResultado) * 100)}%` : '—', etiqueta: '% victorias' },
       ]
 
-  // Reconocimientos (chips): del más lucido al menos. Los que no caben se omiten al dibujar.
-  const chips = []
-  const destacado = mejorPuesto(puestos, arq)
-  if (destacado) chips.push({ texto: `#${destacado.n} DE ${destacado.de} EN ${destacado.etiqueta}`, destacado: true })
-  if (totales.mvp > 0) chips.push({ texto: `MVP DEL PARTIDO${totales.mvp > 1 ? ` ×${totales.mvp}` : ''}` })
+  // Reconocimientos: SOLO lo que no se ve ya en las cifras de arriba (el MVP, los goles y los puestos
+  // frente a los demás ya están arriba). Cada uno dice qué es, cuántas veces y dónde.
+  const PRIMERO = new Set(['goleador', 'valla_menos_vencida', 'mejor_jugador', 'mejor_arquero', 'mejor_portero'])
+  const TITULOS = {
+    goleador:            ['GOLEADOR DEL TORNEO', 'GOLEADOR DE TORNEOS'],
+    valla_menos_vencida: ['VALLA MENOS VENCIDA', 'VALLA MENOS VENCIDA'],
+    mejor_jugador:       ['MEJOR JUGADOR', 'MEJOR JUGADOR'],
+    mejor_arquero:       ['MEJOR ARQUERO', 'MEJOR ARQUERO'],
+    mejor_portero:       ['MEJOR ARQUERO', 'MEJOR ARQUERO'],
+  }
+  const reconocimientos = []
+  const goleadorEn = new Set()
   palmares.premios.forEach(p => {
-    const extra = p.n > 1 ? ` ×${p.n}` : (p.torneos[0] ? ` · ${p.torneos[0].toUpperCase()}` : '')
-    chips.push({ texto: `${p.etiqueta}${extra}` })
+    if (p.tipo === 'goleador') p.ids.forEach(id => goleadorEn.add(id))
+    const [uno, varios] = TITULOS[p.tipo] || [p.etiqueta, p.etiqueta]
+    const detalle = p.torneos.length === 0 ? '' : p.n === 1 || p.torneos.length === 1 ? p.torneos[0] : `${p.torneos[0]} +${p.n - 1}`
+    reconocimientos.push({ valor: PRIMERO.has(p.tipo) && p.n === 1 ? '1°' : String(p.n), titulo: p.n === 1 ? uno : varios, detalle })
   })
-  if (arq && arq.penalesAtajados > 0) chips.push({ texto: `${arq.penalesAtajados} ${arq.penalesAtajados === 1 ? 'PENAL ATAJADO' : 'PENALES ATAJADOS'}` })
-  if (arq && arq.golesComoArquero > 0) chips.push({ texto: `${arq.golesComoArquero} ${arq.golesComoArquero === 1 ? 'GOL' : 'GOLES'} COMO ARQUERO` })
-  const clavesT = arq ? ['arqCero'] : ['goles', 'mvp']
+  if (arq && arq.penalesAtajados > 0) reconocimientos.push({ valor: String(arq.penalesAtajados), titulo: arq.penalesAtajados === 1 ? 'PENAL ATAJADO' : 'PENALES ATAJADOS', detalle: 'en tandas de penales' })
+  if (arq && arq.golesComoArquero > 0) reconocimientos.push({ valor: String(arq.golesComoArquero), titulo: arq.golesComoArquero === 1 ? 'GOL COMO ARQUERO' : 'GOLES COMO ARQUERO', detalle: 'jugando de portero' })
+  // Podio dentro de un torneo (1.º a 3.º) cuando el torneo no tiene su premio guardado todavía
+  const claveT = arq ? 'arqCero' : 'goles'
   const deTorneo = []
   torneosJugados.forEach(t => {
-    const PT = puestos?.torneos?.[t.torneo.id] || {}
-    clavesT.forEach(k => {
-      const p = PT[k]
-      if (p && p.n <= 3 && p.de >= 6) deTorneo.push({ n: p.n, texto: `#${p.n} EN ${ETIQUETAS_PUESTO[k]} · ${String(t.torneo.name || '').toUpperCase()}` })
-    })
+    const p = (puestos?.torneos?.[t.torneo.id] || {})[claveT]
+    if (!p || p.n > 3 || p.de < 6) return
+    if (claveT === 'goles' && p.n === 1 && goleadorEn.has(t.torneo.id)) return   // ya sale como "Goleador del torneo"
+    deTorneo.push({ n: p.n, valor: `${p.n}°`, titulo: arq ? 'EN ARCOS EN 0' : 'EN GOLES DEL TORNEO', detalle: String(t.torneo.name || '') })
   })
-  deTorneo.sort((a, b) => a.n - b.n).slice(0, 3).forEach(x => chips.push({ texto: x.texto }))
+  deTorneo.sort((a, b) => a.n - b.n).slice(0, 2).forEach(({ valor, titulo, detalle }) => reconocimientos.push({ valor, titulo, detalle }))
 
   const [nom1, nom2] = partirNombre(jugador.name)
   return {
@@ -163,7 +158,7 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
     apellido: nom2 || nom1,
     equipo: equipoActual?.name || '',
     posicion: posicion || '',
-    cifras, mini, chips, palmares,
+    cifras, mini, reconocimientos, palmares,
     resumen: resumenPalmares(palmares.conteo),
   }
 }
@@ -388,48 +383,36 @@ export function dibujarTarjeta(canvas, d) {
   ctx.fillStyle = 'rgba(255,255,255,.14)'
   ctx.fillRect(20, yCab + 6, W - 40, 1)
 
-  // chips (reconocimientos): se reparten en máx. 3 renglones; los que no caben se omiten
-  const chipsLineas = []
-  {
-    let linea = [], x = 0
-    const AN = W - 40, GAP = 5
-    d.chips.forEach(ch => {
-      fuente(ctx, 800, 7.5, TEXTO)
-      const t = ajustar(ctx, ch.texto, AN - 16, 0.5)
-      const w = anchoTexto(ctx, t, 0.5) + 16
-      if (x > 0 && x + GAP + w > AN) { chipsLineas.push(linea); linea = []; x = 0 }
-      if (chipsLineas.length >= 3) return
-      linea.push({ ...ch, texto: t, w, x: x > 0 ? x + GAP : 0 })
-      x = (x > 0 ? x + GAP : 0) + w
+  // RECONOCIMIENTOS: cuadritos de 2 columnas pegados al pie (máx. 4). Cada uno: cifra grande + qué es + dónde.
+  const items = d.reconocimientos.slice(0, 4)
+  const filasItems = Math.ceil(items.length / 2)
+  const PASO_IT = 34, ALTO_IT = 30, CAB_IT = 14
+  const bloqueAlto = items.length ? CAB_IT + filasItems * PASO_IT - 4 : 0
+  const chipsTop = FOOT - 4 - bloqueAlto
+  if (items.length) {
+    texto(ctx, 'RECONOCIMIENTOS', 20, chipsTop + 8, { peso: 900, tam: 9, color: acento, esp: 2.2 })
+    items.forEach((it, i) => {
+      const completo = items.length % 2 === 1 && i === items.length - 1
+      const ancho = completo ? W - 40 : (W - 40 - 8) / 2
+      const x = 20 + (completo ? 0 : (i % 2) * (ancho + 8))
+      const y = chipsTop + CAB_IT + Math.floor(i / 2) * PASO_IT
+      ctx.fillStyle = 'rgba(255,255,255,.07)'
+      rectRedondo(ctx, x, y, ancho, ALTO_IT, 7); ctx.fill()
+      ctx.fillStyle = acento
+      rectRedondo(ctx, x, y + 5, 3, ALTO_IT - 10, 1.5); ctx.fill()
+      fuente(ctx, 900, 20, TITULAR)
+      const wv = Math.max(ctx.measureText(it.valor).width, 20)
+      texto(ctx, it.valor, x + 12, y + ALTO_IT / 2 + 7, { peso: 900, tam: 20, fam: TITULAR, color: acento })
+      const xt = x + 12 + wv + 8
+      texto(ctx, it.titulo, xt, y + 13, { peso: 800, tam: 7.4, esp: 0.3, maxW: x + ancho - 6 - xt })
+      texto(ctx, it.detalle, xt, y + 23, { peso: 600, tam: 7.2, color: rgbCss(tema.suave), maxW: x + ancho - 6 - xt })
     })
-    if (linea.length && chipsLineas.length < 3) chipsLineas.push(linea)
   }
-  const PASO_CHIP = 18
-  const chipsTop = FOOT - 4 - chipsLineas.length * PASO_CHIP
-  chipsLineas.forEach((linea, li) => {
-    const y = chipsTop + li * PASO_CHIP
-    linea.forEach(ch => {
-      const x = 20 + ch.x
-      if (ch.destacado) {
-        const g = ctx.createLinearGradient(x, 0, x + ch.w, 0)
-        g.addColorStop(0, acento); g.addColorStop(1, rgbCss(tema.acentoFin))
-        ctx.fillStyle = g
-        rectRedondo(ctx, x, y, ch.w, 14, 7); ctx.fill()
-        texto(ctx, ch.texto, x + ch.w / 2, y + 9.8, { peso: 900, tam: 7.5, color: tema.textoAcento, align: 'center', esp: 0.5 })
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,.1)'
-        rectRedondo(ctx, x, y, ch.w, 14, 7); ctx.fill()
-        ctx.strokeStyle = rgbCss(tema.acento, 0.55); ctx.lineWidth = 1
-        rectRedondo(ctx, x + .5, y + .5, ch.w - 1, 13, 6.5); ctx.stroke()
-        texto(ctx, ch.texto, x + ch.w / 2, y + 9.8, { peso: 800, tam: 7.5, align: 'center', esp: 0.5 })
-      }
-    })
-  })
 
   // filas del palmarés: las 3 mejores en grande (torneo + equipo), el resto en una sola línea
   const y0 = yCab + 12
   const GRANDE = 28, CHICA = 17, N_GRANDES = 3
-  const finFilas = (chipsLineas.length ? chipsTop : FOOT) - 4
+  const finFilas = (items.length ? chipsTop : FOOT) - 4
   const filas = d.palmares.filas
   const altoDe = i => (i < N_GRANDES ? GRANDE : CHICA)
   let usado = 0, caben = 0
@@ -479,7 +462,7 @@ export function dibujarTarjeta(canvas, d) {
   }
   // Si sobra espacio (pocos logros), una invitación en lugar de un hueco vacío
   const libreHasta = finFilas
-  if (libreHasta - (y0 + usado) >= 62) {
+  if (!items.length && libreHasta - (y0 + usado) >= 62) {
     const bh = Math.min(70, libreHasta - (y0 + usado) - 10), by = libreHasta - bh
     ctx.save()
     ctx.fillStyle = 'rgba(255,255,255,.05)'

@@ -2932,15 +2932,31 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setGuardandoLogros(false)
     if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
 
+    // Premios individuales del torneo: goleador y valla menos vencida (arquero).
+    // Si todavía no se corrió la migración en Supabase, el resto de los logros igual queda guardado.
+    const { data: premios, error: errPremios } = await supabase.rpc('calcular_premios_torneo', { p_tournament_id: id })
+    const textoPremios = errPremios
+      ? ' · (goleador y valla: falta correr migracion_premios_torneo.sql en Supabase)'
+      : ` · ⚽ ${premios?.goleadores || 0} goleador${premios?.goleadores === 1 ? '' : 'es'} · 🧤 ${premios?.valla ? 'valla menos vencida' : 'sin arquero'}`
+
     // La deuda personal por inscripción sin pagar YA NO se genera sola acá al
     // guardar los logros — quedó como acción MANUAL del organizador (botón
     // "🚫 Bloquear" en Finanzas, por equipo), para que él decida caso por
     // caso a quién perseguir. Ver handleBloquearEquipoPorInscripcion.
     const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
-    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
+    showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${textoPremios}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
     // Ya quedaron guardados los logros — el botón de guardarlos desaparece
     // solo (no hay que recargar la página para que se note).
     setTorneoFinalizado(true)
+  }
+
+  // (Re)calcula y guarda el goleador y la valla menos vencida de un torneo ya cerrado
+  async function handleGuardarPremiosTorneo() {
+    setGuardandoLogros(true)
+    const { data, error } = await supabase.rpc('calcular_premios_torneo', { p_tournament_id: id })
+    setGuardandoLogros(false)
+    if (error) return showMsg('No se pudieron guardar los premios: ' + error.message, 'error')
+    showMsg(`Premios guardados ✓ ⚽ ${data?.goleadores || 0} goleador${data?.goleadores === 1 ? '' : 'es'} · 🧤 ${data?.valla ? 'valla menos vencida' : 'sin arquero'}`)
   }
 
   // Nueva edición del mismo torneo: conserva la identidad e historial, arranca sin equipos
@@ -6430,9 +6446,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'center', marginTop: '14px', gap: '10px', flexWrap: 'wrap' }}>
                       {torneoFinalizado ? (
+                        <>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: '#e6f4ea', border: '1px solid #b7e1c4', borderRadius: '10px', color: '#188038', fontSize: '.85rem', fontWeight: '700' }}>
                           ✅ Logros guardados en la hoja de vida de equipos y jugadores
                         </span>
+                        <button onClick={handleGuardarPremiosTorneo} disabled={guardandoLogros}
+                          title="Calcula quién fue el goleador del torneo y qué arquero tuvo la valla menos vencida, y lo guarda en su hoja de vida"
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#3c4043', fontSize: '.85rem', fontWeight: '700' }}>
+                          ⚽🧤 {guardandoLogros ? 'Guardando...' : 'Guardar goleador y valla menos vencida'}
+                        </button>
+                        </>
                       ) : (
                         <button onClick={handleGuardarLogrosTorneo} disabled={guardandoLogros}
                           style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 22px', background: guardandoLogros ? '#dadce0' : '#e8710a', border: 'none', borderRadius: '10px', cursor: guardandoLogros ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>

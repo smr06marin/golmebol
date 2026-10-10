@@ -90,12 +90,15 @@ export function armarPalmares(logros = [], partidos = [], porTorneo = []) {
   const premiosMap = {}
   ;(logros || []).forEach(l => {
     if (!l?.tipo || FASES[l.tipo] || l.tipo === 'mvp') return
-    const p = (premiosMap[l.tipo] = premiosMap[l.tipo] || { tipo: l.tipo, etiqueta: PREMIOS[l.tipo] || String(l.tipo).replace(/_/g, ' ').toUpperCase(), n: 0, torneos: [] })
+    const p = (premiosMap[l.tipo] = premiosMap[l.tipo] || { tipo: l.tipo, etiqueta: PREMIOS[l.tipo] || String(l.tipo).replace(/_/g, ' ').toUpperCase(), n: 0, torneos: [], ids: [] })
     p.n++
     const nombre = l.tournaments?.name || nombreTorneo[l.tournament_id]?.name
     if (nombre) p.torneos.push(nombre)
+    if (l.tournament_id) p.ids.push(l.tournament_id)
   })
-  const premios = Object.values(premiosMap)
+  const ORDEN_PREMIOS = ['goleador', 'valla_menos_vencida', 'mejor_jugador', 'mejor_arquero', 'mejor_portero']
+  const posPremio = t => { const i = ORDEN_PREMIOS.indexOf(t); return i < 0 ? 99 : i }
+  const premios = Object.values(premiosMap).sort((a, b) => posPremio(a.tipo) - posPremio(b.tipo))
 
   return { filas, conteo, premios }
 }
