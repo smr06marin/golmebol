@@ -527,6 +527,8 @@ export default function ArbitroLiderPage() {
   const [busqArb,      setBusqArb]      = useState('')
   const [torneoFiltro, setTorneoFiltro] = useEstadoUI('gm_ui_lider_torneo', '')
   const [modalRec,     setModalRec]     = useState(null)
+  const [modalResetArb, setModalResetArb] = useState(null)   // árbitro al que se le va a reiniciar la contraseña
+  const [reseteando,    setReseteando]    = useState(false)
   const [reclamosMap,  setReclamosMap]  = useState({})
   const [planillaPartido, setPlanillaPartido] = useState(null)
   // Qué torneos ve este coordinador (ver lib/torneosCoordinador.js)
@@ -733,6 +735,27 @@ export default function ArbitroLiderPage() {
     })()
   }
 
+  // Árbitro que olvidó su contraseña: queda igual a su cédula y debe cambiarla al entrar.
+  // Se hace en una función del servidor (reset-arbitro-password) que revisa que quien pide sea coordinador o admin.
+  async function handleResetArbitro(arb) {
+    setReseteando(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('https://obvlyexpbbdhxwijjqyd.supabase.co/functions/v1/reset-arbitro-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ player_id: arb.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) showMsgFn('No se pudo reiniciar: ' + (data.error || `error ${res.status}`), 'error', 7000)
+      else showMsgFn(`Contraseña de ${arb.name} reiniciada: ahora es su cédula`, 'ok', 5000)
+    } catch (e) {
+      showMsgFn('No se pudo reiniciar: ' + (e?.message || 'sin conexión'), 'error', 7000)
+    }
+    setReseteando(false)
+    setModalResetArb(null)
+  }
+
   async function handleActivar(arb) {
     // Los árbitros son gratis: sin membresía ni fecha de vencimiento. Si ya
     // tiene cuenta creada, basta con marcarlo activo; si no, se le crea con
@@ -847,6 +870,23 @@ export default function ArbitroLiderPage() {
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text.replace('OK|','')}</div>}
       {/* Modal reclamo */}
+      {modalResetArb && (
+        <div onClick={()=>!reseteando&&setModalResetArb(null)} style={{ position:'fixed', inset:0, zIndex:700, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:'#0f1f33', border:'1px solid #24405e', borderRadius:'14px', padding:'20px', width:'100%', maxWidth:'360px' }}>
+            <div style={{ fontWeight:'800', color:'#fff', fontSize:'1rem', marginBottom:'8px', display:'flex', alignItems:'center', gap:'6px' }}><Key size={16}/> Reiniciar contraseña</div>
+            <div style={{ color:'#9fb6cc', fontSize:'.84rem', lineHeight:1.5, marginBottom:'16px' }}>
+              La contraseña de <b style={{color:'#fff'}}>{modalResetArb.name}</b> volverá a ser su cédula{modalResetArb.numero_cedula ? <> (<b style={{color:'#fff'}}>{modalResetArb.numero_cedula}</b>)</> : ''}. Al entrar, la app le pedirá crear una nueva.
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={()=>setModalResetArb(null)} disabled={reseteando}
+                style={{ flex:1, padding:'10px', background:'none', border:'1px solid #3a5470', borderRadius:'10px', color:'#9fb6cc', fontWeight:'700', fontSize:'.85rem', cursor:'pointer' }}>Cancelar</button>
+              <button onClick={()=>handleResetArbitro(modalResetArb)} disabled={reseteando}
+                style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'10px', color:'#fff', fontWeight:'700', fontSize:'.85rem', cursor:reseteando?'not-allowed':'pointer', opacity:reseteando?.7:1 }}>{reseteando?'Reiniciando...':'Sí, reiniciar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modalRec && (
         <ModalReclamoLider
           partido={modalRec}
@@ -1052,6 +1092,12 @@ export default function ArbitroLiderPage() {
                         </div>
                       ):(
                         <button onClick={()=>handleActivar(a)} style={{ padding:'5px 10px', background:'none', border:'1px solid #e8710a', borderRadius:'7px', cursor:'pointer', color:'#e8710a', fontSize:'.72rem' }}>Renovar</button>
+                      )}
+                      {a.user_id && (
+                        <button onClick={()=>setModalResetArb(a)} title="Si olvidó su contraseña"
+                          style={{ marginTop:'5px', padding:'4px 9px', background:'none', border:'1px solid #3a5470', borderRadius:'7px', cursor:'pointer', color:'#9fb6cc', fontSize:'.68rem', fontWeight:'600', display:'inline-flex', alignItems:'center', gap:'4px' }}>
+                          <Key size={10}/> Reiniciar clave
+                        </button>
                       )}
                     </div>
                   </div>
