@@ -1,4 +1,4 @@
-import { guardarEnVivo } from '../lib/guardarEnVivo'
+import { guardarEnVivo, guardarResultadoPartido } from '../lib/guardarEnVivo'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { conPlayers } from '../lib/planillaJugadores'
@@ -1481,7 +1481,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
     if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
     if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = normalizarGanador(penalesGanador) }
-    let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
+    let { error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido)
     // Si la BD no tiene alguna columna opcional (falta una migración), se quita
     // esa columna y se reintenta: el RESULTADO nunca se debe quedar sin subir
     // por un dato secundario (nombres de árbitros, firmas, capitanes, foto W...).
@@ -1492,7 +1492,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const faltantes = columnasOpcionales.filter(c => msgErr.includes(`'${c}'`))
       if (faltantes.length === 0) break
       faltantes.forEach(c => delete updatePartido[c])
-      ;({ error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id))
+      ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido))
       reintentos++
     }
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)

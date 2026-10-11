@@ -21,3 +21,21 @@ export async function guardarEnVivo(matchId, tipo, snap, ts) {
     return !err2
   } catch { return false }
 }
+
+// Guarda el RESULTADO del partido (marcador, estado finalizado, penales, firmas, capitanes...). Igual que el en vivo:
+// la tabla de partidos solo deja editar al dueño/admin, y a un árbitro la base le descartaba el cambio SIN error,
+// así que la planilla creía haber guardado y el partido seguía "pendiente". Ahora va por una función de la base con
+// permiso (migracion_guardar_resultado_partido.sql). Devuelve { error } como supabase: error = null si SÍ se guardó.
+// Si esa función aún no existe, se guarda directo como antes, pero comprobando que de verdad se modificó una fila.
+export async function guardarResultadoPartido(matchId, campos) {
+  const { data, error } = await supabase.rpc('guardar_resultado_partido', { p_match_id: matchId, p_campos: campos })
+  if (!error) {
+    if (data && data.ok === false) return { error: { message: 'la base no guardó el partido (0 filas modificadas)' } }
+    return { error: null }
+  }
+  if (!faltaFuncion(error)) return { error }
+  const { data: filas, error: err2 } = await supabase.from('matches').update(campos).eq('id', matchId).select('id')
+  if (err2) return { error: err2 }
+  if (!filas || filas.length === 0) return { error: { message: 'la base no permitió guardar el resultado (falta ejecutar migracion_guardar_resultado_partido.sql en Supabase)' } }
+  return { error: null }
+}

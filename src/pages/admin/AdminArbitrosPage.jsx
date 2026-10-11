@@ -21,7 +21,7 @@ function ModalMembresia({ arbitro, onClose, onActivar }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#fff', borderRadius:'16px', padding:'28px', width:'400px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
+      <div style={{ background:'#fff', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'400px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
           <div>
             <div style={{ fontWeight:'700', color:'#202124', fontSize:'1rem' }}>
@@ -66,6 +66,8 @@ export default function AdminArbitrosPage() {
   const [msg,        setMsg]        = useState(null)
   const [search,     setSearch]     = useState('')
   const [modalMem,     setModalMem]     = useState(null)
+  const [modalReset,   setModalReset]   = useState(null)   // árbitro al que se le reinicia la contraseña
+  const [reseteando,   setReseteando]   = useState(false)
   const [buscarJugador,setBuscarJugador] = useState(false)
   const [jugadoresTodos,setJugadoresTodos] = useState([])
   const [busqJug,      setBusqJug]      = useState('')
@@ -96,6 +98,27 @@ export default function AdminArbitrosPage() {
     await supabase.from('players').update({ es_arbitro: false }).eq('id', jugador.id)
     showMsgFn(`Rol de árbitro removido`)
     fetchArbitros()
+  }
+
+  // Árbitro que olvidó su contraseña: queda igual a su cédula y debe cambiarla al entrar.
+  // Lo hace la función del servidor reset-arbitro-password (solo admin o coordinador de árbitros).
+  async function handleResetClave(arb) {
+    setReseteando(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('https://obvlyexpbbdhxwijjqyd.supabase.co/functions/v1/reset-arbitro-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ player_id: arb.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) showMsgFn('No se pudo reiniciar: ' + (data.error || `error ${res.status}`), 'error')
+      else showMsgFn(`Contraseña de ${arb.name} reiniciada: ahora es su cédula`)
+    } catch (e) {
+      showMsgFn('No se pudo reiniciar: ' + (e?.message || 'sin conexión'), 'error')
+    }
+    setReseteando(false)
+    setModalReset(null)
   }
 
   async function fetchArbitros() {
@@ -266,7 +289,7 @@ export default function AdminArbitrosPage() {
       {showForm && editId && (
         <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
           <div style={{ fontWeight:'600', color:'#202124', marginBottom:'16px' }}>Editar árbitro</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'14px', marginBottom:'14px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'14px', marginBottom:'14px' }}>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre del árbitro"/></div>
             <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="Número de cédula"/></div>
             <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
@@ -323,7 +346,7 @@ export default function AdminArbitrosPage() {
         <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', marginBottom:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
           <div style={{ fontWeight:'600', color:'#202124', marginBottom:'4px' }}>Nuevo árbitro</div>
           <div style={{ fontSize:'.8rem', color:'#5f6368', marginBottom:'14px' }}>⚠️ No hay nadie registrado con la cédula <strong>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'14px', marginBottom:'14px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'14px', marginBottom:'14px' }}>
             <div style={{ gridColumn:'1/-1' }}><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre del árbitro"/></div>
             <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#f1f3f4', color:'#9aa0a6'}}/></div>
             <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
@@ -366,6 +389,23 @@ export default function AdminArbitrosPage() {
         </div>
       )}
 
+      {modalReset && (
+        <div onClick={() => !reseteando && setModalReset(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:'#fff', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'380px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
+            <div style={{ fontWeight:'700', color:'#202124', fontSize:'1rem', marginBottom:'8px' }}>🔑 Reiniciar contraseña</div>
+            <div style={{ fontSize:'.85rem', color:'#5f6368', lineHeight:1.5, marginBottom:'18px' }}>
+              La contraseña de <b style={{ color:'#202124' }}>{modalReset.name}</b> volverá a ser su cédula{modalReset.numero_cedula ? <> (<b style={{ color:'#202124' }}>{modalReset.numero_cedula}</b>)</> : ''}. Al entrar, la app le pedirá crear una nueva.
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={() => setModalReset(null)} disabled={reseteando}
+                style={{ flex:1, padding:'10px', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontWeight:'600', fontSize:'.85rem' }}>Cancelar</button>
+              <button onClick={() => handleResetClave(modalReset)} disabled={reseteando}
+                style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor: reseteando?'not-allowed':'pointer', color:'#fff', fontWeight:'700', fontSize:'.85rem', opacity: reseteando?.7:1 }}>{reseteando ? 'Reiniciando...' : 'Sí, reiniciar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Búsqueda */}
       <div style={{ marginBottom:'16px' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar árbitro..."
@@ -384,7 +424,8 @@ export default function AdminArbitrosPage() {
           const dias = a.fecha_vencimiento ? Math.ceil((new Date(a.fecha_vencimiento) - new Date()) / 86400000) : null
           const activo = esPuro ? !!a.activo_membresia : (a.activo_membresia && dias !== null && dias > 0)
           return (
-            <div key={a.id} style={{ padding:'14px 20px', borderBottom: i<filtrados.length-1?'1px solid #f1f3f4':'none', display:'flex', alignItems:'center', gap:'14px' }}>
+            <div key={a.id} style={{ padding:'14px 16px', borderBottom: i<filtrados.length-1?'1px solid #f1f3f4':'none', display:'flex', flexDirection:'column', gap:'10px' }}>
+              <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
               {/* Foto */}
               <label style={{ cursor:'pointer', flexShrink:0, position:'relative' }}>
                 <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => handleFoto(a, e.target.files[0])}/>
@@ -399,8 +440,8 @@ export default function AdminArbitrosPage() {
               </label>
 
               {/* Info */}
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+              <div style={{ flex:1, minWidth:0, overflowWrap:'anywhere' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
                 <div style={{ fontWeight:'700', fontSize:'.95rem', color:'#202124' }}>{a.name}</div>
                 {a.es_arbitro && a.rol !== 'arbitro' && <span style={{ fontSize:'.65rem', color:'#9955ff', background:'#f3e8fd', borderRadius:'20px', padding:'1px 8px', fontWeight:'600' }}>Jugador+Árbitro</span>}
               </div>
@@ -412,7 +453,7 @@ export default function AdminArbitrosPage() {
               </div>
 
               {/* Estado de acceso */}
-              <div style={{ textAlign:'center', flexShrink:0 }}>
+              <div style={{ textAlign:'right', flexShrink:0, whiteSpace:'nowrap' }}>
                 {esPuro ? (
                   activo ? (
                     <div>
@@ -434,36 +475,41 @@ export default function AdminArbitrosPage() {
                 )}
               </div>
 
-              {/* Acciones */}
-              <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+              </div>
+              {/* Acciones: saltan de línea en pantallas angostas, nunca se montan unos sobre otros */}
+              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
                 <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEditId(a.id); setShowForm(true) }}
-                  style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem' }}>✏️</button>
+                  style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap', color:'#5f6368', fontSize:'.8rem' }}>✏️</button>
                 {esPuro ? (
                   !activo && (
                     <button onClick={() => handleActivarGratis(a)}
-                      style={{ background:'#1a73e8', border:'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                      style={{ background:'#1a73e8', border:'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', whiteSpace:'nowrap', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
                       Activar gratis
                     </button>
                   )
                 ) : (
                   <button onClick={() => setModalMem(a)}
-                    style={{ background: activo?'none':'#1a73e8', border: activo?'1px solid #1a73e8':'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', color: activo?'#1a73e8':'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                    style={{ background: activo?'none':'#1a73e8', border: activo?'1px solid #1a73e8':'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', whiteSpace:'nowrap', color: activo?'#1a73e8':'#fff', fontSize:'.8rem', fontWeight:'600' }}>
                     {!a.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
                   </button>
                 )}
                 {activo && (
                   <button onClick={() => handleDesactivar(a)}
-                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Desactivar</button>
+                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap', color:'#d93025', fontSize:'.8rem' }}>Desactivar</button>
                 )}
                 {a.es_arbitro && a.rol !== 'arbitro' && (
                   <button onClick={() => handleQuitarArbitro(a)}
-                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color:'#d93025', fontSize:'.8rem' }}>Quitar rol</button>
+                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap', color:'#d93025', fontSize:'.8rem' }}>Quitar rol</button>
+                )}
+                {a.user_id && (
+                  <button onClick={() => setModalReset(a)} title="Si olvidó su contraseña"
+                    style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap', color:'#5f6368', fontSize:'.8rem', fontWeight:'600' }}>🔑 Reiniciar clave</button>
                 )}
                 <button onClick={async () => {
                   await supabase.from('players').update({ es_arbitro_lider: !a.es_arbitro_lider }).eq('id', a.id)
                   showMsgFn(a.es_arbitro_lider ? 'Rol de coordinador removido' : '👑 Marcado como Coordinador ✓')
                   fetchArbitros()
-                }} style={{ background: a.es_arbitro_lider?'rgba(249,168,37,.15)':'none', border:`1px solid ${a.es_arbitro_lider?'#f9a825':'#dadce0'}`, borderRadius:'6px', padding:'5px 8px', cursor:'pointer', color: a.es_arbitro_lider?'#f9a825':'#9aa0a6', fontSize:'.75rem' }} title={a.es_arbitro_lider?'Quitar rol de coordinador':'Marcar como coordinador/a'}>
+                }} style={{ background: a.es_arbitro_lider?'rgba(249,168,37,.15)':'none', border:`1px solid ${a.es_arbitro_lider?'#f9a825':'#dadce0'}`, borderRadius:'6px', padding:'5px 8px', cursor:'pointer', whiteSpace:'nowrap', color: a.es_arbitro_lider?'#f9a825':'#9aa0a6', fontSize:'.75rem' }} title={a.es_arbitro_lider?'Quitar rol de coordinador':'Marcar como coordinador/a'}>
                   👑
                 </button>
               </div>

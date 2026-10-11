@@ -1,4 +1,4 @@
-import { guardarEnVivo } from '../../lib/guardarEnVivo'
+import { guardarEnVivo, guardarResultadoPartido } from '../../lib/guardarEnVivo'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { conPlayers } from '../../lib/planillaJugadores'
@@ -1130,7 +1130,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       updateFinal.penales_visitante = tanda.penalesVisitante
       updateFinal.penales_ganador = tanda.ganador
     }
-    const { error: errPartido } = await supabase.from('matches').update(updateFinal).eq('id', partido.id)
+    const { error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal)
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
     // Detalle de cada cobro (de aquí salen los penales atajados del arquero).
@@ -1312,12 +1312,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       live_state_rapida: null, live_state_rapida_updated_at: null, tipo_resultado: tipo,
     }
     if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
-    let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
+    let { error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido)
     // Si falta la migración de foto_w_url, se reintenta sin ella: el
     // resultado no se debe perder por un dato secundario.
     if (errPartido && (errPartido.message || '').includes(`'foto_w_url'`)) {
       delete updatePartido.foto_w_url
-      ;({ error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id))
+      ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido))
     }
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
