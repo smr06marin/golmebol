@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Star } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Star, MapPin } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useFavoritos } from '../lib/favoritos'
@@ -21,7 +21,7 @@ const S = {
   red: '#e5433d', gold: '#f5a623', text: '#ffffff', muted: '#8a8a8a',
 }
 
-const COLS = 'id, tournament_id, status, fase, matchday, played_at, location, home_score, away_score, home_team_id, away_team_id, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments!inner(name, logo_url)'
+const COLS = 'id, tournament_id, status, fase, matchday, played_at, location, cancha_id, home_score, away_score, home_team_id, away_team_id, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments!inner(name, logo_url)'
 const FASES = { octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final' }
 
 function inicioDia(offset) {
@@ -54,6 +54,8 @@ const ESTILO = `
 @keyframes gmPdPulso { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 .gm-pd-fila { display: grid; grid-template-columns: 30px minmax(0,1fr) 70px minmax(0,1fr) 30px; align-items: center; column-gap: 4px; padding: 9px 8px; min-height: 58px; cursor: pointer; border-top: 1px solid #242424; background: transparent; width: 100%; border-left: none; border-right: none; border-bottom: none; color: inherit; font-family: inherit; text-align: left; }
 .gm-pd-fila:hover { background: #1c1c1c; }
+.gm-pd-lugar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; margin-top: 5px; font-size: .66rem; font-weight: 600; color: #8a8a8a; }
+.gm-pd-lugar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .gm-pd-eq { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .gm-pd-local { justify-content: flex-end; text-align: right; }
 .gm-pd-nombre { font-size: .78rem; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; min-width: 0; }
@@ -83,7 +85,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     const ya = new Set(partidos.map(m => m.id))
     const extra = partidosVivo.filter(m => m.id && m.vivo && !ya.has(m.id)).map(m => ({
       id: m.id, tournament_id: m.tournament_id, status: m.status, fase: m.fase, matchday: m.matchday,
-      played_at: null, home_team_id: m.home_team_id, away_team_id: m.away_team_id,
+      played_at: null, location: m.location || null, cancha_id: m.cancha_id || null, home_team_id: m.home_team_id, away_team_id: m.away_team_id,
       home: m.home, away: m.away, tournaments: { name: m.tournaments?.name, logo_url: null },
     }))
     return extra.length ? [...extra, ...partidos] : partidos
@@ -122,6 +124,40 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     setOffset(0)
     setFiltro(nVivos > 0 ? 'vivo' : 'todos')
   }, [senalVivo])
+
+  // Escenario y cancha donde se juega cada partido. matches.location guarda el nombre de la cancha y el
+  // escenario vive en la tabla canchas (a veces no tiene). Se piden las canchas de los torneos que salen hoy.
+  const [canchasPorTorneo, setCanchasPorTorneo] = useState({})
+  const torneosKey = useMemo(() => [...new Set(lista.map(m => m.tournament_id).filter(Boolean))].sort().join(','), [lista])
+  useEffect(() => {
+    const ids = torneosKey ? torneosKey.split(',').filter(id => !(id in canchasPorTorneo)) : []
+    if (ids.length === 0) return
+    let cancelado = false
+    supabase.from('canchas').select('id, nombre, escenario, tournament_id').in('tournament_id', ids).then(({ data, error }) => {
+      if (cancelado || error) return
+      setCanchasPorTorneo(prev => {
+        const sig = { ...prev }
+        ids.forEach(id => { sig[id] = [] })
+        ;(data || []).forEach(c => { sig[c.tournament_id].push(c) })
+        return sig
+      })
+    }, () => {})
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [torneosKey])
+
+  // "Escenario · Cancha". Si no se sabe el escenario, solo el nombre de la cancha que guardó el partido.
+  function lugarDe(m) {
+    const canchas = canchasPorTorneo[m.tournament_id] || []
+    let c = m.cancha_id != null && m.cancha_id !== '' ? canchas.find(x => String(x.id) === String(m.cancha_id)) : null
+    if (!c && m.location) {
+      const coinc = canchas.filter(x => x.nombre === m.location)
+      if (coinc.length === 1) c = coinc[0] // mismo nombre en dos escenarios: no se adivina cuál
+    }
+    const cancha = c?.nombre || m.location || ''
+    const escenario = c?.escenario && c.escenario !== cancha ? c.escenario : ''
+    return [escenario, cancha].filter(Boolean).join(' · ')
+  }
 
   const estadoDe = m => vivoPorId.has(m.id) ? 'vivo' : m.status === 'finished' ? 'final' : 'proximo'
 
@@ -271,6 +307,9 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
                       <span className="gm-pd-nombre">{m.away?.name}</span>
                     </div>
                     <BotonEstrella activo={favV} onClick={() => alternar(m.away_team_id)} nombre={m.away?.name}/>
+                    {lugarDe(m) && (
+                      <div className="gm-pd-lugar"><MapPin size={11} style={{ flexShrink: 0 }}/><span>{lugarDe(m)}</span></div>
+                    )}
                   </div>
                 )
               })}
