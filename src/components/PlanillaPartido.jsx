@@ -1,3 +1,4 @@
+import { guardarEnVivo } from '../lib/guardarEnVivo'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { conPlayers } from '../lib/planillaJugadores'
@@ -729,7 +730,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   function sincronizarRemoto(snap, { inmediato = false } = {}) {
     clearTimeout(syncTimerRef.current)
     const subir = () => {
-      supabase.from('matches').update({ live_state: snap, live_state_updated_at: snap.savedAt }).eq('id', partido.id).then(() => {}, () => {})
+      guardarEnVivo(partido.id, 'completa', snap, snap.savedAt)
     }
     if (inmediato) subir()
     else syncTimerRef.current = setTimeout(subir, 1500)

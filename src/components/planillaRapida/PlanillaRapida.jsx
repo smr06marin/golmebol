@@ -1,3 +1,4 @@
+import { guardarEnVivo } from '../../lib/guardarEnVivo'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { conPlayers } from '../../lib/planillaJugadores'
@@ -767,7 +768,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (!navigator.onLine || !sincronizadoRef.current) return
     const ts = new Date().toISOString()
     vistosMsRef.current.add(new Date(ts).getTime()) // para no tratar mi propio guardado como si fuera del otro celular
-    supabase.from('matches').update({ live_state_rapida: snap, live_state_rapida_updated_at: ts }).eq('id', partido.id).then(() => {}, () => {})
+    guardarEnVivo(partido.id, 'rapida', snap, ts)
   }
   function guardarRemotoDebounced(snap) {
     clearTimeout(remoteTimer.current)
