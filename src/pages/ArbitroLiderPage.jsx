@@ -662,7 +662,6 @@ export default function ArbitroLiderPage() {
     if (ok) showMsgFn(`Ahora diriges ${nombre || 'este torneo'}`)
     else showMsgFn('No se pudo marcar el torneo. Revisa tu conexión (o que la migración de coordinadores esté corrida)', 'err')
   }
-  const torneoDePartido = matchId => partidos.find(p => p.id === matchId)?.tournament_id
 
   // La tabla de partidos solo deja editar al dueño del torneo, así que el coordinador guarda por una
   // función de la base con su propio permiso (migracion_asignar_arbitros.sql): guarda los árbitros y
@@ -670,38 +669,68 @@ export default function ArbitroLiderPage() {
   // el "Listo" parecía funcionar y el partido volvía a salir "Sin árbitro". Ahora se verifica y se avisa.
   const faltaFuncion = e => !!e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|schema cache|does not exist/i.test(e.message || ''))
 
-  async function handleGuardarAsignacion(matchId, seleccion) {
+  // Cambia un partido en pantalla al instante (sin esperar a la base ni recargar todo).
+  function parchePartido(matchId, campos) {
+    setPartidos(prev => prev.map(p => p.id === matchId ? { ...p, ...campos } : p))
+  }
+
+  // Guarda al instante en pantalla (el partido pasa a "Asignados" y el panel se cierra ya) y manda el
+  // guardado a la base en segundo plano. Si la base lo rechaza, se devuelve todo como estaba y se avisa.
+  // Antes se esperaba a guardar Y a recargar partidos, torneos, coordinadores y reclamos uno tras otro.
+  function handleGuardarAsignacion(matchId, seleccion) {
     const a1 = seleccion.arbitro1_id || null, a2 = seleccion.arbitro2_id || null, a3 = seleccion.arbitro3_id || null
-    let ok = false, avisados = 0, detalle = ''
-    const { data, error } = await supabase.rpc('asignar_arbitros_partido', { p_match_id: matchId, p_arbitro1: a1, p_arbitro2: a2, p_arbitro3: a3 })
-    if (!error) { ok = true; avisados = data?.avisados || 0 }
-    else if (faltaFuncion(error)) {
-      // Función aún no creada en la base: guardado directo, pero comprobando que de verdad guardó
-      const { data: filas, error: err2 } = await supabase.from('matches').update({ arbitro1_id: a1, arbitro2_id: a2, arbitro3_id: a3 }).eq('id', matchId).select('id')
-      if (err2) detalle = err2.message
-      else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
-      else ok = true
-    } else detalle = error.message
-    if (!ok) { showMsgFn('No se guardó la asignación: ' + detalle, 'error', 7000); return false }
-    reclamarTorneo(torneoDePartido(matchId))
-    await fetchPartidos()
-    showMsgFn(avisados > 0 ? `Árbitros asignados — ${avisados} avisado${avisados === 1 ? '' : 's'}` : 'Árbitros asignados')
+    const antes = partidos.find(p => p.id === matchId)
+    if (!antes) return false
+    const previos = { arbitro1_id: antes.arbitro1_id, arbitro2_id: antes.arbitro2_id, arbitro3_id: antes.arbitro3_id }
+    const nuevos = { arbitro1_id: a1, arbitro2_id: a2, arbitro3_id: a3 }
+    const idsAntes = Object.values(previos).filter(Boolean), idsDespues = Object.values(nuevos).filter(Boolean)
+    const ajustarConteo = (quitar, poner) => setArbitros(prev => prev.map(a => {
+      const d = (poner.filter(x => x === a.id).length) - (quitar.filter(x => x === a.id).length)
+      return d ? { ...a, stats: { ...a.stats, total: Math.max(0, (a.stats?.total || 0) + d) } } : a
+    }))
+    parchePartido(matchId, nuevos)
+    ajustarConteo(idsAntes, idsDespues)
+    ;(async () => {
+      let ok = false, avisados = 0, detalle = ''
+      const { data, error } = await supabase.rpc('asignar_arbitros_partido', { p_match_id: matchId, p_arbitro1: a1, p_arbitro2: a2, p_arbitro3: a3 })
+      if (!error) { ok = true; avisados = data?.avisados || 0 }
+      else if (faltaFuncion(error)) {
+        // Función aún no creada en la base: guardado directo, pero comprobando que de verdad guardó
+        const { data: filas, error: err2 } = await supabase.from('matches').update(nuevos).eq('id', matchId).select('id')
+        if (err2) detalle = err2.message
+        else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
+        else ok = true
+      } else detalle = error.message
+      if (!ok) {
+        parchePartido(matchId, previos)
+        ajustarConteo(idsDespues, idsAntes)
+        showMsgFn('No se guardó la asignación: ' + detalle, 'error', 7000)
+        return
+      }
+      reclamarTorneo(antes.tournament_id)
+      showMsgFn(avisados > 0 ? `Árbitros asignados — ${avisados} avisado${avisados === 1 ? '' : 's'}` : 'Árbitros asignados')
+    })()
     return true
   }
 
-  async function handleToggleSinPlanillador(matchId, valor) {
-    let ok = false, detalle = ''
-    const { error } = await supabase.rpc('marcar_sin_planillador', { p_match_id: matchId, p_valor: !!valor })
-    if (!error) ok = true
-    else if (faltaFuncion(error)) {
-      const { data: filas, error: err2 } = await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId).select('id')
-      if (err2) detalle = err2.message
-      else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
-      else ok = true
-    } else detalle = error.message
-    if (!ok) return showMsgFn('No se guardó el cambio: ' + detalle, 'error', 7000)
-    reclamarTorneo(torneoDePartido(matchId))
-    fetchPartidos()
+  function handleToggleSinPlanillador(matchId, valor) {
+    const antes = partidos.find(p => p.id === matchId)
+    if (!antes) return
+    const previo = antes.sin_planillador
+    parchePartido(matchId, { sin_planillador: valor })
+    ;(async () => {
+      let ok = false, detalle = ''
+      const { error } = await supabase.rpc('marcar_sin_planillador', { p_match_id: matchId, p_valor: !!valor })
+      if (!error) ok = true
+      else if (faltaFuncion(error)) {
+        const { data: filas, error: err2 } = await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId).select('id')
+        if (err2) detalle = err2.message
+        else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
+        else ok = true
+      } else detalle = error.message
+      if (!ok) { parchePartido(matchId, { sin_planillador: previo }); showMsgFn('No se guardó el cambio: ' + detalle, 'error', 7000); return }
+      reclamarTorneo(antes.tournament_id)
+    })()
   }
 
   async function handleActivar(arb) {
