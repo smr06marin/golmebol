@@ -340,7 +340,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
               })}
             </div>
           )}
-          <button onClick={async()=>{ setGuardando(true); await onGuardarAsignacion(p.id, seleccion); setGuardando(false); setAbierto(false); setPickerCampo(null) }} disabled={guardando}
+          <button onClick={async()=>{ setGuardando(true); const guardado = await onGuardarAsignacion(p.id, seleccion); setGuardando(false); if (guardado !== false) { setAbierto(false); setPickerCampo(null) } }} disabled={guardando}
             style={{ marginTop:'12px', width:'100%', padding:'9px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', opacity:guardando?.7:1 }}>
             <Check size={13}/> {guardando ? 'Guardando...' : 'Listo'}
           </button>
@@ -664,14 +664,42 @@ export default function ArbitroLiderPage() {
   }
   const torneoDePartido = matchId => partidos.find(p => p.id === matchId)?.tournament_id
 
+  // La tabla de partidos solo deja editar al dueño del torneo, así que el coordinador guarda por una
+  // función de la base con su propio permiso (migracion_asignar_arbitros.sql): guarda los árbitros y
+  // avisa a los que quedaron asignados. Antes el guardado directo era rechazado por la base SIN dar error:
+  // el "Listo" parecía funcionar y el partido volvía a salir "Sin árbitro". Ahora se verifica y se avisa.
+  const faltaFuncion = e => !!e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|schema cache|does not exist/i.test(e.message || ''))
+
   async function handleGuardarAsignacion(matchId, seleccion) {
-    await supabase.from('matches').update(seleccion).eq('id',matchId)
+    const a1 = seleccion.arbitro1_id || null, a2 = seleccion.arbitro2_id || null, a3 = seleccion.arbitro3_id || null
+    let ok = false, avisados = 0, detalle = ''
+    const { data, error } = await supabase.rpc('asignar_arbitros_partido', { p_match_id: matchId, p_arbitro1: a1, p_arbitro2: a2, p_arbitro3: a3 })
+    if (!error) { ok = true; avisados = data?.avisados || 0 }
+    else if (faltaFuncion(error)) {
+      // Función aún no creada en la base: guardado directo, pero comprobando que de verdad guardó
+      const { data: filas, error: err2 } = await supabase.from('matches').update({ arbitro1_id: a1, arbitro2_id: a2, arbitro3_id: a3 }).eq('id', matchId).select('id')
+      if (err2) detalle = err2.message
+      else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
+      else ok = true
+    } else detalle = error.message
+    if (!ok) { showMsgFn('No se guardó la asignación: ' + detalle, 'error', 7000); return false }
     reclamarTorneo(torneoDePartido(matchId))
-    fetchPartidos()
+    await fetchPartidos()
+    showMsgFn(avisados > 0 ? `Árbitros asignados — ${avisados} avisado${avisados === 1 ? '' : 's'}` : 'Árbitros asignados')
+    return true
   }
 
   async function handleToggleSinPlanillador(matchId, valor) {
-    await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId)
+    let ok = false, detalle = ''
+    const { error } = await supabase.rpc('marcar_sin_planillador', { p_match_id: matchId, p_valor: !!valor })
+    if (!error) ok = true
+    else if (faltaFuncion(error)) {
+      const { data: filas, error: err2 } = await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId).select('id')
+      if (err2) detalle = err2.message
+      else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
+      else ok = true
+    } else detalle = error.message
+    if (!ok) return showMsgFn('No se guardó el cambio: ' + detalle, 'error', 7000)
     reclamarTorneo(torneoDePartido(matchId))
     fetchPartidos()
   }
@@ -706,7 +734,7 @@ export default function ArbitroLiderPage() {
     setUploading(null)
   }
 
-  function showMsgFn(text,type='ok') { setMsg({text,type}); setTimeout(()=>setMsg(null),3000) }
+  function showMsgFn(text,type='ok',ms=3000) { setMsg({text,type}); setTimeout(()=>setMsg(null),ms) }
 
   async function registrarReclamo(partido, arbitroId, tipo, desc) {
     if (!arbitroId || !desc.trim()) return
