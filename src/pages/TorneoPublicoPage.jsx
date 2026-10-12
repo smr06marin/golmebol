@@ -334,18 +334,21 @@ function PartidoDetalleModal({ partido, onClose }) {
     let activo = true
     setEventos(null)
     setErrorCarga(null)
-    // players!player_id (no players(...) a secas): match_events tiene más de
-    // una relación hacia players, así que hay que decirle a PostgREST cuál
-    // columna usar para el embed — si no, tira "more than one relationship
-    // was found for match_events and players".
+    // OJO: los nombres NO se piden con el embed players!player_id(name): al público la base le niega la
+    // tabla "players" (solo puede leer la vista segura players_publico), y con el embed TODA la consulta
+    // fallaba con "permission denied for table players" y el resumen de cualquier partido finalizado
+    // no abría. Se traen los eventos solos y los nombres aparte, de players_publico.
     supabase.from('match_events')
-      .select('id, event_type, minute, periodo, team_id, player_id, player_nombre, players!player_id(name)')
+      .select('id, event_type, minute, periodo, team_id, player_id, player_nombre')
       .eq('match_id', partido.id)
       .order('minute', { ascending: true })
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!activo) return
         if (error) { setErrorCarga(error.message); setEventos([]); return }
-        setEventos(data || [])
+        let filas = data || []
+        try { filas = await hydratePlayersPublico(filas, { columns: 'id, name' }) } catch { /* sin nombres: se muestran como "Jugador" o con player_nombre */ }
+        if (!activo) return
+        setEventos(filas)
       })
     return () => { activo = false }
   }, [partido?.id])
