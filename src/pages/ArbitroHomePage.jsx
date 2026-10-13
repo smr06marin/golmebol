@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Zap, Lock, FileText, Key, Circle } from 'lucide-react'
-import PlanillaPartido from '../components/PlanillaPartido'
-import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
+import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Lock, FileText, Key, Circle } from 'lucide-react'
+import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 
@@ -270,19 +269,12 @@ export default function ArbitroHomePage() {
       {showPass  && <ModalCambiarContrasena onClose={()=>setShowPass(false)}/>}
       {showFlyer && <FlyerPartidos arbitro={arbitro} partidos={partidos} onClose={()=>setShowFlyer(false)}/>}
       {planillaPartido && (
-        planillaPartido.sin_planillador ? (
-          <PlanillaRapida
-            partido={planillaPartido}
-            onClose={cerrarPlanilla}
-            onGuardarResultado={() => {}}
-          />
-        ) : (
-          <PlanillaPartido
-            partido={planillaPartido}
-            onClose={cerrarPlanilla}
-            onGuardarResultado={() => {}}
-          />
-        )
+        // Hoja de papel por defecto; la planilla completa solo si el coordinador la activó para este partido
+        <PlanillaSegunPartido
+          partido={planillaPartido}
+          onClose={cerrarPlanilla}
+          onGuardarResultado={() => {}}
+        />
       )}
 
       <PortalBanner theme="dark" sticky
@@ -382,8 +374,8 @@ export default function ArbitroHomePage() {
                 </div>
               ) : (
                 <button onClick={()=>abrirPlanilla(p)}
-                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background: p.sin_planillador ? 'linear-gradient(135deg,#f9a825,#e8710a)' : 'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
-                  {p.sin_planillador ? <><Zap size={14}/> Planilla rápida (sin planillador)</> : <><Check size={14}/> Llenar planilla</>}
+                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background: 'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
+                  <><Check size={14}/> Llenar planilla</>
                 </button>
               )}
             </div>

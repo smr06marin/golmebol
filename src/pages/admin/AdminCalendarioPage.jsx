@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/authStore'
 import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp, Link2 } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
-import PlanillaPartido from '../../components/PlanillaPartido'
+import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { notify } from '../../lib/notify'
@@ -187,7 +187,7 @@ export default function AdminCalendarioPage() {
     <div>
       {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
       {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
-      {planillaPartido && <PlanillaPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
+      {planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
 
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>{esOrganizador ? 'Mi calendario' : 'Calendario Global'}</h1>

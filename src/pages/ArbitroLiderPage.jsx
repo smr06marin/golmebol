@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check, AlertTriangle, CheckCircle, ClipboardList, Circle, MapPin, User, Trophy, FileText, CreditCard, Key, Pencil, CheckSquare, Square, Smartphone, Crown, PartyPopper, Zap } from 'lucide-react'
-import PlanillaPartido from '../components/PlanillaPartido'
-import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
+import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useEstadoUI, useRestaurarScroll } from '../hooks/useEstadoUI'
@@ -181,7 +180,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   )
 }
 
-function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditarPlanilla, onToggleSinPlanillador }) {
+function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditarPlanilla, onTogglePlanillaCompleta }) {
   const [abierto, setAbierto] = useState(false)
   // Selector propio en vez de <select> nativo: en algunos celulares (Oppo/
   // ColorOS) abrir el select del sistema sobre esta página oscura dejaba la
@@ -249,8 +248,8 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
           {tieneArbitro && !esJugado && (
             <span style={{ fontSize:'.68rem', color:'#1e8e3e', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'3px' }}><CheckCircle size={10}/> {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
           )}
-          {p.sin_planillador && !esJugado && (
-            <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700', display:'flex', alignItems:'center', gap:'3px' }}><Zap size={10}/> Sin planillador</span>
+          {p.planilla_completa && !esJugado && (
+            <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700', display:'flex', alignItems:'center', gap:'3px' }}><Zap size={10}/> Planilla completa</span>
           )}
           {!tieneArbitro && !esJugado && <span style={{ fontSize:'.68rem', color:'#e8710a', fontWeight:'600', display:'flex', alignItems:'center', gap:'3px' }}><AlertTriangle size={10}/> Sin árbitro asignado</span>}
         </div>
@@ -283,14 +282,14 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
         <div style={{ borderTop:'1px solid #1c2937', padding:'14px', background:'#0d1117' }}>
           <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'5px' }}><Circle size={9} color="#f9a825" fill="#f9a825"/> Asignar árbitros</div>
 
-          {onToggleSinPlanillador && (
-            <button onClick={()=>onToggleSinPlanillador(p.id, !p.sin_planillador)}
+          {onTogglePlanillaCompleta && (
+            <button onClick={()=>onTogglePlanillaCompleta(p.id, !p.planilla_completa)}
               style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 10px', marginBottom:'12px',
-                background: p.sin_planillador ? 'rgba(249,168,37,.12)' : '#1c2937', border:`1px solid ${p.sin_planillador?'#f9a825':'#2a3a4a'}`, borderRadius:'9px', cursor:'pointer' }}>
-              {p.sin_planillador ? <CheckSquare size={17} color="#f9a825"/> : <Square size={17} color="#7a9ab5"/>}
+                background: p.planilla_completa ? 'rgba(249,168,37,.12)' : '#1c2937', border:`1px solid ${p.planilla_completa?'#f9a825':'#2a3a4a'}`, borderRadius:'9px', cursor:'pointer' }}>
+              {p.planilla_completa ? <CheckSquare size={17} color="#f9a825"/> : <Square size={17} color="#7a9ab5"/>}
               <span style={{ flex:1 }}>
-                <div style={{ fontSize:'.75rem', fontWeight:'700', color: p.sin_planillador?'#f9a825':'#e8f4fd' }}>Sin planillador</div>
-                <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>Los árbitros llevan la planilla rápida (sin un planillador dedicado)</div>
+                <div style={{ fontSize:'.75rem', fontWeight:'700', color: p.planilla_completa?'#f9a825':'#e8f4fd' }}>Planilla completa (profesional)</div>
+                <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>Sin marcar, se llena la hoja de papel. Marcada, los árbitros de este partido llenan la planilla completa.</div>
               </span>
             </button>
           )}
@@ -715,22 +714,20 @@ export default function ArbitroLiderPage() {
     return true
   }
 
-  function handleToggleSinPlanillador(matchId, valor) {
+  // Planilla completa (profesional) para un partido: sin marcar, se llena la hoja de papel.
+  function handleTogglePlanillaCompleta(matchId, valor) {
     const antes = partidos.find(p => p.id === matchId)
     if (!antes) return
-    const previo = antes.sin_planillador
-    parchePartido(matchId, { sin_planillador: valor })
+    const previo = !!antes.planilla_completa
+    parchePartido(matchId, { planilla_completa: valor })
     ;(async () => {
       let ok = false, detalle = ''
-      const { error } = await supabase.rpc('marcar_sin_planillador', { p_match_id: matchId, p_valor: !!valor })
+      const faltaMigracion = 'falta correr migracion_planilla_papel.sql en Supabase'
+      const { error } = await supabase.rpc('marcar_planilla_completa', { p_match_id: matchId, p_valor: !!valor })
       if (!error) ok = true
-      else if (faltaFuncion(error)) {
-        const { data: filas, error: err2 } = await supabase.from('matches').update({ sin_planillador: valor }).eq('id', matchId).select('id')
-        if (err2) detalle = err2.message
-        else if (!filas || filas.length === 0) detalle = 'la base no permite guardar (falta correr migracion_asignar_arbitros.sql)'
-        else ok = true
-      } else detalle = error.message
-      if (!ok) { parchePartido(matchId, { sin_planillador: previo }); showMsgFn('No se guardó el cambio: ' + detalle, 'error', 7000); return }
+      else if (faltaFuncion(error)) detalle = faltaMigracion
+      else detalle = error.message
+      if (!ok) { parchePartido(matchId, { planilla_completa: previo }); showMsgFn('No se guardó el cambio: ' + detalle, 'error', 7000); return }
       reclamarTorneo(antes.tournament_id)
     })()
   }
@@ -899,19 +896,12 @@ export default function ArbitroLiderPage() {
       {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado'); fetchArbitros() }}/>}
 
       {planillaPartido && (
-        planillaPartido.sin_planillador ? (
-          <PlanillaRapida
-            partido={planillaPartido}
-            onClose={cerrarPlanilla}
-            onGuardarResultado={() => {}}
-          />
-        ) : (
-          <PlanillaPartido
-            partido={planillaPartido}
-            onClose={cerrarPlanilla}
-            onGuardarResultado={() => {}}
-          />
-        )
+        // Hoja de papel por defecto; la planilla completa solo si el coordinador la activó para este partido
+        <PlanillaSegunPartido
+          partido={planillaPartido}
+          onClose={cerrarPlanilla}
+          onGuardarResultado={() => {}}
+        />
       )}
 
       <PortalBanner theme="dark" sticky
@@ -987,7 +977,7 @@ export default function ArbitroLiderPage() {
                 <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><PartyPopper size={26}/></div>
                 <div style={{ fontWeight:'700' }}>Todos los partidos tienen árbitro</div>
               </div>
-            ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
+            ) : sinAsignar.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onTogglePlanillaCompleta={handleTogglePlanillaCompleta}/>)}
           </div>
         )}
 
@@ -999,7 +989,7 @@ export default function ArbitroLiderPage() {
                 <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><ClipboardList size={26}/></div>
                 <div>Sin partidos asignados</div>
               </div>
-            ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onToggleSinPlanillador={handleToggleSinPlanillador}/>)}
+            ) : asignados.map(p=><CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onTogglePlanillaCompleta={handleTogglePlanillaCompleta}/>)}
           </div>
         )}
 

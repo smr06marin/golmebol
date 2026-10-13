@@ -6,8 +6,8 @@ import { PANEL, BORDE, TEXTO, TEXTO_TENUE, VERDE, ROJO, btnPrimario, btnSecundar
 // construido desde cero acá porque la rápida no tenía nada de esto. Además
 // de elegir el tipo (y, si es W, qué equipo se presentó), pide la foto del
 // equipo que sí se presentó para que quede visible en la app.
-export default function ModalPartidoEspecialRapida({ nombreLocal, nombreVis, guardando, onConfirmar, onCerrar }) {
-  const [tipo, setTipo] = useState(null) // null | 'w' | 'desierto'
+export default function ModalPartidoEspecialRapida({ nombreLocal, nombreVis, guardando, onConfirmar, onCerrar, tipoInicial = null }) {
+  const [tipo, setTipo] = useState(tipoInicial === 'w' || tipoInicial === 'desierto' ? tipoInicial : null) // null | 'w' | 'desierto'
   const [equipoGana, setEquipoGana] = useState('')
   const [foto, setFoto] = useState(null)
   const [fotoPreview, setFotoPreview] = useState(null)

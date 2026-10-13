@@ -16,7 +16,10 @@ import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeud
 import { comprimirImagen } from '../../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../../lib/statsPartido'
 import PlanillaPenales, { PreguntaPenales } from '../PlanillaPenales'
-import { necesitaPreguntarPenales, filasParaGuardar } from '../../lib/penales'
+import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador } from '../../lib/penales'
+import PantallaPapel from '../planillaPapel/PantallaPapel'
+import ModalCierrePapel from '../planillaPapel/ModalCierrePapel'
+import { papelVacio, normalizarPapel, papelParaGuardar } from '../../lib/planillaPapel'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -99,23 +102,34 @@ function debeInscripcionReg(r, fc) {
   return fc?.inscripcion_modo === 'jugador' && r && ('inscripcion_pagada' in r) && r.inscripcion_pagada !== true
 }
 
+// Colores de uniforme por defecto de la planilla de papel (no pide elegirlos).
+const COLOR_LOCAL_PAPEL = '#1a73e8'
+const COLOR_VIS_PAPEL = '#d93025'
+
 // Planilla RÁPIDA — independiente de PlanillaPartido.jsx (esa no se toca).
 // Pensada para cuando NO hay planillador dedicado: los mismos árbitros la
 // llevan desde el celular. Mismo destino final de datos (match_events,
 // player_match_stats, partido_arqueros, matches, tournament_logros,
 // predicciones) para que el admin vea todo igual de completo, pero con una
 // carga durante el partido mucho más simple: solo número + tipo de evento.
-export default function PlanillaRapida({ partido, onClose, onGuardarResultado }) {
+//
+// vista="papel": MISMO motor (guardado en vivo, cronómetro, varios celulares,
+// cierre, estadísticas, penales) pero con la pantalla de la hoja de papel
+// (planillaPapel/PantallaPapel.jsx): Documento, Nombre, N°, Amarilla, Roja, GOL.
+export default function PlanillaRapida({ partido, onClose, onGuardarResultado, vista }) {
+  const esPapel = vista === 'papel'
+  const colorLocalDef = esPapel ? COLOR_LOCAL_PAPEL : null
+  const colorVisDef = esPapel ? COLOR_VIS_PAPEL : null
   const localKey = `planilla_rapida_${partido.id}`
   const [loading, setLoading] = useState(true)
   const [listo, setListo] = useState(false) // true cuando ya se puede autoguardar sin pisar nada
-  const [step, setStep] = useState('colores') // colores | asignar | partido
+  const [step, setStep] = useState(esPapel ? 'partido' : 'colores') // colores | asignar | partido (la hoja de papel siempre va directo a 'partido')
   const [volviendoDesdePartido, setVolviendoDesdePartido] = useState(false)
 
   const [jugadoresLocal, setJugadoresLocal] = useState([])
   const [jugadoresVisitante, setJugadoresVisitante] = useState([])
-  const [colorLocal, setColorLocal] = useState(null)
-  const [colorVis, setColorVis] = useState(null)
+  const [colorLocal, setColorLocal] = useState(colorLocalDef)
+  const [colorVis, setColorVis] = useState(colorVisDef)
   const [arqueroLocal, setArqueroLocal] = useState(null)
   const [arqueroVis, setArqueroVis] = useState(null)
   const [histArquerosLocal, setHistArquerosLocal] = useState([])
@@ -142,6 +156,23 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   const [deudaDetalle, setDeudaDetalle] = useState({}) // player_id -> [{tipo, cantidad, monto, fecha, home_team_id, away_team_id}]
   const [equiposNombre, setEquiposNombre] = useState({}) // team_id -> name
   const [partidoHermano, setPartidoHermano] = useState(null) // ida y vuelta: el otro partido de la llave, si ya se jugó
+
+  // ── Solo hoja de papel ────────────────────────────────────────────────
+  // papel: lo propio de la hoja (árbitros, DT, carnés, capitán, Sí/No, informe,
+  // penales). Viaja en el borrador en vivo igual que la plantilla: contador de
+  // versión (papelV) y gana la edición más reciente.
+  const [papel, setPapel] = useState(() => {
+    const v = papelVacio()
+    const t = x => (typeof x === 'string' ? x : '')
+    v.arbitros = { central: t(partido.arbitro1), asist1: t(partido.arbitro2), asist2: t(partido.arbitro3) }
+    return v
+  })
+  const [torneoNombre, setTorneoNombre] = useState(partido?.tournaments?.name || '')
+  const [tipoEspecialInicial, setTipoEspecialInicial] = useState(null) // 'w' | 'desierto' (botones de arriba de la hoja)
+  const papelVRef = useRef(0)
+  const papelAutorRef = useRef('')
+  const papelSigRef = useRef(null)
+  if (papelSigRef.current === null) papelSigRef.current = JSON.stringify(normalizarPapel(papel))
 
   const remoteTimer = useRef(null)
   const alarmaRef = useRef(null)
@@ -330,13 +361,28 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       plantillaSigRef.current = firmaRemota
       setJugadoresLocal(prev => adoptarJugadoresRemotos(prev, snap.jugadoresLocal))
       setJugadoresVisitante(prev => adoptarJugadoresRemotos(prev, snap.jugadoresVisitante))
-      setColorLocal(prev => (snap.colorLocal ?? null) === prev ? prev : (snap.colorLocal ?? null))
-      setColorVis(prev => (snap.colorVis ?? null) === prev ? prev : (snap.colorVis ?? null))
+      setColorLocal(prev => (snap.colorLocal ?? colorLocalDef) === prev ? prev : (snap.colorLocal ?? colorLocalDef))
+      setColorVis(prev => (snap.colorVis ?? colorVisDef) === prev ? prev : (snap.colorVis ?? colorVisDef))
       const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
       setArqueroLocal(prev => igual(prev, snap.arqueroLocal ?? null) ? prev : (snap.arqueroLocal ?? null))
       setArqueroVis(prev => igual(prev, snap.arqueroVis ?? null) ? prev : (snap.arqueroVis ?? null))
       setHistArquerosLocal(prev => igual(prev, snap.histArquerosLocal || []) ? prev : (snap.histArquerosLocal || []))
       setHistArquerosVis(prev => igual(prev, snap.histArquerosVis || []) ? prev : (snap.histArquerosVis || []))
+    }
+
+    // 5) Hoja de papel (árbitros, DT, carnés, capitán, Sí/No, informe, penales): gana la edición más reciente
+    if (esPapel && snap.papel) {
+      const papelRemotoV = Number(snap.papelV) || 0
+      const papelRemoto = normalizarPapel(snap.papel)
+      const firmaPapelRemoto = JSON.stringify(papelRemoto)
+      const ganaPapel = papelRemotoV > papelVRef.current ||
+        (papelRemotoV === papelVRef.current && papelRemotoV > 0 && (snap.papelAutor || '') > papelAutorRef.current && firmaPapelRemoto !== papelSigRef.current)
+      if (ganaPapel) {
+        papelVRef.current = papelRemotoV
+        papelAutorRef.current = snap.papelAutor || ''
+        papelSigRef.current = firmaPapelRemoto
+        setPapel(prev => JSON.stringify(normalizarPapel(prev)) === firmaPapelRemoto ? prev : papelRemoto)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -543,7 +589,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const [jugsL, jugsV, torn, liveDB, sancionesDB, tarjetasDB] = await Promise.all([
       conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
-      supabase.from('tournaments').select('modalidad, finanzas_config, registro_simple, duracion_tiempo_min').eq('id', partido.tournament_id).maybeSingle(),
+      supabase.from('tournaments').select('modalidad, finanzas_config, registro_simple, duracion_tiempo_min, name').eq('id', partido.tournament_id).maybeSingle(),
       supabase.from('matches').select('live_state_rapida, live_state_rapida_updated_at').eq('id', partido.id).maybeSingle(),
       // Jugadores sancionados (de este torneo, o globales): no se les deja aparecer en la planilla mientras no esté ya jugado
       supabase.from('sanciones').select('player_id, fecha_fin, partidos_pendientes').eq('activa', true).or(`tournament_id.eq.${partido.tournament_id},tournament_id.is.null`),
@@ -557,6 +603,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const duracionPropia = Number(torn.data?.duracion_tiempo_min)
     const dur = duracionPropia > 0 ? duracionPropia : modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
     setModalidad(modalidadDB)
+    if (torn.data?.name) setTorneoNombre(torn.data.name)
 
     // Un partido ya jugado conserva su alineación histórica tal cual —
     // la sanción solo bloquea que aparezca como opción hacia adelante.
@@ -662,8 +709,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     if (!snap) return
     setJugadoresLocal(snap.jugadoresLocal || [])
     setJugadoresVisitante(snap.jugadoresVisitante || [])
-    setColorLocal(snap.colorLocal || null)
-    setColorVis(snap.colorVis || null)
+    setColorLocal(snap.colorLocal || colorLocalDef)
+    setColorVis(snap.colorVis || colorVisDef)
     setArqueroLocal(snap.arqueroLocal || null)
     setArqueroVis(snap.arqueroVis || null)
     setHistArquerosLocal(snap.histArquerosLocal || [])
@@ -675,10 +722,17 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     plantillaVRef.current = Number(snap.plantillaV) > 1e11 ? 0 : (snap.plantillaV || 0)
     plantillaAutorRef.current = snap.plantillaAutor || ''
     plantillaSigRef.current = firmaPlantilla(snap)
+    if (esPapel && snap.papel) {
+      const papelSnap = normalizarPapel(snap.papel)
+      setPapel(papelSnap)
+      papelVRef.current = Number(snap.papelV) || 0
+      papelAutorRef.current = snap.papelAutor || ''
+      papelSigRef.current = JSON.stringify(papelSnap)
+    }
     setPeriodo(snap.periodo || 1)
     const durFinal = snap.duracionMinutos || dur
     setDuracionMinutos(durFinal)
-    setStep(snap.step || 'colores')
+    setStep(esPapel ? 'partido' : (snap.step || 'colores'))
 
     // Si el cronómetro seguía corriendo cuando se guardó este borrador, se le
     // suma el tiempo real transcurrido desde entonces — así, al reabrir (el
@@ -747,6 +801,30 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setHistArquerosVis(arqV)
     if (arqL.length) setArqueroLocal(arqL[arqL.length - 1])
     if (arqV.length) setArqueroVis(arqV[arqV.length - 1])
+
+    // Hoja de papel: se recupera lo que se anotó en la hoja (si el partido se
+    // cerró con otra planilla, se arma con lo que sí quedó guardado).
+    if (esPapel) {
+      let hoja = papelVacio()
+      try {
+        const { data: fila, error: errHoja } = await supabase.from('matches').select('planilla_papel').eq('id', partido.id).maybeSingle()
+        if (!errHoja && fila?.planilla_papel) hoja = normalizarPapel(fila.planilla_papel)
+      } catch (e) { /* sin la columna (falta la migración): se arma con lo demás */ }
+      const t = x => (typeof x === 'string' ? x : '')
+      if (!hoja.arbitros.central && !hoja.arbitros.asist1 && !hoja.arbitros.asist2) hoja.arbitros = { central: t(partido.arbitro1), asist1: t(partido.arbitro2), asist2: t(partido.arbitro3) }
+      if (!hoja.local.capitan && partido.capitan_local) hoja.local = { ...hoja.local, capitan: String(partido.capitan_local) }
+      if (!hoja.visitante.capitan && partido.capitan_visitante) hoja.visitante = { ...hoja.visitante, capitan: String(partido.capitan_visitante) }
+      if (!hoja.penales.hubo && partido.penales_ganador) {
+        hoja.penales = { hubo: true, local: String(partido.penales_local ?? ''), visitante: String(partido.penales_visitante ?? ''), ganador: normalizarGanador(partido.penales_ganador) === 'home' ? 'local' : 'visitante' }
+      }
+      if (!hoja.informe.trim()) {
+        try {
+          const { data: inf } = await supabase.from('match_informes').select('descripcion').eq('match_id', partido.id).limit(1)
+          if (inf?.[0]?.descripcion) hoja.informe = inf[0].descripcion
+        } catch (e) { /* sin informe previo */ }
+      }
+      setPapel(hoja)
+    }
   }
 
   // ── Autoguardado (borrador local + remoto) ────────────────────────────
@@ -760,7 +838,14 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     // (no del último "tick" pintado) — así el otro celular arranca igualito.
     let segs = segundos
     if (corriendo && inicioEpochRef.current != null) segs = Math.min(duracionMinutos * 60, Math.floor((Date.now() - inicioEpochRef.current) / 1000))
-    return { ...base, eventos, eventosEliminados, periodo, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
+    // Hoja de papel: igual que la plantilla, si la hoja cambió por una edición de ESTE celular se le sube la versión.
+    let extraPapel = {}
+    if (esPapel) {
+      const firmaHoja = JSON.stringify(normalizarPapel(papel))
+      if (firmaHoja !== papelSigRef.current) { papelSigRef.current = firmaHoja; papelVRef.current += 1; papelAutorRef.current = deviceIdRef.current }
+      extraPapel = { papel, papelV: papelVRef.current, papelAutor: papelAutorRef.current }
+    }
+    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
   }
   // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
   restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
@@ -781,7 +866,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
     guardarRemotoDebounced(snap)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, sincronizado])
+  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, sincronizado, papel])
 
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
@@ -1040,10 +1125,91 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     setAlertaNumero(null)
   }
 
+  // ── Hoja de papel: número, goles, tarjetas, jugadores y arquero ─────────
+  // Pone (o quita, con '') el número de camiseta. Devuelve un texto de error si
+  // no se puede (el campo lo muestra en rojo) o null si quedó bien. Mantiene al
+  // día todo lo que dependía de ese número: arquero, capitán y jugador sin registro.
+  function fijarNumeroPapel(team, index, numeroNuevo, nombreNuevo) {
+    const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
+    const setArr = team === 'local' ? setJugadoresLocal : setJugadoresVisitante
+    const setArq = team === 'local' ? setArqueroLocal : setArqueroVis
+    const setHist = team === 'local' ? setHistArquerosLocal : setHistArquerosVis
+    const j = arr[index]
+    if (!j) return null
+    if (j.debeTarjeta || j.debeInscripcion) return 'Tiene una deuda pendiente'
+    const n = (numeroNuevo || '').trim()
+    if (n && arr.some((x, i) => i !== index && (x.numero || '').trim() === n)) return `El ${n} ya lo tiene otro jugador`
+    const tieneEventos = eventos.some(e => e.team === team && (j.id ? e.jugadorId === j.id : (!e.jugadorId && (e.jugadorNombre || '') === (j.nombre || ''))))
+    if (!n && tieneEventos) return 'Tiene goles o tarjetas: bórralos primero'
+    const numeroViejo = (j.numero || '').trim()
+    const nombreFinal = j.id ? j.nombre : ((nombreNuevo ?? j.nombre) || '')
+    setArr(prev => prev.map((x, i) => i === index ? { ...x, numero: n, ...(x.id ? {} : { nombre: nombreFinal }) } : x))
+    if (!j.id && nombreFinal !== j.nombre) {
+      setEventos(prev => prev.map(e => (!e.jugadorId && e.team === team && (e.jugadorNombre || '') === (j.nombre || '')) ? { ...e, jugadorNombre: nombreFinal } : e))
+    }
+    const mismo = a => !!a && ((j.id && a.id === j.id) || (!j.id && !a.id && a.nombre === j.nombre))
+    if (n) {
+      setArq(prev => mismo(prev) ? { ...prev, numero: n, nombre: nombreFinal } : prev)
+      setHist(prev => prev.map(a => mismo(a) ? { ...a, numero: n, nombre: nombreFinal } : a))
+    } else {
+      setArq(prev => mismo(prev) ? null : prev)
+      setHist(prev => prev.filter(a => !mismo(a)))
+    }
+    if (numeroViejo) setPapel(pp => pp[team].capitan === numeroViejo ? { ...pp, [team]: { ...pp[team], capitan: n } } : pp)
+    if (!j.id && n) registrarSimpleSiFalta(team, nombreFinal, n)
+    return null
+  }
+  function asignarNumeroPapel(team, index, numero) { return fijarNumeroPapel(team, index, numero, undefined) }
+  function confirmarNumeroPapel(numero, nombre) {
+    const { team, index } = modalFoto
+    const err = fijarNumeroPapel(team, index, numero, nombre)
+    if (err) { alert(err); return }
+    setModalFoto(null)
+  }
+  function quitarNumeroPapel() {
+    const { team, index } = modalFoto
+    const err = fijarNumeroPapel(team, index, '', undefined)
+    if (err) { alert(err); return }
+    setModalFoto(null)
+  }
+  // Un toque en GOL = un gol con el minuto del cronómetro. La tarjeta ya llega confirmada (doble toque).
+  function eventoPapel(team, index, tipo) {
+    const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
+    const j = arr[index]
+    if (!j || !(j.numero || '').trim() || j.debeTarjeta || j.debeInscripcion) return
+    agregarEventoParaJugador(team, j, tipo)
+  }
+  function agregarJugadorPapel(team, { cedula, nombre, numero }) {
+    const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
+    const setArr = team === 'local' ? setJugadoresLocal : setJugadoresVisitante
+    const n = (numero || '').trim()
+    const nom = (nombre || '').trim()
+    if (!nom) return 'Escribe el nombre'
+    if (!n) return 'Escribe el número de camiseta'
+    if (arr.some(x => (x.numero || '').trim() === n)) return `El ${n} ya lo tiene otro jugador`
+    if (arr.some(x => x.id && (x.nombre || '').trim().toLowerCase() === nom.toLowerCase())) return 'Ese jugador ya está en la lista: ponle el número ahí'
+    if (arr.some(x => !x.id && (x.nombre || '').trim().toLowerCase() === nom.toLowerCase())) return 'Ya agregaste a ese jugador'
+    setArr(prev => [...prev, { ...filaVacia(), nombre: nom, cedula: (cedula || '').trim(), numero: n }])
+    registrarSimpleSiFalta(team, nom, n)
+    return null
+  }
+  // En la hoja hay UN arquero por equipo: elegir otro reemplaza al anterior.
+  function elegirArqueroPapel(team, jugador) {
+    const arq = { id: jugador.id, nombre: jugador.nombre, numero: jugador.numero }
+    ;(team === 'local' ? setArqueroLocal : setArqueroVis)(arq)
+    ;(team === 'local' ? setHistArquerosLocal : setHistArquerosVis)([arq])
+  }
+
   // ── Guardado final ─────────────────────────────────────────────────────
   async function guardarFinal({ informeTexto, mvpId }, tanda = null) {
     finalizandoRef.current = true
     setGuardandoDB(true)
+    // Hoja de papel: el informe sale de la hoja; si se definió por la tanda de penales, la hoja queda con ese marcador/ganador.
+    const hojaFinal = (esPapel && tanda)
+      ? { ...papel, penales: { hubo: true, local: String(tanda.penalesLocal), visitante: String(tanda.penalesVisitante), ganador: tanda.ganador === 'home' ? 'local' : 'visitante' } }
+      : papel
+    if (esPapel && tanda) setPapel(hojaFinal)
+    if (esPapel) informeTexto = hojaFinal.informe
     const golesLocalTotal = eventos.filter(e => e.team === 'local' && e.tipo === 'goal').length
     const golesVisTotal = eventos.filter(e => e.team === 'visitante' && e.tipo === 'goal').length
     const erroresGuardado = []
@@ -1129,8 +1295,27 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       updateFinal.penales_local = tanda.penalesLocal
       updateFinal.penales_visitante = tanda.penalesVisitante
       updateFinal.penales_ganador = tanda.ganador
+    } else if (esPapel && hojaFinal.penales.hubo) {
+      // Marcador de penales escrito a mano en la hoja (igual que la planilla profesional)
+      updateFinal.penales_local = parseInt(hojaFinal.penales.local) || 0
+      updateFinal.penales_visitante = parseInt(hojaFinal.penales.visitante) || 0
+      updateFinal.penales_ganador = normalizarGanador(hojaFinal.penales.ganador)
     }
-    const { error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal)
+    if (esPapel) {
+      updateFinal.planilla_papel = papelParaGuardar(hojaFinal)
+      updateFinal.capitan_local = hojaFinal.local.capitan || null
+      updateFinal.capitan_visitante = hojaFinal.visitante.capitan || null
+    }
+    let { error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal)
+    // Si la base no tiene alguna columna de la hoja (falta la migración), se
+    // quita y se reintenta: el RESULTADO nunca se debe perder por un dato secundario.
+    for (let intento = 0; errPartido && intento < 3; intento++) {
+      const msgErr = errPartido.message || ''
+      const faltantes = ['planilla_papel', 'capitan_local', 'capitan_visitante'].filter(c => msgErr.includes(`'${c}'`))
+      if (faltantes.length === 0) break
+      faltantes.forEach(c => delete updateFinal[c])
+      ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal))
+    }
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
     // Detalle de cada cobro (de aquí salen los penales atajados del arquero).
@@ -1220,14 +1405,20 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       }
     } catch (e) { console.error('sanción automática roja:', e) }
 
-    if (informeTexto && informeTexto.trim().length >= 10) {
+    if (informeTexto && informeTexto.trim().length >= (esPapel ? 3 : 10)) {
       let creadoPor = null
       try {
         const { data: { user } } = await supabase.auth.getUser()
         creadoPor = user?.email || null
         if (user?.id) { const { data: pRow } = await supabase.from('players').select('name').eq('user_id', user.id).maybeSingle(); if (pRow?.name) creadoPor = pRow.name }
       } catch (e) {}
-      await supabase.from('match_informes').insert({ match_id: partido.id, tournament_id: partido.tournament_id, tipo: 'roja', descripcion: informeTexto.trim(), creado_por: creadoPor })
+      // Al volver a guardar un partido ya cerrado no se duplica el mismo informe
+      let yaEsta = false
+      if (esPapel && partido.status === 'finished') {
+        const { data: previos } = await supabase.from('match_informes').select('id').eq('match_id', partido.id).eq('descripcion', informeTexto.trim()).limit(1)
+        yaEsta = !!(previos && previos.length > 0)
+      }
+      if (!yaEsta) await supabase.from('match_informes').insert({ match_id: partido.id, tournament_id: partido.tournament_id, tipo: (esPapel && !hayRoja) ? 'otro' : 'roja', descripcion: informeTexto.trim(), creado_por: creadoPor })
     }
 
     if (mvpId) {
@@ -1256,7 +1447,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
   function intentarFinalizar(datos) {
     const gl = eventosLocal.filter(e => e.tipo === 'goal').length
     const gv = eventosVis.filter(e => e.tipo === 'goal').length
-    if (necesitaPreguntarPenales({ fase: partido?.fase, golesLocal: gl, golesVis: gv, globalLlave })) {
+    // En la hoja de papel, si ya marcaron "Hubo penales" arriba no se vuelve a preguntar.
+    if (necesitaPreguntarPenales({ fase: partido?.fase, golesLocal: gl, golesVis: gv, globalLlave }) && !(esPapel && papel.penales.hubo)) {
       setCierrePendiente(datos)
       return
     }
@@ -1312,11 +1504,15 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
       live_state_rapida: null, live_state_rapida_updated_at: null, tipo_resultado: tipo,
     }
     if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
+    if (esPapel) updatePartido.planilla_papel = papelParaGuardar(papel)
     let { error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido)
-    // Si falta la migración de foto_w_url, se reintenta sin ella: el
-    // resultado no se debe perder por un dato secundario.
-    if (errPartido && (errPartido.message || '').includes(`'foto_w_url'`)) {
-      delete updatePartido.foto_w_url
+    // Si falta la migración de foto_w_url (o de la hoja), se reintenta sin ella:
+    // el resultado no se debe perder por un dato secundario.
+    for (let intento = 0; errPartido && intento < 2; intento++) {
+      const msgErr = errPartido.message || ''
+      const faltantes = ['foto_w_url', 'planilla_papel'].filter(c => msgErr.includes(`'${c}'`))
+      if (faltantes.length === 0) break
+      faltantes.forEach(c => delete updatePartido[c])
       ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido))
     }
     if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
@@ -1342,7 +1538,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     </div>
   )
 
-  if (step === 'colores') return (
+  if (!esPapel && step === 'colores') return (
     <>
       {bannerCoPlanillaje()}
       <PantallaColores
@@ -1353,7 +1549,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     </>
   )
 
-  if (step === 'asignar') return (
+  if (!esPapel && step === 'asignar') return (
     <>
       {bannerCoPlanillaje()}
       <PantallaAsignarNumeros
@@ -1387,6 +1583,77 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado })
     const otroVisitante = invertido ? (partidoHermano.home_score || 0) : (partidoHermano.away_score || 0)
     return { local: golesLocalActual + otroLocal, visitante: golesVisActual + otroVisitante }
   })()
+
+  // ── Hoja de papel ──────────────────────────────────────────────────────
+  if (esPapel) {
+    const ph = papel.penales
+    const nl = parseInt(ph.local), nv = parseInt(ph.visitante)
+    let avisoPenalesPapel = ''
+    if (ph.hubo) {
+      if (ph.local === '' || ph.visitante === '' || Number.isNaN(nl) || Number.isNaN(nv)) avisoPenalesPapel = 'Escribe el marcador de los penales (arriba, en "Hubo penales") o desmarca esa casilla.'
+      else if (nl === nv) avisoPenalesPapel = 'El marcador de los penales no puede quedar empatado.'
+      else if (!ph.ganador) avisoPenalesPapel = 'Elige el ganador de los penales (arriba, en "Hubo penales").'
+      else if ((ph.ganador === 'local') !== (nl > nv)) avisoPenalesPapel = 'El ganador de los penales no coincide con el marcador. Revísalo arriba.'
+    }
+    const golesPapelLocal = eventosLocal.filter(e => e.tipo === 'goal').length
+    const golesPapelVis = eventosVis.filter(e => e.tipo === 'goal').length
+    return (
+      <>
+        {bannerCoPlanillaje()}
+        <PantallaPapel
+          partido={partido} torneoNombre={torneoNombre} nombreLocal={nombreLocal} nombreVis={nombreVis}
+          jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
+          eventosLocal={eventosLocal} eventosVis={eventosVis}
+          periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
+          globalLlave={globalLlave} papel={papel} onPapel={setPapel} hayRoja={hayRoja} guardando={guardandoDB}
+          arqueroLocal={arqueroLocal} arqueroVis={arqueroVis} onElegirArquero={elegirArqueroPapel}
+          onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}
+          onAsignarNumero={asignarNumeroPapel} onAbrirJugador={abrirJugador}
+          onGol={(team, index) => eventoPapel(team, index, 'goal')}
+          onTarjeta={(team, index, tipo) => eventoPapel(team, index, tipo)}
+          onQuitarEvento={quitarEvento} onAgregarJugador={agregarJugadorPapel}
+          onSalir={pausarYSalir} onAbrirCierre={() => setMostrarCierre(true)}
+          onAbrirEspecial={tipo => { setTipoEspecialInicial(tipo || null); setMostrarEspecial(true) }}
+        />
+        {modalFoto && (
+          <ModalFotoNumero jugador={modalFoto.jugador} tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
+            onConfirmar={confirmarNumeroPapel} onQuitar={quitarNumeroPapel} onCerrar={() => setModalFoto(null)}/>
+        )}
+        {mostrarCierre && (
+          <ModalCierrePapel
+            nombreLocal={nombreLocal} nombreVis={nombreVis} arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
+            hayRoja={hayRoja} informe={papel.informe} jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
+            guardando={guardandoDB} avisoPenales={avisoPenalesPapel}
+            onFinalizar={intentarFinalizar} onCerrar={() => setMostrarCierre(false)}
+          />
+        )}
+        {cierrePendiente && !mostrarPenales && (
+          <PreguntaPenales
+            nombreLocal={nombreLocal} nombreVis={nombreVis}
+            marcadorTexto={`${golesPapelLocal} - ${golesPapelVis}`}
+            onSi={() => setMostrarPenales(true)}
+            onNo={() => { const d = cierrePendiente; setCierrePendiente(null); guardarFinal(d) }}
+            onCerrar={() => setCierrePendiente(null)}
+          />
+        )}
+        {cierrePendiente && mostrarPenales && (
+          <PlanillaPenales
+            nombreLocal={nombreLocal} nombreVis={nombreVis}
+            jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
+            arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
+            onConfirmar={tanda => { const d = cierrePendiente; setMostrarPenales(false); setCierrePendiente(null); guardarFinal(d, tanda) }}
+            onCerrar={() => setMostrarPenales(false)}
+          />
+        )}
+        {mostrarEspecial && (
+          <ModalPartidoEspecialRapida
+            nombreLocal={nombreLocal} nombreVis={nombreVis} tipoInicial={tipoEspecialInicial}
+            guardando={guardandoDB} onConfirmar={guardarFinalEspecial} onCerrar={() => setMostrarEspecial(false)}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <>

@@ -5,7 +5,7 @@ import { resolverPrediccionesPartido } from '../../lib/predix'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, compararPosiciones } from '../../lib/torneoTablas'
-import PlanillaPartido from '../../components/PlanillaPartido'
+import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
 import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
@@ -4248,7 +4248,7 @@ Tu respuesta COMPLETA debe ser √öNICAMENTE este bloque, sin nada antes ni despu√
   return (
     <div>
       {planillaPartido && (
-        <PlanillaPartido
+        <PlanillaSegunPartido
           partido={planillaPartido}
           onClose={cerrarPlanilla}
           onGuardarResultado={async (local, visitante) => {
