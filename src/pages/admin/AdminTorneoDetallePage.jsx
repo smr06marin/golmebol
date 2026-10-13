@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo } from '../../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, compararPosiciones } from '../../lib/torneoTablas'
 import PlanillaPartido from '../../components/PlanillaPartido'
 import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
@@ -1597,7 +1597,7 @@ export default function AdminTorneoDetallePage() {
         else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
       }
     })
-    return Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    return Object.values(tabla).sort(compararPosiciones)
   }
 
   function getGoleadoresGrupo(grupoId) {
@@ -1627,12 +1627,12 @@ export default function AdminTorneoDetallePage() {
     for (const grupo of grupos) {
       const tabla = getTablaGrupo(grupo.id)
       tabla.slice(0, clasificanPorGrupo).forEach((row, pos) => {
-        if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc })
+        if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc, gf: row.gf, gc: row.gc })
       })
     }
 
     // Ordenar clasificados: primeros de cada grupo primero, luego segundos, etc.
-    clasificados.sort((a, b) => a.posicion - b.posicion || b.pts - a.pts || b.dg - a.dg)
+    clasificados.sort((a, b) => a.posicion - b.posicion || compararPosiciones(a, b))
 
     await supabase.from('tournaments').update({ fase_actual: 'eliminatorias' }).eq('id', id)
     showMsg(`Fase de grupos finalizada. ${clasificados.length} equipos clasificados ✓`)
@@ -1658,10 +1658,10 @@ export default function AdminTorneoDetallePage() {
     for (const grupo of grupos) {
       const tabla = getTablaGrupo(grupo.id)
       tabla.slice(0, porGrupo).forEach((row, pos) => {
-        if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc })
+        if (row.equipo) clasificados.push({ ...row.equipo, posicion: pos + 1, grupo: grupo.nombre, pts: row.pts, dg: row.gf - row.gc, gf: row.gf, gc: row.gc })
       })
     }
-    return clasificados.sort((a, b) => a.posicion - b.posicion || b.pts - a.pts || b.dg - a.dg)
+    return clasificados.sort((a, b) => a.posicion - b.posicion || compararPosiciones(a, b))
   }
 
   // Participantes de eliminatorias: clasificados directos + mejores de la

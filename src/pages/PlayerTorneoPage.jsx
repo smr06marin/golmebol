@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, compararPosiciones } from '../lib/torneoTablas'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -696,7 +696,7 @@ export default function PlayerTorneoPage() {
         else { t[p.away_team_id].pp++; t[p.away_team_id].pts += P.derrota }
       }
     })
-    return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    return Object.values(t).sort(compararPosiciones)
   }
 
   const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)

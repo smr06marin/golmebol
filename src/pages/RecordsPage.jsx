@@ -17,6 +17,7 @@ import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { compararPosiciones } from '../lib/torneoTablas'
 
 // Icono de cada récord automático (los históricos traen el suyo — texto libre
 // desde la BD — o si no, uno de estos componentes SVG según el tipo)
@@ -718,7 +719,7 @@ export default function RecordsPage() {
       if (V) { V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
         if (m.away_score > m.home_score) { V.pg++; V.pts += Ppts.victoria } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota } }
     })
-    const filas = Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    const filas = Object.values(tabla).sort(compararPosiciones)
     setTorneoTabla({ torneo: t, filas, grupos: grps || [], grupoEquipos: ge, partidos: ms || [], equiposMap, goleadores: golData || [] })
   }
 
@@ -742,7 +743,7 @@ export default function RecordsPage() {
         if (m.away_score > m.home_score) { V.pg++; V.pts += Ppts.victoria } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota }
       }
     })
-    return Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc))
+    return Object.values(t).sort(compararPosiciones)
   }
 
   // Campeones coronados en los últimos 15 días (se muestran a todo el que entre)

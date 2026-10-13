@@ -10,7 +10,7 @@ import RankingArqueros from '../components/RankingArqueros'
 import { cargarArquerosTorneo } from '../lib/perfilPublico'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma, compararPosiciones } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { cargarRostersTorneo, cargarRosterEquipo } from '../lib/rosterTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
@@ -904,7 +904,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         else { t[p.away_team_id].pp++; t[p.away_team_id].pts += P.derrota }
       }
     })
-    return agregarForma(Object.values(t).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc)), partGrupo)
+    return agregarForma(Object.values(t).sort(compararPosiciones), partGrupo)
   }
 
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con

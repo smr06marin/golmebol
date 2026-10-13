@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { ChevronDown, ChevronUp, Trophy, Calendar, BarChart3, User, Swords, Flame, Award, MapPin, Clock } from 'lucide-react'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { compararPosiciones } from '../lib/torneoTablas'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -397,7 +398,7 @@ function TeamSheet({ teamId, teamName, teamLogo, tournamentId, tournamentName, o
         if (h) { h.pj++; h.gf += m.home_score||0; h.gc += m.away_score||0; if (m.home_score > m.away_score) { h.pg++; h.pts += Ppts.victoria } else if (m.home_score === m.away_score) { h.pe++; h.pts += Ppts.empate } else { h.pp++; h.pts += Ppts.derrota } }
         if (a) { a.pj++; a.gf += m.away_score||0; a.gc += m.home_score||0; if (m.away_score > m.home_score) { a.pg++; a.pts += Ppts.victoria } else if (m.away_score === m.home_score) { a.pe++; a.pts += Ppts.empate } else { a.pp++; a.pts += Ppts.derrota } }
       })
-      const sorted   = Object.values(tabla).sort((a,b) => b.pts - a.pts || (b.gf-b.gc)-(a.gf-a.gc))
+      const sorted   = Object.values(tabla).sort(compararPosiciones)
       const pos      = sorted.findIndex(r => r.team.id === teamId) + 1
       const myStats  = tabla[teamId] || { pj:0, pg:0, pe:0, pp:0, gf:0, gc:0, pts:0 }
       const teamMatches = (mData || []).filter(m => m.home_team_id === teamId || m.away_team_id === teamId).slice(0, 5).reverse()

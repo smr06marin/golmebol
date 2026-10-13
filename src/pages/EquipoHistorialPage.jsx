@@ -9,6 +9,7 @@ import { responderPregunta } from '../lib/motorPreguntas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { useAuthStore } from '../store/authStore'
 import { comprimirImagen } from '../lib/imageCompress'
+import { compararPosiciones } from '../lib/torneoTablas'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -147,7 +148,7 @@ export default function EquipoHistorialPage() {
         if (h) { h.gf += m.home_score||0; h.gc += m.away_score||0; if (m.home_score>m.away_score) h.pts+=Ppts.victoria; else if (m.home_score===m.away_score) h.pts+=Ppts.empate; else h.pts+=Ppts.derrota }
         if (a) { a.gf += m.away_score||0; a.gc += m.home_score||0; if (m.away_score>m.home_score) a.pts+=Ppts.victoria; else if (m.away_score===m.home_score) a.pts+=Ppts.empate; else a.pts+=Ppts.derrota }
       })
-      const orden = Object.entries(tabla).sort((x, y) => y[1].pts - x[1].pts || (y[1].gf-y[1].gc)-(x[1].gf-x[1].gc))
+      const orden = Object.entries(tabla).sort((x, y) => compararPosiciones(x[1], y[1]))
       const idx = orden.findIndex(([tid]) => tid === id)
       posMap[t.tournament_id] = idx >= 0 ? { pos: idx + 1, total: orden.length } : null
     }))

@@ -53,6 +53,17 @@ export function agregarForma(filas, partidos) {
 
 // Tabla general de posiciones: solo cuenta partidos finalizados (o en vivo,
 // ver conMarcadorEnVivo) de fase de grupos (o sin fase asignada todavía).
+// Orden oficial de la tabla de posiciones (se usa en TODAS las tablas de la plataforma):
+//   1.º puntos · 2.º diferencia de goles · 3.º goles a favor · 4.º menos goles en contra.
+// Cada fila trae pts, gf y gc. (Si dos equipos empatan en diferencia y en goles a favor, sus goles en contra
+// también son iguales, así que el 4.º criterio solo queda como respaldo.)
+export function compararPosiciones(a, b) {
+  return (b.pts - a.pts)
+      || ((b.gf - b.gc) - (a.gf - a.gc))
+      || (b.gf - a.gf)
+      || (a.gc - b.gc)
+}
+
 export function computeTablaGeneral(equipos, partidos, torneo) {
   const P = getPuntosTorneo(torneo)
   const tabla = {}
@@ -74,7 +85,7 @@ export function computeTablaGeneral(equipos, partidos, torneo) {
     }
   })
   return agregarForma(
-    Object.values(tabla).sort((a, b) => b.pts - a.pts || (b.gf - b.gc) - (a.gf - a.gc)),
+    Object.values(tabla).sort(compararPosiciones),
     partidos
   )
 }
