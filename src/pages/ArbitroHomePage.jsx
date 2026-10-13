@@ -269,8 +269,9 @@ export default function ArbitroHomePage() {
       {showPass  && <ModalCambiarContrasena onClose={()=>setShowPass(false)}/>}
       {showFlyer && <FlyerPartidos arbitro={arbitro} partidos={partidos} onClose={()=>setShowFlyer(false)}/>}
       {planillaPartido && (
-        // Hoja de papel por defecto; la planilla completa solo si el coordinador la activó para este partido
+        // Fútbol de salón (profesional) por defecto en cuentas de árbitro; Fútbol 11 (hoja de papel) si el coordinador la eligió
         <PlanillaSegunPartido
+          contexto="arbitro"
           partido={planillaPartido}
           onClose={cerrarPlanilla}
           onGuardarResultado={() => {}}

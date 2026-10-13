@@ -1,24 +1,24 @@
 -- ============================================================
--- PLANILLA DE PAPEL (la planilla sencilla, igual a la hoja impresa) como planilla por defecto
+-- DOS PLANILLAS: FÚTBOL DE SALÓN (la profesional, completa) y FÚTBOL 11 (la hoja de papel, sencilla)
 -- Cómo ejecutar: Supabase → SQL Editor → pegar todo → RUN. Es seguro correrlo más de una vez.
 --
 -- Qué hace:
---  1) matches.planilla_completa (true/false, por defecto false): el coordinador la activa en un partido
---     cuando ese partido lo llena un árbitro con su cuenta usando la planilla completa (profesional).
---     Si está en false, TODOS (árbitros, organizadores, admin, link) ven la planilla de papel.
---  2) matches.planilla_papel (jsonb): los datos propios de la hoja de papel (árbitro central y asistentes,
---     DT, #carnés, capitán, respuestas Sí/No y el informe arbitral). Su sola presencia también sirve para
---     saber que un partido ya jugado se llenó con la planilla de papel.
---  3) marcar_planilla_completa(partido, true/false): guarda esa casilla con permiso controlado (dueño del
+--  1) matches.planilla_tipo ('salon' | 'futbol11' | vacío): lo que el coordinador eligió para ese partido.
+--     Vacío = "automático": las cuentas de árbitro y el coordinador ven Fútbol de salón;
+--     admin, organizadores y el link ven Fútbol 11.
+--  2) matches.planilla_papel (jsonb): los datos propios de la hoja de Fútbol 11 (árbitro central y asistentes,
+--     DT, #carnés, capitán, respuestas Sí/No, informe arbitral y penales). Su sola presencia también sirve para
+--     saber que un partido ya jugado se llenó con la hoja de Fútbol 11.
+--  3) marcar_planilla_tipo(partido, 'salon' | 'futbol11'): guarda la elección con permiso controlado (dueño del
 --     torneo, organizador/admin de la plataforma o árbitro líder con la sesión iniciada). Solo toca esa columna.
 --  4) guardar_resultado_partido: misma función de siempre, solo se agrega 'planilla_papel' a la lista de
 --     campos que la planilla puede guardar. Todo lo demás (permisos, validaciones) queda IGUAL.
 -- ============================================================
 
-alter table public.matches add column if not exists planilla_completa boolean not null default false;
+alter table public.matches add column if not exists planilla_tipo text;
 alter table public.matches add column if not exists planilla_papel jsonb;
 
-create or replace function public.marcar_planilla_completa(p_match_id uuid, p_valor boolean)
+create or replace function public.marcar_planilla_tipo(p_match_id uuid, p_tipo text)
 returns jsonb
 language plpgsql
 security definer
@@ -26,17 +26,20 @@ set search_path = public
 as $$
 declare m public.matches%rowtype;
 begin
+  if p_tipo is not null and p_tipo not in ('salon', 'futbol11') then
+    raise exception 'Tipo de planilla inválido';
+  end if;
   select * into m from public.matches where id = p_match_id;
   if not found then raise exception 'Partido no encontrado'; end if;
   if not public.puede_asignar_arbitros(m.tournament_id) then
     raise exception 'No tienes permiso para cambiar este partido';
   end if;
-  update public.matches set planilla_completa = coalesce(p_valor, false) where id = p_match_id;
+  update public.matches set planilla_tipo = p_tipo where id = p_match_id;
   return jsonb_build_object('ok', true);
 end $$;
 
-revoke all on function public.marcar_planilla_completa(uuid, boolean) from public, anon;
-grant execute on function public.marcar_planilla_completa(uuid, boolean) to authenticated;
+revoke all on function public.marcar_planilla_tipo(uuid, text) from public, anon;
+grant execute on function public.marcar_planilla_tipo(uuid, text) to authenticated;
 
 -- ── guardar_resultado_partido: idéntica a la anterior + 'planilla_papel' en los campos permitidos ──
 create or replace function public.guardar_resultado_partido(p_match_id uuid, p_campos jsonb)
