@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 // ── WebAuthn helpers ──────────────────────────────────────────
@@ -71,6 +71,10 @@ function isFaceIdAvailable() {
 export default function LoginPage({ enRecuperacion, onRecuperada }) {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
+  // El autocompletado del celular (guardar contraseña / llenar automático) a veces escribe en los campos SIN avisarle a React:
+  // el estado queda vacío aunque se vea lleno y el login salía con error. Por eso al entrar se leen los valores directo de los campos.
+  const emailRef = useRef(null)
+  const passRef  = useRef(null)
   const [loading, setLoading]   = useState(false)
   const [mensaje, setMensaje]   = useState('')
   const [faceAvailable, setFaceAvailable] = useState(false)
@@ -96,12 +100,35 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
   }, [])
 
   // ── Login normal ──────────────────────────────────────────
-  async function handleLogin() {
+  function leerCampos() {
+    const emailVal = (emailRef.current?.value ?? email ?? '').trim().toLowerCase()
+    const passVal  = passRef.current?.value ?? password ?? ''
+    if (emailVal !== email) setEmail(emailVal)
+    if (passVal !== password) setPassword(passVal)
+    return { emailVal, passVal }
+  }
+
+  function mensajeLogin(err) {
+    const m = (err?.message || '').toLowerCase()
+    if (m.includes('invalid login')) return 'Correo o contraseña incorrectos. Revisa que el correo esté bien escrito (sin espacios).'
+    if (m.includes('email not confirmed')) return 'Falta confirmar tu correo. Abre el mensaje que te llegó y vuelve a entrar.'
+    if (m.includes('failed to fetch') || m.includes('network')) return 'Sin conexión. Revisa tu internet e inténtalo de nuevo.'
+    return 'Error: ' + (err?.message || 'no se pudo entrar')
+  }
+
+  async function handleLogin(e) {
+    e?.preventDefault?.()
+    const { emailVal, passVal } = leerCampos()
+    if (!emailVal || !passVal) { setMensaje('Escribe tu correo y tu contraseña'); return }
     setLoading(true)
     setMensaje('')
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    let { data, error } = await supabase.auth.signInWithPassword({ email: emailVal, password: passVal })
+    // El autocompletado a veces deja un espacio de más al final: se reintenta una vez sin espacios en los bordes
+    if (error && /invalid login/i.test(error.message || '') && passVal !== passVal.trim() && passVal.trim()) {
+      ;({ data, error } = await supabase.auth.signInWithPassword({ email: emailVal, password: passVal.trim() }))
+    }
     if (error) {
-      setMensaje('Error: ' + error.message)
+      setMensaje(mensajeLogin(error))
       setLoading(false)
       return
     }
@@ -155,11 +182,12 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
 
   // ── Registro ──────────────────────────────────────────────
   async function handleRegistro() {
-    if (!email.trim()) { setMensaje('Escribe tu correo arriba y luego dale a Crear Cuenta'); return }
-    if (!password || password.length < 6) { setMensaje('Escribe una contraseña de mínimo 6 caracteres'); return }
+    const { emailVal, passVal } = leerCampos()
+    if (!emailVal) { setMensaje('Escribe tu correo arriba y luego dale a Crear Cuenta'); return }
+    if (!passVal || passVal.length < 6) { setMensaje('Escribe una contraseña de mínimo 6 caracteres'); return }
     setLoading(true)
     setMensaje('')
-    const { error } = await supabase.auth.signUp({ email: email.trim().toLowerCase(), password })
+    const { error } = await supabase.auth.signUp({ email: emailVal, password: passVal })
     if (error) setMensaje('Error: ' + error.message)
     else setMensaje('✅ Cuenta creada. Si te llega un correo de confirmación, ábrelo antes de entrar')
     setLoading(false)
@@ -310,11 +338,14 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
       )}
 
       {/* ── Formulario email/contraseña ── */}
-      <input type="email" placeholder="tu@email.com" value={email}
+      <form onSubmit={handleLogin} noValidate>
+      <input ref={emailRef} type="email" name="email" id="login-email" placeholder="tu@email.com" value={email}
+        autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email"
         onChange={e => setEmail(e.target.value)}
         style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '.8rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
       />
-      <input type="password" placeholder="Contraseña" value={password}
+      <input ref={passRef} type="password" name="password" id="login-password" placeholder="Contraseña" value={password}
+        autoComplete="current-password" autoCapitalize="none" autoCorrect="off" spellCheck={false}
         onChange={e => setPassword(e.target.value)}
         style={{ display: 'block', width: '100%', padding: '.7rem', marginBottom: '.5rem', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '8px', color: 'white', fontSize: '1rem', boxSizing: 'border-box' }}
       />
@@ -339,7 +370,7 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
         </div>
       )}
 
-      <button onClick={handleLogin} disabled={loading} style={{
+      <button type="submit" disabled={loading} style={{
         width: '100%', padding: '.75rem',
         background: 'var(--color-primary)', border: 'none',
         borderRadius: '8px', color: '#000',
@@ -348,7 +379,7 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
       }}>
         {loading ? 'CARGANDO...' : 'ENTRAR'}
       </button>
-      <button onClick={handleRegistro} disabled={loading} style={{
+      <button type="button" onClick={handleRegistro} disabled={loading} style={{
         width: '100%', padding: '.75rem',
         background: 'transparent', border: '1px solid var(--color-primary)',
         borderRadius: '8px', color: 'var(--color-primary)',
@@ -356,6 +387,7 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
       }}>
         CREAR CUENTA
       </button>
+      </form>
 
       {mensaje && (
         <p style={{ marginTop: '1rem', color: 'var(--color-gold)', textAlign: 'center', fontSize: '.85rem' }}>
