@@ -38,3 +38,16 @@ export const TEMAS_PROGRAMACION = [
   { id: 'naranja', nombre: 'Naranja', swatch: '#b85c00', oscuro: '#2e1300', medio: '#b85c00', claro: '#e07b0e', acento: '#00c2ff', acentoSuave: '#7fdcff' },
   { id: 'negro',   nombre: 'Negro',   swatch: '#2a2a2a', oscuro: '#0a0a0a', medio: '#2a2a2a', claro: '#454545', acento: '#f9a825', acentoSuave: '#fbc767' },
 ]
+
+// Flyer de RESULTADO de un partido (el que comparten los equipos en redes).
+// Fondo oscuro tipo estadio: `arriba` y `abajo` son los dos extremos del
+// degradado, `luz` el foco de luz de los reflectores, `acento` el dorado/color
+// del marcador y los títulos. El primero es el que sale por defecto.
+export const TEMAS_RESULTADO = [
+  { id: 'morado',  nombre: 'Morado (estadio)', swatch: '#4a1a8a', arriba: '#3a1480', abajo: '#0b0420', luz: 'rgba(176,96,255,.55)', acento: '#ffc926', acentoSuave: '#ffe07a', linea: 'rgba(255,255,255,.14)' },
+  { id: 'azul',    nombre: 'Azul',    swatch: '#1a3a8a', arriba: '#173a96', abajo: '#050d26', luz: 'rgba(80,160,255,.55)',  acento: '#00e0d0', acentoSuave: '#8ff3ea', linea: 'rgba(255,255,255,.14)' },
+  { id: 'verde',   nombre: 'Verde',   swatch: '#0f6e3e', arriba: '#0e7a44', abajo: '#03190c', luz: 'rgba(90,230,150,.45)',  acento: '#ffd54f', acentoSuave: '#ffe59c', linea: 'rgba(255,255,255,.14)' },
+  { id: 'rojo',    nombre: 'Rojo',    swatch: '#7a0f0f', arriba: '#8a1010', abajo: '#1e0303', luz: 'rgba(255,110,90,.5)',   acento: '#ffcf3d', acentoSuave: '#ffe28a', linea: 'rgba(255,255,255,.14)' },
+  { id: 'negro',   nombre: 'Negro',   swatch: '#2a2a2a', arriba: '#2e2e2e', abajo: '#070707', luz: 'rgba(255,255,255,.35)', acento: '#f9a825', acentoSuave: '#fbc767', linea: 'rgba(255,255,255,.14)' },
+  { id: 'naranja', nombre: 'Naranja', swatch: '#b85c00', arriba: '#c25f00', abajo: '#240e00', luz: 'rgba(255,190,90,.5)',   acento: '#00c8ff', acentoSuave: '#8fe3ff', linea: 'rgba(255,255,255,.14)' },
+]
