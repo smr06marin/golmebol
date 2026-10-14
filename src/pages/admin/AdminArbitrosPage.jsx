@@ -1,60 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Upload, X, Shield } from 'lucide-react'
+import { Plus, Upload, Shield } from 'lucide-react'
 
 const EMPTY = { name: '', telefono: '', numero_cedula: '', city: '', genero: '' }
 const inp = { width:'100%', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'8px 12px', color:'#202124', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'block', marginBottom:'4px' }
-
-function ModalMembresia({ arbitro, onClose, onActivar }) {
-  const [meses,   setMeses]   = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState('')
-  const yaTieneAuth = !!arbitro.user_id
-
-  async function handleActivar() {
-    setLoading(true); setError('')
-    const err = await onActivar(arbitro, meses, yaTieneAuth)
-    if (err) setError(err)
-    setLoading(false)
-  }
-
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#fff', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'400px', boxShadow:'0 8px 32px rgba(0,0,0,.2)' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
-          <div>
-            <div style={{ fontWeight:'700', color:'#202124', fontSize:'1rem' }}>
-              {!yaTieneAuth ? 'Activar acceso' : arbitro.activo_membresia ? 'Renovar acceso' : 'Reactivar acceso'}
-            </div>
-            <div style={{ fontSize:'.8rem', color:'#5f6368', marginTop:'2px' }}>{arbitro.name}</div>
-          </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9aa0a6' }}><X size={18}/></button>
-        </div>
-        <div style={{ marginBottom:'16px' }}>
-          <label style={lbl}>Meses de acceso</label>
-          <div style={{ display:'flex', gap:'8px' }}>
-            {[1,2,3,6,12].map(m => (
-              <button key={m} onClick={() => setMeses(m)}
-                style={{ flex:1, padding:'8px 4px', borderRadius:'8px', border:`1px solid ${meses===m?'#1a73e8':'#dadce0'}`, background: meses===m?'#1a73e8':'#fff', color: meses===m?'#fff':'#5f6368', cursor:'pointer', fontSize:'.8rem', fontWeight:'600' }}>
-                {m}m
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ background:'#f8f9fa', borderRadius:'10px', padding:'12px 14px', marginBottom:'16px', fontSize:'.8rem', color:'#5f6368' }}>
-          <div style={{ marginBottom:'4px' }}>📧 Email: <b>{arbitro.numero_cedula}@golmebol.com</b></div>
-          <div>🔑 Contraseña inicial: <b>{arbitro.numero_cedula}</b></div>
-        </div>
-        {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'12px' }}>{error}</div>}
-        <button onClick={handleActivar} disabled={loading}
-          style={{ width:'100%', padding:'11px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
-          {loading ? 'Procesando...' : !yaTieneAuth ? '✅ Activar acceso' : '🔄 Renovar'}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 export default function AdminArbitrosPage() {
   const [arbitros,   setArbitros]   = useState([])
@@ -65,7 +15,6 @@ export default function AdminArbitrosPage() {
   const [uploading,  setUploading]  = useState(null)
   const [msg,        setMsg]        = useState(null)
   const [search,     setSearch]     = useState('')
-  const [modalMem,     setModalMem]     = useState(null)
   const [modalReset,   setModalReset]   = useState(null)   // árbitro al que se le reinicia la contraseña
   const [reseteando,   setReseteando]   = useState(false)
   const [buscarJugador,setBuscarJugador] = useState(false)
@@ -224,37 +173,6 @@ export default function AdminArbitrosPage() {
     setUploading(null)
   }
 
-  async function handleActivarMembresia(arbitro, meses, yaTieneAuth) {
-    const fechaVenc = (() => { const d = new Date(); d.setMonth(d.getMonth() + meses); return d.toISOString() })()
-    const email     = `${arbitro.numero_cedula}@golmebol.com`
-    try {
-      let userId = arbitro.user_id
-      if (!yaTieneAuth) {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email, password: String(arbitro.numero_cedula),
-          options: { data: { player_id: arbitro.id, cedula: arbitro.numero_cedula, rol: 'arbitro' } }
-        })
-        if (authError) return 'Error al crear cuenta: ' + authError.message
-        if (!authData.user) return 'No se pudo crear la cuenta.'
-        userId = authData.user.id
-      }
-      const { error: updError } = await supabase.from('players').update({
-        user_id: userId, activo_membresia: true,
-        fecha_pago: new Date().toISOString(), fecha_vencimiento: fechaVenc,
-        meses_pagados: (arbitro.meses_pagados || 0) + meses, primer_ingreso: true,
-      }).eq('id', arbitro.id)
-      if (updError) return 'Error al activar: ' + updError.message
-      showMsgFn(`✅ Acceso activado por ${meses} mes${meses > 1 ? 'es' : ''}`)
-      setModalMem(null); fetchArbitros(); return null
-    } catch(e) { return 'Error: ' + e.message }
-  }
-
-  async function handleDesactivar(arbitro) {
-    if (!confirm(`¿Desactivar acceso de ${arbitro.name}?`)) return
-    await supabase.from('players').update({ activo_membresia: false }).eq('id', arbitro.id)
-    showMsgFn('Acceso desactivado'); fetchArbitros()
-  }
-
   const filtrados = arbitros.filter(a => a.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -265,7 +183,6 @@ export default function AdminArbitrosPage() {
         </div>
       )}
 
-      {modalMem && <ModalMembresia arbitro={modalMem} onClose={() => setModalMem(null)} onActivar={handleActivarMembresia}/>}
 
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'24px', flexWrap:'wrap', gap:'12px' }}>
@@ -420,9 +337,8 @@ export default function AdminArbitrosPage() {
             <div>No hay árbitros registrados</div>
           </div>
         ) : filtrados.map((a, i) => {
-          const esPuro = a.rol === 'arbitro' // árbitro puro: acceso gratis, sin membresía/vencimiento
-          const dias = a.fecha_vencimiento ? Math.ceil((new Date(a.fecha_vencimiento) - new Date()) / 86400000) : null
-          const activo = esPuro ? !!a.activo_membresia : (a.activo_membresia && dias !== null && dias > 0)
+          // Todos los árbitros son gratis: sin membresía ni vencimiento
+          const activo = !!a.activo_membresia
           return (
             <div key={a.id} style={{ padding:'14px 16px', borderBottom: i<filtrados.length-1?'1px solid #f1f3f4':'none', display:'flex', flexDirection:'column', gap:'10px' }}>
               <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
@@ -454,24 +370,13 @@ export default function AdminArbitrosPage() {
 
               {/* Estado de acceso */}
               <div style={{ textAlign:'right', flexShrink:0, whiteSpace:'nowrap' }}>
-                {esPuro ? (
-                  activo ? (
-                    <div>
-                      <div style={{ fontSize:'.72rem', color:'#1e8e3e', fontWeight:'700' }}>✅ Activo</div>
-                      <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{a.user_id ? 'gratis' : 'falta crear contraseña'}</div>
-                    </div>
-                  ) : (
-                    <span style={{ fontSize:'.72rem', color:'#9aa0a6', background:'#f1f3f4', borderRadius:'6px', padding:'2px 8px' }}>Sin acceso</span>
-                  )
-                ) : !a.user_id ? (
-                  <span style={{ fontSize:'.72rem', color:'#9aa0a6', background:'#f1f3f4', borderRadius:'6px', padding:'2px 8px' }}>Sin acceso</span>
-                ) : activo ? (
+                {activo ? (
                   <div>
                     <div style={{ fontSize:'.72rem', color:'#1e8e3e', fontWeight:'700' }}>✅ Activo</div>
-                    <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{dias}d restantes</div>
+                    <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{a.user_id ? 'gratis' : 'falta crear contraseña'}</div>
                   </div>
                 ) : (
-                  <span style={{ fontSize:'.72rem', color:'#d93025', background:'#fce8e6', borderRadius:'6px', padding:'2px 8px' }}>Vencido</span>
+                  <span style={{ fontSize:'.72rem', color:'#9aa0a6', background:'#f1f3f4', borderRadius:'6px', padding:'2px 8px' }}>Sin acceso</span>
                 )}
               </div>
 
@@ -480,22 +385,11 @@ export default function AdminArbitrosPage() {
               <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
                 <button onClick={() => { setForm({ name:a.name, telefono:a.telefono||'', numero_cedula:a.numero_cedula||'', city:a.city||'', genero:a.genero||'' }); setEditId(a.id); setShowForm(true) }}
                   style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap', color:'#5f6368', fontSize:'.8rem' }}>✏️</button>
-                {esPuro ? (
-                  !activo && (
-                    <button onClick={() => handleActivarGratis(a)}
-                      style={{ background:'#1a73e8', border:'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', whiteSpace:'nowrap', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
-                      Activar gratis
-                    </button>
-                  )
-                ) : (
-                  <button onClick={() => setModalMem(a)}
-                    style={{ background: activo?'none':'#1a73e8', border: activo?'1px solid #1a73e8':'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', whiteSpace:'nowrap', color: activo?'#1a73e8':'#fff', fontSize:'.8rem', fontWeight:'600' }}>
-                    {!a.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
+                {!activo && (
+                  <button onClick={() => handleActivarGratis(a)}
+                    style={{ background:'#1a73e8', border:'none', borderRadius:'6px', padding:'5px 12px', cursor:'pointer', whiteSpace:'nowrap', color:'#fff', fontSize:'.8rem', fontWeight:'600' }}>
+                    Activar gratis
                   </button>
-                )}
-                {activo && (
-                  <button onClick={() => handleDesactivar(a)}
-                    style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', whiteSpace:'nowrap', color:'#d93025', fontSize:'.8rem' }}>Desactivar</button>
                 )}
                 {a.es_arbitro && a.rol !== 'arbitro' && (
                   <button onClick={() => handleQuitarArbitro(a)}

@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
-import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, Clock, MessageCircle, User } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, User } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
 // Posición simplificada (Arquero/Jugador, sin detalle por modalidad) — se
@@ -62,12 +62,6 @@ function FotoUploadMini({ label, hint, preview, onChange, opcional = false }) {
       </label>
     </div>
   )
-}
-
-function diasRestantes(fechaVenc) {
-  if (!fechaVenc) return null
-  const diff = new Date(fechaVenc) - new Date()
-  return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
 const FOTOS_CONFIG = [
@@ -173,14 +167,12 @@ const FotoMiniatura = memo(function FotoMiniatura({ jugador, cfg, uploading, onS
 })
 
 function ModalMembresia({ jugador, onClose, onActivar }) {
-  const [meses,   setMeses]   = useState(1)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
-  const yaTieneAuth = !!jugador.user_id
 
   async function handleActivar() {
     setLoading(true); setError('')
-    const err = await onActivar(jugador, meses, yaTieneAuth)
+    const err = await onActivar(jugador)
     if (err) setError(err)
     setLoading(false)
   }
@@ -191,47 +183,24 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>
-              {!jugador.user_id ? 'Activar membresía' : jugador.activo_membresia ? 'Renovar membresía' : 'Reactivar membresía'}
+              Activar cuenta
             </div>
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '2px' }}>{jugador.name}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div>
-            <label style={lbl}>Meses a activar</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {[1, 2, 3, 6, 12].map(m => (
-                <button key={m} onClick={() => setMeses(m)}
-                  style={{ flex: 1, padding: '8px 4px', border: meses === m ? '2px solid #1a73e8' : '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', background: meses === m ? '#e8f0fe' : '#fff', color: meses === m ? '#1a73e8' : '#5f6368', fontWeight: meses === m ? '700' : '400', fontSize: '.8rem' }}>
-                  {m === 12 ? '1 año' : `${m} mes${m > 1 ? 'es' : ''}`}
-                </button>
-              ))}
-            </div>
-          </div>
-          {!yaTieneAuth && (
+          {(
             <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
               🔐 La contraseña inicial será la cédula: <b>{jugador.numero_cedula}</b>. El jugador deberá cambiarla al primer ingreso.
-            </div>
-          )}
-          {yaTieneAuth && (
-            <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
-              🔐 Ya tiene cuenta creada. Solo se renovará el tiempo de acceso.
             </div>
           )}
           {error && (
             <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{error}</div>
           )}
-          <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px 14px' }}>
-            <div style={{ fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>Resumen</div>
-            <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '4px' }}>
-              Acceso por <b>{meses} mes{meses > 1 ? 'es' : ''}</b> · Vence el{' '}
-              <b>{new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</b>
-            </div>
-          </div>
           <button onClick={handleActivar} disabled={loading}
             style={{ padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: loading ? .7 : 1 }}>
-            {loading ? 'Procesando...' : !jugador.user_id ? '✅ Activar membresía' : jugador.activo_membresia ? '🔄 Renovar' : '🔄 Reactivar'}
+            {loading ? 'Procesando...' : '✅ Activar cuenta'}
           </button>
         </div>
       </div>
@@ -300,17 +269,6 @@ export default function AdminJugadoresPage() {
 
   useEffect(() => { fetchJugadores() }, [])
 
-  useEffect(() => {
-    if (!jugadores.length) return
-    const hoy = new Date()
-    const vencidos = jugadores.filter(j =>
-      j.activo_membresia && j.fecha_vencimiento && new Date(j.fecha_vencimiento) < hoy
-    )
-    if (!vencidos.length) return
-    Promise.all(vencidos.map(j => supabase.from('players').update({ activo_membresia: false }).eq('id', j.id)))
-      .then(() => setJugadores(prev => prev.map(j => vencidos.some(v => v.id === j.id) ? { ...j, activo_membresia: false } : j)))
-  }, [jugadores])
-
   // Los jugadores de toda la plataforma son solo del admin principal — el
   // organizador ve los jugadores de su torneo desde el detalle de su propio
   // torneo, no desde este listado global.
@@ -326,22 +284,15 @@ export default function AdminJugadoresPage() {
   // el componente dejaba de llamar estos 3 hooks pero seguía llamando los
   // ~20 useState/useEffect de arriba — distinta cantidad de hooks entre
   // renders, lo que rompe React (crashea la página, no es solo un warning).
-  const { cActivos, cVencidos, cSinCuenta, cPorVencer, cPendientes, cFotos } = useMemo(() => ({
-    cActivos:    jugadores.filter(j => j.activo_membresia).length,
-    cVencidos:   jugadores.filter(j => !j.activo_membresia && j.user_id && !j.whatsapp).length,
+  const { cSinCuenta, cFotos } = useMemo(() => ({
     cSinCuenta:  jugadores.filter(j => !j.user_id).length,
-    cPorVencer:  jugadores.filter(j => { const d = diasRestantes(j.fecha_vencimiento); return d !== null && d > 0 && d <= 7 }).length,
-    cPendientes: jugadores.filter(j => j.user_id && j.whatsapp && !j.activo_membresia).length,
     cFotos:      jugadores.filter(tieneFotoPendiente).length,
   }), [jugadores])
 
   const filtered = useMemo(() => jugadores.filter(j => {
     const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
     if (!matchSearch) return false
-    if (filtroMembresia === 'activos')    return j.activo_membresia
-    if (filtroMembresia === 'vencidos')   return !j.activo_membresia && j.user_id && !j.whatsapp
     if (filtroMembresia === 'sin_cuenta') return !j.user_id
-    if (filtroMembresia === 'pendientes') return j.user_id && j.whatsapp && !j.activo_membresia
     if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
     return true
   }), [jugadores, search, filtroMembresia])
@@ -596,8 +547,8 @@ export default function AdminJugadoresPage() {
     }
   }
 
-  async function handleActivarMembresia(jugador, meses, yaTieneAuth) {
-    const fechaVenc = (() => { const d = new Date(); d.setMonth(d.getMonth() + meses); return d.toISOString() })()
+  async function handleActivarMembresia(jugador) {
+    const yaTieneAuth = !!jugador.user_id
     const email     = `${jugador.numero_cedula}@golmebol.com`
     try {
       let userId = jugador.user_id
@@ -614,26 +565,17 @@ export default function AdminJugadoresPage() {
       const { error: updError } = await supabase.from('players').update({
         user_id:           userId,
         activo_membresia:  true,
-        fecha_pago:        new Date().toISOString(),
-        fecha_vencimiento: fechaVenc,
-        meses_pagados:     (jugador.meses_pagados || 0) + meses,
+        fecha_vencimiento: null,
         primer_ingreso:    true,
       }).eq('id', jugador.id)
       if (updError) return 'Error al activar: ' + updError.message
-      showMsg(`✅ Membresía activada por ${meses} mes${meses > 1 ? 'es' : ''} ✓`)
+      showMsg('✅ Cuenta activada ✓')
       setModalMembresia(null)
       fetchJugadores()
       return null
     } catch (e) {
       return 'Error: ' + e.message
     }
-  }
-
-  async function handleDesactivar(jugador) {
-    if (!confirm(`¿Desactivar membresía de ${jugador.name}?`)) return
-    await supabase.from('players').update({ activo_membresia: false }).eq('id', jugador.id)
-    showMsg('Membresía desactivada')
-    fetchJugadores()
   }
 
   async function handleResetPassword(jugador) {
@@ -682,24 +624,6 @@ export default function AdminJugadoresPage() {
     const numero = (j.whatsapp || '').replace(/\D/g, '')
     const nombre = j.name?.split(' ')[0] || 'jugador'
     const texto  = `Hola ${nombre} 👋, recibimos tu registro en *Golmebol*. Para verificar tu cuenta confírmanos tu nombre completo, cédula y el equipo en el que juegas. ✅`
-    window.open(`https://wa.me/57${numero}?text=${encodeURIComponent(texto)}`, '_blank')
-  }
-
-  function abrirWhatsApp(jugador) {
-    const numero  = (jugador.whatsapp || jugador.telefono || '').replace(/\D/g, '')
-    const dias    = diasRestantes(jugador.fecha_vencimiento)
-    const vencida = dias !== null && dias <= 0
-    const nombre  = jugador.name?.split(' ')[0] || 'jugador'
-    const texto   = vencida
-      ? `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* ya venció. Para seguir compitiendo en PREDIX y optar por los premios, renueva por solo $10.000. ¡Te esperamos! 🎯⚽`
-      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. Recuerda renovarla para seguir compitiendo en PREDIX. ⚽🏆`
-    window.open(`https://wa.me/57${numero}?text=${encodeURIComponent(texto)}`, '_blank')
-  }
-
-  function abrirWhatsAppNuevo(jugador) {
-    const numero = (jugador.whatsapp || '').replace(/\D/g, '')
-    const nombre = jugador.name?.split(' ')[0] || 'jugador'
-    const texto  = `Hola ${nombre} 👋, vimos que te registraste en *PREDIX Golmebol*. Tu primer mes es *GRATIS* 🎁 — activa tu cuenta y compite por *$50.000* este mes. ¿Te activamos ahora?`
     window.open(`https://wa.me/57${numero}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
@@ -901,13 +825,10 @@ export default function AdminJugadoresPage() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
         {[
-          { label: 'Activos',    value: cActivos,    color: '#1e8e3e', bg: '#e6f4ea', icon: <CheckCircle size={16} color="#1e8e3e"/>, id: 'activos' },
-          { label: 'Pendientes', value: cPendientes, color: '#1a73e8', bg: '#e8f0fe', icon: <Clock size={16} color="#1a73e8"/>,      id: 'pendientes' },
-          { label: 'Vencidos',   value: cVencidos,   color: '#d93025', bg: '#fce8e6', icon: <AlertTriangle size={16} color="#d93025"/>, id: 'vencidos' },
+          { label: 'Jugadores',  value: jugadores.length, color: '#1e8e3e', bg: '#e6f4ea', icon: <CheckCircle size={16} color="#1e8e3e"/>, id: 'todos' },
           { label: 'Sin cuenta', value: cSinCuenta,  color: '#9aa0a6', bg: '#f1f3f4', icon: <Users size={16} color="#9aa0a6"/>,      id: 'sin_cuenta' },
-          { label: 'Por vencer', value: cPorVencer,  color: '#e8710a', bg: '#fce8d9', icon: <Clock size={16} color="#e8710a"/>,      id: 'por_vencer' },
           { label: 'Fotos ⚠️',   value: cFotos,      color: '#d93025', bg: '#fce8e6', icon: <Camera size={16} color="#d93025"/>,     id: 'fotos' },
         ].map(({ label, value, color, bg, icon, id }) => (
           <div key={label} style={{ background: bg, borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
@@ -921,192 +842,12 @@ export default function AdminJugadoresPage() {
         ))}
       </div>
 
-      {cPendientes > 0 && (
-        <div style={{ background: '#e8f0fe', border: '1px solid #1a73e8', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <MessageCircle size={18} color="#1a73e8"/>
-            <div>
-              <div style={{ fontWeight: '600', color: '#1a73e8', fontSize: '.875rem' }}>
-                {cPendientes} jugador{cPendientes > 1 ? 'es' : ''} pendiente{cPendientes > 1 ? 's' : ''} de activación
-              </div>
-              <div style={{ fontSize: '.75rem', color: '#5f6368' }}>Se registraron solos — contáctalos para activar su membresía</div>
-            </div>
-          </div>
-          <button onClick={() => setFiltroMembresia('pendientes')}
-            style={{ padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
-            Ver pendientes
-          </button>
-        </div>
-      )}
-
-      {showForm && editId && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Editar jugador</div>
-            <button onClick={cerrarFormNuevo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
-              <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
-              <div><label style={lbl}>Número de cédula *</label><input value={form.numero_cedula} onChange={e => setForm(f=>({...f,numero_cedula:e.target.value}))} style={inp} placeholder="000000000"/></div>
-              <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
-              <div>
-                <label style={lbl}>Género</label>
-                <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
-                  <option value="">Seleccionar</option>
-                  {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </div>
-              <div><label style={lbl}>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f=>({...f,fecha_nacimiento:e.target.value}))} style={inp}/></div>
-            </div>
-            <div>
-              <label style={lbl}>Posición</label>
-              <select value={posicionVista(form)} onChange={e => setPosicionSimple(setForm, e.target.value)} style={{ ...inp, maxWidth: '260px' }}>
-                <option value="">Selecciona...</option>
-                {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-            <button onClick={handleSave} disabled={loading}
-              style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
-              {loading ? 'Guardando...' : 'Actualizar'}
-            </button>
-            <button onClick={cerrarFormNuevo}
-              style={{ padding: '8px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Alta nueva — Paso 1: cédula primero */}
-      {showForm && !editId && !personaEncontrada && !mostrarCamposNuevo && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Nuevo jugador</div>
-            <button onClick={cerrarFormNuevo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
-          </div>
-          <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '14px' }}>Primero escribe su número de cédula — así revisamos si ya está registrado en Golmebol.</div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input value={cedulaBuscar} onChange={e => setCedulaBuscar(e.target.value)} onKeyDown={e => e.key==='Enter' && handleBuscarCedulaNueva()} style={{ ...inp, maxWidth: '260px' }} placeholder="Número de cédula" autoFocus/>
-            <button onClick={handleBuscarCedulaNueva} disabled={buscandoCedula} style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: buscandoCedula?.7:1 }}>{buscandoCedula?'Buscando...':'Buscar'}</button>
-          </div>
-        </div>
-      )}
-
-      {/* Alta nueva — Paso 2a: ya existe una persona con esa cédula */}
-      {showForm && !editId && personaEncontrada && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-          <div style={{ background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '16px', marginBottom: '16px' }}>
-            <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#1a73e8', marginBottom: '10px', letterSpacing: '.05em' }}>YA ESTÁ REGISTRADO EN GOLMEBOL</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#d2e3fc', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.2rem' }}>👤</span>}
-              </div>
-              <div>
-                <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>{personaEncontrada.name}</div>
-                <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '2px' }}>🪪 {personaEncontrada.numero_cedula} · actualmente registrado como <strong>{rolActualLabel(personaEncontrada)}</strong></div>
-              </div>
-            </div>
-          </div>
-          <div style={{ fontSize: '.85rem', color: '#202124', marginBottom: '16px' }}>
-            ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando? Si confirmas, también quedará habilitado como <strong>jugador</strong> — con los mismos datos y podrá entrar con la misma cuenta y contraseña a los dos portales.
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={handleConfirmarPersonaEncontrada} disabled={loading} style={{ flex: 1, padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: loading?.7:1 }}>{loading?'Guardando...':`✓ Sí, también registrar a ${personaEncontrada.name.split(' ')[0]} como jugador`}</button>
-            <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar('') }} style={{ padding: '11px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>No, buscar otra</button>
-          </div>
-        </div>
-      )}
-
-      {/* Alta nueva — Paso 2b: no existe, se completan los datos */}
-      {showForm && !editId && mostrarCamposNuevo && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124' }}>Nuevo jugador</div>
-            <button onClick={cerrarFormNuevo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
-          </div>
-          <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '16px' }}>⚠️ No hay nadie registrado con la cédula <strong>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '.75rem', color: '#5f6368', background: '#e8f0fe', borderRadius: '8px', padding: '8px 12px' }}>
-              📋 Se piden los mismos datos que el link de inscripción, para que un jugador creado desde acá quede exactamente igual de completo.
-            </div>
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Datos personales</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div><label style={lbl}>Nombre completo *</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
-              <div><label style={lbl}>Teléfono *</label><input value={form.telefono} onChange={e => setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="300 000 0000"/></div>
-              <div><label style={lbl}>Número de cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#f1f3f4', color:'#9aa0a6'}}/></div>
-              <div><label style={lbl}>Ciudad *</label><input value={form.city} onChange={e => setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
-              <div>
-                <label style={lbl}>Género *</label>
-                <select value={form.genero} onChange={e => setForm(f=>({...f,genero:e.target.value}))} style={inp}>
-                  <option value="">Seleccionar</option>
-                  {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </div>
-              <div><label style={lbl}>Fecha de nacimiento *</label><input type="date" value={form.fecha_nacimiento} onChange={e => { setForm(f=>({...f,fecha_nacimiento:e.target.value})); setAutorizoMenorNuevo(false) }} style={inp}/></div>
-            </div>
-            <div>
-              <label style={lbl}>Posición *</label>
-              <select value={posicionVista(form)} onChange={e => setPosicionSimple(setForm, e.target.value)} style={{ ...inp, maxWidth: '260px' }}>
-                <option value="">Selecciona...</option>
-                {POSICIONES_SIMPLE.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-
-            {esMenorDeEdad(form.fecha_nacimiento) && (
-              <div style={{ background: '#fff8e1', border: '2px solid #f9a825', borderRadius: '10px', padding: '14px 16px' }}>
-                <div style={{ fontSize: '.78rem', color: '#7a5c00', fontWeight: '700', marginBottom: '10px' }}>
-                  ⚠️ El jugador es menor de edad — se necesita autorización de un adulto responsable.
-                </div>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={autorizoMenorNuevo} onChange={e => setAutorizoMenorNuevo(e.target.checked)}
-                    style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0 }}/>
-                  <span style={{ fontSize: '.8rem', color: '#5f6368', lineHeight: 1.5 }}>
-                    Confirmo que un padre, madre o acudiente autorizó la participación de este jugador menor de edad.
-                  </span>
-                </label>
-              </div>
-            )}
-
-            <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#5f6368', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>Fotos</div>
-            <FotoUploadMini label="Foto del jugador" hint="La cara del jugador, no del documento"
-              preview={previewPerfilNueva}
-              onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoPerfilNueva(f); setPreviewPerfilNueva(URL.createObjectURL(f)) }}/>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <FotoUploadMini label="Documento — Frente" hint="Foto del documento, no del jugador"
-                preview={previewCedFrontalNueva}
-                onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoCedulaFrontalNueva(f); setPreviewCedFrontalNueva(URL.createObjectURL(f)) }}/>
-              <FotoUploadMini label="Documento — Atrás" hint="Foto del documento, no del jugador"
-                preview={previewCedTraseraNueva}
-                onChange={e => { const f = e.target.files[0]; if (!f) return; setFotoCedulaTraseraNueva(f); setPreviewCedTraseraNueva(URL.createObjectURL(f)) }}/>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-            <button onClick={handleSave} disabled={loading}
-              style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
-              {loading ? 'Guardando...' : 'Crear jugador'}
-            </button>
-            <button onClick={cerrarFormNuevo}
-              style={{ padding: '8px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Buscar por nombre o cédula..."
           style={{ ...inp, maxWidth: '300px' }}/>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {[
             { id: 'todos',      label: `Todos (${jugadores.length})` },
-            { id: 'pendientes', label: `Pendientes (${cPendientes})`, alert: cPendientes > 0 },
-            { id: 'activos',    label: `Activos (${cActivos})` },
-            { id: 'vencidos',   label: `Vencidos (${cVencidos})` },
             { id: 'sin_cuenta', label: `Sin cuenta (${cSinCuenta})` },
             { id: 'fotos',      label: `Fotos ⚠️ (${cFotos})`, alert: cFotos > 0 },
           ].map(f => (
@@ -1125,17 +866,11 @@ export default function AdminJugadoresPage() {
             <div style={{ fontSize: '.875rem' }}>{search ? 'No se encontraron jugadores' : 'No hay jugadores en esta categoría'}</div>
           </div>
         ) : visibles.map((j, i) => {
-          const dias        = diasRestantes(j.fecha_vencimiento)
-          const vencida     = dias !== null && dias <= 0
-          const porVencer   = dias !== null && dias > 0 && dias <= 7
-          const activo      = j.activo_membresia && !vencida
-          const esPendiente = j.user_id && j.whatsapp && !j.activo_membresia
-
           return (
-            <div key={j.id} style={{ padding: '16px 20px', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none', background: esPendiente ? '#f0f7ff' : vencida && !esPendiente ? '#fff8f8' : porVencer ? '#fffbf0' : '#fff' }}>
+            <div key={j.id} style={{ padding: '16px 20px', borderBottom: i < filtered.length - 1 ? '1px solid #f1f3f4' : 'none', background: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: `2px solid ${activo ? '#1e8e3e' : esPendiente ? '#1a73e8' : vencida && j.user_id ? '#d93025' : '#e8eaed'}`, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: '2px solid #1e8e3e', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {j.photo_face_url ? <img src={j.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
                       : j.photo_url  ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
                       : <User size={22} color="#9aa0a6"/>}
@@ -1143,10 +878,7 @@ export default function AdminJugadoresPage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       {j.name}
-                      {activo      && <span style={{ fontSize: '.65rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✓ Activo</span>}
-                      {esPendiente && <span style={{ fontSize: '.65rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⏳ Pendiente</span>}
-                      {vencida && j.user_id && !esPendiente && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✗ Vencido</span>}
-                      {porVencer   && <span style={{ fontSize: '.65rem', color: '#e8710a', background: '#fce8d9', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>⚠ {dias}d</span>}
+                      <span style={{ fontSize: '.65rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✓ Activo</span>
                       {!j.user_id  && <span style={{ fontSize: '.65rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>Sin cuenta</span>}
                       {tieneFotoPendiente(j) && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚠️ Foto por cambiar</span>}
                     </div>
@@ -1160,11 +892,6 @@ export default function AdminJugadoresPage() {
                       {j.posicion_futbol5  && <span style={{ fontSize: '.68rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '10px', padding: '1px 7px' }}>F5: {j.posicion_futbol5}</span>}
                       {j.posicion_futbol7  && <span style={{ fontSize: '.68rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '1px 7px' }}>F7: {j.posicion_futbol7}</span>}
                       {j.posicion_futbol11 && <span style={{ fontSize: '.68rem', color: '#e8710a', background: '#fce8d9', borderRadius: '10px', padding: '1px 7px' }}>F11: {j.posicion_futbol11}</span>}
-                      {j.fecha_vencimiento && !vencida && (
-                        <span style={{ fontSize: '.68rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '10px', padding: '1px 7px' }}>
-                          Vence: {new Date(j.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1185,32 +912,16 @@ export default function AdminJugadoresPage() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    {esPendiente && (
-                      <button onClick={() => abrirWhatsAppNuevo(j)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#25D366', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '700' }}>
-                        <MessageCircle size={12}/> Contactar
-                      </button>
-                    )}
-                    <button onClick={() => setModalMembresia(j)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '4px', background: activo ? '#f1f3f4' : '#1e8e3e', border: activo ? '1px solid #dadce0' : 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: activo ? '#5f6368' : '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                      <CreditCard size={12}/> {!j.user_id ? 'Activar' : activo ? 'Renovar' : 'Activar'}
-                    </button>
-                    {activo && (
-                      <button onClick={() => handleDesactivar(j)}
-                        style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem' }}>
-                        Desactivar
+                    {!j.user_id && (
+                      <button onClick={() => setModalMembresia(j)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
+                        <CreditCard size={12}/> Activar
                       </button>
                     )}
                     {j.user_id && (
                       <button onClick={() => setModalReset(j)}
                         style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
                         🔄 Reset
-                      </button>
-                    )}
-                    {(j.telefono || j.whatsapp) && (vencida || porVencer) && !esPendiente && (
-                      <button onClick={() => abrirWhatsApp(j)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#25D366', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                        <MessageCircle size={12}/> WhatsApp
                       </button>
                     )}
                   </div>

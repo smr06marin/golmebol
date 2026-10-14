@@ -251,7 +251,6 @@ export default function ArbitroHomePage() {
     })
   const jugados  = partidos.filter(p => p.status === 'finished')
   const lista    = tab === 'proximos' ? proximos : jugados
-  const dias     = arbitro?.fecha_vencimiento ? Math.ceil((new Date(arbitro.fecha_vencimiento)-new Date())/86400000) : null
 
   return (
     <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
@@ -281,7 +280,7 @@ export default function ArbitroHomePage() {
       <PortalBanner theme="dark" sticky
         avatarUrl={arbitro?.photo_face_url||arbitro?.photo_url}
         kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Circle size={8} color="#f9a825" fill="#f9a825"/> Árbitro</span>} title={arbitro?.name?.split(' ')[0]}
-        subtitle={dias===null?'Activo (gratis)':dias>0?`${dias}d activo`:'Vencido'}
+        subtitle="Activo (gratis)"
         usuario={arbitro} actual="arbitro"
         onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
         extraButtons={<>

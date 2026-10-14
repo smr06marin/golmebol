@@ -138,7 +138,6 @@ export default function AdminDashboard() {
     try {
     const hoy   = new Date()
     const hoyStr = hoy.toISOString().split('T')[0]
-    const en7   = new Date(hoy.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
     // ── Organizador: solo ve lo que pasa dentro de SUS propios torneos ──
     if (esOrganizador) {
@@ -193,10 +192,8 @@ export default function AdminDashboard() {
       { count: totalEquipos },
       { count: partidosHoy },
       { count: partidosJugados },
-      { data: porVencer },
       { data: ultimosPartidos },
       { data: torneosActivos },
-      { data: membresiasVencidas },
     ] = await Promise.all([
       supabase.from('players').select('id', { count: 'exact', head: true }),
       supabase.from('players').select('id', { count: 'exact', head: true }).eq('activo_membresia', true),
@@ -207,12 +204,6 @@ export default function AdminDashboard() {
         .gte('played_at', hoyStr + 'T00:00:00')
         .lte('played_at', hoyStr + 'T23:59:59'),
       supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
-      supabase.from('players')
-        .select('id, name, fecha_vencimiento, telefono')
-        .eq('activo_membresia', true)
-        .lte('fecha_vencimiento', en7)
-        .gte('fecha_vencimiento', hoy.toISOString())
-        .order('fecha_vencimiento'),
       supabase.from('matches')
         .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
         .eq('status', 'finished')
@@ -222,12 +213,6 @@ export default function AdminDashboard() {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(4),
-      supabase.from('players')
-        .select('id, name, fecha_vencimiento, telefono')
-        .eq('activo_membresia', false)
-        .not('user_id', 'is', null)
-        .order('fecha_vencimiento', { ascending: false })
-        .limit(3),
     ])
 
     const torneoIdsRecientes = (torneosActivos || []).map(t => t.id)
@@ -244,33 +229,16 @@ export default function AdminDashboard() {
       totalEquipos:      totalEquipos      || 0,
       partidosHoy:       partidosHoy       || 0,
       partidosJugados:   partidosJugados   || 0,
-      porVencer:         porVencer         || [],
       ultimosPartidos:   ultimosPartidos   || [],
       torneosActivos:    torneosActivos    || [],
-      membresiasVencidas: membresiasVencidas || [],
       finalizados: new Set((logrosCampeon || []).map(l => l.tournament_id)),
     })
     setLoading(false)
     } catch(e) {
       console.error('Dashboard error:', e)
-      setData({ esOrganizador, totalJugadores: 0, jugadoresActivos: 0, jugadoresSinCuenta: 0, totalTorneos: 0, totalEquipos: 0, partidosHoy: 0, partidosJugados: 0, porVencer: [], ultimosPartidos: [], torneosActivos: [], misTorneos: [], membresiasVencidas: [], finalizados: new Set() })
+      setData({ esOrganizador, totalJugadores: 0, jugadoresActivos: 0, jugadoresSinCuenta: 0, totalTorneos: 0, totalEquipos: 0, partidosHoy: 0, partidosJugados: 0, ultimosPartidos: [], torneosActivos: [], misTorneos: [], finalizados: new Set() })
       setLoading(false)
     }
-  }
-
-  function diasRestantes(fecha) {
-    if (!fecha) return null
-    return Math.ceil((new Date(fecha) - new Date()) / (1000 * 60 * 60 * 24))
-  }
-
-  function abrirWhatsApp(jugador, vencida) {
-    const nombre   = jugador.name?.split(' ')[0] || 'jugador'
-    const telefono = jugador.telefono?.replace(/\D/g, '')
-    const dias     = diasRestantes(jugador.fecha_vencimiento)
-    const texto    = vencida
-      ? `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* ya venció. Renueva para seguir disfrutando tu tarjeta. ⚽🏆`
-      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. ¡Renueva a tiempo! ⚽🏆`
-    window.open(`https://wa.me/57${telefono}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   if (loading || !data) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
@@ -375,7 +343,7 @@ export default function AdminDashboard() {
   }
 
   // ── Vista del admin principal: todo Golmebol ──
-  const { totalJugadores, jugadoresActivos, jugadoresSinCuenta, totalTorneos, totalEquipos, partidosHoy, partidosJugados, porVencer, ultimosPartidos, torneosActivos, membresiasVencidas, finalizados } = data
+  const { totalJugadores, jugadoresActivos, jugadoresSinCuenta, totalTorneos, totalEquipos, partidosHoy, partidosJugados, ultimosPartidos, torneosActivos, finalizados } = data
 
   return (
     <div>
@@ -389,64 +357,12 @@ export default function AdminDashboard() {
 
       {/* Stats principales */}
       <div className="gm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-        <StatCard icon="👥" label="Jugadores"        value={totalJugadores}   sub={`${jugadoresActivos} con membresía activa`}  color="#1a73e8" onClick={() => navigate('/admin/jugadores')}/>
-        <StatCard icon="✅" label="Membresías activas" value={jugadoresActivos} sub={`${totalJugadores - jugadoresActivos} inactivos`} color="#1e8e3e" onClick={() => navigate('/admin/jugadores')}/>
+        <StatCard icon="👥" label="Jugadores"        value={totalJugadores}   sub={`${jugadoresActivos} activos`}  color="#1a73e8" onClick={() => navigate('/admin/jugadores')}/>
+        <StatCard icon="✅" label="Jugadores activos" value={jugadoresActivos} sub="Sin vencimientos" color="#1e8e3e" onClick={() => navigate('/admin/jugadores')}/>
         <StatCard icon="⚠️" label="Por activar"      value={jugadoresSinCuenta} sub="Sin cuenta creada"                          color="#e8710a" onClick={() => navigate('/admin/jugadores')}/>
         <StatCard icon="🏆" label="Torneos"          value={totalTorneos}     sub={`${totalEquipos} equipos registrados`}        color="#6c35de" onClick={() => navigate('/admin/torneos')}/>
         <StatCard icon="⚽" label="Partidos jugados"  value={partidosJugados}  sub={`${partidosHoy} programados hoy`}            color="#1a73e8" onClick={() => navigate('/admin/calendario')}/>
       </div>
-
-      {/* Alertas membresías */}
-      {(porVencer.length > 0 || membresiasVencidas.length > 0) && (
-        <div style={{ marginBottom: '20px' }}>
-          {/* Por vencer */}
-          {porVencer.length > 0 && (
-            <Section title={`⚠️ Membresías por vencer (${porVencer.length})`} action="Ver jugadores" onAction={() => navigate('/admin/jugadores')}>
-              {porVencer.map((j, i) => {
-                const dias = diasRestantes(j.fecha_vencimiento)
-                return (
-                  <div key={j.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: i < porVencer.length - 1 ? '1px solid #f1f3f4' : 'none', background: dias <= 2 ? '#fffbf0' : '#fff' }}>
-                    <div>
-                      <div style={{ fontWeight: '500', color: '#202124', fontSize: '.85rem' }}>{j.name}</div>
-                      <div style={{ fontSize: '.72rem', color: dias <= 2 ? '#d93025' : '#e8710a', fontWeight: '500' }}>
-                        Vence en {dias} día{dias !== 1 ? 's' : ''} — {new Date(j.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
-                      </div>
-                    </div>
-                    {j.telefono && (
-                      <button onClick={() => abrirWhatsApp(j, false)}
-                        style={{ background: '#25D366', border: 'none', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        💬 WhatsApp
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </Section>
-          )}
-
-          {/* Vencidas */}
-          {membresiasVencidas.length > 0 && (
-            <Section title={`❌ Membresías vencidas recientes (${membresiasVencidas.length})`} action="Ver jugadores" onAction={() => navigate('/admin/jugadores')}>
-              {membresiasVencidas.map((j, i) => (
-                <div key={j.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: i < membresiasVencidas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                  <div>
-                    <div style={{ fontWeight: '500', color: '#202124', fontSize: '.85rem' }}>{j.name}</div>
-                    <div style={{ fontSize: '.72rem', color: '#d93025', fontWeight: '500' }}>
-                      Venció el {j.fecha_vencimiento ? new Date(j.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'long' }) : '—'}
-                    </div>
-                  </div>
-                  {j.telefono && (
-                    <button onClick={() => abrirWhatsApp(j, true)}
-                      style={{ background: '#25D366', border: 'none', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                      💬 WhatsApp
-                    </button>
-                  )}
-                </div>
-              ))}
-            </Section>
-          )}
-        </div>
-      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
 

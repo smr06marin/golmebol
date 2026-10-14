@@ -151,11 +151,6 @@ function StatBox({ label, value, color = '#1a73e8' }) {
   )
 }
 
-function diasRestantes(fechaVenc) {
-  if (!fechaVenc) return null
-  return Math.ceil((new Date(fechaVenc) - new Date()) / (1000 * 60 * 60 * 24))
-}
-
 export default function AdminJugadorDetallePage() {
   const { id }   = useParams()
   const navigate = useNavigate()
@@ -173,7 +168,6 @@ export default function AdminJugadorDetallePage() {
   const [uploading,     setUploading]     = useState({})
   const [imgError,      setImgError]      = useState({})
   const [modalMem,      setModalMem]      = useState(false)
-  const [meses,         setMeses]         = useState(1)
   const [contrasena,    setContrasena]    = useState('')
   const [guardando,     setGuardando]     = useState(false)
   const [errMem,        setErrMem]        = useState('')
@@ -396,7 +390,6 @@ export default function AdminJugadorDetallePage() {
       setErrMem('La contraseña debe tener mínimo 6 caracteres'); return
     }
     setGuardando(true); setErrMem('')
-    const fechaVenc = new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toISOString()
     const email     = `${jugador.numero_cedula}@golmebol.com`
     try {
       let userId = jugador.user_id
@@ -409,40 +402,24 @@ export default function AdminJugadorDetallePage() {
         userId = authData.user?.id
       }
       await supabase.from('players').update({
-        user_id: userId, activo_membresia: true,
-        fecha_pago: new Date().toISOString(), fecha_vencimiento: fechaVenc,
-        meses_pagados: (jugador.meses_pagados || 0) + meses,
+        user_id: userId, activo_membresia: true, fecha_vencimiento: null,
       }).eq('id', id)
-      showMsg(`✅ Membresía activada por ${meses} mes${meses > 1 ? 'es' : ''} ✓`)
+      showMsg('✅ Cuenta activada ✓')
       setModalMem(false); setContrasena(''); fetchJugador()
     } catch (e) { setErrMem('Error: ' + e.message) }
     setGuardando(false)
   }
 
-  async function handleDesactivar() {
-    if (!confirm(`¿Desactivar membresía de ${jugador.name}?`)) return
-    await supabase.from('players').update({ activo_membresia: false }).eq('id', id)
-    showMsg('Membresía desactivada'); fetchJugador()
-  }
-
   function abrirWhatsApp() {
-    const dias    = diasRestantes(jugador.fecha_vencimiento)
-    const vencida = dias !== null && dias <= 0
     const nombre  = jugador.name?.split(' ')[0] || 'jugador'
     const tel     = (jugador.whatsapp || jugador.telefono || '').replace(/\D/g, '')
-    const texto   = vencida
-      ? `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* ya venció. Renueva para seguir disfrutando tu tarjeta. ⚽🏆`
-      : `Hola ${nombre} 👋, tu membresía de *GOLMEBOL* vence en *${dias} día${dias !== 1 ? 's' : ''}*. ¡Renueva a tiempo! ⚽🏆`
+    const texto   = `Hola ${nombre} 👋, te escribimos de *GOLMEBOL*. ⚽🏆`
     window.open(`https://wa.me/57${tel}?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: '#9aa0a6' }}>Cargando...</div>
   if (!jugador) return <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>Jugador no encontrado</div>
 
-  const dias      = diasRestantes(jugador.fecha_vencimiento)
-  const vencida   = dias !== null && dias <= 0
-  const porVencer = dias !== null && dias > 0 && dias <= 7
-  const activo    = jugador.activo_membresia && !vencida
   const esPortero = jugador.posicion_futbol5 === 'Portero' || jugador.posicion_futbol7 === 'Portero' || jugador.posicion_futbol11 === 'Portero'
 
   const cardStats = {
@@ -467,9 +444,10 @@ export default function AdminJugadorDetallePage() {
     { id: 'sanciones', label: sancionesActivas.length > 0 ? `⛔ Sanciones (${sancionesActivas.length})` : '⛔ Sanciones' },
   ]
 
-  const estadoColor = activo ? '#1e8e3e' : vencida && jugador.user_id ? '#d93025' : porVencer ? '#e8710a' : '#9aa0a6'
-  const estadoBg    = activo ? '#e6f4ea'  : vencida && jugador.user_id ? '#fce8e6'  : porVencer ? '#fce8d9'  : '#f1f3f4'
-  const estadoLabel = activo ? '✓ Activo' : vencida && jugador.user_id ? '✗ Vencido' : porVencer ? `⚠ ${dias}d` : 'Sin cuenta'
+  // Todos los jugadores están siempre activos (sin vencimientos)
+  const estadoColor = '#1e8e3e'
+  const estadoBg    = '#e6f4ea'
+  const estadoLabel = '✓ Activo'
 
   // Campos faltantes
   const camposFaltantes = [
@@ -492,21 +470,10 @@ export default function AdminJugadorDetallePage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
             <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>
-              {!jugador.user_id ? 'Activar membresía' : activo ? 'Renovar membresía' : 'Reactivar membresía'}
+              Activar cuenta
             </div>
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{jugador.name}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={lbl}>Meses a activar</label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {[1, 2, 3, 6, 12].map(m => (
-                    <button key={m} onClick={() => setMeses(m)}
-                      style={{ flex: 1, padding: '8px 4px', border: meses === m ? '2px solid #1a73e8' : '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', background: meses === m ? '#e8f0fe' : '#fff', color: meses === m ? '#1a73e8' : '#5f6368', fontWeight: meses === m ? '700' : '400', fontSize: '.78rem' }}>
-                      {m === 12 ? '1 año' : `${m}m`}
-                    </button>
-                  ))}
-                </div>
-              </div>
               {!jugador.user_id && (
                 <div>
                   <label style={lbl}>Contraseña para el jugador *</label>
@@ -514,23 +481,11 @@ export default function AdminJugadorDetallePage() {
                   <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '4px' }}>Ingresa con cédula <b>{jugador.numero_cedula}</b> + esta contraseña</div>
                 </div>
               )}
-              {jugador.user_id && (
-                <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
-                  🔐 Ya tiene cuenta. Solo se renueva el tiempo de acceso.
-                </div>
-              )}
               {errMem && <div style={{ fontSize: '.8rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '8px 12px' }}>{errMem}</div>}
-              <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px 14px' }}>
-                <div style={{ fontSize: '.78rem', color: '#202124', fontWeight: '600' }}>Resumen</div>
-                <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '4px' }}>
-                  Acceso por <b>{meses} mes{meses > 1 ? 'es' : ''}</b> · Vence el{' '}
-                  <b>{new Date(Date.now() + meses * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</b>
-                </div>
-              </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={handleActivarMembresia} disabled={guardando}
                   style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: guardando ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: guardando ? .7 : 1 }}>
-                  {guardando ? 'Procesando...' : !jugador.user_id ? '✅ Activar' : activo ? '🔄 Renovar' : '🔄 Reactivar'}
+                  {guardando ? 'Procesando...' : '✅ Activar'}
                 </button>
                 <button onClick={() => { setModalMem(false); setErrMem(''); setContrasena('') }}
                   style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
@@ -608,14 +563,10 @@ export default function AdminJugadorDetallePage() {
 
           {/* Botones acción */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-            <button onClick={() => setModalMem(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: activo ? '#f1f3f4' : '#1e8e3e', border: activo ? '1px solid #dadce0' : 'none', borderRadius: '8px', cursor: 'pointer', color: activo ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '600' }}>
-              <CreditCard size={14}/> {!jugador.user_id ? 'Activar' : activo ? 'Renovar' : 'Reactivar'}
-            </button>
-            {activo && (
-              <button onClick={handleDesactivar}
-                style={{ padding: '8px 16px', background: 'none', border: '1px solid #fad2cf', borderRadius: '8px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}>
-                Desactivar
+            {!jugador.user_id && (
+              <button onClick={() => setModalMem(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600' }}>
+                <CreditCard size={14}/> Activar
               </button>
             )}
             {(jugador.whatsapp || jugador.telefono) && (
@@ -626,22 +577,6 @@ export default function AdminJugadorDetallePage() {
             )}
           </div>
         </div>
-
-        {/* Info membresía */}
-        {jugador.fecha_vencimiento && (
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f3f4', display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '.78rem' }}>
-            <div><span style={{ color: '#9aa0a6' }}>Meses pagados: </span><span style={{ fontWeight: '600', color: '#202124' }}>{jugador.meses_pagados || 0}</span></div>
-            {jugador.fecha_pago && <div><span style={{ color: '#9aa0a6' }}>Último pago: </span><span style={{ fontWeight: '600', color: '#202124' }}>{new Date(jugador.fecha_pago).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>}
-            <div>
-              <span style={{ color: '#9aa0a6' }}>Vencimiento: </span>
-              <span style={{ fontWeight: '600', color: vencida ? '#d93025' : porVencer ? '#e8710a' : '#1e8e3e' }}>
-                {new Date(jugador.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
-                {dias !== null && dias > 0 && ` (${dias} días)`}
-                {vencida && ' (vencida)'}
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* Fotos y documentos */}
         {(jugador.foto_cambiar_tarjeta || jugador.foto_cambiar_perfil || jugador.foto_cambiar_cedula_frontal || jugador.foto_cambiar_cedula_trasera) && (

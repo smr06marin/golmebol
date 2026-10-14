@@ -756,7 +756,8 @@ export default function ArbitroLiderPage() {
         body: JSON.stringify({ player_id: arb.id }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok || data.error) showMsgFn('No se pudo reiniciar: ' + (data.error || `error ${res.status}`), 'error', 7000)
+      if (res.status === 404) showMsgFn('No se pudo reiniciar: la función "reset-arbitro-password" aún no está publicada en Supabase (Edge Functions).', 'error', 9000)
+      else if (!res.ok || data.error) showMsgFn('No se pudo reiniciar: ' + (data.error || data.message || `error ${res.status}`), 'error', 7000)
       else showMsgFn(`Contraseña de ${arb.name} reiniciada: ahora es su cédula`, 'ok', 5000)
     } catch (e) {
       showMsgFn('No se pudo reiniciar: ' + (e?.message || 'sin conexión'), 'error', 7000)
@@ -1061,8 +1062,7 @@ export default function ArbitroLiderPage() {
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
               {arbitros.filter(a=>a.name.toLowerCase().includes(busqArb.toLowerCase())).map(a=>{
-                const dias = a.fecha_vencimiento ? Math.ceil((new Date(a.fecha_vencimiento)-new Date())/86400000) : null
-                const activo = a.activo_membresia && (dias===null || dias>0) // sin vencimiento = gratis, siempre activo
+                const activo = !!a.user_id // todos los árbitros son gratis y siempre activos
                 return (
                   <div key={a.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'12px' }}>
                     <label style={{ cursor:'pointer', flexShrink:0, position:'relative' }}>
@@ -1091,11 +1091,9 @@ export default function ArbitroLiderPage() {
                       ):activo?(
                         <div>
                           <div style={{ fontSize:'.7rem', color:'#1e8e3e', fontWeight:'700', display:'flex', alignItems:'center', gap:'3px', justifyContent:'flex-end' }}><CheckCircle size={10}/> Activo</div>
-                          <div style={{ fontSize:'.6rem', color:'#7a9ab5' }}>{dias}d</div>
+                          <div style={{ fontSize:'.6rem', color:'#7a9ab5' }}>gratis</div>
                         </div>
-                      ):(
-                        <button onClick={()=>handleActivar(a)} style={{ padding:'5px 10px', background:'none', border:'1px solid #e8710a', borderRadius:'7px', cursor:'pointer', color:'#e8710a', fontSize:'.72rem' }}>Renovar</button>
-                      )}
+                      ):null}
                       {a.user_id && (
                         <button onClick={()=>setModalResetArb(a)} title="Si olvidó su contraseña"
                           style={{ marginTop:'5px', padding:'4px 9px', background:'none', border:'1px solid #3a5470', borderRadius:'7px', cursor:'pointer', color:'#9fb6cc', fontSize:'.68rem', fontWeight:'600', display:'inline-flex', alignItems:'center', gap:'4px' }}>

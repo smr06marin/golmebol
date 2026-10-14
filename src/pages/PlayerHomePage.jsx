@@ -288,25 +288,6 @@ export default function PlayerHomePage() {
       }
     }
 
-    if (p.fecha_vencimiento) {
-      const diasRestantes = Math.ceil((new Date(p.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
-      if (diasRestantes <= 7 && diasRestantes > 0) {
-        const nid = `membresia_vence_${diasRestantes}`
-        if (!dismissed.includes(nid)) {
-          notifsList.push({
-            id: nid, icon: '⏰',
-            titulo: `Tu membresía vence en ${diasRestantes} día${diasRestantes > 1 ? 's' : ''}`,
-            texto: 'Renueva para seguir compitiendo en PREDIX',
-            color: '#d93025', bg: '#fff8f8',
-            accion: {
-              label: '📲 Renovar',
-              fn: () => window.open(`https://wa.me/573178940448?text=${encodeURIComponent('Hola! Quiero renovar mi membresía de PREDIX Golmebol 🎯')}`, '_blank')
-            },
-          })
-        }
-      }
-    }
-
     // Notificaciones de nuevas tarjetas custom
     if (customCards && customCards.length > 0) {
       ;(playerNotifs || []).forEach(n => {
@@ -1010,19 +991,6 @@ export default function PlayerHomePage() {
             esPortero={esPortero}
             posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
           />
-
-          {player.fecha_vencimiento && (
-            <div style={{ padding: '0 16px 8px' }}>
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1e8e3e', flexShrink: 0 }}/>
-                <div style={{ fontSize: '.78rem', color: '#5f6368' }}>
-                  Membresía activa hasta <span style={{ fontWeight: '600', color: '#202124' }}>
-                    {new Date(player.fecha_vencimiento).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
           <div style={{ padding: '0 16px 8px' }}>
             <button onClick={handleImprimirAcrilico}
