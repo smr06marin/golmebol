@@ -2987,12 +2987,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true,
       pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0,
       limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null,
+      // La edición nueva usa la misma planilla (salón / fútbol 11) que la anterior.
+      planilla_tipo: torneo.planilla_tipo || null,
     }
     let { data, error } = await supabase.from('tournaments').insert(payload).select().single()
     // El sistema de puntos y algunos campos son relativamente nuevos: si en
     // este proyecto todavía falta correr su migración, no bloquea la
     // creación de la edición entera — se reintenta sin ese campo puntual.
-    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'limite_jugadores_equipo', 'duracion_tiempo_min', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
+    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'limite_jugadores_equipo', 'duracion_tiempo_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
     while (error && camposOpcionales.some(c => (error.message || '').includes(c))) {
       const campo = camposOpcionales.find(c => (error.message || '').includes(c))
       payload = { ...payload }

@@ -6,9 +6,10 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star, X, Archive, ArchiveRestore } from 'lucide-react'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { ubicacionDeTorneo } from '../../lib/ubicaciones'
+import SelectorPlanillaTorneo from '../../components/SelectorPlanillaTorneo'
 
 
-const EMPTY = { name: '', season: '', city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '' }
+const EMPTY = { name: '', season: '', city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
 // Solo estas cuentas pueden asignar/cambiar el organizador de un torneo ya
 // creado (mismo criterio que en AdminEquiposPage.jsx / AdminJugadorDetallePage.jsx
 // para "cambiar dueño" — respaldo por si la tabla de roles falla).
@@ -57,6 +58,7 @@ export default function AdminTorneosPage() {
   const [fin, setFin] = useState(FIN_EMPTY)
   const [editId, setEditId] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [errorPlanilla, setErrorPlanilla] = useState(false) // se intentó guardar sin escoger planilla
   const [msg, setMsg] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [search, setSearch] = useState('')
@@ -139,6 +141,12 @@ export default function AdminTorneosPage() {
     if (!form.categoria) return showMsg('La categoría es obligatoria (ej: Senior, Sub-20)', 'error')
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
     if (!form.fecha_inicio) return showMsg('La fecha de inicio es obligatoria', 'error')
+    // Planilla: obligatoria al CREAR (sin nada marcado de antemano); al editar un torneo viejo queda opcional.
+    if (!editId && !form.planilla_tipo) {
+      setErrorPlanilla(true)
+      try { document.getElementById('selector-planilla-torneo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* sin scroll */ }
+      return showMsg('Escoge con qué planilla se va a manejar el torneo (Fútbol de salón o Fútbol 11)', 'error')
+    }
     // Plan gratuito de organizador: 1 torneo (cada torneo Premium pagado libera otro cupo)
     if (!editId && esOrganizador) {
       const sinPremium = torneos.filter(t => !t.premium).length
@@ -166,6 +174,8 @@ export default function AdminTorneosPage() {
       // y de todos modos la base de datos revierte el cambio si quien
       // actualiza no es admin principal (ver migracion_asignar_organizador.sql).
       organizador_id: form.organizador_id || null,
+      // '' (sin elegir) viaja como null: la columna solo acepta 'salon' | 'futbol11'.
+      planilla_tipo: form.planilla_tipo || null,
     }
     const finanzasConfig = {
       llevar_cuentas:       !!fin.llevar_cuentas,
@@ -190,11 +200,13 @@ export default function AdminTorneosPage() {
     const sinPuntos = obj => { const { pts_victoria, pts_empate, pts_derrota, ...resto } = obj; return resto }
     const sinLimite = obj => { const { limite_jugadores_equipo, ...resto } = obj; return resto }
     const sinDuracion = obj => { const { duracion_tiempo_min, ...resto } = obj; return resto }
+    const sinPlanilla = obj => { const { planilla_tipo, ...resto } = obj; return resto }
     const sinUbicacion = obj => { const { pais, departamento, municipio_codigo, vereda, ...resto } = obj; return resto }
     const esErrorFinanzas = error => error?.message?.includes('finanzas_config')
     const esErrorPuntos   = error => error?.message?.includes('pts_victoria') || error?.message?.includes('pts_empate') || error?.message?.includes('pts_derrota')
     const esErrorLimite   = error => error?.message?.includes('limite_jugadores_equipo')
     const esErrorDuracion = error => error?.message?.includes('duracion_tiempo_min')
+    const esErrorPlanilla = error => error?.message?.includes('planilla_tipo')
     const esErrorUbicacion = error => /pais|departamento|municipio_codigo|vereda/.test(error?.message || '')
 
     let avisoDegradado = null // mensaje a mostrar si se guardó pero faltó algo por migración pendiente
@@ -225,6 +237,11 @@ export default function AdminTorneosPage() {
       if (error && esErrorUbicacion(error)) {
         payload = sinUbicacion(payload)
         avisoDegradado = 'Torneo actualizado, pero país/departamento/municipio NO se guardaron: ejecuta migracion_ubicacion_torneos.sql en Supabase (la ciudad sí quedó)'
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
+      }
+      if (error && esErrorPlanilla(error)) {
+        payload = sinPlanilla(payload)
+        avisoDegradado = 'Torneo actualizado, pero la planilla NO se guardó: ejecuta migracion_planilla_torneo.sql en Supabase'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al guardar: ${error.message || error.code || 'desconocido'}`, 'error') }
@@ -267,10 +284,16 @@ export default function AdminTorneosPage() {
         avisoDegradado = 'Torneo creado, pero país/departamento/municipio NO se guardaron: ejecuta migracion_ubicacion_torneos.sql en Supabase (la ciudad sí quedó)'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
+      if (error && esErrorPlanilla(error)) {
+        payload = sinPlanilla(payload)
+        avisoDegradado = 'Torneo creado, pero la planilla NO se guardó: ejecuta migracion_planilla_torneo.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
       if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
       else showMsg(avisoDegradado || 'Torneo creado ✓', avisoDegradado ? 'error' : 'ok')
     }
     setForm(EMPTY)
+    setErrorPlanilla(false)
     setFin(FIN_EMPTY)
     setShowForm(false)
     setLoading(false)
@@ -282,7 +305,7 @@ export default function AdminTorneosPage() {
     const ub = ubicacionDeTorneo(t)
     const detectada = !t.municipio_codigo && !!ub.munCodigo
     setUbicInferida(detectada)
-    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '' })
+    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '' })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -381,7 +404,7 @@ export default function AdminTorneosPage() {
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Torneos</h1>
           <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{torneos.length - archivadosCount} torneos activos{archivadosCount > 0 ? ` · ${archivadosCount} archivados` : ''}</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setShowForm(true) }}
+        <button onClick={() => { setForm(EMPTY); setErrorPlanilla(false); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
           <Plus size={18}/> Nuevo torneo
         </button>
@@ -482,6 +505,16 @@ export default function AdminTorneosPage() {
               </div>
               <input type="number" min="1" value={form.duracion_tiempo_min} onChange={e => setForm(f => ({ ...f, duracion_tiempo_min: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}
                 placeholder={form.modalidad && DURACION_SUGERIDA[form.modalidad] ? `${DURACION_SUGERIDA[form.modalidad]} (por defecto)` : 'Ej: 25'}/>
+            </div>
+
+            {/* Planilla del torneo: Fútbol de salón o Fútbol 11 (capturas reales de las dos) */}
+            <div id="selector-planilla-torneo">
+              <SelectorPlanillaTorneo
+                value={form.planilla_tipo}
+                onChange={v => { setForm(f => ({ ...f, planilla_tipo: v })); setErrorPlanilla(false) }}
+                mostrarError={errorPlanilla}
+                requerido={!editId}
+                isMobile={isMobile}/>
             </div>
 
             {/* Asignar organizador — solo el admin principal, y solo al editar un torneo ya creado */}
