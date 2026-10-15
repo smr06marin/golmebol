@@ -3534,6 +3534,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
 
+    // Equipos que el admin marcó para que DESCANSEN en esta jornada: no se
+    // les busca rival (ni se les programa); salen en la lista como "descansa".
+    const idsDescansan = new Set(configJornada.alguno_descansa ? (configJornada.descansan_ids || []).filter(tid => equipos.some(e => e.id === tid)) : [])
+    if (configJornada.alguno_descansa && idsDescansan.size === 0) return showMsg('Marca qué equipos descansan en esta jornada, o elige "Todos juegan"', 'error')
+    const equiposJuegan = equipos.filter(e => !idsDescansan.has(e.id))
+    if (equiposJuegan.length < 2) return showMsg('Con esos descansos quedan menos de 2 equipos para jugar. Deja marcados menos equipos', 'error')
+
     // Canchas a usar en ESTA jornada (checkboxes de arriba) — si no se tocó
     // nada, se usan todas como antes.
     const canchasUsadas = canchas.filter(c => (configJornada.cancha_ids || canchas.map(x => x.id)).includes(c.id))
@@ -3643,8 +3650,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       return (t.dias_preferidos && t.dias_preferidos.length > 0) || !!t.hora_preferida
     }
 
-    const conPreferencia = equipos.filter(tienePreferencia).sort(() => Math.random() - 0.5)
-    const sinPreferencia = equipos.filter(t => !tienePreferencia(t)).sort(() => Math.random() - 0.5)
+    const conPreferencia = equiposJuegan.filter(tienePreferencia).sort(() => Math.random() - 0.5)
+    const sinPreferencia = equiposJuegan.filter(t => !tienePreferencia(t)).sort(() => Math.random() - 0.5)
     const eq = [...conPreferencia, ...sinPreferencia]
     const usados = new Set()
     const pares = []
@@ -3690,6 +3697,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }
     // 3) Ya sin rivales nuevos: descansan
     descansan.forEach(a => pares.push({ local: a, visitante: null, descanso: true }))
+    // Los que el admin pidió que descansen (van al final, como descansos)
+    equipos.filter(e => idsDescansan.has(e.id)).forEach(a => pares.push({ local: a, visitante: null, descanso: true, descansoElegido: true }))
 
     // Fecha (dentro del rango) según lo que hayan marcado los dos equipos —
     // se cruzan sus días preferidos; si ninguno coincide (o ninguno marcó
@@ -5399,6 +5408,43 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
                   📅 El sorteo reparte los cruces entre esos días de ESA semana (el próximo sábado/domingo/etc que marques desde la fecha de inicio) y los horarios de cada cancha, según la preferencia de cada equipo — cada cancha juega solo en sus propias horas marcadas, aunque otra cancha del mismo escenario tenga horas distintas ese día. Si no alcanza el cupo para todos los cruces, los equipos que sobran quedan descansando (podés generar otra jornada después para ellos).
                 </div>
+                {/* ¿Todos juegan o algún equipo descansa en esta jornada? */}
+                <div style={{ marginTop: '16px', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '12px' }}>
+                  <label style={labelStyle}>¿Quieres que algún equipo descanse en esta jornada?</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {[{ v: false, t: 'Todos juegan' }, { v: true, t: 'Algún equipo descansa' }].map(op => {
+                      const activo = !!configJornada.alguno_descansa === op.v
+                      return (
+                        <button key={String(op.v)} type="button" onClick={() => setConfigJornada(f => ({ ...f, alguno_descansa: op.v }))}
+                          style={{ padding: '8px 14px', borderRadius: '8px', border: activo ? '2px solid #1a73e8' : '1px solid #dadce0', background: activo ? '#e8f0fe' : '#fff', color: activo ? '#1a73e8' : '#5f6368', fontSize: '.8rem', fontWeight: activo ? '700' : '500', cursor: 'pointer' }}>
+                          {activo ? '✓ ' : ''}{op.t}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {configJornada.alguno_descansa && (
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '.72rem', color: (configJornada.descansan_ids || []).length === 0 ? '#e8710a' : '#5f6368', marginBottom: '8px' }}>
+                        Marca los equipos que NO quieres programar en esta jornada {(configJornada.descansan_ids || []).length === 0 ? '(marca al menos uno)' : `· ${(configJornada.descansan_ids || []).length} descansa${(configJornada.descansan_ids || []).length !== 1 ? 'n' : ''}`}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '6px' }}>
+                        {equipos.map(e => {
+                          const marcado = (configJornada.descansan_ids || []).includes(e.id)
+                          return (
+                            <label key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 8px', borderRadius: '8px', border: marcado ? '1px solid #f9ab00' : '1px solid #e8eaed', background: marcado ? '#fffbf0' : '#fff', fontSize: '.78rem', color: '#202124', minWidth: 0 }}>
+                              <input type="checkbox" checked={marcado} onChange={() => setConfigJornada(f => {
+                                const ids = f.descansan_ids || []
+                                return { ...f, descansan_ids: ids.includes(e.id) ? ids.filter(x => x !== e.id) : [...ids, e.id] }
+                              })}/>
+                              <span style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, display: 'inline-block' }}><TeamLogo logo_url={e.logo_url} name={e.name} size={20}/></span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {grupos.length > 1 && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
                     <input type="checkbox" checked={permitirIntergrupo} onChange={e => setPermitirIntergrupo(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }}/>
@@ -5437,7 +5483,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               style={{ flex: 1, minWidth: '160px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'local' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'local' ? 'rgba(26,115,232,.06)' : 'transparent' }}>
                               <GripVertical size={13} color="#9aa0a6"/>
                               <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
-                              <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa{p.sinDisponibilidad ? ' (sin cupo de horario/cancha)' : ''}</span>
+                              <span style={{ color: '#9aa0a6', fontSize: '.875rem', fontStyle: 'italic' }}>{p.local?.name} — descansa{p.descansoElegido ? ' (lo marcaste para que descanse)' : p.sinDisponibilidad ? ' (sin cupo de horario/cancha)' : ''}</span>
                             </div>
                             <span style={{ fontSize: '.65rem', color: '#bdbdbd' }}>arrástralo sobre un partido para ponerlo a jugar</span>
                           </div>
