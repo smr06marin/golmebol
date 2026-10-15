@@ -17,6 +17,7 @@ import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPo
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
+import { comprimirImagen } from '../../lib/imageCompress'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -4093,6 +4094,26 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }
   }
 
+  // Sube el escudo de un equipo ya creado: lo comprime (igual que al editar el
+  // equipo — una foto de celular pesada hacía fallar la subida sin avisar),
+  // le pone una extensión segura y revisa CADA paso. Devuelve { url } o { error }.
+  async function subirEscudoEquipo(teamId, file) {
+    try {
+      const archivo = await comprimirImagen(file, { maxSize: 500 })
+      const tipo = archivo.type || ''
+      const ext = tipo.includes('png') ? 'png' : tipo.includes('webp') ? 'webp' : tipo.includes('gif') ? 'gif' : 'jpg'
+      const path = `logos/${teamId}.${ext}`
+      const { error: errSubida } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true, contentType: tipo || 'image/jpeg' })
+      if (errSubida) return { error: errSubida.message || 'no se pudo subir la imagen' }
+      const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+      const { error: errGuardar } = await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', teamId)
+      if (errGuardar) return { error: errGuardar.message || 'no se pudo guardar el escudo' }
+      return { url: urlData.publicUrl }
+    } catch (e) {
+      return { error: e?.message || 'error desconocido' }
+    }
+  }
+
   function handleNuevoEquipoLogo(file) {
     if (!file) return
     setNuevoEquipoLogo(file)
@@ -4165,17 +4186,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         }).select().single())
       }
       if (error) { showMsg('Error al crear el equipo', 'error'); return }
+      let errorEscudo = null
       if (nuevoEquipoLogo) {
-        const path = `logos/${nuevo.id}.${nuevoEquipoLogo.name.split('.').pop()}`
-        const { error: errorLogo } = await supabase.storage.from('teams').upload(path, nuevoEquipoLogo, { upsert: true })
-        if (!errorLogo) {
-          const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
-          await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', nuevo.id)
-        }
+        const r = await subirEscudoEquipo(nuevo.id, nuevoEquipoLogo)
+        if (r.error) { errorEscudo = r.error; console.log('ERROR ESCUDO (crear equipo):', r.error) }
       }
       const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
       if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); return }
-      showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
+      if (errorEscudo) showMsg(`${nuevo.name} creado e inscrito, pero el escudo NO se pudo subir (${errorEscudo}). Súbelo desde el equipo.`, 'error')
+      else showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
       limpiarBorrador('draft_crear_equipo_torneo')
       cerrarModalEquipo(); fetchEquipos()
     } finally {
