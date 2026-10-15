@@ -10,17 +10,13 @@ import { usaPlanillaCompleta } from '../lib/tipoPlanilla'
 // contexto: 'arbitro' (cuenta de árbitro/coordinador) o nada (admin/organizador); ver tipoPlanilla.js
 //
 // Para admin/organizador, si el partido no tiene planilla propia se consulta la
-// que se escogió al crear el torneo (tournaments.planilla_tipo). Se guarda en
-// memoria para no volver a preguntar en cada partido del mismo torneo.
-const cacheTipoTorneo = new Map() // tournament_id -> 'salon' | 'futbol11' | null
-
+// que se escogió para el torneo (tournaments.planilla_tipo). Se consulta cada
+// vez que se abre (sin caché): si el admin la cambia, vale desde ya.
 async function tipoDelTorneo(torneoId) {
   try {
     const { data, error } = await supabase.from('tournaments').select('planilla_tipo').eq('id', torneoId).maybeSingle()
-    if (error) return null // sin columna / sin permiso: comportamiento de siempre (no se guarda en caché)
-    const tipo = data?.planilla_tipo === 'salon' || data?.planilla_tipo === 'futbol11' ? data.planilla_tipo : null
-    cacheTipoTorneo.set(torneoId, tipo)
-    return tipo
+    if (error) return null // sin la columna / sin permiso: comportamiento de siempre
+    return data?.planilla_tipo === 'salon' || data?.planilla_tipo === 'futbol11' ? data.planilla_tipo : null
   } catch {
     return null
   }
@@ -35,22 +31,19 @@ function PlanillaDecidida({ contexto, tipoTorneo, ...props }) {
 export default function PlanillaSegunPartido({ contexto, ...props }) {
   const p = props.partido
   const idActual = p?.id
-  const torneoId = contexto !== 'arbitro' && p && !p.planilla_tipo ? (p.tournament_id || null) : null
+  const torneoId = contexto !== 'arbitro' && p ? (p.tournament_id || null) : null
   const [resuelto, setResuelto] = useState({ torneoId: null, tipo: null })
 
   useEffect(() => {
-    if (!torneoId || cacheTipoTorneo.has(torneoId)) return undefined
+    if (!torneoId) return undefined
     let vivo = true
     tipoDelTorneo(torneoId).then(tipo => { if (vivo) setResuelto({ torneoId, tipo }) })
     return () => { vivo = false }
   }, [torneoId])
 
+  // undefined = todavía consultando; null = el torneo no tiene planilla escogida
   let tipoTorneo = null
-  if (torneoId) {
-    if (cacheTipoTorneo.has(torneoId)) tipoTorneo = cacheTipoTorneo.get(torneoId)
-    else if (resuelto.torneoId === torneoId) tipoTorneo = resuelto.tipo
-    else tipoTorneo = undefined // todavía consultando
-  }
+  if (torneoId) tipoTorneo = resuelto.torneoId === torneoId ? resuelto.tipo : undefined
 
   if (tipoTorneo === undefined) {
     return (
