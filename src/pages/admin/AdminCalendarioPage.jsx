@@ -356,8 +356,8 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
   })
   const nombre = m => `${m.home?.name || 'Por definir'} vs ${m.away?.name || 'Por definir'}`
 
-  // Escenarios (cancha/sede) del torneo: permiten marcar de una vez todos los
-  // partidos de un mismo escenario, en todos los días o solo dentro de un día.
+  // Escenarios (cancha/sede): dentro de cada día se pueden marcar todos los
+  // partidos de un mismo escenario (solo de ESE día, no de todos los días).
   const escenarioDe = m => (m.location && m.location.trim()) || 'Sin escenario'
   const porEscenario = lista => {
     const mapa = new Map()
@@ -368,7 +368,6 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
     })
     return [...mapa.entries()].map(([nombreEsc, ids]) => ({ nombre: nombreEsc, ids }))
   }
-  const escenarios = porEscenario(candidatos)
   // Botón-chip: marcado (azul), a medias (borde azul) o vacío
   const chip = (ids, etiqueta, clave) => {
     const n = ids.filter(id => sel.includes(id)).length
@@ -399,14 +398,6 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
         </div>
 
         <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 16px 8px', flex: 1 }}>
-          {escenarios.length > 1 && (
-            <div style={{ marginTop: '12px', paddingBottom: '4px' }}>
-              <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '6px' }}>Marcar por escenario</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {escenarios.map(e => chip(e.ids, e.nombre, `esc_${e.nombre}`))}
-              </div>
-            </div>
-          )}
           {dias.map(g => {
             const ids = g.items.map(m => m.id)
             const todos = ids.every(id => sel.includes(id))
