@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, memo, useDeferredValue } from 're
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp, Link2, Search, Trophy } from 'lucide-react'
+import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp, Link2, Search, Trophy, Watch } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
@@ -221,6 +221,12 @@ const FilaPartido = memo(function FilaPartido({ p, abriendo, acc }) {
               <Link2 size={11}/> Link árbitro
             </button>
           )}
+          {!esJugado && (
+            <button onClick={() => acc.reloj(p)} title="Link aparte para registrar goles, tarjetas y cambios desde el navegador de un smartwatch"
+              style={{ background: '#fff', border: '1px solid #6c35de', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#6c35de', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Watch size={11}/> Link reloj
+            </button>
+          )}
           <button onClick={() => acc.planilla(p)} disabled={abriendo}
             style={{ background: esJugado ? 'none' : '#1a73e8', border: esJugado ? '1px solid #dadce0' : 'none', borderRadius: '6px', padding: '5px 8px', cursor: abriendo ? 'default' : 'pointer', color: esJugado ? '#5f6368' : '#fff', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px', opacity: abriendo ? 0.6 : 1 }}>
             {abriendo ? 'Abriendo…' : esJugado ? '✏️ Editar' : <><Check size={11}/> Resultado</>}
@@ -337,6 +343,42 @@ function Esqueleto() {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Ventana del botón "Link reloj": link aparte para el smartwatch del árbitro.
+// Antes de generarlo se pregunta si el reloj también marca FALTAS (5 botones
+// en la torta) o no (4 botones: gol, cambio, amarilla y roja).
+function ModalLinkReloj({ modal, generando, onCambiar, onConfirmar, onClose }) {
+  const { partido, conFaltas } = modal
+  const opcion = (valor, titulo, sub) => (
+    <button type="button" onClick={() => onCambiar(valor)}
+      style={{ flex: 1, textAlign: 'left', border: `2px solid ${conFaltas === valor ? '#6c35de' : '#dadce0'}`, background: conFaltas === valor ? '#f3ecfd' : '#fff', borderRadius: '12px', padding: '10px 12px', cursor: 'pointer' }}>
+      <div style={{ fontWeight: '800', fontSize: '.9rem', color: conFaltas === valor ? '#6c35de' : '#202124' }}>{conFaltas === valor ? '✓ ' : ''}{titulo}</div>
+      <div style={{ fontSize: '.7rem', color: '#5f6368', marginTop: '2px' }}>{sub}</div>
+    </button>
+  )
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '420px', boxShadow: '0 12px 40px rgba(0,0,0,.3)' }}>
+        <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#202124', marginBottom: '2px' }}>⌚ Link para el reloj</div>
+        <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '14px' }}>{partido.home?.name || 'Por definir'} vs {partido.away?.name || 'Por definir'}</div>
+        <div style={{ fontWeight: '700', fontSize: '.85rem', color: '#202124', marginBottom: '8px' }}>¿Quieres también marcar faltas?</div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          {opcion(false, 'No', '4 botones: Gol, Cambio, Amarilla y Roja')}
+          {opcion(true, 'Sí', '5 botones: se suma Falta')}
+        </div>
+        <div style={{ fontSize: '.72rem', color: '#5f6368', background: '#f8f9fa', borderRadius: '10px', padding: '8px 10px', marginBottom: '14px', lineHeight: 1.45 }}>
+          El link dura 24 horas y es solo para el reloj. Los goles, tarjetas y faltas entran solos a la planilla del partido; los cambios se ven en la planilla en una franja aparte.
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={onClose} disabled={generando} style={{ flex: 1, background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '11px', cursor: 'pointer', fontWeight: '700', color: '#5f6368' }}>Cancelar</button>
+          <button onClick={onConfirmar} disabled={generando} style={{ flex: 2, background: '#6c35de', border: 'none', borderRadius: '10px', padding: '11px', cursor: generando ? 'default' : 'pointer', fontWeight: '800', color: '#fff', opacity: generando ? .7 : 1 }}>
+            {generando ? 'Generando…' : 'Generar y copiar link'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -488,6 +530,8 @@ export default function AdminCalendarioPage() {
   // { partido, sel: [ids marcados], candidatos: [partidos del mismo torneo] }
   const [linkModal,       setLinkModal]       = useState(null)
   const [generandoLink,   setGenerandoLink]   = useState(false)
+  // Ventana del botón Link reloj: { partido, conFaltas }
+  const [relojModal,      setRelojModal]      = useState(null)
   const reqId = useRef(0)
   const ocupado = useRef(false)
 
@@ -674,6 +718,27 @@ export default function AdminCalendarioPage() {
     }
   }
 
+  async function confirmarLinkReloj() {
+    if (!relojModal || generandoLink) return
+    const { partido, conFaltas } = relojModal
+    setGenerandoLink(true)
+    try {
+      const { data, error } = await supabase.rpc('generar_link_reloj', { p_match_id: partido.id, p_con_faltas: !!conFaltas })
+      if (error) {
+        const falta = error.code === 'PGRST202' || (/generar_link_reloj/.test(error.message || '') && /not find|does not exist|schema cache/i.test(error.message || ''))
+        notify(falta ? 'Falta correr migracion_reloj.sql en Supabase' : 'Error al generar el link: ' + error.message, 'error')
+        return
+      }
+      const link = `${window.location.origin}/reloj/${data.token}`
+      const txt = `⌚ Reloj del partido — ${partido.home?.name || 'Por definir'} vs ${partido.away?.name || 'Por definir'}\n\nÁbrelo en el navegador del reloj. ${conFaltas ? 'Marca goles, cambios, amarillas, rojas y faltas.' : 'Marca goles, cambios, amarillas y rojas.'}\n\n⏰ Este link dura 24 horas.\n\n👉 ${link}`
+      try { await navigator.clipboard.writeText(txt) } catch { /* el navegador no dejó copiar */ }
+      notify('Link del reloj copiado ✓')
+      setRelojModal(null)
+    } finally {
+      setGenerandoLink(false)
+    }
+  }
+
   function toggleSel(id) {
     setLinkModal(m => m && ({ ...m, sel: m.sel.includes(id) ? m.sel.filter(x => x !== id) : [...m.sel, id] }))
   }
@@ -688,6 +753,7 @@ export default function AdminCalendarioPage() {
   const acc = useMemo(() => ({
     flyer: p => setFlyerPartido(p),
     link: p => ultimo.current.handleLinkArbitro(p),
+    reloj: p => setRelojModal({ partido: p, conFaltas: false }),
     planilla: p => ultimo.current.abrirPlanilla(p),
     verTorneo: id => ultimo.current.navigate(`/admin/torneos/${id}`),
     flyerGrupo: ps => setFlyerGrupo({ torneo: construirTorneoFlyer(ps), partidos: ps }),
@@ -728,6 +794,9 @@ export default function AdminCalendarioPage() {
       {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
       {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
       {planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
+      {relojModal && <ModalLinkReloj modal={relojModal} generando={generandoLink}
+        onCambiar={v => setRelojModal(m => m && ({ ...m, conFaltas: v }))}
+        onConfirmar={confirmarLinkReloj} onClose={() => !generandoLink && setRelojModal(null)}/>}
       {linkModal && <ModalLinkArbitro modal={linkModal} linkGrupoVigente={linkGrupoVigente}
         generando={generandoLink} onToggle={toggleSel} onToggleDia={toggleDia}
         onConfirmar={confirmarLinkModal} onClose={() => !generandoLink && setLinkModal(null)}/>}

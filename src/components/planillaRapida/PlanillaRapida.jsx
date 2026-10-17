@@ -223,10 +223,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const jugLocalRef = useRef([])
   const jugVisRef = useRef([])
   const segundosRef = useRef(0)
+  const eventosRef = useRef([])
   const restituirRef = useRef(null)   // guarda YA el estado de este celular (se usa para "curar" un borrado masivo que llegó de otro celular)
   const ultimoAjenoRef = useRef(0)    // última vez (hora local) que llegó algo de OTRO celular: indica que hay otro planillando
   jugLocalRef.current = jugadoresLocal
   jugVisRef.current = jugadoresVisitante
+  eventosRef.current = eventos
   segundosRef.current = segundos
   // No se sube NADA a la base de datos hasta haber consultado lo que ya hay allá:
   // antes, abrir la planilla con un borrador viejo del celular lo subía de una y
@@ -429,6 +431,75 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     document.addEventListener('visibilitychange', revisar)
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', revisar) }
   }, [listo, partido.status, partido.id, procesarRemoto, cierreRemoto])
+
+  // ── Eventos del RELOJ (smartwatch del árbitro) ──────────────────────────
+  // El reloj manda goles/tarjetas/faltas/cambios a la tabla reloj_eventos
+  // (migracion_reloj.sql). Acá se recogen cada 3 s y se meten en el partido
+  // igual que si los hubiera tocado el árbitro: se unen por id (varios celulares
+  // pueden traerlos sin duplicar), respetando lo que el árbitro ya borró.
+  // Si el número no está en la lista del equipo, queda el evento solo con el
+  // número (se puede corregir/quitar en la planilla). Los cambios no son
+  // eventos del partido: solo se muestran como lista aparte.
+  const [cambiosReloj, setCambiosReloj] = useState([])
+  const [avisoReloj, setAvisoReloj] = useState(null)
+  const aplicarEventosReloj = useCallback((lista) => {
+    const elim = new Set(eventosEliminadosRef.current)
+    const existentes = new Set(eventosRef.current.map(e => e.id))
+    const nuevos = []
+    const anulados = new Set()
+    lista.forEach(e => {
+      if (e.tipo === 'cambio') return
+      if (e.anulado) { if (existentes.has(e.id)) anulados.add(e.id); return }
+      if (elim.has(e.id) || existentes.has(e.id)) return
+      const arr = e.team === 'local' ? jugLocalRef.current : jugVisRef.current
+      const jugador = arr.find(j => (j.numero || '').trim() === String(e.numero || '').trim())
+      nuevos.push({
+        id: e.id, team: e.team, tipo: e.tipo, numero: e.numero || '',
+        jugadorId: jugador?.id || null, jugadorNombre: jugador?.nombre || '',
+        minuto: e.minuto || '00:00', periodo: e.periodo || 1, reloj: true,
+      })
+    })
+    if (anulados.size > 0) {
+      setEventos(prev => prev.filter(e => !anulados.has(e.id)))
+      setEventosEliminados(prev => [...prev, ...[...anulados].filter(id => !prev.includes(id))])
+    }
+    if (nuevos.length > 0) {
+      setEventos(prev => {
+        const ya = new Set(prev.map(e => e.id))
+        const sumar = nuevos.filter(n => !ya.has(n.id))
+        return sumar.length ? [...prev, ...sumar] : prev
+      })
+      const u = nuevos[nuevos.length - 1]
+      const txt = { goal: 'GOL', yellow_card: 'AMARILLA', red_card: 'ROJA', falta_acum: 'FALTA' }[u.tipo] || u.tipo
+      setAvisoReloj(`⌚ ${txt} #${u.numero} · ${u.team === 'local' ? nombreLocal : nombreVis}${nuevos.length > 1 ? ` (+${nuevos.length - 1})` : ''}`)
+      try { navigator.vibrate && navigator.vibrate(80) } catch { /* sin vibración */ }
+    }
+    setCambiosReloj(prev => {
+      const sig = lista.filter(e => e.tipo === 'cambio' && !e.anulado)
+      return JSON.stringify(prev) === JSON.stringify(sig) ? prev : sig
+    })
+  }, [nombreLocal, nombreVis])
+  useEffect(() => {
+    if (!avisoReloj) return
+    const t = setTimeout(() => setAvisoReloj(null), 3500)
+    return () => clearTimeout(t)
+  }, [avisoReloj])
+  useEffect(() => {
+    if (!listo || !sincronizado || esPapel || partido.status === 'finished') return
+    let ocupado = false
+    async function traer() {
+      if (ocupado || document.visibilityState === 'hidden' || !navigator.onLine) return
+      ocupado = true
+      try {
+        const { data, error } = await supabase.rpc('reloj_eventos_del_partido', { p_match_id: partido.id })
+        if (!error && Array.isArray(data)) aplicarEventosReloj(data)
+      } catch { /* sin señal o todavía no se corrió migracion_reloj.sql: se ignora */ } finally { ocupado = false }
+    }
+    traer()
+    const t = setInterval(traer, 3000)
+    document.addEventListener('visibilitychange', traer)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', traer) }
+  }, [listo, sincronizado, esPapel, partido.status, partido.id, aplicarEventosReloj])
 
   // ── Carga inicial ──────────────────────────────────────────────────────
   useEffect(() => { fetchTodo() }, [])
@@ -1662,7 +1733,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
         jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
         arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
-        eventosLocal={eventosLocal} eventosVis={eventosVis} modalidad={modalidad}
+        eventosLocal={eventosLocal} eventosVis={eventosVis} modalidad={modalidad} cambiosReloj={cambiosReloj}
         periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
         onVolverLista={() => { setStep('asignar'); setVolviendoDesdePartido(true) }}
         onAbrirCierre={() => setMostrarCierre(true)}
@@ -1687,6 +1758,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           equipoNombre={alertaFaltas.team === 'local' ? nombreLocal : nombreVis}
           onCerrar={() => setAlertaFaltas(null)}
         />
+      )}
+      {avisoReloj && (
+        <div style={{ position: 'fixed', left: '50%', top: 'max(10px, env(safe-area-inset-top))', transform: 'translateX(-50%)', zIndex: 520, background: '#0f172a', color: '#fff', border: '1px solid #22d3ee', borderRadius: 12, padding: '8px 14px', fontWeight: 800, fontSize: '.8rem', boxShadow: '0 6px 20px rgba(0,0,0,.5)', maxWidth: '92vw', textAlign: 'center', pointerEvents: 'none' }}>
+          {avisoReloj}
+        </div>
       )}
       {mostrarCierre && (
         <ModalCierrePartido

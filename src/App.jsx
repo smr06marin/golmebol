@@ -46,6 +46,7 @@ const OrganizadorVitrinaPage  = lazy(() => import('./pages/OrganizadorVitrinaPag
 const AdminPerfilOrganizadorPage = lazy(() => import('./pages/admin/AdminPerfilOrganizadorPage'))
 const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
 const PlanillarLinkPage       = lazy(() => import('./pages/PlanillarLinkPage'))
+const RelojLinkPage           = lazy(() => import('./pages/RelojLinkPage'))
 const DeudoresTarjetasLinkPage = lazy(() => import('./pages/DeudoresTarjetasLinkPage'))
 const EnVivoControlLinkPage   = lazy(() => import('./pages/EnVivoControlLinkPage'))
 const OverlayEnVivoPage        = lazy(() => import('./pages/OverlayEnVivoPage'))
@@ -512,6 +513,7 @@ export default function App() {
           {/* Link temporal (24h) para que un árbitro sin cuenta planille un
               partido puntual — sin login */}
           <Route path="/planillar/:token" element={<PlanillarLinkPage/>}/>
+          <Route path="/reloj/:token" element={<RelojLinkPage/>}/>
           {/* Link fijo por torneo (no vence) para ver deudores de tarjetas,
               filtrar por equipo y registrar sus pagos — sin login */}
           <Route path="/deudores-tarjetas/:token" element={<DeudoresTarjetasLinkPage/>}/>

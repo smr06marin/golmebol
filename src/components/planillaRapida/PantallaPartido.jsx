@@ -11,7 +11,7 @@ export default function PantallaPartido({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
   arqueroLocal, arqueroVis, eventosLocal, eventosVis, periodo, segundos, corriendo, tiempoAgotado, modalidad,
   onVolverLista, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
-  onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial, globalLlave,
+  onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial, globalLlave, cambiosReloj = [],
 }) {
   const cLocal = colorPorHex(colorLocal)
   const cVis = colorPorHex(colorVis)
@@ -45,6 +45,17 @@ export default function PantallaPartido({
         </span>
         <span style={{ flex: 1, textAlign: 'left', fontSize: '.72rem', fontWeight: '700', color: TEXTO_TENUE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreVis}</span>
       </div>
+
+      {cambiosReloj.length > 0 && (
+        <div title="Cambios marcados desde el reloj del árbitro" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '3px 10px', flexShrink: 0, overflowX: 'auto', whiteSpace: 'nowrap', fontSize: '.66rem', fontWeight: '700', color: TEXTO_TENUE, background: 'rgba(26,115,232,.12)', borderBottom: `1px solid ${BORDE}` }}>
+          <span style={{ color: '#8ab4f8', fontWeight: '900' }}>⌚ 🔄 CAMBIOS</span>
+          {[['local', nombreLocal], ['visitante', nombreVis]].map(([k, nom]) => {
+            const lst = cambiosReloj.filter(c => c.team === k)
+            if (!lst.length) return null
+            return <span key={k}>{nom}: {lst.map(c => `↓${c.numero || '?'} ↑${c.numero2 || '?'} (${c.minuto})`).join(' · ')}</span>
+          })}
+        </div>
+      )}
 
       <EquipoHalf arriba equipoNombre={nombreLocal} color={cLocal.hex} colorTexto={cLocal.texto}
         jugadores={jugadoresLocal} arquero={arqueroLocal} eventos={eventosLocal}
