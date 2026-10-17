@@ -62,6 +62,86 @@ function agruparPorJornada(partidos) {
   })
 }
 
+// Ventana del botón "Link árbitro": pregunta si se quieren agregar más
+// partidos al link y lista SOLO los pendientes del mismo torneo, por día.
+function ModalLinkArbitro({ modal, etiquetaDia, linkGrupoVigente, generando, onToggle, onToggleDia, onConfirmar, onClose }) {
+  const { partido, sel, candidatos } = modal
+  const grupoDeP = linkGrupoVigente(partido)
+  const total = sel.length
+  const dias = []
+  candidatos.forEach(m => {
+    const dia = etiquetaDia(m.played_at)
+    let g = dias.find(x => x.dia === dia)
+    if (!g) { g = { dia, items: [] }; dias.push(g) }
+    g.items.push(m)
+  })
+  const nombre = m => `${m.home?.name || 'Por definir'} vs ${m.away?.name || 'Por definir'}`
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(32,33,36,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid #e8eaed' }}>
+          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#202124' }}>¿Quieres agregar más partidos a este link?</div>
+          <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '4px', lineHeight: 1.4 }}>
+            Aquí salen solo los partidos pendientes de <b>{partido.tournaments?.name}</b>. El árbitro recibirá un único link con todos los que marques.
+          </div>
+          <div style={{ marginTop: '10px', background: '#e6f7f6', border: '1px solid #b6e6e2', borderRadius: '8px', padding: '8px 10px', fontSize: '.8rem', color: '#00695f', fontWeight: '600' }}>
+            ✓ {nombre(partido)}
+            <span style={{ fontWeight: '500', color: '#4a8a84' }}> · {partido.played_at ? `${etiquetaDia(partido.played_at)} ${fmtHoraDate(partido.played_at)}` : 'Por confirmar'}</span>
+          </div>
+        </div>
+
+        <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 16px 8px', flex: 1 }}>
+          {dias.map(g => {
+            const ids = g.items.map(m => m.id)
+            const todos = ids.every(id => sel.includes(id))
+            return (
+              <div key={g.dia} style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', textTransform: 'capitalize' }}>{g.dia}</span>
+                  <button type="button" onClick={() => onToggleDia(ids, !todos)}
+                    style={{ border: 'none', background: 'none', color: '#1a73e8', fontSize: '.72rem', fontWeight: '600', cursor: 'pointer', padding: '2px 0' }}>
+                    {todos ? 'Quitar el día' : 'Marcar el día'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {g.items.map(m => {
+                    const marcado = sel.includes(m.id)
+                    const otroGrupo = linkGrupoVigente(m) && linkGrupoVigente(m) !== grupoDeP
+                    return (
+                      <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', border: `1.5px solid ${marcado ? '#1a73e8' : '#e8eaed'}`, background: marcado ? '#f3f8ff' : '#fff', borderRadius: '10px', padding: '9px 10px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={marcado} onChange={() => onToggle(m.id)} style={{ width: '18px', height: '18px', accentColor: '#1a73e8', flexShrink: 0 }}/>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre(m)}</div>
+                          <div style={{ fontSize: '.7rem', color: '#80868b', marginTop: '1px' }}>
+                            {m.played_at ? fmtHoraDate(m.played_at) : 'Por confirmar'}{m.location ? ` · ${m.location}` : ''}{m.matchday ? ` · Jornada ${m.matchday}` : ''}
+                          </div>
+                          {otroGrupo && marcado && <div style={{ fontSize: '.66rem', color: '#e8710a', marginTop: '2px' }}>Ya está en otro link — pasará a este</div>}
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{ padding: '12px 16px', borderTop: '1px solid #e8eaed', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <button type="button" onClick={() => onConfirmar(false)} disabled={generando}
+            style={{ border: 'none', borderRadius: '10px', padding: '12px', fontSize: '.9rem', fontWeight: '700', cursor: generando ? 'default' : 'pointer', background: '#1a73e8', color: '#fff', opacity: generando ? 0.7 : 1 }}>
+            {generando ? 'Generando…' : total > 1 ? `Copiar link con ${total} partidos` : 'Copiar link de este partido'}
+          </button>
+          <button type="button" onClick={() => onConfirmar(true)} disabled={generando}
+            style={{ border: '1px solid #dadce0', borderRadius: '10px', padding: '10px', fontSize: '.82rem', fontWeight: '600', cursor: 'pointer', background: '#fff', color: '#5f6368' }}>
+            No, solo este partido
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminCalendarioPage() {
   const navigate = useNavigate()
   const { user, rol } = useAuthStore()
@@ -79,6 +159,10 @@ export default function AdminCalendarioPage() {
   const [flyerPartido,    setFlyerPartido]    = useState(null)
   const [flyerGrupo,      setFlyerGrupo]      = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  // Ventana "¿Quieres agregar más partidos a este link?" del botón Link árbitro:
+  // { partido, sel: [ids marcados], candidatos: [partidos del mismo torneo] }
+  const [linkModal,       setLinkModal]       = useState(null)
+  const [generandoLink,   setGenerandoLink]   = useState(false)
   const [abiertos,        setAbiertos]        = useEstadoUI('gm_ui_calendario_abiertos', {})
 
   // Arma el "torneo" que se le pasa al flyer de programación: si todos los
@@ -160,19 +244,98 @@ export default function AdminCalendarioPage() {
   }
 
   // Link de 24h para que un árbitro sin cuenta entre directo a planillar
-  // ESTE partido puntual (ver PlanillarLinkPage.jsx). No requiere modal:
-  // se copia al portapapeles con la descripción lista para reenviar por
-  // WhatsApp, igual que el link de registro de jugadores.
-  async function handleLinkArbitro(p) {
-    const { data, error } = await supabase.rpc('generar_link_planilla', { p_match_id: p.id })
-    if (error) { notify('Error al generar el link: ' + error.message, 'error'); return }
-    const link = `${window.location.origin}/planillar/${data.token}`
+  // (ver PlanillarLinkPage.jsx). Al tocar "Link árbitro", si el torneo tiene
+  // más partidos pendientes, se pregunta "¿Quieres agregar más partidos a este
+  // link?" y se muestran SOLO los del mismo torneo: así el árbitro recibe un
+  // único link con todos los partidos que va a dirigir, en vez de uno por uno.
+  // Si no hay otros partidos, se copia directo el link de ese partido.
+  function etiquetaDia(iso) {
+    return iso
+      ? new Date(iso).toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long' })
+      : 'Sin fecha'
+  }
+
+  function linkGrupoVigente(m) {
+    return m.link_planilla_grupo && m.link_planilla_expira && new Date(m.link_planilla_expira) > new Date()
+      ? m.link_planilla_grupo : null
+  }
+
+  function handleLinkArbitro(p) {
+    const grupoDeP = linkGrupoVigente(p)
+    const candidatos = partidos
+      .filter(m => m.tournament_id === p.tournament_id && m.id !== p.id && m.status !== 'finished')
+      .sort((a, b) => (a.played_at ? new Date(a.played_at).getTime() : Infinity) - (b.played_at ? new Date(b.played_at).getTime() : Infinity))
+    if (candidatos.length === 0) { copiarLinkUnico(p); return }
+    // Si este partido ya tenía un link de grupo vigente, sus partidos van marcados
+    const marcados = grupoDeP ? candidatos.filter(m => linkGrupoVigente(m) === grupoDeP).map(m => m.id) : []
+    setLinkModal({ partido: p, sel: [p.id, ...marcados], candidatos })
+  }
+
+  function mensajeUnico(p, link) {
     const cuando = p.played_at
-      ? `${new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long' })} · ${fmtHoraDate(p.played_at)}`
+      ? `${etiquetaDia(p.played_at)} · ${fmtHoraDate(p.played_at)}`
       : 'Por confirmar'
-    const mensaje = `🟡 Planilla del partido — ${p.home?.name || 'Por definir'} vs ${p.away?.name || 'Por definir'}\n\n📅 ${cuando}${p.location ? `\n📍 ${p.location}` : ''}\n\n⏰ Este link dura 24 horas.\n\n👉 ${link}`
-    navigator.clipboard.writeText(mensaje)
+    return `🟡 Planilla del partido — ${p.home?.name || 'Por definir'} vs ${p.away?.name || 'Por definir'}\n\n📅 ${cuando}${p.location ? `\n📍 ${p.location}` : ''}\n\n⏰ Este link dura 24 horas.\n\n👉 ${link}`
+  }
+
+  function mensajeGrupo(lista, link) {
+    const porDia = []
+    lista.forEach(m => {
+      const dia = etiquetaDia(m.played_at)
+      let g = porDia.find(x => x.dia === dia)
+      if (!g) { g = { dia, items: [] }; porDia.push(g) }
+      g.items.push(m)
+    })
+    const torneo = lista[0]?.tournaments?.name || 'Torneo'
+    const bloques = porDia.map(g =>
+      `📅 ${g.dia}\n` + g.items.map(m =>
+        `• ${m.played_at ? fmtHoraDate(m.played_at) : 'Por confirmar'} — ${m.home?.name || 'Por definir'} vs ${m.away?.name || 'Por definir'}${m.location ? ` (📍 ${m.location})` : ''}`
+      ).join('\n')
+    ).join('\n\n')
+    return `🟡 Planilla de tus partidos — ${torneo}\n\n${bloques}\n\n⏰ Este link dura 24 horas y sirve para todos estos partidos.\n\n👉 ${link}`
+  }
+
+  async function copiarLinkUnico(p) {
+    const { data, error } = await supabase.rpc('generar_link_planilla', { p_match_id: p.id })
+    if (error) { notify('Error al generar el link: ' + error.message, 'error'); return false }
+    navigator.clipboard.writeText(mensajeUnico(p, `${window.location.origin}/planillar/${data.token}`))
     notify('Link copiado con la descripción ✓')
+    return true
+  }
+
+  async function confirmarLinkModal(soloEste) {
+    if (!linkModal || generandoLink) return
+    const { partido, sel, candidatos } = linkModal
+    setGenerandoLink(true)
+    try {
+      if (soloEste || sel.length <= 1) {
+        if (await copiarLinkUnico(partido)) setLinkModal(null)
+        return
+      }
+      const orden = [partido, ...candidatos.filter(m => sel.includes(m.id))]
+      const { data, error } = await supabase.rpc('generar_link_planilla_grupo', { p_match_ids: orden.map(m => m.id) })
+      if (error) {
+        const faltaMigracion = error.code === 'PGRST202' || /generar_link_planilla_grupo/.test(error.message || '') && /not find|does not exist|schema cache/i.test(error.message || '')
+        notify(faltaMigracion
+          ? 'Falta correr migracion_link_arbitro_grupo.sql en Supabase'
+          : 'Error al generar el link: ' + error.message, 'error')
+        return
+      }
+      const ordenados = [...orden].sort((a, b) => (a.played_at ? new Date(a.played_at).getTime() : Infinity) - (b.played_at ? new Date(b.played_at).getTime() : Infinity))
+      navigator.clipboard.writeText(mensajeGrupo(ordenados, `${window.location.origin}/planillar/${data.token}`))
+      notify(`Link con ${data.total || ordenados.length} partidos copiado ✓`)
+      setLinkModal(null)
+      fetchTodo(true)
+    } finally {
+      setGenerandoLink(false)
+    }
+  }
+
+  function toggleSel(id) {
+    setLinkModal(m => m && ({ ...m, sel: m.sel.includes(id) ? m.sel.filter(x => x !== id) : [...m.sel, id] }))
+  }
+  function toggleDia(ids, marcar) {
+    setLinkModal(m => m && ({ ...m, sel: marcar ? [...new Set([...m.sel, ...ids])] : m.sel.filter(x => !ids.includes(x)) }))
   }
 
   const filtrados = partidos
@@ -188,6 +351,9 @@ export default function AdminCalendarioPage() {
       {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
       {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
       {planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
+      {linkModal && <ModalLinkArbitro modal={linkModal} etiquetaDia={etiquetaDia} linkGrupoVigente={linkGrupoVigente}
+        generando={generandoLink} onToggle={toggleSel} onToggleDia={toggleDia}
+        onConfirmar={confirmarLinkModal} onClose={() => !generandoLink && setLinkModal(null)}/>}
 
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>{esOrganizador ? 'Mi calendario' : 'Calendario Global'}</h1>
@@ -323,7 +489,7 @@ export default function AdminCalendarioPage() {
                                 <Image size={11}/> Flyer
                               </button>
                               {!esJugado && (
-                                <button onClick={() => handleLinkArbitro(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido"
+                                <button onClick={() => handleLinkArbitro(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido (puedes agregarle más partidos del mismo torneo)"
                                   style={{ background: '#fff', border: '1px solid #00b8ad', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#00958c', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                   <Link2 size={11}/> Link árbitro
                                 </button>
