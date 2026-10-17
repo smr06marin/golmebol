@@ -356,6 +356,34 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
   })
   const nombre = m => `${m.home?.name || 'Por definir'} vs ${m.away?.name || 'Por definir'}`
 
+  // Escenarios (cancha/sede) del torneo: permiten marcar de una vez todos los
+  // partidos de un mismo escenario, en todos los días o solo dentro de un día.
+  const escenarioDe = m => (m.location && m.location.trim()) || 'Sin escenario'
+  const porEscenario = lista => {
+    const mapa = new Map()
+    lista.forEach(m => {
+      const e = escenarioDe(m)
+      if (!mapa.has(e)) mapa.set(e, [])
+      mapa.get(e).push(m.id)
+    })
+    return [...mapa.entries()].map(([nombreEsc, ids]) => ({ nombre: nombreEsc, ids }))
+  }
+  const escenarios = porEscenario(candidatos)
+  // Botón-chip: marcado (azul), a medias (borde azul) o vacío
+  const chip = (ids, etiqueta, clave) => {
+    const n = ids.filter(id => sel.includes(id)).length
+    const todos = n === ids.length
+    const parcial = n > 0 && !todos
+    return (
+      <button key={clave} type="button" onClick={() => onToggleDia(ids, !todos)}
+        style={{ border: `1.5px solid ${todos || parcial ? '#1a73e8' : '#dadce0'}`, background: todos ? '#1a73e8' : parcial ? '#f3f8ff' : '#fff', color: todos ? '#fff' : parcial ? '#1a73e8' : '#3c4043', borderRadius: '999px', padding: '5px 11px', fontSize: '.74rem', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px', maxWidth: '100%' }}>
+        {todos && <span>✓</span>}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{etiqueta}</span>
+        <span style={{ opacity: .75, fontWeight: '500' }}>{parcial ? `${n}/${ids.length}` : ids.length}</span>
+      </button>
+    )
+  }
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(32,33,36,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -371,9 +399,18 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
         </div>
 
         <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 16px 8px', flex: 1 }}>
+          {escenarios.length > 1 && (
+            <div style={{ marginTop: '12px', paddingBottom: '4px' }}>
+              <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '6px' }}>Marcar por escenario</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {escenarios.map(e => chip(e.ids, e.nombre, `esc_${e.nombre}`))}
+              </div>
+            </div>
+          )}
           {dias.map(g => {
             const ids = g.items.map(m => m.id)
             const todos = ids.every(id => sel.includes(id))
+            const escDelDia = porEscenario(g.items)
             return (
               <div key={g.dia} style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
@@ -383,6 +420,11 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
                     {todos ? 'Quitar el día' : 'Marcar el día'}
                   </button>
                 </div>
+                {escDelDia.length > 1 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                    {escDelDia.map(e => chip(e.ids, e.nombre, `${g.dia}_${e.nombre}`))}
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {g.items.map(m => {
                     const marcado = sel.includes(m.id)
