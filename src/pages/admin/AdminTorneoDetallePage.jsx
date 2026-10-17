@@ -15,6 +15,8 @@ import FlyerProgramacion from '../../components/FlyerProgramacion'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
+import PlanillaEquipoModal from '../../components/PlanillaEquipoModal'
+import { cargarPlanillaEquipoOrganizador } from '../../lib/planillaEquipo'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { comprimirImagen } from '../../lib/imageCompress'
@@ -1009,6 +1011,7 @@ export default function AdminTorneoDetallePage() {
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [linkRegistroEquipo, setLinkRegistroEquipo] = useState(null) // equipo al que se le va a compartir el link — abre el modal de duración
+  const [planillaEquipo,     setPlanillaEquipo]     = useState(null)   // datos de la planilla PDF de un equipo (foto, cédula, nacimiento)
   const [duracionLinkDias,   setDuracionLinkDias]   = useState(1)    // cuántos días dura el link de registro antes de vencer
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
   const [showFlyerTorneo,  setShowFlyerTorneo]  = useState(false)
@@ -1151,6 +1154,15 @@ export default function AdminTorneoDetallePage() {
     await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
     showMsg(`${equipo.name} desactivado del torneo`)
     fetchEquipos(); fetchJugadores()
+  }
+
+  async function abrirPlanillaEquipo(equipo) {
+    try {
+      showMsg(`Preparando la planilla de ${equipo.name}…`)
+      setPlanillaEquipo(await cargarPlanillaEquipoOrganizador(equipo.id, id))
+    } catch (err) {
+      showMsg(err.message || 'No se pudo cargar la planilla del equipo', 'error')
+    }
   }
 
   async function handleCopiarLinkRegistroTorneo() {
@@ -5689,6 +5701,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 200, minWidth: '190px', padding: '6px 0' }}>
                           {[
                             { label: 'Ver jugadores',     icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
+                            { label: 'Planilla del equipo (PDF)', icon: '📄', action: () => { abrirPlanillaEquipo(e); setMenuEquipoId(null) } },
                             { label: 'Editar equipo',     icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
                             { label: 'Descargar escudo',  icon: '⬇️', action: () => { descargarEscudo(e); setMenuEquipoId(null) } },
                             { label: 'Compartir link',    icon: '🔗', action: () => {
@@ -7484,6 +7497,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         </div>
       )}
 
+      {planillaEquipo && <PlanillaEquipoModal datos={planillaEquipo} onClose={() => setPlanillaEquipo(null)}/>}
       {/* Modal compartir link de registro — elegir cuánto dura antes de vencer */}
       {linkRegistroEquipo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}

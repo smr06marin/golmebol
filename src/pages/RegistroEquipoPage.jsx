@@ -6,6 +6,8 @@ import { useParams } from 'react-router-dom'
 import { Shield, Check, Users, Upload } from 'lucide-react'
 import { useFormDraft, limpiarBorrador } from '../hooks/useFormDraft'
 import { hydratePlayersPublico } from '../lib/playersPublico'
+import PlanillaEquipoModal from '../components/PlanillaEquipoModal'
+import { cargarPlanillaEquipoRepresentante } from '../lib/planillaEquipo'
 
 // Cliente aparte SIN sesión persistente: se usa solo para verificar la cédula y
 // contraseña de quien desactiva un jugador, sin tocar la sesión del navegador.
@@ -109,6 +111,14 @@ export default function RegistroEquipoPage() {
   const [desactivando,        setDesactivando]        = useState(false)
   const [errorDesactivar,     setErrorDesactivar]     = useState('')
   const [desactivadoOk,       setDesactivadoOk]       = useState(null)
+
+  // Planilla del equipo en PDF (solo el dueño: se identifica con cédula y contraseña)
+  const [showPlanilla,   setShowPlanilla]   = useState(false)
+  const [plCedula,       setPlCedula]       = useState('')
+  const [plPass,         setPlPass]         = useState('')
+  const [plError,        setPlError]        = useState('')
+  const [plCargando,     setPlCargando]     = useState(false)
+  const [planillaDatos,  setPlanillaDatos]  = useState(null)
 
   // Fotos cédula
   const [fotoFrontal,        setFotoFrontal]        = useState(null)
@@ -235,6 +245,28 @@ export default function RegistroEquipoPage() {
     setDesactivadoOk(jugadorADesactivar.players?.name || 'Jugador')
     setPlantilla(prev => prev.filter(x => x.id !== jugadorADesactivar.id))
     setJugadorADesactivar(null); setAuthPass('')
+  }
+
+  async function handleDescargarPlanilla(e) {
+    e.preventDefault()
+    if (!plCedula.trim() || !plPass) { setPlError('Ingresa tu cédula y tu contraseña de Golmebol'); return }
+    setPlCargando(true); setPlError('')
+    try {
+      const { data: auth, error: authErr } = await supabaseVerify.auth.signInWithPassword({
+        email: `${plCedula.trim()}@golmebol.com`, password: plPass,
+      })
+      if (authErr || !auth?.user) { setPlError('Cédula o contraseña incorrecta'); return }
+      try {
+        const datos = await cargarPlanillaEquipoRepresentante(supabaseVerify, token, tournamentId)
+        setShowPlanilla(false); setPlPass(''); setPlanillaDatos(datos)
+      } catch (err) {
+        setPlError(err.message)
+      } finally {
+        await supabaseVerify.auth.signOut()
+      }
+    } finally {
+      setPlCargando(false)
+    }
   }
 
   function handleFotoFrontal(e) {
@@ -833,8 +865,43 @@ export default function RegistroEquipoPage() {
           </div>
         )}
 
-        {/* Desactivar un jugador del equipo (con verificación de identidad) */}
+        {/* Planilla del equipo en PDF (solo el dueño) */}
         <div style={{ textAlign: 'center', marginTop: '28px' }}>
+          <button onClick={() => { setShowPlanilla(true); setPlError(''); setPlPass('') }}
+            style={{ background: '#e8f0fe', border: '1px solid #c6dafc', borderRadius: '10px', padding: '10px 18px', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '700' }}>
+            📄 Descargar planilla del equipo (PDF)
+          </button>
+        </div>
+        {showPlanilla && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', overflowY: 'auto' }}>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,.4)' }}>
+              <div style={{ fontWeight: '800', color: '#1a73e8', fontSize: '1rem', marginBottom: '4px' }}>📄 Planilla del equipo</div>
+              <div style={{ fontSize: '.75rem', color: '#5f6368', marginBottom: '12px', lineHeight: 1.5 }}>
+                <b>{equipo.name}</b> · {torneo.name}. Hoja con foto, nombre, cédula y fecha de nacimiento de cada jugador, lista para imprimir o guardar en PDF.
+              </div>
+              <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '.75rem', color: '#f57f17', lineHeight: 1.5 }}>
+                🔒 Incluye cédulas, por eso solo <b>{equipo.representante_nombre || 'el dueño/representante del equipo'}</b> puede descargarla: identifícate con tu cuenta de Golmebol.
+              </div>
+              <form onSubmit={handleDescargarPlanilla} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <input value={plCedula} onChange={ev => setPlCedula(ev.target.value)} placeholder="Cédula del dueño del equipo" type="number" style={inputStyle}/>
+                <input value={plPass} onChange={ev => setPlPass(ev.target.value)} placeholder="Tu contraseña" type="password" style={inputStyle}/>
+                {plError && <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '8px', padding: '10px 12px', fontSize: '.78rem', color: '#d93025' }}>{plError}</div>}
+                <button type="submit" disabled={plCargando}
+                  style={{ padding: '13px', background: plCargando ? '#dadce0' : '#1a73e8', border: 'none', borderRadius: '10px', cursor: plCargando ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.9rem' }}>
+                  {plCargando ? 'Verificando…' : '📄 Ver planilla'}
+                </button>
+                <button type="button" onClick={() => setShowPlanilla(false)}
+                  style={{ padding: '10px', background: 'none', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.82rem' }}>
+                  Cancelar
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+        {planillaDatos && <PlanillaEquipoModal datos={planillaDatos} onClose={() => setPlanillaDatos(null)}/>}
+
+        {/* Desactivar un jugador del equipo (con verificación de identidad) */}
+        <div style={{ textAlign: 'center', marginTop: '16px' }}>
           <button onClick={abrirDesactivar}
             style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 18px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem', fontWeight: '600' }}>
             🚫 Desactivar un jugador del equipo
