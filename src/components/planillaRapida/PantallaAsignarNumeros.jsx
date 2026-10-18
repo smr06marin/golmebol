@@ -1,6 +1,6 @@
 import { FONDO, PANEL, BORDE, TEXTO, TEXTO_TENUE, VERDE, btnPrimario } from './estilosRapida'
 
-function FilaJugador({ j, color, onAbrir, tarifaInscripcion }) {
+function FilaJugador({ j, color, onAbrir, tarifaInscripcion, nuevo }) {
   const foto = j.photo_face_url || j.photo_url
   const asignado = (j.numero || '').trim() !== ''
   return (
@@ -13,6 +13,11 @@ function FilaJugador({ j, color, onAbrir, tarifaInscripcion }) {
         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {j.nombre || <em style={{ color: TEXTO_TENUE, fontSize: '.8rem' }}>Sin nombre — toca para escribirlo</em>}
         </span>
+        {nuevo && !asignado && (
+          <span style={{ display: 'inline-block', marginTop: '4px', marginRight: '4px', fontSize: '.7rem', fontWeight: '900', color: '#1a1a1a', background: '#f9c400', borderRadius: '5px', padding: '2px 7px' }}>
+            🆕 JUGADOR NUEVO
+          </span>
+        )}
         {j.debeTarjeta && (
           <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '.7rem', fontWeight: '800', color: '#fff', background: '#d93025', borderRadius: '5px', padding: '2px 7px' }}>
             ⚠️ DEBE TARJETA
@@ -38,11 +43,11 @@ function FilaJugador({ j, color, onAbrir, tarifaInscripcion }) {
   )
 }
 
-function BloqueEquipo({ titulo, color, jugadores, onAbrir, tarifaInscripcion }) {
+function BloqueEquipo({ titulo, color, jugadores, onAbrir, tarifaInscripcion, idsNuevos }) {
   return (
     <div style={{ background: PANEL, border: `1px solid ${BORDE}`, borderRadius: '14px', marginBottom: '14px', overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', fontSize: '.82rem', fontWeight: '800', color, background: 'rgba(255,255,255,.03)' }}>{titulo}</div>
-      {jugadores.map((j, i) => <FilaJugador key={j.id || 'sr' + i} j={j} color={color} onAbrir={() => onAbrir(i)} tarifaInscripcion={tarifaInscripcion}/>)}
+      {jugadores.map((j, i) => <FilaJugador key={j.id || 'sr' + i} j={j} color={color} onAbrir={() => onAbrir(i)} tarifaInscripcion={tarifaInscripcion} nuevo={!!j.id && idsNuevos.includes(j.id)}/>)}
     </div>
   )
 }
@@ -57,21 +62,28 @@ function BloqueEquipo({ titulo, color, jugadores, onAbrir, tarifaInscripcion }) 
 export default function PantallaAsignarNumeros({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
   onAbrirJugador, onContinuar, onVolverColores, volviendoDesdePartido, tarifaInscripcion = 0,
+  idsNuevos = [], onActualizar, actualizando = false,
 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, background: '#0d1117', borderBottom: `1px solid ${BORDE}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button onClick={onVolverColores} style={{ background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.78rem', cursor: 'pointer' }}>‹ Colores</button>
         <div style={{ fontSize: '.85rem', fontWeight: '800' }}>Asignar camisetas</div>
-        <div style={{ width: '54px' }}/>
+        <button onClick={onActualizar} disabled={actualizando} title="Volver a pedir la lista de jugadores inscritos"
+          style={{ background: 'rgba(255,255,255,.08)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.7rem', fontWeight: '800', cursor: 'pointer', padding: '6px 9px', opacity: actualizando ? .6 : 1 }}>
+          {actualizando ? '⏳ …' : '🔄 Actualizar'}
+        </button>
+      </div>
+      <div style={{ flexShrink: 0, background: 'rgba(26,115,232,.12)', borderBottom: `1px solid ${BORDE}`, padding: '5px 12px', fontSize: '.68rem', color: '#8ab4f8', fontWeight: '700', textAlign: 'center' }}>
+        Si inscriben un jugador mientras estás aquí, aparece solo (cada 5 s). Toca 🔄 para forzarlo.
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ maxWidth: '480px', margin: '0 auto', padding: '14px 12px' }}>
           <BloqueEquipo titulo={`🏠 ${nombreLocal}`} color={colorLocal} jugadores={jugadoresLocal}
-            onAbrir={i => onAbrirJugador('local', i)} tarifaInscripcion={tarifaInscripcion}/>
+            onAbrir={i => onAbrirJugador('local', i)} tarifaInscripcion={tarifaInscripcion} idsNuevos={idsNuevos}/>
           <BloqueEquipo titulo={`🚩 ${nombreVis}`} color={colorVis} jugadores={jugadoresVisitante}
-            onAbrir={i => onAbrirJugador('visitante', i)} tarifaInscripcion={tarifaInscripcion}/>
+            onAbrir={i => onAbrirJugador('visitante', i)} tarifaInscripcion={tarifaInscripcion} idsNuevos={idsNuevos}/>
         </div>
       </div>
 

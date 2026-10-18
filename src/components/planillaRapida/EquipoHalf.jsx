@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ANIM_RESALTE, AMARILLO } from './estilosRapida'
 
 const BOTONES_EVENTO = [
   { tipo: 'goal',        emoji: '⚽', label: 'Gol',      color: '#1e8e3e' },
@@ -15,7 +16,7 @@ const BOTONES_EVENTO = [
 // nunca necesite scroll).
 export default function EquipoHalf({
   equipoNombre, color, colorTexto, jugadores, arquero, eventos, mostrarFaltas, faltasEquipo,
-  onSeleccionarArquero, onRegistrarEvento, onQuitarEvento, arriba,
+  onSeleccionarArquero, onRegistrarEvento, onQuitarEvento, arriba, resaltarArquero,
 }) {
   const [numero, setNumero] = useState('')
   const [mostrarPicker, setMostrarPicker] = useState(false)
@@ -44,19 +45,26 @@ export default function EquipoHalf({
         )}
       </div>
 
-      {/* Arquero — grande, para identificarlo bien */}
+      {/* Arquero — grande, para identificarlo bien. Si todavía no hay arquero se
+          ilumina (amarillo parpadeante) para que no se olvide antes de iniciar. */}
       <button onClick={() => setMostrarPicker(v => !v)}
-        style={{ margin: '0 8px 6px', padding: '8px 12px', background: 'rgba(0,0,0,.28)', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+        style={{
+          margin: '0 8px 6px', padding: '8px 12px', border: 'none', borderRadius: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0,
+          background: !arquero && resaltarArquero ? AMARILLO : 'rgba(0,0,0,.28)',
+          animation: !arquero && resaltarArquero ? ANIM_RESALTE : 'none',
+        }}>
         <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>🧤</span>
         {arquero ? (
           <span style={{ flex: 1, textAlign: 'left', fontSize: '1.15rem', fontWeight: '900', color: colorTexto, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.15 }}>
             {arquero.nombre}{arquero.numero ? ` · #${arquero.numero}` : ''}
           </span>
         ) : (
-          <span style={{ flex: 1, textAlign: 'left', fontSize: '.95rem', fontWeight: '800', color: colorTexto }}>Elegir arquero</span>
+          <span style={{ flex: 1, textAlign: 'left', fontSize: '.95rem', fontWeight: '900', color: resaltarArquero ? '#1a1a1a' : colorTexto, lineHeight: 1.15 }}>
+            {resaltarArquero ? '👆 ELEGIR ARQUERO (obligatorio)' : 'Elegir arquero'}
+          </span>
         )}
-        <span style={{ fontSize: '.65rem', fontWeight: '700', color: colorTexto, opacity: .85, background: 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '3px 7px', flexShrink: 0 }}>
-          {arquero ? 'Cambiar' : 'Elegir'}
+        <span style={{ fontSize: '.65rem', fontWeight: '800', color: !arquero && resaltarArquero ? '#1a1a1a' : colorTexto, opacity: .9, background: !arquero && resaltarArquero ? 'rgba(0,0,0,.15)' : 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '3px 7px', flexShrink: 0 }}>
+          {arquero ? '✓ Cambiar' : 'Elegir'}
         </span>
       </button>
 

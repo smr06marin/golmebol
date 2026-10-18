@@ -138,6 +138,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [modalidad, setModalidad] = useState(null)
   const [duracionMinutos, setDuracionMinutos] = useState(20)
   const [periodo, setPeriodo] = useState(1)
+  const [segundos1T, setSegundos1T] = useState(null) // lo que marcaba el reloj al pasar al 2do tiempo (para poder volver al 1ro si fue un error)
+  const [idsNuevos, setIdsNuevos] = useState([]) // jugadores que aparecieron en la lista MIENTRAS la planilla estaba abierta
+  const [actualizandoRoster, setActualizandoRoster] = useState(false)
   const [segundos, setSegundos] = useState(0)
   const [corriendo, setCorriendo] = useState(false)
   const [tiempoAgotado, setTiempoAgotado] = useState(false)
@@ -327,6 +330,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       inicioEpochRef.current = snap.corriendo ? Date.now() - segs * 1000 : null
       if (typeof snap.duracionMinutos === 'number') setDuracionMinutos(snap.duracionMinutos)
       if (typeof snap.periodo === 'number') setPeriodo(snap.periodo)
+      setSegundos1T(typeof snap.segundos1T === 'number' ? snap.segundos1T : null)
       setTiempoAgotado(!!snap.tiempoAgotado)
       setSegundos(segs)
       setCorriendo(!!snap.corriendo)
@@ -563,7 +567,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   // ya tiene cargados (misma lógica de fusionarJugadores que usa la carga
   // inicial cuando llega un borrador remoto más nuevo).
   const refetchRoster = useCallback(async () => {
-    if (!partido?.tournament_id || partido.status === 'finished') return
+    if (!partido?.tournament_id || partido.status === 'finished') return { ok: false }
     const [jugsL, jugsV, sancionesDB] = await Promise.all([
       conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.home_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
       conPlayers(supabase.from('tournament_player_registrations').select('*').eq('tournament_id', partido.tournament_id).eq('team_id', partido.away_team_id).eq('activo', true), 'id,name,numero_cedula,photo_face_url,photo_url,foto_cambiar_tarjeta,foto_cambiar_perfil,foto_cambiar_cedula_frontal,foto_cambiar_cedula_trasera'),
@@ -571,7 +575,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     ])
     // Si CUALQUIERA de las consultas falló (señal mala, timeout) no se toca la
     // lista: una respuesta vacía por error NO significa "no hay jugadores".
-    if (jugsL.error || jugsV.error || sancionesDB.error || !Array.isArray(jugsL.data) || !Array.isArray(jugsV.data)) return
+    if (jugsL.error || jugsV.error || sancionesDB.error || !Array.isArray(jugsL.data) || !Array.isArray(jugsV.data)) return { ok: false }
     const hoyIso = new Date().toISOString()
     const idsSancionados = new Set((sancionesDB?.data || [])
       .filter(s => (!s.fecha_fin || s.fecha_fin > hoyIso) && (s.partidos_pendientes === null || s.partidos_pendientes === undefined || s.partidos_pendientes > 0))
@@ -581,12 +585,25 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const mapJug = data => (data || [])
       .filter(r => !idsSancionados.has(r.players?.id))
       .map(r => ({ id: r.players?.id, nombre: r.players?.name || '', cedula: r.players?.numero_cedula || '', numero: '', photo_face_url: r.players?.photo_face_url || null, photo_url: r.players?.photo_url || null, debeTarjeta: idsDebenTarjeta.has(r.players?.id), debeFoto: tieneFotoPendiente(r.players), debeInscripcion: debeInscripcionReg(r, finanzasConfigRef.current) }))
-    setJugadoresLocal(prev => fusionarJugadores(prev, mapJug(jugsL.data)))
-    setJugadoresVisitante(prev => fusionarJugadores(prev, mapJug(jugsV.data)))
+    const frescosL = mapJug(jugsL.data)
+    const frescosV = mapJug(jugsV.data)
+    // Jugadores que la planilla todavía no conocía (recién registrados): se avisa y se marcan "NUEVO".
+    const conocidos = new Set([...jugLocalRef.current, ...jugVisRef.current].filter(j => j.id).map(j => j.id))
+    const nuevos = conocidos.size === 0 ? [] : [
+      ...frescosL.filter(j => j.id && !conocidos.has(j.id)).map(j => ({ ...j, equipo: partido.home?.name || 'Local' })),
+      ...frescosV.filter(j => j.id && !conocidos.has(j.id)).map(j => ({ ...j, equipo: partido.away?.name || 'Visitante' })),
+    ]
+    if (nuevos.length > 0) {
+      setIdsNuevos(prev => [...new Set([...prev, ...nuevos.map(j => j.id)])])
+      setAvisoReloj(`➕ Jugador nuevo: ${nuevos.map(j => `${j.nombre || 'Sin nombre'} (${j.equipo})`).join(', ')}`)
+    }
+    setJugadoresLocal(prev => fusionarJugadores(prev, frescosL))
+    setJugadoresVisitante(prev => fusionarJugadores(prev, frescosV))
     // Si le marcaron el pago de inscripción al jugador que tiene abierto el modal, se desbloquea solo.
     const idsInscDeben = new Set([...jugsL.data, ...jugsV.data].filter(r => debeInscripcionReg(r, finanzasConfigRef.current)).map(r => r.players?.id))
     setModalFoto(prev => (prev?.jugador?.debeInscripcion && prev.jugador.id && !idsInscDeben.has(prev.jugador.id)) ? { ...prev, jugador: { ...prev.jugador, debeInscripcion: false } } : prev)
-  }, [partido?.tournament_id, partido?.home_team_id, partido?.away_team_id, partido?.status])
+    return { ok: true, total: frescosL.length + frescosV.length, nuevos: nuevos.length }
+  }, [partido?.tournament_id, partido?.home_team_id, partido?.away_team_id, partido?.status, partido?.home?.name, partido?.away?.name])
 
   useEffect(() => {
     if (!partido?.tournament_id || partido.status === 'finished') return
@@ -602,7 +619,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   // Respaldo de jugadores nuevos y pagos de tarjetas: el realtime de esas dos
   // tablas depende de que estén habilitadas en Supabase, y si no lo están (o
   // el celular pierde el websocket) la planilla quedaba con la lista vieja.
-  // Cada 8 s y al volver a la app se revisa de nuevo — así un jugador recién
+  // Cada 5 s y al volver a la app se revisa de nuevo — así un jugador recién
   // registrado aparece solo y una tarjeta pagada se desbloquea sola.
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
@@ -611,9 +628,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       refetchRoster()
       refetchDeudaTarjetas()
     }
-    const t = setInterval(refrescar, 8000)
+    const t = setInterval(refrescar, 5000)
+    window.addEventListener('online', refrescar)
     document.addEventListener('visibilitychange', refrescar)
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refrescar) }
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refrescar); window.removeEventListener('online', refrescar) }
   }, [listo, partido.status, refetchRoster, refetchDeudaTarjetas])
 
   // Antes se pedía la pantalla completa REAL del navegador (Fullscreen API)
@@ -801,6 +819,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       papelSigRef.current = JSON.stringify(papelSnap)
     }
     setPeriodo(snap.periodo || 1)
+    setSegundos1T(typeof snap.segundos1T === 'number' ? snap.segundos1T : null)
     const durFinal = snap.duracionMinutos || dur
     setDuracionMinutos(durFinal)
     setStep(esPapel ? 'partido' : (snap.step || 'colores'))
@@ -916,7 +935,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (firmaHoja !== papelSigRef.current) { papelSigRef.current = firmaHoja; papelVRef.current += 1; papelAutorRef.current = deviceIdRef.current }
       extraPapel = { papel, papelV: papelVRef.current, papelAutor: papelAutorRef.current }
     }
-    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
+    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
   }
   // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
   restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
@@ -1022,7 +1041,12 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   }
   useEffect(() => () => { clearInterval(alarmaRef.current) }, [])
 
+  // Antes de arrancar el partido deben estar marcados los DOS arqueros.
+  const puedeIniciar = esPapel || periodo !== 1 || segundos > 0 || eventos.length > 0 || (!!arqueroLocal && !!arqueroVis)
+  const motivoNoIniciar = puedeIniciar ? '' : `🧤 Primero elige el arquero de ${[!arqueroLocal && nombreLocal, !arqueroVis && nombreVis].filter(Boolean).join(' y ')}`
+
   function toggleCronometro() {
+    if (!corriendo && !puedeIniciar) return
     pararAlarma()
     nuevaAccionReloj()
     if (corriendo) inicioEpochRef.current = null // se pausa: al reanudar se recalcula el ancla desde el segundo actual
@@ -1065,10 +1089,31 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   }
   function cambiarPeriodo() {
     if (periodo === 2) return
+    // Se guarda lo que marcaba el 1er tiempo por si hay que devolverse (botón "Volver al 1º").
+    const limite = duracionMinutos * 60
+    const s1 = (corriendo && inicioEpochRef.current != null) ? Math.min(limite, Math.floor((Date.now() - inicioEpochRef.current) / 1000)) : segundos
+    setSegundos1T(s1)
     pararAlarma()
     inicioEpochRef.current = null
     nuevaAccionReloj()
     setPeriodo(2); setSegundos(0); setTiempoAgotado(false); setCorriendo(false)
+  }
+  // Se pasó al 2do tiempo por error: vuelve al 1ro con el reloj donde estaba.
+  function volverAPrimero() {
+    if (periodo === 1) return
+    const limite = duracionMinutos * 60
+    const s1 = typeof segundos1T === 'number' ? Math.min(segundos1T, limite) : limite
+    pararAlarma()
+    inicioEpochRef.current = null
+    nuevaAccionReloj()
+    setPeriodo(1); setSegundos(s1); setTiempoAgotado(s1 >= limite); setCorriendo(false)
+  }
+  // Pone en 00:00 el tiempo en curso (lo pide el widget con confirmación).
+  function reiniciarReloj() {
+    pararAlarma()
+    inicioEpochRef.current = null
+    nuevaAccionReloj()
+    setSegundos(0); setTiempoAgotado(false); setCorriendo(false)
   }
 
   // ── Asignación de camisetas ────────────────────────────────────────────
@@ -1603,6 +1648,24 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     onClose && onClose()
   }
 
+  // Botón "Actualizar jugadores": vuelve a pedir la lista ya mismo y dice qué pasó.
+  async function actualizarJugadores() {
+    if (actualizandoRoster) return
+    setActualizandoRoster(true)
+    try {
+      const r = await refetchRoster()
+      try { await refetchDeudaTarjetas() } catch { /* no es lo importante */ }
+      if (!r?.ok) setAvisoReloj('⚠️ No se pudo actualizar. Revisa la señal e intenta de nuevo.')
+      else if (r.nuevos === 0) setAvisoReloj(`✓ Lista al día · ${r.total} jugadores inscritos`)
+    } finally { setActualizandoRoster(false) }
+  }
+  const nuevosSinNumero = [...jugadoresLocal, ...jugadoresVisitante].filter(j => j.id && idsNuevos.includes(j.id) && String(j.numero || '').trim() === '').length
+  const toastReloj = avisoReloj ? (
+    <div style={{ position: 'fixed', left: '50%', top: 'max(10px, env(safe-area-inset-top))', transform: 'translateX(-50%)', zIndex: 9000, background: '#0f172a', color: '#fff', border: '1px solid #22d3ee', borderRadius: 12, padding: '8px 14px', fontWeight: 800, fontSize: '.8rem', boxShadow: '0 6px 20px rgba(0,0,0,.5)', maxWidth: '92vw', textAlign: 'center', pointerEvents: 'none' }}>
+      {avisoReloj}
+    </div>
+  ) : null
+
   if (loading) return (
     <div style={{ minHeight: '100dvh', background: FONDO, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CIAN, fontFamily: 'system-ui,sans-serif' }}>
       Cargando planilla rápida...
@@ -1631,7 +1694,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         onContinuar={() => { setStep('partido'); setVolviendoDesdePartido(false) }}
         volviendoDesdePartido={volviendoDesdePartido}
         tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0}
+        idsNuevos={idsNuevos} onActualizar={actualizarJugadores} actualizando={actualizandoRoster}
       />
+      {toastReloj}
       {modalFoto && (
         <ModalFotoNumero jugador={modalFoto.jugador} tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
           onConfirmar={confirmarNumero} onQuitar={quitarNumero} onCerrar={() => setModalFoto(null)}/>
@@ -1742,6 +1807,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         onRegistrarEvento={registrarEvento} onQuitarEvento={quitarEvento}
         onSalir={pausarYSalir} onAbrirEspecial={() => setMostrarEspecial(true)}
         globalLlave={globalLlave}
+        puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar}
+        onReiniciar={reiniciarReloj} onVolverPrimero={volverAPrimero} onSilenciar={pararAlarma}
+        nuevosSinNumero={nuevosSinNumero}
       />
       {alertaNumero && (
         <AlertaNumeroDesconocido
@@ -1759,16 +1827,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           onCerrar={() => setAlertaFaltas(null)}
         />
       )}
-      {avisoReloj && (
-        <div style={{ position: 'fixed', left: '50%', top: 'max(10px, env(safe-area-inset-top))', transform: 'translateX(-50%)', zIndex: 520, background: '#0f172a', color: '#fff', border: '1px solid #22d3ee', borderRadius: 12, padding: '8px 14px', fontWeight: 800, fontSize: '.8rem', boxShadow: '0 6px 20px rgba(0,0,0,.5)', maxWidth: '92vw', textAlign: 'center', pointerEvents: 'none' }}>
-          {avisoReloj}
-        </div>
-      )}
+      {toastReloj}
       {mostrarCierre && (
         <ModalCierrePartido
           nombreLocal={nombreLocal} nombreVis={nombreVis} arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
           hayRoja={hayRoja} jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
           guardando={guardandoDB} onFinalizar={intentarFinalizar} onCerrar={() => setMostrarCierre(false)}
+          onSeleccionarArquero={seleccionarArquero}
         />
       )}
       {cierrePendiente && !mostrarPenales && (

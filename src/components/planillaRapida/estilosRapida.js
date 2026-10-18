@@ -30,3 +30,21 @@ function avatarJugador(j, size = 40) {
   const url = j?.photo_face_url || j?.photo_url
   return { url, size }
 }
+
+// Parpadeo para "iluminar" lo que el árbitro TODAVÍA tiene que hacer (arqueros,
+// informe, MVP...). Se pinta con <style>{ESTILO_RESALTE}</style> en cada pantalla
+// que lo usa (así no depende de index.css) y se aplica con
+// animation: 'gmResalte 1.1s ease-in-out infinite'.
+export const ESTILO_RESALTE = `
+@keyframes gmResalte {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249,196,0,.85), 0 0 0 0 rgba(249,196,0,.35); }
+  50%      { box-shadow: 0 0 0 5px rgba(249,196,0,.55), 0 0 18px 4px rgba(249,196,0,.45); }
+}
+@keyframes gmResalteRojo {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,.85); }
+  50%      { box-shadow: 0 0 0 5px rgba(217,48,37,.5), 0 0 18px 4px rgba(217,48,37,.45); }
+}
+`
+export const ANIM_RESALTE = 'gmResalte 1.1s ease-in-out infinite'
+export const ANIM_RESALTE_ROJO = 'gmResalteRojo 1.1s ease-in-out infinite'
+export const AMARILLO = '#f9c400'

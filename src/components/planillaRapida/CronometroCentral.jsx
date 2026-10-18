@@ -1,48 +1,56 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatTiempo } from './estilosRapida'
 
-// Cronómetro flotante y arrastrable (mismo mecanismo que la planilla completa:
-// se puede tocar/arrastrar desde cualquier parte del widget; un umbral de
-// movimiento distingue "tap" de "arrastre" para que los botones de adentro
-// sigan funcionando). Arranca grande y centrado para que se lea bien de lejos;
-// con el ícono ↕ se puede achicar si estorba.
+// Cronómetro flotante y arrastrable. Botones SENCILLOS y grandes:
+//   ▶ INICIAR / ⏸ PARAR CRONÓMETRO · ↺ REINICIAR · 2º TIEMPO →
+// Cuando se acaba el 1er tiempo aparece abajo un botón enorme "PASAR A SEGUNDO
+// TIEMPO". Si se pasó al 2do por error, en el 2do tiempo sale "↩ Volver al 1º".
+// Lo que no se puede deshacer (reiniciar, terminar el tiempo antes de hora)
+// pide confirmación en el mismo widget — sin ventanas del navegador.
+//
+// Se puede arrastrar desde cualquier parte; un umbral de movimiento distingue
+// "tap" de "arrastre" para que los botones de adentro sigan funcionando.
 export default function CronometroCentral({
-  periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, onToggle, onCambiarPeriodo, globalLlave,
+  periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, globalLlave,
+  puedeIniciar = true, motivoNoIniciar = '',
+  onToggle, onReiniciar, onCambiarPeriodo, onVolverPrimero, onSilenciar,
 }) {
-  const [mini, setMini] = useState(false)
-  const [pos, setPos] = useState(() => ({
-    x: typeof window !== 'undefined' ? Math.max(8, window.innerWidth / 2 - 100) : 100,
-    y: typeof window !== 'undefined' ? Math.max(8, window.innerHeight / 2 - 90) : 200,
-  }))
+  // Tamaño: con el reloj CORRIENDO se ve compacto (para no tapar los botones de
+  // gol/tarjeta); en pausa o al empezar se ve completo, con todos los botones.
+  // Mientras falten los arqueros también va compacto, para no tapar su casilla
+  // iluminada. "⋯ Más" abre el panel completo aunque el reloj esté corriendo.
+  const [mini, setMini] = useState(false)       // la persona lo achicó a propósito
+  const [abierto, setAbierto] = useState(false) // la persona abrió el panel completo con el reloj corriendo
+  const [confirmar, setConfirmar] = useState(null) // null | 'reiniciar' | 'periodo' | 'volver'
+  // Mientras no se arrastre, el widget queda pegado ABAJO (crece hacia arriba).
+  const [pos, setPos] = useState({ x: typeof window !== 'undefined' ? Math.max(8, (window.innerWidth - 230) / 2) : 100, y: null })
+  const elRef = useRef(null)
   const dragRef = useRef(null)
+  const confirmarTimerRef = useRef(null)
+  useEffect(() => () => clearTimeout(confirmarTimerRef.current), [])
 
-  // Pausar y pasar a 2T exigen DOBLE TOQUE (dos toques seguidos en menos de
-  // 0,6 s): un toque suelto por error ya no detiene el reloj del partido.
-  // Iniciar sigue siendo un toque normal. Con un solo toque el botón avisa
-  // "otra vez" por un instante.
-  const ultimoToqueRef = useRef({ pausa: 0, periodo: 0 })
-  const [aviso, setAviso] = useState(null) // 'pausa' | 'periodo' | null
-  const avisoTimerRef = useRef(null)
-  useEffect(() => () => clearTimeout(avisoTimerRef.current), [])
-  function doble(clave, accion) {
-    const ahora = Date.now()
-    if (ahora - ultimoToqueRef.current[clave] < 600) {
-      ultimoToqueRef.current[clave] = 0
-      clearTimeout(avisoTimerRef.current)
-      setAviso(null)
-      accion()
-      return
-    }
-    ultimoToqueRef.current[clave] = ahora
-    setAviso(clave)
-    clearTimeout(avisoTimerRef.current)
-    avisoTimerRef.current = setTimeout(() => setAviso(null), 1200)
+  function pedirConfirmacion(que) {
+    setConfirmar(que)
+    clearTimeout(confirmarTimerRef.current)
+    confirmarTimerRef.current = setTimeout(() => setConfirmar(null), 7000)
   }
-  function tocarReloj() { if (corriendo) doble('pausa', onToggle); else onToggle() }
+  function cancelarConfirmacion() { clearTimeout(confirmarTimerRef.current); setConfirmar(null) }
+  function confirmarSi() {
+    const que = confirmar
+    cancelarConfirmacion()
+    if (que === 'reiniciar') onReiniciar && onReiniciar()
+    else if (que === 'periodo') onCambiarPeriodo && onCambiarPeriodo()
+    else if (que === 'volver') onVolverPrimero && onVolverPrimero()
+  }
 
   function onDragStart(e) {
     const t = e.touches ? e.touches[0] : e
-    dragRef.current = { mx: t.clientX, my: t.clientY, ox: pos.x, oy: pos.y, moved: false }
+    let ox = pos.x, oy = pos.y
+    if (oy == null) { // primera vez que se mueve: se pasa de "pegado abajo" a posición libre
+      const r = elRef.current?.getBoundingClientRect()
+      ox = r ? r.left : pos.x; oy = r ? r.top : 100
+    }
+    dragRef.current = { mx: t.clientX, my: t.clientY, ox, oy, moved: false }
     if (e.touches) {
       window.addEventListener('touchmove', onDrag, { passive: false })
       window.addEventListener('touchend', onDragEnd)
@@ -75,43 +83,117 @@ export default function CronometroCentral({
   }
 
   const fondo = tiempoAgotado ? '#b71c1c' : periodo === 1 ? '#1a3a8a' : '#d93025'
+  const arranque = !corriendo && segundos === 0 && periodo === 1
+  const bloqueado = !corriendo && !puedeIniciar
+  const miniEf = bloqueado || mini || (corriendo && !abierto)
+  const botonMas = () => {
+    if (miniEf) { setMini(false); setAbierto(true) } else { setMini(true); setAbierto(false) }
+  }
+  const botonPasar2T = periodo === 1 && tiempoAgotado
+  const bottomPx = botonPasar2T ? 100 : 12
+  const btnBase = { border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '800', fontFamily: 'inherit' }
 
   return (
-    <div onMouseDown={onDragStart} onTouchStart={onDragStart}
-      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 900, background: fondo, borderRadius: mini ? '50px' : '22px', boxShadow: '0 10px 34px rgba(0,0,0,.55)', minWidth: mini ? '150px' : '210px', userSelect: 'none', touchAction: 'none', cursor: 'grab' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: mini ? '6px 10px 0' : '8px 12px 0' }}>
-        <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.75)', fontWeight: '700' }}>↕ {periodo === 1 ? '1T' : '2T'}</span>
-        <button onClick={() => setMini(v => !v)} style={{ background: 'rgba(255,255,255,.18)', border: 'none', borderRadius: '6px', padding: '2px 6px', cursor: 'pointer', color: '#fff', fontSize: '.6rem', fontWeight: '700' }}>
-          {mini ? '⤢' : '⤡'}
-        </button>
-      </div>
-
-      <div style={{ padding: mini ? '2px 14px 8px' : '2px 16px 12px', textAlign: 'center' }}>
-        <div style={{ fontSize: mini ? '1.6rem' : '2.8rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
-          {formatTiempo(segundos)}
-        </div>
-        <div style={{ fontSize: mini ? '.75rem' : '1.05rem', fontWeight: '800', color: 'rgba(255,255,255,.92)', marginTop: mini ? '2px' : '6px', background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: mini ? '1px 8px' : '3px 10px', display: 'inline-block' }}>
-          {golesLocal} - {golesVis}
-        </div>
-        {globalLlave && !mini && (
-          <div style={{ marginTop: '4px' }}>
-            <span style={{ fontSize: '.6rem', color: '#ffdd44', fontWeight: '800', letterSpacing: '.03em', marginRight: '5px' }}>GLOBAL</span>
-            <span style={{ fontSize: '.78rem', fontWeight: '800', color: '#fff' }}>{globalLlave.local} - {globalLlave.visitante}</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: mini ? '6px' : '10px' }}>
-          <button onClick={tocarReloj} title={corriendo ? 'Doble toque para pausar' : 'Iniciar'}
-            style={{ padding: mini ? '5px 12px' : '8px 16px', background: aviso === 'pausa' ? '#ffdd44' : 'rgba(255,255,255,.92)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: aviso === 'pausa' ? '#222' : fondo, fontSize: mini ? '.75rem' : '.85rem', fontWeight: '800' }}>
-            {corriendo ? (aviso === 'pausa' ? '⏸ ¡Otra vez!' : '⏸ Pausar ×2') : '▶️ Iniciar'}
+    <>
+      <div ref={elRef} onMouseDown={onDragStart} onTouchStart={onDragStart}
+        style={{ position: 'fixed', left: pos.x, ...(pos.y == null ? { bottom: `calc(${bottomPx}px + env(safe-area-inset-bottom))` } : { top: pos.y }), zIndex: 900, background: fondo, borderRadius: miniEf ? '26px' : '22px', boxShadow: '0 10px 34px rgba(0,0,0,.55)', width: miniEf ? '200px' : '230px', maxWidth: 'calc(100vw - 16px)', boxSizing: 'border-box', userSelect: 'none', touchAction: 'none', cursor: 'grab' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: miniEf ? '6px 10px 0' : '8px 12px 0' }}>
+          <span style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.85)', fontWeight: '800' }}>↕ {periodo === 1 ? '1er TIEMPO' : '2do TIEMPO'}</span>
+          <button onClick={botonMas} style={{ background: 'rgba(255,255,255,.18)', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', color: '#fff', fontSize: '.65rem', fontWeight: '800' }}>
+            {miniEf ? '⋯ Más' : '⤡ Achicar'}
           </button>
-          {periodo === 1 && (
-            <button onClick={() => doble('periodo', onCambiarPeriodo)} title="Doble toque para pasar al 2do tiempo"
-              style={{ padding: mini ? '5px 10px' : '8px 12px', background: aviso === 'periodo' ? '#ffdd44' : 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: aviso === 'periodo' ? '#222' : '#fff', fontSize: mini ? '.68rem' : '.78rem', fontWeight: '700' }}>
-              {aviso === 'periodo' ? '¡Otra vez!' : '2T →'}
-            </button>
+        </div>
+
+        <div style={{ padding: miniEf ? '2px 12px 10px' : '2px 14px 14px', textAlign: 'center' }}>
+          <div style={{ fontSize: miniEf ? '2rem' : '3rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
+            {formatTiempo(segundos)}
+          </div>
+          <div style={{ fontSize: miniEf ? '.8rem' : '1.05rem', fontWeight: '800', color: 'rgba(255,255,255,.92)', marginTop: miniEf ? '2px' : '6px', background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: miniEf ? '1px 8px' : '3px 10px', display: 'inline-block' }}>
+            {golesLocal} - {golesVis}
+          </div>
+          {globalLlave && !miniEf && (
+            <div style={{ marginTop: '4px' }}>
+              <span style={{ fontSize: '.6rem', color: '#ffdd44', fontWeight: '800', letterSpacing: '.03em', marginRight: '5px' }}>GLOBAL</span>
+              <span style={{ fontSize: '.78rem', fontWeight: '800', color: '#fff' }}>{globalLlave.local} - {globalLlave.visitante}</span>
+            </div>
+          )}
+
+          {/* ── Modo compacto: un solo botón ── */}
+          {miniEf && (
+            <>
+              <button onClick={onToggle} disabled={bloqueado || tiempoAgotado}
+                style={{ ...btnBase, marginTop: '6px', padding: '9px 16px', width: '100%', background: 'rgba(255,255,255,.92)', color: fondo, fontSize: '.9rem', opacity: (bloqueado || tiempoAgotado) ? .5 : 1 }}>
+                {corriendo ? '⏸ PARAR' : (arranque ? '▶ INICIAR' : '▶ CONTINUAR')}
+              </button>
+              {bloqueado && motivoNoIniciar && (
+                <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25, marginTop: '5px' }}>{motivoNoIniciar}</div>
+              )}
+            </>
+          )}
+
+          {/* ── Confirmación en el mismo widget ── */}
+          {!miniEf && confirmar && (
+            <div style={{ marginTop: '10px', background: 'rgba(0,0,0,.35)', borderRadius: '12px', padding: '10px' }}>
+              <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#fff', marginBottom: '8px', lineHeight: 1.25 }}>
+                {confirmar === 'reiniciar' && `¿Reiniciar el ${periodo === 1 ? '1er' : '2do'} tiempo a 00:00?`}
+                {confirmar === 'periodo' && '¿Terminar el 1er tiempo ahora y pasar al 2do?'}
+                {confirmar === 'volver' && '¿Volver al 1er tiempo? (el 2do tiempo se queda en 00:00)'}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={confirmarSi} style={{ ...btnBase, flex: 1, padding: '10px 4px', background: '#fff', color: '#111', fontSize: '.85rem' }}>Sí</button>
+                <button onClick={cancelarConfirmacion} style={{ ...btnBase, flex: 1, padding: '10px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.85rem' }}>No</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Botones normales ── */}
+          {!miniEf && !confirmar && (
+            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
+              {tiempoAgotado ? (
+                <>
+                  <div style={{ fontSize: '.85rem', fontWeight: '900', color: '#fff', background: 'rgba(0,0,0,.3)', borderRadius: '10px', padding: '7px' }}>
+                    ⏱ TIEMPO CUMPLIDO
+                  </div>
+                  <button onClick={onSilenciar} style={{ ...btnBase, padding: '10px', background: 'rgba(255,255,255,.92)', color: fondo, fontSize: '.85rem' }}>🔕 Silenciar alarma</button>
+                </>
+              ) : (
+                <button onClick={onToggle} disabled={bloqueado}
+                  style={{ ...btnBase, padding: '13px 8px', background: bloqueado ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.95)', color: bloqueado ? 'rgba(255,255,255,.8)' : fondo, fontSize: '1rem', letterSpacing: '.01em' }}>
+                  {corriendo ? '⏸ PARAR CRONÓMETRO' : (arranque ? '▶ INICIAR PARTIDO' : '▶ CONTINUAR')}
+                </button>
+              )}
+              {bloqueado && motivoNoIniciar && (
+                <div style={{ fontSize: '.72rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25 }}>{motivoNoIniciar}</div>
+              )}
+              <div style={{ display: 'flex', gap: '7px' }}>
+                <button onClick={() => pedirConfirmacion('reiniciar')} disabled={segundos === 0 && !corriendo}
+                  style={{ ...btnBase, flex: 1, padding: '9px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.78rem', opacity: (segundos === 0 && !corriendo) ? .45 : 1 }}>
+                  ↺ Reiniciar
+                </button>
+                {periodo === 1 ? (
+                  <button onClick={() => (tiempoAgotado ? onCambiarPeriodo && onCambiarPeriodo() : pedirConfirmacion('periodo'))}
+                    style={{ ...btnBase, flex: 1.2, padding: '9px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.78rem' }}>
+                    2º tiempo →
+                  </button>
+                ) : (
+                  <button onClick={() => pedirConfirmacion('volver')}
+                    style={{ ...btnBase, flex: 1.2, padding: '9px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.78rem' }}>
+                    ↩ Volver al 1º
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>
-    </div>
+
+      {/* Se acabó el 1er tiempo: botón enorme y solo ese paso. */}
+      {botonPasar2T && (
+        <button onClick={onCambiarPeriodo}
+          style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: '#1e8e3e', color: '#fff', fontSize: '1.2rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
+          ▶ PASAR A SEGUNDO TIEMPO
+        </button>
+      )}
+    </>
   )
 }
