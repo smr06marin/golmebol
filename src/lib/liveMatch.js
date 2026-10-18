@@ -149,15 +149,19 @@ export function extraerGoles(match) {
       return {
         equipo: e.team, jugador: e.jugadorNombre || 'Jugador', numero: String(e.numero ?? porId?.numero ?? '').trim(),
         minuto: e.minuto || null, periodo: e.periodo || 1,
+        jugadorId: e.jugadorId || null, foto: porId?.photo_face_url || porId?.photo_url || null,
       }
     })
   } else {
-    const buscarNombre = (arr, numero) => (arr || []).find(j => String(j.numero) === String(numero))?.nombre || 'Jugador'
+    const buscarJug = (arr, numero) => (arr || []).find(j => String(j.numero) === String(numero))
+    const buscarNombre = (arr, numero) => buscarJug(arr, numero)?.nombre || 'Jugador'
     ;(snap.golesLocal || []).filter(Boolean).forEach(g => {
-      goles.push({ equipo: 'local', jugador: buscarNombre(snap.jugadoresLocal, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1 })
+      const j = buscarJug(snap.jugadoresLocal, g.numero)
+      goles.push({ equipo: 'local', jugador: buscarNombre(snap.jugadoresLocal, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1, jugadorId: j?.id || null, foto: j?.photo_face_url || j?.photo_url || null })
     })
     ;(snap.golesVisitante || []).filter(Boolean).forEach(g => {
-      goles.push({ equipo: 'visitante', jugador: buscarNombre(snap.jugadoresVisitante, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1 })
+      const j = buscarJug(snap.jugadoresVisitante, g.numero)
+      goles.push({ equipo: 'visitante', jugador: buscarNombre(snap.jugadoresVisitante, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1, jugadorId: j?.id || null, foto: j?.photo_face_url || j?.photo_url || null })
     })
   }
   return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))

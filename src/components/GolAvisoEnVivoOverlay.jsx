@@ -1,14 +1,17 @@
 // Aviso de GOL para la transmisión en vivo: cuando el árbitro anota un gol en
 // la planilla, aparece solo (unos 8 segundos) una tarjeta grande con el
-// número de camiseta, el nombre del jugador, su equipo y el minuto — sin que
+// número de camiseta, el nombre del jugador, su equipo y el minuto, y 6 s la
+// foto semitransparente del goleador del lado de su equipo — sin que
 // nadie tenga que prenderlo desde el panel. Detecta el gol nuevo comparando
 // la lista de goles del partido con la anterior; al abrir la página (o al
 // cambiar de partido) NO muestra los goles que ya estaban. Si el árbitro
 // borra un gol por error, simplemente deja de contarlo.
 import { useEffect, useState } from 'react'
 import { extraerGoles } from '../lib/liveMatch'
+import { supabase } from '../lib/supabase'
 
 const DURACION_MS = 8000
+const FOTO_SEG = 6 // la foto del goleador se ve 6 segundos (dentro de los 8 del aviso)
 const ROJO_VIVO = '#e5433d'
 
 const claveGol = g => `${g.equipo}|${g.numero}|${g.jugador}|${g.periodo}|${g.minuto}`
@@ -49,14 +52,44 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
     return () => clearTimeout(t)
   }, [aviso])
 
+  // Foto del goleador: primero la que ya viene en la planilla; si no vino,
+  // se busca por id del jugador. Sin foto → escudo grande con el número.
+  const [fotoBuscada, setFotoBuscada] = useState({ n: -1, url: null })
+  useEffect(() => {
+    if (!aviso || aviso.foto || !aviso.jugadorId) return undefined
+    let vivo = true
+    supabase.from('players_publico').select('photo_face_url,photo_url').eq('id', aviso.jugadorId).maybeSingle()
+      .then(({ data }) => { if (vivo) setFotoBuscada({ n: aviso.n, url: data?.photo_face_url || data?.photo_url || null }) })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [aviso])
+
   if (!aviso || !partido) return null
+  const fotoUrl = aviso.foto || (fotoBuscada.n === aviso.n ? fotoBuscada.url : null)
   const local = aviso.equipo === 'local'
   const equipo = local ? partido.home : partido.away
   const color = (local ? partido.colores?.colorLocal : partido.colores?.colorVisitante) || '#1a73e8'
 
   return (
     <>
-      <style>{`@keyframes gmGolEntra { 0% { opacity: 0; transform: translateY(36px) scale(.96); } 60% { opacity: 1; transform: translateY(-4px) scale(1.01); } 100% { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
+      <style>{`@keyframes gmGolEntra { 0% { opacity: 0; transform: translateY(36px) scale(.96); } 60% { opacity: 1; transform: translateY(-4px) scale(1.01); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes gmGolFoto { 0% { opacity: 0; transform: translateY(24px) scale(.96); } 8% { opacity: .62; transform: translateY(0) scale(1); } 86% { opacity: .62; } 100% { opacity: 0; } }`}</style>
+      {/* Foto del goleador: semitransparente, pegada al borde del lado de SU equipo y con los bordes difuminados, para no tapar el marcador ni la jugada */}
+      <div key={'f' + aviso.n} style={{
+        position: 'absolute', bottom: 0, [local ? 'left' : 'right']: 0, width: 'min(30%, 420px)', height: '56%', zIndex: 2, pointerEvents: 'none',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+        WebkitMaskImage: 'radial-gradient(ellipse 62% 70% at 50% 62%, #000 38%, transparent 100%)', maskImage: 'radial-gradient(ellipse 62% 70% at 50% 62%, #000 38%, transparent 100%)',
+        animation: `gmGolFoto ${FOTO_SEG}s ease-out both`,
+      }}>
+        {fotoUrl ? (
+          <img src={fotoUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 18px rgba(0,0,0,.5))' }}/>
+        ) : (
+          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {equipo?.logo_url && <img src={equipo.logo_url} alt="" style={{ maxWidth: '78%', maxHeight: '78%', objectFit: 'contain' }}/>}
+            {aviso.numero && <span style={{ position: 'absolute', fontSize: 'clamp(3rem, 14vw, 8rem)', fontWeight: 900, color: '#fff', textShadow: '0 4px 18px rgba(0,0,0,.7)', lineHeight: 1 }}>{aviso.numero}</span>}
+          </div>
+        )}
+      </div>
       <div key={aviso.n} style={{ position: 'absolute', left: 0, right: 0, bottom, zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{
           width: 'min(94%, 640px)', display: 'flex', alignItems: 'stretch', borderRadius: '14px', overflow: 'hidden',
