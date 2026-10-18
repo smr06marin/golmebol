@@ -16,6 +16,7 @@ import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 import PlanillaEquipoModal from '../../components/PlanillaEquipoModal'
+import FlyerTablaPosiciones from '../../components/FlyerTablaPosiciones'
 import { cargarPlanillaEquipoOrganizador } from '../../lib/planillaEquipo'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
@@ -1011,6 +1012,7 @@ export default function AdminTorneoDetallePage() {
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [linkRegistroEquipo, setLinkRegistroEquipo] = useState(null) // equipo al que se le va a compartir el link — abre el modal de duración
+  const [flyerTabla,        setFlyerTabla]        = useState(null)   // { filas, subtitulo } — flyer de la tabla de posiciones (general o de un grupo)
   const [planillaEquipo,     setPlanillaEquipo]     = useState(null)   // datos de la planilla PDF de un equipo (foto, cédula, nacimiento)
   const [duracionLinkDias,   setDuracionLinkDias]   = useState(1)    // cuántos días dura el link de registro antes de vencer
   const [uniformeEquipo,   setUniformeEquipo]   = useState(null)
@@ -4892,9 +4894,18 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div key={grupo.id} style={{ background: '#fff', border: `1px solid ${color}33`, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                     <div style={{ background: `${color}22`, borderBottom: `2px solid ${color}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ fontWeight: '700', color, fontSize: '.9rem' }}>{grupo.nombre}</div>
-                      <span style={{ fontSize: '.72rem', color, background: `${color}22`, borderRadius: '20px', padding: '2px 10px', fontWeight: '600' }}>
-                        {grupoEquipos.filter(ge => ge.grupo_id === grupo.id).length} equipos
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {tabla.length > 0 && (
+                          <button onClick={() => setFlyerTabla({ filas: tabla, subtitulo: String(grupo.nombre || '').toUpperCase() })}
+                            title="Crear flyer de esta tabla para redes"
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', background: color, color: '#fff', border: 'none', borderRadius: '20px', padding: '3px 10px', fontSize: '.72rem', fontWeight: '700', cursor: 'pointer' }}>
+                            🖼️ Flyer
+                          </button>
+                        )}
+                        <span style={{ fontSize: '.72rem', color, background: `${color}22`, borderRadius: '20px', padding: '2px 10px', fontWeight: '600' }}>
+                          {grupoEquipos.filter(ge => ge.grupo_id === grupo.id).length} equipos
+                        </span>
+                      </div>
                     </div>
                     {/* Tabla */}
                     <div style={{ overflowX: 'auto' }}>
@@ -5929,7 +5940,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Tabla general */}
           <div>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de posiciones — Fase de grupos</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Tabla de posiciones — Fase de grupos</div>
+              {tablaOrdenada.length > 0 && (
+                <button onClick={() => setFlyerTabla({ filas: tablaOrdenada, subtitulo: '' })}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 14px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                  🖼️ Crear flyer para redes
+                </button>
+              )}
+            </div>
             <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún"/>
           </div>
 
@@ -7497,6 +7516,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         </div>
       )}
 
+      {flyerTabla && <FlyerTablaPosiciones torneo={torneo} filas={flyerTabla.filas} subtitulo={flyerTabla.subtitulo} onClose={() => setFlyerTabla(null)}/>}
       {planillaEquipo && <PlanillaEquipoModal datos={planillaEquipo} onClose={() => setPlanillaEquipo(null)}/>}
       {/* Modal compartir link de registro — elegir cuánto dura antes de vencer */}
       {linkRegistroEquipo && (
