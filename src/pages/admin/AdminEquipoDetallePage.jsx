@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
+import ModalQuitarFondo from '../../components/ModalQuitarFondo'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock, Upload } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
@@ -162,6 +163,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [tabActiva,             setTabActiva]             = useState(searchParams.get('tab') || 'resumen')
   const [msg,                   setMsg]                   = useState(null)
   const [subiendoLogo,          setSubiendoLogo]          = useState(false)
+  const [previewFondo,          setPreviewFondo]          = useState(null)   // { archivo, urlAntes, urlDespues } — vista previa del recorte de fondo
 
   const [cedulaBuscar,      setCedulaBuscar]      = useState('')
   const [buscando,          setBuscando]          = useState(false)
@@ -563,20 +565,37 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     try {
       const { archivo, estado } = await limpiarLogoGuardado(equipo.logo_url)
       if (!archivo) {
-        showMsg(estado === 'ya-transparente' ? 'Este escudo ya tiene fondo transparente' : 'No se pudo quitar el fondo: no es liso (conviene subir el escudo ya recortado)', 'error')
-        setSubiendoLogo(false)
-        return
+        showMsg(estado === 'ya-transparente' ? 'Este escudo ya tiene fondo transparente' : estado === 'sin-fondo' ? 'Este escudo no tiene un fondo liso (blanco o negro) que quitar' : 'No se pudo quitar el fondo: no es liso (conviene subir el escudo ya recortado)', 'error')
+      } else {
+        setPreviewFondo({ archivo, urlAntes: equipo.logo_url, urlDespues: URL.createObjectURL(archivo) })
       }
+    } catch (e) {
+      showMsg('No se pudo quitar el fondo: ' + (e?.message || 'error'), 'error')
+    }
+    setSubiendoLogo(false)
+  }
+
+  function cancelarQuitarFondo() {
+    if (previewFondo?.urlDespues) URL.revokeObjectURL(previewFondo.urlDespues)
+    setPreviewFondo(null)
+  }
+
+  // La persona vio la vista previa y aceptó: se sube el PNG y se cambia el escudo
+  async function aplicarQuitarFondo() {
+    if (!previewFondo?.archivo) return
+    setSubiendoLogo(true)
+    try {
       const path = `logos/${id}_${Date.now()}.png`
-      const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true, contentType: 'image/png' })
+      const { error } = await supabase.storage.from('teams').upload(path, previewFondo.archivo, { upsert: true, contentType: 'image/png' })
       if (error) throw error
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
       const { error: errGuardar } = await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', id)
       if (errGuardar) throw errGuardar
       setEquipo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
       showMsg('Fondo quitado ✓')
+      cancelarQuitarFondo()
     } catch (e) {
-      showMsg('No se pudo quitar el fondo: ' + (e?.message || 'error'), 'error')
+      showMsg('No se pudo guardar el escudo: ' + (e?.message || 'error'), 'error')
     }
     setSubiendoLogo(false)
   }
@@ -899,7 +918,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       {/* Header */}
       <div style={{ ...GLASS, borderRadius: '26px', padding: '24px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{ flexShrink: 0 }}>
+           <div style={{ position: 'relative', width: '80px' }}>
             <div style={{ width: '80px', height: '80px', borderRadius: '22px', ...GLASS_INSET, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               {equipo.logo_url
                 ? <img src={equipo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
@@ -911,17 +931,19 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
               </label>
             )}
-            {!modoLectura && puedeEditar && equipo.logo_url && (
-              <button onClick={handleQuitarFondoLogo} disabled={subiendoLogo}
-                style={{ display: 'block', margin: '12px auto 0', background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '8px', color: '#fff', fontSize: '.65rem', fontWeight: '700', padding: '4px 8px', cursor: subiendoLogo ? 'default' : 'pointer', opacity: subiendoLogo ? .6 : 1, whiteSpace: 'nowrap' }}>
-                ✨ Quitar fondo
-              </button>
-            )}
             {!modoLectura && !puedeEditar && esOrganizador && (
               <div title="No podés editar el escudo de este equipo" style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Lock size={12} color="rgba(255,255,255,.8)"/>
               </div>
             )}
+           </div>
+            {!modoLectura && puedeEditar && equipo.logo_url && (
+              <button onClick={handleQuitarFondoLogo} disabled={subiendoLogo}
+                style={{ display: 'block', margin: '18px 0 0', background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '8px', color: '#fff', fontSize: '.65rem', fontWeight: '700', padding: '4px 8px', cursor: subiendoLogo ? 'default' : 'pointer', opacity: subiendoLogo ? .6 : 1, whiteSpace: 'nowrap' }}>
+                ✨ Quitar fondo
+              </button>
+            )}
+            {previewFondo && <ModalQuitarFondo urlAntes={previewFondo.urlAntes} urlDespues={previewFondo.urlDespues} guardando={subiendoLogo} onAplicar={aplicarQuitarFondo} onCancelar={cancelarQuitarFondo}/>}
           </div>
           <div style={{ flex: 1, minWidth: '200px' }}>
             {editandoNombre ? (

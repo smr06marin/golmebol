@@ -21,6 +21,7 @@ import { cargarPlanillaEquipoOrganizador } from '../../lib/planillaEquipo'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
+import ModalQuitarFondo from '../../components/ModalQuitarFondo'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -1003,6 +1004,7 @@ export default function AdminTorneoDetallePage() {
   const [guardandoMarca,     setGuardandoMarca]     = useState(false)
   const [uploadingFavicon,   setUploadingFavicon]   = useState(false)
   const [uploadingLogoMarca, setUploadingLogoMarca] = useState(false)
+  const [previewFondoLogo, setPreviewFondoLogo] = useState(null) // { archivo, urlAntes, urlDespues } — vista previa del recorte de fondo del logo
   const [torneoSponsors,     setTorneoSponsors]     = useState([])
   const [loadingSponsors,    setLoadingSponsors]    = useState(false)
   const [uploadingSponsorId, setUploadingSponsorId] = useState(null)
@@ -2845,12 +2847,28 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     try {
       const { archivo, estado } = await limpiarLogoGuardado(actual)
       if (!archivo) {
-        showMsg(estado === 'ya-transparente' ? 'Este logo ya tiene fondo transparente' : 'No se pudo quitar el fondo: no es liso o es de color (conviene subirlo ya recortado)', 'error')
-        setUploadingLogoMarca(false)
-        return
+        showMsg(estado === 'ya-transparente' ? 'Este logo ya tiene fondo transparente' : estado === 'sin-fondo' ? 'Este logo no tiene un fondo liso (blanco o negro) que quitar' : 'No se pudo quitar el fondo: no es liso (conviene subirlo ya recortado)', 'error')
+      } else {
+        setPreviewFondoLogo({ archivo, urlAntes: actual, urlDespues: URL.createObjectURL(archivo) })
       }
+    } catch (e) {
+      showMsg('No se pudo quitar el fondo: ' + (e?.message || 'error'), 'error')
+    }
+    setUploadingLogoMarca(false)
+  }
+
+  function cancelarQuitarFondoLogo() {
+    if (previewFondoLogo?.urlDespues) URL.revokeObjectURL(previewFondoLogo.urlDespues)
+    setPreviewFondoLogo(null)
+  }
+
+  // La persona vio la vista previa y aceptó: se sube el PNG y se cambia el logo
+  async function aplicarQuitarFondoLogoTorneo() {
+    if (!previewFondoLogo?.archivo) return
+    setUploadingLogoMarca(true)
+    try {
       const path = `logos/${id}_${Date.now()}.png`
-      const { error: errSubida } = await supabase.storage.from('tournaments').upload(path, archivo, { upsert: true, contentType: 'image/png' })
+      const { error: errSubida } = await supabase.storage.from('tournaments').upload(path, previewFondoLogo.archivo, { upsert: true, contentType: 'image/png' })
       if (errSubida) throw errSubida
       const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
       const { error: errGuardar } = await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
@@ -2858,8 +2876,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       setFormMarca(f => ({ ...f, logo_url: urlData.publicUrl }))
       setTorneo(p => ({ ...p, logo_url: urlData.publicUrl }))
       showMsg('Fondo quitado ✓')
+      cancelarQuitarFondoLogo()
     } catch (e) {
-      showMsg('No se pudo quitar el fondo: ' + (e?.message || 'error'), 'error')
+      showMsg('No se pudo guardar el logo: ' + (e?.message || 'error'), 'error')
     }
     setUploadingLogoMarca(false)
   }
@@ -7436,6 +7455,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         ✨ Quitar fondo
                       </button>
                     )}
+                    {previewFondoLogo && <ModalQuitarFondo urlAntes={previewFondoLogo.urlAntes} urlDespues={previewFondoLogo.urlDespues} guardando={uploadingLogoMarca} onAplicar={aplicarQuitarFondoLogoTorneo} onCancelar={cancelarQuitarFondoLogo}/>}
                     <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
                   </div>
                 </div>

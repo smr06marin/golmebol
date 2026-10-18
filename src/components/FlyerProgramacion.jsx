@@ -553,6 +553,10 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, canchas =
                   <Download size={16}/> Descargar las {totalPaginas} páginas
                 </button>
               )}
+              <button onClick={onClose}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '8px', padding: '9px 16px', cursor: 'pointer', color: '#3c4043', fontSize: '.85rem', fontWeight: '600' }}>
+                <X size={16}/> Cerrar flyer
+              </button>
             </div>
           </>
         )}

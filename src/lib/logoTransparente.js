@@ -78,15 +78,19 @@ export async function quitarFondoLogo(fuente, { maxDim = MAX_DIM_POR_DEFECTO, to
   }
   if (rs.length < borde.length * 0.5) return { blob: null, estado: 'no-uniforme' }
   const bg = [mediana(rs), mediana(gs), mediana(bs)]
-  // Solo se quitan fondos CLAROS (blanco, gris muy claro): son las cajas que
-  // estorban en los flyers. Un fondo de color o negro suele ser parte del diseño
-  // del escudo (un cuadro azul con un balón, por ejemplo) y no se toca.
-  if (Math.min(bg[0], bg[1], bg[2]) < 190) return { blob: null, estado: 'sin-fondo' }
+  // Solo se quitan fondos lisos CLAROS (blanco, gris muy claro) u OSCUROS
+  // (negro): son las cajas que estorban en los flyers. Un fondo de color suele
+  // ser parte del diseño del escudo (un cuadro azul con un balón, por ejemplo)
+  // y no se toca.
+  const claro = Math.min(bg[0], bg[1], bg[2]) >= 190
+  const oscuro = Math.max(bg[0], bg[1], bg[2]) <= 60
+  if (!claro && !oscuro) return { blob: null, estado: 'sin-fondo' }
+  const tol = oscuro ? Math.max(tolerancia, 42) : tolerancia
   const dist = i => Math.sqrt((d[i] - bg[0]) ** 2 + (d[i + 1] - bg[1]) ** 2 + (d[i + 2] - bg[2]) ** 2)
 
   // ¿El borde es liso? Si no, es una foto o un fondo complicado
   let parecidos = 0
-  for (const p of borde) if (dist(p * 4) <= tolerancia * 1.3) parecidos++
+  for (const p of borde) if (dist(p * 4) <= tol * 1.3) parecidos++
   if (parecidos / borde.length < 0.82) return { blob: null, estado: 'no-uniforme' }
 
   // Relleno por inundación desde el borde: solo lo conectado con el borde
@@ -96,7 +100,7 @@ export async function quitarFondoLogo(fuente, { maxDim = MAX_DIM_POR_DEFECTO, to
   let ini = 0, fin = 0
   const meter = p => {
     if (quitar[p]) return
-    if (dist(p * 4) > tolerancia) return
+    if (dist(p * 4) > tol) return
     quitar[p] = 1
     cola[fin++] = p
   }
@@ -177,7 +181,7 @@ export async function quitarFondoLogo(fuente, { maxDim = MAX_DIM_POR_DEFECTO, to
 
   // Borde suave: los píxeles que tocan el fondo quitado quedan semitransparentes
   // según qué tan distintos son del fondo, para que el corte no se vea dentado.
-  const ancho = tolerancia * 2.4
+  const ancho = tol * 2.4
   for (let p = 0; p < total; p++) {
     const i = p * 4
     if (quitar[p]) { d[i + 3] = 0; continue }
@@ -185,7 +189,7 @@ export async function quitarFondoLogo(fuente, { maxDim = MAX_DIM_POR_DEFECTO, to
     const toca = (x > 0 && quitar[p - 1]) || (x < w - 1 && quitar[p + 1]) || (p >= w && quitar[p - w]) || (p < total - w && quitar[p + w])
     if (!toca) continue
     const dd = dist(i)
-    if (dd < tolerancia + ancho) d[i + 3] = Math.round(Math.min(255, Math.max(0, 255 * (dd - tolerancia * 0.4) / (ancho + tolerancia * 0.6))))
+    if (dd < tol + ancho) d[i + 3] = Math.round(Math.min(255, Math.max(0, 255 * (dd - tol * 0.4) / (ancho + tol * 0.6))))
   }
   ctx.putImageData(imageData, 0, 0)
   return { blob: await aPng(canvas), estado: 'quitado' }

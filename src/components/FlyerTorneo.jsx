@@ -144,8 +144,8 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
               <Download size={16}/> {descargando ? 'Generando...' : 'Descargar'}
             </button>
             <button onClick={onClose}
-              style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center' }}>
-              <X size={16}/>
+              style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.875rem', fontWeight: '500' }}>
+              <X size={16}/> Cerrar
             </button>
           </div>
         </div>

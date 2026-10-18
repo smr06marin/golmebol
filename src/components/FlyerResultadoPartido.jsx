@@ -369,6 +369,10 @@ export default function FlyerResultadoPartido({ partido, torneo, eventos, nombre
           style={{ marginTop: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#1a73e8', border: 'none', borderRadius: 12, padding: '14px', cursor: descargando ? 'wait' : 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: 800, opacity: descargando ? 0.7 : 1 }}>
           <Download size={18}/> {descargando ? 'Generando imagen...' : 'Descargar / Compartir'}
         </button>
+        <button onClick={onClose}
+          style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: 12, padding: '13px', cursor: 'pointer', color: '#3c4043', fontWeight: 800, fontSize: '.95rem' }}>
+          <X size={18}/> Cerrar flyer
+        </button>
         <div style={{ marginTop: 8, textAlign: 'center', fontSize: '.7rem', color: '#9aa0a6' }}>En el celular se abre "Guardar imagen" para que quede en tu galería.</div>
       </div>
     </div>
