@@ -2,7 +2,7 @@
 // (AdminTorneoDetallePage), la vista pública (TorneoPublicoPage) y la vista
 // del jugador (PlayerTorneoPage). Antes estaba copiado y pegado en los tres
 // archivos (misma lógica, variables con nombres distintos).
-import { getPuntosTorneo } from './puntosTorneo'
+import { getPuntosTorneo, puntosVictoria } from './puntosTorneo'
 import { derivarEnVivo, extraerGolesConJugador } from './liveMatch'
 
 // Mientras un partido se está jugando (el árbitro ya lo abrió y está
@@ -64,6 +64,21 @@ export function compararPosiciones(a, b) {
       || (a.gc - b.gc)
 }
 
+// Descuentos (o devoluciones) de puntos por equipo: se suman a los puntos de la
+// fila y se dejan en `fila.descuento = { total, items }` para que la tabla los
+// marque. `descuentos` = filas de descuentos_puntos del torneo. Muta y devuelve `filas`.
+export function aplicarDescuentos(filas, descuentos) {
+  if (!descuentos || descuentos.length === 0) return filas
+  filas.forEach(f => {
+    const items = descuentos.filter(d => d.team_id === f.equipo?.id)
+    if (items.length === 0) return
+    const total = items.reduce((acc, d) => acc + (Number(d.puntos) || 0), 0)
+    f.pts += total
+    f.descuento = { total, items }
+  })
+  return filas
+}
+
 export function computeTablaGeneral(equipos, partidos, torneo) {
   const P = getPuntosTorneo(torneo)
   const tabla = {}
@@ -72,20 +87,20 @@ export function computeTablaGeneral(equipos, partidos, torneo) {
     if (tabla[p.home_team_id]) {
       if (p._enVivo) tabla[p.home_team_id].enVivo = enVivoDe(p, true, tabla[p.away_team_id]?.equipo?.name)
       tabla[p.home_team_id].pj++; tabla[p.home_team_id].gf += p.home_score || 0; tabla[p.home_team_id].gc += p.away_score || 0
-      if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
+      if (p.home_score > p.away_score)       { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += puntosVictoria(P, p) }
       else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
       else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
     }
     if (tabla[p.away_team_id]) {
       if (p._enVivo) tabla[p.away_team_id].enVivo = enVivoDe(p, false, tabla[p.home_team_id]?.equipo?.name)
       tabla[p.away_team_id].pj++; tabla[p.away_team_id].gf += p.away_score || 0; tabla[p.away_team_id].gc += p.home_score || 0
-      if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
+      if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += puntosVictoria(P, p) }
       else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
       else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
     }
   })
   return agregarForma(
-    Object.values(tabla).sort(compararPosiciones),
+    aplicarDescuentos(Object.values(tabla), torneo?.descuentos).sort(compararPosiciones),
     partidos
   )
 }

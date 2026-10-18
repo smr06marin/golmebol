@@ -6,9 +6,9 @@ import { ArrowLeft, Shield, X, ChevronDown } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
-import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, compararPosiciones } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, compararPosiciones, aplicarDescuentos } from '../lib/torneoTablas'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -391,6 +391,14 @@ export default function PlayerTorneoPage() {
   const [torneo,         setTorneo]         = useState(null)
   const [equipos,        setEquipos]        = useState([])
   const [partidos,       setPartidos]       = useState([])
+  // Descuentos de puntos del torneo (sanciones): se suman a la tabla con su motivo.
+  const [descuentos, setDescuentos] = useState([])
+  useEffect(() => {
+    if (!torneo?.id) return undefined
+    let vivo = true
+    cargarDescuentos(torneo.id).then(d => { if (vivo) setDescuentos(d) })
+    return () => { vivo = false }
+  }, [torneo?.id])
   const [grupos,         setGrupos]         = useState([])
   const [grupoEquipos,   setGrupoEquipos]   = useState([])
   const [bracket,        setBracket]        = useState([]) // partidos de eliminatorias (todas las fases, no solo la actual)
@@ -684,22 +692,22 @@ export default function PlayerTorneoPage() {
       if (t[p.home_team_id]) {
         if (p._enVivo) t[p.home_team_id].enVivo = enVivoDe(p, true, t[p.away_team_id]?.equipo?.name)
         t[p.home_team_id].pj++; t[p.home_team_id].gf += p.home_score||0; t[p.home_team_id].gc += p.away_score||0
-        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += P.victoria }
+        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += puntosVictoria(P, p) }
         else if (p.home_score === p.away_score) { t[p.home_team_id].pe++; t[p.home_team_id].pts += P.empate }
         else { t[p.home_team_id].pp++; t[p.home_team_id].pts += P.derrota }
       }
       if (t[p.away_team_id]) {
         if (p._enVivo) t[p.away_team_id].enVivo = enVivoDe(p, false, t[p.home_team_id]?.equipo?.name)
         t[p.away_team_id].pj++; t[p.away_team_id].gf += p.away_score||0; t[p.away_team_id].gc += p.home_score||0
-        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += P.victoria }
+        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += puntosVictoria(P, p) }
         else if (p.away_score === p.home_score) { t[p.away_team_id].pe++; t[p.away_team_id].pts += P.empate }
         else { t[p.away_team_id].pp++; t[p.away_team_id].pts += P.derrota }
       }
     })
-    return Object.values(t).sort(compararPosiciones)
+    return aplicarDescuentos(Object.values(t), descuentos).sort(compararPosiciones)
   }
 
-  const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
+  const tablaOrdenada = computeTablaGeneral(equipos, partidos, { ...torneo, descuentos })
   // Goleadores con los goles del partido en vivo sumados encima (ver
   // mergeGoleadoresConVivo) — así el ranking también se actualiza solo
   // mientras el árbitro va llenando la planilla, sin esperar el guardado final.

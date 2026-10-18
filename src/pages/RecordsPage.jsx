@@ -15,9 +15,9 @@ import { PantallaCargando } from '../components/PantallaCargando'
 import { registrarVisita } from '../lib/visitas'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
-import { getPuntosTorneo } from '../lib/puntosTorneo'
+import { getPuntosTorneo, puntosVictoria, cargarTorneoPuntos } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { compararPosiciones } from '../lib/torneoTablas'
+import { compararPosiciones, aplicarDescuentos } from '../lib/torneoTablas'
 
 // Icono de cada récord automático (los históricos traen el suyo — texto libre
 // desde la BD — o si no, uno de estos componentes SVG según el tipo)
@@ -691,17 +691,21 @@ export default function RecordsPage() {
   }
 
   // Tabla de posiciones PÚBLICA del torneo (solo la clasificación)
-  async function abrirTablaTorneo(t) {
+  async function abrirTablaTorneo(t0) {
+    let t = t0
     setTorneoTabla('cargando')
     setTorneoTablaTab('tabla')
     setTorneoProgFiltro('proximos')
     registrarVisita('tabla_torneo', t.id)
-    const [{ data: tts }, { data: ms }, { data: grps }, { data: golData }] = await Promise.all([
+    const [{ data: tts }, { data: ms }, { data: grps }, { data: golData }, extraPts] = await Promise.all([
       supabase.from('tournament_teams').select('*, teams(id, name, logo_url)').eq('tournament_id', t.id),
-      supabase.from('matches').select('id, home_team_id, away_team_id, home_score, away_score, status, fase, ronda, played_at').eq('tournament_id', t.id),
+      supabase.from('matches').select('id, home_team_id, away_team_id, home_score, away_score, status, fase, ronda, played_at, tipo_resultado').eq('tournament_id', t.id),
       supabase.from('tournament_grupos').select('*').eq('tournament_id', t.id).order('orden'),
       supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', t.id).gt('total_goals', 0).order('total_goals', { ascending: false }).limit(5),
+      cargarTorneoPuntos(t.id).catch(() => ({})),
     ])
+    // Puntos del W + descuentos de este torneo (vienen de cargarTorneoPuntos)
+    t = { ...t, ...extraPts }
     let ge = []
     if (grps?.length) {
       const { data: geData } = await supabase.from('grupo_equipos').select('*').in('grupo_id', grps.map(g => g.id))
@@ -715,11 +719,11 @@ export default function RecordsPage() {
     ;(ms || []).filter(m => m.status === 'finished' && (!m.fase || m.fase === 'grupo')).forEach(m => {
       const L = tabla[m.home_team_id], V = tabla[m.away_team_id]
       if (L) { L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
-        if (m.home_score > m.away_score) { L.pg++; L.pts += Ppts.victoria } else if (m.home_score === m.away_score) { L.pe++; L.pts += Ppts.empate } else { L.pp++; L.pts += Ppts.derrota } }
+        if (m.home_score > m.away_score) { L.pg++; L.pts += puntosVictoria(Ppts, m) } else if (m.home_score === m.away_score) { L.pe++; L.pts += Ppts.empate } else { L.pp++; L.pts += Ppts.derrota } }
       if (V) { V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
-        if (m.away_score > m.home_score) { V.pg++; V.pts += Ppts.victoria } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota } }
+        if (m.away_score > m.home_score) { V.pg++; V.pts += puntosVictoria(Ppts, m) } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota } }
     })
-    const filas = Object.values(tabla).sort(compararPosiciones)
+    const filas = aplicarDescuentos(Object.values(tabla), t.descuentos).sort(compararPosiciones)
     setTorneoTabla({ torneo: t, filas, grupos: grps || [], grupoEquipos: ge, partidos: ms || [], equiposMap, goleadores: golData || [] })
   }
 
@@ -735,15 +739,15 @@ export default function RecordsPage() {
       if (t[m.home_team_id]) {
         const L = t[m.home_team_id]
         L.pj++; L.gf += m.home_score || 0; L.gc += m.away_score || 0
-        if (m.home_score > m.away_score) { L.pg++; L.pts += Ppts.victoria } else if (m.home_score === m.away_score) { L.pe++; L.pts += Ppts.empate } else { L.pp++; L.pts += Ppts.derrota }
+        if (m.home_score > m.away_score) { L.pg++; L.pts += puntosVictoria(Ppts, m) } else if (m.home_score === m.away_score) { L.pe++; L.pts += Ppts.empate } else { L.pp++; L.pts += Ppts.derrota }
       }
       if (t[m.away_team_id]) {
         const V = t[m.away_team_id]
         V.pj++; V.gf += m.away_score || 0; V.gc += m.home_score || 0
-        if (m.away_score > m.home_score) { V.pg++; V.pts += Ppts.victoria } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota }
+        if (m.away_score > m.home_score) { V.pg++; V.pts += puntosVictoria(Ppts, m) } else if (m.away_score === m.home_score) { V.pe++; V.pts += Ppts.empate } else { V.pp++; V.pts += Ppts.derrota }
       }
     })
-    return Object.values(t).sort(compararPosiciones)
+    return aplicarDescuentos(Object.values(t), tt.torneo?.descuentos).sort(compararPosiciones)
   }
 
   // Campeones coronados en los últimos 15 días (se muestran a todo el que entre)

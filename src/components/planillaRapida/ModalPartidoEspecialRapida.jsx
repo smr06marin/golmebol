@@ -6,7 +6,7 @@ import { PANEL, BORDE, TEXTO, TEXTO_TENUE, VERDE, ROJO, btnPrimario, btnSecundar
 // construido desde cero acá porque la rápida no tenía nada de esto. Además
 // de elegir el tipo (y, si es W, qué equipo se presentó), pide la foto del
 // equipo que sí se presentó para que quede visible en la app.
-export default function ModalPartidoEspecialRapida({ nombreLocal, nombreVis, guardando, onConfirmar, onCerrar, tipoInicial = null }) {
+export default function ModalPartidoEspecialRapida({ nombreLocal, nombreVis, guardando, onConfirmar, onCerrar, tipoInicial = null, golesW = 3 }) {
   const [tipo, setTipo] = useState(tipoInicial === 'w' || tipoInicial === 'desierto' ? tipoInicial : null) // null | 'w' | 'desierto'
   const [equipoGana, setEquipoGana] = useState('')
   const [foto, setFoto] = useState(null)
@@ -35,7 +35,7 @@ export default function ModalPartidoEspecialRapida({ nombreLocal, nombreVis, gua
         {!tipo && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
             <button onClick={() => setTipo('w')} style={{ padding: '14px', background: 'rgba(30,142,62,.12)', border: `1px solid ${VERDE}`, borderRadius: '10px', cursor: 'pointer', color: VERDE, fontWeight: '800', fontSize: '.85rem', textAlign: 'left' }}>
-              🏆 Por W<div style={{ fontSize: '.72rem', fontWeight: '500', color: TEXTO_TENUE, marginTop: '3px' }}>Un equipo no se presentó. El otro gana 3 a 0.</div>
+              🏆 Por W<div style={{ fontSize: '.72rem', fontWeight: '500', color: TEXTO_TENUE, marginTop: '3px' }}>Un equipo no se presentó. El otro gana {golesW} a 0.</div>
             </button>
             <button onClick={() => setTipo('desierto')} style={{ padding: '14px', background: 'rgba(217,48,37,.12)', border: `1px solid ${ROJO}`, borderRadius: '10px', cursor: 'pointer', color: ROJO, fontWeight: '800', fontSize: '.85rem', textAlign: 'left' }}>
               ❌ Desierto<div style={{ fontSize: '.72rem', fontWeight: '500', color: TEXTO_TENUE, marginTop: '3px' }}>Ninguno de los dos se presentó. Queda anulado.</div>

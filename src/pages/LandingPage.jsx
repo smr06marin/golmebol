@@ -18,6 +18,7 @@ import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { computeTablaGeneral } from '../lib/torneoTablas'
+import { cargarTorneoPuntos } from '../lib/puntosTorneo'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
 import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
@@ -649,9 +650,9 @@ export default function LandingPage() {
     if (!idsFaltantes.length) return
     idsFaltantes.forEach(async tid => {
       const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
-        supabase.from('tournaments').select('pts_victoria, pts_empate, pts_derrota').eq('id', tid).maybeSingle(),
+        cargarTorneoPuntos(tid),
         supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tid),
-        supabase.from('matches').select('status, fase, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tid),
+        supabase.from('matches').select('status, fase, tipo_resultado, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tid),
       ])
       const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
       setTablasEnVivo(t => ({ ...t, [tid]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))

@@ -9,7 +9,7 @@ import { ubicacionDeTorneo } from '../../lib/ubicaciones'
 import SelectorPlanillaTorneo from '../../components/SelectorPlanillaTorneo'
 
 
-const EMPTY = { name: '', season: '', city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
+const EMPTY = { name: '', season: '', city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
 // Solo estas cuentas pueden asignar/cambiar el organizador de un torneo ya
 // creado (mismo criterio que en AdminEquiposPage.jsx / AdminJugadorDetallePage.jsx
 // para "cambiar dueño" — respaldo por si la tabla de roles falla).
@@ -162,6 +162,9 @@ export default function AdminTorneosPage() {
     const formNorm = {
       ...form,
       pts_victoria: numDef(form.pts_victoria, 3), pts_empate: numDef(form.pts_empate, 1), pts_derrota: numDef(form.pts_derrota, 0),
+      // Partido por W: marcador con el que gana quien sí se presentó (por defecto 3-0) y puntos que recibe (vacío = los de una victoria).
+      w_goles_ganador: Math.max(0, numDef(form.w_goles_ganador, 3)),
+      w_puntos_ganador: (form.w_puntos_ganador === '' || form.w_puntos_ganador === null || form.w_puntos_ganador === undefined || isNaN(parseInt(form.w_puntos_ganador, 10))) ? null : parseInt(form.w_puntos_ganador, 10),
       fecha_inicio: form.fecha_inicio || null,
       fecha_fin:    form.fecha_fin || null,
       // Vacío = sin límite (null), no 0 — 0 significaría "no puede haber jugadores".
@@ -198,6 +201,9 @@ export default function AdminTorneosPage() {
     // pts_victoria/pts_empate/pts_derrota — faltan sus migraciones), se
     // reintenta sin ese campo en vez de fallar todo el guardado.
     const sinPuntos = obj => { const { pts_victoria, pts_empate, pts_derrota, ...resto } = obj; return resto }
+    const sinW = obj => { const { w_goles_ganador, w_puntos_ganador, ...resto } = obj; return resto }
+    const wEsDefault = formNorm.w_goles_ganador === 3 && formNorm.w_puntos_ganador === null
+    const esErrorW = error => error?.message?.includes('w_goles_ganador') || error?.message?.includes('w_puntos_ganador')
     const sinLimite = obj => { const { limite_jugadores_equipo, ...resto } = obj; return resto }
     const sinDuracion = obj => { const { duracion_tiempo_min, ...resto } = obj; return resto }
     const sinPlanilla = obj => { const { planilla_tipo, ...resto } = obj; return resto }
@@ -217,6 +223,12 @@ export default function AdminTorneosPage() {
       if (error && esErrorFinanzas(error)) {
         payload = formNorm
         avisoDegradado = 'Torneo actualizado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
+      }
+      if (error && esErrorW(error)) {
+        // Falta correr migracion_w_y_descuentos.sql: si el W está en lo normal (3-0) no hay nada que perder y no se avisa.
+        payload = sinW(payload)
+        if (!wEsDefault) avisoDegradado = 'Torneo actualizado, pero la configuración del W NO se guardó: ejecuta migracion_w_y_descuentos.sql en Supabase'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorPuntos(error)) {
@@ -264,6 +276,11 @@ export default function AdminTorneosPage() {
         avisoDegradado = 'Torneo creado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
+      if (error && esErrorW(error)) {
+        payload = sinW(payload)
+        if (!wEsDefault) avisoDegradado = 'Torneo creado, pero la configuración del W NO se guardó: ejecuta migracion_w_y_descuentos.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
       if (error && esErrorPuntos(error)) {
         payload = sinPuntos(payload)
         avisoDegradado = 'Torneo creado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
@@ -305,7 +322,7 @@ export default function AdminTorneosPage() {
     const ub = ubicacionDeTorneo(t)
     const detectada = !t.municipio_codigo && !!ub.munCodigo
     setUbicInferida(detectada)
-    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '' })
+    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, w_goles_ganador: t.w_goles_ganador ?? 3, w_puntos_ganador: t.w_puntos_ganador ?? '', limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '' })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -486,6 +503,23 @@ export default function AdminTorneosPage() {
                 <div>
                   <label style={label}>Derrota</label>
                   <input type="number" min="0" value={form.pts_derrota} onChange={e => setForm(f => ({ ...f, pts_derrota: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
+                </div>
+              </div>
+              {/* Partido por W: cada torneo define cómo se premia al equipo que SÍ se presentó */}
+              <div style={{ borderTop: '1px dashed #dadce0', marginTop: '14px', paddingTop: '12px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>🏆 Partido ganado por W (el otro equipo no se presentó)</div>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>Cómo se anota cuando un equipo no se presenta. La planilla del árbitro y la tabla de posiciones usan estos valores.</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <label style={label}>Goles del ganador</label>
+                    <input type="number" min="0" value={form.w_goles_ganador ?? 3} onChange={e => setForm(f => ({ ...f, w_goles_ganador: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Marcador: {(form.w_goles_ganador === '' || form.w_goles_ganador === undefined ? 3 : form.w_goles_ganador)} - 0</div>
+                  </div>
+                  <div>
+                    <label style={label}>Puntos del ganador</label>
+                    <input type="number" min="0" value={form.w_puntos_ganador ?? ''} placeholder={`Igual que victoria (${form.pts_victoria === '' ? 3 : form.pts_victoria})`} onChange={e => setForm(f => ({ ...f, w_puntos_ganador: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}/>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Vacío = los mismos puntos de una victoria normal</div>
+                  </div>
                 </div>
               </div>
             </div>

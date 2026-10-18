@@ -5,6 +5,8 @@
 // rows: [{ equipo: { id, name, logo_url }, pj, pg, pe, pp, gf, gc, pts }]
 // miEquipoId (opcional): resalta la fila de ese equipo
 // titulo (opcional): encabezado dentro de la tarjeta
+// row.descuento (opcional): { total, items:[{puntos, motivo}] } — puntos quitados/sumados por el organizador, se muestran con su motivo
+// onDescontar (opcional, solo organizador): botón por equipo para gestionar descuentos
 
 import { useFavoritos } from '../lib/favoritos'
 import BotonEstrella from './BotonEstrella'
@@ -67,7 +69,7 @@ function PuntoVivo({ size = 7 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: ROJO, display: 'inline-block', flexShrink: 0, animation: 'gmVivoPulso 1.2s ease-in-out infinite' }}/>
 }
 
-export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0 }) {
+export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, onDescontar }) {
   const { esFavorito, alternar } = useFavoritos()
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
@@ -133,8 +135,21 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
                     </span>
                   )}
                   <FormaReciente forma={row.forma}/>
+                  {row.descuento && row.descuento.items.map((d, k) => {
+                    const n = Number(d.puntos) || 0
+                    return (
+                      <span key={d.id || k} style={{ display: 'inline-flex', alignItems: 'flex-start', gap: '4px', marginTop: '3px', color: n < 0 ? '#ffb4ae' : '#7ee2a8', fontWeight: 700, fontSize: '.58rem', lineHeight: 1.3 }}>
+                        <span style={{ background: n < 0 ? 'rgba(255,90,82,.22)' : 'rgba(34,184,106,.22)', borderRadius: 4, padding: '0 4px', flexShrink: 0 }}>{n > 0 ? '+' : ''}{n} pts</span>
+                        <span style={{ wordBreak: 'break-word' }}>{d.motivo || 'Sanción del organizador'}</span>
+                      </span>
+                    )
+                  })}
                 </div>
-                <span style={{ marginLeft: 'auto' }}>
+                <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                  {onDescontar && (
+                    <button onClick={e => { e.stopPropagation(); onDescontar(row) }} title="Descontar o corregir puntos" aria-label={'Descontar puntos a ' + row.equipo.name}
+                      style={{ background: row.descuento ? 'rgba(255,90,82,.25)' : 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', borderRadius: 7, minWidth: 30, height: 28, fontWeight: 900, fontSize: '.78rem', cursor: 'pointer', padding: '0 6px' }}>±</button>
+                  )}
                   <BotonEstrella activo={esFavorito(row.equipo.id)} onClick={() => alternar(row.equipo.id)} nombre={row.equipo.name} size={15} area={26} colorOff="#5f82c4"/>
                 </span>
               </div>

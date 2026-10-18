@@ -9,8 +9,8 @@ import VallaEquipos from '../components/VallaEquipos'
 import RankingArqueros from '../components/RankingArqueros'
 import { cargarArquerosTorneo } from '../lib/perfilPublico'
 import { registrarVisita } from '../lib/visitas'
-import { getPuntosTorneo } from '../lib/puntosTorneo'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma, compararPosiciones } from '../lib/torneoTablas'
+import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../lib/puntosTorneo'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma, compararPosiciones, aplicarDescuentos } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { cargarRostersTorneo, cargarRosterEquipo } from '../lib/rosterTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
@@ -373,6 +373,14 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   const [campeonVigente, setCampeonVigente] = useState(null) // campeón de la edición más reciente que ya tenga uno guardado
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
+  // Descuentos de puntos del torneo (sanciones): se suman a la tabla con su motivo.
+  const [descuentos, setDescuentos] = useState([])
+  useEffect(() => {
+    if (!torneo?.id) return undefined
+    let vivo = true
+    cargarDescuentos(torneo.id).then(d => { if (vivo) setDescuentos(d) })
+    return () => { vivo = false }
+  }, [torneo?.id])
   const [goleadores, setGoleadores] = useState([])
   const [porteros,  setPorteros]  = useState([]) // { team_id, id, name, photo_url, photo_face_url }
   const [grupos,       setGrupos]       = useState([])
@@ -694,7 +702,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
   // Tabla de posiciones
   const P = getPuntosTorneo(torneo)
-  const tablaOrdenada = computeTablaGeneral(equipos, partidos, torneo)
+  const tablaOrdenada = computeTablaGeneral(equipos, partidos, { ...torneo, descuentos })
   // Goleadores con los goles del partido en vivo sumados encima (ver
   // mergeGoleadoresConVivo) — así el ranking también se actualiza solo
   // mientras el árbitro va llenando la planilla, sin esperar el guardado final.
@@ -714,19 +722,19 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       if (t[p.home_team_id]) {
         if (p._enVivo) t[p.home_team_id].enVivo = enVivoDe(p, true, t[p.away_team_id]?.equipo?.name)
         t[p.home_team_id].pj++; t[p.home_team_id].gf += p.home_score || 0; t[p.home_team_id].gc += p.away_score || 0
-        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += P.victoria }
+        if (p.home_score > p.away_score) { t[p.home_team_id].pg++; t[p.home_team_id].pts += puntosVictoria(P, p) }
         else if (p.home_score === p.away_score) { t[p.home_team_id].pe++; t[p.home_team_id].pts += P.empate }
         else { t[p.home_team_id].pp++; t[p.home_team_id].pts += P.derrota }
       }
       if (t[p.away_team_id]) {
         if (p._enVivo) t[p.away_team_id].enVivo = enVivoDe(p, false, t[p.home_team_id]?.equipo?.name)
         t[p.away_team_id].pj++; t[p.away_team_id].gf += p.away_score || 0; t[p.away_team_id].gc += p.home_score || 0
-        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += P.victoria }
+        if (p.away_score > p.home_score) { t[p.away_team_id].pg++; t[p.away_team_id].pts += puntosVictoria(P, p) }
         else if (p.away_score === p.home_score) { t[p.away_team_id].pe++; t[p.away_team_id].pts += P.empate }
         else { t[p.away_team_id].pp++; t[p.away_team_id].pts += P.derrota }
       }
     })
-    return agregarForma(Object.values(t).sort(compararPosiciones), partGrupo)
+    return agregarForma(aplicarDescuentos(Object.values(t), descuentos).sort(compararPosiciones), partGrupo)
   }
 
   // Valla menos vencida GLOBAL por equipo: ranking por goles en contra, con

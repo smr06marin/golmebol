@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
 import { computeTablaGeneral } from '../lib/torneoTablas'
+import { cargarTorneoPuntos } from '../lib/puntosTorneo'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
@@ -152,9 +153,9 @@ export default function OverlayEnVivoPage() {
     let cancelado = false
     async function cargar() {
       const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
-        supabase.from('tournaments').select('pts_victoria, pts_empate, pts_derrota').eq('id', tablaTorneoId).maybeSingle(),
+        cargarTorneoPuntos(tablaTorneoId),
         supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tablaTorneoId),
-        supabase.from('matches').select('status, fase, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tablaTorneoId),
+        supabase.from('matches').select('status, fase, tipo_resultado, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tablaTorneoId),
       ])
       if (cancelado) return
       const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)

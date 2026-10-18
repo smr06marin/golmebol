@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
-import { getPuntosTorneo } from '../../lib/puntosTorneo'
+import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../../lib/puntosTorneo'
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, compararPosiciones } from '../../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, compararPosiciones, aplicarDescuentos } from '../../lib/torneoTablas'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
 import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
@@ -646,6 +646,51 @@ export default function AdminTorneoDetallePage() {
   const [ediciones, setEdiciones] = useState([]) // otras ediciones de este mismo torneo (hermanas), para el link "Ver ediciones"
   const [equipos,   setEquipos]   = useState([])
   const [partidos,  setPartidos]  = useState([])
+  // Descuentos de puntos del torneo (sanciones): se suman a la tabla con su motivo.
+  const [descuentos, setDescuentos] = useState([])
+  const recargarDescuentos = useCallback(async () => {
+    if (!id) return
+    setDescuentos(await cargarDescuentos(id))
+  }, [id])
+  useEffect(() => { recargarDescuentos() }, [recargarDescuentos])
+  // Modal "Descontar puntos": { equipo } del equipo elegido en la tabla
+  const [modalDescuento, setModalDescuento] = useState(null)
+  const [formDescuento, setFormDescuento] = useState({ signo: -1, puntos: '', motivo: '' })
+  const [guardandoDescuento, setGuardandoDescuento] = useState(false)
+  const [borrarDescuentoId, setBorrarDescuentoId] = useState(null) // 2º toque confirma
+  function abrirDescuento(row) {
+    setFormDescuento({ signo: -1, puntos: '', motivo: '' })
+    setBorrarDescuentoId(null)
+    setModalDescuento({ equipo: row.equipo })
+  }
+  async function guardarDescuento() {
+    const n = parseInt(formDescuento.puntos, 10)
+    const motivo = formDescuento.motivo.trim()
+    if (!Number.isFinite(n) || n <= 0) { showMsg('Escribe cuántos puntos (un número mayor a 0)', 'error'); return }
+    if (!motivo) { showMsg('Escribe el motivo: lo verá todo el que mire la tabla', 'error'); return }
+    setGuardandoDescuento(true)
+    const { error } = await supabase.from('descuentos_puntos').insert({
+      tournament_id: id, team_id: modalDescuento.equipo.id, puntos: n * formDescuento.signo, motivo,
+    })
+    setGuardandoDescuento(false)
+    if (error) {
+      showMsg(/descuentos_puntos|relation|schema cache/i.test(error.message || '')
+        ? 'Falta la tabla de descuentos: ejecuta migracion_w_y_descuentos.sql en Supabase'
+        : 'No se pudo guardar el descuento: ' + error.message, 'error')
+      return
+    }
+    setFormDescuento({ signo: -1, puntos: '', motivo: '' })
+    await recargarDescuentos()
+    showMsg(formDescuento.signo < 0 ? 'Descuento aplicado' : 'Puntos sumados')
+  }
+  async function borrarDescuento(d) {
+    if (borrarDescuentoId !== d.id) { setBorrarDescuentoId(d.id); return }
+    const { error } = await supabase.from('descuentos_puntos').delete().eq('id', d.id)
+    setBorrarDescuentoId(null)
+    if (error) { showMsg('No se pudo quitar el descuento: ' + error.message, 'error'); return }
+    await recargarDescuentos()
+    showMsg('Descuento eliminado')
+  }
   const [jugadores, setJugadores] = useState([])
   const [sanciones,        setSanciones]        = useState([]) // sanciones activas de este torneo (o globales) sobre jugadores del torneo
   const [modalSuspender,   setModalSuspender]    = useState(null) // registro (j) del jugador a suspender
@@ -1601,7 +1646,7 @@ export default function AdminTorneoDetallePage() {
         tabla[p.home_team_id].pj++
         tabla[p.home_team_id].gf += p.home_score || 0
         tabla[p.home_team_id].gc += p.away_score || 0
-        if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += P.victoria }
+        if (p.home_score > p.away_score)      { tabla[p.home_team_id].pg++; tabla[p.home_team_id].pts += puntosVictoria(P, p) }
         else if (p.home_score === p.away_score) { tabla[p.home_team_id].pe++; tabla[p.home_team_id].pts += P.empate }
         else { tabla[p.home_team_id].pp++; tabla[p.home_team_id].pts += P.derrota }
       }
@@ -1609,12 +1654,12 @@ export default function AdminTorneoDetallePage() {
         tabla[p.away_team_id].pj++
         tabla[p.away_team_id].gf += p.away_score || 0
         tabla[p.away_team_id].gc += p.home_score || 0
-        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += P.victoria }
+        if (p.away_score > p.home_score)       { tabla[p.away_team_id].pg++; tabla[p.away_team_id].pts += puntosVictoria(P, p) }
         else if (p.away_score === p.home_score) { tabla[p.away_team_id].pe++; tabla[p.away_team_id].pts += P.empate }
         else { tabla[p.away_team_id].pp++; tabla[p.away_team_id].pts += P.derrota }
       }
     })
-    return Object.values(tabla).sort(compararPosiciones)
+    return aplicarDescuentos(Object.values(tabla), descuentos).sort(compararPosiciones)
   }
 
   function getGoleadoresGrupo(grupoId) {
@@ -3049,6 +3094,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       equipos_permitidos: torneo.equipos_permitidos ?? 0,
       requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true,
       pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0,
+      w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? null,
       limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null,
       // La edición nueva usa la misma planilla (salón / fútbol 11) que la anterior.
       planilla_tipo: torneo.planilla_tipo || null,
@@ -3057,7 +3103,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // El sistema de puntos y algunos campos son relativamente nuevos: si en
     // este proyecto todavía falta correr su migración, no bloquea la
     // creación de la edición entera — se reintenta sin ese campo puntual.
-    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'limite_jugadores_equipo', 'duracion_tiempo_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
+    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'w_goles_ganador', 'w_puntos_ganador', 'limite_jugadores_equipo', 'duracion_tiempo_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
     while (error && camposOpcionales.some(c => (error.message || '').includes(c))) {
       const campo = camposOpcionales.find(c => (error.message || '').includes(c))
       payload = { ...payload }
@@ -3444,7 +3490,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
-    return computeTablaGeneral(equipos, partidos, torneo)
+    return computeTablaGeneral(equipos, partidos, { ...torneo, descuentos })
   }
 
   // Goleadores con los goles del partido en vivo sumados encima (ver
@@ -3533,9 +3579,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   async function handleGuardarTorneo() {
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
     const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? null : parseInt(v, 10)
-    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min) }
+    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), w_goles_ganador: Math.max(0, numDef(formTorneo.w_goles_ganador, 3)), w_puntos_ganador: numOrNull(formTorneo.w_puntos_ganador), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min) }
     let avisoDegradado = null
     let { data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id')
+    if (error && (error.message?.includes('w_goles_ganador') || error.message?.includes('w_puntos_ganador'))) {
+      // Falta correr migracion_w_y_descuentos.sql: si el W está en lo normal (3-0, puntos de victoria) no hay nada que perder y no se avisa
+      const wNormal = payload.w_goles_ganador === 3 && payload.w_puntos_ganador === null
+      const { w_goles_ganador, w_puntos_ganador, ...resto } = payload
+      payload = resto
+      if (!wNormal) avisoDegradado = 'Torneo actualizado, pero la configuración del W NO se guardó: ejecuta migracion_w_y_descuentos.sql en Supabase'
+      ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
+    }
     if (error && (error.message?.includes('pts_victoria') || error.message?.includes('pts_empate') || error.message?.includes('pts_derrota'))) {
       // Falta correr migracion_sistema_puntos.sql en Supabase: se reintenta sin esos 3 campos
       const { pts_victoria, pts_empate, pts_derrota, ...resto } = payload
@@ -4550,6 +4604,59 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         </div>
       )}
 
+      {modalDescuento && (() => {
+        const items = descuentos.filter(d => d.team_id === modalDescuento.equipo.id)
+        const total = items.reduce((a, d) => a + (Number(d.puntos) || 0), 0)
+        return (
+          <div onClick={() => setModalDescuento(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', padding: '22px', width: '440px', maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.25)' }}>
+              <div style={{ fontWeight: 700, color: '#202124', fontSize: '1rem' }}>Descontar puntos</div>
+              <div style={{ color: '#5f6368', fontSize: '.85rem', margin: '2px 0 14px' }}>{modalDescuento.equipo.name}{items.length > 0 ? ` · ajuste actual: ${total > 0 ? '+' : ''}${total} pts` : ''}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[{ v: -1, t: '➖ Quitar puntos', c: '#d93025', bg: '#fce8e6' }, { v: 1, t: '➕ Sumar (corregir)', c: '#1e8e3e', bg: '#e6f4ea' }].map(o => (
+                    <button key={o.v} type="button" onClick={() => setFormDescuento(f => ({ ...f, signo: o.v }))}
+                      style={{ flex: 1, padding: '10px 6px', borderRadius: '10px', cursor: 'pointer', fontWeight: 700, fontSize: '.8rem', border: `2px solid ${formDescuento.signo === o.v ? o.c : '#dadce0'}`, background: formDescuento.signo === o.v ? o.bg : '#fff', color: formDescuento.signo === o.v ? o.c : '#5f6368' }}>{o.t}</button>
+                  ))}
+                </div>
+                <div>
+                  <label style={labelStyle}>Cantidad de puntos</label>
+                  <input type="number" min="1" inputMode="numeric" value={formDescuento.puntos} onChange={e => setFormDescuento(f => ({ ...f, puntos: e.target.value }))} style={{ ...inputStyle, textAlign: 'center', fontSize: '1.1rem', fontWeight: 700 }} placeholder="Ej: 3"/>
+                </div>
+                <div>
+                  <label style={labelStyle}>Motivo (lo ve todo el público en la tabla)</label>
+                  <input value={formDescuento.motivo} onChange={e => setFormDescuento(f => ({ ...f, motivo: e.target.value }))} style={inputStyle} placeholder="Ej: Alineación indebida en la fecha 4" maxLength={120}/>
+                </div>
+                <button onClick={guardarDescuento} disabled={guardandoDescuento}
+                  style={{ background: formDescuento.signo < 0 ? '#d93025' : '#1e8e3e', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 800, fontSize: '.9rem', cursor: guardandoDescuento ? 'wait' : 'pointer', opacity: guardandoDescuento ? .7 : 1 }}>
+                  {guardandoDescuento ? 'Guardando…' : formDescuento.signo < 0 ? 'Aplicar descuento' : 'Sumar puntos'}
+                </button>
+              </div>
+              {items.length > 0 && (
+                <div style={{ marginTop: '18px' }}>
+                  <div style={{ fontWeight: 700, color: '#202124', fontSize: '.82rem', marginBottom: '8px' }}>Historial de este equipo</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {items.map(d => (
+                      <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '8px 10px' }}>
+                        <span style={{ fontWeight: 800, color: d.puntos < 0 ? '#d93025' : '#1e8e3e', minWidth: 52, fontSize: '.85rem' }}>{d.puntos > 0 ? '+' : ''}{d.puntos} pts</span>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: '.78rem', color: '#3c4043', wordBreak: 'break-word' }}>
+                          {d.motivo}
+                          {d.created_at && <span style={{ display: 'block', color: '#9aa0a6', fontSize: '.68rem' }}>{new Date(d.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                        </span>
+                        <button onClick={() => borrarDescuento(d)} style={{ background: borrarDescuentoId === d.id ? '#d93025' : '#fff', color: borrarDescuentoId === d.id ? '#fff' : '#d93025', border: '1px solid #d93025', borderRadius: '8px', padding: '6px 9px', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          {borrarDescuentoId === d.id ? '¿Seguro?' : 'Quitar'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Al quitar un descuento los puntos vuelven a la tabla.</div>
+                </div>
+              )}
+              <button onClick={() => setModalDescuento(null)} style={{ marginTop: '16px', width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '10px', fontWeight: 600, color: '#5f6368', cursor: 'pointer' }}>Cerrar</button>
+            </div>
+          </div>
+        )
+      })()}
       {editandoTorneo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', maxWidth: '100%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
@@ -4573,6 +4680,19 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <input type="number" min="0" value={formTorneo.pts_derrota ?? 0} onChange={e => setFormTorneo(p => ({ ...p, pts_derrota: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder="Derrota"/>
                 </div>
                 <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Cuánto suma cada equipo en la tabla de posiciones según el resultado (ej: 3-1-0 o 2-1-0)</div>
+              </div>
+              <div>
+                <label style={labelStyle}>🏆 Partido ganado por W (el otro equipo no se presentó)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <input type="number" min="0" value={formTorneo.w_goles_ganador ?? 3} onChange={e => setFormTorneo(p => ({ ...p, w_goles_ganador: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder="Goles"/>
+                    <div style={{ fontSize: '.66rem', color: '#9aa0a6', marginTop: '3px', textAlign: 'center' }}>Goles del ganador ({formTorneo.w_goles_ganador === '' || formTorneo.w_goles_ganador === undefined ? 3 : formTorneo.w_goles_ganador} - 0)</div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <input type="number" min="0" value={formTorneo.w_puntos_ganador ?? ''} onChange={e => setFormTorneo(p => ({ ...p, w_puntos_ganador: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder={`Victoria (${formTorneo.pts_victoria === '' ? 3 : (formTorneo.pts_victoria ?? 3)})`}/>
+                    <div style={{ fontSize: '.66rem', color: '#9aa0a6', marginTop: '3px', textAlign: 'center' }}>Puntos del ganador (vacío = los de una victoria)</div>
+                  </div>
+                </div>
               </div>
               {(esOrganizador || esAdminRol) && (
                 <div>
@@ -4798,6 +4918,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               {torneo.categoria && <span style={{ color: '#5f6368', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>{torneo.categoria}</span>}
               {gruposFinalizados && <span style={{ color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚡ Eliminatorias</span>}
               {torneo.archivado && <span style={{ color: '#5f6368', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>🗄️ Archivado</span>}
+              {torneo.logo_url && (
+                <button onClick={handleQuitarFondoLogoTorneo} disabled={uploadingLogoMarca} title="Quitar el fondo del logo del torneo (queda transparente)"
+                  style={{ color: '#6c35de', background: '#fff', border: '1px solid #6c35de', borderRadius: '8px', padding: '1px 8px', fontWeight: '700', fontSize: '.68rem', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
+                  ✨ Quitar fondo del logo
+                </button>
+              )}
             </div>
             {ediciones.length > 1 && (
               <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center', fontSize: '.68rem', marginTop: '5px' }}>
@@ -4825,7 +4951,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '14px' }}>
             🗄️
           </button>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '' }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? '', limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '' }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>
@@ -5998,7 +6124,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 </button>
               )}
             </div>
-            <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún"/>
+            <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún" onDescontar={abrirDescuento}/>
           </div>
 
           {/* Goleadores */}
@@ -7455,7 +7581,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         ✨ Quitar fondo
                       </button>
                     )}
-                    {previewFondoLogo && <ModalQuitarFondo urlAntes={previewFondoLogo.urlAntes} urlDespues={previewFondoLogo.urlDespues} guardando={uploadingLogoMarca} onAplicar={aplicarQuitarFondoLogoTorneo} onCancelar={cancelarQuitarFondoLogo}/>}
                     <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
                   </div>
                 </div>
@@ -7572,6 +7697,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         </div>
       )}
 
+      {previewFondoLogo && <ModalQuitarFondo urlAntes={previewFondoLogo.urlAntes} urlDespues={previewFondoLogo.urlDespues} guardando={uploadingLogoMarca} onAplicar={aplicarQuitarFondoLogoTorneo} onCancelar={cancelarQuitarFondoLogo}/>}
       {flyerTabla && <FlyerTablaPosiciones torneo={torneo} filas={flyerTabla.filas} subtitulo={flyerTabla.subtitulo} onClose={() => setFlyerTabla(null)}/>}
       {planillaEquipo && <PlanillaEquipoModal datos={planillaEquipo} onClose={() => setPlanillaEquipo(null)}/>}
       {/* Modal compartir link de registro — elegir cuánto dura antes de vencer */}

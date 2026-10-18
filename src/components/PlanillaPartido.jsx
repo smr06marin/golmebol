@@ -2,6 +2,7 @@ import { guardarEnVivo, guardarResultadoPartido } from '../lib/guardarEnVivo'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { conPlayers } from '../lib/planillaJugadores'
+import { cargarGolesW } from '../lib/puntosTorneo'
 import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../lib/predix'
 import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 } from 'lucide-react'
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
@@ -373,6 +374,13 @@ function ModalSeleccionArquero({ nombreEquipo, jugadores, onSeleccionar }) {
 
 function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
   const esW = tipo === 'w'
+  const [golesW, setGolesW] = useState(3)
+  useEffect(() => {
+    if (!partido?.tournament_id) return
+    let vivo = true
+    cargarGolesW(partido.tournament_id).then(g => { if (vivo) setGolesW(g) })
+    return () => { vivo = false }
+  }, [partido?.tournament_id])
   const [equipoGana, setEquipoGana] = useState('')
   const [foto, setFoto] = useState(null)
   const [fotoPreview, setFotoPreview] = useState(null)
@@ -393,7 +401,7 @@ function ModalEspecial({ tipo, partido, onConfirmar, onCancelar }) {
           <div style={{ fontSize: '2rem', marginBottom: '8px' }}>{esW ? '🏆' : '❌'}</div>
           <div style={{ fontWeight: '700', color: '#202124', fontSize: '1.1rem' }}>{esW ? 'Partido por W' : 'Partido Desierto'}</div>
           <div style={{ fontSize: '.82rem', color: '#5f6368', marginTop: '8px', lineHeight: 1.5 }}>
-            {esW ? 'Un equipo no se presentó. El equipo que SÍ asistió gana 3 a 0.' : 'Ninguno de los dos equipos se presentó. El partido queda anulado.'}
+            {esW ? 'Un equipo no se presentó. El equipo que SÍ asistió gana ' + golesW + ' a 0.' : 'Ninguno de los dos equipos se presentó. El partido queda anulado.'}
           </div>
         </div>
         <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px' }}>
@@ -1381,8 +1389,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     let fotoWUrl = null
     if (esEspecial) {
       tipoPartido = esEspecial.tipo
-      golesLocalTotal = esEspecial.tipo === 'w' ? (esEspecial.equipoGana === 'local' ? 3 : 0) : 0
-      golesVisTotal   = esEspecial.tipo === 'w' ? (esEspecial.equipoGana === 'visitante' ? 3 : 0) : 0
+      const golesGanaW = esEspecial.tipo === 'w' ? await cargarGolesW(partido.tournament_id) : 0
+      golesLocalTotal = esEspecial.tipo === 'w' && esEspecial.equipoGana === 'local' ? golesGanaW : 0
+      golesVisTotal   = esEspecial.tipo === 'w' && esEspecial.equipoGana === 'visitante' ? golesGanaW : 0
       // Foto del equipo que sí se presentó (partido por W) — se sube antes de
       // actualizar el partido para poder guardar la URL de una vez.
       if (esEspecial.foto) {

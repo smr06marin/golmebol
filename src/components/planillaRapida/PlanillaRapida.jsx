@@ -1,6 +1,7 @@
 import { guardarEnVivo, guardarResultadoPartido } from '../../lib/guardarEnVivo'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { cargarGolesW } from '../../lib/puntosTorneo'
 import { conPlayers } from '../../lib/planillaJugadores'
 import { resolverPrediccionesPartido, anularPrediccionesPartido } from '../../lib/predix'
 import PantallaColores from './PantallaColores'
@@ -150,6 +151,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [alertaFaltas, setAlertaFaltas] = useState(null) // { team }
   const [mostrarCierre, setMostrarCierre] = useState(false)
   const [mostrarEspecial, setMostrarEspecial] = useState(false)
+  const [golesW, setGolesW] = useState(3) // goles del ganador por W, configurable por torneo
+  useEffect(() => {
+    if (!partido?.tournament_id) return
+    let vivo = true
+    cargarGolesW(partido.tournament_id).then(g => { if (vivo) setGolesW(g) })
+    return () => { vivo = false }
+  }, [partido?.tournament_id])
   // Penales: al guardar una eliminatoria empatada se pregunta si se definió por penales.
   const [cierrePendiente, setCierrePendiente] = useState(null) // datos del cierre mientras se contesta
   const [mostrarPenales, setMostrarPenales] = useState(false)
@@ -1579,8 +1587,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   async function guardarFinalEspecial({ tipo, equipoGana, foto }) {
     finalizandoRef.current = true
     setGuardandoDB(true)
-    const golesLocalTotal = tipo === 'w' ? (equipoGana === 'local' ? 3 : 0) : 0
-    const golesVisTotal   = tipo === 'w' ? (equipoGana === 'visitante' ? 3 : 0) : 0
+    const golesGanaW = tipo === 'w' ? await cargarGolesW(partido.tournament_id) : 0
+    const golesLocalTotal = tipo === 'w' && equipoGana === 'local' ? golesGanaW : 0
+    const golesVisTotal   = tipo === 'w' && equipoGana === 'visitante' ? golesGanaW : 0
     const erroresGuardado = []
 
     if (partido.status === 'finished') {
@@ -1783,7 +1792,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         )}
         {mostrarEspecial && (
           <ModalPartidoEspecialRapida
-            nombreLocal={nombreLocal} nombreVis={nombreVis} tipoInicial={tipoEspecialInicial}
+            nombreLocal={nombreLocal} nombreVis={nombreVis} tipoInicial={tipoEspecialInicial} golesW={golesW}
             guardando={guardandoDB} onConfirmar={guardarFinalEspecial} onCerrar={() => setMostrarEspecial(false)}
           />
         )}
@@ -1856,7 +1865,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       )}
       {mostrarEspecial && (
         <ModalPartidoEspecialRapida
-          nombreLocal={nombreLocal} nombreVis={nombreVis}
+          nombreLocal={nombreLocal} nombreVis={nombreVis} golesW={golesW}
           guardando={guardandoDB} onConfirmar={guardarFinalEspecial} onCerrar={() => setMostrarEspecial(false)}
         />
       )}
