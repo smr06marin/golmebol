@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
-import { computeTablaGeneral } from '../lib/torneoTablas'
-import { cargarTorneoPuntos } from '../lib/puntosTorneo'
+import { tablasConVivo } from '../lib/torneoTablas'
+import { useTablasBase } from '../lib/useTablasBase'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
@@ -60,7 +60,6 @@ export default function OverlayEnVivoPage() {
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [hermanosVivo, setHermanosVivo] = useState([])
   const [patrocinadores, setPatrocinadores] = useState([])
-  const [tablas, setTablas] = useState({}) // { [tournamentId]: filas }
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
   const [tick, setTick] = useState(0)
   const patrocinadorVistoRef = useRef(null)
@@ -148,23 +147,11 @@ export default function OverlayEnVivoPage() {
   // cada 30s mientras siga prendido (la portada solo la trae una vez, pero
   // acá la transmisión dura horas y la tabla cambia al terminar cada partido).
   const tablaTorneoId = control?.overlay === 'tabla' ? control.overlay_tournament_id : null
-  useEffect(() => {
-    if (!tablaTorneoId) return
-    let cancelado = false
-    async function cargar() {
-      const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
-        cargarTorneoPuntos(tablaTorneoId),
-        supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tablaTorneoId),
-        supabase.from('matches').select('status, fase, tipo_resultado, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tablaTorneoId),
-      ])
-      if (cancelado) return
-      const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
-      setTablas(t => ({ ...t, [tablaTorneoId]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
-    }
-    cargar()
-    const t = setInterval(cargar, 30000)
-    return () => { cancelado = true; clearInterval(t) }
-  }, [tablaTorneoId])
+  // Los partidos guardados se refrescan cada 30 s; lo que se está jugando AHORA
+  // viene de matchesVivoRaw (cada 5 s + tiempo real) y se suma encima: así la
+  // tabla muestra "así va" con el gol apenas lo marca el árbitro (provisional).
+  const basesTabla = useTablasBase(tablaTorneoId ? [tablaTorneoId] : [])
+  const tablas = useMemo(() => { void tick; return tablasConVivo(basesTabla, matchesVivoRaw) }, [basesTabla, matchesVivoRaw, tick])
 
   // Publicidad rápida de un patrocinador: aparece 8s y se apaga sola, igual
   // que en la portada. Se ignora la marca que ya estaba cuando se abrió la

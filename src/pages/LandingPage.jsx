@@ -17,8 +17,8 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
-import { computeTablaGeneral } from '../lib/torneoTablas'
-import { cargarTorneoPuntos } from '../lib/puntosTorneo'
+import { tablasConVivo } from '../lib/torneoTablas'
+import { useTablasBase } from '../lib/useTablasBase'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
 import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
@@ -639,25 +639,14 @@ export default function LandingPage() {
   // reutilizando computeTablaGeneral — la misma función que usa la tabla de
   // posiciones real del torneo — para que la gráfica en vivo muestre
   // exactamente lo mismo que esa tabla.
-  const [tablasEnVivo, setTablasEnVivo] = useState({}) // { [tournamentId]: filas }
-  useEffect(() => {
-    const control = siteConfig?.en_vivo_control || {}
-    const idsFaltantes = [...new Set(
-      Object.values(control)
-        .filter(c => c?.overlay === 'tabla' && c.overlay_tournament_id)
-        .map(c => c.overlay_tournament_id)
-    )].filter(tid => !tablasEnVivo[tid])
-    if (!idsFaltantes.length) return
-    idsFaltantes.forEach(async tid => {
-      const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
-        cargarTorneoPuntos(tid),
-        supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tid),
-        supabase.from('matches').select('status, fase, tipo_resultado, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tid),
-      ])
-      const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
-      setTablasEnVivo(t => ({ ...t, [tid]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
-    })
-  }, [siteConfig, tablasEnVivo])
+  const idsTablaEnVivo = useMemo(() => [...new Set(
+    Object.values(siteConfig?.en_vivo_control || {})
+      .filter(c => c?.overlay === 'tabla' && c.overlay_tournament_id)
+      .map(c => c.overlay_tournament_id)
+  )], [siteConfig])
+  const basesTablaEnVivo = useTablasBase(idsTablaEnVivo)
+  // + lo que se está jugando AHORA (matchesVivoRaw), para que la tabla muestre "así va"
+  const tablasEnVivo = useMemo(() => { void tick; return tablasConVivo(basesTablaEnVivo, matchesVivoRaw) }, [basesTablaEnVivo, matchesVivoRaw, tick])
 
   // Publicidad de un patrocinador (botón del panel de control, aparte de los
   // patrocinadores oficiales que ya rotan solos en el banner de abajo): a

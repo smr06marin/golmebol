@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
@@ -10,8 +10,8 @@ import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverla
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, extraerGoles, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
-import { computeTablaGeneral } from '../../lib/torneoTablas'
-import { cargarTorneoPuntos } from '../../lib/puntosTorneo'
+import { tablasConVivo } from '../../lib/torneoTablas'
+import { useTablasBase } from '../../lib/useTablasBase'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
 const S = {
@@ -51,7 +51,6 @@ export default function AdminConfigSitioPage() {
   const [control, setControl] = useState({})
   // Tablas de posiciones ya calculadas, en caché por torneo, para no volver a
   // pedirlas cada vez que se prende/apaga el overlay del mismo torneo.
-  const [tablas, setTablas] = useState({})
   // Patrocinadores reales del negocio (/admin/patrocinadores) — un botón por
   // cada uno en el panel, para mostrar su publicidad encima del video cuando
   // Sebas quiera (no son las imágenes de la repetición del gol, que son
@@ -466,7 +465,6 @@ export default function AdminConfigSitioPage() {
   // partido que ya tiene elegido esa transmisión (si tiene uno).
   function cambiarOverlay(streamId, overlay, tournamentId) {
     actualizarControl(streamId, { overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
-    if (overlay === 'tabla' && tournamentId) cargarTabla(tournamentId)
   }
 
   // Muestra la publicidad de un patrocinador encima del video unos segundos
@@ -488,29 +486,11 @@ export default function AdminConfigSitioPage() {
     await guardarStreamsArray(next, { silencioso: true })
   }
 
-  // Trae equipos + partidos de un torneo y calcula su tabla general una sola
-  // vez (se guarda en caché) — misma función que usa la tabla de posiciones
-  // real del torneo (AdminTorneoDetallePage/TorneoPublicoPage), para que la
-  // gráfica en vivo muestre exactamente lo mismo.
-  async function cargarTabla(tournamentId) {
-    if (!tournamentId || tablas[tournamentId]) return
-    const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
-      cargarTorneoPuntos(tournamentId),
-      supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tournamentId),
-      supabase.from('matches').select('status, fase, tipo_resultado, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tournamentId),
-    ])
-    const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
-    setTablas(t => ({ ...t, [tournamentId]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
-  }
-
-  // Si al entrar a esta página ya había una tabla de posiciones prendida de
-  // antes (de una sesión anterior del panel de control), la trae de una vez
-  // — si no, la vista previa de abajo se queda esperando sin mostrar nada
-  // hasta que alguien vuelva a tocar el botón.
-  useEffect(() => {
-    Object.values(control).forEach(c => { if (c?.overlay === 'tabla' && c.overlay_tournament_id) cargarTabla(c.overlay_tournament_id) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cargarTabla ya revisa su propia caché, no hace falta re-correr por eso
-  }, [control])
+  // Tablas de posiciones de las vistas previas: se refrescan solas (misma
+  // función que la tabla real del torneo) y suman lo que se está jugando ahora.
+  const idsTabla = useMemo(() => [...new Set(Object.values(control).filter(c => c?.overlay === 'tabla' && c.overlay_tournament_id).map(c => c.overlay_tournament_id))], [control])
+  const basesTabla = useTablasBase(idsTabla, { intervalo: 15000, conVivo: true })
+  const tablas = useMemo(() => tablasConVivo(basesTabla, []), [basesTabla])
 
   function agregarStream() {
     setStreams(s => [...s, streamVacio()])

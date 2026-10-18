@@ -24,8 +24,8 @@ import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo } from '../lib/liveMatch'
-import { computeTablaGeneral } from '../lib/torneoTablas'
-import { cargarTorneoPuntos } from '../lib/puntosTorneo'
+import { tablasConVivo } from '../lib/torneoTablas'
+import { useTablasBase } from '../lib/useTablasBase'
 
 const S = { bg: '#0a0a0a', card: '#161616', border: '#2a2a2a', red: '#e5433d', green: '#6fcf3d', text: '#fff' }
 
@@ -35,7 +35,6 @@ export default function EnVivoControlLinkPage() {
   const [cargando, setCargando] = useState(true)
   const [partidosStream, setPartidosStream] = useState([])
   const [patrocinadoresBtn, setPatrocinadoresBtn] = useState([])
-  const [tablas, setTablas] = useState({})
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
   const [repeticion, setRepeticion] = useState(null)
   // Referencia al <LiveEmbed> de este stream — para leer, justo al apretar
@@ -123,27 +122,15 @@ export default function EnVivoControlLinkPage() {
 
   function cambiarOverlay(overlay, tournamentId) {
     actualizarControl({ overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
-    if (overlay === 'tabla' && tournamentId) cargarTabla(tournamentId)
   }
 
   function mostrarPatrocinador(patrocinadorId) {
     actualizarControl({ patrocinador_id: patrocinadorId, patrocinador_ts: Date.now() })
   }
 
-  async function cargarTabla(tournamentId) {
-    if (!tournamentId || tablas[tournamentId]) return
-    const [{ data: torneo }, { data: equiposData }, { data: partidosT }] = await Promise.all([
-      cargarTorneoPuntos(tournamentId),
-      supabase.from('tournament_teams').select('teams(id, name, logo_url)').eq('tournament_id', tournamentId),
-      supabase.from('matches').select('status, fase, tipo_resultado, home_team_id, away_team_id, home_score, away_score').eq('tournament_id', tournamentId),
-    ])
-    const equipos = (equiposData || []).map(d => d.teams).filter(Boolean)
-    setTablas(t => ({ ...t, [tournamentId]: computeTablaGeneral(equipos, partidosT || [], torneo || {}) }))
-  }
-  useEffect(() => {
-    if (control.overlay === 'tabla' && control.overlay_tournament_id) cargarTabla(control.overlay_tournament_id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cargarTabla ya revisa su propia caché
-  }, [control.overlay, control.overlay_tournament_id])
+  // Tabla de posiciones de la vista previa: se refresca sola y suma lo que se está jugando ahora
+  const basesTabla = useTablasBase(control.overlay === 'tabla' && control.overlay_tournament_id ? [control.overlay_tournament_id] : [], { intervalo: 15000, conVivo: true })
+  const tablas = useMemo(() => tablasConVivo(basesTabla, []), [basesTabla])
 
   // Repetición manual: igual que en LandingPage, se compara repeticion_ts
   // contra la última ya mostrada para no repetirla dos veces.

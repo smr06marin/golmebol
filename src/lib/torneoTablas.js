@@ -79,6 +79,27 @@ export function aplicarDescuentos(filas, descuentos) {
   return filas
 }
 
+// Tabla de un torneo lista para la transmisión: la base (equipos, partidos ya
+// guardados, puntos) más lo que se está jugando AHORA. `vivos` son los
+// partidos con su snapshot en vivo (se emparejan por id con los de la base),
+// así la tabla muestra "así va" mientras se juega, de forma provisional.
+export function tablaConVivo(base, vivos) {
+  if (!base) return undefined
+  const lista = Array.isArray(vivos) ? vivos : []
+  const partidos = (base.partidos || []).map(p => {
+    if (p.status === 'finished') return p
+    const v = lista.find(m => m.id === p.id)
+    if (!v) return p
+    return { ...p, live_state: v.live_state, live_state_updated_at: v.live_state_updated_at, live_state_rapida: v.live_state_rapida, live_state_rapida_updated_at: v.live_state_rapida_updated_at }
+  })
+  return computeTablaGeneral(base.equipos || [], partidos, base.torneo || {})
+}
+export function tablasConVivo(bases, vivos) {
+  const out = {}
+  Object.keys(bases || {}).forEach(tid => { out[tid] = tablaConVivo(bases[tid], vivos) })
+  return out
+}
+
 export function computeTablaGeneral(equipos, partidos, torneo) {
   const P = getPuntosTorneo(torneo)
   const tabla = {}
