@@ -4,6 +4,7 @@ import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_RESULTADO } from '../lib/flyerTemas'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
 import LogoFlyer from './LogoFlyer'
+import { useLogoLimpio } from '../lib/useLogoLimpio'
 
 // Flyer de la TABLA DE POSICIONES para publicar en redes. Mismo sistema que el
 // flyer de resultado: se dibuja siempre a tamaño real (1080 de ancho); la vista
@@ -19,8 +20,10 @@ import LogoFlyer from './LogoFlyer'
 
 const ANCHO = 1080
 const FORMATOS = [
-  { id: 'historia', nombre: 'Historia', sub: '1080×1920', alto: 1920, padY: 84, logo: 132, torneo: 62, chip: 40 },
-  { id: 'post',     nombre: 'Post',     sub: '1080×1350', alto: 1350, padY: 52, logo: 104, torneo: 52, chip: 34 },
+  // heroLogo: tamaño del logo del torneo (protagonista) · marca/marcaTop: el mismo logo
+  // gigante y translúcido que decora el fondo detrás de la tabla
+  { id: 'historia', nombre: 'Historia', sub: '1080×1920', alto: 1920, padY: 84, heroLogo: 400, torneo: 74, chip: 40, marca: 1250, marcaTop: 560 },
+  { id: 'post',     nombre: 'Post',     sub: '1080×1350', alto: 1350, padY: 52, heroLogo: 250, torneo: 60, chip: 34, marca: 1040, marcaTop: 330 },
 ]
 
 const F_TITULO = "'Bebas Neue', 'Barlow Condensed', Impact, sans-serif"
@@ -98,6 +101,20 @@ function Flyer({ torneo, filas, titulo, subtitulo, fecha, tema, formato }) {
 
   const celda = { display: 'flex', alignItems: 'center', justifyContent: 'center' }
   const nombreTorneo = (torneo?.name || '').toUpperCase()
+  const logoLimpio = useLogoLimpio(torneo?.logo_url)
+  const hero = !!torneo?.logo_url
+  const columna = formato.id === 'historia'
+  const chips = (
+    <div style={{ display: 'flex', gap: 16, marginTop: hero ? (columna ? 30 : 22) : (columna ? 34 : 24), flexWrap: 'wrap', justifyContent: hero && columna ? 'center' : 'flex-start' }}>
+      <span style={{ fontFamily: F_TITULO, fontSize: formato.chip, letterSpacing: 4, lineHeight: 1, background: tema.acento, color: '#10101c', borderRadius: 12, padding: '10px 26px 8px' }}>{titulo}</span>
+      {subtitulo && (
+        <span style={{ fontFamily: F_TITULO, fontSize: formato.chip, letterSpacing: 4, lineHeight: 1, border: `3px solid ${tema.acento}`, color: tema.acentoSuave, borderRadius: 12, padding: '8px 24px 6px' }}>{subtitulo}</span>
+      )}
+    </div>
+  )
+  const nombreEl = (
+    <div style={{ fontFamily: F_TEXTO, fontWeight: 800, fontSize: formato.torneo, lineHeight: 1.02, letterSpacing: 1, textTransform: 'uppercase', maxHeight: formato.torneo * 2.1, overflow: 'hidden' }}>{nombreTorneo}</div>
+  )
 
   return (
     <div style={{
@@ -111,23 +128,33 @@ function Flyer({ torneo, filas, titulo, subtitulo, fecha, tema, formato }) {
       <div style={{ position: 'absolute', left: -60, right: -60, bottom: 150, height: 4, background: 'rgba(255,255,255,.08)' }}/>
       <div style={{ position: 'absolute', left: '50%', bottom: -380, width: 760, height: 760, marginLeft: -380, borderRadius: '50%', border: '4px solid rgba(255,255,255,.08)', boxSizing: 'border-box' }}/>
 
+      {/* Marca de agua: el logo del torneo gigante y translúcido detrás de la tabla */}
+      {typeof logoLimpio === 'string' && (
+        <img src={logoLimpio} alt="" style={{ position: 'absolute', left: Math.round((ANCHO - formato.marca) / 2), top: formato.marcaTop, width: formato.marca, height: formato.marca, objectFit: 'contain', opacity: 0.1 }}/>
+      )}
+
       <div style={{ position: 'relative', zIndex: 2, height: '100%', boxSizing: 'border-box', padding: `${formato.padY}px ${PAD_X}px ${formato.padY - 8}px`, display: 'flex', flexDirection: 'column' }}>
 
-        {/* Torneo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
-          {torneo?.logo_url && (
-            <LogoFlyer url={torneo.logo_url} size={formato.logo} radio={28} pad={10}/>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: F_TEXTO, fontWeight: 800, fontSize: formato.torneo, lineHeight: 1.02, letterSpacing: 1, textTransform: 'uppercase', maxHeight: formato.torneo * 2.1, overflow: 'hidden' }}>{nombreTorneo}</div>
+        {/* Torneo: el logo es el protagonista */}
+        {hero ? (
+          <div style={columna ? { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' } : { display: 'flex', alignItems: 'center', gap: 36 }}>
+            <div style={{ position: 'relative', width: formato.heroLogo, height: formato.heroLogo, flexShrink: 0 }}>
+              <div style={{ position: 'absolute', left: -Math.round(formato.heroLogo * 0.35), top: -Math.round(formato.heroLogo * 0.35), width: Math.round(formato.heroLogo * 1.7), height: Math.round(formato.heroLogo * 1.7), borderRadius: '50%', background: `radial-gradient(circle, ${tema.luz} 0%, rgba(0,0,0,0) 65%)` }}/>
+              <div style={{ position: 'relative' }}>
+                <LogoFlyer url={torneo.logo_url} size={formato.heroLogo} radio={Math.round(formato.heroLogo * 0.16)} pad={Math.round(formato.heroLogo * 0.05)}/>
+              </div>
+            </div>
+            <div style={columna ? { marginTop: 30, width: '100%' } : { flex: 1, minWidth: 0 }}>
+              {nombreEl}
+              {chips}
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 16, marginTop: formato.id === 'historia' ? 34 : 24, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: F_TITULO, fontSize: formato.chip, letterSpacing: 4, lineHeight: 1, background: tema.acento, color: '#10101c', borderRadius: 12, padding: '10px 26px 8px' }}>{titulo}</span>
-          {subtitulo && (
-            <span style={{ fontFamily: F_TITULO, fontSize: formato.chip, letterSpacing: 4, lineHeight: 1, border: `3px solid ${tema.acento}`, color: tema.acentoSuave, borderRadius: 12, padding: '8px 24px 6px' }}>{subtitulo}</span>
-          )}
-        </div>
+        ) : (
+          <>
+            {nombreEl}
+            {chips}
+          </>
+        )}
 
         {/* Tabla */}
         <div ref={tablaRef} style={{ flex: '1 1 0', minHeight: 0, overflow: 'hidden', marginTop: formato.id === 'historia' ? 40 : 28, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>

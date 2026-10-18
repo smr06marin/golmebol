@@ -32,6 +32,34 @@ function aPng(canvas) {
   })
 }
 
+// Recorta los márgenes transparentes alrededor del logo (deja un respiro del 4%)
+// para que el escudo aproveche todo su espacio en los flyers.
+function recortarAlContenido(canvas) {
+  const w = canvas.width, h = canvas.height
+  const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data
+  let x0 = w, y0 = h, x1 = -1, y1 = -1
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 16) {
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (y < y0) y0 = y
+        if (y > y1) y1 = y
+      }
+    }
+  }
+  if (x1 < 0) return canvas
+  const m = Math.round(Math.max(x1 - x0 + 1, y1 - y0 + 1) * 0.04)
+  const sx = Math.max(0, x0 - m), sy = Math.max(0, y0 - m)
+  const ex = Math.min(w, x1 + 1 + m), ey = Math.min(h, y1 + 1 + m)
+  if ((ex - sx) * (ey - sy) > w * h * 0.94) return canvas
+  const c = document.createElement('canvas')
+  c.width = ex - sx
+  c.height = ey - sy
+  c.getContext('2d').drawImage(canvas, sx, sy, c.width, c.height, 0, 0, c.width, c.height)
+  return c
+}
+
 const mediana = arr => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] }
 
 // Analiza una imagen y, si tiene un fondo liso, lo vuelve transparente.
@@ -67,7 +95,7 @@ export async function quitarFondoLogo(fuente, { maxDim = MAX_DIM_POR_DEFECTO, to
   // ¿Ya es transparente? (la mayoría del borde casi sin opacidad)
   let transp = 0
   for (const p of borde) if (d[p * 4 + 3] < 40) transp++
-  if (transp / borde.length > 0.5) return { blob: await aPng(canvas), estado: 'ya-transparente' }
+  if (transp / borde.length > 0.5) return { blob: await aPng(recortarAlContenido(canvas)), estado: 'ya-transparente' }
 
   // Color del fondo = mediana del borde (solo píxeles opacos)
   const rs = [], gs = [], bs = []
@@ -192,7 +220,7 @@ export async function quitarFondoLogo(fuente, { maxDim = MAX_DIM_POR_DEFECTO, to
     if (dd < tol + ancho) d[i + 3] = Math.round(Math.min(255, Math.max(0, 255 * (dd - tol * 0.4) / (ancho + tol * 0.6))))
   }
   ctx.putImageData(imageData, 0, 0)
-  return { blob: await aPng(canvas), estado: 'quitado' }
+  return { blob: await aPng(recortarAlContenido(canvas)), estado: 'quitado' }
 }
 
 // Prepara un logo/escudo para subirlo: si tiene fondo liso lo quita, si ya es
@@ -243,9 +271,9 @@ export function logoLimpioDesdeUrl(url) {
       const resp = await fetch(url, { mode: 'cors' })
       if (resp.ok) {
         const blob = await resp.blob()
-        const r = await quitarFondoLogo(blob, { maxDim: 600 })
-        if (r.estado === 'ya-transparente') res = url
-        else if (r.estado === 'quitado' && r.blob) res = URL.createObjectURL(r.blob)
+        const r = await quitarFondoLogo(blob, { maxDim: 800 })
+        // ya-transparente o quitado: se usa la versión recortada a su contenido
+        if ((r.estado === 'ya-transparente' || r.estado === 'quitado') && r.blob) res = URL.createObjectURL(r.blob)
       }
     } catch {
       res = null
