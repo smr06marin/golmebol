@@ -29,6 +29,31 @@ export default function CronometroCentral({
   const confirmarTimerRef = useRef(null)
   useEffect(() => () => clearTimeout(confirmarTimerRef.current), [])
 
+  // PARAR exige DOBLE TOQUE (dos toques seguidos en menos de 0,7 s): un toque
+  // suelto por error ya no detiene el reloj del partido. Con el primer toque el
+  // botón se pone amarillo y dice "¡Otra vez!" por un instante. Iniciar y
+  // continuar siguen siendo un toque normal.
+  const ultimoToqueRef = useRef(0)
+  const [avisoParar, setAvisoParar] = useState(false)
+  const avisoTimerRef = useRef(null)
+  useEffect(() => () => clearTimeout(avisoTimerRef.current), [])
+  function tocarReloj() {
+    if (!corriendo) { onToggle && onToggle(); return }
+    const ahora = Date.now()
+    if (ahora - ultimoToqueRef.current < 700) {
+      ultimoToqueRef.current = 0
+      clearTimeout(avisoTimerRef.current)
+      setAvisoParar(false)
+      onToggle && onToggle()
+      return
+    }
+    ultimoToqueRef.current = ahora
+    setAvisoParar(true)
+    clearTimeout(avisoTimerRef.current)
+    avisoTimerRef.current = setTimeout(() => setAvisoParar(false), 1200)
+  }
+  const etiquetaParar = avisoParar ? '👆 ¡OTRA VEZ PARA PARAR!' : '⏸ PARAR (doble toque)'
+
   function pedirConfirmacion(que) {
     setConfirmar(que)
     clearTimeout(confirmarTimerRef.current)
@@ -121,9 +146,9 @@ export default function CronometroCentral({
           {/* ── Modo compacto: un solo botón ── */}
           {miniEf && (
             <>
-              <button onClick={onToggle} disabled={bloqueado || tiempoAgotado}
-                style={{ ...btnBase, marginTop: '6px', padding: '9px 16px', width: '100%', background: 'rgba(255,255,255,.92)', color: fondo, fontSize: '.9rem', opacity: (bloqueado || tiempoAgotado) ? .5 : 1 }}>
-                {corriendo ? '⏸ PARAR' : (arranque ? '▶ INICIAR' : '▶ CONTINUAR')}
+              <button onClick={tocarReloj} disabled={bloqueado || tiempoAgotado}
+                style={{ ...btnBase, marginTop: '6px', padding: '9px 8px', width: '100%', background: corriendo && avisoParar ? '#ffdd44' : 'rgba(255,255,255,.92)', color: corriendo && avisoParar ? '#222' : fondo, fontSize: corriendo ? '.78rem' : '.9rem', opacity: (bloqueado || tiempoAgotado) ? .5 : 1 }}>
+                {corriendo ? etiquetaParar : (arranque ? '▶ INICIAR' : '▶ CONTINUAR')}
               </button>
               {bloqueado && motivoNoIniciar && (
                 <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25, marginTop: '5px' }}>{motivoNoIniciar}</div>
@@ -157,9 +182,9 @@ export default function CronometroCentral({
                   <button onClick={onSilenciar} style={{ ...btnBase, padding: '10px', background: 'rgba(255,255,255,.92)', color: fondo, fontSize: '.85rem' }}>🔕 Silenciar alarma</button>
                 </>
               ) : (
-                <button onClick={onToggle} disabled={bloqueado}
-                  style={{ ...btnBase, padding: '13px 8px', background: bloqueado ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.95)', color: bloqueado ? 'rgba(255,255,255,.8)' : fondo, fontSize: '1rem', letterSpacing: '.01em' }}>
-                  {corriendo ? '⏸ PARAR CRONÓMETRO' : (arranque ? '▶ INICIAR PARTIDO' : '▶ CONTINUAR')}
+                <button onClick={tocarReloj} disabled={bloqueado}
+                  style={{ ...btnBase, padding: '13px 8px', background: corriendo && avisoParar ? '#ffdd44' : (bloqueado ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.95)'), color: corriendo && avisoParar ? '#222' : (bloqueado ? 'rgba(255,255,255,.8)' : fondo), fontSize: corriendo ? '.88rem' : '1rem', letterSpacing: '.01em' }}>
+                  {corriendo ? (avisoParar ? '👆 ¡OTRA VEZ PARA PARAR!' : '⏸ PARAR CRONÓMETRO (doble toque)') : (arranque ? '▶ INICIAR PARTIDO' : '▶ CONTINUAR')}
                 </button>
               )}
               {bloqueado && motivoNoIniciar && (
