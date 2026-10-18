@@ -5,6 +5,7 @@ import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPa
 import { computeTablaGeneral } from '../lib/torneoTablas'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
+import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
@@ -209,6 +210,7 @@ export default function OverlayEnVivoPage() {
             </div>
           )}
           {partido && <MarcadorEnVivoOverlay partido={partido}/>}
+          {partido && <GolAvisoEnVivoOverlay partido={partido} bottom={control?.overlay === 'jugadores' ? '55%' : control?.overlay === 'goles' ? '36%' : '14%'}/>}
           {sponsor ? <PatrocinadorEnVivoOverlay patrocinador={sponsor}/> : (
             <>
               {control?.overlay === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}

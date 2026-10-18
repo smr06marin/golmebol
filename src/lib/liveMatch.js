@@ -128,8 +128,9 @@ export function derivarFaltasYTarjetas(match) {
   }
 }
 
-// Lista de goles (jugador + minuto) del partido, sacada del mismo snapshot
-// que ya se sincroniza en vivo — para el detalle al tocar un partido en vivo.
+// Lista de goles (jugador + número de camiseta + minuto) del partido, sacada
+// del mismo snapshot que ya se sincroniza en vivo — para el detalle al tocar un
+// partido en vivo y para las gráficas de la transmisión.
 export function extraerGoles(match) {
   if (!match) return []
   const candidatos = []
@@ -142,16 +143,21 @@ export function extraerGoles(match) {
 
   let goles = []
   if (tipo === 'rapida') {
-    goles = (snap.eventos || []).filter(e => e.tipo === 'goal').map(e => ({
-      equipo: e.team, jugador: e.jugadorNombre || 'Jugador', minuto: e.minuto || null, periodo: e.periodo || 1,
-    }))
+    goles = (snap.eventos || []).filter(e => e.tipo === 'goal').map(e => {
+      const arr = e.team === 'local' ? snap.jugadoresLocal : snap.jugadoresVisitante
+      const porId = e.jugadorId ? (arr || []).find(j => j.id === e.jugadorId) : null
+      return {
+        equipo: e.team, jugador: e.jugadorNombre || 'Jugador', numero: String(e.numero ?? porId?.numero ?? '').trim(),
+        minuto: e.minuto || null, periodo: e.periodo || 1,
+      }
+    })
   } else {
     const buscarNombre = (arr, numero) => (arr || []).find(j => String(j.numero) === String(numero))?.nombre || 'Jugador'
     ;(snap.golesLocal || []).filter(Boolean).forEach(g => {
-      goles.push({ equipo: 'local', jugador: buscarNombre(snap.jugadoresLocal, g.numero), minuto: g.minuto || null, periodo: g.periodo || 1 })
+      goles.push({ equipo: 'local', jugador: buscarNombre(snap.jugadoresLocal, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1 })
     })
     ;(snap.golesVisitante || []).filter(Boolean).forEach(g => {
-      goles.push({ equipo: 'visitante', jugador: buscarNombre(snap.jugadoresVisitante, g.numero), minuto: g.minuto || null, periodo: g.periodo || 1 })
+      goles.push({ equipo: 'visitante', jugador: buscarNombre(snap.jugadoresVisitante, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1 })
     })
   }
   return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
@@ -211,9 +217,21 @@ export function extraerJugadores(match) {
   candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
   const snap = candidatos[0].snap
   if (!snap) return { local: [], visitante: [] }
-  // Solo los que de verdad tienen nombre cargado — la planilla deja casillas
-  // vacías de relleno hasta completar 12, y esas no sirven para mostrar.
-  const limpiar = arr => (arr || []).filter(j => (j?.nombre || '').trim()).map(j => ({ numero: j.numero ?? '', nombre: j.nombre }))
+  // Solo los jugadores PLANILLADOS: con nombre y con número de camiseta. La
+  // planilla trae todo el plantel inscrito (y casillas vacías de relleno), pero a
+  // los que no van a jugar no se les asigna camiseta — esos no deben salir en
+  // la nómina de la transmisión. Se ordenan por número de camiseta.
+  const numeroDe = j => parseInt(j.numero, 10)
+  const limpiar = arr => (arr || [])
+    .filter(j => (j?.nombre || '').trim() && String(j?.numero ?? '').trim() !== '')
+    .map(j => ({ numero: String(j.numero).trim(), nombre: j.nombre }))
+    .sort((a, b) => {
+      const na = numeroDe(a), nb = numeroDe(b)
+      if (Number.isNaN(na) && Number.isNaN(nb)) return 0
+      if (Number.isNaN(na)) return 1
+      if (Number.isNaN(nb)) return -1
+      return na - nb
+    })
   return { local: limpiar(snap.jugadoresLocal), visitante: limpiar(snap.jugadoresVisitante) }
 }
 

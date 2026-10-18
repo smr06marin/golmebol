@@ -12,6 +12,7 @@ import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 const LiveEmbed = lazy(() => import('../components/LiveEmbed'))
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
+import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
@@ -1036,6 +1037,7 @@ export default function LandingPage() {
                     overlay={(
                       <>
                         {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
+                        {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} bottom={controlStream?.overlay === 'jugadores' ? '55%' : controlStream?.overlay === 'goles' ? '36%' : '14%'}/>}
                         {sponsorMostrando ? <PatrocinadorEnVivoOverlay patrocinador={sponsorMostrando}/> : (
                           <>
                             {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
