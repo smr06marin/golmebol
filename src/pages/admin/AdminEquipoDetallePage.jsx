@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
+import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock, Upload } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
@@ -542,7 +543,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (!file) return
     if (!puedeEditar) { showMsg('No podés editar este equipo (ver el aviso arriba)', 'error'); return }
     setSubiendoLogo(true)
-    const archivo = await comprimirImagen(file, { maxSize: 500 })
+    // Si el escudo trae fondo liso (blanco) se lo quita; si ya es transparente se conserva
+    const { archivo, estado } = await prepararLogoParaSubir(file, { maxSize: 500 })
     const ext  = archivo.name.split('.').pop()
     const path = `logos/${id}.${ext}`
     const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true })
@@ -550,7 +552,32 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
     await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', id)
     setEquipo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
-    showMsg('Logo actualizado ✓')
+    showMsg(estado === 'quitado' ? 'Logo actualizado ✓ — se le quitó el fondo' : 'Logo actualizado ✓')
+    setSubiendoLogo(false)
+  }
+
+  // Limpia el fondo de un escudo que ya estaba subido (queda transparente)
+  async function handleQuitarFondoLogo() {
+    if (!puedeEditar || !equipo?.logo_url) return
+    setSubiendoLogo(true)
+    try {
+      const { archivo, estado } = await limpiarLogoGuardado(equipo.logo_url)
+      if (!archivo) {
+        showMsg(estado === 'ya-transparente' ? 'Este escudo ya tiene fondo transparente' : 'No se pudo quitar el fondo: no es liso (conviene subir el escudo ya recortado)', 'error')
+        setSubiendoLogo(false)
+        return
+      }
+      const path = `logos/${id}_${Date.now()}.png`
+      const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true, contentType: 'image/png' })
+      if (error) throw error
+      const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+      const { error: errGuardar } = await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', id)
+      if (errGuardar) throw errGuardar
+      setEquipo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
+      showMsg('Fondo quitado ✓')
+    } catch (e) {
+      showMsg('No se pudo quitar el fondo: ' + (e?.message || 'error'), 'error')
+    }
     setSubiendoLogo(false)
   }
 
@@ -883,6 +910,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 <Camera size={13} color="#fff"/>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleLogoUpload(e.target.files[0])} disabled={subiendoLogo}/>
               </label>
+            )}
+            {!modoLectura && puedeEditar && equipo.logo_url && (
+              <button onClick={handleQuitarFondoLogo} disabled={subiendoLogo}
+                style={{ display: 'block', margin: '12px auto 0', background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '8px', color: '#fff', fontSize: '.65rem', fontWeight: '700', padding: '4px 8px', cursor: subiendoLogo ? 'default' : 'pointer', opacity: subiendoLogo ? .6 : 1, whiteSpace: 'nowrap' }}>
+                ✨ Quitar fondo
+              </button>
             )}
             {!modoLectura && !puedeEditar && esOrganizador && (
               <div title="No podés editar el escudo de este equipo" style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

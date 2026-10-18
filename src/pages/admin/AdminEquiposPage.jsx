@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { comprimirImagen } from '../../lib/imageCompress'
+import { prepararLogoParaSubir } from '../../lib/logoTransparente'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
@@ -423,7 +424,7 @@ export default function AdminEquiposPage() {
   async function handleLogo(equipo, file) {
     if (!file) return
     setUploading(equipo.id)
-    const archivo = await comprimirImagen(file, { maxSize: 500 })
+    const { archivo } = await prepararLogoParaSubir(file, { maxSize: 500 })
     const path = `logos/${equipo.id}.${archivo.name.split('.').pop()}`
     const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true })
     if (!error) {

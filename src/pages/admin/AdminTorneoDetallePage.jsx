@@ -20,7 +20,7 @@ import FlyerTablaPosiciones from '../../components/FlyerTablaPosiciones'
 import { cargarPlanillaEquipoOrganizador } from '../../lib/planillaEquipo'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
-import { comprimirImagen } from '../../lib/imageCompress'
+import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -2820,10 +2820,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   async function handleUploadLogoMarca(file) {
     if (!file) return
     setUploadingLogoMarca(true)
-    // Mismo bucket/path que el botón cámara del encabezado — no duplicar storage
-    const ext = file.name.split('.').pop()
+    // Mismo bucket/path que el botón cámara del encabezado — no duplicar storage.
+    // Si el logo trae fondo liso (blanco) se le quita; si no, se sube tal cual.
+    const { archivo, estado } = await prepararLogoParaSubir(file, { maxSize: 700, sinComprimir: true })
+    const ext = archivo.name.split('.').pop()
     const path = `logos/${id}.${ext}`
-    const { error: uploadError } = await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
+    const { error: uploadError } = await supabase.storage.from('tournaments').upload(path, archivo, { upsert: true })
     if (uploadError) { setUploadingLogoMarca(false); return showMsg('Error al subir logo: ' + uploadError.message, 'error') }
     const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
     const url = urlData.publicUrl
@@ -2832,7 +2834,34 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (error) return showMsg('Error al guardar logo', 'error')
     setFormMarca(f => ({ ...f, logo_url: url }))
     setTorneo(p => ({ ...p, logo_url: url }))
-    showMsg('Logo subido ✓')
+    showMsg(estado === 'quitado' ? 'Logo subido ✓ — se le quitó el fondo' : 'Logo subido ✓')
+  }
+
+  // Limpia el fondo del logo del torneo que ya estaba subido (queda transparente)
+  async function handleQuitarFondoLogoTorneo() {
+    const actual = formMarca.logo_url || torneo?.logo_url
+    if (!actual) return
+    setUploadingLogoMarca(true)
+    try {
+      const { archivo, estado } = await limpiarLogoGuardado(actual)
+      if (!archivo) {
+        showMsg(estado === 'ya-transparente' ? 'Este logo ya tiene fondo transparente' : 'No se pudo quitar el fondo: no es liso o es de color (conviene subirlo ya recortado)', 'error')
+        setUploadingLogoMarca(false)
+        return
+      }
+      const path = `logos/${id}_${Date.now()}.png`
+      const { error: errSubida } = await supabase.storage.from('tournaments').upload(path, archivo, { upsert: true, contentType: 'image/png' })
+      if (errSubida) throw errSubida
+      const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
+      const { error: errGuardar } = await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
+      if (errGuardar) throw errGuardar
+      setFormMarca(f => ({ ...f, logo_url: urlData.publicUrl }))
+      setTorneo(p => ({ ...p, logo_url: urlData.publicUrl }))
+      showMsg('Fondo quitado ✓')
+    } catch (e) {
+      showMsg('No se pudo quitar el fondo: ' + (e?.message || 'error'), 'error')
+    }
+    setUploadingLogoMarca(false)
   }
 
   function updateSponsorLocal(sponsorId, field, value) {
@@ -4113,7 +4142,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // le pone una extensión segura y revisa CADA paso. Devuelve { url } o { error }.
   async function subirEscudoEquipo(teamId, file) {
     try {
-      const archivo = await comprimirImagen(file, { maxSize: 500 })
+      const { archivo } = await prepararLogoParaSubir(file, { maxSize: 500 })
       const tipo = archivo.type || ''
       const ext = tipo.includes('png') ? 'png' : tipo.includes('webp') ? 'webp' : tipo.includes('gif') ? 'gif' : 'jpg'
       const path = `logos/${teamId}.${ext}`
@@ -4730,7 +4759,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <label style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '16px', height: '16px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Camera size={8} color="#fff"/>
               <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
-                const file = e.target.files[0]; if (!file) return
+                const file0 = e.target.files[0]; if (!file0) return
+                const { archivo: file } = await prepararLogoParaSubir(file0, { maxSize: 700, sinComprimir: true })
                 const ext = file.name.split('.').pop(), path = `logos/${id}.${ext}`
                 await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
                 const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
@@ -7400,6 +7430,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingLogoMarca}
                         onChange={e => { handleUploadLogoMarca(e.target.files[0]); e.target.value = '' }}/>
                     </label>
+                    {(formMarca.logo_url || torneo.logo_url) && (
+                      <button onClick={handleQuitarFondoLogoTorneo} disabled={uploadingLogoMarca}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#6c35de', background: '#fff', border: '1px solid #6c35de', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
+                        ✨ Quitar fondo
+                      </button>
+                    )}
                     <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
                   </div>
                 </div>

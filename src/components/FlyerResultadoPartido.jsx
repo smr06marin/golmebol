@@ -6,6 +6,7 @@ import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_RESULTADO } from '../lib/flyerTemas'
 import { COLOR_TARJETA, FASE_LABEL, acortarNombre, datosParaFlyer, penalesDe } from '../lib/resumenPartido'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
+import LogoFlyer from './LogoFlyer'
 
 // Flyer de RESULTADO que los equipos publican en sus redes. Se dibuja siempre
 // a tamaño real (1080 de ancho); la vista previa es una copia encogida con
@@ -29,18 +30,15 @@ const ESPACIO_SECCION = 22
 
 function Escudo({ url, nombre, size, radio }) {
   const iniciales = (nombre || '?').split(' ').filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  if (url) return <LogoFlyer url={url} size={size} radio={radio} pad={Math.round(size * 0.07)}/>
   return (
     <div style={{
       width: size, height: size, borderRadius: radio, background: '#fff', padding: Math.round(size * 0.07),
       boxSizing: 'border-box', flexShrink: 0,
     }}>
-      {url
-        ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}/>
-        : (
-          <div style={{ width: '100%', height: '100%', borderRadius: radio * 0.6, background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: F_TITULO, fontSize: size * 0.4, color: '#fff', letterSpacing: 2 }}>{iniciales}</span>
-          </div>
-        )}
+      <div style={{ width: '100%', height: '100%', borderRadius: radio * 0.6, background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontFamily: F_TITULO, fontSize: size * 0.4, color: '#fff', letterSpacing: 2 }}>{iniciales}</span>
+      </div>
     </div>
   )
 }
@@ -203,9 +201,7 @@ function Flyer({ partido, torneo, datos, tema, formato }) {
         {/* Torneo + etiquetas */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
           {torneo?.logo_url && (
-            <div style={{ width: tam.logo, height: tam.logo, borderRadius: 28, background: '#fff', padding: 10, boxSizing: 'border-box', flexShrink: 0 }}>
-              <img src={torneo.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}/>
-            </div>
+            <LogoFlyer url={torneo.logo_url} size={tam.logo} radio={28} pad={10}/>
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: F_TEXTO, fontWeight: 800, fontSize: tam.torneo, lineHeight: 1.02, letterSpacing: 1, textTransform: 'uppercase', maxHeight: tam.torneo * 2.1, overflow: 'hidden' }}>{nombreTorneo}</div>
