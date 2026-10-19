@@ -3,57 +3,78 @@
 // /admin/config-sitio. No calcula nada por su cuenta: recibe las filas ya
 // calculadas con computeTablaGeneral (misma función que usa la tabla de
 // posiciones real del torneo, en AdminTorneoDetallePage/TorneoPublicoPage),
-// para no duplicar esa lógica acá.
-const ROJO_VIVO = '#e5433d'
+// para no duplicar esa lógica acá. Diseño compartido en ./enVivoUI.
+import { useLayoutEffect, useRef, useState } from 'react'
+import { EnVivoEstilos, Escudo } from './enVivoUI'
 
 export default function TablaEnVivoOverlay({ filas }) {
+  // Cuántas filas caben LEGIBLES en el video: en un celular chico no caben 10
+  // con letra cómoda, así que se muestran menos (siempre las de arriba + los
+  // equipos que juegan ahora). En pantalla grande / OBS salen las 10.
+  const ref = useRef(null)
+  const [cabenFilas, setCabenFilas] = useState(10)
+  useLayoutEffect(() => {
+    const el = ref.current
+    const padre = el?.parentElement
+    if (!el || !padre) return undefined
+    const medir = () => {
+      const u = el.offsetWidth / 100
+      if (!u || !padre.clientHeight) return
+      const libre = padre.clientHeight * 0.92 - u * (5.8 + 4 + 1.5)
+      setCabenFilas(Math.max(4, Math.floor(libre / (u * 5.2))))
+    }
+    medir()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(medir)
+    ro.observe(padre)
+    return () => ro.disconnect()
+  }, [])
+
   if (!filas || !filas.length) return null
-  // Top 10 — es una gráfica de transmisión, no la tabla completa. Si un equipo
-  // que está jugando AHORA queda fuera del top 10, igual se muestra abajo con su
-  // posición real, para que se vea cómo va la tabla con ese partido.
+  // Top 10 como máximo — es una gráfica de transmisión, no la tabla completa.
+  // Si un equipo que está jugando AHORA queda fuera, igual se muestra abajo con
+  // su posición real, para que se vea cómo va la tabla con ese partido.
   const N = 10
-  const top = filas.slice(0, N).map((f, i) => ({ f, pos: i + 1 }))
-  const extra = filas.slice(N).map((f, i) => ({ f, pos: i + N + 1 })).filter(x => x.f.enVivo)
+  const vivosFuera = filas.slice(N).filter(f => f.enVivo).length
+  const nTop = Math.max(3, Math.min(N, cabenFilas - vivosFuera - (vivosFuera ? 1 : 0)))
+  const top = filas.slice(0, nTop).map((f, i) => ({ f, pos: i + 1 }))
+  const extra = filas.slice(nTop).map((f, i) => ({ f, pos: i + nTop + 1 })).filter(x => x.f.enVivo)
   const hayVivo = filas.some(f => f.enVivo)
 
-  const fila = ({ f, pos }) => (
-    <div key={f.equipo?.id || pos} style={{
-      display: 'flex', alignItems: 'center', gap: '7px', borderRadius: '5px', padding: '0 4px', margin: '0 -4px',
-      background: f.enVivo ? 'rgba(229,67,61,.2)' : 'transparent',
-    }}>
-      <span style={{ fontSize: 'clamp(.54rem, 2.2vw, .68rem)', fontWeight: 900, color: f.enVivo ? '#fff' : '#9aa0a6', minWidth: '16px', flexShrink: 0 }}>
-        {pos}
-      </span>
-      <span style={{ fontSize: 'clamp(.56rem, 2.3vw, .7rem)', fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-        {f.equipo?.name || '—'}
-        {f.enVivo && <span style={{ color: '#ff8a84', fontWeight: 900, fontSize: '.85em', marginLeft: '6px' }}>● {f.enVivo.gf}-{f.enVivo.gc}{f.enVivo.rival ? ` vs ${f.enVivo.rival}` : ''}</span>}
-      </span>
-      <span style={{ fontSize: 'clamp(.5rem, 2vw, .6rem)', fontWeight: 600, color: '#9aa0a6', flexShrink: 0 }}>
-        PJ {f.pj}
-      </span>
-      <span style={{ fontSize: 'clamp(.5rem, 2vw, .6rem)', fontWeight: 600, color: '#9aa0a6', flexShrink: 0, minWidth: '30px', textAlign: 'right' }}>
-        DG {f.gf - f.gc}
-      </span>
-      <span style={{ fontSize: 'clamp(.6rem, 2.5vw, .76rem)', fontWeight: 900, color: '#fff', flexShrink: 0, minWidth: '24px', textAlign: 'right' }}>
-        {f.pts}
-      </span>
-    </div>
-  )
+  const fila = ({ f, pos }) => {
+    const dg = f.gf - f.gc
+    return (
+      <div key={f.equipo?.id || pos} className={`ev-r${f.enVivo ? ' vivo' : ''}${pos === 1 ? ' top1' : ''}`}>
+        <span className="ev-c-pos">{pos}</span>
+        <span className="ev-c-eq">
+          <Escudo url={f.equipo?.logo_url} name={f.equipo?.name} size={3.6}/>
+          <span className="ev-txt">{f.equipo?.name || '—'}</span>
+          {f.enVivo && <span className="ev-chip">{f.enVivo.gf}-{f.enVivo.gc}</span>}
+        </span>
+        <span className="ev-c-n">{f.pj}</span>
+        <span className="ev-c-n">{dg > 0 ? `+${dg}` : dg}</span>
+        <span className="ev-c-pts">{f.pts}</span>
+      </div>
+    )
+  }
 
   return (
-    <div style={{
-      position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 2,
-      width: 'min(96%, 460px)', boxSizing: 'border-box', pointerEvents: 'none',
-      background: 'rgba(6,6,8,.94)', borderRadius: '10px 10px 0 0', boxShadow: '0 -3px 14px rgba(0,0,0,.5)',
-      padding: 'clamp(6px, 2vw, 10px) clamp(8px, 2.4vw, 14px)', borderTop: `2px solid ${ROJO_VIVO}`,
-    }}>
-      <div style={{ fontSize: 'clamp(.52rem, 2.2vw, .62rem)', fontWeight: 900, color: '#f5a623', letterSpacing: '.08em', marginBottom: '4px' }}>
-        🏆 {hayVivo ? 'ASÍ VA LA TABLA' : 'TABLA DE POSICIONES'}
-        {hayVivo && <span style={{ color: ROJO_VIVO, marginLeft: '8px' }}>● EN VIVO · PROVISIONAL</span>}
+    <div className="ev-p ev-u" ref={ref}>
+      <EnVivoEstilos/>
+      <div className="ev-h">
+        <div className="ev-tag">{hayVivo ? 'Así va la tabla' : 'Tabla de posiciones'}</div>
+        <div className="ev-sub">{hayVivo && <><span className="ev-dot"/>En vivo · provisional</>}</div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+      <div className="ev-cols">
+        <span className="ev-c-pos" style={{ fontWeight: 800 }}>#</span>
+        <span style={{ flex: 1 }}>Equipo</span>
+        <span className="ev-c-n">PJ</span>
+        <span className="ev-c-n">DG</span>
+        <span className="ev-c-pts" style={{ color: 'inherit' }}>PTS</span>
+      </div>
+      <div>
         {top.map(fila)}
-        {extra.length > 0 && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: 'clamp(.5rem, 2vw, .6rem)', lineHeight: 1 }}>···</div>}
+        {extra.length > 0 && <div className="ev-mas">···</div>}
         {extra.map(fila)}
       </div>
     </div>
