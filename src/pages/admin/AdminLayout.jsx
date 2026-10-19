@@ -19,7 +19,7 @@ const MENU_COMPLETO = [
   { icon: <UserCheck size={22}/>,    label: 'ÁRBITROS',   ruta: '/admin/arbitros',  soloAdmin: true },
   { icon: <GraduationCap size={22}/>,label: 'ESCUELAS',   ruta: '/admin/escuelas',  soloAdmin: true },
   { icon: <Building2 size={22}/>,    label: 'ESCENARIOS', ruta: '/admin/escenarios',soloAdmin: true },
-  { icon: <Radio size={22}/>,        label: 'EN VIVO',    ruta: '/admin/config-sitio', soloAdmin: true },
+  { icon: <Radio size={22}/>,        label: 'EN VIVO',    ruta: '/admin/config-sitio' },
   { icon: <Megaphone size={22}/>,    label: 'PATROCINADORES', ruta: '/admin/patrocinadores', soloAdmin: true },
   { icon: <UserCog size={22}/>,      label: 'USUARIOS',   ruta: '/admin/usuarios',  soloAdmin: true },
 ]

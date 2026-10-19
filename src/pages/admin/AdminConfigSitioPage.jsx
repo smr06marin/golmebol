@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuthStore } from '../../store/authStore'
 import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
@@ -22,11 +23,19 @@ const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'blo
 
 const NOMBRE_PLATAFORMA = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', otro: 'Enlace genérico (se mostrará un botón "Ver en vivo")' }
 
-function streamVacio() {
-  return { id: crypto.randomUUID(), url: '', titulo: '', match_id: null, match_ids: [], activo: true, retraso_segundos: 20, segundos_repeticion: 28 }
+function streamVacio(ownerId) {
+  return { id: crypto.randomUUID(), owner_id: ownerId || null, url: '', titulo: '', match_id: null, match_ids: [], activo: true, retraso_segundos: 20, segundos_repeticion: 28 }
 }
 
 export default function AdminConfigSitioPage() {
+  // Admin ve y maneja TODAS las transmisiones; un organizador ve y maneja solo
+  // las suyas (owner_id = su cuenta) y solo con partidos de SUS torneos.
+  const { rol, user } = useAuthStore()
+  const esOrganizador = rol?.rol === 'organizador'
+  const miId = user?.id || null
+  const idsCargadosRef = useRef(new Set()) // ids de transmisiones que esta pantalla ya trajo (para no borrar las que otros agreguen después)
+  const colaControlRef = useRef(Promise.resolve())
+  const idsTorneosRef = useRef(null)
   const [streams, setStreams] = useState([]) // [{id, url, titulo, match_id, activo}] — uno por transmisión
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -110,11 +119,20 @@ export default function AdminConfigSitioPage() {
   // el admin los ve de una sin tener que buscar entre partidos que todavía
   // no arrancan. La misma lista sirve para el selector de CADA transmisión.
   async function fetchPartidos() {
-    const { data } = await supabase.from('matches')
+    let q = supabase.from('matches')
       .select('id, tournament_id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
       .neq('status', 'finished')
       .order('played_at', { ascending: true })
       .limit(100)
+    if (esOrganizador) {
+      if (!idsTorneosRef.current) {
+        const { data: ts } = await supabase.from('tournaments').select('id').eq('organizador_id', miId)
+        idsTorneosRef.current = (ts || []).map(t => t.id)
+      }
+      if (idsTorneosRef.current.length === 0) { setPartidos([]); return }
+      q = q.in('tournament_id', idsTorneosRef.current)
+    }
+    const { data } = await q
     const conVivo = (data || []).map(m => ({ ...m, enVivo: !!derivarEnVivo(m) }))
     conVivo.sort((a, b) => (b.enVivo === a.enVivo) ? 0 : (b.enVivo ? 1 : -1))
     setPartidos(conVivo)
@@ -125,7 +143,7 @@ export default function AdminConfigSitioPage() {
     setPatrocinadoresBtn(data || [])
   }
 
-  useEffect(() => { fetchConfig(); fetchPartidos(); fetchPatrocinadoresBtn() }, [])
+  useEffect(() => { fetchConfig(); fetchPartidos(); fetchPatrocinadoresBtn() }, [esOrganizador, miId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apenas cambia la marca de tiempo de "mostrar este patrocinador" (botón
   // del panel), lo prende acá en la vista previa durante unos segundos y
@@ -262,7 +280,9 @@ export default function AdminConfigSitioPage() {
       setLoading(false)
       return
     }
-    const lista = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
+    const todas = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
+    idsCargadosRef.current = new Set(todas.map(x => x.id).filter(Boolean))
+    const lista = esOrganizador ? todas.filter(x => x.owner_id === miId) : todas
     setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20, segundos_repeticion: s.segundos_repeticion ?? 28 })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setControl((data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {})
@@ -276,10 +296,22 @@ export default function AdminConfigSitioPage() {
   // setStreams antes de leer el estado, cosa que no pasa en la misma línea).
   async function guardarStreamsArray(arr, { silencioso } = {}) {
     if (!silencioso) { setGuardando(true); setMsg(null) }
+    // Se vuelve a leer lo guardado para no pisar las transmisiones de otros
+    // organizadores (o las que otro agregó mientras esta pantalla estaba abierta).
+    const { data: filaActual, error: errLeer } = await supabase.from('site_config').select('en_vivo_streams').eq('id', true).maybeSingle()
+    if (errLeer) {
+      if (!silencioso) setGuardando(false)
+      setMsg({ text: 'Error al guardar: ' + errLeer.message, type:'error' })
+      return false
+    }
+    const enDb = Array.isArray(filaActual?.en_vivo_streams) ? filaActual.en_vivo_streams : []
+    const idsArr = new Set(arr.map(x => x.id))
+    const conservar = enDb.filter(x => !idsArr.has(x.id) && (esOrganizador ? x.owner_id !== miId : !idsCargadosRef.current.has(x.id)))
     const payload = {
       id: true,
-      en_vivo_streams: arr.map(s => ({
+      en_vivo_streams: [...conservar, ...arr.map(s => ({
         id: s.id,
+        owner_id: s.owner_id || null,
         url: (s.url || '').trim() || null,
         titulo: (s.titulo || '').trim() || null,
         match_id: s.match_id || null,
@@ -288,7 +320,7 @@ export default function AdminConfigSitioPage() {
         retraso_segundos: Number(s.retraso_segundos) || 20,
         segundos_repeticion: Number(s.segundos_repeticion) || 28,
         control_token: s.control_token || null,
-      })),
+      }))],
       updated_at: new Date().toISOString(),
     }
     const { error } = await supabase.from('site_config').upsert(payload, { onConflict: 'id' })
@@ -300,6 +332,7 @@ export default function AdminConfigSitioPage() {
       setMsg({ text: msgError, type:'error' })
       return false
     }
+    idsCargadosRef.current = new Set([...conservar, ...arr].map(x => x.id).filter(Boolean))
     if (!silencioso) {
       setMsg({ text: '✅ Guardado', type:'ok' })
       setTimeout(() => setMsg(null), 3000)
@@ -352,7 +385,9 @@ export default function AdminConfigSitioPage() {
   // de arranque: centrado-arriba, chico — después se ubica a mano con
   // "Editar posición" antes de publicarlo.
   async function guardarLogosTorneo(tournamentId, lista) {
-    const next = { ...logosPorTorneo, [tournamentId]: lista }
+    const { data: filaLogos } = await supabase.from('site_config').select('patrocinador_logos_torneo').eq('id', true).maybeSingle()
+    const baseLogos = (filaLogos?.patrocinador_logos_torneo && typeof filaLogos.patrocinador_logos_torneo === 'object') ? filaLogos.patrocinador_logos_torneo : logosPorTorneo
+    const next = { ...baseLogos, [tournamentId]: lista }
     const { error } = await supabase.from('site_config').upsert({ id: true, patrocinador_logos_torneo: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
     if (error) {
       setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_patrocinador_logos_torneo.sql en Supabase' : 'Error al guardar el logo', type:'error' })
@@ -434,12 +469,19 @@ export default function AdminConfigSitioPage() {
   // Se actualiza el estado local primero (optimista) para que el botón se
   // sienta instantáneo, y después se manda a Supabase.
   async function actualizarControl(streamId, cambios) {
-    const next = { ...control, [streamId]: { ...control[streamId], ...cambios } }
-    setControl(next)
-    const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-    if (error) {
-      setMsg({ text: /en_vivo_control|column .* does not exist/.test(error.message||'') ? '⚠️ Falta correr migracion_en_vivo_control.sql en Supabase' : 'Error al actualizar el panel de control', type:'error' })
-    }
+    setControl(c => ({ ...c, [streamId]: { ...c[streamId], ...cambios } }))
+    // Se guarda leyendo lo último de Supabase y cambiando SOLO esta
+    // transmisión (así no pisa el panel de otro organizador), y en cola para
+    // que dos toques seguidos no se pisen entre sí.
+    colaControlRef.current = colaControlRef.current.then(async () => {
+      const { data } = await supabase.from('site_config').select('en_vivo_control').eq('id', true).maybeSingle()
+      const base = (data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {}
+      const next = { ...base, [streamId]: { ...base[streamId], ...cambios } }
+      const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      if (error) {
+        setMsg({ text: /en_vivo_control|column .* does not exist/.test(error.message||'') ? '⚠️ Falta correr migracion_en_vivo_control.sql en Supabase' : 'Error al actualizar el panel de control', type:'error' })
+      }
+    }).catch(() => {})
   }
 
   // Dispara una repetición manual (botón del panel) — a diferencia de la
@@ -493,7 +535,7 @@ export default function AdminConfigSitioPage() {
   const tablas = useMemo(() => tablasConVivo(basesTabla, []), [basesTabla])
 
   function agregarStream() {
-    setStreams(s => [...s, streamVacio()])
+    setStreams(s => [...s, streamVacio(esOrganizador ? miId : null)])
   }
   function quitarStream(id) {
     setStreams(s => s.filter(x => x.id !== id))
@@ -902,6 +944,7 @@ export default function AdminConfigSitioPage() {
         </button>
       </div>
 
+      {!esOrganizador && (
       <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)', marginTop:'20px' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'600', color:'#202124', marginBottom:'4px' }}>
           <Repeat size={16} color={S.red}/> Imágenes para la repetición del gol
@@ -934,6 +977,7 @@ export default function AdminConfigSitioPage() {
             onChange={e => { subirImagenRepeticion(e.target.files[0]); e.target.value = '' }}/>
         </label>
       </div>
+      )}
 
       {/* La vista previa del video (con overlays y repetición) ya se ve
           arriba, adentro de "Panel de control en vivo" — antes había otra
