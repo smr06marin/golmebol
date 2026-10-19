@@ -126,6 +126,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [listo, setListo] = useState(false) // true cuando ya se puede autoguardar sin pisar nada
   const [step, setStep] = useState(esPapel ? 'partido' : 'colores') // colores | asignar | partido (la hoja de papel siempre va directo a 'partido')
   const [volviendoDesdePartido, setVolviendoDesdePartido] = useState(false)
+  const partidoIniciadoRef = useRef(false) // ya pasó por la pantalla del partido (ver construirSnap)
 
   const [jugadoresLocal, setJugadoresLocal] = useState([])
   const [jugadoresVisitante, setJugadoresVisitante] = useState([])
@@ -831,6 +832,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const durFinal = snap.duracionMinutos || dur
     setDuracionMinutos(durFinal)
     setStep(esPapel ? 'partido' : (snap.step || 'colores'))
+    partidoIniciadoRef.current = !!snap.partidoIniciado || snap.step === 'partido'
 
     // Si el cronómetro seguía corriendo cuando se guardó este borrador, se le
     // suma el tiempo real transcurrido desde entonces — así, al reabrir (el
@@ -927,6 +929,9 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
 
   // ── Autoguardado (borrador local + remoto) ────────────────────────────
   function construirSnap() {
+    // Una vez que el árbitro llegó a la pantalla del partido, queda marcado: aunque
+    // salga a otra pantalla (jugadores, colores) el partido sigue saliendo en vivo.
+    if (step === 'partido' || volviendoDesdePartido || segundos > 0 || periodo === 2 || eventos.length > 0 || corriendo) partidoIniciadoRef.current = true
     const base = { jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis }
     // Si la plantilla cambió de verdad por una edición de ESTE celular, se le
     // sube la versión (así gana frente a una copia más vieja del otro celular).
@@ -943,7 +948,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (firmaHoja !== papelSigRef.current) { papelSigRef.current = firmaHoja; papelVRef.current += 1; papelAutorRef.current = deviceIdRef.current }
       extraPapel = { papel, papelV: papelVRef.current, papelAutor: papelAutorRef.current }
     }
-    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString() }
+    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current }
   }
   // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
   restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
@@ -1080,6 +1085,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       return
     }
     const seguiaCorriendo = corriendo
+    if (tiempoAgotado && periodo === 2 && !window.confirm('⚠️ El partido YA TERMINÓ.\n\nSi sales ahora, el resultado NO queda guardado y el partido se quita de la transmisión en vivo.\n\nLo correcto es tocar 🏁 FINALIZAR y guardar el resultado.\n\n¿Salir de todas formas SIN guardar?')) return
     if (!window.confirm(seguiaCorriendo
       ? 'Se va a pausar el cronómetro y salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir jugando el tiempo que falta.\n\n¿Continuar?'
       : 'Vas a salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir donde quedó.\n\n¿Continuar?')) return

@@ -13,7 +13,7 @@ import { formatTiempo } from './estilosRapida'
 export default function CronometroCentral({
   periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, globalLlave,
   puedeIniciar = true, motivoNoIniciar = '',
-  onToggle, onReiniciar, onCambiarPeriodo, onVolverPrimero, onSilenciar,
+  onToggle, onReiniciar, onCambiarPeriodo, onVolverPrimero, onSilenciar, onFinalizar,
 }) {
   // Tamaño: con el reloj CORRIENDO se ve compacto (para no tapar los botones de
   // gol/tarjeta); en pausa o al empezar se ve completo, con todos los botones.
@@ -115,7 +115,8 @@ export default function CronometroCentral({
     if (miniEf) { setMini(false); setAbierto(true) } else { setMini(true); setAbierto(false) }
   }
   const botonPasar2T = periodo === 1 && tiempoAgotado
-  const bottomPx = botonPasar2T ? 100 : 12
+  const botonFinal = periodo === 2 && tiempoAgotado && !!onFinalizar
+  const bottomPx = (botonPasar2T || botonFinal) ? 100 : 12
   const btnBase = { border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '800', fontFamily: 'inherit' }
 
   return (
@@ -211,6 +212,15 @@ export default function CronometroCentral({
           )}
         </div>
       </div>
+
+      {/* Se acabó el partido: botón enorme para ir a guardar el resultado (sin guardar,
+          el partido no queda jugado y se quita de la transmisión en vivo). */}
+      {botonFinal && (
+        <button onClick={onFinalizar}
+          style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: '#1a73e8', color: '#fff', fontSize: '1.15rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
+          🏁 TERMINAR Y GUARDAR RESULTADO
+        </button>
+      )}
 
       {/* Se acabó el 1er tiempo: botón enorme y solo ese paso. */}
       {botonPasar2T && (

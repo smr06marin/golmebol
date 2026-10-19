@@ -113,7 +113,7 @@ export default function PantallaPartido({
         golesLocal={golesLocal} golesVis={golesVis} globalLlave={globalLlave}
         puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar}
         onToggle={onToggleCronometro} onReiniciar={onReiniciar} onCambiarPeriodo={onCambiarPeriodo}
-        onVolverPrimero={onVolverPrimero} onSilenciar={onSilenciar}
+        onVolverPrimero={onVolverPrimero} onSilenciar={onSilenciar} onFinalizar={onAbrirCierre}
       />
     </div>
   )

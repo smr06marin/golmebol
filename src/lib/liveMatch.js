@@ -6,6 +6,13 @@
 // las dos planillas y el partido no está finalizado, está en vivo.
 const MINUTOS_STALE = 25 // si nadie actualiza el snapshot hace más de esto, se considera abandonado (el árbitro cerró la app sin terminar) y no se muestra como en vivo
 
+// ¿La planilla rápida ya pasó por la pantalla del partido? Lo dice la propia
+// planilla (partidoIniciado) o se deduce de lo que ya hay cargado (por si el
+// borrador es de antes de que existiera esa marca).
+function rapidaYaIniciada(snap) {
+  return !!snap.partidoIniciado || snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || (snap.eventos || []).length > 0
+}
+
 export function derivarEnVivo(match) {
   if (!match || match.status === 'finished') return null
 
@@ -18,7 +25,9 @@ export function derivarEnVivo(match) {
   const { snap, updatedAt, tipo } = candidatos[0]
   if (!snap || !updatedAt) return null
   // Planilla rápida: mientras arma colores/roster todavía no empezó el partido de verdad
-  if (tipo === 'rapida' && snap.step !== 'partido') return null
+  // (Si el árbitro YA estaba planillando y salió un momento a otra pantalla —ej. a
+  // asignar el número de un jugador nuevo— el partido sigue en vivo.)
+  if (tipo === 'rapida' && snap.step !== 'partido' && !rapidaYaIniciada(snap)) return null
   // El árbitro tocó "Suspender" (parar el partido sin guardar resultado, para
   // seguirlo después) — no está en cancha ahora mismo, así que no debe salir
   // como "en vivo" hasta que vuelva a entrar y siga jugando.
