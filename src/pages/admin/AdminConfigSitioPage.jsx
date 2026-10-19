@@ -120,7 +120,7 @@ export default function AdminConfigSitioPage() {
   // no arrancan. La misma lista sirve para el selector de CADA transmisión.
   async function fetchPartidos() {
     let q = supabase.from('matches')
-      .select('id, tournament_id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
+      .select('id, tournament_id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)')
       .neq('status', 'finished')
       .order('played_at', { ascending: true })
       .limit(100)
@@ -636,7 +636,7 @@ export default function AdminConfigSitioPage() {
                       rebobinado, en vez de confiar a ciegas en el número de
                       segundos. */}
                   <div style={{ marginBottom:'14px' }}>
-                    <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={s.url} titulo={s.titulo} S={S} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
+                    <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoSeleccionado?.tournaments?.logo_url} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
                   </div>
                   {idsPartidosDeStream(s).length > 0 && !partidoSeleccionado?.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>

@@ -796,7 +796,7 @@ export default function LandingPage() {
 
   async function fetchPartidosVivo() {
     const { data } = await supabase.from('matches')
-      .select('id, tournament_id, matchday, fase, status, location, cancha_id, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad)')
+      .select('id, tournament_id, matchday, fase, status, location, cancha_id, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)')
       .eq('status', 'scheduled')
       .or('live_state.not.is.null,live_state_rapida.not.is.null')
     setMatchesVivoRaw(data || [])
@@ -1023,7 +1023,7 @@ export default function LandingPage() {
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
                   <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoDeStream?.tournaments?.logo_url}
                     overlay={(
                       <>
                         {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}

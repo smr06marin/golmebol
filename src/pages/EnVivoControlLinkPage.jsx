@@ -89,7 +89,7 @@ export default function EnVivoControlLinkPage() {
   const streamIdsKey = streamIds.join(',')
   async function fetchPartidosStream(matchIds) {
     const { data } = await supabase.from('matches')
-      .select('id, tournament_id, home_team_id, away_team_id, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad)')
+      .select('id, tournament_id, home_team_id, away_team_id, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)')
       .in('id', matchIds)
     setPartidosStream(data || [])
   }
@@ -212,7 +212,7 @@ export default function EnVivoControlLinkPage() {
         <div style={{ color:'#fff', fontWeight:'900', fontSize:'1rem', marginBottom:'2px' }}>Panel de control en vivo</div>
         <div style={{ color:'#9aa0a6', fontSize:'.8rem', marginBottom:'16px' }}>{stream.titulo || (partido ? `${partido.home?.name || '?'} vs ${partido.away?.name || '?'}` : 'Transmisión')}</div>
 
-        <LiveEmbed ref={liveEmbedRef} url={stream.url} titulo={stream.titulo} S={S}
+        <LiveEmbed ref={liveEmbedRef} url={stream.url} titulo={stream.titulo} S={S} logoTorneo={partido?.tournaments?.logo_url}
           overlay={(
             <>
               {partido && vivo && (
