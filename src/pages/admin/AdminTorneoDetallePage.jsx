@@ -5926,8 +5926,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           </div>
                           {/* Agregar jugador directo (busca por cédula o crea uno nuevo),
                               sin necesidad de generar/enviar el link de registro — abre la
-                              pestaña "Jugadores" del equipo, que ya tiene ese flujo. */}
-                          <button onClick={() => navigate(`/admin/equipos/${e.id}?tab=jugadores`)}
+                              pestaña "Jugadores" del equipo con ESTE torneo ya elegido, así
+                              queda en el equipo y inscrito en este torneo. */}
+                          <button onClick={() => navigate(`/admin/equipos/${e.id}?tab=jugadores&torneo=${id}`)}
                             style={{ background:'#e8f0fe', border:'none', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.7rem', fontWeight:'700', display:'flex', alignItems:'center', gap:'4px' }}>
                             <Plus size={11}/> Agregar jugador
                           </button>

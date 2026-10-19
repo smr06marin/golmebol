@@ -194,8 +194,27 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const guardandoTagsRef = useRef(false) // bloqueo inmediato para "Guardar" etiquetas
   const [mostrarInscribir, setMostrarInscribir] = useState(null) // tournament_id del torneo con el picker abierto
 
+  // Torneo desde el que se llegó (botón "Agregar jugador" de la pestaña Jugadores
+  // del torneo): ahí el jugador debe quedar inscrito en ESE torneo, además de en el equipo.
+  const torneoPreId = searchParams.get('torneo')
+  const [torneosSel, setTorneosSel] = useState(null) // null = usar la selección por defecto
+  const [confirmacion, setConfirmacion] = useState(null) // { titulo, texto, textoSi, onSi }
+
   useEffect(() => { fetchTodo() }, [id])
   useEffect(() => { if (tabActiva === 'jugadores') fetchJugadoresGlobal() }, [tabActiva])
+
+  // Torneos donde se inscribe al jugador al agregarlo: el del que se vino, o el único
+  // torneo del equipo; si hay varios, el admin los marca a mano.
+  const torneosDefault = torneoPreId && torneos.some(t => t.tournament_id === torneoPreId)
+    ? [torneoPreId]
+    : (torneos.length === 1 ? [torneos[0].tournament_id] : [])
+  const seleccionTorneos = torneosSel ?? torneosDefault
+  function alternarTorneoSel(tid) {
+    setTorneosSel(prev => { const base = prev ?? torneosDefault; return base.includes(tid) ? base.filter(x => x !== tid) : [...base, tid] })
+  }
+  const inscritoEn = (tid, playerId) => !!playerId && (jugadoresPorTorneo[tid] || []).some(r => r.player_id === playerId)
+  const nombreTorneo = tid => torneos.find(t => t.tournament_id === tid)?.tournaments?.name || 'el torneo'
+  const listaNombres = tids => tids.length <= 2 ? tids.map(nombreTorneo).join(' y ') : `${tids.length} torneos`
 
   // ── BUSCADOR DE DATOS DEL EQUIPO ──────────────────────────────────────────
   const [busqueda,       setBusqueda]       = useState('')
@@ -684,33 +703,61 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     setBuscando(false)
   }
 
+  // Inscribe (o reactiva) al jugador en un torneo del equipo. Devuelve el error, si hubo.
+  async function inscribirSinAviso(tournamentId, playerId) {
+    const { data: existente } = await supabase.from('tournament_player_registrations')
+      .select('id, activo').eq('tournament_id', tournamentId).eq('team_id', id).eq('player_id', playerId).maybeSingle()
+    if (existente) {
+      if (existente.activo) return null
+      const { error } = await supabase.from('tournament_player_registrations').update({ activo: true }).eq('id', existente.id)
+      return error
+    }
+    const { error } = await supabase.from('tournament_player_registrations').insert({ tournament_id: tournamentId, team_id: id, player_id: playerId, activo: true })
+    return error
+  }
+
+  // Agrega al jugador encontrado por cédula: al equipo (si todavía no está) y a
+  // los torneos elegidos (los que todavía no tiene). Sirve igual para "es nuevo
+  // en el equipo" que para "ya está en el equipo pero no en este torneo".
   async function handleAgregarJugadorGlobal() {
     if (agregandoGlobalRef.current) return // ya se está agregando — evita doble clic
     agregandoGlobalRef.current = true
     setAgregandoGlobal(true)
     try {
-      const { error } = await supabase.from('team_players').insert({ team_id: id, player_id: jugadorEncontrado.id })
-      if (error && error.code === '23505') return showMsg('El jugador ya está en este equipo', 'error')
-      if (error) return showMsg('Error al agregar jugador', 'error')
-
-      // Agregar al equipo (team_players) NO lo inscribe automáticamente en un
-      // torneo — eso es lo que hace que luego no aparezca en "jugadores
-      // registrados" de la programación pública. Si el equipo está en un solo
-      // torneo activo lo inscribimos de una vez ahí; si está en varios, queda
-      // pendiente de inscribir manualmente en la pestaña "Torneos".
-      if (torneos.length === 1) {
-        await supabase.from('tournament_player_registrations').insert({ tournament_id: torneos[0].tournament_id, team_id: id, player_id: jugadorEncontrado.id, activo: true })
-        showMsg(`Jugador agregado e inscrito en ${torneos[0].tournaments?.name || 'el torneo'} ✓`)
-      } else if (torneos.length > 1) {
-        showMsg('Jugador agregado al equipo — falta inscribirlo en el torneo correspondiente (pestaña Torneos)', 'ok')
-      } else {
-        showMsg('Jugador agregado ✓')
+      const p = jugadorEncontrado
+      const yaEnEquipo = jugadoresEquipoGlobal.some(j => j.id === p.id)
+      if (!yaEnEquipo) {
+        const { error } = await supabase.from('team_players').insert({ team_id: id, player_id: p.id })
+        if (error && error.code !== '23505') return showMsg('Error al agregar jugador al equipo', 'error')
       }
-      setJugadorEncontrado(null); setCedulaBuscar(''); fetchJugadoresGlobal()
+      const pendientes = seleccionTorneos.filter(tid => !inscritoEn(tid, p.id))
+      const fallos = []
+      for (const tid of pendientes) {
+        const err = await inscribirSinAviso(tid, p.id)
+        if (err) fallos.push(nombreTorneo(tid))
+      }
+      if (fallos.length) showMsg(`${yaEnEquipo ? 'No se pudo inscribir' : 'Quedó en el equipo, pero no se pudo inscribir'} en ${fallos.join(', ')}`, 'error')
+      else if (pendientes.length) showMsg(`${yaEnEquipo ? 'Inscrito' : 'Agregado al equipo e inscrito'} en ${listaNombres(pendientes)} ✓`)
+      else showMsg(torneos.length > 1 ? 'Jugador agregado al equipo — falta inscribirlo en un torneo (márcalo en la lista)' : 'Jugador agregado ✓')
+      setJugadorEncontrado(null); setCedulaBuscar(''); setTorneosSel(null)
+      fetchJugadoresGlobal(); fetchTorneos()
     } finally {
       agregandoGlobalRef.current = false
       setAgregandoGlobal(false)
     }
+  }
+
+  // Pregunta antes de agregar al jugador encontrado, diciendo exactamente a dónde irá.
+  function pedirConfirmacionAgregar() {
+    const p = jugadorEncontrado
+    if (!p) return
+    const yaEnEquipo = jugadoresEquipoGlobal.some(j => j.id === p.id)
+    const pendientes = seleccionTorneos.filter(tid => !inscritoEn(tid, p.id))
+    if (yaEnEquipo && pendientes.length === 0) return
+    const donde = yaEnEquipo
+      ? `al torneo ${listaNombres(pendientes)} (ya está en el equipo)`
+      : pendientes.length ? `al equipo ${equipo?.name || ''} y al torneo ${listaNombres(pendientes)}` : `al equipo ${equipo?.name || ''} (sin inscribirlo en ningún torneo)`
+    setConfirmacion({ titulo: `¿Agregar a ${p.name}?`, texto: `Quieres agregarlo ${donde}.`, textoSi: 'Sí, agregar', onSi: handleAgregarJugadorGlobal })
   }
 
   async function handleInscribirEnTorneo(tournamentId, tournamentName, playerId) {
@@ -798,19 +845,35 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     }
   }
 
+  // Revisa los datos obligatorios del jugador nuevo; devuelve el mensaje de error o null.
+  function errorFormNuevo() {
+    if (!formNuevo.name)             return 'El nombre es obligatorio'
+    if (!formNuevo.telefono)         return 'El teléfono es obligatorio'
+    if (!formNuevo.city)             return 'La ciudad es obligatoria'
+    if (!formNuevo.genero)           return 'El género es obligatorio'
+    if (!formNuevo.fecha_nacimiento) return 'La fecha de nacimiento es obligatoria'
+    if (!formNuevo.posicion)         return 'Selecciona una posición'
+    if (!fotoPerfilNueva)            return 'La foto del jugador es obligatoria'
+    if (esMenorDeEdad(formNuevo.fecha_nacimiento) && !autorizoMenorNuevo)
+      return 'Falta marcar la autorización de un adulto responsable, el jugador es menor de edad'
+    if (!fotoCedulaFrontalNueva)     return 'La foto frontal del documento es obligatoria'
+    if (!fotoCedulaTraseraNueva)     return 'La foto trasera del documento es obligatoria'
+    return null
+  }
+
+  function pedirConfirmacionCrear() {
+    const err = errorFormNuevo()
+    if (err) return showMsg(err, 'error')
+    const donde = seleccionTorneos.length
+      ? `al equipo ${equipo?.name || ''} y al torneo ${listaNombres(seleccionTorneos)}`
+      : `al equipo ${equipo?.name || ''} (sin inscribirlo en ningún torneo)`
+    setConfirmacion({ titulo: `¿Crear a ${formNuevo.name}?`, texto: `Se creará el jugador y quieres agregarlo ${donde}.`, textoSi: 'Sí, crear y agregar', onSi: handleCrearYAgregar })
+  }
+
   async function handleCrearYAgregar() {
     if (guardandoCrearRef.current) return // ya se está creando — evita doble clic
-    if (!formNuevo.name)             return showMsg('El nombre es obligatorio', 'error')
-    if (!formNuevo.telefono)         return showMsg('El teléfono es obligatorio', 'error')
-    if (!formNuevo.city)             return showMsg('La ciudad es obligatoria', 'error')
-    if (!formNuevo.genero)           return showMsg('El género es obligatorio', 'error')
-    if (!formNuevo.fecha_nacimiento) return showMsg('La fecha de nacimiento es obligatoria', 'error')
-    if (!formNuevo.posicion) return showMsg('Selecciona una posición', 'error')
-    if (!fotoPerfilNueva) return showMsg('La foto del jugador es obligatoria', 'error')
-    if (esMenorDeEdad(formNuevo.fecha_nacimiento) && !autorizoMenorNuevo)
-      return showMsg('Falta marcar la autorización de un adulto responsable, el jugador es menor de edad', 'error')
-    if (!fotoCedulaFrontalNueva) return showMsg('La foto frontal del documento es obligatoria', 'error')
-    if (!fotoCedulaTraseraNueva) return showMsg('La foto trasera del documento es obligatoria', 'error')
+    const errForm = errorFormNuevo()
+    if (errForm) return showMsg(errForm, 'error')
 
     guardandoCrearRef.current = true
     try {
@@ -848,10 +911,18 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       // "Jugadores" / vida futbolística del equipo) — sin esta fila el
       // jugador queda inscrito en el torneo pero no aparece en el equipo.
       await supabase.from('team_players').insert({ team_id: id, player_id: nuevo.id })
-      if (torneos.length === 0) { showMsg('Jugador creado pero el equipo no está en ningún torneo', 'error'); return }
-      const torneo = torneos[0]
-      await supabase.from('tournament_player_registrations').insert({ tournament_id: torneo.tournament_id, team_id: id, player_id: nuevo.id, activo: true })
-      showMsg('Jugador creado y agregado ✓')
+      // Se inscribe en los torneos elegidos (el torneo desde el que se vino, o los
+      // que se marcaron) — antes se inscribía siempre en el primero de la lista.
+      const fallos = []
+      for (const tid of seleccionTorneos) {
+        const err = await inscribirSinAviso(tid, nuevo.id)
+        if (err) fallos.push(nombreTorneo(tid))
+      }
+      if (fallos.length) showMsg(`Jugador creado y agregado al equipo, pero no se pudo inscribir en ${fallos.join(', ')}`, 'error')
+      else if (seleccionTorneos.length) showMsg(`Jugador creado, agregado al equipo e inscrito en ${listaNombres(seleccionTorneos)} ✓`)
+      else showMsg(torneos.length === 0 ? 'Jugador creado y agregado al equipo (el equipo no está en ningún torneo)' : 'Jugador creado y agregado al equipo — falta inscribirlo en un torneo')
+      setTorneosSel(null)
+      fetchTorneos()
       setMostrarFormNuevo(false); setCedulaBuscar(''); setFormNuevo(EMPTY_NUEVO)
       setFotoPerfilNueva(null); setPreviewPerfilNueva(null)
       setFotoCedulaFrontalNueva(null); setPreviewCedFrontalNueva(null)
@@ -904,6 +975,18 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   return (
     <div style={{ background: GLASS_BG, minHeight: '100vh', padding: '16px', borderRadius: '24px' }}>
+      {confirmacion && (
+        <div onClick={() => setConfirmacion(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(150deg,#17296b,#3a1f80)', border: '1px solid rgba(255,255,255,.22)', borderRadius: '20px', padding: '22px', width: '380px', maxWidth: '100%', boxShadow: '0 12px 40px rgba(0,0,0,.5)' }}>
+            <div style={{ fontWeight: 800, color: TXT, fontSize: '1rem', marginBottom: '8px' }}>{confirmacion.titulo}</div>
+            <div style={{ color: TXT_SOFT, fontSize: '.88rem', lineHeight: 1.5, marginBottom: '18px' }}>{confirmacion.texto}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => { const f = confirmacion.onSi; setConfirmacion(null); f() }} style={{ ...glassBtn('#51cf66'), flex: 1, padding: '12px 10px', fontWeight: 800 }}>{confirmacion.textoSi || 'Sí'}</button>
+              <button onClick={() => setConfirmacion(null)} style={{ ...glassBtn('#5b9dff', false), flex: 1, padding: '12px 10px' }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {msg && (
         <div style={{ position: 'fixed', top: '1rem', left: '50%', transform: 'translateX(-50%)', background: msg.type === 'error' ? 'linear-gradient(135deg,#ff8a80,#ff6b6b)' : 'linear-gradient(135deg,#69db7c,#51cf66)', color: '#0f1c3f', borderRadius: '16px', padding: '10px 24px', zIndex: 200, fontSize: '.875rem', fontWeight: '700', boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
           {msg.text}
@@ -1215,7 +1298,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
         <div>
           {!modoLectura && (
             <div style={{ ...GLASS, borderRadius: '22px', padding: '20px', marginBottom: '20px' }}>
-              <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo</div>
+              <div style={{ fontWeight: '700', color: TXT, fontSize: '.9rem', marginBottom: '16px' }}>Agregar jugador al equipo{torneoPreId && torneos.some(t => t.tournament_id === torneoPreId) ? <span style={{ color: '#8ec3ff' }}> · para el torneo {nombreTorneo(torneoPreId)}</span> : ''}</div>
               {!jugadorEncontrado && !mostrarFormNuevo && (
                 <div>
                   <label style={labelStyle}>Número de cédula</label>
@@ -1247,10 +1330,47 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       <div style={{ fontSize: '.78rem', color: TXT_SOFT }}>Al agregarla al equipo quedará también como jugador con los mismos datos — entra con la misma cuenta y contraseña a los dos portales.</div>
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleAgregarJugadorGlobal} disabled={agregandoGlobal} style={{ ...glassBtn('#51cf66'), padding: '10px 18px', opacity: agregandoGlobal ? .7 : 1 }}>{agregandoGlobal ? 'Agregando...' : '+ Agregar al equipo'}</button>
-                    <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar('') }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Buscar otro</button>
-                  </div>
+                  {(() => {
+                    const yaEnEquipo = jugadoresEquipoGlobal.some(j => j.id === jugadorEncontrado.id)
+                    const faltan = torneos.filter(t => !inscritoEn(t.tournament_id, jugadorEncontrado.id)).map(t => t.tournament_id)
+                    const nuevosSel = seleccionTorneos.filter(tid => !inscritoEn(tid, jugadorEncontrado.id))
+                    const etiqueta = agregandoGlobal ? 'Agregando...'
+                      : !yaEnEquipo ? (nuevosSel.length ? `+ Agregar al equipo y a ${listaNombres(nuevosSel)}` : '+ Agregar solo al equipo')
+                      : `+ Inscribir en ${nuevosSel.length ? listaNombres(nuevosSel) : 'un torneo'}`
+                    const sinAccion = yaEnEquipo && nuevosSel.length === 0
+                    return (
+                      <>
+                        <div style={{ ...GLASS_INSET, borderRadius: '16px', padding: '12px 16px', marginBottom: '12px' }}>
+                          {!yaEnEquipo ? (
+                            <div style={{ fontSize: '.8rem', color: '#8ec3ff', fontWeight: '700' }}>ℹ️ Este jugador todavía no está en {equipo?.name}. Se agregará al equipo{torneos.length ? ' y al torneo que elijas abajo' : ''}.</div>
+                          ) : faltan.length === 0 ? (
+                            <div style={{ fontSize: '.8rem', color: '#51cf66', fontWeight: '700' }}>✓ Este jugador ya está en el equipo y inscrito en {torneos.length > 1 ? 'todos sus torneos' : 'el torneo'}.</div>
+                          ) : (
+                            <div style={{ fontSize: '.8rem', color: '#ffd166', fontWeight: '700' }}>⚠️ Este jugador ya está en el equipo, pero NO está inscrito en {listaNombres(faltan)}. Elígelo abajo para inscribirlo.</div>
+                          )}
+                        </div>
+                        {torneos.length > 0 && (
+                          <div style={{ ...GLASS_INSET, borderRadius: '16px', padding: '12px 16px', marginBottom: '12px' }}>
+                            <div style={{ fontSize: '.74rem', color: TXT_MUTED, fontWeight: '700', marginBottom: '8px' }}>TORNEO DONDE INSCRIBIRLO</div>
+                            {torneos.map(t => {
+                              const ya = inscritoEn(t.tournament_id, jugadorEncontrado.id)
+                              return (
+                                <label key={t.tournament_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', cursor: ya ? 'default' : 'pointer', opacity: ya ? .6 : 1 }}>
+                                  <input type="checkbox" disabled={ya} checked={ya || seleccionTorneos.includes(t.tournament_id)} onChange={() => alternarTorneoSel(t.tournament_id)} style={{ width: 20, height: 20, flexShrink: 0 }}/>
+                                  <span style={{ fontSize: '.88rem', color: TXT, flex: 1 }}>{t.tournaments?.name || 'Torneo'}</span>
+                                  {ya && <span style={{ fontSize: '.7rem', color: '#51cf66', fontWeight: '700' }}>✓ ya inscrito</span>}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button onClick={pedirConfirmacionAgregar} disabled={agregandoGlobal || sinAccion} style={{ ...glassBtn('#51cf66'), padding: '10px 18px', opacity: (agregandoGlobal || sinAccion) ? .5 : 1, textAlign: 'left' }}>{etiqueta}</button>
+                          <button onClick={() => { setJugadorEncontrado(null); setCedulaBuscar(''); setTorneosSel(null) }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Buscar otro</button>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               )}
               {mostrarFormNuevo && (
@@ -1316,9 +1436,20 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       />
                     </div>
                   </div>
+                  {torneos.length > 0 && (
+                    <div style={{ ...GLASS_INSET, borderRadius: '16px', padding: '12px 16px', marginTop: '16px' }}>
+                      <div style={{ fontSize: '.74rem', color: TXT_MUTED, fontWeight: '700', marginBottom: '8px' }}>TORNEO DONDE INSCRIBIRLO</div>
+                      {torneos.map(t => (
+                        <label key={t.tournament_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={seleccionTorneos.includes(t.tournament_id)} onChange={() => alternarTorneoSel(t.tournament_id)} style={{ width: 20, height: 20, flexShrink: 0 }}/>
+                          <span style={{ fontSize: '.88rem', color: TXT }}>{t.tournaments?.name || 'Torneo'}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                    <button onClick={handleCrearYAgregar} disabled={guardando} style={{ ...glassBtn('#5b9dff'), padding: '10px 18px', opacity: guardando ? .7 : 1 }}>
-                      {guardando ? 'Creando...' : 'Crear y agregar al equipo'}
+                    <button onClick={pedirConfirmacionCrear} disabled={guardando} style={{ ...glassBtn('#5b9dff'), padding: '10px 18px', opacity: guardando ? .7 : 1 }}>
+                      {guardando ? 'Creando...' : (seleccionTorneos.length ? 'Crear y agregar al equipo y torneo' : 'Crear y agregar al equipo')}
                     </button>
                     <button onClick={() => { setMostrarFormNuevo(false); setCedulaBuscar(''); setFotoPerfilNueva(null); setPreviewPerfilNueva(null); setFotoCedulaFrontalNueva(null); setPreviewCedFrontalNueva(null); setFotoCedulaTraseraNueva(null); setPreviewCedTraseraNueva(null); setAutorizoMenorNuevo(false) }} style={{ ...glassBtn('#5b9dff', false), padding: '10px 18px' }}>Cancelar</button>
                   </div>
