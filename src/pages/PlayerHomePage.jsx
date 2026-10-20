@@ -69,6 +69,9 @@ function NotifBanner({ notifs, onDismiss }) {
   )
 }
 
+// Perfil ya cargado en esta sesión (en memoria, se pierde al recargar la página)
+let CACHE_PERFIL = null
+
 export default function PlayerHomePage() {
   const navigate   = useNavigate()
   const { user }   = useAuthStore() // ya validado por PlayerRoute — evita otra ida y vuelta al login
@@ -103,7 +106,18 @@ export default function PlayerHomePage() {
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
-    setLoading(true)
+    // Si ya se cargó el perfil en esta sesión, se muestra de una con eso y se
+    // refresca por detrás (sin pantalla de "Cargando...").
+    const c = CACHE_PERFIL && user && CACHE_PERFIL.userId === user.id ? CACHE_PERFIL : null
+    if (c) {
+      setPlayer(c.player); if (c.player.card_type) setCardType(c.player.card_type)
+      setStats(c.stats); setTorneos(c.torneos); setSponsors(c.sponsors); setCardLevelProgress(c.clp)
+      setTarjetasCustom(c.tarjetasCustom); setEquiposDueno(c.equiposDueno); setSinEquipo(c.sinEquipo)
+      setHistorial(c.historial || []); if (c.logrosData) setLogrosData(c.logrosData)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
 
     // PlayerRoute ya garantiza que hay usuario logueado antes de mostrar esta
     // página, así que usamos el user del store en vez de volver a pedirlo a
@@ -133,7 +147,6 @@ export default function PlayerHomePage() {
     const [
       { data: rawStats },
       { data: logrosJug },
-      { data: histData },
       { data: spons },
       { data: clp },
       { data: customCards },
@@ -142,14 +155,11 @@ export default function PlayerHomePage() {
       { data: predsResueltas },
       { data: rondaNotifs },
       { data: equiposDuenoData },
+      { data: playerNotifs },
     ] = await Promise.all([
-      supabase.from('player_match_stats').select('*').eq('player_id', p.id),
+      // Solo las columnas que usan las estadísticas (antes traía todas), de la más reciente a la más vieja (para la racha)
+      supabase.from('player_match_stats').select('goals_scored, goals_conceded, team_result, yellow_cards, red_cards, blue_cards, fue_arquero').eq('player_id', p.id).order('created_at', { ascending: false }),
       supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon'),
-      supabase
-        .from('player_match_stats')
-        .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
-        .eq('player_id', p.id)
-        .order('created_at', { ascending: false }),
       supabase.from('sponsors').select('*').eq('activo', true),
       supabase
         .from('player_card_level_progress')
@@ -170,6 +180,7 @@ export default function PlayerHomePage() {
       p.numero_cedula
         ? supabase.from('teams').select('id, name, created_at').eq('representante_cedula', String(p.numero_cedula))
         : Promise.resolve({ data: [] }),
+      supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'nueva_tarjeta').eq('leida', false),
     ])
 
     const raw       = rawStats || []
@@ -192,7 +203,7 @@ export default function PlayerHomePage() {
     const golesComoArq = raw.filter(r=>r.fue_arquero).reduce((s,r)=>s+(r.goals_scored||0),0)
 
     let rachaVictorias = 0
-    for (const r of [...raw].reverse()) {
+    for (const r of raw) { // ya viene de la más reciente a la más vieja
       if (r.team_result === 'win') rachaVictorias++
       else break
     }
@@ -202,7 +213,6 @@ export default function PlayerHomePage() {
     const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort, esDefensa, amarillas, rojas, azules, vallasCero, golesComoJug, golesComoArq }
     setStats(statsCalc)
 
-    setHistorial(histData || [])
     setSponsors(spons || [])
     setCardLevelProgress(clp || [])
     setTarjetasCustom(customCards || [])
@@ -225,53 +235,48 @@ export default function PlayerHomePage() {
     ]).then(([a, pr, ca, cl]) => {
       const progresoMap = {}
       ;(pr.data || []).forEach(x => { progresoMap[x.achievement_id] = x })
-      setLogrosData({ achievements: a.data || [], progresoMap, cache: ca.data || {}, cardLevels: cl.data || [] })
+      const ld = { achievements: a.data || [], progresoMap, cache: ca.data || {}, cardLevels: cl.data || [] }
+      setLogrosData(ld)
+      if (CACHE_PERFIL?.userId === user.id) CACHE_PERFIL.logrosData = ld
     }).catch(() => {})
 
     // NOTIFICACIONES
     const notifsList = []
     const dismissed  = JSON.parse(localStorage.getItem('golmebol_notifs_dismissed') || '[]')
 
-    // Las dos consultas de acá abajo dependen de datos que ya llegaron (regs y
-    // customCards), así que salen juntas en vez de una atrás de la otra.
     const ahora = new Date()
-    const [{ data: proximosPartidos }, { data: playerNotifs }] = await Promise.all([
-      (regs && regs.length > 0)
-        ? supabase
-            .from('matches')
-            .select('*, home:home_team_id(name), away:away_team_id(name)')
-            .in('home_team_id', regs.map(r => r.team_id).filter(Boolean))
-            .gte('played_at', ahora.toISOString())
-            .lte('played_at', new Date(ahora.getTime() + 24 * 60 * 60 * 1000).toISOString())
-            .eq('status', 'scheduled')
-            .order('played_at', { ascending: true })
-            .limit(1)
-        : Promise.resolve({ data: null }),
-      (customCards && customCards.length > 0)
-        ? supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'nueva_tarjeta').eq('leida', false)
-        : Promise.resolve({ data: null }),
-    ])
 
-    if (regs && regs.length > 0) {
-      if (proximosPartidos && proximosPartidos.length > 0) {
-        const partido   = proximosPartidos[0]
-        const fecha     = new Date(partido.played_at)
-        const horaStr   = fmtHoraDate(fecha)
-        const diffMs    = fecha - ahora
-        const diffH     = Math.floor(diffMs / 3600000)
-        const diffM     = Math.floor((diffMs % 3600000) / 60000)
-        const tiempoStr = diffH > 0 ? `en ${diffH}h ${diffM}min` : `en ${diffM} min`
-        const nid = `partido_${partido.id}`
-        if (!dismissed.includes(nid)) {
-          notifsList.push({
-            id: nid, icon: '⚽',
-            titulo: `¡Partido ${tiempoStr}!`,
-            texto: `${partido.home?.name} vs ${partido.away?.name} · ${horaStr}`,
-            color: '#e8710a', bg: '#fffbf0',
-            accion: { label: 'Ver PREDIX', fn: () => navigate('/jugador/apuestas') },
-          })
-        }
+    // Aviso del partido de las próximas 24 h: se busca DESPUÉS de mostrar la
+    // pantalla (no bloquea la entrada) y se agrega arriba de la lista.
+    const cargarProximoPartido = async () => {
+      if (!regs || regs.length === 0) return
+      const { data: proximosPartidos } = await supabase
+        .from('matches')
+        .select('*, home:home_team_id(name), away:away_team_id(name)')
+        .in('home_team_id', regs.map(r => r.team_id).filter(Boolean))
+        .gte('played_at', ahora.toISOString())
+        .lte('played_at', new Date(ahora.getTime() + 24 * 60 * 60 * 1000).toISOString())
+        .eq('status', 'scheduled')
+        .order('played_at', { ascending: true })
+        .limit(1)
+      if (!proximosPartidos || proximosPartidos.length === 0) return
+      const partido   = proximosPartidos[0]
+      const fecha     = new Date(partido.played_at)
+      const horaStr   = fmtHoraDate(fecha)
+      const diffMs    = fecha - ahora
+      const diffH     = Math.floor(diffMs / 3600000)
+      const diffM     = Math.floor((diffMs % 3600000) / 60000)
+      const tiempoStr = diffH > 0 ? `en ${diffH}h ${diffM}min` : `en ${diffM} min`
+      const nid = `partido_${partido.id}`
+      if (dismissed.includes(nid)) return
+      const notif = {
+        id: nid, icon: '⚽',
+        titulo: `¡Partido ${tiempoStr}!`,
+        texto: `${partido.home?.name} vs ${partido.away?.name} · ${horaStr}`,
+        color: '#e8710a', bg: '#fffbf0',
+        accion: { label: 'Ver PREDIX', fn: () => navigate('/jugador/apuestas') },
       }
+      setNotifs(prev => prev.some(n => n.id === nid) ? prev : [notif, ...prev])
     }
 
     if (predsResueltas && predsResueltas.length > 0) {
@@ -342,6 +347,23 @@ export default function PlayerHomePage() {
     }
 
     setLoading(false)
+
+    // Lo que NO hace falta para mostrar la tarjeta se trae después, sin hacer
+    // esperar al jugador: el aviso del próximo partido y el historial (solo los
+    // últimos 5 con sus equipos; el total de partidos sale de las estadísticas).
+    cargarProximoPartido().catch(() => {})
+    supabase
+      .from('player_match_stats')
+      .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
+      .eq('player_id', p.id)
+      .order('created_at', { ascending: false })
+      .limit(5)
+      .then(({ data }) => { setHistorial(data || []); if (CACHE_PERFIL?.userId === user.id) CACHE_PERFIL.historial = data || [] })
+      .catch(() => {})
+
+    // Guarda lo cargado en memoria: al volver a esta pantalla en la misma
+    // sesión (desde Predix, historial, etc.) aparece al instante y se refresca atrás.
+    CACHE_PERFIL = { userId: user.id, player: p, stats: statsCalc, torneos: regs || [], sponsors: spons || [], clp: clp || [], tarjetasCustom: customCards || [], equiposDueno: equiposDuenoData || [], sinEquipo: (regs || []).length === 0 && (tps || []).length === 0 && (equiposDuenoData || []).length === 0, historial: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.historial : [], logrosData: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.logrosData : null }
   }
 
   function dismissNotif(id) {
@@ -931,8 +953,8 @@ export default function PlayerHomePage() {
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{ padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
             <span>{t.icon}</span> {t.label}
-            {t.id === 'historial' && historial.length > 0 && (
-              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#5f6368', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{historial.length}</span>
+            {t.id === 'historial' && (stats?.pj || 0) > 0 && (
+              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#5f6368', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{stats?.pj || 0}</span>
             )}
           </button>
         ))}
@@ -1027,9 +1049,9 @@ export default function PlayerHomePage() {
           </button>
 
           <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124', marginBottom: '12px' }}>
-            Últimos partidos · {historial.length} jugados
+            Últimos partidos · {stats?.pj || 0} jugados
           </div>
-          {historial.length === 0 ? (
+          {historial.length === 0 && (stats?.pj || 0) === 0 ? (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
               <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📋</div>
               <div style={{ fontSize: '.875rem' }}>Aún no has jugado partidos</div>
@@ -1088,10 +1110,10 @@ export default function PlayerHomePage() {
                   </div>
                 )
               })}
-              {historial.length > 5 && (
+              {(stats?.pj || 0) > 5 && (
                 <button onClick={() => navigate('/jugador/historial')}
                   style={{ width: '100%', padding: '12px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '12px', cursor: 'pointer', color: '#1a73e8', fontWeight: '600', fontSize: '.82rem' }}>
-                  Ver todos los partidos ({historial.length}) →
+                  Ver todos los partidos ({stats?.pj || 0}) →
                 </button>
               )}
             </div>
