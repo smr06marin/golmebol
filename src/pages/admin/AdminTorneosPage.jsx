@@ -6,6 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star, X, Archive, ArchiveRestore } from 'lucide-react'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { ubicacionDeTorneo } from '../../lib/ubicaciones'
+import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import SelectorPlanillaTorneo from '../../components/SelectorPlanillaTorneo'
 
 
@@ -260,7 +261,16 @@ export default function AdminTorneosPage() {
       // Si no vino error pero tampoco ninguna fila afectada, el update no
       // escribió nada (típicamente permisos/RLS) — evita el falso "✓".
       else if (!data || data.length === 0) showMsg('El torneo no se actualizó: no tenés permiso para editarlo (revisa las políticas RLS de "tournaments" en Supabase)', 'error')
-      else { showMsg(avisoDegradado || 'Torneo actualizado ✓', avisoDegradado ? 'error' : 'ok'); setEditId(null) }
+      else {
+        // Los W ya jugados guardan su marcador: se actualizan al nuevo W configurado
+        let avisoW = ''
+        if ('w_goles_ganador' in payload) {
+          const r = await reaplicarMarcadorW(editId, payload.w_goles_ganador)
+          if (r.cambiados > 0) avisoW = ` · ${r.cambiados} partido${r.cambiados > 1 ? 's' : ''} por W ${r.cambiados > 1 ? 'quedaron' : 'quedó'} ${payload.w_goles_ganador}-0`
+          else if (r.error) avisoW = ' · no se pudo actualizar el marcador de los W ya jugados (permisos)'
+        }
+        showMsg((avisoDegradado || 'Torneo actualizado ✓') + avisoW, avisoDegradado || avisoW.includes('no se pudo') ? 'error' : 'ok'); setEditId(null)
+      }
     } else {
       const cleanForm = {
         ...formNorm,

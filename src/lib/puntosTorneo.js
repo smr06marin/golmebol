@@ -55,6 +55,31 @@ export async function cargarTorneoPuntos(tournamentId) {
   return { ...(res.data || {}), descuentos }
 }
 
+// Los partidos por W YA jugados guardan su marcador en el partido (ej. 3-0), así que
+// al cambiar la config del torneo (ej. a 1-0) hay que reescribirlo. Se llama al guardar
+// la config: el equipo que ganó por W (el de más goles) queda con `goles`, el otro con 0.
+// Devuelve cuántos partidos cambió. Si goles < 1 no toca nada (sin goles no se sabría quién ganó).
+export async function reaplicarMarcadorW(tournamentId, goles) {
+  const g = parseInt(goles, 10)
+  if (!tournamentId || !Number.isFinite(g) || g < 1) return { cambiados: 0, error: null }
+  let error = null, cambiados = 0
+  try {
+    const { data, error: errLeer } = await supabase.from('matches')
+      .select('id, home_score, away_score').eq('tournament_id', tournamentId).eq('tipo_resultado', 'w').eq('status', 'finished')
+    if (errLeer || !data) return { cambiados: 0, error: errLeer || null }
+    for (const m of data) {
+      const h = m.home_score || 0, a = m.away_score || 0
+      if (h === a) continue
+      const nh = h > a ? g : 0, na = a > h ? g : 0
+      if (nh === h && na === a) continue
+      const { data: upd, error: errUpd } = await supabase.from('matches').update({ home_score: nh, away_score: na }).eq('id', m.id).select('id')
+      if (!errUpd && upd && upd.length) cambiados++
+      else error = errUpd || new Error('sin permiso para editar el partido')
+    }
+  } catch (e) { error = e }
+  return { cambiados, error }
+}
+
 // Solo la config del W (para las planillas). Nunca falla: sin migración → 3-0.
 export async function cargarGolesW(tournamentId) {
   try {

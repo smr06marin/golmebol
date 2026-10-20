@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { resolverPrediccionesPartido } from '../../lib/predix'
-import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../../lib/puntosTorneo'
+import { getPuntosTorneo, puntosVictoria, cargarDescuentos, reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, compararPosiciones, aplicarDescuentos } from '../../lib/torneoTablas'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
@@ -3621,7 +3621,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       return
     }
     setTorneo(p => ({ ...p, ...payload })); setEditandoTorneo(false)
-    showMsg(avisoDegradado || 'Torneo actualizado ✓', avisoDegradado ? 'error' : 'ok')
+    // Los W ya jugados guardan su marcador: se actualizan al nuevo W configurado
+    let avisoW = ''
+    if ('w_goles_ganador' in payload) {
+      const r = await reaplicarMarcadorW(id, payload.w_goles_ganador)
+      if (r.cambiados > 0) { avisoW = ` · ${r.cambiados} partido${r.cambiados > 1 ? 's' : ''} por W ahora ${r.cambiados > 1 ? 'quedan' : 'queda'} ${payload.w_goles_ganador}-0`; fetchPartidos() }
+      else if (r.error) avisoW = ' · no se pudo actualizar el marcador de los W ya jugados (permisos)'
+    }
+    showMsg((avisoDegradado || 'Torneo actualizado ✓') + avisoW, avisoDegradado || (avisoW && avisoW.includes('no se pudo')) ? 'error' : 'ok')
   }
 
   async function handleGuardarEditPartido() {
