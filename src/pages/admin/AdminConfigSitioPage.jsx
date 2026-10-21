@@ -42,6 +42,7 @@ export default function AdminConfigSitioPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [partidos, setPartidos] = useState([]) // partidos elegibles para el marcador (no finalizados)
+  const [diagnosticos, setDiagnosticos] = useState({}) // { [streamId]: texto } — respuesta de /api/yt-en-vivo?debug=1 (para ver qué recibe el servidor de YouTube)
   const [torneos, setTorneos] = useState([]) // torneos que una transmisión puede "seguir" (torneo_auto)
   const [canchasPorTorneo, setCanchasPorTorneo] = useState({}) // { [torneoId]: [{id, nombre, escenario}] }
   const [imagenesRepeticion, setImagenesRepeticion] = useState([]) // [{id, url}] — rotan en la repetición del gol
@@ -121,6 +122,18 @@ export default function AdminConfigSitioPage() {
   // primero los que YA están en vivo (el árbitro ya empezó la planilla), así
   // el admin los ve de una sin tener que buscar entre partidos que todavía
   // no arrancan. La misma lista sirve para el selector de CADA transmisión.
+  async function diagnosticarCanal(s) {
+    setDiagnosticos(d => ({ ...d, [s.id]: 'Consultando…' }))
+    let texto
+    try {
+      const r = await fetch('/api/yt-en-vivo?debug=1&u=' + encodeURIComponent((s.url || '').trim()))
+      texto = JSON.stringify(await r.json(), null, 1)
+    } catch (e) {
+      texto = 'No se pudo consultar: ' + (e?.message || 'error')
+    }
+    setDiagnosticos(d => ({ ...d, [s.id]: texto }))
+  }
+
   // Torneos que se pueden "seguir" desde una transmisión: todos para el admin;
   // para un organizador, solo los suyos.
   async function fetchTorneos() {
@@ -898,13 +911,21 @@ export default function AdminConfigSitioPage() {
                     const texto = !est ? 'Revisando si tu canal está en vivo…'
                       : est.estado === 'vivo' ? '🔴 Tu canal está EN VIVO ahora — ya se ve en la página de inicio'
                       : est.estado === 'no-vivo' ? '⚪ Tu canal no está transmitiendo en este momento'
+                      : est.estado === 'falla' ? `⚠️ No se pudo revisar tu canal ahora: ${est.motivo || 'error desconocido'}`
                       : '⚠️ No se encontró ese canal de YouTube: revisa que el link esté bien escrito'
-                    const color = est?.estado === 'vivo' ? '#d93025' : est?.estado === 'error' ? '#e8710a' : '#5f6368'
+                    const color = est?.estado === 'vivo' ? '#d93025' : (est?.estado === 'error' || est?.estado === 'falla') ? '#e8710a' : '#5f6368'
                     return (
                       <div style={{ marginTop:'6px', fontSize:'.74rem', lineHeight:1.45 }}>
                         <div style={{ color:'#1e8e3e', fontWeight:'600' }}>✓ Detectado: canal de YouTube — no hace falta cambiar el link en cada partido</div>
                         <div style={{ color, fontWeight:'600', marginTop:'2px' }}>{texto}</div>
                         <div style={{ color:'#9aa0a6', marginTop:'2px' }}>La transmisión aparece sola en golmebol.com cuando empiezas el en vivo y se quita cuando termina (se revisa cada ~45 segundos).</div>
+                        <button type="button" onClick={() => diagnosticarCanal(s)}
+                          style={{ marginTop:'6px', background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'4px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.7rem', fontWeight:'600' }}>
+                          🔍 Diagnóstico
+                        </button>
+                        {diagnosticos[s.id] && (
+                          <pre style={{ marginTop:'6px', maxHeight:'220px', overflow:'auto', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'8px', fontSize:'.62rem', color:'#202124', whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{diagnosticos[s.id]}</pre>
+                        )}
                       </div>
                     )
                   })()}

@@ -40,13 +40,70 @@ export function rutaDeCanal(entrada) {
   return null
 }
 
-// Lee la página /live y dice si hay una transmisión en vivo ahora.
+// ── Lectura de la página de YouTube ─────────────────────────────────────
+// Un video "en vivo ahora" se reconoce por cualquiera de estas marcas que trae
+// la propia página (no dependemos de una sola, YouTube cambia detalles seguido):
+//   · microformat → "liveBroadcastDetails":{"isLiveNow":true,…}
+//   · videoDetails → "isLive":true
+const RE_LIVE_BROADCAST = /"liveBroadcastDetails":\{[^}]*"isLiveNow":true/
+const RE_VIDEO_DETAILS_LIVE = /"videoDetails":\{"videoId":"([\w-]{11})"[^]{0,4000}?"isLive":true/
+
+function esPaginaBloqueada(html) {
+  if (!html) return 'YouTube respondió vacío'
+  if (/consent\.youtube\.com|Before you continue/i.test(html)) return 'YouTube pidió aceptar cookies (bloqueó la consulta desde el servidor)'
+  if (/unusual traffic|captcha|sorry\/index/i.test(html)) return 'YouTube bloqueó la consulta desde el servidor (tráfico inusual)'
+  if (!html.includes('ytInitialPlayerResponse') && !html.includes('ytInitialData')) return 'respuesta inesperada de YouTube'
+  return null
+}
+
+// Página youtube.com/<canal>/live: si el canal está en vivo, YouTube muestra ahí el video.
 export function analizarPaginaLive(html) {
-  if (!html || !html.includes('ytInitialPlayerResponse') && !html.includes('ytInitialData')) return { error: 'respuesta inesperada de YouTube' }
-  const canonico = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})"/)
-  if (!canonico) return { live: false }
-  const enVivoAhora = /"liveBroadcastDetails":\{[^}]*"isLiveNow":true/.test(html)
-  return enVivoAhora ? { live: true, videoId: canonico[1] } : { live: false }
+  const bloqueo = esPaginaBloqueada(html)
+  if (bloqueo) return { error: bloqueo }
+  const canonico = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})/)
+  const detalles = html.match(RE_VIDEO_DETAILS_LIVE)
+  const enVivo = RE_LIVE_BROADCAST.test(html) || !!detalles
+  const videoId = (canonico && canonico[1]) || (detalles && detalles[1]) || (html.match(/"videoDetails":\{"videoId":"([\w-]{11})"/) || [])[1]
+  return enVivo && videoId ? { live: true, videoId } : { live: false }
+}
+
+// Respaldo: pestaña "En directo" del canal (youtube.com/<canal>/streams): un video
+// con la insignia LIVE antes de que empiece el siguiente video de la lista.
+export function analizarPaginaStreams(html) {
+  const bloqueo = esPaginaBloqueada(html)
+  if (bloqueo) return { error: bloqueo }
+  const m = html.match(/"videoId":"([\w-]{11})"(?:(?!"videoId")[^]){0,6000}?"style":"LIVE"/)
+  return m ? { live: true, videoId: m[1] } : { live: false }
+}
+
+function diagnosticar(html, r) {
+  const trozo = (re, antes = 80, despues = 160) => { const i = html.search(re); return i < 0 ? null : html.slice(Math.max(0, i - antes), i + despues) }
+  return {
+    status: r.status,
+    urlFinal: r.url,
+    largo: html.length,
+    titulo: (html.match(/<title>([^<]*)<\/title>/) || [])[1] || null,
+    canonical: (html.match(/<link rel="canonical" href="([^"]*)"/) || [])[1] || null,
+    marcas: {
+      ytInitialData: html.includes('ytInitialData'),
+      ytInitialPlayerResponse: html.includes('ytInitialPlayerResponse'),
+      liveBroadcastDetails: html.includes('liveBroadcastDetails'),
+      isLiveNowTrue: html.includes('"isLiveNow":true'),
+      isLiveTrue: html.includes('"isLive":true'),
+      styleLIVE: html.includes('"style":"LIVE"'),
+      consentimiento: /consent\.youtube\.com|Before you continue/i.test(html),
+    },
+    extracto: trozo(/liveBroadcastDetails/) || trozo(/"isLive"/),
+  }
+}
+
+async function pedir(ruta) {
+  const r = await fetch(`https://www.youtube.com${ruta}`, {
+    headers: { 'User-Agent': UA, 'Accept-Language': 'es-CO,es;q=0.9,en;q=0.5', Cookie: 'CONSENT=YES+cb; SOCS=CAI' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(8000),
+  })
+  return { r, html: r.ok ? await r.text() : '' }
 }
 
 export default async function handler(req, res) {
@@ -56,19 +113,31 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'Link de canal de YouTube no válido' })
     return
   }
+  const depurar = req.query?.debug === '1' // /api/yt-en-vivo?u=…&debug=1 → muestra qué recibió el servidor de YouTube
   try {
-    const r = await fetch(`https://www.youtube.com${ruta}/live`, {
-      headers: { 'User-Agent': UA, 'Accept-Language': 'es-CO,es;q=0.9,en;q=0.5', Cookie: 'CONSENT=YES+cb; SOCS=CAI' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(8000),
-    })
-    if (r.status === 404) {
+    const p1 = await pedir(`${ruta}/live`)
+    if (p1.r.status === 404 && !depurar) {
       res.setHeader('Cache-Control', 'public, s-maxage=60')
       res.status(404).json({ error: 'No se encontró ese canal de YouTube' })
       return
     }
-    if (!r.ok) throw new Error('YouTube respondió ' + r.status)
-    const resultado = analizarPaginaLive(await r.text())
+    if (!p1.r.ok && !depurar) throw new Error('YouTube respondió ' + p1.r.status)
+    let resultado = analizarPaginaLive(p1.html)
+    let p2 = null
+    // Si la página /live no lo marca en vivo, se revisa también la pestaña de directos
+    if (!resultado.live) {
+      try {
+        p2 = await pedir(`${ruta}/streams`)
+        const r2 = p2.r.ok ? analizarPaginaStreams(p2.html) : { error: 'YouTube respondió ' + p2.r.status }
+        if (r2.live) resultado = r2
+        else if (resultado.error && !r2.error) resultado = r2
+      } catch { /* si el respaldo falla, vale lo que dijo la primera */ }
+    }
+    if (depurar) {
+      res.setHeader('Cache-Control', 'no-store')
+      res.status(200).json({ resultado, ruta, paso1_live: diagnosticar(p1.html, p1.r), paso2_streams: p2 ? diagnosticar(p2.html, p2.r) : null })
+      return
+    }
     if (resultado.error) throw new Error(resultado.error)
     res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60')
     res.status(200).json(resultado)
