@@ -4257,8 +4257,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const { error: errSubida } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true, contentType: tipo || 'image/jpeg' })
       if (errSubida) return { error: errSubida.message || 'no se pudo subir la imagen' }
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
-      const { error: errGuardar } = await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', teamId)
+      // .select('id'): si la base de datos ignora el cambio por permisos NO da
+      // error, solo devuelve 0 filas — así se detecta en vez de fingir éxito.
+      const { data: filas, error: errGuardar } = await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', teamId).select('id')
       if (errGuardar) return { error: errGuardar.message || 'no se pudo guardar el escudo' }
+      if (!filas || !filas.length) return { error: 'sin permiso para editar este equipo' }
       return { url: urlData.publicUrl }
     } catch (e) {
       return { error: e?.message || 'error desconocido' }
@@ -4337,13 +4340,18 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         }).select().single())
       }
       if (error) { showMsg('Error al crear el equipo', 'error'); return }
+      // ORDEN IMPORTANTE: primero se inscribe el equipo en el torneo y DESPUÉS se
+      // sube el escudo. Un organizador solo puede editar un equipo que ya está
+      // inscrito en uno de sus torneos (política teams_update); si se actualizaba
+      // el escudo antes de inscribirlo, la base de datos ignoraba el cambio sin
+      // dar error y el equipo quedaba sin escudo.
+      const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
+      if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); return }
       let errorEscudo = null
       if (nuevoEquipoLogo) {
         const r = await subirEscudoEquipo(nuevo.id, nuevoEquipoLogo)
         if (r.error) { errorEscudo = r.error; console.log('ERROR ESCUDO (crear equipo):', r.error) }
       }
-      const { error: errorLink } = await supabase.from('tournament_teams').insert({ tournament_id: id, team_id: nuevo.id })
-      if (errorLink) { showMsg('Equipo creado pero no se pudo inscribir en el torneo', 'error'); return }
       if (errorEscudo) showMsg(`${nuevo.name} creado e inscrito, pero el escudo NO se pudo subir (${errorEscudo}). Súbelo desde el equipo.`, 'error')
       else showMsg(`${nuevo.name} creado e inscrito en el torneo ✓`)
       limpiarBorrador('draft_crear_equipo_torneo')
