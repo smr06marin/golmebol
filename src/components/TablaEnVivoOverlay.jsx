@@ -5,9 +5,10 @@
 // posiciones real del torneo, en AdminTorneoDetallePage/TorneoPublicoPage),
 // para no duplicar esa lógica acá. Diseño compartido en ./enVivoUI.
 import { useLayoutEffect, useRef, useState } from 'react'
-import { EnVivoEstilos, Escudo } from './enVivoUI'
+import { EnVivoEstilos, Escudo, PieGolmebol } from './enVivoUI'
 
-export default function TablaEnVivoOverlay({ filas }) {
+// `pie`: leyenda de abajo (por defecto la de la tabla; en el descanso la página de overlay manda el mensaje institucional)
+export default function TablaEnVivoOverlay({ filas, pie = 'Tabla actualizada automáticamente · tecnología GOLMEBOL' }) {
   // Cuántas filas caben LEGIBLES en el video: en un celular chico no caben 10
   // con letra cómoda, así que se muestran menos (siempre las de arriba + los
   // equipos que juegan ahora). En pantalla grande / OBS salen las 10.
@@ -20,7 +21,7 @@ export default function TablaEnVivoOverlay({ filas }) {
     const medir = () => {
       const u = el.offsetWidth / 100
       if (!u || !padre.clientHeight) return
-      const libre = padre.clientHeight * 0.92 - u * (5.8 + 4 + 1.5)
+      const libre = padre.clientHeight * 0.92 - u * (5.8 + 4 + 1.5 + 5)
       setCabenFilas(Math.max(4, Math.floor(libre / (u * 5.2))))
     }
     medir()
@@ -77,6 +78,7 @@ export default function TablaEnVivoOverlay({ filas }) {
         {extra.length > 0 && <div className="ev-mas">···</div>}
         {extra.map(fila)}
       </div>
+      <PieGolmebol texto={pie}/>
     </div>
   )
 }

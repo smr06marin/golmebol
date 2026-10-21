@@ -6,7 +6,7 @@
 // a los que no se les asignó número no salen). Dos columnas, una por equipo,
 // con escudo y barra del color de uniforme. Diseño compartido en ./enVivoUI.
 import { extraerJugadores } from '../lib/liveMatch'
-import { EnVivoEstilos, Escudo, textoContraste } from './enVivoUI'
+import { EnVivoEstilos, Escudo, PieGolmebol, textoContraste } from './enVivoUI'
 
 const MAX_POR_EQUIPO = 12
 
@@ -32,7 +32,8 @@ function Columna({ equipo, jugadores, color }) {
   )
 }
 
-export default function JugadoresEnVivoOverlay({ partido }) {
+// `pie`: leyenda de abajo (por defecto la de alineaciones; al arrancar el partido la página de overlay manda el mensaje institucional)
+export default function JugadoresEnVivoOverlay({ partido, pie = 'Alineaciones en tiempo real · tecnología GOLMEBOL' }) {
   if (!partido) return null
   const { local, visitante } = extraerJugadores(partido)
   if (!local.length && !visitante.length) return null
@@ -47,6 +48,7 @@ export default function JugadoresEnVivoOverlay({ partido }) {
         <Columna equipo={partido.home} jugadores={local} color={partido.colores?.colorLocal}/>
         <Columna equipo={partido.away} jugadores={visitante} color={partido.colores?.colorVisitante}/>
       </div>
+      <PieGolmebol texto={pie}/>
     </div>
   )
 }

@@ -58,7 +58,8 @@ export const CSS_EV = `
 .ev-c-pts { width: calc(var(--u) * 7.4); text-align: right; flex-shrink: 0; font-weight: 900; color: #fff; font-size: 1.08em; }
 .ev-chip { flex-shrink: 0; background: var(--rojo); color: #fff; border-radius: calc(var(--u) * .8); padding: .05em .5em; font-size: .86em; font-weight: 900; }
 .ev-mas { text-align: center; color: var(--tenue); line-height: 1; font-size: calc(var(--u) * 2.6); letter-spacing: .3em; padding: calc(var(--u) * .4) 0; }
-.ev-pie { padding: calc(var(--u) * 1) calc(var(--u) * 2.6); color: var(--tenue); font-size: calc(var(--u) * 2.2); font-weight: 700; letter-spacing: .04em; border-top: 1px solid var(--linea); }
+.ev-pie { padding: calc(var(--u) * 1.1) calc(var(--u) * 2.6); color: var(--tenue); font-size: calc(var(--u) * 2.3); font-weight: 700; letter-spacing: .04em; border-top: 1px solid var(--linea); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-pie b { color: #fff; font-weight: 900; letter-spacing: .08em; }
 
 /* ── Goles ── */
 .ev-g { display: flex; align-items: center; gap: calc(var(--u) * 2); height: calc(var(--u) * 6.2); padding: 0 calc(var(--u) * 2.6) 0 calc(var(--u) * 1.6); border-left: calc(var(--u) * .9) solid var(--cg, #5f6368); font-size: calc(var(--u) * 3.5); }
@@ -85,7 +86,9 @@ export const CSS_EV = `
 .ev-av-num { display: flex; align-items: center; justify-content: center; min-width: calc(var(--u) * 13); padding: 0 calc(var(--u) * 3.6) 0 calc(var(--u) * 2); font-weight: 900; font-size: calc(var(--u) * 8); line-height: 1;
   clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 2) 100%, 0 100%); }
 .ev-av-body { flex: 1; min-width: 0; padding: calc(var(--u) * 2) calc(var(--u) * 2.8) calc(var(--u) * 2) calc(var(--u) * 1.4); display: flex; flex-direction: column; justify-content: center; gap: calc(var(--u) * .8); }
-.ev-av-top { display: flex; align-items: center; }
+.ev-av-top { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+.ev-av-firma { margin-left: auto; color: var(--tenue); font-weight: 700; font-size: calc(var(--u) * 2.2); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.ev-av-firma b { color: #fff; font-weight: 900; }
 .ev-av-gol { background: var(--rojo); font-weight: 900; font-size: calc(var(--u) * 2.9); letter-spacing: .14em; padding: .12em .8em .12em .6em; clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 1.1) 100%, 0 100%); }
 .ev-av-nom { font-weight: 900; font-size: calc(var(--u) * 5.6); line-height: 1.08; text-transform: uppercase; letter-spacing: .01em; }
 .ev-av-eq { display: flex; align-items: center; gap: calc(var(--u) * 1.4); min-width: 0; font-weight: 700; font-size: calc(var(--u) * 3.1); color: #c3cad6; }
@@ -105,6 +108,17 @@ export const CSS_EV = `
 
 export function EnVivoEstilos() {
   return <style>{CSS_EV}</style>
+}
+
+// Pie de cada gráfica con la firma de la plataforma. `texto` lleva la palabra
+// GOLMEBOL, que se resalta en blanco (ej. "Tabla actualizada · tecnología GOLMEBOL").
+export function PieGolmebol({ texto }) {
+  const partes = String(texto || '').split('GOLMEBOL')
+  return (
+    <div className="ev-pie">
+      {partes.map((p, i) => (i < partes.length - 1 ? <span key={i}>{p}<b>GOLMEBOL</b></span> : <span key={i}>{p}</span>))}
+    </div>
+  )
 }
 
 // Color de texto legible sobre el color de uniforme que haya elegido el árbitro

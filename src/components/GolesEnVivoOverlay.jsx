@@ -7,7 +7,7 @@
 // marcador de arriba. Cada gol sale con minuto, número, jugador y equipo, y
 // una barra del color de uniforme del equipo. Diseño compartido en ./enVivoUI.
 import { extraerGoles } from '../lib/liveMatch'
-import { EnVivoEstilos, Escudo, textoContraste } from './enVivoUI'
+import { EnVivoEstilos, Escudo, PieGolmebol, textoContraste } from './enVivoUI'
 
 export default function GolesEnVivoOverlay({ partido }) {
   if (!partido) return null
@@ -46,6 +46,7 @@ export default function GolesEnVivoOverlay({ partido }) {
           )
         })}
       </div>
+      <PieGolmebol texto="Datos del partido actualizados por GOLMEBOL"/>
     </div>
   )
 }

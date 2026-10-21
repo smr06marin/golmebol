@@ -2,9 +2,8 @@
 // la planilla, aparece solo (unos 8 segundos, con entrada y salida suaves) una
 // tarjeta tipo "lower-third" con el número de camiseta, el nombre del
 // jugador, su equipo y el marcador (sin minuto: la gente ya ve el reloj), y 6 s
-// la foto semitransparente del goleador abajo a la DERECHA, encima del cuadro
-// "Transmisión por Golmebol…" — sin que nadie tenga que prenderlo desde el
-// panel. Detecta el gol nuevo comparando la lista de goles del
+// la foto semitransparente del goleador abajo a la DERECHA — sin que nadie
+// tenga que prenderlo desde el panel. Detecta el gol nuevo comparando la lista de goles del
 // partido con la anterior; al abrir la página (o al cambiar de partido) NO
 // muestra los goles que ya estaban. Si el árbitro borra un gol por error,
 // simplemente deja de contarlo. Diseño compartido en ./enVivoUI.
@@ -21,9 +20,7 @@ const contar = goles => goles.reduce((acc, g) => { const k = claveGol(g); acc[k]
 const mismas = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => a[k] === b[k]) }
 
 // `bottom`: altura del aviso (se sube cuando la lista de goles o la nómina están prendidas)
-// `fotoBottom`: a qué altura del borde de abajo arranca la foto del goleador (en el
-// overlay se sube lo que mide el cuadro "Transmisión por Golmebol…" para quedar encima)
-export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%', fotoBottom = 0 }) {
+export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
   const goles = partido ? extraerGoles(partido) : []
   const idPartido = partido?.id ?? null
   const claves = contar(goles)
@@ -71,12 +68,11 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%', fotoBot
   return (
     <>
       <EnVivoEstilos/>
-      {/* Foto del goleador: grande y semitransparente, abajo a la DERECHA (encima del
-          cuadro "Transmisión por Golmebol…"), con los bordes difuminados. Va libre,
+      {/* Foto del goleador: grande y semitransparente, abajo a la DERECHA, con los bordes difuminados. Va libre,
           lejos de la tarjeta del gol, para que no se tape. Sin foto no sale nada. */}
       {fotoUrl && (
         <div key={'f' + aviso.n} style={{
-          position: 'absolute', bottom: fotoBottom, right: 0, width: 'min(30%, 420px)', height: '56%', zIndex: 2, pointerEvents: 'none',
+          position: 'absolute', bottom: 0, right: 0, width: 'min(30%, 420px)', height: '56%', zIndex: 2, pointerEvents: 'none',
           display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
           WebkitMaskImage: 'radial-gradient(ellipse 62% 70% at 50% 62%, #000 38%, transparent 100%)', maskImage: 'radial-gradient(ellipse 62% 70% at 50% 62%, #000 38%, transparent 100%)',
           animation: `gmGolFoto ${FOTO_SEG}s ease-out both`,
@@ -91,7 +87,7 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%', fotoBot
               <div className="ev-av-num" style={{ background: color, color: textoContraste(color) }}>{aviso.numero}</div>
             )}
             <div className="ev-av-body">
-              <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span></div>
+              <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span><span className="ev-av-firma">Datos en vivo · <b>GOLMEBOL</b></span></div>
               <div className="ev-av-nom ev-txt">{aviso.jugador}</div>
               <div className="ev-av-eq">
                 <Escudo url={equipo?.logo_url} name={equipo?.name} size={4.6}/>
