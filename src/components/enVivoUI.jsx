@@ -76,23 +76,24 @@ export const CSS_EV = `
 .ev-j:nth-child(even) { background: rgba(255,255,255,.035); }
 .ev-j .ev-num { font-size: .92em; }
 
-/* ── Aviso de gol (lower-third) ── */
-.ev-av { position: relative; width: clamp(min(94%, 330px), 54%, 860px); display: flex; align-items: stretch; overflow: hidden; color: #fff;
-  border-radius: calc(var(--u) * 2) calc(var(--u) * 2) calc(var(--u) * 1.2) calc(var(--u) * 1.2);
-  background: linear-gradient(180deg, rgba(17,22,34,.97), rgba(6,8,13,.98)); box-shadow: 0 10px 34px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.08);
-  border-bottom: calc(var(--u) * 1) solid var(--rojo); animation: evAviso 8s cubic-bezier(.2,.8,.2,1) both; font-variant-numeric: tabular-nums; }
-.ev-av-num { display: flex; align-items: center; justify-content: center; min-width: calc(var(--u) * 17); padding: 0 calc(var(--u) * 2.4); font-weight: 900; font-size: calc(var(--u) * 10.5); line-height: 1;
-  clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 2.2) 100%, 0 100%); padding-right: calc(var(--u) * 4); }
-.ev-av-body { flex: 1; min-width: 0; padding: calc(var(--u) * 2.2) calc(var(--u) * 3.2) calc(var(--u) * 2.2) calc(var(--u) * 2.4); display: flex; flex-direction: column; justify-content: center; gap: calc(var(--u) * .9); }
-.ev-av-top { display: flex; align-items: center; gap: calc(var(--u) * 2); }
-.ev-av-gol { background: var(--rojo); font-weight: 900; font-size: calc(var(--u) * 3.3); letter-spacing: .14em; padding: .12em .8em .12em .6em; clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 1.2) 100%, 0 100%); }
-.ev-av-min { font-weight: 800; font-size: calc(var(--u) * 3.4); color: var(--oro); }
-.ev-av-nom { font-weight: 900; font-size: calc(var(--u) * 7); line-height: 1.08; text-transform: uppercase; letter-spacing: .01em; }
-.ev-av-eq { display: flex; align-items: center; gap: calc(var(--u) * 1.8); min-width: 0; font-weight: 700; font-size: calc(var(--u) * 3.5); color: #c3cad6; }
-.ev-av-sc { margin-left: auto; flex-shrink: 0; font-weight: 900; font-size: calc(var(--u) * 5.2); color: #fff; }
+/* ── Aviso de gol (compacto, sin minuto; la foto del goleador sale aparte, semitransparente) ──
+   .ev-av-w es el contenedor (de él sale --u); .ev-av es la tarjeta. */
+.ev-av-w { width: clamp(min(94%, 300px), 38%, 640px); }
+.ev-av { position: relative; display: flex; align-items: stretch; overflow: hidden; color: #fff;
+  border-radius: calc(var(--u) * 1.8); background: linear-gradient(180deg, rgba(17,22,34,.97), rgba(6,8,13,.98)); box-shadow: 0 8px 28px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.08);
+  border-bottom: calc(var(--u) * .9) solid var(--rojo); animation: evAviso 8s cubic-bezier(.2,.8,.2,1) both; font-variant-numeric: tabular-nums; }
+.ev-av-num { display: flex; align-items: center; justify-content: center; min-width: calc(var(--u) * 13); padding: 0 calc(var(--u) * 3.6) 0 calc(var(--u) * 2); font-weight: 900; font-size: calc(var(--u) * 8); line-height: 1;
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 2) 100%, 0 100%); }
+.ev-av-body { flex: 1; min-width: 0; padding: calc(var(--u) * 2) calc(var(--u) * 2.8) calc(var(--u) * 2) calc(var(--u) * 1.4); display: flex; flex-direction: column; justify-content: center; gap: calc(var(--u) * .8); }
+.ev-av-top { display: flex; align-items: center; }
+.ev-av-gol { background: var(--rojo); font-weight: 900; font-size: calc(var(--u) * 2.9); letter-spacing: .14em; padding: .12em .8em .12em .6em; clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 1.1) 100%, 0 100%); }
+.ev-av-nom { font-weight: 900; font-size: calc(var(--u) * 5.6); line-height: 1.08; text-transform: uppercase; letter-spacing: .01em; }
+.ev-av-eq { display: flex; align-items: center; gap: calc(var(--u) * 1.4); min-width: 0; font-weight: 700; font-size: calc(var(--u) * 3.1); color: #c3cad6; }
+.ev-av-sc { margin-left: auto; flex-shrink: 0; font-weight: 900; font-size: calc(var(--u) * 4.6); color: #fff; }
 
 @keyframes evSube { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes evPulso { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes gmGolFoto { 0% { opacity: 0; transform: translateY(24px) scale(.96); } 8% { opacity: .78; transform: translateY(0) scale(1); } 86% { opacity: .78; } 100% { opacity: 0; } }
 @keyframes evAviso {
   0% { opacity: 0; transform: translateY(34px) scale(.97); }
   5% { opacity: 1; transform: translateY(-3px) scale(1.005); }
@@ -100,7 +101,6 @@ export const CSS_EV = `
   93% { opacity: 1; transform: translateY(0) scale(1); }
   100% { opacity: 0; transform: translateY(14px) scale(.99); }
 }
-@keyframes gmGolFoto { 0% { opacity: 0; transform: translateY(24px) scale(.96); } 8% { opacity: .62; transform: translateY(0) scale(1); } 86% { opacity: .62; } 100% { opacity: 0; } }
 `
 
 export function EnVivoEstilos() {

@@ -79,17 +79,17 @@ function LogoCanal({ logoTorneo }) {
   return (
     <div style={{ position:'absolute', top:'10px', left:'10px', zIndex:4, display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'2px', pointerEvents:'none' }}>
       <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-        <img src="/marca/watermark-logo.png" alt="" style={{ height:'16px', width:'auto', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
+        <img src="/marca/watermark-logo.png" alt="" style={{ height:'28px', width:'auto', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
         {logoTorneo && (
           <>
-            <span style={{ width:'1px', height:'14px', background:'rgba(255,255,255,.55)', boxShadow:'0 1px 3px rgba(0,0,0,.6)' }}/>
-            <img src={logoTorneo} alt="" style={{ height:'20px', width:'auto', maxWidth:'44px', objectFit:'contain', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
+            <span style={{ width:'1px', height:'24px', background:'rgba(255,255,255,.55)', boxShadow:'0 1px 3px rgba(0,0,0,.6)' }}/>
+            <img src={logoTorneo} alt="" style={{ height:'32px', width:'auto', maxWidth:'64px', objectFit:'contain', filter:'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
           </>
         )}
       </div>
       <div style={{ display:'flex', alignItems:'center', gap:'3px' }}>
-        <span style={{ width:'4px', height:'4px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite', boxShadow:'0 0 2px rgba(0,0,0,.9)' }}/>
-        <span style={{ fontSize:'.42rem', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap', textShadow:'0 1px 3px rgba(0,0,0,.9)' }}>EN VIVO</span>
+        <span style={{ width:'6px', height:'6px', borderRadius:'50%', background:'#e5433d', flexShrink:0, animation:'gmMicPulso 1s ease-in-out infinite', boxShadow:'0 0 2px rgba(0,0,0,.9)' }}/>
+        <span style={{ fontSize:'.55rem', fontWeight:900, color:'#fff', letterSpacing:'.03em', whiteSpace:'nowrap', textShadow:'0 1px 3px rgba(0,0,0,.9)' }}>EN VIVO</span>
       </div>
     </div>
   )

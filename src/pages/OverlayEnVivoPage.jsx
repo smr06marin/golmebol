@@ -11,6 +11,7 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
+import TransmisionPorGolmebol from '../components/TransmisionPorGolmebol'
 
 // Página de overlay para OBS (u otro programa de transmisión): dibuja SOLO
 // los gráficos de Golmebol (marcador, goles, tabla, nómina, publicidad,
@@ -35,6 +36,8 @@ import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverl
 // Parámetros opcionales en la URL:
 //   ?prueba=1  fondo de cancha de mentiras, para verlo en un navegador normal
 //   ?logo=0    sin el logo y la etiqueta "EN VIVO" arriba a la izquierda
+//   ?cuadro=0  sin el cuadro "Transmisión por Golmebol del torneo de…" abajo a la derecha
+//   ?auto=0    sin los gráficos automáticos (alineación al arrancar y tabla en el descanso)
 
 const ANCHO_ESCENARIO = 860
 
@@ -54,6 +57,8 @@ export default function OverlayEnVivoPage() {
   const [params] = useSearchParams()
   const modoPrueba = params.get('prueba') === '1'
   const mostrarLogo = params.get('logo') !== '0'
+  const graficosAuto = params.get('auto') !== '0'
+  const mostrarCuadro = params.get('cuadro') !== '0'
   const { escala, altoEscenario } = useEscala()
 
   const [siteConfig, setSiteConfig] = useState(null)
@@ -85,7 +90,7 @@ export default function OverlayEnVivoPage() {
 
   async function fetchPartidosVivo() {
     const { data, error } = await supabase.from('matches')
-      .select('id, tournament_id, matchday, fase, status, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad)')
+      .select('id, tournament_id, matchday, fase, status, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)')
       .eq('status', 'scheduled')
       .or('live_state.not.is.null,live_state_rapida.not.is.null')
     if (error) return
@@ -143,10 +148,40 @@ export default function OverlayEnVivoPage() {
   const partido = stream ? partidoActivoDeStream(stream, partidosVivo) : null
   const control = (siteConfig?.en_vivo_control || {})[streamId] || null
 
-  // Tabla de posiciones: se trae cuando se prende el gráfico y se refresca
-  // cada 30s mientras siga prendido (la portada solo la trae una vez, pero
-  // acá la transmisión dura horas y la tabla cambia al terminar cada partido).
-  const tablaTorneoId = control?.overlay === 'tabla' ? control.overlay_tournament_id : null
+  // Gráficos AUTOMÁTICOS (para transmitir sin nadie operando el panel):
+  //  · al arrancar el partido (reloj en los primeros 30 s del 1er tiempo): la
+  //    alineación de los dos equipos, 15 s;
+  //  · en el descanso (se acabó el 1er tiempo): "así va la tabla", 20 s.
+  // Cada uno sale UNA vez por partido. Si el panel de control prende algo a
+  // mano, eso manda. Al abrir la página con el partido ya avanzado no vuelve a
+  // salir la alineación (solo si el reloj sigue en los primeros 30 s).
+  const [autoOverlay, setAutoOverlay] = useState(null)
+  const autoRef = useRef({ partidoId: null, inicioHecho: false, descansoHecho: false, timers: [] })
+  const vivoP = partido?.vivo || null
+  const partidoIdAuto = partido?.id || null
+  const segsReloj = vivoP ? (() => { const [m, sg] = String(vivoP.reloj || '0:00').split(':'); return (parseInt(m, 10) || 0) * 60 + (parseInt(sg, 10) || 0) })() : 0
+  const descansoAuto = !!vivoP?.descanso
+  const periodoAuto = vivoP?.periodo || 1
+  const hayVivoAuto = !!vivoP
+  useEffect(() => {
+    if (!graficosAuto || !partidoIdAuto || !hayVivoAuto) return
+    const a = autoRef.current
+    if (a.partidoId !== partidoIdAuto) { a.partidoId = partidoIdAuto; a.inicioHecho = false; a.descansoHecho = false }
+    let disparo = null
+    if (!a.inicioHecho && periodoAuto === 1 && !descansoAuto && segsReloj <= 30) { a.inicioHecho = true; disparo = ['jugadores', 15000] }
+    else if (descansoAuto && !a.descansoHecho) { a.descansoHecho = true; disparo = ['tabla', 20000] }
+    if (!disparo) return
+    const [cual, ms] = disparo
+    a.timers.forEach(clearTimeout)
+    a.timers = [setTimeout(() => setAutoOverlay(cual), 0), setTimeout(() => setAutoOverlay(null), ms)]
+  }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj])
+  useEffect(() => () => { autoRef.current.timers.forEach(clearTimeout) }, [])
+  const overlayActivo = control?.overlay || (graficosAuto ? autoOverlay : null)
+
+  // Tabla de posiciones: se trae cuando se prende el gráfico (a mano o automático)
+  // y se refresca cada 30s mientras siga prendido (la transmisión dura horas y
+  // la tabla cambia al terminar cada partido).
+  const tablaTorneoId = overlayActivo === 'tabla' ? (control?.overlay === 'tabla' ? control.overlay_tournament_id : partido?.tournament_id) || null : null
   // Los partidos guardados se refrescan cada 30 s; lo que se está jugando AHORA
   // viene de matchesVivoRaw (cada 5 s + tiempo real) y se suma encima: así la
   // tabla muestra "así va" con el gol apenas lo marca el árbitro (provisional).
@@ -189,21 +224,22 @@ export default function OverlayEnVivoPage() {
       }}>
         <div style={{ position: 'absolute', left: 0, top: 0, width: ANCHO_ESCENARIO, height: altoEscenario, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
           {mostrarLogo && stream && (
-            <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-              <img src="/marca/watermark-logo.png" alt="" style={{ height: '16px', width: 'auto', filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.85))' }}/>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#e5433d', animation: 'gmMicPulso 1s ease-in-out infinite' }}/>
-                <span style={{ fontSize: '.42rem', fontWeight: 900, color: '#fff', letterSpacing: '.03em', textShadow: '0 1px 3px rgba(0,0,0,.9)' }}>EN VIVO</span>
+            <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px' }}>
+              <img src="/marca/watermark-logo.png" alt="" style={{ height: '34px', width: 'auto', filter: 'drop-shadow(0 1px 4px rgba(0,0,0,.85))' }}/>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#e5433d', animation: 'gmMicPulso 1s ease-in-out infinite', boxShadow: '0 0 3px rgba(0,0,0,.9)' }}/>
+                <span style={{ fontSize: '.62rem', fontWeight: 900, color: '#fff', letterSpacing: '.04em', textShadow: '0 1px 3px rgba(0,0,0,.9)' }}>EN VIVO</span>
               </div>
             </div>
           )}
+          {mostrarCuadro && partido?.tournaments && <TransmisionPorGolmebol torneo={partido.tournaments}/>}
           {partido && <MarcadorEnVivoOverlay partido={partido}/>}
-          {partido && <GolAvisoEnVivoOverlay partido={partido} bottom={control?.overlay === 'jugadores' ? '55%' : control?.overlay === 'goles' ? '36%' : '14%'}/>}
+          {partido && <GolAvisoEnVivoOverlay partido={partido} fotoBottom={mostrarCuadro ? '54px' : 0} bottom={overlayActivo === 'jugadores' ? '55%' : overlayActivo === 'goles' ? '36%' : '14%'}/>}
           {sponsor ? <PatrocinadorEnVivoOverlay patrocinador={sponsor}/> : (
             <>
-              {control?.overlay === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
-              {control?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[control.overlay_tournament_id]}/>}
-              {control?.overlay === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido}/>}
+              {overlayActivo === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
+              {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]}/>}
+              {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido}/>}
             </>
           )}
           {partido?.tournament_id && (

@@ -3,13 +3,11 @@
 // sola): quien está transmitiendo la prende cuando quiere mostrar quién ha
 // anotado, sin tener que decirlo por el micrófono. Reutiliza extraerGoles
 // (la misma función que ya arma la lista de goles del modal de detalle de
-// un partido en vivo en la portada) — mismo lenguaje visual oscuro que
-// MarcadorEnVivoOverlay, pero abajo del video para no chocar con el
-// marcador de arriba. Cada gol sale con el número de camiseta, el nombre del
-// jugador, el minuto y el equipo.
+// un partido en vivo en la portada). Va abajo del video para no chocar con el
+// marcador de arriba. Cada gol sale con minuto, número, jugador y equipo, y
+// una barra del color de uniforme del equipo. Diseño compartido en ./enVivoUI.
 import { extraerGoles } from '../lib/liveMatch'
-
-const ROJO_VIVO = '#e5433d'
+import { EnVivoEstilos, Escudo, textoContraste } from './enVivoUI'
 
 export default function GolesEnVivoOverlay({ partido }) {
   if (!partido) return null
@@ -18,38 +16,31 @@ export default function GolesEnVivoOverlay({ partido }) {
   // Si hay muchos goles (partidos goleados), solo se muestran los últimos —
   // es una gráfica de transmisión, no un historial completo.
   const ultimos = goles.slice(-6)
+  const gl = partido.vivo?.golesLocal ?? goles.filter(g => g.equipo === 'local').length
+  const gv = partido.vivo?.golesVis ?? goles.filter(g => g.equipo !== 'local').length
 
   return (
-    <div style={{
-      position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 2,
-      width: 'min(96%, 600px)', boxSizing: 'border-box', pointerEvents: 'none',
-      background: 'rgba(6,6,8,.94)', borderRadius: '14px 14px 0 0', boxShadow: '0 -3px 14px rgba(0,0,0,.5)',
-      padding: 'clamp(8px, 2.6vw, 14px) clamp(10px, 3.2vw, 18px)', borderTop: `3px solid ${ROJO_VIVO}`,
-    }}>
-      <div style={{ fontSize: 'clamp(.7rem, 3vw, .9rem)', fontWeight: 900, color: '#f5a623', letterSpacing: '.08em', marginBottom: '6px' }}>
-        ⚽ GOLES DEL PARTIDO
+    <div className="ev-p ev-u">
+      <EnVivoEstilos/>
+      <div className="ev-h">
+        <div className="ev-tag">Goles del partido</div>
+        <div className="ev-sub">
+          <span style={{ color: '#fff', fontWeight: 900, fontSize: '1.25em' }}>{gl} – {gv}</span>
+        </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <div>
         {ultimos.map((g, i) => {
-          const equipo = g.equipo === 'local' ? partido.home : partido.away
-          const color = g.equipo === 'local' ? partido.colores?.colorLocal : partido.colores?.colorVisitante
+          const local = g.equipo === 'local'
+          const equipo = local ? partido.home : partido.away
+          const color = local ? partido.colores?.colorLocal : partido.colores?.colorVisitante
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-              <span style={{ fontSize: 'clamp(.78rem, 3.2vw, 1rem)', fontWeight: 900, color: '#fff', minWidth: '34px', flexShrink: 0 }}>
-                {g.minuto != null ? `${g.minuto}'` : '—'}
-              </span>
-              {g.numero && (
-                <span style={{
-                  flexShrink: 0, minWidth: '1.9em', textAlign: 'center', padding: '1px 6px', borderRadius: '6px',
-                  background: color || '#33383d', color: '#fff', fontSize: 'clamp(.78rem, 3.2vw, 1rem)', fontWeight: 900,
-                  textShadow: '0 1px 2px rgba(0,0,0,.6)',
-                }}>{g.numero}</span>
-              )}
-              <span style={{ fontSize: 'clamp(.82rem, 3.4vw, 1.08rem)', fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-                {g.jugador}
-              </span>
-              <span style={{ fontSize: 'clamp(.68rem, 2.7vw, .85rem)', fontWeight: 700, color: '#9aa0a6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '36%', flexShrink: 0 }}>
-                {equipo?.name || ''}
+            <div key={i} className="ev-g" style={{ '--cg': color || '#5f6368' }}>
+              <span className="ev-g-min">{g.minuto != null ? `${g.minuto}'` : '—'}</span>
+              {g.numero && <span className="ev-num" style={{ background: color || '#33383d', color: textoContraste(color) }}>{g.numero}</span>}
+              <span className="ev-g-nom ev-txt">{g.jugador}</span>
+              <span className="ev-g-eq">
+                <Escudo url={equipo?.logo_url} name={equipo?.name} size={4.2}/>
+                <span className="ev-txt">{equipo?.name || ''}</span>
               </span>
             </div>
           )
