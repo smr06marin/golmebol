@@ -347,6 +347,30 @@ export function marcadorGlobal(match, hermano) {
 // Ids de partidos configurados para una transmisión, en el orden en que se
 // agregaron — ese orden es el que se usa para decidir cuál es "el que
 // sigue" cuando ninguno está en vivo todavía.
+// ── Transmisión que "sigue" un torneo ───────────────────────────────────
+// En vez de elegir los partidos uno por uno (match_ids), el organizador puede
+// dejar la transmisión siguiendo un torneo (stream.torneo_auto) y, opcional,
+// una cancha (stream.cancha_auto): el marcador toma solo el partido de ese
+// torneo (y cancha) que el árbitro tenga EN VIVO en ese momento. El link de
+// OBS y el de control no cambian nunca. Si no hay ninguno en vivo no se
+// muestra marcador (no se inventa un "próximo partido"). Si hay varios en
+// vivo a la vez en el mismo torneo y no se eligió cancha, gana el que tuvo
+// actividad más reciente.
+export function streamTieneMarcador(stream) {
+  return !!stream?.torneo_auto || idsPartidosDeStream(stream).length > 0
+}
+
+export function partidoAutoDeTorneo(stream, partidos) {
+  const vivos = (partidos || []).filter(p => (
+    p.tournament_id === stream.torneo_auto
+    && (!stream.cancha_auto || String(p.cancha_id) === String(stream.cancha_auto))
+    && derivarEnVivo(p)
+  ))
+  if (vivos.length <= 1) return vivos[0] || null
+  const actividad = p => Math.max(Date.parse(p.live_state_updated_at) || 0, Date.parse(p.live_state_rapida_updated_at) || 0)
+  return [...vivos].sort((a, b) => actividad(b) - actividad(a))[0]
+}
+
 export function idsPartidosDeStream(stream) {
   if (Array.isArray(stream?.match_ids) && stream.match_ids.length > 0) return stream.match_ids
   return stream?.match_id ? [stream.match_id] : []
@@ -372,6 +396,7 @@ export function elegirPartidoActivo(candidatos) {
 // página) — saca los ids de la transmisión y elige, de esos, cuál está en
 // esa lista.
 export function partidoActivoDeStream(stream, partidosDisponibles) {
+  if (stream?.torneo_auto) return partidoAutoDeTorneo(stream, partidosDisponibles)
   const ids = idsPartidosDeStream(stream)
   if (ids.length === 0) return null
   const candidatos = ids.map(id => (partidosDisponibles || []).find(p => p.id === id)).filter(Boolean)

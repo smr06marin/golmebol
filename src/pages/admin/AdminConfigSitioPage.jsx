@@ -42,6 +42,8 @@ export default function AdminConfigSitioPage() {
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
   const [partidos, setPartidos] = useState([]) // partidos elegibles para el marcador (no finalizados)
+  const [torneos, setTorneos] = useState([]) // torneos que una transmisión puede "seguir" (torneo_auto)
+  const [canchasPorTorneo, setCanchasPorTorneo] = useState({}) // { [torneoId]: [{id, nombre, escenario}] }
   const [imagenesRepeticion, setImagenesRepeticion] = useState([]) // [{id, url}] — rotan en la repetición del gol
   const [subiendoImagen, setSubiendoImagen] = useState(false)
   // Panel de control en vivo: qué gráfica extra (tabla/goles) se muestra por
@@ -119,9 +121,27 @@ export default function AdminConfigSitioPage() {
   // primero los que YA están en vivo (el árbitro ya empezó la planilla), así
   // el admin los ve de una sin tener que buscar entre partidos que todavía
   // no arrancan. La misma lista sirve para el selector de CADA transmisión.
+  // Torneos que se pueden "seguir" desde una transmisión: todos para el admin;
+  // para un organizador, solo los suyos.
+  async function fetchTorneos() {
+    let q = supabase.from('tournaments').select('id, name').order('created_at', { ascending: false }).limit(80)
+    if (esOrganizador) q = q.eq('organizador_id', miId)
+    const { data } = await q
+    setTorneos(data || [])
+  }
+  async function cargarCanchas(torneoId) {
+    const { data } = await supabase.from('canchas').select('id, nombre, escenario').eq('tournament_id', torneoId)
+    setCanchasPorTorneo(prev => ({ ...prev, [torneoId]: data || [] }))
+  }
+  // Canchas de cada torneo que alguna transmisión esté siguiendo (se cargan una sola vez)
+  const idsTorneosAuto = [...new Set(streams.map(x => x.torneo_auto).filter(Boolean))].join(',')
+  useEffect(() => {
+    idsTorneosAuto.split(',').filter(Boolean).forEach(tid => { if (!canchasPorTorneo[tid]) cargarCanchas(tid) })
+  }, [idsTorneosAuto]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function fetchPartidos() {
     let q = supabase.from('matches')
-      .select('id, tournament_id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)')
+      .select('id, tournament_id, cancha_id, played_at, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)')
       .neq('status', 'finished')
       .order('played_at', { ascending: true })
       .limit(100)
@@ -144,7 +164,7 @@ export default function AdminConfigSitioPage() {
     setPatrocinadoresBtn(data || [])
   }
 
-  useEffect(() => { fetchConfig(); fetchPartidos(); fetchPatrocinadoresBtn() }, [esOrganizador, miId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchConfig(); fetchPartidos(); fetchTorneos(); fetchPatrocinadoresBtn() }, [esOrganizador, miId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apenas cambia la marca de tiempo de "mostrar este patrocinador" (botón
   // del panel), lo prende acá en la vista previa durante unos segundos y
@@ -317,6 +337,8 @@ export default function AdminConfigSitioPage() {
         titulo: (s.titulo || '').trim() || null,
         match_id: s.match_id || null,
         match_ids: Array.isArray(s.match_ids) && s.match_ids.length > 0 ? s.match_ids : null,
+        torneo_auto: s.torneo_auto || null,
+        cancha_auto: s.torneo_auto ? (s.cancha_auto || null) : null,
         activo: !!s.activo,
         retraso_segundos: Number(s.retraso_segundos) || 20,
         segundos_repeticion: Number(s.segundos_repeticion) || 28,
@@ -650,6 +672,11 @@ export default function AdminConfigSitioPage() {
                       <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={urlVideo} titulo={s.titulo} S={S} logoTorneo={partidoSeleccionado?.tournaments?.logo_url} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
                     )}
                   </div>
+                  {s.torneo_auto && !partidoSeleccionado && (
+                    <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>
+                      Esta transmisión sigue automáticamente el torneo{s.cancha_auto ? ' y la cancha' : ''} que elegiste: apenas el árbitro abra la planilla de un partido en vivo, el marcador aparece solo.
+                    </div>
+                  )}
                   {idsPartidosDeStream(s).length > 0 && !partidoSeleccionado?.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>
                       Elegiste un partido para el marcador, pero todavía no está en vivo (el árbitro no ha empezado la planilla) — por eso no se ve acá. Apenas empiece, aparece solo.
@@ -907,6 +934,36 @@ export default function AdminConfigSitioPage() {
                   </div>
                 </div>
 
+                <div style={{ marginBottom:'12px' }}>
+                  <label style={lbl}>¿De dónde sale el marcador?</label>
+                  <select value={s.torneo_auto || ''} onChange={e => { actualizarStream(s.id, 'torneo_auto', e.target.value || null); actualizarStream(s.id, 'cancha_auto', null) }} style={inp}>
+                    <option value="">Elegir los partidos a mano</option>
+                    {torneos.map(t => <option key={t.id} value={t.id}>Seguir automáticamente: {t.name}</option>)}
+                  </select>
+                  {s.torneo_auto && (() => {
+                    const canchas = canchasPorTorneo[s.torneo_auto] || []
+                    return (
+                      <div style={{ marginTop:'8px' }}>
+                        {canchas.length > 0 && (
+                          <>
+                            <label style={lbl}>Cancha (opcional)</label>
+                            <select value={s.cancha_auto || ''} onChange={e => actualizarStream(s.id, 'cancha_auto', e.target.value || null)} style={inp}>
+                              <option value="">Todas las canchas del torneo</option>
+                              {canchas.map(c => <option key={c.id} value={c.id}>{c.escenario ? c.escenario + ' — ' : ''}{c.nombre}</option>)}
+                            </select>
+                          </>
+                        )}
+                        <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'6px', lineHeight:1.45 }}>
+                          El marcador toma solo el partido de este torneo{s.cancha_auto ? ' y esa cancha' : ''} que el árbitro tenga EN VIVO en cada momento — no tienes que elegir los partidos uno por uno, y el link de OBS y el de control no cambian nunca.
+                          {!s.cancha_auto && ' Si se juegan dos partidos a la vez en este torneo (dos canchas), elige la cancha de esta cámara para que no se confundan.'}
+                          {s.cancha_auto && ' Solo funciona con partidos programados con esa cancha asignada.'}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {!s.torneo_auto && (
                 <div>
                   <label style={lbl}>Partidos con marcador en esta transmisión (opcional)</label>
                   <div style={{ fontSize:'.72rem', color:'#5f6368', marginBottom:'8px' }}>
@@ -955,6 +1012,7 @@ export default function AdminConfigSitioPage() {
                     Si eliges el partido (o partidos) que se transmiten acá, se muestra su marcador en vivo (el mismo que ya sube el árbitro desde la planilla) como una barra encima del video. Aparece solo, apenas el árbitro empieza a cargar el partido.
                   </div>
                 </div>
+                )}
               </div>
             )
           })}

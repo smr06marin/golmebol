@@ -4,7 +4,7 @@ import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, Arrow
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 // El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
@@ -458,7 +458,7 @@ export default function LandingPage() {
   // 20s del refresco normal) — así, apenas el árbitro anota un gol, la
   // repetición sale de una y no varios segundos tarde.
   useEffect(() => {
-    const hayMarcadorActivo = streamsVivos.some(s => idsPartidosDeStream(s).length > 0)
+    const hayMarcadorActivo = streamsVivos.some(streamTieneMarcador)
     if (!hayMarcadorActivo) return
     const timer = { current: null }
     const channel = supabase

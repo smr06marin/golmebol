@@ -23,7 +23,7 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
-import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo } from '../lib/liveMatch'
+import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import { esCanalYoutube, useCanalesEnVivo } from '../lib/enVivoCanal'
@@ -91,21 +91,27 @@ export default function EnVivoControlLinkPage() {
   // lista, elegirPartidoActivo decide cuál mostrar: el que el árbitro tenga
   // abierto en la planilla en ese momento.
   const streamIds = idsPartidosDeStream(stream)
-  const streamIdsKey = streamIds.join(',')
-  async function fetchPartidosStream(matchIds) {
-    const { data } = await supabase.from('matches')
-      .select('id, tournament_id, home_team_id, away_team_id, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)')
-      .in('id', matchIds)
+  // Transmisión que sigue un torneo (y quizá una cancha): se traen los partidos
+  // en vivo de ese torneo y se elige el que corresponde (ver partidoAutoDeTorneo).
+  const torneoAuto = stream?.torneo_auto || null
+  const canchaAuto = stream?.cancha_auto || null
+  const streamIdsKey = torneoAuto ? `auto:${torneoAuto}:${canchaAuto || ''}` : streamIds.join(',')
+  const COLUMNAS_PARTIDO = 'id, tournament_id, cancha_id, home_team_id, away_team_id, status, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)'
+  async function fetchPartidosStream() {
+    const q = supabase.from('matches').select(COLUMNAS_PARTIDO)
+    const { data } = torneoAuto
+      ? await q.eq('tournament_id', torneoAuto).neq('status', 'finished').or('live_state.not.is.null,live_state_rapida.not.is.null')
+      : await q.in('id', streamIds)
     setPartidosStream(data || [])
   }
   useEffect(() => {
-    if (streamIds.length === 0) { setPartidosStream([]); return }
-    fetchPartidosStream(streamIds)
-    const t = setInterval(() => fetchPartidosStream(streamIds), 4000)
+    if (!torneoAuto && streamIds.length === 0) { setPartidosStream([]); return }
+    fetchPartidosStream()
+    const t = setInterval(fetchPartidosStream, 4000)
     return () => clearInterval(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- streamIds es un arreglo nuevo en cada render (viene de stream, que se recalcula con cada refresco de siteConfig); el intervalo solo debe reiniciarse cuando cambian los ids en sí, por eso la dependencia real es streamIdsKey
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- streamIds es un arreglo nuevo en cada render (viene de stream, que se recalcula con cada refresco de siteConfig); el intervalo solo debe reiniciarse cuando cambian los ids (o el torneo/cancha que sigue) en sí, por eso la dependencia real es streamIdsKey
   }, [streamIdsKey])
-  const partido = elegirPartidoActivo(partidosStream)
+  const partido = torneoAuto ? partidoAutoDeTorneo(stream, partidosStream) : elegirPartidoActivo(partidosStream)
 
   const vivo = partido ? derivarEnVivo(partido) : null
 

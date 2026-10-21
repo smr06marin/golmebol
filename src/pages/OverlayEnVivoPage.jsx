@@ -90,7 +90,7 @@ export default function OverlayEnVivoPage() {
 
   async function fetchPartidosVivo() {
     const { data, error } = await supabase.from('matches')
-      .select('id, tournament_id, matchday, fase, status, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)')
+      .select('id, tournament_id, matchday, fase, status, cancha_id, home_team_id, away_team_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, modalidad, logo_url)')
       .eq('status', 'scheduled')
       .or('live_state.not.is.null,live_state_rapida.not.is.null')
     if (error) return
