@@ -45,35 +45,73 @@ export function rutaDeCanal(entrada) {
 // la propia página (no dependemos de una sola, YouTube cambia detalles seguido):
 //   · microformat → "liveBroadcastDetails":{"isLiveNow":true,…}
 //   · videoDetails → "isLive":true
+//   · contador de espectadores → "videoViewCountRenderer":{…"isLive":true} ("1 persona mirando ahora")
 const RE_LIVE_BROADCAST = /"liveBroadcastDetails":\{[^}]*"isLiveNow":true/
-const RE_VIDEO_DETAILS_LIVE = /"videoDetails":\{"videoId":"([\w-]{11})"[^]{0,4000}?"isLive":true/
+const RE_VIDEO_DETAILS_LIVE = /"videoDetails":\{"videoId":"[\w-]{11}"[^]{0,4000}?"isLive":true/
+const RE_VISTAS_LIVE = /"videoViewCountRenderer":\{[^]{0,600}?"isLive":true/
 
-function esPaginaBloqueada(html) {
+// ¿YouTube nos mandó una pared (cookies / bloqueo) en vez de la página? OJO: la
+// página real pesa más de 1 MB y trae palabras como "captcha" en su código, así
+// que NO se busca texto suelto: se mira a dónde terminó la consulta y que la
+// página traiga los datos de YouTube.
+function esPaginaBloqueada(html, url = '') {
   if (!html) return 'YouTube respondió vacío'
-  if (/consent\.youtube\.com|Before you continue/i.test(html)) return 'YouTube pidió aceptar cookies (bloqueó la consulta desde el servidor)'
-  if (/unusual traffic|captcha|sorry\/index/i.test(html)) return 'YouTube bloqueó la consulta desde el servidor (tráfico inusual)'
-  if (!html.includes('ytInitialPlayerResponse') && !html.includes('ytInitialData')) return 'respuesta inesperada de YouTube'
+  if (/consent\.youtube\.com|consent\.google\./i.test(url)) return 'YouTube pidió aceptar cookies (bloqueó la consulta desde el servidor)'
+  if (/google\.com\/sorry|\/sorry\//i.test(url)) return 'YouTube bloqueó la consulta desde el servidor (tráfico inusual)'
+  if (!html.includes('ytInitialPlayerResponse') && !html.includes('ytInitialData')) {
+    return /Before you continue|unusual traffic/i.test(html) ? 'YouTube bloqueó la consulta desde el servidor' : 'respuesta inesperada de YouTube'
+  }
   return null
 }
 
+// Id del video que muestra la página (de la marca más confiable a la menos).
+function extraerVideoId(html) {
+  const patrones = [
+    /<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})/,
+    /<meta property="og:url" content="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})/,
+    /"videoDetails":\{"videoId":"([\w-]{11})"/,
+    /"currentVideoEndpoint":\{[^]{0,500}?"videoId":"([\w-]{11})"/,
+  ]
+  for (const re of patrones) { const m = html.match(re); if (m) return m[1] }
+  return null
+}
+
+function extraerCanalId(html) {
+  const m = html.match(/"(?:externalChannelId|channelId)":"(UC[\w-]{22})"/) || html.match(/youtube\.com\/channel\/(UC[\w-]{22})/)
+  return m ? m[1] : null
+}
+
 // Página youtube.com/<canal>/live: si el canal está en vivo, YouTube muestra ahí el video.
-export function analizarPaginaLive(html) {
-  const bloqueo = esPaginaBloqueada(html)
+// Devuelve { live:true, videoId } (videoId puede ser null si la página no lo trae: ver idPorRss).
+export function analizarPaginaLive(html, url = '') {
+  const bloqueo = esPaginaBloqueada(html, url)
   if (bloqueo) return { error: bloqueo }
-  const canonico = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})/)
-  const detalles = html.match(RE_VIDEO_DETAILS_LIVE)
-  const enVivo = RE_LIVE_BROADCAST.test(html) || !!detalles
-  const videoId = (canonico && canonico[1]) || (detalles && detalles[1]) || (html.match(/"videoDetails":\{"videoId":"([\w-]{11})"/) || [])[1]
-  return enVivo && videoId ? { live: true, videoId } : { live: false }
+  const enVivo = RE_LIVE_BROADCAST.test(html) || RE_VIDEO_DETAILS_LIVE.test(html) || RE_VISTAS_LIVE.test(html)
+  return enVivo ? { live: true, videoId: extraerVideoId(html) } : { live: false }
 }
 
 // Respaldo: pestaña "En directo" del canal (youtube.com/<canal>/streams): un video
 // con la insignia LIVE antes de que empiece el siguiente video de la lista.
-export function analizarPaginaStreams(html) {
-  const bloqueo = esPaginaBloqueada(html)
+export function analizarPaginaStreams(html, url = '') {
+  const bloqueo = esPaginaBloqueada(html, url)
   if (bloqueo) return { error: bloqueo }
   const m = html.match(/"videoId":"([\w-]{11})"(?:(?!"videoId")[^]){0,6000}?"style":"LIVE"/)
   return m ? { live: true, videoId: m[1] } : { live: false }
+}
+
+// Si la página dice "en vivo" pero no trae el id del video: se piden los videos
+// recientes del canal (feed RSS público) y se toma el primero que aparece también
+// dentro de la página en vivo — ese es el video que está transmitiendo.
+export async function idPorRss(html, ruta) {
+  const canal = extraerCanalId(html) || (ruta.startsWith('/channel/') ? ruta.slice('/channel/'.length) : null)
+  if (!canal) return null
+  try {
+    const r = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${canal}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(6000) })
+    if (!r.ok) return null
+    const xml = await r.text()
+    const ids = [...xml.matchAll(/<yt:videoId>([\w-]{11})<\/yt:videoId>/g)].map(x => x[1])
+    return ids.find(id => html.includes(id)) || null
+  } catch { return null }
 }
 
 function diagnosticar(html, r) {
@@ -91,8 +129,14 @@ function diagnosticar(html, r) {
       isLiveNowTrue: html.includes('"isLiveNow":true'),
       isLiveTrue: html.includes('"isLive":true'),
       styleLIVE: html.includes('"style":"LIVE"'),
-      consentimiento: /consent\.youtube\.com|Before you continue/i.test(html),
+      vistasLive: RE_VISTAS_LIVE.test(html),
+      videoDetailsLive: RE_VIDEO_DETAILS_LIVE.test(html),
+      ogUrl: /og:url/.test(html),
+      currentVideoEndpoint: html.includes('currentVideoEndpoint'),
     },
+    idDirecto: extraerVideoId(html),
+    canalId: extraerCanalId(html),
+    idsEnLaPagina: [...new Set([...html.matchAll(/"videoId":"([\w-]{11})"/g)].map(m => m[1]))].slice(0, 6),
     extracto: trozo(/liveBroadcastDetails/) || trozo(/"isLive"/),
   }
 }
@@ -122,17 +166,19 @@ export default async function handler(req, res) {
       return
     }
     if (!p1.r.ok && !depurar) throw new Error('YouTube respondió ' + p1.r.status)
-    let resultado = analizarPaginaLive(p1.html)
+    let resultado = analizarPaginaLive(p1.html, p1.r.url)
     let p2 = null
     // Si la página /live no lo marca en vivo, se revisa también la pestaña de directos
     if (!resultado.live) {
       try {
         p2 = await pedir(`${ruta}/streams`)
-        const r2 = p2.r.ok ? analizarPaginaStreams(p2.html) : { error: 'YouTube respondió ' + p2.r.status }
+        const r2 = p2.r.ok ? analizarPaginaStreams(p2.html, p2.r.url) : { error: 'YouTube respondió ' + p2.r.status }
         if (r2.live) resultado = r2
         else if (resultado.error && !r2.error) resultado = r2
       } catch { /* si el respaldo falla, vale lo que dijo la primera */ }
     }
+    if (resultado.live && !resultado.videoId) resultado = { live: true, videoId: await idPorRss(p1.html, ruta) }
+    if (resultado.live && !resultado.videoId) resultado = { error: 'El canal está en vivo pero no se pudo identificar el video' }
     if (depurar) {
       res.setHeader('Cache-Control', 'no-store')
       res.status(200).json({ resultado, ruta, paso1_live: diagnosticar(p1.html, p1.r), paso2_streams: p2 ? diagnosticar(p2.html, p2.r) : null })
