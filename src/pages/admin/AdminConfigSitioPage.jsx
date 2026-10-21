@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
-import { esCanalYoutube, useCanalesEnVivo, resolverStreams } from '../../lib/enVivoCanal'
+import { esCanalYoutube, useCanalesEnVivo } from '../../lib/enVivoCanal'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
@@ -545,10 +545,11 @@ export default function AdminConfigSitioPage() {
     setStreams(s => s.map(x => x.id === id ? { ...x, [campo]: valor } : x))
   }
 
-  // Link de CANAL de YouTube: se consulta si está en vivo (lib/enVivoCanal); la vista
-  // previa muestra solo las que están transmitiendo ahora mismo.
+  // Link de CANAL de YouTube: se consulta si está en vivo (lib/enVivoCanal). La vista
+  // previa SIEMPRE lista la transmisión (para tener a mano los links de control y de
+  // OBS), pero el video solo se muestra cuando el canal está transmitiendo.
   const canalesEnVivo = useCanalesEnVivo(streams)
-  const streamsPreview = resolverStreams(streams.filter(s => s.activo && (s.url || '').trim()), canalesEnVivo)
+  const streamsPreview = streams.filter(s => s.activo && (s.url || '').trim())
 
   // Arma lo que va ENCIMA del video para una transmisión: el marcador (si
   // tiene partido elegido) siempre va; debajo de todo, la gráfica de tabla o
@@ -627,6 +628,7 @@ export default function AdminConfigSitioPage() {
               const partidoSeleccionado = partidoActivoDeStream(s, partidos)
               const c = control[s.id] || {}
               const tieneTorneo = !!partidoSeleccionado?.tournament_id
+              const urlVideo = esCanalYoutube(s.url) ? canalesEnVivo[s.id]?.url || null : s.url
               const linkControl = s.control_token ? `${window.location.origin}/en-vivo-control/${s.control_token}` : null
               return (
                 <div key={s.id} style={{ border:`1px solid ${S.border}`, borderRadius:'10px', padding:'12px' }}>
@@ -640,7 +642,13 @@ export default function AdminConfigSitioPage() {
                       rebobinado, en vez de confiar a ciegas en el número de
                       segundos. */}
                   <div style={{ marginBottom:'14px' }}>
-                    <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoSeleccionado?.tournaments?.logo_url} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
+                    {!urlVideo ? (
+                      <div style={{ aspectRatio:'16 / 9', display:'flex', alignItems:'center', justifyContent:'center', textAlign:'center', padding:'16px', borderRadius:'14px', background:S.card, border:`1px solid ${S.border}`, color:'#9aa0a6', fontSize:'.8rem' }}>
+                        Tu canal de YouTube todavía no está transmitiendo en vivo. Apenas empieces, el video aparece aquí solo.
+                      </div>
+                    ) : (
+                      <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={urlVideo} titulo={s.titulo} S={S} logoTorneo={partidoSeleccionado?.tournaments?.logo_url} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
+                    )}
                   </div>
                   {idsPartidosDeStream(s).length > 0 && !partidoSeleccionado?.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', textAlign:'center' }}>
