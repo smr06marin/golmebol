@@ -12,6 +12,13 @@
 
 const ROJO_VIVO = '#e5433d'
 
+const LADO = { display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.2vw, 12px)', minWidth: 0 }
+
+// Cifras (marcador y cronómetro) en un trazo normal, sin negrilla, y de ancho
+// fijo por dígito: en video comprimido (YouTube, celular) una cifra delgada y
+// espaciada se lee mejor que una negrilla que se empasta.
+const NUMEROS = { fontFamily: '"Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif', fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }
+
 // El color de uniforme lo elige el árbitro con un selector libre (planilla
 // completa) o de una paleta fija (planilla rápida) — en cualquier caso puede
 // tocar un color claro (amarillo, blanco) o uno oscuro, así que el texto de
@@ -56,11 +63,12 @@ function EtiquetaEquipo({ nombre, color, lado }) {
     <div style={{
       background: bg, color: textoContraste(color), fontWeight: 900,
       fontSize: 'clamp(.6rem, 3vw, 1.02rem)', letterSpacing: '.01em',
-      padding: derecha ? '4px 7px 4px 13px' : '4px 13px 4px 7px',
+      // el nombre va SIEMPRE en el centro de su placa (el padding de cada lado compensa el corte en diagonal)
+      padding: derecha ? '5px 12px 5px 17px' : '5px 17px 5px 12px',
       // hasta 2 lineas: en celular un nombre largo baja de renglon en vez de cortarse
-      lineHeight: 1.08, textAlign: derecha ? 'right' : 'left', overflow: 'hidden', wordBreak: 'break-word',
+      lineHeight: 1.08, textAlign: 'center', justifyContent: 'center', overflow: 'hidden', wordBreak: 'break-word',
       display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-      maxWidth: 'clamp(84px, 32vw, 210px)', flexShrink: 1, minWidth: 0,
+      maxWidth: 'clamp(84px, 32vw, 210px)', flex: '1 1 auto', minWidth: 0,
       clipPath: derecha ? 'polygon(12% 0, 100% 0, 100% 100%, 0 100%)' : 'polygon(0 0, 100% 0, 88% 100%, 0 100%)',
     }}>
       {nombre || '—'}
@@ -83,45 +91,57 @@ export default function MarcadorEnVivoOverlay({ partido }) {
     <div style={{
       position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 2,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      width: 'min(96%, 700px)', pointerEvents: 'none',
+      width: 'max-content', maxWidth: '96%', pointerEvents: 'none',
     }}>
       {/* ── Barra principal: equipo · escudo · marcador · escudo · equipo ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(4px, 2.2vw, 12px)',
-        background: 'rgba(6,6,8,.94)', borderRadius: '0 0 14px 14px', width: '100%', boxSizing: 'border-box',
-        padding: 'clamp(6px, 2.1vw, 11px) clamp(6px, 3vw, 15px)', boxShadow: '0 3px 14px rgba(0,0,0,.5)',
+        display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: 'clamp(4px, 2.2vw, 12px)',
+        background: 'rgba(6,6,8,.94)', borderRadius: '0 0 12px 12px', boxSizing: 'border-box',
+        // sin margen negro antes del 1.er equipo ni despues del 2.o: las placas llegan hasta las puntas
+        padding: 'clamp(4px, 1.4vw, 7px) 0', boxShadow: '0 3px 14px rgba(0,0,0,.5)', overflow: 'hidden',
       }}>
-        <EtiquetaEquipo nombre={home?.name} color={col.colorLocal} lado="izquierda"/>
-        <EscudoConTarjetas logo_url={home?.logo_url} name={home?.name} amarillas={det.amarillasLocal} rojas={det.rojasLocal}/>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.1vw, 9px)', flexShrink: 0, padding: '0 2px' }}>
-          <span style={{ fontWeight: 900, fontSize: 'clamp(1.3rem, 6.8vw, 1.8rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesLocal}</span>
-          <span style={{ fontSize: 'clamp(.9rem, 3.9vw, 1.2rem)', fontWeight: 700, color: '#6b7076' }}>–</span>
-          <span style={{ fontWeight: 900, fontSize: 'clamp(1.3rem, 6.8vw, 1.8rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesVis}</span>
+        {/* Las dos mitades miden SIEMPRE lo mismo (la del nombre más largo), así el marcador
+            queda exactamente en el centro, igual que el cronómetro de abajo */}
+        <div style={LADO}>
+          <EtiquetaEquipo nombre={home?.name} color={col.colorLocal} lado="izquierda"/>
+          <EscudoConTarjetas logo_url={home?.logo_url} name={home?.name} amarillas={det.amarillasLocal} rojas={det.rojasLocal}/>
         </div>
-        <EscudoConTarjetas logo_url={away?.logo_url} name={away?.name} amarillas={det.amarillasVisitante} rojas={det.rojasVisitante}/>
-        <EtiquetaEquipo nombre={away?.name} color={col.colorVisitante} lado="derecha"/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.1vw, 9px)', flexShrink: 0, padding: '0 2px' }}>
+          <span style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesLocal}</span>
+          <span style={{ ...NUMEROS, fontSize: 'clamp(.9rem, 3.9vw, 1.2rem)', color: '#8b9097' }}>–</span>
+          <span style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesVis}</span>
+        </div>
+        <div style={LADO}>
+          <EscudoConTarjetas logo_url={away?.logo_url} name={away?.name} amarillas={det.amarillasVisitante} rojas={det.rojasVisitante}/>
+          <EtiquetaEquipo nombre={away?.name} color={col.colorVisitante} lado="derecha"/>
+        </div>
       </div>
 
       {/* ── Reloj del partido, en su propia píldora debajo, con acento rojo de "en vivo" ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(6,6,8,.94)',
-        borderRadius: '0 0 12px 12px', padding: '4px 18px 6px', marginTop: '-1px',
+        display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: '8px', background: 'rgba(6,6,8,.94)',
+        borderRadius: '0 0 12px 12px', padding: '4px 14px 6px', marginTop: '-1px',
         borderBottom: `3px solid ${ROJO_VIVO}`, boxShadow: '0 3px 10px rgba(0,0,0,.45)', maxWidth: '100%',
       }}>
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ROJO_VIVO, flexShrink: 0 }}/>
-        <span style={{ fontSize: 'clamp(.78rem, 3.3vw, .98rem)', fontWeight: 900, color: '#fff', letterSpacing: '.02em', whiteSpace: 'nowrap' }}>
+        {/* tres columnas: el cronómetro (o DESCANSO) queda SIEMPRE en el centro, el punto rojo a su izquierda y faltas/global a su derecha */}
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ROJO_VIVO, justifySelf: 'end' }}/>
+        <span style={vivo.descanso
+          ? { fontSize: 'clamp(.78rem, 3.3vw, .98rem)', fontWeight: 700, color: '#fff', letterSpacing: '.06em', whiteSpace: 'nowrap' }
+          : { ...NUMEROS, fontSize: 'clamp(.9rem, 3.8vw, 1.12rem)', color: '#fff', letterSpacing: '.03em', whiteSpace: 'nowrap' }}>
           {vivo.descanso ? 'DESCANSO' : vivo.reloj}
         </span>
-        {hayFaltas && (
-          <span style={{ fontSize: 'clamp(.75rem, 3vw, .9rem)', fontWeight: 700, color: '#c9c9c9', whiteSpace: 'nowrap' }}>
-            · F {det.faltasLocal || 0}-{det.faltasVisitante || 0}
-          </span>
-        )}
-        {global && (
-          <span style={{ fontSize: 'clamp(.75rem, 3vw, .9rem)', fontWeight: 800, color: '#f5a623', whiteSpace: 'nowrap' }}>
-            · Global {global.local}-{global.visitante}
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {hayFaltas && (
+            <span style={{ ...NUMEROS, fontSize: 'clamp(.75rem, 3vw, .9rem)', color: '#c9c9c9', whiteSpace: 'nowrap' }}>
+              F {det.faltasLocal || 0}-{det.faltasVisitante || 0}
+            </span>
+          )}
+          {global && (
+            <span style={{ ...NUMEROS, fontSize: 'clamp(.75rem, 3vw, .9rem)', color: '#f5a623', whiteSpace: 'nowrap' }}>
+              Global {global.local}-{global.visitante}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
