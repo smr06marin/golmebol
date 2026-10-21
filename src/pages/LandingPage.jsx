@@ -13,6 +13,7 @@ const LiveEmbed = lazy(() => import('../components/LiveEmbed'))
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
+import { useCanalesEnVivo, resolverStreams } from '../lib/enVivoCanal'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
@@ -443,9 +444,14 @@ export default function LandingPage() {
   // si hay varios partidos jugándose a la misma hora en canchas distintas),
   // cada una configurada desde /admin/config-sitio con su propio link y,
   // opcionalmente, su propio partido para el marcador.
-  const streamsVivos = useMemo(() => (
+  // Si el organizador pegó el link de su CANAL de YouTube (no el de un video),
+  // se pregunta cada ~45 s si está en vivo y, apenas lo está, se muestra esa
+  // transmisión sola; cuando termina, desaparece (ver lib/enVivoCanal).
+  const streamsConfig = useMemo(() => (
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []
   ).filter(s => s.activo && (s.url || '').trim()), [siteConfig])
+  const canalesEnVivo = useCanalesEnVivo(streamsConfig)
+  const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo), [streamsConfig, canalesEnVivo])
 
   // Mientras haya alguna transmisión con marcador activa, escucha los
   // cambios de la tabla matches casi al instante (en vez de esperar hasta

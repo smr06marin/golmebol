@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
+import { esCanalYoutube, useCanalesEnVivo, resolverStreams } from '../../lib/enVivoCanal'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
@@ -544,7 +545,10 @@ export default function AdminConfigSitioPage() {
     setStreams(s => s.map(x => x.id === id ? { ...x, [campo]: valor } : x))
   }
 
-  const streamsPreview = streams.filter(s => s.activo && (s.url || '').trim())
+  // Link de CANAL de YouTube: se consulta si está en vivo (lib/enVivoCanal); la vista
+  // previa muestra solo las que están transmitiendo ahora mismo.
+  const canalesEnVivo = useCanalesEnVivo(streams)
+  const streamsPreview = resolverStreams(streams.filter(s => s.activo && (s.url || '').trim()), canalesEnVivo)
 
   // Arma lo que va ENCIMA del video para una transmisión: el marcador (si
   // tiene partido elegido) siempre va; debajo de todo, la gráfica de tabla o
@@ -850,10 +854,25 @@ export default function AdminConfigSitioPage() {
                 </label>
 
                 <div style={{ marginBottom:'12px' }}>
-                  <label style={lbl}>Link del video / transmisión</label>
+                  <label style={lbl}>Link de tu canal o de la transmisión</label>
                   <input value={s.url || ''} onChange={e => actualizarStream(s.id, 'url', e.target.value)} style={inp}
-                    placeholder="Ej: https://www.youtube.com/watch?v=XXXXXXXXXXX"/>
-                  {s.url && <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>Detectado: {NOMBRE_PLATAFORMA[plataforma] || plataforma}</div>}
+                    placeholder="Ej: https://www.youtube.com/@micanal  (o el link de un video en vivo)"/>
+                  {s.url && !esCanalYoutube(s.url) && <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>Detectado: {NOMBRE_PLATAFORMA[plataforma] || plataforma}</div>}
+                  {esCanalYoutube(s.url) && (() => {
+                    const est = canalesEnVivo[s.id]
+                    const texto = !est ? 'Revisando si tu canal está en vivo…'
+                      : est.estado === 'vivo' ? '🔴 Tu canal está EN VIVO ahora — ya se ve en la página de inicio'
+                      : est.estado === 'no-vivo' ? '⚪ Tu canal no está transmitiendo en este momento'
+                      : '⚠️ No se encontró ese canal de YouTube: revisa que el link esté bien escrito'
+                    const color = est?.estado === 'vivo' ? '#d93025' : est?.estado === 'error' ? '#e8710a' : '#5f6368'
+                    return (
+                      <div style={{ marginTop:'6px', fontSize:'.74rem', lineHeight:1.45 }}>
+                        <div style={{ color:'#1e8e3e', fontWeight:'600' }}>✓ Detectado: canal de YouTube — no hace falta cambiar el link en cada partido</div>
+                        <div style={{ color, fontWeight:'600', marginTop:'2px' }}>{texto}</div>
+                        <div style={{ color:'#9aa0a6', marginTop:'2px' }}>La transmisión aparece sola en golmebol.com cuando empiezas el en vivo y se quita cuando termina (se revisa cada ~45 segundos).</div>
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 <div style={{ marginBottom:'12px' }}>

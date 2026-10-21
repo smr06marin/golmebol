@@ -26,6 +26,7 @@ import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverl
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
+import { esCanalYoutube, useCanalesEnVivo } from '../lib/enVivoCanal'
 
 const S = { bg: '#0a0a0a', card: '#161616', border: '#2a2a2a', red: '#e5433d', green: '#6fcf3d', text: '#fff' }
 
@@ -45,6 +46,10 @@ export default function EnVivoControlLinkPage() {
   const stream = useMemo(() => (
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams.find(s => s.control_token && s.control_token === token) : null
   ), [siteConfig, token])
+  // Link de CANAL de YouTube: se usa el video en vivo que tenga ahora (ver lib/enVivoCanal)
+  const streamParaCanal = useMemo(() => (stream ? [stream] : []), [stream])
+  const canalesEnVivo = useCanalesEnVivo(streamParaCanal)
+  const urlVideo = stream ? (esCanalYoutube(stream.url) ? canalesEnVivo[stream.id]?.url || null : stream.url) : null
   const control = (siteConfig?.en_vivo_control || {})[stream?.id] || {}
 
   async function fetchSiteConfig() {
@@ -212,7 +217,12 @@ export default function EnVivoControlLinkPage() {
         <div style={{ color:'#fff', fontWeight:'900', fontSize:'1rem', marginBottom:'2px' }}>Panel de control en vivo</div>
         <div style={{ color:'#9aa0a6', fontSize:'.8rem', marginBottom:'16px' }}>{stream.titulo || (partido ? `${partido.home?.name || '?'} vs ${partido.away?.name || '?'}` : 'Transmisión')}</div>
 
-        <LiveEmbed ref={liveEmbedRef} url={stream.url} titulo={stream.titulo} S={S} logoTorneo={partido?.tournaments?.logo_url}
+        {!urlVideo && (
+          <div style={{ aspectRatio:'16 / 9', display:'flex', alignItems:'center', justifyContent:'center', textAlign:'center', padding:'16px', borderRadius:'14px', background:S.card, border:`1px solid ${S.border}`, color:'#9aa0a6', fontSize:'.85rem' }}>
+            Tu canal de YouTube todavía no está transmitiendo en vivo. Apenas empieces, el video aparece aquí solo.
+          </div>
+        )}
+        {urlVideo && <LiveEmbed ref={liveEmbedRef} url={urlVideo} titulo={stream.titulo} S={S} logoTorneo={partido?.tournaments?.logo_url}
           overlay={(
             <>
               {partido && vivo && (
@@ -233,7 +243,7 @@ export default function EnVivoControlLinkPage() {
               )}
             </>
           )}
-          repeticion={repeticion}/>
+          repeticion={repeticion}/>}
 
         {partido && !vivo && (
           <div style={{ fontSize:'.72rem', color:'#f5a623', marginTop:'10px', textAlign:'center' }}>
