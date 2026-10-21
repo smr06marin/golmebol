@@ -21,6 +21,7 @@ import { cargarPlanillaEquipoOrganizador } from '../../lib/planillaEquipo'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
+import { comprimirImagen } from '../../lib/imageCompress'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
@@ -1373,6 +1374,33 @@ export default function AdminTorneoDetallePage() {
       .eq('tournament_id', id)
       .order('played_at', { ascending: true })
     setPartidos(data || [])
+  }
+
+  // Cambiar la foto de perfil de un jugador (organizador o admin). La comprime
+  // antes de subir, la guarda en el bucket de fotos y actualiza el jugador.
+  // `?v=` evita que el navegador/CDN muestre la foto vieja (misma ruta).
+  const [subiendoFotoId, setSubiendoFotoId] = useState(null)
+  async function cambiarFotoPerfil(playerId, file) {
+    if (!file || !playerId) return
+    if (!file.type?.startsWith('image/')) { showMsg('Elige una imagen (JPG o PNG)', 'error'); return }
+    setSubiendoFotoId(playerId)
+    try {
+      const archivo = await comprimirImagen(file, { maxSize: 800 })
+      const ext = (archivo.name?.split('.').pop() || 'jpg').toLowerCase()
+      const path = `fotos/${playerId}_perfil.${ext}`
+      const { error: errUp } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
+      if (errUp) throw errUp
+      const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
+      const url = `${urlData.publicUrl}?v=${Date.now()}`
+      const { data: upd, error: errDb } = await supabase.from('players').update({ photo_face_url: url, foto_cambiar_perfil: false }).eq('id', playerId).select('id')
+      if (errDb) throw errDb
+      if (!upd || !upd.length) throw new Error('Sin permiso para editar este jugador')
+      setJugadores(prev => prev.map(r => r.player_id === playerId ? { ...r, players: { ...(r.players || {}), photo_face_url: url } } : r))
+      showMsg('Foto de perfil actualizada ✓')
+    } catch (e) {
+      showMsg('No se pudo cambiar la foto: ' + (e?.message || 'error'), 'error')
+    }
+    setSubiendoFotoId(null)
   }
 
   async function fetchJugadores() {
@@ -5952,11 +5980,18 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                   {/* Fila 1: foto + nombre — en su propia fila para que los botones de
                                       abajo (que pueden ser varios) nunca la aplasten ni la tapen. */}
                                   <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                                    <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                                      {p.photo_face_url || p.photo_url
-                                        ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                                        : <span style={{ fontSize:'.85rem' }}>👤</span>}
-                                    </div>
+                                    <label title="Cambiar foto de perfil" style={{ position:'relative', width:'40px', height:'40px', flexShrink:0, cursor:'pointer', display:'block' }}>
+                                      <span style={{ width:'40px', height:'40px', borderRadius:'50%', overflow:'hidden', background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center', opacity: subiendoFotoId === j.player_id ? .4 : 1 }}>
+                                        {p.photo_face_url || p.photo_url
+                                          ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                          : <span style={{ fontSize:'1rem' }}>👤</span>}
+                                      </span>
+                                      <span style={{ position:'absolute', right:'-3px', bottom:'-3px', width:'18px', height:'18px', borderRadius:'50%', background:'#1a73e8', color:'#fff', border:'2px solid #fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.55rem' }}>
+                                        {subiendoFotoId === j.player_id ? '…' : <Camera size={10}/>}
+                                      </span>
+                                      <input type="file" accept="image/*" disabled={subiendoFotoId === j.player_id} style={{ display:'none' }}
+                                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cambiarFotoPerfil(j.player_id, f) }}/>
+                                    </label>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
                                       <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
@@ -5970,6 +6005,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                   {/* Fila 2: acciones — envuelven libremente (flexWrap) en vez de
                                       apretarse contra el nombre en pantallas angostas. */}
                                   <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', justifyContent:'flex-end' }}>
+                                    <label style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'6px', padding:'3px 8px', cursor: subiendoFotoId === j.player_id ? 'wait' : 'pointer', color:'#1a73e8', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                      {subiendoFotoId === j.player_id ? 'Subiendo…' : '📷 Cambiar foto'}
+                                      <input type="file" accept="image/*" disabled={subiendoFotoId === j.player_id} style={{ display:'none' }}
+                                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cambiarFotoPerfil(j.player_id, f) }}/>
+                                    </label>
                                     {sancion ? (
                                       esAdminRol && (
                                         <button onClick={() => handleLevantarSancion(sancion.id)}
