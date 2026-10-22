@@ -25,7 +25,7 @@ const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'blo
 const NOMBRE_PLATAFORMA = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', otro: 'Enlace genérico (se mostrará un botón "Ver en vivo")' }
 
 function streamVacio(ownerId) {
-  return { id: crypto.randomUUID(), owner_id: ownerId || null, url: '', titulo: '', match_id: null, match_ids: [], activo: true, retraso_segundos: 20, segundos_repeticion: 28 }
+  return { id: crypto.randomUUID(), owner_id: ownerId || null, url: '', titulo: '', match_id: null, match_ids: [], activo: true, retraso_segundos: 14, segundos_repeticion: 28 }
 }
 
 export default function AdminConfigSitioPage() {
@@ -282,7 +282,7 @@ export default function AdminConfigSitioPage() {
         const nuevos = golesNuevos(golesActuales, anteriores)
         if (nuevos.length) {
           golesGuardadosRef.current[partido.id] = golesActuales // marcado de una, antes de esperar, para no procesar los mismos goles dos veces si este efecto vuelve a correr mientras tanto
-          const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 20) * 1000
+          const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 14) * 1000
           const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
           nuevos.forEach(gol => {
             setTimeout(() => {
@@ -317,7 +317,7 @@ export default function AdminConfigSitioPage() {
     const todas = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
     idsCargadosRef.current = new Set(todas.map(x => x.id).filter(Boolean))
     const lista = esOrganizador ? todas.filter(x => x.owner_id === miId) : todas
-    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: s.retraso_segundos ?? 20, segundos_repeticion: s.segundos_repeticion ?? 28 })))
+    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: (s.retraso_segundos == null || Number(s.retraso_segundos) === 20) ? 14 : s.retraso_segundos, segundos_repeticion: s.segundos_repeticion ?? 28 })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setControl((data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {})
     setLogosPorTorneo((data?.patrocinador_logos_torneo && typeof data.patrocinador_logos_torneo === 'object') ? data.patrocinador_logos_torneo : {})
@@ -353,7 +353,7 @@ export default function AdminConfigSitioPage() {
         torneo_auto: s.torneo_auto || null,
         cancha_auto: s.torneo_auto ? (s.cancha_auto || null) : null,
         activo: !!s.activo,
-        retraso_segundos: Number(s.retraso_segundos) || 20,
+        retraso_segundos: Number(s.retraso_segundos) || 14,
         segundos_repeticion: Number(s.segundos_repeticion) || 28,
         control_token: s.control_token || null,
       }))],
@@ -746,22 +746,6 @@ export default function AdminConfigSitioPage() {
                     </button>
                   </div>
 
-                  {/* Repetición automática por gol (la que dispara sola LandingPage
-                      apenas el árbitro marca un gol, calculando un punto aproximado) —
-                      se puede apagar para que los goles del árbitro SOLO actualicen el
-                      marcador (eso sigue siempre, en tiempo real) sin disparar ninguna
-                      repetición sola; ahí uno se encarga de todas a mano, con los
-                      botones de arriba, en el momento exacto que quiera. */}
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'14px', padding:'10px 12px', background:'#161616', border:`1px solid ${S.border}`, borderRadius:'8px' }}>
-                    <div style={{ fontSize:'.72rem', color:'#9aa0a6' }}>
-                      Repetición automática al marcar un gol el árbitro (el marcador siempre se actualiza solo, esto es solo la repetición)
-                    </div>
-                    <button onClick={() => actualizarControl(s.id, { repeticion_automatica_desactivada: !c?.repeticion_automatica_desactivada })}
-                      style={{ flexShrink:0, padding:'8px 12px', background: c?.repeticion_automatica_desactivada ? '#2a2a2a' : S.green, border:'none', borderRadius:'8px', cursor:'pointer', color: c?.repeticion_automatica_desactivada ? '#9aa0a6' : '#0a0a0a', fontSize:'.76rem', fontWeight:'700', whiteSpace:'nowrap' }}>
-                      {c?.repeticion_automatica_desactivada ? 'Desactivada' : 'Activada'}
-                    </button>
-                  </div>
-
                   {tieneTorneo && (() => {
                     const listaLogos = logosPorTorneo[partidoSeleccionado.tournament_id] || []
                     return (
@@ -939,10 +923,10 @@ export default function AdminConfigSitioPage() {
 
                 <div style={{ marginBottom:'12px' }}>
                   <label style={lbl}>Retraso de esta transmisión (segundos)</label>
-                  <input type="number" min="0" step="1" value={s.retraso_segundos ?? 20}
+                  <input type="number" min="0" step="1" value={s.retraso_segundos ?? 14}
                     onChange={e => actualizarStream(s.id, 'retraso_segundos', e.target.value)} style={{ ...inp, maxWidth:'120px' }}/>
                   <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
-                    Cuánto va atrasada esta transmisión respecto al partido real (todo "en vivo" tiene algo de retraso). Se usa para esperar ese tiempo antes de disparar la repetición del gol — si no, el video rebobina a un momento en el que el gol todavía no había pasado. Para calcularlo: mira algo que pase en la cancha y cuenta cuántos segundos tarda en aparecer en la transmisión.
+                    Cuánto va atrasada esta transmisión respecto al partido real (todo "en vivo" tiene algo de retraso). Se usa para esperar ese tiempo antes de guardar el segundo de cada gol del resumen del descanso. Para calcularlo: mira algo que pase en la cancha y cuenta cuántos segundos tarda en aparecer en la transmisión.
                   </div>
                 </div>
 

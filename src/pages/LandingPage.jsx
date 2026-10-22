@@ -496,74 +496,12 @@ export default function LandingPage() {
     Array.isArray(siteConfig?.en_vivo_repeticion_imagenes) ? siteConfig.en_vivo_repeticion_imagenes : []
   ), [siteConfig])
 
-  // Repetición automática del gol: cuando el árbitro anota un gol en el
-  // partido de alguna transmisión activa, se le avisa a esa transmisión
-  // (ver LiveEmbed) para que rebobine unos segundos y muestre otra vez la
-  // jugada, tapándola primero un instante con la imagen que le toque en la
-  // rotación (si ya hay alguna cargada).
-  //
-  // OJO con el retraso de la transmisión: el video en vivo (YouTube/Facebook)
-  // siempre va varios segundos ATRASADO respecto al partido real (retraso de
-  // transmisión normal en cualquier "en vivo" — puede ser 10, 20, hasta 40
-  // segundos según cómo esté transmitiendo). Si se dispara la repetición de
-  // una, apenas el árbitro anota el gol, el video TODAVÍA no ha mostrado esa
-  // jugada — se rebobina hacia un momento anterior al gol y la repetición no
-  // alcanza a mostrarlo. Por eso acá se ESPERA "retraso_segundos" (configurado
-  // por transmisión en /admin/config-sitio, con la transmisión real de
-  // Sebas) antes de disparar la repetición: ese tiempo es justo lo que le
-  // falta al video para "alcanzar" el momento del gol, así que cuando por
-  // fin se dispara, el gol ya pasó en la transmisión y el rebobinado sí lo
-  // agarra.
-  //
-  // repeticion_automatica_desactivada (botón nuevo en el panel de control):
-  // apaga ESTA repetición automática y aproximada, nada más — el marcador
-  // sigue actualizándose solo en tiempo real pase lo que pase acá, y el
-  // resumen de goles del entretiempo (ver AdminConfigSitioPage) también
-  // sigue guardando los goles igual. Con esto apagado, cada repetición se
-  // dispara a mano desde el panel (botón "Repetición"), con el punto exacto
-  // que Sebas elija devolviéndose con la barra de YouTube — más preciso que
-  // el cálculo aproximado de acá.
-  const golesAnterioresRef = useRef({}) // { [matchId]: { local, vis } }
+  // Las repeticiones SOLO se disparan a mano desde el panel de control
+  // (botones "Repetición" / "Cámara lenta"). Ya no hay repetición automática
+  // al marcar un gol: dependía de calcular el momento a ojo y fallaba; lo que
+  // marca el árbitro solo actualiza el marcador.
   const repeticionContadorRef = useRef(0)
-  const repeticionTimersRef = useRef([]) // ids de los setTimeout de espera, para limpiarlos si el componente se desmonta
   const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, imagenUrl } }
-
-  useEffect(() => {
-    streamsVivos.forEach(s => {
-      const partido = partidoActivoDeStream(s, partidosVivo)
-      if (!partido?.vivo) return
-      const anterior = golesAnterioresRef.current[partido.id]
-      const actual = { local: partido.vivo.golesLocal || 0, vis: partido.vivo.golesVis || 0 }
-      // repeticion_automatica_desactivada (botón del panel de control): el
-      // marcador de arriba (partido.vivo) se sigue actualizando siempre, en
-      // tiempo real, pase lo que pase acá — esto SOLO apaga la repetición
-      // que se dispara sola y aproximada; con esto apagado, Sebas se encarga
-      // de todas a mano, con el botón de Repetición, en el momento exacto
-      // que él vea que corresponde.
-      const automaticaApagada = !!(siteConfig?.en_vivo_control || {})[s.id]?.repeticion_automatica_desactivada
-      if (anterior && !automaticaApagada && (actual.local > anterior.local || actual.vis > anterior.vis)) {
-        const imagenUrl = imagenesRepeticion.length
-          ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
-          : null
-        repeticionContadorRef.current += 1
-        const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 20) * 1000
-        // segundosAtras es configurable por transmisión (/admin/config-sitio)
-        // porque en la práctica cada transmisión queda con un atraso real
-        // distinto — si se queda corto, el rebobinado cae en medio de la
-        // celebración en vez de antes del gol (ver LiveEmbed). duracionVisible:
-        // los 12 segundos de juego que pidió Sebas, contados desde que se va
-        // la imagen del patrocinador.
-        const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
-        const timerId = setTimeout(() => {
-          setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), segundosAtras, duracionVisible: 12, imagenUrl } }))
-        }, retrasoMs)
-        repeticionTimersRef.current.push(timerId)
-      }
-      golesAnterioresRef.current[partido.id] = actual
-    })
-  }, [partidosVivo, streamsVivos, imagenesRepeticion, siteConfig])
-
-  useEffect(() => () => repeticionTimersRef.current.forEach(clearTimeout), [])
 
   // Repetición MANUAL, disparada a propósito desde el panel de control de
   // /admin/config-sitio (botón "Repetición" o "Cámara lenta") — a diferencia
