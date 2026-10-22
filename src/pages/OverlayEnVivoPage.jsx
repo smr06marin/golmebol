@@ -172,6 +172,9 @@ export default function OverlayEnVivoPage() {
   // 2.º tiempo con el reloj corriendo: el árbitro ya arrancó el partido otra vez,
   // así que NO debe verse ningún gráfico automático (ni quedar programado).
   const segundoTiempoCorriendo = periodoAuto === 2 && !!vivoP?.corriendo
+  // Ya tocaron "2.º tiempo" pero todavía no inician el reloj: los gráficos del
+  // descanso se quedan en pantalla esperando hasta que el reloj arranque.
+  const esperandoSegundoTiempo = periodoAuto === 2 && !vivoP?.corriendo && segsReloj === 0
 
   // Muestra un gráfico automático `cual` después de `retrasoMs` y lo quita a
   // los `duracionMs` (solo si sigue siendo ese el que está en pantalla).
@@ -259,7 +262,7 @@ export default function OverlayEnVivoPage() {
   // El tablero de goles del descanso solo vale mientras siga el descanso: si
   // arranca el 2.º tiempo antes de los 2 minutos, se quita. Y con el 2.º tiempo
   // corriendo no sale ningún gráfico automático.
-  const autoVisible = (autoOverlay === 'resumen' && !descansoAuto) || segundoTiempoCorriendo ? null : autoOverlay
+  const autoVisible = (autoOverlay === 'resumen' && !descansoAuto && !esperandoSegundoTiempo) || segundoTiempoCorriendo ? null : autoOverlay
   const overlayActivo = control?.overlay || (graficosAuto ? autoVisible : null)
   // Los gráficos que salen SOLOS llevan el mensaje institucional; los que
   // prende el panel de control llevan la leyenda normal de cada gráfica.
