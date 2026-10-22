@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, duracionPeriodo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
@@ -227,7 +227,7 @@ export default function OverlayEnVivoPage() {
           equipo: e.team_id === m.home_team_id ? 'local' : 'visitante',
           jugador: e.players?.name || e.player_nombre || 'Jugador',
           numero: String(numeros.get(e.player_id) ?? '').trim(),
-          minuto: e.minute || null, periodo: e.periodo || 1,
+          minuto: e.minute || null, periodo: e.periodo || 1, duracion: duracionPeriodo(base),
         })).sort((x, y) => (x.periodo - y.periodo) || ((parseInt(x.minuto) || 0) - (parseInt(y.minuto) || 0)))
         setPartidoFinal({ ...m, colores: base?.colores, goles })
         programarAuto('final', 0, 120000)

@@ -183,7 +183,14 @@ export function extraerGoles(match) {
       goles.push({ equipo: 'visitante', jugador: buscarNombre(snap.jugadoresVisitante, g.numero), numero: String(g.numero ?? '').trim(), minuto: g.minuto || null, periodo: g.periodo || 1, jugadorId: j?.id || null, foto: j?.photo_face_url || j?.photo_url || null })
     })
   }
-  return goles.sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+  // `duracion` = minutos de un tiempo: el tablero lo suma a los goles del 2.º tiempo (min 17 del 2T = 37').
+  return goles.map(g => ({ ...g, duracion: snap.duracionMinutos || 0 })).sort((a, b) => (a.periodo - b.periodo) || ((parseInt(a.minuto) || 0) - (parseInt(b.minuto) || 0)))
+}
+
+// Minutos que dura cada tiempo en el partido en vivo (0 si no se sabe).
+export function duracionPeriodo(match) {
+  const picked = snapshotMasReciente(match)
+  return picked?.snap?.duracionMinutos || 0
 }
 
 // Igual que extraerGoles, pero con el player_id y el team_id REALES (no

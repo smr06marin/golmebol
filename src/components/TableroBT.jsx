@@ -13,16 +13,45 @@ import { EnVivoEstilos, Escudo, PieGolmebol } from './enVivoUI'
 
 const MAX_LINEAS = 5
 
+// "Danilo López" -> "Danilo L." · "Juan David Pérez Gómez" -> "Juan P." (primer nombre
+// + inicial del primer apellido; con 4 palabras el apellido es la tercera).
+function nombreCorto(nombre) {
+  const p = String(nombre || '').trim().split(/\s+/).filter(Boolean)
+  if (p.length < 2) return p[0] || ''
+  const apellido = p.length >= 4 ? p[2] : p[p.length - 1]
+  return `${p[0]} ${apellido.charAt(0)}.`
+}
+
+// Minuto "corrido" del partido, sin decir primer/segundo tiempo: el reloj del 2.º
+// tiempo arranca en 0, así que se le suma lo que duró el 1.º (gol al 17 del 2T
+// en partido de 20 min por tiempo = 37'). "17:30" -> 17.
+function minutoCorrido(g) {
+  const m = parseInt(g.minuto)
+  if (!Number.isFinite(m)) return '—'
+  const base = (g.periodo || 1) > 1 ? (g.duracion || 20) : 0
+  return `${Math.max(1, m + base)}'`
+}
+
 // Junta los goles de un mismo jugador en una sola línea: "SEBASTIÁN GÓMEZ 4' 19'"
-function lineasDeGoles(goles, equipo, separarTiempos) {
+function lineasDeGoles(goles, equipo) {
   const mapa = new Map()
   goles.filter(g => (equipo === 'local') === (g.equipo === 'local')).forEach(g => {
     const clave = `${g.numero}|${g.jugador}`
     if (!mapa.has(clave)) mapa.set(clave, { numero: g.numero, jugador: g.jugador, minutos: [] })
-    const t = separarTiempos && (g.periodo || 1) > 1 ? ` ${g.periodo}T` : ''
-    mapa.get(clave).minutos.push(g.minuto != null ? `${g.minuto}'${t}` : '—')
+    mapa.get(clave).minutos.push(minutoCorrido(g))
   })
   return [...mapa.values()]
+}
+
+// Balón dibujado (no emoji): se ve igual en cualquier celular y en OBS.
+function Balon() {
+  return (
+    <svg className="ev-bt-balon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="11" fill="#fff" stroke="#111" strokeWidth="1.6"/>
+      <polygon points="12,7 16.6,10.3 14.8,15.7 9.2,15.7 7.4,10.3" fill="#111"/>
+      <path d="M12 7V1.4M16.6 10.3l5.2-1.7M14.8 15.7l3.3 4.4M9.2 15.7l-3.3 4.4M7.4 10.3L2.2 8.6" stroke="#111" strokeWidth="1.4" fill="none"/>
+    </svg>
+  )
 }
 
 function Goleadores({ lineas }) {
@@ -34,8 +63,10 @@ function Goleadores({ lineas }) {
       {visibles.map((l, i) => (
         <div key={i} className="ev-bt-g">
           {l.numero && <span className="ev-bt-gn">{l.numero} </span>}
-          <span className="ev-bt-gj">{l.jugador}</span>
-          {' '}<span className="ev-bt-gm">{l.minutos.join(' · ')}</span>
+          <span className="ev-bt-gj">{nombreCorto(l.jugador)}</span>
+          {l.minutos.map((m, k) => (
+            <span key={k} className="ev-bt-gm"> <Balon/>{m}</span>
+          ))}
         </div>
       ))}
     </div>
@@ -50,9 +81,8 @@ export default function TableroBT({ partido, tag, goles, marcador, subtitulo, pi
   const cl = partido.colores?.colorLocal || '#5f6368'
   const cv = partido.colores?.colorVisitante || '#5f6368'
   const hayGoles = Array.isArray(goles) && goles.length > 0
-  const separar = hayGoles && goles.some(g => (g.periodo || 1) > 1) && goles.some(g => (g.periodo || 1) === 1)
-  const ll = hayGoles ? lineasDeGoles(goles, 'local', separar) : []
-  const lv = hayGoles ? lineasDeGoles(goles, 'visitante', separar) : []
+  const ll = hayGoles ? lineasDeGoles(goles, 'local') : []
+  const lv = hayGoles ? lineasDeGoles(goles, 'visitante') : []
 
   return (
     <div className="ev-bt ev-u" style={ancho ? { width: ancho } : undefined}>

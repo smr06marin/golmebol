@@ -64,6 +64,8 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
   const local = aviso.equipo === 'local'
   const equipo = local ? partido.home : partido.away
   const color = (local ? partido.colores?.colorLocal : partido.colores?.colorVisitante) || '#1a73e8'
+  // Cuántos goles lleva ESTE jugador en el partido (con el que acaba de hacer). Solo se muestra si ya son 2 o más.
+  const totalJugador = goles.filter(g => g.equipo === aviso.equipo && g.numero === aviso.numero && g.jugador === aviso.jugador).length
 
   return (
     <>
@@ -87,7 +89,9 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
               <div className="ev-av-num" style={{ background: color, color: textoContraste(color) }}>{aviso.numero}</div>
             )}
             <div className="ev-av-body">
-              <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span><span className="ev-av-firma">Datos en vivo · <b>GOLMEBOL</b></span></div>
+              <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span>
+                {totalJugador >= 2 && <span className="ev-av-cant">⚽ {totalJugador} GOLES{totalJugador === 3 ? ' · HAT-TRICK' : ''}</span>}
+                <span className="ev-av-firma">Datos en vivo · <b>GOLMEBOL</b></span></div>
               <div className="ev-av-nom ev-txt">{aviso.jugador}</div>
               <div className="ev-av-eq">
                 <Escudo url={equipo?.logo_url} name={equipo?.name} size={4.6}/>

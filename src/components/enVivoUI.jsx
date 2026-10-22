@@ -78,9 +78,10 @@ export const CSS_EV = `
 .ev-bt-fila { display: grid; grid-template-columns: 1fr calc(var(--u) * 15) 1fr; align-items: stretch; }
 .ev-bt-fgol { padding-top: calc(var(--u) * 1.6); border-bottom: 1px solid var(--linea); padding-bottom: calc(var(--u) * 1.2); }
 .ev-bt-gs { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: calc(var(--u) * .5); padding: 0 calc(var(--u) * 3); min-width: 0; }
-.ev-bt-g { display: block; text-align: center; max-width: 100%; min-width: 0; font-weight: 800; text-transform: uppercase; font-size: calc(var(--u) * 2.45); letter-spacing: .01em; line-height: 1.2; }
+.ev-bt-g { display: block; white-space: nowrap; text-align: center; max-width: 100%; min-width: 0; font-weight: 800; text-transform: uppercase; font-size: calc(var(--u) * 2.45); letter-spacing: .01em; line-height: 1.2; }
 .ev-bt-gj { }
 .ev-bt-gn { color: var(--tenue); font-weight: 900; }
+.ev-bt-balon { display: inline-block; width: 1em; height: 1em; vertical-align: -.14em; margin-right: .22em; }
 .ev-bt-gm { color: var(--oro); font-weight: 900; white-space: nowrap; }
 .ev-bt-mas { color: var(--tenue); font-size: calc(var(--u) * 2.3); }
 .ev-bt-fmain { position: relative; height: calc(var(--u) * 10); }
@@ -133,6 +134,7 @@ export const CSS_EV = `
 .ev-av-firma { margin-left: auto; color: var(--tenue); font-weight: 700; font-size: calc(var(--u) * 2.2); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .ev-av-firma b { color: #fff; font-weight: 900; }
 .ev-av-gol { background: var(--rojo); font-weight: 900; font-size: calc(var(--u) * 2.9); letter-spacing: .14em; padding: .12em .8em .12em .6em; clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 1.1) 100%, 0 100%); }
+.ev-av-cant { background: var(--oro); color: #1a1200; font-weight: 900; font-size: calc(var(--u) * 2.6); letter-spacing: .06em; padding: .14em .8em; border-radius: calc(var(--u) * 1); white-space: nowrap; }
 .ev-av-nom { font-weight: 900; font-size: calc(var(--u) * 5.6); line-height: 1.08; text-transform: uppercase; letter-spacing: .01em; }
 .ev-av-eq { display: flex; align-items: center; gap: calc(var(--u) * 1.4); min-width: 0; font-weight: 700; font-size: calc(var(--u) * 3.1); color: #c3cad6; }
 .ev-av-sc { margin-left: auto; flex-shrink: 0; font-weight: 900; font-size: calc(var(--u) * 4.6); color: #fff; }
