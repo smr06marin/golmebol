@@ -531,52 +531,9 @@ export default function LandingPage() {
       // es de YouTube, o el reproductor de quien transmite no respondió a
       // tiempo), LiveEmbed cae de vuelta al valor configurado para esta
       // transmisión.
-      const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
-      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
     })
   }, [siteConfig, streamsVivos, imagenesRepeticion])
-
-  // Resumen de goles del entretiempo: /admin/config-sitio guarda solo, gol a
-  // gol, el segundo exacto de cada uno (ver resumen_goles en
-  // en_vivo_control) y avisa una sola vez (resumen_ts) apenas el árbitro
-  // marca el descanso — acá no hace falta calcular nada, solo encadenar los
-  // goles de la lista uno detrás de otro: cada uno se muestra con
-  // `ultimoDeSerie:false` (LiveEmbed no vuelve al en vivo solo, avisa con
-  // `onFinSegmento` cuando termina ese gol) menos el ÚLTIMO, que si hace el
-  // cierre normal y vuelve al en vivo, igual que cualquier repetición.
-  const controlResumenRef = useRef({}) // { [streamId]: último resumen_ts ya mostrado }
-  function mostrarGolDeResumen(s, goles, indice) {
-    const gol = goles[indice]
-    if (!gol || typeof gol.segundo !== 'number' || !isFinite(gol.segundo)) {
-      // Gol sin segundo guardado (no se pudo leer getCurrentTime en su
-      // momento) — se salta, en vez de cortar ahí todo el resumen.
-      if (indice + 1 < goles.length) mostrarGolDeResumen(s, goles, indice + 1)
-      return
-    }
-    const etiqueta = `${gol.jugador || 'Gol'}${gol.minuto ? ' · ' + gol.minuto + "'" : ''}`
-    setRepeticiones(r => ({
-      ...r,
-      [s.id]: {
-        key: Date.now(),
-        objetivoSegundos: gol.segundo,
-        duracionVisible: 10,
-        etiqueta,
-        ultimoDeSerie: indice === goles.length - 1,
-        onFinSegmento: () => mostrarGolDeResumen(s, goles, indice + 1),
-      },
-    }))
-  }
-  useEffect(() => {
-    const control = siteConfig?.en_vivo_control || {}
-    streamsVivos.forEach(s => {
-      const c = control[s.id]
-      const goles = Array.isArray(c?.resumen_goles) ? c.resumen_goles : []
-      if (!c?.resumen_ts || controlResumenRef.current[s.id] === c.resumen_ts || !goles.length) return
-      controlResumenRef.current[s.id] = c.resumen_ts
-      mostrarGolDeResumen(s, goles, 0)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mostrarGolDeResumen se redefine cada render pero no hace falta re-correr el efecto por eso
-  }, [siteConfig, streamsVivos])
 
   // Gráfica de tabla de posiciones encima del video (también prendida desde
   // el panel de control): se trae y calcula una sola vez por torneo (caché),

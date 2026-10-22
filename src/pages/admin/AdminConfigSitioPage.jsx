@@ -11,7 +11,7 @@ import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
-import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, extraerGoles, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
+import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
 import { tablasConVivo } from '../../lib/torneoTablas'
 import { useTablasBase } from '../../lib/useTablasBase'
 import { fmtHoraDate } from '../../lib/horaHelpers'
@@ -25,7 +25,7 @@ const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#5f6368', display:'blo
 const NOMBRE_PLATAFORMA = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', otro: 'Enlace genérico (se mostrará un botón "Ver en vivo")' }
 
 function streamVacio(ownerId) {
-  return { id: crypto.randomUUID(), owner_id: ownerId || null, url: '', titulo: '', match_id: null, match_ids: [], activo: true, retraso_segundos: 14, segundos_repeticion: 28 }
+  return { id: crypto.randomUUID(), owner_id: ownerId || null, url: '', titulo: '', match_id: null, match_ids: [], activo: true }
 }
 
 export default function AdminConfigSitioPage() {
@@ -50,12 +50,9 @@ export default function AdminConfigSitioPage() {
   // Panel de control en vivo: qué gráfica extra (tabla/goles) se muestra por
   // transmisión y el disparador de la repetición manual — ver
   // migracion_en_vivo_control.sql. { [streamId]: { overlay, overlay_tournament_id, repeticion_ts,
-  // repeticion_camara_lenta, repeticion_objetivo_segundos, repeticion_automatica_desactivada,
-  // resumen_goles, resumen_ts } } — resumen_goles/resumen_ts son el resumen automático de
-  // goles del entretiempo (ver el efecto más abajo que los guarda solo y los dispara solo);
-  // repeticion_automatica_desactivada apaga la repetición que LandingPage dispara sola apenas
-  // el árbitro marca un gol (el resumen de goles y el marcador siguen funcionando igual,
-  // apagar esto solo afecta esa repetición inmediata y aproximada).
+  // repeticion_camara_lenta, repeticion_objetivo_segundos } } — las repeticiones son
+  // SOLO manuales (ya no hay repetición automática al marcar un gol ni resumen
+  // de goles del descanso en video).
   // logos_activos: ids de los logos de patrocinador del torneo (ver
   // patrocinador_logos_torneo / migracion_patrocinador_logos_torneo.sql) que
   // están prendidos AHORA en ESTA transmisión puntual — la posición/tamaño
@@ -102,21 +99,6 @@ export default function AdminConfigSitioPage() {
   // se aprieta Repetición/Cámara lenta, después de que Sebas se devolvió a
   // mano con la barra nativa de YouTube hasta la jugada que quiere repetir.
   const liveEmbedRefs = useRef({})
-  // Resumen de goles para el entretiempo: por PARTIDO (no por transmisión,
-  // para que no se pierda si a mitad de partido se cambia de transmisión
-  // asignada) — la última lista de goles ya guardada (para detectar solo
-  // los nuevos, comparando por contenido, no por posición: ver golesNuevos
-  // más abajo) y si ya se disparó el resumen para este entretiempo, para no
-  // volver a mandarlo mientras el partido se quede en "descanso".
-  const golesGuardadosRef = useRef({}) // { [matchId]: últimos goles ya guardados (lista completa) }
-  const descansoDisparadoRef = useRef({}) // { [matchId]: true una vez ya se mandó el resumen }
-  // Las escrituras de "guardar este gol en el resumen" se encolan una
-  // detrás de otra (en vez de leer-modificar-escribir directo cada una) por
-  // si dos goles quedan a guardar casi al mismo tiempo — sin esto, la
-  // segunda escritura podría pisar a la primera porque ambas leerían la
-  // lista sin el gol que la otra todavía no había terminado de guardar.
-  const colaResumenRef = useRef(Promise.resolve())
-
   // Partidos que se pueden elegir para el marcador: cualquiera que no haya
   // terminado (para poder elegirlo desde antes de que arranque). Se marcan
   // primero los que YA están en vivo (el árbitro ya empezó la planilla), así
@@ -206,11 +188,9 @@ export default function AdminConfigSitioPage() {
         ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
         : null
       repeticionContadorRef.current += 1
-      const s = streams.find(x => x.id === streamId)
-      const segundosAtras = Math.max(0, Number(s?.segundos_repeticion) || 28)
-      setRepeticiones(r => ({ ...r, [streamId]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, segundosAtras, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
+      setRepeticiones(r => ({ ...r, [streamId]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
     })
-  }, [control, streams, imagenesRepeticion])
+  }, [control, imagenesRepeticion])
 
   // `partidos` antes solo se traía una vez al entrar a la página — para el
   // resumen de goles automático de abajo hace falta enterarse SOLA de los
@@ -220,91 +200,6 @@ export default function AdminConfigSitioPage() {
     const t = setInterval(fetchPartidos, 10000)
     return () => clearInterval(t)
   }, [])
-
-  // Compara la lista de goles actual contra la última que ya se guardó para
-  // el resumen y devuelve solo los nuevos — comparando por CONTENIDO
-  // (equipo+jugador+minuto+periodo), no por posición en la lista, porque
-  // extraerGoles la devuelve ordenada por minuto: si un gol se carga fuera
-  // de orden (el árbitro lo corrige después, o dos caen en el mismo minuto),
-  // mirar solo "lo que se agregó al final" podría perderse alguno o
-  // guardarlo dos veces.
-  function golesNuevos(actuales, anteriores) {
-    const claveDe = g => `${g.periodo}|${g.equipo}|${g.jugador}|${g.minuto}`
-    const disponibles = {}
-    anteriores.forEach(g => { const k = claveDe(g); disponibles[k] = (disponibles[k] || 0) + 1 })
-    return actuales.filter(g => {
-      const k = claveDe(g)
-      if (disponibles[k] > 0) { disponibles[k] -= 1; return false }
-      return true
-    })
-  }
-
-  // Guarda UN gol en la lista del resumen, leyendo y escribiendo site_config
-  // de una (no el `control` que ya tiene este panel en memoria, que puede
-  // estar desactualizado) — encolado detrás de cualquier otra escritura de
-  // resumen que esté a medias, para que dos goles casi seguidos no se pisen
-  // entre sí.
-  async function guardarGolResumen(streamId, gol) {
-    const { data } = await supabase.from('site_config').select('en_vivo_control').eq('id', true).maybeSingle()
-    const controlActual = (data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {}
-    const listaActual = controlActual[streamId]?.resumen_goles || []
-    const next = { ...controlActual, [streamId]: { ...controlActual[streamId], resumen_goles: [...listaActual, gol] } }
-    setControl(next)
-    await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-  }
-  function encolarGolResumen(streamId, gol) {
-    colaResumenRef.current = colaResumenRef.current.then(() => guardarGolResumen(streamId, gol)).catch(() => {})
-  }
-
-  // Resumen de goles del entretiempo: apenas aparece un gol nuevo en un
-  // partido con transmisión activa, se espera el mismo "retraso" que ya usa
-  // la repetición automática del gol (para que el video haya alcanzado esa
-  // jugada) y se guarda el segundo exacto de la transmisión en el que quedó
-  // — igual de cómo se calcula para la repetición automática normal
-  // (segundos_repeticion para atrás desde donde esté el video en ese
-  // momento). Así, cuando el árbitro pasa el partido a "descanso", ya hay
-  // una lista lista para mostrarse sola en la página pública, sin que nadie
-  // tenga que armarla a mano. OJO: esto necesita que ESTE panel (no el link
-  // de control de otro celular) quede abierto durante el partido, porque es
-  // acá donde se lee el segundo del video (liveEmbedRefs) y se guarda la
-  // lista.
-  useEffect(() => {
-    streams.forEach(s => {
-      if (!s.activo) return
-      const partido = partidoActivoDeStream(s, partidos)
-      if (!partido) return
-      const vivo = derivarEnVivo(partido)
-      if (!vivo) return
-
-      if (vivo.periodo === 1) {
-        const golesActuales = extraerGoles(partido).filter(g => g.periodo === 1)
-        const anteriores = golesGuardadosRef.current[partido.id] || []
-        const nuevos = golesNuevos(golesActuales, anteriores)
-        if (nuevos.length) {
-          golesGuardadosRef.current[partido.id] = golesActuales // marcado de una, antes de esperar, para no procesar los mismos goles dos veces si este efecto vuelve a correr mientras tanto
-          const retrasoMs = Math.max(0, Number(s.retraso_segundos) || 14) * 1000
-          const segundosAtras = Math.max(0, Number(s.segundos_repeticion) || 28)
-          nuevos.forEach(gol => {
-            setTimeout(() => {
-              const t = liveEmbedRefs.current[s.id]?.getCurrentTime?.()
-              const segundo = (typeof t === 'number' && isFinite(t)) ? Math.max(0, t - segundosAtras) : null
-              encolarGolResumen(s.id, { segundo, equipo: gol.equipo, jugador: gol.jugador, minuto: gol.minuto })
-            }, retrasoMs)
-          })
-        }
-      }
-
-      // Entretiempo: en cuanto el partido pasa a "descanso" (y ya hay algún
-      // gol guardado), se avisa una sola vez para que arranque solo el
-      // resumen en la página pública — aunque el descanso dure un rato y
-      // este efecto se siga corriendo mientras tanto, no se repite.
-      if (vivo.descanso && !descansoDisparadoRef.current[partido.id] && (control[s.id]?.resumen_goles || []).length > 0) {
-        descansoDisparadoRef.current[partido.id] = true
-        actualizarControl(s.id, { resumen_ts: Date.now() })
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- golesNuevos/guardarGolResumen/encolarGolResumen se redefinen cada render pero no hace falta re-correr el efecto por eso
-  }, [partidos, streams, control])
 
   async function fetchConfig() {
     setLoading(true)
@@ -317,7 +212,7 @@ export default function AdminConfigSitioPage() {
     const todas = Array.isArray(data?.en_vivo_streams) ? data.en_vivo_streams : []
     idsCargadosRef.current = new Set(todas.map(x => x.id).filter(Boolean))
     const lista = esOrganizador ? todas.filter(x => x.owner_id === miId) : todas
-    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID(), retraso_segundos: (s.retraso_segundos == null || Number(s.retraso_segundos) === 20) ? 14 : s.retraso_segundos, segundos_repeticion: s.segundos_repeticion ?? 28 })))
+    setStreams(lista.map(s => ({ ...s, id: s.id || crypto.randomUUID() })))
     setImagenesRepeticion(Array.isArray(data?.en_vivo_repeticion_imagenes) ? data.en_vivo_repeticion_imagenes : [])
     setControl((data?.en_vivo_control && typeof data.en_vivo_control === 'object') ? data.en_vivo_control : {})
     setLogosPorTorneo((data?.patrocinador_logos_torneo && typeof data.patrocinador_logos_torneo === 'object') ? data.patrocinador_logos_torneo : {})
@@ -353,8 +248,6 @@ export default function AdminConfigSitioPage() {
         torneo_auto: s.torneo_auto || null,
         cancha_auto: s.torneo_auto ? (s.cancha_auto || null) : null,
         activo: !!s.activo,
-        retraso_segundos: Number(s.retraso_segundos) || 14,
-        segundos_repeticion: Number(s.segundos_repeticion) || 28,
         control_token: s.control_token || null,
       }))],
       updated_at: new Date().toISOString(),
@@ -919,24 +812,6 @@ export default function AdminConfigSitioPage() {
                   <label style={lbl}>Título (opcional)</label>
                   <input value={s.titulo || ''} onChange={e => actualizarStream(s.id, 'titulo', e.target.value)} style={inp}
                     placeholder="Ej: Cancha 1 · Final del Torneo Relámpago"/>
-                </div>
-
-                <div style={{ marginBottom:'12px' }}>
-                  <label style={lbl}>Retraso de esta transmisión (segundos)</label>
-                  <input type="number" min="0" step="1" value={s.retraso_segundos ?? 14}
-                    onChange={e => actualizarStream(s.id, 'retraso_segundos', e.target.value)} style={{ ...inp, maxWidth:'120px' }}/>
-                  <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
-                    Cuánto va atrasada esta transmisión respecto al partido real (todo "en vivo" tiene algo de retraso). Se usa para esperar ese tiempo antes de guardar el segundo de cada gol del resumen del descanso. Para calcularlo: mira algo que pase en la cancha y cuenta cuántos segundos tarda en aparecer en la transmisión.
-                  </div>
-                </div>
-
-                <div style={{ marginBottom:'12px' }}>
-                  <label style={lbl}>Cuánto rebobina la repetición del gol (segundos)</label>
-                  <input type="number" min="0" step="1" value={s.segundos_repeticion ?? 28}
-                    onChange={e => actualizarStream(s.id, 'segundos_repeticion', e.target.value)} style={{ ...inp, maxWidth:'120px' }}/>
-                  <div style={{ fontSize:'.72rem', color:'#5f6368', marginTop:'5px' }}>
-                    Si al ver la repetición el gol ya pasó (se ve la celebración pero no la jugada), sube este número — significa que el gol está más atrás de lo que se está rebobinando. Si en cambio se ve mucho relleno antes del gol, bájalo. No tiene relación con el número de arriba: ese es cuánto ESPERAR antes de disparar la repetición, este es hacia dónde atrás SALTA el video una vez que dispara.
-                  </div>
                 </div>
 
                 <div style={{ marginBottom:'12px' }}>
