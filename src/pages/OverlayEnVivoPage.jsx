@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
@@ -12,6 +12,7 @@ import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
+import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 
 // Página de overlay para OBS (u otro programa de transmisión): dibuja SOLO
 // los gráficos de Golmebol (marcador, goles, tabla, nómina, publicidad,
@@ -36,7 +37,7 @@ import MarcaTransmision from '../components/MarcaTransmision'
 // Parámetros opcionales en la URL:
 //   ?prueba=1  fondo de cancha de mentiras, para verlo en un navegador normal
 //   ?logo=0    sin la marca de arriba a la izquierda (logo de Golmebol + logo del torneo + "Esta transmisión es gracias a Golmebol")
-//   ?auto=0    sin los gráficos automáticos (alineación al arrancar y tabla en el descanso)
+//   ?auto=0    sin los gráficos automáticos (alineación al arrancar, tabla y goles en el descanso, goles al finalizar)
 
 const ANCHO_ESCENARIO = 860
 
@@ -149,35 +150,106 @@ export default function OverlayEnVivoPage() {
   // Gráficos AUTOMÁTICOS (para transmitir sin nadie operando el panel):
   //  · al arrancar el partido (reloj en los primeros 30 s del 1er tiempo): la
   //    alineación de los dos equipos, 15 s;
-  //  · en el descanso (se acabó el 1er tiempo): "así va la tabla", 20 s.
+  //  · en el descanso: "así va la tabla" 20 s apenas empieza, y 1 minuto
+  //    después el tablero grande de goles minuto a minuto, que se queda 2 min;
+  //  · al finalizar (el árbitro cierra la planilla y la transmisión sigue): el
+  //    mismo tablero de goles con los datos del partido que acaba de terminar,
+  //    2 min.
   // Cada uno sale UNA vez por partido. Si el panel de control prende algo a
   // mano, eso manda. Al abrir la página con el partido ya avanzado no vuelve a
   // salir la alineación (solo si el reloj sigue en los primeros 30 s).
   const [autoOverlay, setAutoOverlay] = useState(null)
-  const autoRef = useRef({ partidoId: null, inicioHecho: false, descansoHecho: false, timers: [] })
+  const [partidoFinal, setPartidoFinal] = useState(null)
+  const autoRef = useRef({ partidoId: null, inicioHecho: false, descansoHecho: false, timers: [], finalesHechos: new Set(), desmontado: false })
+  const ultimoPartidoRef = useRef(null)
+  const idAnteriorRef = useRef(null)
   const vivoP = partido?.vivo || null
   const partidoIdAuto = partido?.id || null
   const segsReloj = vivoP ? (() => { const [m, sg] = String(vivoP.reloj || '0:00').split(':'); return (parseInt(m, 10) || 0) * 60 + (parseInt(sg, 10) || 0) })() : 0
   const descansoAuto = !!vivoP?.descanso
   const periodoAuto = vivoP?.periodo || 1
   const hayVivoAuto = !!vivoP
+
+  // Muestra un gráfico automático `cual` después de `retrasoMs` y lo quita a
+  // los `duracionMs` (solo si sigue siendo ese el que está en pantalla).
+  function programarAuto(cual, retrasoMs, duracionMs) {
+    const a = autoRef.current
+    a.timers.push(setTimeout(() => setAutoOverlay(cual), retrasoMs))
+    a.timers.push(setTimeout(() => setAutoOverlay(act => (act === cual ? null : act)), retrasoMs + duracionMs))
+  }
+
   useEffect(() => {
     if (!graficosAuto || !partidoIdAuto || !hayVivoAuto) return
     const a = autoRef.current
     if (a.partidoId !== partidoIdAuto) { a.partidoId = partidoIdAuto; a.inicioHecho = false; a.descansoHecho = false }
-    let disparo = null
-    if (!a.inicioHecho && periodoAuto === 1 && !descansoAuto && segsReloj <= 30) { a.inicioHecho = true; disparo = ['jugadores', 15000] }
-    else if (descansoAuto && !a.descansoHecho) { a.descansoHecho = true; disparo = ['tabla', 20000] }
-    if (!disparo) return
-    const [cual, ms] = disparo
-    a.timers.forEach(clearTimeout)
-    a.timers = [setTimeout(() => setAutoOverlay(cual), 0), setTimeout(() => setAutoOverlay(null), ms)]
+    if (!a.inicioHecho && periodoAuto === 1 && !descansoAuto && segsReloj <= 30) {
+      a.inicioHecho = true
+      programarAuto('jugadores', 0, 15000)
+    } else if (descansoAuto && !a.descansoHecho) {
+      a.descansoHecho = true
+      programarAuto('tabla', 0, 20000)
+      programarAuto('resumen', 60000, 120000)
+    }
   }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj])
-  useEffect(() => () => { autoRef.current.timers.forEach(clearTimeout) }, [])
-  const overlayActivo = control?.overlay || (graficosAuto ? autoOverlay : null)
-  // Los gráficos que salen SOLOS (alineación al arrancar, tabla en el descanso)
-  // llevan el mensaje institucional; los que prende el panel de control llevan
-  // la leyenda normal de cada gráfica.
+
+  // Guarda el último partido que se vio en vivo (para saber sus colores de
+  // uniforme cuando ya no esté en vivo).
+  useEffect(() => { if (partido) ultimoPartidoRef.current = partido }, [partido])
+
+  // FINAL: cuando el partido que estaba en vivo deja de estarlo, se consulta si
+  // el árbitro lo cerró (status 'finished'). Si fue solo una pausa/suspensión,
+  // no pasa nada. Los goles salen de match_events (al cerrar la planilla se
+  // borra el estado en vivo, y los goles quedan guardados ahí).
+  useEffect(() => {
+    const previo = idAnteriorRef.current
+    idAnteriorRef.current = partidoIdAuto
+    if (!graficosAuto || !previo || previo === partidoIdAuto) return
+    const a = autoRef.current
+    if (a.finalesHechos.has(previo)) return
+    const base = ultimoPartidoRef.current?.id === previo ? ultimoPartidoRef.current : null
+    let intentos = 0
+    async function revisar() {
+      if (a.desmontado || a.finalesHechos.has(previo)) return
+      intentos++
+      const { data: m } = await supabase.from('matches')
+        .select('id, status, home_team_id, home_score, away_score, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)')
+        .eq('id', previo).maybeSingle()
+      if (a.desmontado) return
+      if (m?.status === 'finished') {
+        a.finalesHechos.add(previo)
+        const [ev, st] = await Promise.all([
+          supabase.from('match_events').select('*, players!player_id(name)').eq('match_id', previo).eq('event_type', 'goal'),
+          supabase.from('player_match_stats').select('player_id, numero_camiseta').eq('match_id', previo),
+        ])
+        if (a.desmontado) return
+        const numeros = new Map((st.data || []).map(r => [r.player_id, r.numero_camiseta]))
+        const goles = (ev.data || []).map(e => ({
+          equipo: e.team_id === m.home_team_id ? 'local' : 'visitante',
+          jugador: e.players?.name || e.player_nombre || 'Jugador',
+          numero: String(numeros.get(e.player_id) ?? '').trim(),
+          minuto: e.minute || null, periodo: e.periodo || 1,
+        })).sort((x, y) => (x.periodo - y.periodo) || ((parseInt(x.minuto) || 0) - (parseInt(y.minuto) || 0)))
+        setPartidoFinal({ ...m, colores: base?.colores, goles })
+        programarAuto('final', 0, 120000)
+        return
+      }
+      if (intentos < 6) a.timers.push(setTimeout(revisar, 5000))
+    }
+    a.timers.push(setTimeout(revisar, 1500))
+  }, [graficosAuto, partidoIdAuto])
+
+  useEffect(() => {
+    const a = autoRef.current
+    a.desmontado = false
+    return () => { a.desmontado = true; a.timers.forEach(clearTimeout) }
+  }, [])
+
+  // El tablero de goles del descanso solo vale mientras siga el descanso: si
+  // arranca el 2.º tiempo antes de los 2 minutos, se quita.
+  const autoVisible = autoOverlay === 'resumen' && !descansoAuto ? null : autoOverlay
+  const overlayActivo = control?.overlay || (graficosAuto ? autoVisible : null)
+  // Los gráficos que salen SOLOS llevan el mensaje institucional; los que
+  // prende el panel de control llevan la leyenda normal de cada gráfica.
   const pieInstitucional = !control?.overlay && graficosAuto && autoOverlay ? 'El fútbol evoluciona. La tecnología también. Desarrollado por GOLMEBOL' : undefined
 
   // Tabla de posiciones: se trae cuando se prende el gráfico (a mano o automático)
@@ -233,6 +305,8 @@ export default function OverlayEnVivoPage() {
               {overlayActivo === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
               {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pie={pieInstitucional}/>}
               {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido} pie={pieInstitucional}/>}
+              {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}
+              {overlayActivo === 'final' && partidoFinal && <ResumenGolesOverlay partido={partidoFinal} goles={partidoFinal.goles} modo="final"/>}
             </>
           )}
           {partido?.tournament_id && (

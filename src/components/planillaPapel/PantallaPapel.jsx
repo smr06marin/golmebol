@@ -441,6 +441,7 @@ export default function PantallaPapel({
   arqueroLocal, arqueroVis, onElegirArquero,
   onToggleCronometro, onCambiarPeriodo, onAsignarNumero, onAbrirJugador, onGol, onTarjeta, onQuitarEvento, onAgregarJugador,
   onSalir, onAbrirCierre, onAbrirEspecial,
+  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo, onSilenciar,
 }) {
   const hojaRef = useRef(null)
   const informeRef = useRef(null)
@@ -478,7 +479,11 @@ export default function PantallaPapel({
 
   const onDatos = (team, fn) => onPapel(p => ({ ...p, [team]: fn(p[team]) }))
   const setPenales = cambios => onPapel(p => ({ ...p, penales: { ...p.penales, ...cambios } }))
-  const fondoReloj = tiempoAgotado ? '#b71c1c' : periodo === 1 ? '#1a3a8a' : '#d93025'
+  // TIEMPO EXTRA: al cumplirse el tiempo el reloj sigue corriendo ("EXTRA +mm:ss")
+  // hasta que se toque IR AL DESCANSO / FINALIZAR.
+  const limiteReloj = (duracionMinutos || 0) * 60
+  const enExtra = !tiempoAgotado && limiteReloj > 0 && segundos >= limiteReloj
+  const fondoReloj = tiempoAgotado ? '#b71c1c' : enExtra ? '#b45309' : periodo === 1 ? '#1a3a8a' : '#d93025'
   const boton = { padding: '7px 12px', border: 'none', borderRadius: '9px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '800', touchAction: 'manipulation' }
   const botonBarra = (fondo, extra = {}) => ({ padding: '7px 12px', background: fondo, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700', touchAction: 'manipulation', ...extra })
   const informeListo = (papel.informe || '').trim().length >= 10
@@ -519,7 +524,19 @@ export default function PantallaPapel({
       {/* Cronómetro + marcador (siempre a la vista) */}
       <div className="gm-papel-no-imprimir" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px', padding: '6px 10px', background: fondoReloj, color: '#fff', flexShrink: 0 }}>
         <span style={{ fontSize: '.78rem', fontWeight: '800', background: 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '2px 8px' }}>{periodo === 1 ? '1T' : '2T'}</span>
-        <span style={{ fontSize: '2rem', fontWeight: '900', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>{formatTiempo(segundos)}</span>
+        <span style={{ fontSize: '2rem', fontWeight: '900', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
+          {enExtra && <span style={{ fontSize: '.7rem', letterSpacing: '.14em', color: '#ffe066', marginRight: '6px', fontFamily: 'system-ui,sans-serif' }}>EXTRA</span>}
+          {enExtra ? `+${formatTiempo(segundos - limiteReloj)}` : formatTiempo(segundos)}
+        </span>
+        {alarmaActiva && onSilenciar && (
+          <button type="button" onClick={onSilenciar} style={{ ...boton, background: '#fff', color: '#b71c1c' }}>🔕 Silenciar</button>
+        )}
+        {enExtra && onTerminarTiempo && (
+          <button type="button" onClick={() => { onTerminarTiempo(); if (periodo === 2) onAbrirCierre() }}
+            style={{ ...boton, padding: '10px 16px', fontSize: '.9rem', background: periodo === 1 ? '#e8710a' : '#1a73e8', color: '#fff', boxShadow: '0 0 0 2px #fff' }}>
+            {periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO'}
+          </button>
+        )}
         <button type="button" onClick={() => { if (corriendo) doble('pausa', onToggleCronometro); else onToggleCronometro() }}
           title={corriendo ? 'Doble toque para pausar' : 'Iniciar'}
           style={{ ...boton, background: aviso === 'pausa' ? '#ffdd44' : 'rgba(255,255,255,.92)', color: aviso === 'pausa' ? '#222' : fondoReloj }}>

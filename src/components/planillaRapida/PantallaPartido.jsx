@@ -13,6 +13,7 @@ export default function PantallaPartido({
   onVolverLista, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
   onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial, globalLlave, cambiosReloj = [],
   puedeIniciar = true, motivoNoIniciar = '', onReiniciar, onVolverPrimero, onSilenciar, nuevosSinNumero = 0,
+  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo,
 }) {
   const cLocal = colorPorHex(colorLocal)
   const cVis = colorPorHex(colorVis)
@@ -31,6 +32,7 @@ export default function PantallaPartido({
   let guia
   if (!iniciado && sinArqueros) guia = { n: '1', txt: 'Elige el arquero de cada equipo (las casillas amarillas que parpadean)', alerta: true }
   else if (!iniciado) guia = { n: '2', txt: 'Arqueros listos ✓  Ahora toca ▶ INICIAR PARTIDO en el cronómetro', alerta: true }
+  else if (!tiempoAgotado && duracionMinutos > 0 && segundos >= duracionMinutos * 60) guia = { n: '⏱', txt: periodo === 1 ? 'Se cumplió el tiempo (EXTRA corriendo) → toca IR AL DESCANSO (botón naranja)' : 'Se cumplió el tiempo (EXTRA corriendo) → toca FINALIZAR PARTIDO (botón azul)', alerta: true }
   else if (tiempoAgotado && periodo === 1) guia = { n: '⏱', txt: 'Terminó el 1er tiempo → toca PASAR A SEGUNDO TIEMPO (botón verde)', alerta: true }
   else if (finDelPartido) guia = { n: '🏁', txt: 'Terminó el partido → toca FINALIZAR (arriba a la derecha): arqueros, informe si hay roja, y MVP', alerta: true }
   else if (!corriendo) guia = { n: '⏸', txt: 'Cronómetro en pausa → toca ▶ CONTINUAR cuando se reanude el juego', alerta: false }
@@ -112,6 +114,7 @@ export default function PantallaPartido({
         periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
         golesLocal={golesLocal} golesVis={golesVis} globalLlave={globalLlave}
         puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar}
+        duracionMinutos={duracionMinutos} alarmaActiva={alarmaActiva} onTerminarTiempo={onTerminarTiempo}
         onToggle={onToggleCronometro} onReiniciar={onReiniciar} onCambiarPeriodo={onCambiarPeriodo}
         onVolverPrimero={onVolverPrimero} onSilenciar={onSilenciar} onFinalizar={onAbrirCierre}
       />

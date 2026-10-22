@@ -128,7 +128,9 @@ export default function MarcadorEnVivoOverlay({ partido }) {
         <span style={vivo.descanso
           ? { fontSize: 'clamp(.78rem, 3.3vw, .98rem)', fontWeight: 700, color: '#fff', letterSpacing: '.06em', whiteSpace: 'nowrap' }
           : { ...NUMEROS, fontSize: 'clamp(.9rem, 3.8vw, 1.12rem)', color: '#fff', letterSpacing: '.03em', whiteSpace: 'nowrap' }}>
-          {vivo.descanso ? 'DESCANSO' : vivo.reloj}
+          {vivo.descanso ? 'DESCANSO' : vivo.extra
+            ? <><span style={{ fontSize: '.78em', fontWeight: 700, color: '#f5a623', letterSpacing: '.08em', marginRight: '.4em' }}>EXTRA</span>{vivo.extra}</>
+            : vivo.reloj}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {hayFaltas && (

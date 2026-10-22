@@ -12,6 +12,7 @@ import { comprimirImagen } from '../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido'
 import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
 import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador } from '../lib/penales'
+import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../lib/alarmaTiempo'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -655,6 +656,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   // Alarma de fin de tiempo: pita y vibra SIN PARAR hasta que le den "Parar"
   const [alarmaActiva, setAlarmaActiva] = useState(false)
   const alarmaRef = useRef(null)
+  const alarmaDisparoRef = useRef(false) // ya sonó la alarma de "tiempo cumplido" de este tiempo
+  // Con el cronómetro corriendo la pantalla no se apaga: si el celular se bloquea, el navegador congela la planilla y no podría avisar que se cumplió el tiempo.
+  usePantallaEncendida(corriendo)
   // true si el partido YA tenía estadísticas guardadas cuando se abrió esta
   // planilla (o sea, esto es una edición, no el primer guardado) — se usa
   // para no descontar dos veces el contador de sanciones automáticas.
@@ -795,9 +799,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       const transcurrido = Math.floor((Date.now() - new Date(snap.savedAt).getTime()) / 1000)
       if (transcurrido > 0) segs += transcurrido
     }
-    const limite = dur * 60 + extra * 60
-    if (segs >= limite) { segs = limite; setCorriendo(false); setTiempoAgotado(true) }
-    else { setCorriendo(!!snap.corriendo); if (snap.tiempoAgotado) setTiempoAgotado(true) }
+    // (si el tiempo ya se cumplió y no lo cerraron, sigue corriendo en EXTRA)
+    setCorriendo(!!snap.corriendo && !snap.tiempoAgotado); if (snap.tiempoAgotado) setTiempoAgotado(true)
     setSegundos(segs)
 
     setHayDatosLocales(true)
@@ -889,15 +892,18 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   useEffect(() => {
     if (!corriendo) return
     if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundos * 1000
+    // si se retoma un tiempo que ya iba en EXTRA, no vuelve a sonar la alarma
+    alarmaDisparoRef.current = segundos >= limiteSegundos
 
     function recalcular() {
       const elapsed = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
-      const next = elapsed >= limiteSegundos ? limiteSegundos : elapsed
+      const next = elapsed
       setSegundos(next)
-      if (next >= limiteSegundos && !tiempoAgotado) {
-        setTiempoAgotado(true); setCorriendo(false)
-        // Alarma insistente: pita y vibra SIN PARAR hasta que le den "Parar
-        // alarma" — así nadie se pasa del tiempo sin darse cuenta.
+      // Al cumplirse el tiempo el reloj NO se detiene: sigue corriendo en EXTRA y
+      // suena la alarma (pita y vibra hasta que la paren). El árbitro cierra el
+      // tiempo con el botón grande IR AL DESCANSO / FINALIZAR PARTIDO.
+      if (next >= limiteSegundos && !alarmaDisparoRef.current) {
+        alarmaDisparoRef.current = true
         iniciarAlarma()
       }
       // Cada ~8s con el reloj corriendo (o al toque si el navegador se saltó
@@ -1921,29 +1927,31 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     window.removeEventListener('touchmove', onDrag); window.removeEventListener('touchend', onDragEnd); window.removeEventListener('touchcancel', onDragEnd)
   }
   // ── ALARMA DE FIN DE TIEMPO (no para hasta que la paren) ────────────────
-  function sonarAlarmaUnaVez() {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)()
-      const beep = (freq, start, dur) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = freq; o.start(ctx.currentTime + start); o.stop(ctx.currentTime + start + dur); g.gain.setValueAtTime(0.3, ctx.currentTime + start); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur) }
-      beep(880, 0, 0.3); beep(1100, 0.4, 0.6)
-    } catch(e) {}
-    try { if (navigator.vibrate) navigator.vibrate([450, 150, 450]) } catch(e) {}
-  }
   function iniciarAlarma() {
     if (alarmaRef.current) return
     sonarAlarmaUnaVez()
-    alarmaRef.current = setInterval(sonarAlarmaUnaVez, 1500)
+    alarmaRef.current = setInterval(sonarAlarmaUnaVez, 2200)
     setAlarmaActiva(true)
   }
   function pararAlarma() {
     clearInterval(alarmaRef.current); alarmaRef.current = null
     setAlarmaActiva(false)
-    try { if (navigator.vibrate) navigator.vibrate(0) } catch(e) {}
+    detenerVibracion()
   }
-  useEffect(() => () => { clearInterval(alarmaRef.current); try { navigator.vibrate && navigator.vibrate(0) } catch(e) {} }, [])
+  useEffect(() => () => { clearInterval(alarmaRef.current); detenerVibracion() }, [])
 
   function iniciarPeriodo2() { pararAlarma(); setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setPeriodo(2) }
-  function agregarTiempoExtra(mins) { pararAlarma(); setTiempoExtra(prev => prev + mins); setTiempoAgotado(false); setCorriendo(true) }
+  // Botón grande: se da por terminado el tiempo (con su EXTRA) → descanso (1er
+  // periodo) o fin del partido (2do). El reloj se detiene en el segundo exacto.
+  function terminarTiempo() {
+    const exacto = (corriendo && inicioEpochRef.current != null) ? Math.floor((Date.now() - inicioEpochRef.current) / 1000) : segundos
+    pararAlarma()
+    setSegundos(exacto)
+    setCorriendo(false)
+    setTiempoAgotado(true)
+  }
+  // Se tocó el botón por error: el reloj sigue corriendo en EXTRA desde donde iba.
+  function seguirJugando() { pararAlarma(); setTiempoAgotado(false); setCorriendo(true) }
   function confirmarDuracion() {
     const val = parseInt(duracionInput)
     if (!isNaN(val) && val > 0 && val <= 90) { setDuracionMinutos(val); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0); setCorriendo(false) }
@@ -1956,7 +1964,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const hora     = partido.played_at ? fmtHoraDate(partido.played_at) : ''
   const etapaNombre = partido.matchday ? `Jornada ${partido.matchday}` : ''
   const progreso = Math.min(segundos / limiteSegundos, 1)
-  const cronoBg  = tiempoAgotado ? '#b71c1c' : periodo === 1 ? AZUL : ROJO
+  const enExtra  = !tiempoAgotado && segundos >= limiteSegundos
+  const cronoBg  = tiempoAgotado ? '#b71c1c' : enExtra ? '#b45309' : periodo === 1 ? AZUL : ROJO
+  const textoReloj = enExtra
+    ? <><span style={{ fontSize: '.45em', letterSpacing: '.14em', color: '#ffe066', marginRight: '.3em', fontFamily: 'system-ui,sans-serif', verticalAlign: 'middle' }}>EXTRA</span>+{formatTiempo(segundos - limiteSegundos)}</>
+    : formatTiempo(segundos)
 
   // Casillas INICIALES e INGRESOS: mismo comportamiento que Faltas Acumulativas
   // (se hunden en orden y al click aparece la lista de jugadores del equipo).
@@ -2444,29 +2456,45 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <X size={22}/>
       </button>
 
+      {/* BOTÓN GRANDE de cierre de tiempo: aparece al cumplirse el tiempo (reloj en EXTRA) y
+          después del descanso / fin del partido, para dar el siguiente paso sin buscar nada. */}
+      {(enExtra || tiempoAgotado) && (
+        <button className="no-print"
+          onClick={() => {
+            if (enExtra) terminarTiempo()
+            else if (periodo === 1) iniciarPeriodo2()
+            else handleClickGuardar()
+          }}
+          disabled={!enExtra && periodo === 2 && (guardandoDB || !isOnline)}
+          style={{ position: 'fixed', left: '12px', right: '88px', bottom: '24px', zIndex: 9997, padding: '18px 10px', border: '3px solid #fff', borderRadius: '16px', cursor: 'pointer', color: '#fff', fontSize: '1.1rem', fontWeight: '900', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.55)',
+            background: enExtra ? (periodo === 1 ? '#e8710a' : '#1a73e8') : (periodo === 1 ? '#1e8e3e' : '#1e8e3e') }}>
+          {enExtra ? (periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO') : (periodo === 1 ? '▶ INICIAR 2DO PERIODO' : '💾 GUARDAR RESULTADO')}
+        </button>
+      )}
+
       {/* CRONÓMETRO */}
       <div onMouseDown={onDragStart} onTouchStart={onDragStart}
         style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono?'50px':'20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono?'150px':'310px', userSelect: 'none', touchAction: 'none', cursor: 'grab' }}>
         <div style={{ padding: miniCrono?'8px 12px':'10px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Move size={miniCrono?12:14} color="rgba(255,255,255,.6)"/>
-            {!miniCrono && <span style={{ fontSize: '10px', color: 'rgba(255,255,255,.9)', fontWeight: '600' }}>{tiempoAgotado ? '⏰ TIEMPO AGOTADO' : periodo===1 ? '1ER PERIODO' : '2DO PERIODO'}{torneo?.modalidad && ` · ${torneo.modalidad}`}</span>}
+            {!miniCrono && <span style={{ fontSize: '10px', color: 'rgba(255,255,255,.9)', fontWeight: '600' }}>{tiempoAgotado ? (periodo===1 ? '⏸ DESCANSO' : '🏁 FIN DEL PARTIDO') : enExtra ? '⏱ TIEMPO CUMPLIDO · EXTRA' : periodo===1 ? '1ER PERIODO' : '2DO PERIODO'}{torneo?.modalidad && ` · ${torneo.modalidad}`}</span>}
           </div>
           <button onClick={() => setMiniCrono(!miniCrono)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.8)', display: 'flex' }}>{miniCrono?<Maximize2 size={12}/>:<Minimize2 size={12}/>}</button>
         </div>
         {!miniCrono && <div style={{ margin: '0 16px 4px', height: '4px', background: 'rgba(255,255,255,.2)', borderRadius: '2px' }}><div style={{ height: '100%', width: `${progreso * 100}%`, background: tiempoAgotado ? '#ff5555' : '#fff', borderRadius: '2px', transition: 'width .5s' }}/></div>}
         {miniCrono ? (
           <div style={{ padding: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', animation: tiempoAgotado ? 'parpadeo 1s infinite' : 'none' }}>{formatTiempo(segundos)}</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', animation: tiempoAgotado || enExtra ? 'parpadeo 1s infinite' : 'none' }}>{textoReloj}</span>
             {alarmaActiva ? (
               <button onClick={pararAlarma} style={{ background: '#fff', border: 'none', borderRadius: '14px', padding: '4px 10px', cursor: 'pointer', color: '#b71c1c', fontWeight: '900', fontSize: '.72rem', animation: 'parpadeo 1s infinite' }}>🔕 PARAR</button>
             ) : (
-              <button onClick={() => { if (!tiempoAgotado) setCorriendo(!corriendo) }} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{corriendo?<Pause size={14}/>:<Play size={14}/>}</button>
+              <button onClick={() => { prepararAlarma(); if (!tiempoAgotado) setCorriendo(!corriendo) }} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{corriendo?<Pause size={14}/>:<Play size={14}/>}</button>
             )}
           </div>
         ) : (
           <div style={{ padding: '0 16px 14px' }}>
-            <div style={{ fontSize: '4rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', textAlign: 'center', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.3)', animation: tiempoAgotado ? 'parpadeo 1s infinite' : 'none' }}>{formatTiempo(segundos)}</div>
+            <div style={{ fontSize: '4rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', textAlign: 'center', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.3)', animation: tiempoAgotado || enExtra ? 'parpadeo 1s infinite' : 'none' }}>{textoReloj}</div>
             <div style={{ textAlign: 'center', marginTop: '6px' }}>
               {editandoDuracion ? (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
@@ -2484,26 +2512,24 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
             </div>
             {tiempoAgotado ? (
               <div style={{ marginTop: '10px' }}>
-                <div style={{ textAlign: 'center', color: '#fff', fontWeight: '700', fontSize: '.85rem', marginBottom: '8px' }}>⏰ Fin del {periodo===1 ? '1er' : '2do'} periodo</div>
+                <div style={{ textAlign: 'center', color: '#fff', fontWeight: '700', fontSize: '.85rem', marginBottom: '8px' }}>{periodo===1 ? '⏸ Descanso (fin del 1er periodo)' : '🏁 Fin del partido'}</div>
                 {alarmaActiva && (
                   <button onClick={pararAlarma} style={{ width: '100%', marginBottom: '8px', padding: '12px', background: '#fff', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#b71c1c', fontSize: '1rem', fontWeight: '900', animation: 'parpadeo 1s infinite', letterSpacing: '.05em' }}>
                     🔕 PARAR ALARMA
                   </button>
                 )}
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {[1,2,3,5].map(m => <button key={m} onClick={() => agregarTiempoExtra(m)} style={{ padding: '6px 10px', background: 'rgba(255,255,255,.25)', border: '1px solid rgba(255,255,255,.4)', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600' }}>+{m} min</button>)}
-                </div>
+                <button onClick={seguirJugando} style={{ width: '100%', padding: '6px', background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600' }}>↩ Seguir jugando (EXTRA)</button>
                 {periodo === 1 && <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,.4)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>→ Iniciar 2do Periodo</button>}
               </div>
             ) : (
               <div>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'center' }}>
-                  <button onClick={() => setCorriendo(!corriendo)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 18px', background: corriendo?'rgba(255,255,255,.25)':'rgba(255,255,255,.9)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: corriendo?'#fff':cronoBg, fontSize: '.85rem', fontWeight: '700' }}>
+                  <button onClick={() => { prepararAlarma(); setCorriendo(!corriendo) }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 18px', background: corriendo?'rgba(255,255,255,.25)':'rgba(255,255,255,.9)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: corriendo?'#fff':cronoBg, fontSize: '.85rem', fontWeight: '700' }}>
                     {corriendo?<><Pause size={16}/> Pausar</>:<><Play size={16}/> {segundos>0?'Continuar':'Iniciar'}</>}
                   </button>
                   <button onClick={() => { pararAlarma(); setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem' }}><RotateCcw size={14}/> Reset</button>
                 </div>
-                <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>Restante: {formatTiempo(Math.max(0, limiteSegundos - segundos))}{tiempoExtra > 0 && <span style={{ color: '#ffdd44' }}> (+{tiempoExtra}' extra)</span>}</div>
+                <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>{enExtra ? 'Tiempo cumplido · el reloj sigue en EXTRA' : <>Restante: {formatTiempo(Math.max(0, limiteSegundos - segundos))}</>}{tiempoExtra > 0 && <span style={{ color: '#ffdd44' }}> (+{tiempoExtra}' extra)</span>}</div>
                 {periodo===1 && <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '7px', background: 'rgba(0,0,0,.3)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>→ Saltar a 2do Periodo</button>}
               </div>
             )}

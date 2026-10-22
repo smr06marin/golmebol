@@ -21,6 +21,7 @@ import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador } from '.
 import PantallaPapel from '../planillaPapel/PantallaPapel'
 import ModalCierrePapel from '../planillaPapel/ModalCierrePapel'
 import { papelVacio, normalizarPapel, papelParaGuardar } from '../../lib/planillaPapel'
+import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../../lib/alarmaTiempo'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -188,6 +189,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
 
   const remoteTimer = useRef(null)
   const alarmaRef = useRef(null)
+  const alarmaDisparoRef = useRef(false) // ya sonó la alarma de "tiempo cumplido" de este tiempo
+  const [alarmaActiva, setAlarmaActiva] = useState(false)
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
   const finanzasConfigRef = useRef(null) // config de finanzas más reciente (para el refresco en vivo del roster)
@@ -844,17 +847,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       const transcurrido = Math.floor((Date.now() - new Date(snap.savedAt).getTime()) / 1000)
       if (transcurrido > 0) segs += transcurrido
     }
-    const limite = durFinal * 60
+    // (si el tiempo ya se cumplió y no lo cerraron, sigue corriendo en EXTRA)
     inicioEpochRef.current = null
-    if (segs >= limite) {
-      setSegundos(limite)
-      setCorriendo(false)
-      setTiempoAgotado(true)
-    } else {
-      setSegundos(segs)
-      setCorriendo(!!snap.corriendo)
-      setTiempoAgotado(!!snap.tiempoAgotado)
-    }
+    setSegundos(segs)
+    setCorriendo(!!snap.corriendo && !snap.tiempoAgotado)
+    setTiempoAgotado(!!snap.tiempoAgotado)
   }
 
   // Reconstruye una planilla rápida ya cerrada (para que el árbitro líder / admin pueda reeditarla)
@@ -940,7 +937,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     // Con el reloj andando, los segundos exactos salen del ancla de hora real
     // (no del último "tick" pintado) — así el otro celular arranca igualito.
     let segs = segundos
-    if (corriendo && inicioEpochRef.current != null) segs = Math.min(duracionMinutos * 60, Math.floor((Date.now() - inicioEpochRef.current) / 1000))
+    if (corriendo && inicioEpochRef.current != null) segs = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
     // Hoja de papel: igual que la plantilla, si la hoja cambió por una edición de ESTE celular se le sube la versión.
     let extraPapel = {}
     if (esPapel) {
@@ -1004,6 +1001,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   useEffect(() => {
     if (!corriendo) return
     if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundos * 1000
+    // si se retoma un tiempo que ya iba en EXTRA, no vuelve a sonar la alarma
+    alarmaDisparoRef.current = segundos >= duracionMinutos * 60
 
     function recalcular() {
       // Si el ancla se borró mientras el reloj seguía andando (ej. al aplicar un
@@ -1013,8 +1012,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (inicioEpochRef.current == null) inicioEpochRef.current = Date.now() - segundosRef.current * 1000
       const limite = duracionMinutos * 60
       const elapsed = Math.floor((Date.now() - inicioEpochRef.current) / 1000)
-      setSegundos(elapsed >= limite ? limite : elapsed)
-      if (elapsed >= limite && !tiempoAgotado) { nuevaAccionReloj(); setTiempoAgotado(true); setCorriendo(false); iniciarAlarma() }
+      // Al cumplirse el tiempo el reloj SIGUE corriendo (tiempo EXTRA): solo suena
+      // la alarma, una vez. El árbitro cierra el tiempo con el botón grande.
+      setSegundos(elapsed)
+      if (elapsed >= limite && !alarmaDisparoRef.current) { alarmaDisparoRef.current = true; iniciarAlarma() }
     }
 
     const id = setInterval(recalcular, 1000)
@@ -1030,29 +1031,21 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [corriendo, duracionMinutos, tiempoAgotado])
 
-  function sonarBeep() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext
-      const ctx = new Ctx()
-      const o = ctx.createOscillator(), g = ctx.createGain()
-      o.connect(g); g.connect(ctx.destination)
-      o.frequency.value = 880
-      g.gain.setValueAtTime(0.3, ctx.currentTime)
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-      o.start(); o.stop(ctx.currentTime + 0.3)
-    } catch (e) {}
-    try { navigator.vibrate && navigator.vibrate([300, 120, 300]) } catch (e) {}
-  }
   function iniciarAlarma() {
     if (alarmaRef.current) return
-    sonarBeep()
-    alarmaRef.current = setInterval(sonarBeep, 2500)
+    sonarAlarmaUnaVez()
+    alarmaRef.current = setInterval(sonarAlarmaUnaVez, 2200)
+    setAlarmaActiva(true)
   }
   function pararAlarma() {
     clearInterval(alarmaRef.current); alarmaRef.current = null
-    try { navigator.vibrate && navigator.vibrate(0) } catch (e) {}
+    setAlarmaActiva(false)
+    detenerVibracion()
   }
-  useEffect(() => () => { clearInterval(alarmaRef.current) }, [])
+  // Con el cronómetro corriendo la pantalla no se apaga (si se bloquea, el
+  // navegador congela la planilla y no podría avisar que se cumplió el tiempo).
+  usePantallaEncendida(corriendo)
+  useEffect(() => () => { clearInterval(alarmaRef.current); detenerVibracion() }, [])
 
   // Antes de arrancar el partido deben estar marcados los DOS arqueros.
   const puedeIniciar = esPapel || periodo !== 1 || segundos > 0 || eventos.length > 0 || (!!arqueroLocal && !!arqueroVis)
@@ -1060,10 +1053,23 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
 
   function toggleCronometro() {
     if (!corriendo && !puedeIniciar) return
+    prepararAlarma() // un toque real: deja el audio autorizado para que suene a los 20 min
     pararAlarma()
     nuevaAccionReloj()
     if (corriendo) inicioEpochRef.current = null // se pausa: al reanudar se recalcula el ancla desde el segundo actual
     setCorriendo(c => !c)
+  }
+
+  // Botón grande: el tiempo (con su EXTRA) se da por terminado → descanso (1er
+  // tiempo) o fin del partido (2do). Se detiene el reloj en el segundo exacto.
+  function terminarTiempo() {
+    const exacto = (corriendo && inicioEpochRef.current != null) ? Math.floor((Date.now() - inicioEpochRef.current) / 1000) : segundosRef.current
+    pararAlarma()
+    nuevaAccionReloj()
+    inicioEpochRef.current = null
+    setSegundos(exacto)
+    setCorriendo(false)
+    setTiempoAgotado(true)
   }
 
   // Suspender el partido y salir SIN guardar resultado (no queda "jugado"):
@@ -1104,8 +1110,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   function cambiarPeriodo() {
     if (periodo === 2) return
     // Se guarda lo que marcaba el 1er tiempo por si hay que devolverse (botón "Volver al 1º").
-    const limite = duracionMinutos * 60
-    const s1 = (corriendo && inicioEpochRef.current != null) ? Math.min(limite, Math.floor((Date.now() - inicioEpochRef.current) / 1000)) : segundos
+    const s1 = (corriendo && inicioEpochRef.current != null) ? Math.floor((Date.now() - inicioEpochRef.current) / 1000) : segundos
     setSegundos1T(s1)
     pararAlarma()
     inicioEpochRef.current = null
@@ -1116,7 +1121,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   function volverAPrimero() {
     if (periodo === 1) return
     const limite = duracionMinutos * 60
-    const s1 = typeof segundos1T === 'number' ? Math.min(segundos1T, limite) : limite
+    const s1 = typeof segundos1T === 'number' ? segundos1T : limite
     pararAlarma()
     inicioEpochRef.current = null
     nuevaAccionReloj()
@@ -1756,6 +1761,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
           eventosLocal={eventosLocal} eventosVis={eventosVis}
           periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
+          duracionMinutos={duracionMinutos} alarmaActiva={alarmaActiva} onTerminarTiempo={terminarTiempo} onSilenciar={pararAlarma}
           globalLlave={globalLlave} papel={papel} onPapel={setPapel} hayRoja={hayRoja} guardando={guardandoDB}
           arqueroLocal={arqueroLocal} arqueroVis={arqueroVis} onElegirArquero={elegirArqueroPapel}
           onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}
@@ -1815,6 +1821,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         arqueroLocal={arqueroLocal} arqueroVis={arqueroVis}
         eventosLocal={eventosLocal} eventosVis={eventosVis} modalidad={modalidad} cambiosReloj={cambiosReloj}
         periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
+        duracionMinutos={duracionMinutos} alarmaActiva={alarmaActiva} onTerminarTiempo={terminarTiempo}
         onVolverLista={() => { setStep('asignar'); setVolviendoDesdePartido(true) }}
         onAbrirCierre={() => setMostrarCierre(true)}
         onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}

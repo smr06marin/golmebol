@@ -13,6 +13,7 @@ import { formatTiempo } from './estilosRapida'
 export default function CronometroCentral({
   periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, globalLlave,
   puedeIniciar = true, motivoNoIniciar = '',
+  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo,
   onToggle, onReiniciar, onCambiarPeriodo, onVolverPrimero, onSilenciar, onFinalizar,
 }) {
   // Tamaño: con el reloj CORRIENDO se ve compacto (para no tapar los botones de
@@ -107,7 +108,12 @@ export default function CronometroCentral({
     window.removeEventListener('touchmove', onDrag); window.removeEventListener('touchend', onDragEnd); window.removeEventListener('touchcancel', onDragEnd)
   }
 
-  const fondo = tiempoAgotado ? '#b71c1c' : periodo === 1 ? '#1a3a8a' : '#d93025'
+  // TIEMPO EXTRA: al cumplirse el tiempo el reloj no se detiene; sigue corriendo
+  // y se ve "EXTRA +mm:ss" hasta que el árbitro toque el botón grande de IR AL
+  // DESCANSO (1er tiempo) o FINALIZAR PARTIDO (2do).
+  const limite = (duracionMinutos || 0) * 60
+  const enExtra = !tiempoAgotado && limite > 0 && segundos >= limite
+  const fondo = tiempoAgotado ? '#b71c1c' : enExtra ? '#b45309' : periodo === 1 ? '#1a3a8a' : '#d93025'
   const arranque = !corriendo && segundos === 0 && periodo === 1
   const bloqueado = !corriendo && !puedeIniciar
   const miniEf = bloqueado || mini || (corriendo && !abierto)
@@ -116,7 +122,8 @@ export default function CronometroCentral({
   }
   const botonPasar2T = periodo === 1 && tiempoAgotado
   const botonFinal = periodo === 2 && tiempoAgotado && !!onFinalizar
-  const bottomPx = (botonPasar2T || botonFinal) ? 100 : 12
+  const botonTerminar = enExtra && !!onTerminarTiempo
+  const bottomPx = (botonPasar2T || botonFinal || botonTerminar) ? 100 : 12
   const btnBase = { border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '800', fontFamily: 'inherit' }
 
   return (
@@ -131,8 +138,14 @@ export default function CronometroCentral({
         </div>
 
         <div style={{ padding: miniEf ? '2px 12px 10px' : '2px 14px 14px', textAlign: 'center' }}>
+          <style>{'@keyframes gmExtraPulso { 0%,100% { opacity: 1 } 50% { opacity: .35 } }'}</style>
           <div style={{ fontSize: miniEf ? '2rem' : '3rem', fontWeight: '900', color: '#fff', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
-            {formatTiempo(segundos)}
+            {enExtra ? (
+              <>
+                <div style={{ fontSize: miniEf ? '.62rem' : '.78rem', fontWeight: '900', letterSpacing: '.18em', color: '#ffe066', fontFamily: 'system-ui,sans-serif', marginBottom: '3px', animation: 'gmExtraPulso 1s infinite' }}>⏱ EXTRA</div>
+                +{formatTiempo(segundos - limite)}
+              </>
+            ) : formatTiempo(segundos)}
           </div>
           <div style={{ fontSize: miniEf ? '.8rem' : '1.05rem', fontWeight: '800', color: 'rgba(255,255,255,.92)', marginTop: miniEf ? '2px' : '6px', background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: miniEf ? '1px 8px' : '3px 10px', display: 'inline-block' }}>
             {golesLocal} - {golesVis}
@@ -151,6 +164,9 @@ export default function CronometroCentral({
                 style={{ ...btnBase, marginTop: '6px', padding: '9px 8px', width: '100%', background: corriendo && avisoParar ? '#ffdd44' : 'rgba(255,255,255,.92)', color: corriendo && avisoParar ? '#222' : fondo, fontSize: corriendo ? '.78rem' : '.9rem', opacity: (bloqueado || tiempoAgotado) ? .5 : 1 }}>
                 {corriendo ? etiquetaParar : (arranque ? '▶ INICIAR' : '▶ CONTINUAR')}
               </button>
+              {alarmaActiva && (
+                <button onClick={onSilenciar} style={{ ...btnBase, marginTop: '6px', padding: '8px', width: '100%', background: '#fff', color: '#b71c1c', fontSize: '.78rem', animation: 'gmExtraPulso 1s infinite' }}>🔕 SILENCIAR ALARMA</button>
+              )}
               {bloqueado && motivoNoIniciar && (
                 <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25, marginTop: '5px' }}>{motivoNoIniciar}</div>
               )}
@@ -178,15 +194,18 @@ export default function CronometroCentral({
               {tiempoAgotado ? (
                 <>
                   <div style={{ fontSize: '.85rem', fontWeight: '900', color: '#fff', background: 'rgba(0,0,0,.3)', borderRadius: '10px', padding: '7px' }}>
-                    ⏱ TIEMPO CUMPLIDO
+                    {periodo === 1 ? '⏱ FIN DEL 1ER TIEMPO' : '🏁 FIN DEL PARTIDO'}
                   </div>
-                  <button onClick={onSilenciar} style={{ ...btnBase, padding: '10px', background: 'rgba(255,255,255,.92)', color: fondo, fontSize: '.85rem' }}>🔕 Silenciar alarma</button>
+                  {alarmaActiva && <button onClick={onSilenciar} style={{ ...btnBase, padding: '10px', background: 'rgba(255,255,255,.92)', color: fondo, fontSize: '.85rem' }}>🔕 Silenciar alarma</button>}
                 </>
               ) : (
                 <button onClick={tocarReloj} disabled={bloqueado}
                   style={{ ...btnBase, padding: '13px 8px', background: corriendo && avisoParar ? '#ffdd44' : (bloqueado ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.95)'), color: corriendo && avisoParar ? '#222' : (bloqueado ? 'rgba(255,255,255,.8)' : fondo), fontSize: corriendo ? '.88rem' : '1rem', letterSpacing: '.01em' }}>
                   {corriendo ? (avisoParar ? '👆 ¡OTRA VEZ PARA PARAR!' : '⏸ PARAR CRONÓMETRO (doble toque)') : (arranque ? '▶ INICIAR PARTIDO' : '▶ CONTINUAR')}
                 </button>
+              )}
+              {alarmaActiva && (
+                <button onClick={onSilenciar} style={{ ...btnBase, padding: '11px', background: '#fff', color: '#b71c1c', fontSize: '.9rem', animation: 'gmExtraPulso 1s infinite' }}>🔕 SILENCIAR ALARMA</button>
               )}
               {bloqueado && motivoNoIniciar && (
                 <div style={{ fontSize: '.72rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25 }}>{motivoNoIniciar}</div>
@@ -219,6 +238,15 @@ export default function CronometroCentral({
         <button onClick={onFinalizar}
           style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: '#1a73e8', color: '#fff', fontSize: '1.15rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
           🏁 TERMINAR Y GUARDAR RESULTADO
+        </button>
+      )}
+
+      {/* Se cumplió el tiempo y el reloj sigue en EXTRA: botón enorme para cerrar el
+          tiempo. En el 1er tiempo manda al descanso; en el 2do cierra el partido y abre el guardado. */}
+      {botonTerminar && (
+        <button onClick={() => { onTerminarTiempo(); if (periodo === 2 && onFinalizar) onFinalizar() }}
+          style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: periodo === 1 ? '#e8710a' : '#1a73e8', color: '#fff', fontSize: '1.2rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
+          {periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO'}
         </button>
       )}
 

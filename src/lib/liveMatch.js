@@ -60,8 +60,18 @@ export function derivarEnVivo(match) {
   // período, tiempoAgotado ya significa que se acabó el partido (no descanso).
   const descanso = !!snap.tiempoAgotado && periodo === 1
 
+  // TIEMPO EXTRA: al cumplirse el tiempo el reloj NO se detiene; sigue corriendo
+  // hasta que el árbitro toque "Ir al descanso" / "Finalizar". Mientras tanto
+  // sale "EXTRA +m:ss" (lo que se pasó del tiempo) en vez de seguir sumando.
+  const limiteSeg = (snap.duracionMinutos || 0) * 60 + (tipo === 'completa' ? (snap.tiempoExtra || 0) * 60 : 0)
+  let extra = null
+  if (!snap.tiempoAgotado && limiteSeg > 0 && segundos > limiteSeg) {
+    const pasado = segundos - limiteSeg
+    extra = `+${Math.floor(pasado / 60)}:${String(pasado % 60).padStart(2, '0')}`
+  }
+
   return {
-    golesLocal, golesVis,
+    golesLocal, golesVis, extra,
     periodo,
     descanso,
     corriendo: !!snap.corriendo,
