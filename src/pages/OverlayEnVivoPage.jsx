@@ -169,6 +169,9 @@ export default function OverlayEnVivoPage() {
   const descansoAuto = !!vivoP?.descanso
   const periodoAuto = vivoP?.periodo || 1
   const hayVivoAuto = !!vivoP
+  // 2.º tiempo con el reloj corriendo: el árbitro ya arrancó el partido otra vez,
+  // así que NO debe verse ningún gráfico automático (ni quedar programado).
+  const segundoTiempoCorriendo = periodoAuto === 2 && !!vivoP?.corriendo
 
   // Muestra un gráfico automático `cual` después de `retrasoMs` y lo quita a
   // los `duracionMs` (solo si sigue siendo ese el que está en pantalla).
@@ -182,6 +185,15 @@ export default function OverlayEnVivoPage() {
     if (!graficosAuto || !partidoIdAuto || !hayVivoAuto) return
     const a = autoRef.current
     if (a.partidoId !== partidoIdAuto) { a.partidoId = partidoIdAuto; a.inicioHecho = false; a.descansoHecho = false }
+    // Si el árbitro olvidó tocar "Ir al descanso" y recién al iniciar el 2.º
+    // tiempo lo hace (o toca descanso e inicia de una), se cancela todo lo
+    // automático que estuviera programado o en pantalla y no sale nada más.
+    if (segundoTiempoCorriendo) {
+      a.inicioHecho = true; a.descansoHecho = true
+      a.timers.forEach(clearTimeout); a.timers = []
+      setTimeout(() => setAutoOverlay(null), 0)
+      return
+    }
     if (!a.inicioHecho && periodoAuto === 1 && !descansoAuto && segsReloj <= 30) {
       a.inicioHecho = true
       programarAuto('jugadores', 0, 15000)
@@ -190,7 +202,7 @@ export default function OverlayEnVivoPage() {
       programarAuto('tabla', 0, 20000)
       programarAuto('resumen', 60000, 120000)
     }
-  }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj])
+  }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj, segundoTiempoCorriendo])
 
   // Guarda el último partido que se vio en vivo (para saber sus colores de
   // uniforme cuando ya no esté en vivo).
@@ -245,8 +257,9 @@ export default function OverlayEnVivoPage() {
   }, [])
 
   // El tablero de goles del descanso solo vale mientras siga el descanso: si
-  // arranca el 2.º tiempo antes de los 2 minutos, se quita.
-  const autoVisible = autoOverlay === 'resumen' && !descansoAuto ? null : autoOverlay
+  // arranca el 2.º tiempo antes de los 2 minutos, se quita. Y con el 2.º tiempo
+  // corriendo no sale ningún gráfico automático.
+  const autoVisible = (autoOverlay === 'resumen' && !descansoAuto) || segundoTiempoCorriendo ? null : autoOverlay
   const overlayActivo = control?.overlay || (graficosAuto ? autoVisible : null)
   // Los gráficos que salen SOLOS llevan el mensaje institucional; los que
   // prende el panel de control llevan la leyenda normal de cada gráfica.
