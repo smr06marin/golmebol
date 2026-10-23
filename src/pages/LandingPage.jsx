@@ -847,7 +847,7 @@ export default function LandingPage() {
         @media (max-width: 420px) {
           .gm-hdr-in { padding: 10px 10px !important; gap: 6px !important }
           .gm-hdr-sub { display: none }
-          .gm-hdr-logo { display: none }
+          .gm-hdr-logo { height: 28px !important; width: 28px !important }
           .gm-hdr-nom { white-space: nowrap }
           .gm-hdr-btns { gap: 6px !important }
           .gm-hdr-ing { padding: 9px 12px !important; font-size: .78rem !important }
@@ -860,7 +860,7 @@ export default function LandingPage() {
       <div style={{ position: 'sticky', top: 0, zIndex: 50, background: '#ffffff', borderBottom: '1px solid #eaeaea' }}>
         <div className="gm-hdr-in" style={{ maxWidth: '1120px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
           <div className="gm-hdr-marca" style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <img className="gm-hdr-logo" src="/marca/watermark-logo.png" alt="Golmebol" style={{ height: '30px' }}/>
+            <img className="gm-hdr-logo" src="/icon-192.png" alt="Golmebol" style={{ height: '34px', width: '34px', borderRadius: '9px', flexShrink: 0 }}/>
             <div style={{ minWidth: 0 }}>
               <div className="gm-hdr-nom" style={{ fontWeight: 900, fontSize: '1.05rem', letterSpacing: '.01em', color: '#111', lineHeight: 1.1 }}>GOLMEBOL</div>
               <div className="gm-hdr-sub" style={{ fontSize: '.6rem', fontWeight: 700, letterSpacing: '.08em', color: '#9a9a9a' }}>TORNEOS DE FÚTBOL</div>
