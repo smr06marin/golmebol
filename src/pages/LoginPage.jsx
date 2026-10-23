@@ -208,7 +208,7 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
   // ── Pantalla: crear nueva contraseña (llegó del link del correo) ──
   if (enRecuperacion) {
     return (
-      <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem' }}>
+      <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem', boxSizing: 'border-box' }}>
         <h1 style={{
           fontFamily: 'var(--font-display)', fontSize: '3rem', letterSpacing: '.2em',
           background: 'linear-gradient(90deg, #00ddd0, #9955ff)', WebkitBackgroundClip: 'text',
@@ -255,7 +255,7 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
 
   // ── UI ────────────────────────────────────────────────────
   return (
-    <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem' }}>
+    <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem', boxSizing: 'border-box' }}>
 
       <h1 style={{
         fontFamily: 'var(--font-display)',

@@ -168,9 +168,14 @@ export default function PlayerLoginPage() {
   const [showCambiarPass, setShowCambiarPass] = useState(false)
   const [splash,          setSplash]          = useState(null)
 
-  async function fetchSplashData(playerId) {
-    const { data: p } = await supabase.from('players').select('card_type').eq('id', playerId).single()
-    const cardType   = p?.card_type || 'nivel1_verde'
+  // `cardTypeConocido` (opcional): si quien llama ya leyó card_type, no se vuelve a pedir (una vuelta menos al servidor).
+  async function fetchSplashData(playerId, cardTypeConocido) {
+    let ct = cardTypeConocido
+    if (ct === undefined) {
+      const { data: p } = await supabase.from('players').select('card_type').eq('id', playerId).single()
+      ct = p?.card_type
+    }
+    const cardType   = ct || 'nivel1_verde'
     const cardDesign = CARD_DESIGNS.find(d => d.id === cardType)
     const { data: sponsor } = await supabase.from('sponsors').select('*').eq('card_id', cardType).eq('activo', true).single()
     return {
@@ -345,13 +350,17 @@ export default function PlayerLoginPage() {
         if (authError) { setError('Contraseña incorrecta'); return }
         // Golmebol es gratis: ya no se revisa membresía activa ni verificación
         // manual — con contraseña correcta y cédula ya registrada, entra directo.
-        const { data: pActual } = await supabase.from('players').select('primer_ingreso').eq('id', player.id).single()
+        const { data: pActual } = await supabase.from('players').select('primer_ingreso, card_type').eq('id', player.id).single()
         if (pActual?.primer_ingreso !== false) {
           setShowCambiarPass(true)
           return
         }
-        await registrarSesionDispositivo(player.id)
-        const splashData = await fetchSplashData(player.id)
+        // Reclamar la sesión del dispositivo y traer los datos de la pantalla de bienvenida
+        // al mismo tiempo (antes eran 3 pasos uno detrás de otro, lento en datos móviles).
+        const [, splashData] = await Promise.all([
+          registrarSesionDispositivo(player.id),
+          fetchSplashData(player.id, pActual?.card_type || null),
+        ])
         setSplash(splashData)
       })())
     } catch (err) {

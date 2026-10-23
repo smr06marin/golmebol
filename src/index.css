@@ -10,7 +10,11 @@
   --max-width: 100%;
 }
 
+/* margin: 0 — sin esto el navegador deja 8px de margen alrededor de la página y, como el
+   body mide 100% de ancho, TODO el sitio queda 8px más ancho que la pantalla: en la app
+   (y en celulares angostos) el botón de la derecha se corta y hay que "correr" la pantalla. */
 html, body {
+  margin: 0;
   width: 100%; min-height: 100vh;
   background: var(--color-bg);
   font-family: var(--font-body);
@@ -21,6 +25,11 @@ html, body {
    eso rompe o traba el scroll con el dedo en todo el sitio. */
 body {
   overflow-x: hidden;
+}
+/* clip (no hidden): corta lo que se salga a los lados SIN volver a html un contenedor de scroll,
+   así no se traba el dedo. Si el navegador no lo conoce, simplemente lo ignora. */
+html {
+  overflow-x: clip;
 }
 
 #root {
@@ -212,6 +221,15 @@ input:focus, select:focus, textarea:focus {
 body.gm-planilla-abierta .gm-marca-golmebol {
   top: auto;
   bottom: 8px;
+}
+/* En celulares angostos la marca arriba a la derecha quedaba encima de los
+   botones INGRESAR / ADMIN de la portada (y de otros headers): se baja al
+   borde inferior. */
+@media (max-width: 480px) {
+  .gm-marca-golmebol {
+    top: auto;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ── Logros: el "show" ───────────────────────────────
