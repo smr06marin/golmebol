@@ -5,6 +5,7 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, CalendarDays } from 'lucide-react'
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { fmtHoraDate } from '../../lib/horaHelpers'
+import { apiUrl } from '../../lib/apiBase'
 
 // La llamada a la IA ya NO se hace directo desde el navegador (eso dejaba la
 // clave de Anthropic visible en el código fuente de la página, cualquiera
@@ -13,7 +14,7 @@ import { fmtHoraDate } from '../../lib/horaHelpers'
 // api/generar-noticia.js.
 async function llamarIA(messages, maxTokens = 600) {
   const { data: { session } } = await supabase.auth.getSession()
-  const res = await fetch('/api/generar-noticia', {
+  const res = await fetch(apiUrl('/api/generar-noticia'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

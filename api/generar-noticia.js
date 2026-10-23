@@ -28,7 +28,24 @@ async function usuarioValido(token) {
   }
 }
 
+// La app (Capacitor) llama a estas funciones desde su propio origen: Android
+// usa https://localhost y iOS capacitor://localhost. Solo esos orígenes (y el
+// sitio mismo, que no necesita permiso) quedan autorizados.
+const ORIGENES_APP = ['https://localhost', 'http://localhost', 'capacitor://localhost', 'ionic://localhost']
+function permitirApp(req, res) {
+  const origen = req.headers.origin
+  if (origen && ORIGENES_APP.includes(origen)) {
+    res.setHeader('Access-Control-Allow-Origin', origen)
+    res.setHeader('Vary', 'Origin')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  }
+}
+
+
 export default async function handler(req, res) {
+  permitirApp(req, res)
+  if (req.method === 'OPTIONS') { res.status(204).end(); return }
   if (req.method !== 'POST') {
     res.status(405).json({ error: { message: 'Método no permitido' } })
     return

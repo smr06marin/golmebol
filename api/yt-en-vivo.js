@@ -150,7 +150,24 @@ async function pedir(ruta) {
   return { r, html: r.ok ? await r.text() : '' }
 }
 
+// La app (Capacitor) llama a estas funciones desde su propio origen: Android
+// usa https://localhost y iOS capacitor://localhost. Solo esos orígenes (y el
+// sitio mismo, que no necesita permiso) quedan autorizados.
+const ORIGENES_APP = ['https://localhost', 'http://localhost', 'capacitor://localhost', 'ionic://localhost']
+function permitirApp(req, res) {
+  const origen = req.headers.origin
+  if (origen && ORIGENES_APP.includes(origen)) {
+    res.setHeader('Access-Control-Allow-Origin', origen)
+    res.setHeader('Vary', 'Origin')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  }
+}
+
+
 export default async function handler(req, res) {
+  permitirApp(req, res)
+  if (req.method === 'OPTIONS') { res.status(204).end(); return }
   const ruta = rutaDeCanal(req.query?.u)
   if (!ruta) {
     res.setHeader('Cache-Control', 'no-store')

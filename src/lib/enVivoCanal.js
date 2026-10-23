@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { apiUrl } from './apiBase'
 
 // Links de CANAL de YouTube (youtube.com/@micanal, /channel/UC…, /c/…, /user/…),
 // no de un video puntual. Es lo que muchos organizadores pegan en vez del link
@@ -30,7 +31,8 @@ const CADA_MS = 45000
 // está en vivo (api/yt-en-vivo.js). Devuelve { [idTransmision]: { estado, url } }:
 //   estado 'vivo'     → url = link del video en vivo de ese canal
 //   estado 'no-vivo'  → el canal no está transmitiendo ahora (url null)
-//   estado 'error'    → no se pudo consultar (link mal escrito, YouTube caído…)
+//   estado 'error'    → el link no es un canal válido / no existe
+//   estado 'falla'    → no se pudo consultar (YouTube bloqueó, servidor caído…); `motivo` dice por qué
 // Si una consulta falla de pronto (internet, YouTube), se conserva el último
 // resultado conocido: una falla pasajera no apaga una transmisión que sigue.
 // Las transmisiones con link de video normal no pasan por acá.
@@ -49,12 +51,13 @@ export function useCanalesEnVivo(streams) {
       await Promise.all(canales.map(async c => {
         let nuevo
         try {
-          const r = await fetch('/api/yt-en-vivo?u=' + encodeURIComponent(c.url))
+          const r = await fetch(apiUrl('/api/yt-en-vivo?u=' + encodeURIComponent(c.url)))
           const j = await r.json().catch(() => ({}))
           if (r.status === 400 || r.status === 404) nuevo = { estado: 'error', url: null, motivo: j.error }
-          else if (!r.ok) return
+          else if (!r.ok) { if (activo) setEstados(prev => (prev[c.id] ? prev : { ...prev, [c.id]: { estado: 'falla', url: null, motivo: j.error || `el servidor respondió ${r.status}` } })); return }
           else nuevo = j.live && j.videoId ? { estado: 'vivo', url: `https://www.youtube.com/watch?v=${j.videoId}` } : { estado: 'no-vivo', url: null }
         } catch {
+          if (activo) setEstados(prev => (prev[c.id] ? prev : { ...prev, [c.id]: { estado: 'falla', url: null, motivo: 'no se pudo conectar con el servidor de Golmebol' } }))
           return
         }
         if (activo) setEstados(prev => ({ ...prev, [c.id]: nuevo }))

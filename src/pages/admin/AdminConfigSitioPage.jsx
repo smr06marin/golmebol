@@ -15,6 +15,7 @@ import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsParti
 import { tablasConVivo } from '../../lib/torneoTablas'
 import { useTablasBase } from '../../lib/useTablasBase'
 import { fmtHoraDate } from '../../lib/horaHelpers'
+import { apiUrl } from '../../lib/apiBase'
 
 const S = {
   bg: '#0a0a0a', card: '#161616', border: '#2a2a2a', red: '#e5433d', green: '#6fcf3d', text: '#fff',
@@ -108,7 +109,7 @@ export default function AdminConfigSitioPage() {
     setDiagnosticos(d => ({ ...d, [s.id]: 'Consultando…' }))
     let texto
     try {
-      const r = await fetch('/api/yt-en-vivo?debug=1&u=' + encodeURIComponent((s.url || '').trim()))
+      const r = await fetch(apiUrl('/api/yt-en-vivo?debug=1&u=' + encodeURIComponent((s.url || '').trim())))
       texto = JSON.stringify(await r.json(), null, 1)
     } catch (e) {
       texto = 'No se pudo consultar: ' + (e?.message || 'error')

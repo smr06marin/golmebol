@@ -27,6 +27,7 @@ import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
+import { apiUrl } from '../../lib/apiBase'
 
 // Le pone un límite de tiempo a una consulta a Supabase para que un botón
 // nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
@@ -1884,7 +1885,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
   async function llamarIAElim(mensajes) {
     const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch('/api/generar-noticia', {
+    const res = await fetch(apiUrl('/api/generar-noticia'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
       // 700 se quedaba corto apenas el caso tenía varias cuentas (ej. número
