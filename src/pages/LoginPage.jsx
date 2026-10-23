@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import BotonVolverLogin from '../components/BotonVolverLogin'
 
 // ── WebAuthn helpers ──────────────────────────────────────────
 function bufferToBase64(buffer) {
@@ -208,9 +209,11 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
   // ── Pantalla: crear nueva contraseña (llegó del link del correo) ──
   if (enRecuperacion) {
     return (
-      <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem', boxSizing: 'border-box' }}>
+      <>
+    <BotonVolverLogin/>
+    <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem', boxSizing: 'border-box' }}>
         <h1 style={{
-          fontFamily: 'var(--font-display)', fontSize: '3rem', letterSpacing: '.2em',
+          fontFamily: 'var(--font-display)', fontSize: 'clamp(1.8rem, 9.5vw, 3rem)', letterSpacing: '.14em',
           background: 'linear-gradient(90deg, #00ddd0, #9955ff)', WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent', marginBottom: '1.5rem', textAlign: 'center',
         }}>
@@ -250,17 +253,20 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
           </div>
         )}
       </div>
+    </>
     )
   }
 
   // ── UI ────────────────────────────────────────────────────
   return (
+    <>
+    <BotonVolverLogin/>
     <div style={{ width: '100%', maxWidth: '380px', padding: '3rem 1.5rem', boxSizing: 'border-box' }}>
 
       <h1 style={{
         fontFamily: 'var(--font-display)',
-        fontSize: '3rem',
-        letterSpacing: '.2em',
+        fontSize: 'clamp(1.8rem, 9.5vw, 3rem)',
+        letterSpacing: '.14em',
         background: 'linear-gradient(90deg, #00ddd0, #9955ff)',
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
@@ -395,5 +401,6 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
         </p>
       )}
     </div>
+    </>
   )
 }

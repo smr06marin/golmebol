@@ -7,6 +7,7 @@ import { conTimeout } from '../lib/conTimeout'
 const MSG_TIMEOUT = 'Esto está tardando demasiado. Revisa tu internet e intenta de nuevo.'
 const MSG_CONEXION = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'
 const msgFalla = (err) => (err?.message === 'TIMEOUT' ? MSG_TIMEOUT : MSG_CONEXION)
+import BotonVolverLogin from '../components/BotonVolverLogin'
 import SponsorSplash from '../components/card/SponsorSplash'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
@@ -441,6 +442,7 @@ export default function PlayerLoginPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <BotonVolverLogin tema="claro"/>
       <div style={{ width: '100%', maxWidth: '400px' }}>
 
         {showCambiarPass && (
