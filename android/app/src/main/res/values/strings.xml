@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Golmebol</string>
+    <string name="title_activity_main">Golmebol</string>
+    <string name="package_name">com.golmebol.app</string>
+    <string name="custom_url_scheme">com.golmebol.app</string>
+</resources>
