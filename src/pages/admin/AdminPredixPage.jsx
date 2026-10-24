@@ -3,6 +3,25 @@ import { supabase } from '../../lib/supabase'
 import { Plus, X, Ticket, Users, Search, Calendar, Send } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 
+// Supabase devuelve máximo 1000 filas por consulta: se pide por páginas.
+async function traerTodosJugadores() {
+  const PAGINA = 1000
+  let todos = []
+  for (let desde = 0; ; desde += PAGINA) {
+    const { data, error } = await supabase
+      .from('players')
+      .select('id, name, numero_cedula, photo_url, photo_face_url, activo_membresia')
+      .order('name')
+      .order('id')
+      .range(desde, desde + PAGINA - 1)
+    if (error) break
+    todos = todos.concat(data || [])
+    if (!data || data.length < PAGINA) break
+  }
+  return { data: todos }
+}
+
+
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', color: '#202124', fontSize: '.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }
 const lbl = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display: 'block', marginBottom: '4px' }
 
@@ -431,7 +450,7 @@ export default function AdminPredixPage() {
       supabase.from('predix_planes').select('*, tournaments(name)').order('created_at', { ascending: false }),
       supabase.from('predix_suscripciones').select('*, players(name, numero_cedula, photo_url, photo_face_url), predix_planes(nombre, tipo), tournaments(name)').order('created_at', { ascending: false }),
       supabase.from('predix_rondas').select('*, tournaments(name)').order('fecha_apertura', { ascending: true }),
-      supabase.from('players').select('id, name, numero_cedula, photo_url, photo_face_url, activo_membresia').order('name'),
+      traerTodosJugadores(),
       supabase.from('tournaments').select('id, name').order('created_at', { ascending: false }),
     ])
     setPlanes(p || [])

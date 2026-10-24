@@ -316,8 +316,23 @@ export default function AdminJugadoresPage() {
   if (rol?.rol === 'organizador') return null
 
   async function fetchJugadores() {
-    const { data } = await supabase.from('players').select('*').order('name')
-    setJugadores(data || [])
+    // Supabase devuelve máximo 1000 filas por consulta: se pide por páginas
+    // hasta traer todos los jugadores (si no, el buscador no encuentra a los
+    // que pasan del 1000).
+    const PAGINA = 1000
+    let todos = []
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data, error } = await supabase
+        .from('players')
+        .select('*')
+        .order('name')
+        .order('id')
+        .range(desde, desde + PAGINA - 1)
+      if (error) { console.error('fetchJugadores', error); break }
+      todos = todos.concat(data || [])
+      if (!data || data.length < PAGINA) break
+    }
+    setJugadores(todos)
   }
 
   function showMsg(text, type = 'ok') {
