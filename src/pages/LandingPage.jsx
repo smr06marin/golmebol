@@ -525,6 +525,7 @@ export default function LandingPage() {
       const c = control[s.id]
       if (!c?.repeticion_ts || controlRepeticionRef.current[s.id] === c.repeticion_ts) return
       controlRepeticionRef.current[s.id] = c.repeticion_ts
+      if (s.repeticion_transmision) return // la repetición sale dentro de la transmisión (overlay de Prism/OBS): acá no se repite
       const imagenUrl = imagenesRepeticion.length
         ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
         : null

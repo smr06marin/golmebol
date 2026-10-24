@@ -5,7 +5,7 @@ import { Maximize2, Minimize2 } from 'lucide-react'
 // youtu.be/, /embed/, /live/, /shorts/. Si no reconoce el formato (por
 // ejemplo si le pasan el link del CANAL en vez del video/live puntual),
 // devuelve null y se cae al botón "Ver en vivo" en vez de un embed roto.
-function parseYouTubeId(url) {
+export function parseYouTubeId(url) {
   try {
     const u = new URL(url)
     if (u.hostname.includes('youtu.be')) return u.pathname.slice(1) || null
@@ -154,7 +154,7 @@ const cajaCompleta = { position:'fixed', inset:0, zIndex:9999, background:'#000'
 // <LiveEmbed> de YouTube haya montados a la vez (puede haber varios si hay
 // varias transmisiones activas) — todos comparten la misma promesa/script.
 let promesaYouTubeAPI = null
-function cargarYouTubeAPI() {
+export function cargarYouTubeAPI() {
   if (typeof window === 'undefined') return Promise.resolve(null)
   if (window.YT && window.YT.Player) return Promise.resolve(window.YT)
   if (promesaYouTubeAPI) return promesaYouTubeAPI

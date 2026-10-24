@@ -12,6 +12,8 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
+import RepeticionTransmisionOverlay from '../components/RepeticionTransmisionOverlay'
+import { detectarPlataforma } from '../components/LiveEmbed'
 import { disparoDeControl, disparoEsExclusivo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
@@ -33,13 +35,20 @@ import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 // el video en la portada en un computador) y se escala todo junto al tamaño
 // real de la ventana, así se ven idénticos a como se ven en la portada.
 //
-// NO incluye la repetición / cámara lenta: en la portada esa función
-// rebobina el reproductor de YouTube, y acá no hay reproductor — la
-// repetición dentro de OBS se hace con su propio "Búfer de repetición".
+// REPETICIÓN (casilla "Repetición dentro de la transmisión" de la transmisión en /admin/config-sitio, o ?repeticion=1): el botón "Repetición" del panel de
+// control hace que acá se abra, escondida, la propia transmisión de YouTube,
+// se devuelva ~12 s y se muestre a pantalla completa con el letrero
+// REPETICIÓN (ver RepeticionTransmisionOverlay). Necesita DVR activado en
+// YouTube. Sin la casilla ni ?repeticion=1 no pasa nada (en OBS de escritorio se puede
+// seguir usando su propio "Búfer de repetición").
 //
 // Parámetros opcionales en la URL:
 //   ?prueba=1  fondo de cancha de mentiras, para verlo en un navegador normal
 //   ?logo=0    sin la marca de arriba a la izquierda (logo de Golmebol + logo del torneo + "Esta transmisión es gracias a Golmebol")
+//   ?repeticion=1  activa la repetición dentro de la transmisión aunque la casilla no esté marcada (?repeticion=0 la apaga)
+//   ?velocidad=0.7  velocidad de la repetición (por defecto 0.7; la "Cámara lenta" va siempre a 0.5)
+//   ?atras=12  segundos que dura la repetición (por defecto 12)
+//   ?espera=8  segundos que espera antes de arrancarla, por el retraso de YouTube (por defecto 8)
 //   ?auto=0    sin los gráficos automáticos (alineación al arrancar, tabla y goles en el descanso, goles al finalizar)
 
 const ANCHO_ESCENARIO = 860
@@ -61,12 +70,19 @@ export default function OverlayEnVivoPage() {
   const modoPrueba = params.get('prueba') === '1'
   const mostrarLogo = params.get('logo') !== '0'
   const graficosAuto = params.get('auto') !== '0'
+  const repeticionParam = params.get('repeticion')
+  const velocidadRepeticion = Math.min(1, Math.max(0.25, Number(params.get('velocidad')) || 0.7))
+  const segundosAtras = Math.min(60, Math.max(3, Number(params.get('atras')) || 12))
+  const segundosEspera = Math.min(30, Math.max(0, params.get('espera') === null ? 8 : (Number(params.get('espera')) || 0)))
   const { escala, altoEscenario } = useEscala()
 
   const [siteConfig, setSiteConfig] = useState(null)
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [hermanosVivo, setHermanosVivo] = useState([])
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
+  const [repeticionDisparo, setRepeticionDisparo] = useState(null)
+  const repeticionVistaRef = useRef(null)
+  const repeticionContadorRef = useRef(0)
   const [tick, setTick] = useState(0)
   const patrocinadorVistoRef = useRef(null)
 
@@ -143,6 +159,8 @@ export default function OverlayEnVivoPage() {
   const partido = stream ? partidoActivoDeStream(stream, partidosVivo) : null
   const logoDeTorneo = useLogosTorneos(stream?.torneo_auto ? [stream.torneo_auto] : [])
   const control = (siteConfig?.en_vivo_control || {})[streamId] || null
+  // Repetición dentro de la transmisión: se prende con la casilla de la transmisión en /admin/config-sitio, o con ?repeticion=1 (y se apaga con ?repeticion=0)
+  const repeticionActiva = repeticionParam === '1' || (repeticionParam !== '0' && !!stream?.repeticion_transmision)
 
   // Gráficos AUTOMÁTICOS (para transmitir sin nadie operando el panel):
   //  · al arrancar el partido (reloj en los primeros 30 s del 1er tiempo): la
@@ -296,6 +314,24 @@ export default function OverlayEnVivoPage() {
   }, [siteConfig, patrocinadorTs, patrocinadorId, control?.patrocinador_tipo, control?.patrocinador_tamano]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(patrocinadorTimerRef.current), [])
 
+  // Repetición dentro de la transmisión: el botón del panel cambia repeticion_ts.
+  // Se ignora la marca que ya estaba al abrir la página (si no, cada vez que
+  // Prism recarga el overlay saldría la última repetición otra vez) y los
+  // clics que lleguen mientras ya hay una repetición en pantalla.
+  const repeticionTs = control?.repeticion_ts || 0
+  const streamEsYouTube = detectarPlataforma(stream?.url) === 'youtube'
+  useEffect(() => {
+    if (!repeticionActiva || !siteConfig) return
+    if (repeticionVistaRef.current === null) { repeticionVistaRef.current = repeticionTs; return }
+    if (!repeticionTs || repeticionVistaRef.current === repeticionTs) return
+    repeticionVistaRef.current = repeticionTs
+    if (!streamEsYouTube) return
+    const imagenes = Array.isArray(siteConfig.en_vivo_repeticion_imagenes) ? siteConfig.en_vivo_repeticion_imagenes : []
+    const imagenUrl = imagenes.length ? imagenes[repeticionContadorRef.current % imagenes.length].url : null
+    repeticionContadorRef.current += 1
+    setRepeticionDisparo(actual => actual || { key: repeticionTs, camaraLenta: !!control?.repeticion_camara_lenta, imagenUrl })
+  }, [repeticionActiva, siteConfig, repeticionTs, streamEsYouTube]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const sponsor = patrocinadorDeDisparo(patrocinadoresDeControl(control), patrocinadorMostrando)
   // Con el tablero grande de abajo (goles / descanso / final) se esconde el marcador de arriba, para que la mirada se quede en el minuto a minuto
   const tapaMarcador = overlayTapaMarcador(overlayActivo) && (overlayActivo !== 'final' || !!partidoFinal) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto))
@@ -325,6 +361,9 @@ export default function OverlayEnVivoPage() {
               {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}
               {overlayActivo === 'final' && partidoFinal && <ResumenGolesOverlay partido={partidoFinal} goles={partidoFinal.goles} modo="final"/>}
             </>
+          )}
+          {repeticionActiva && repeticionDisparo && stream?.url && (
+            <RepeticionTransmisionOverlay key={repeticionDisparo.key} url={stream.url} disparo={repeticionDisparo} atras={segundosAtras} espera={segundosEspera} velocidad={velocidadRepeticion} onTerminar={() => setRepeticionDisparo(null)}/>
           )}
           {partido?.tournament_id && (
             <PatrocinadoresTorneoOverlay logos={siteConfig?.patrocinador_logos_torneo?.[partido.tournament_id]} activos={control?.logos_activos}/>

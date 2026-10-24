@@ -160,6 +160,7 @@ export default function EnVivoControlLinkPage() {
   useEffect(() => {
     if (!control.repeticion_ts || repeticionVistaRef.current === control.repeticion_ts) return
     repeticionVistaRef.current = control.repeticion_ts
+    if (stream?.repeticion_transmision) return // sale dentro de la transmisión, no en esta vista previa
     const imagenUrl = imagenesRepeticion.length ? imagenesRepeticion[repContadorRef.current % imagenesRepeticion.length].url : null
     repContadorRef.current += 1
     setRepeticion({ key: Date.now(), objetivoSegundos: control.repeticion_objetivo_segundos, duracionVisible: 12, imagenUrl, camaraLenta: !!control.repeticion_camara_lenta })

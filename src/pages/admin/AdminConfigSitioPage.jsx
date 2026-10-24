@@ -191,13 +191,14 @@ export default function AdminConfigSitioPage() {
     Object.entries(control).forEach(([streamId, c]) => {
       if (!c?.repeticion_ts || repeticionVistaRef.current[streamId] === c.repeticion_ts) return
       repeticionVistaRef.current[streamId] = c.repeticion_ts
+      if (streams.find(x => x.id === streamId)?.repeticion_transmision) return // sale dentro de la transmisión, no en esta vista previa
       const imagenUrl = imagenesRepeticion.length
         ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
         : null
       repeticionContadorRef.current += 1
       setRepeticiones(r => ({ ...r, [streamId]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
     })
-  }, [control, imagenesRepeticion])
+  }, [control, imagenesRepeticion, streams])
 
   // `partidos` antes solo se traía una vez al entrar a la página — para el
   // resumen de goles automático de abajo hace falta enterarse SOLA de los
@@ -255,6 +256,7 @@ export default function AdminConfigSitioPage() {
         torneo_auto: s.torneo_auto || null,
         cancha_auto: s.torneo_auto ? (s.cancha_auto || null) : null,
         activo: !!s.activo,
+        repeticion_transmision: !!s.repeticion_transmision,
         control_token: s.control_token || null,
       }))],
       updated_at: new Date().toISOString(),
@@ -881,6 +883,14 @@ export default function AdminConfigSitioPage() {
                   <label style={lbl}>Título (opcional)</label>
                   <input value={s.titulo || ''} onChange={e => actualizarStream(s.id, 'titulo', e.target.value)} style={inp}
                     placeholder="Ej: Cancha 1 · Final del Torneo Relámpago"/>
+                </div>
+
+                <div style={{ marginBottom:'12px', padding:'10px 12px', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px' }}>
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:'8px', fontSize:'.8rem', color:'#202124', cursor:'pointer' }}>
+                    <input type="checkbox" checked={!!s.repeticion_transmision} onChange={e => actualizarStream(s.id, 'repeticion_transmision', e.target.checked)} style={{ marginTop:'2px' }}/>
+                    <span><b>Repetición dentro de la transmisión (Prism / OBS)</b><br/>
+                      <span style={{ fontSize:'.72rem', color:'#5f6368' }}>El botón "Repetición" muestra los últimos 12 s dentro del video que sale en YouTube (con el overlay de este directo) y se apaga la repetición del sitio, para que no salga dos veces. Necesita el DVR activado en YouTube.</span></span>
+                  </label>
                 </div>
 
                 <div style={{ marginBottom:'12px' }}>
