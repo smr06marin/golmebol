@@ -81,8 +81,9 @@ function Banners({ patrocinador, onTerminar: alTerminar }) {
   )
 }
 
-function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTerminar }) {
+function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTerminar, onSonido }) {
   const onTerminar = useFnEstable(alTerminar)
+  const avisarSonido = useFnEstable(onSonido)
   const ref = useRef(null)
   const grande = tamanoVideoEfectivo(tamano, descanso) === 'grande'
   useEffect(() => {
@@ -95,6 +96,15 @@ function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTermina
     const p = v.play()
     if (p && p.catch) p.catch(() => { v.muted = true; v.play().catch(() => onTerminar?.()) }) // sin permiso para sonido: se intenta mudo
   }, [onTerminar])
+  // Avisa a quien lo muestra cuando el video suena de verdad (para bajarle el volumen al en vivo) y cuando deja de sonar
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return undefined
+    const avisar = () => avisarSonido?.(!v.muted && !v.paused && !v.ended)
+    const eventos = ['playing', 'pause', 'ended', 'volumechange']
+    eventos.forEach(e => v.addEventListener(e, avisar))
+    return () => { eventos.forEach(e => v.removeEventListener(e, avisar)); avisarSonido?.(false) }
+  }, [avisarSonido])
   if (!patrocinador.video_url) return null
   const video = (
     <video ref={ref} src={patrocinador.video_url} autoPlay playsInline muted={!!silencio} preload="auto"
@@ -117,9 +127,9 @@ function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTermina
   )
 }
 
-export default function PatrocinadorEnVivoOverlay({ patrocinador, tipo = 'logo', tamano = 'auto', descanso = false, silencio = false, onTerminar }) {
+export default function PatrocinadorEnVivoOverlay({ patrocinador, tipo = 'logo', tamano = 'auto', descanso = false, silencio = false, onTerminar, onSonido }) {
   if (!patrocinador) return null
   if (tipo === 'banner') return <Banners patrocinador={patrocinador} onTerminar={onTerminar}/>
-  if (tipo === 'video') return <Video patrocinador={patrocinador} tamano={tamano} descanso={descanso} silencio={silencio} onTerminar={onTerminar}/>
+  if (tipo === 'video') return <Video patrocinador={patrocinador} tamano={tamano} descanso={descanso} silencio={silencio} onTerminar={onTerminar} onSonido={onSonido}/>
   return <Logo patrocinador={patrocinador} onTerminar={onTerminar}/>
 }

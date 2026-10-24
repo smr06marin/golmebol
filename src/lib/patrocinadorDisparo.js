@@ -14,6 +14,30 @@ export function cargaDisparo(patrocinadorId, tipo = 'logo', tamano = 'auto') {
   return { patrocinador_id: patrocinadorId, patrocinador_ts: Date.now(), patrocinador_tipo: tipo, patrocinador_tamano: tamano }
 }
 
+// Botón "Encender banners": no es de un patrocinador, sino de TODOS — junta los banners de todos
+// los patrocinadores de la transmisión y salen uno tras otro (como un video).
+export const ID_TODOS_BANNERS = '__todos_los_banners__'
+
+// Apagar lo que esté en pantalla: es un "disparo" nuevo (marca de tiempo nueva) sin patrocinador.
+export function apagarDisparo() {
+  return { patrocinador_id: null, patrocinador_ts: Date.now(), patrocinador_tipo: null, patrocinador_tamano: null }
+}
+
+// Todos los banners de la lista de patrocinadores, en orden
+export function todosLosBanners(lista) {
+  return (Array.isArray(lista) ? lista : []).flatMap(p => (Array.isArray(p.banners) ? p.banners : [])).filter(Boolean)
+}
+
+// Qué patrocinador dibujar para un disparo: el de ese id, o uno "virtual" con todos los banners juntos
+export function patrocinadorDeDisparo(lista, d) {
+  if (!d) return null
+  if (d.id === ID_TODOS_BANNERS) {
+    const banners = todosLosBanners(lista)
+    return banners.length ? { id: ID_TODOS_BANNERS, nombre: 'Patrocinadores', banners } : null
+  }
+  return (Array.isArray(lista) ? lista : []).find(p => p.id === d.id) || null
+}
+
 export function disparoDeControl(c) {
   if (!c?.patrocinador_id) return null
   return {

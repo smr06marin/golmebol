@@ -13,7 +13,7 @@ import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../../components/BotonesPatrocinadores'
 import PublicidadPatrocinadoresEnVivo from '../../components/PublicidadPatrocinadoresEnVivo'
-import { disparoDeControl, disparoEsExclusivo, cargaDisparo, patrocinadoresDeControl } from '../../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
@@ -452,6 +452,11 @@ export default function AdminConfigSitioPage() {
     actualizarControl(streamId, cargaDisparo(patrocinadorId, tipo, tamano))
   }
 
+  // Apaga lo que esté saliendo (banners, logo o video) de esa transmisión, en todas las pantallas
+  function apagarPatrocinador(streamId) {
+    actualizarControl(streamId, apagarDisparo())
+  }
+
   // Genera (o reutiliza) el link para manejar el panel de control desde otro
   // celular, sin necesidad de iniciar sesión — se guarda de una vez en
   // Supabase (no espera al botón "Guardar" de más abajo, para no compartir
@@ -529,7 +534,7 @@ export default function AdminConfigSitioPage() {
     // pinta nada), y eso es justo lo que confundía: se veía acá pero no allá.
     const vivo = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
     const disparo = patrocinadorMostrando[s.id] || null
-    const patrocinador = disparo ? patrocinadoresDeControl(c).find(p => p.id === disparo.id) : null
+    const patrocinador = patrocinadorDeDisparo(patrocinadoresDeControl(c), disparo)
     // Los tableros grandes de abajo (goles) esconden el marcador de arriba para que la mirada se quede en ellos
     const tapaMarcador = overlayTapaMarcador(c?.overlay) && !!partidoSeleccionado && !(patrocinador && disparoEsExclusivo(disparo, !!vivo?.descanso))
     return (
@@ -789,7 +794,7 @@ export default function AdminConfigSitioPage() {
                   {patrocinadoresStream.length > 0 && (
                     <>
                       <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
-                      <BotonesPatrocinadores denso patrocinadores={patrocinadoresStream} onMostrar={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)}/>
+                      <BotonesPatrocinadores denso patrocinadores={patrocinadoresStream} onMostrar={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)} onApagar={() => apagarPatrocinador(s.id)} activo={patrocinadorMostrando[s.id] || null}/>
                     </>
                   )}
 

@@ -25,7 +25,7 @@ import { overlayTapaMarcador } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../components/BotonesPatrocinadores'
-import { disparoDeControl, disparoEsExclusivo, cargaDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
@@ -143,6 +143,11 @@ export default function EnVivoControlLinkPage() {
     actualizarControl(cargaDisparo(patrocinadorId, tipo, tamano))
   }
 
+  // Apaga lo que esté saliendo (banners, logo o video) en todas las pantallas
+  function apagarPatrocinador() {
+    actualizarControl(apagarDisparo())
+  }
+
   // Tabla de posiciones de la vista previa: se refresca sola y suma lo que se está jugando ahora
   const basesTabla = useTablasBase(control.overlay === 'tabla' && control.overlay_tournament_id ? [control.overlay_tournament_id] : [], { intervalo: 15000, conVivo: true })
   const tablas = useMemo(() => tablasConVivo(basesTabla, []), [basesTabla])
@@ -189,7 +194,7 @@ export default function EnVivoControlLinkPage() {
     )
   }
 
-  const sponsor = patrocinadorMostrando ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando.id) : null
+  const sponsor = patrocinadorDeDisparo(patrocinadoresBtn, patrocinadorMostrando)
   // El tablero de goles (abajo) esconde el marcador de arriba para que la mirada se quede en él
   const tapaMarcador = overlayTapaMarcador(control.overlay) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, !!vivo?.descanso))
   const tieneTorneo = !!torneoIdActual
@@ -294,7 +299,7 @@ export default function EnVivoControlLinkPage() {
           <div style={{ marginTop:'14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
             <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'8px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
             <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-              <div style={{ width:'100%' }}><BotonesPatrocinadores patrocinadores={patrocinadoresBtn} onMostrar={mostrarPatrocinador}/></div>
+              <div style={{ width:'100%' }}><BotonesPatrocinadores patrocinadores={patrocinadoresBtn} onMostrar={mostrarPatrocinador} onApagar={apagarPatrocinador} activo={patrocinadorMostrando}/></div>
             </div>
           </div>
         )}

@@ -12,7 +12,7 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
-import { disparoDeControl, disparoEsExclusivo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
@@ -296,7 +296,7 @@ export default function OverlayEnVivoPage() {
   }, [siteConfig, patrocinadorTs, patrocinadorId, control?.patrocinador_tipo, control?.patrocinador_tamano]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(patrocinadorTimerRef.current), [])
 
-  const sponsor = patrocinadorMostrando ? patrocinadoresDeControl(control).find(p => p.id === patrocinadorMostrando.id) : null
+  const sponsor = patrocinadorDeDisparo(patrocinadoresDeControl(control), patrocinadorMostrando)
   // Con el tablero grande de abajo (goles / descanso / final) se esconde el marcador de arriba, para que la mirada se quede en el minuto a minuto
   const tapaMarcador = overlayTapaMarcador(overlayActivo) && (overlayActivo !== 'final' || !!partidoFinal) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto))
 

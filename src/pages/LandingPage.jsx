@@ -19,7 +19,7 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
-import { disparoDeControl, disparoEsExclusivo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
@@ -562,6 +562,7 @@ export default function LandingPage() {
   const patrocinadorVistoRef = useRef({}) // { [streamId]: último patrocinador_ts ya mostrado }
   const patrocinadorTimersRef = useRef({}) // { [streamId]: seguro para apagar la publicidad }
   const [patrocinadoresMostrando, setPatrocinadoresMostrando] = useState({}) // { [streamId]: { id, tipo, tamano, clave } }
+  const [vozPatrocinador, setVozPatrocinador] = useState({}) // { [streamId]: true } mientras suena un video de patrocinador (se baja el volumen del en vivo)
   useEffect(() => {
     const control = siteConfig?.en_vivo_control || {}
     streamsVivos.forEach(s => {
@@ -943,7 +944,7 @@ export default function LandingPage() {
               const partidoDeStream = partidoActivoDeStream(s, partidosVivo)
               const controlStream = siteConfig?.en_vivo_control?.[s.id]
               const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
-              const sponsorMostrando = patrocinadorIdMostrando ? patrocinadoresDeControl(controlStream).find(p => p.id === patrocinadorIdMostrando.id) : null
+              const sponsorMostrando = patrocinadorDeDisparo(patrocinadoresDeControl(controlStream), patrocinadorIdMostrando)
               const descansoStream = !!partidoDeStream?.vivo?.descanso
               // Con el tablero de goles abajo se esconde el marcador de arriba (la mirada se queda en el minuto a minuto)
               const tapaMarcador = overlayTapaMarcador(controlStream?.overlay) && !!partidoDeStream && !(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream))
@@ -951,12 +952,12 @@ export default function LandingPage() {
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
                   <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
                         {partidoDeStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
                         {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
-                        {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} silencio onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
+                        {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} onSonido={v => setVozPatrocinador(m => (!!m[s.id] === v ? m : { ...m, [s.id]: v }))} onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
                         {!(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream)) && (
                           <>
                             {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}

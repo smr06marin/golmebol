@@ -238,7 +238,7 @@ function cargarYouTubeAPI() {
 // panel de control (admin o el link de otro celular) para leer hasta dónde
 // se devolvió Sebas a mano con la barra de YouTube, justo antes de armar la
 // repetición manual.
-const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo }, ref) {
+const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false }, ref) {
   const plataforma = detectarPlataforma(url)
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
@@ -247,6 +247,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   const cajaRef = useRef(null) // la caja de afuera (video + marcador + gráficas) — a ESTA se le pide pantalla completa de verdad, nunca al iframe solo
   const iframeRef = useRef(null)
   const ytPlayerRef = useRef(null)
+  const volOriginalRef = useRef(null)
   // Id propio para el iframe de YouTube (puede haber varios <LiveEmbed> a la
   // vez si hay varias transmisiones) — la IFrame Player API de YouTube solo
   // "adopta" un iframe ya existente de forma confiable cuando se le pasa el
@@ -256,6 +257,31 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   // Le da al panel de control (que renderiza este componente) una forma de
   // preguntar "¿en qué segundo de la transmisión está este video ahora?" —
   // así sabe hasta dónde se devolvió Sebas a mano con la barra de YouTube.
+  // Mientras suena un video de patrocinador (bajarVolumen), el en vivo baja a casi nada y después
+  // vuelve a su volumen de antes — con transición suave. Solo YouTube (la API de Facebook no lo permite).
+  // En iPhone/iPad el volumen del reproductor lo manda el sistema, así que ahí no se puede bajar.
+  useEffect(() => {
+    const p = ytPlayerRef.current
+    if (!p || typeof p.setVolume !== 'function' || typeof p.getVolume !== 'function') return undefined
+    const desde = p.getVolume()
+    let hasta
+    if (bajarVolumen) {
+      if (volOriginalRef.current === null) volOriginalRef.current = desde
+      hasta = Math.min(volOriginalRef.current, 10)
+    } else {
+      if (volOriginalRef.current === null) return undefined
+      hasta = volOriginalRef.current
+      volOriginalRef.current = null
+    }
+    let paso = 0
+    const t = setInterval(() => {
+      paso += 1
+      p.setVolume(Math.round(desde + (hasta - desde) * (paso / 8)))
+      if (paso >= 8) clearInterval(t)
+    }, 60)
+    return () => clearInterval(t)
+  }, [bajarVolumen])
+
   useImperativeHandle(ref, () => ({
     getCurrentTime: () => (typeof ytPlayerRef.current?.getCurrentTime === 'function' ? ytPlayerRef.current.getCurrentTime() : null),
   }), [])
