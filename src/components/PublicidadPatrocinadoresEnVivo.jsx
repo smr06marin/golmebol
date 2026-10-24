@@ -35,6 +35,52 @@ const quitarArchivos = (urls) => {
   return rutas.length ? supabase.storage.from(BUCKET).remove(rutas) : Promise.resolve()
 }
 
+// Subida con barra de progreso (supabase-js no avisa el avance). Mismo endpoint que usa supabase-js.
+async function subirConProgreso(path, file, onProgreso) {
+  const { data } = await supabase.auth.getSession()
+  const clave = import.meta.env.VITE_SUPABASE_ANON_KEY
+  const token = data?.session?.access_token || clave
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`)
+    xhr.setRequestHeader('apikey', clave)
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.setRequestHeader('x-upsert', 'false')
+    xhr.upload.onprogress = e => { if (e.lengthComputable) onProgreso(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { resolve({ error: null }); return }
+      let msg = `Error ${xhr.status}`
+      try { const j = JSON.parse(xhr.responseText); msg = j.message || j.error || msg } catch { /* respuesta sin JSON */ }
+      resolve({ error: { message: msg, code: String(xhr.status) } })
+    }
+    xhr.onerror = () => resolve({ error: { message: 'Se cortó la conexión mientras subía. Revisa tu internet y vuelve a intentar' } })
+    xhr.ontimeout = () => resolve({ error: { message: 'Tardó demasiado en subir' } })
+    const form = new FormData()
+    form.append('cacheControl', '3600')
+    form.append('', file)
+    xhr.send(form)
+  })
+}
+
+const mb = (f) => `${(f.size / 1048576).toFixed(1)} MB`
+
+// Mensaje fijo debajo de cada botón de subir: no desaparece solo (el error y el "listo" se quedan hasta la próxima subida)
+function Estado({ e }) {
+  if (!e) return null
+  const color = e.fase === 'ok' ? S.green : e.fase === 'error' ? '#ff8a84' : '#fff'
+  const fondo = e.fase === 'ok' ? 'rgba(111,207,61,.14)' : e.fase === 'error' ? 'rgba(229,67,61,.18)' : '#1f1f1f'
+  return (
+    <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '8px', background: fondo, color, fontSize: '.78rem', fontWeight: 700, lineHeight: 1.4 }}>
+      {e.texto}
+      {e.fase === 'subiendo' && (
+        <div style={{ marginTop: '6px', height: '8px', borderRadius: '4px', background: '#333', overflow: 'hidden' }}>
+          <div style={{ width: `${e.pct ?? 0}%`, height: '100%', background: S.green, transition: 'width .2s' }}/>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const botonSubir = (deshabilitado) => ({
   display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '8px 12px', background: '#2a2a2a',
   border: `1px dashed ${S.green}`, borderRadius: '8px', color: S.green, fontSize: '.76rem', fontWeight: 700,
@@ -45,6 +91,8 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
   const [abierto, setAbierto] = useState(false)
   const [ocupado, setOcupado] = useState(null) // `${id}:logo|banner|video`
   const [aviso, setAviso] = useState(null)
+  const [estado, setEstado] = useState({}) // por patrocinador y tipo: { fase: 'subiendo'|'ok'|'error', texto, pct }
+  const poner = (clave, e) => setEstado(m => ({ ...m, [clave]: e }))
   const [nombreNuevo, setNombreNuevo] = useState('')
 
   function decir(text, tipo = 'ok') {
@@ -64,37 +112,42 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
 
   async function subirLogo(p, file) {
     if (!file || ocupado) return
-    if (!file.type.startsWith('image/')) { decir('El logo debe ser una imagen', 'error'); return }
-    setOcupado(`${p.id}:logo`)
+    const k = `${p.id}:logo`
+    if (!file.type.startsWith('image/')) { poner(k, { fase: 'error', texto: '✗ El logo debe ser una imagen (PNG, JPG…)' }); return }
+    setOcupado(k)
+    poner(k, { fase: 'subiendo', texto: `Subiendo logo (${mb(file)})…`, pct: 0 })
     try {
       const path = `logo_${p.id}_${Date.now()}.${extDe(file)}`
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type })
-      if (error) { decir('Error al subir el logo' + motivo(error), 'error'); return }
+      const { error } = await subirConProgreso(path, file, pct => poner(k, { fase: 'subiendo', texto: `Subiendo logo… ${pct}%`, pct }))
+      if (error) { poner(k, { fase: 'error', texto: '✗ NO se subió el logo' + motivo(error) }); return }
       const vieja = p.logo_url
       cambiar(p.id, { logo_url: urlPublica(path) })
       if (vieja) await quitarArchivos([vieja])
-      decir('Logo subido ✓')
+      poner(k, { fase: 'ok', texto: '✓ Logo subido y guardado' })
     } finally { setOcupado(null) }
   }
 
   async function subirBanners(p, lista) {
     const files = Array.from(lista || [])
     if (!files.length || ocupado) return
+    const k = `${p.id}:banner`
     if (files.some(f => !f.type.startsWith('image/') || f.size > MAX_BANNER_MB * 1048576)) {
-      decir(`Cada banner debe ser una imagen de máximo ${MAX_BANNER_MB} MB`, 'error'); return
+      poner(k, { fase: 'error', texto: `✗ Cada banner debe ser una imagen de máximo ${MAX_BANNER_MB} MB` }); return
     }
-    setOcupado(`${p.id}:banner`)
+    setOcupado(k)
     try {
       const nuevas = []
+      let fallo = null
       for (let i = 0; i < files.length; i++) {
+        poner(k, { fase: 'subiendo', texto: `Subiendo banner ${i + 1} de ${files.length}…`, pct: 0 })
         const path = `banner_${p.id}_${Date.now()}_${i}.${extDe(files[i])}`
-        const { error } = await supabase.storage.from(BUCKET).upload(path, files[i], { contentType: files[i].type })
-        if (error) { decir('Error al subir un banner' + motivo(error), 'error'); break }
+        const { error } = await subirConProgreso(path, files[i], pct => poner(k, { fase: 'subiendo', texto: `Subiendo banner ${i + 1} de ${files.length}… ${pct}%`, pct }))
+        if (error) { fallo = error; break }
         nuevas.push(urlPublica(path))
       }
-      if (!nuevas.length) return
-      cambiar(p.id, { banners: [...(p.banners || []), ...nuevas] })
-      decir(nuevas.length > 1 ? `${nuevas.length} banners subidos ✓` : 'Banner subido ✓')
+      if (nuevas.length) cambiar(p.id, { banners: [...(p.banners || []), ...nuevas] })
+      if (fallo) poner(k, { fase: 'error', texto: `✗ ${nuevas.length ? `Se subieron ${nuevas.length}, pero uno` : 'El banner'} NO se subió` + motivo(fallo) })
+      else poner(k, { fase: 'ok', texto: nuevas.length > 1 ? `✓ ${nuevas.length} banners subidos y guardados` : '✓ Banner subido y guardado' })
     } finally { setOcupado(null) }
   }
 
@@ -106,25 +159,28 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
 
   async function subirVideo(p, file) {
     if (!file || ocupado) return
-    if (!file.type.startsWith('video/')) { decir('Elige un archivo de video (mejor MP4)', 'error'); return }
+    const k = `${p.id}:video`
+    if (!file.type.startsWith('video/')) { poner(k, { fase: 'error', texto: '✗ Elige un archivo de video (mejor MP4)' }); return }
     if (file.size > MAX_VIDEO_MB * 1048576) {
-      decir(`El video pesa ${(file.size / 1048576).toFixed(0)} MB y el máximo es ${MAX_VIDEO_MB} MB. Comprímelo y vuelve a subirlo`, 'error'); return
+      poner(k, { fase: 'error', texto: `✗ El video pesa ${(file.size / 1048576).toFixed(0)} MB y el máximo es ${MAX_VIDEO_MB} MB. Comprímelo y vuelve a subirlo` }); return
     }
-    setOcupado(`${p.id}:video`)
+    setOcupado(k)
+    poner(k, { fase: 'subiendo', texto: `Subiendo video (${mb(file)})… 0%`, pct: 0 })
     try {
       const path = `video_${p.id}_${Date.now()}.${extDe(file)}`
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type })
-      if (error) { decir('Error al subir el video' + motivo(error), 'error'); return }
+      const { error } = await subirConProgreso(path, file, pct => poner(k, { fase: 'subiendo', texto: `Subiendo video (${mb(file)})… ${pct}%${pct >= 100 ? ' — guardando, espera' : ''}`, pct }))
+      if (error) { poner(k, { fase: 'error', texto: '✗ NO se subió el video' + motivo(error) }); return }
       const vieja = p.video_url
       cambiar(p.id, { video_url: urlPublica(path) })
       if (vieja) await quitarArchivos([vieja])
-      decir('Video subido ✓')
+      poner(k, { fase: 'ok', texto: `✓ Video subido y guardado (${mb(file)}). Ya sale el botón "Video" arriba en el panel` })
     } finally { setOcupado(null) }
   }
 
   async function quitarVideo(p) {
     if (ocupado) return
     const vieja = p.video_url
+    poner(`${p.id}:video`, null)
     cambiar(p.id, { video_url: null })
     await quitarArchivos([vieja])
   }
@@ -191,6 +247,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
                     <button type="button" onClick={() => eliminar(p)} title="Quitar este patrocinador de la transmisión"
                       style={{ display: 'flex', background: 'none', border: 'none', cursor: 'pointer', color: S.muted, padding: '4px' }}><Trash2 size={15}/></button>
                   </div>
+                  <div style={{ marginTop: '-6px', marginBottom: '10px' }}><Estado e={estado[`${p.id}:logo`]}/></div>
 
                   <div style={{ fontSize: '.7rem', color: S.muted, fontWeight: 600, marginBottom: '6px' }}>
                     <IconoImagen size={12} style={{ verticalAlign: '-2px', marginRight: '4px' }}/>BANNERS — cada uno sale 10 s; si hay varios salen todos solos, uno tras otro
@@ -209,6 +266,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
                         onChange={e => { subirBanners(p, e.target.files); e.target.value = '' }}/>
                     </label>
                   </div>
+                  <div style={{ marginTop: '-8px', marginBottom: '12px' }}><Estado e={estado[`${p.id}:banner`]}/></div>
 
                   <div style={{ fontSize: '.7rem', color: S.muted, fontWeight: 600, marginBottom: '6px' }}>
                     <Film size={12} style={{ verticalAlign: '-2px', marginRight: '4px' }}/>VIDEO — grande en el descanso, pequeño mientras se juega (MP4, máx. {MAX_VIDEO_MB} MB)
@@ -230,6 +288,10 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
                       </button>
                     )}
                   </div>
+                  <Estado e={estado[`${p.id}:video`]}/>
+                  {p.video_url && !estado[`${p.id}:video`] && (
+                    <div style={{ marginTop: '8px', fontSize: '.74rem', color: S.green, fontWeight: 700 }}>✓ Este patrocinador ya tiene video guardado</div>
+                  )}
                 </div>
               )
             })}
