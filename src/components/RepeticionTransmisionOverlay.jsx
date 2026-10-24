@@ -29,18 +29,19 @@ const BUMPER_MS = 2500
 const SALE_MS = 500
 const SEGURO_MS = 60000
 
-export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12, espera = 8, velocidad = 0.7, onTerminar }) {
+export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12, espera = 8, velocidad = 0.7, onTerminar, onEstado }) {
   const [fase, setFase] = useState('cargando')
   const idIframe = `yt-repe-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const onTerminarRef = useRef(onTerminar)
-  useEffect(() => { onTerminarRef.current = onTerminar })
+  const onEstadoRef = useRef(onEstado)
+  useEffect(() => { onTerminarRef.current = onTerminar; onEstadoRef.current = onEstado })
   const videoId = parseYouTubeId(url)
   const imagenUrl = disparo?.imagenUrl || null
   const lento = !!disparo?.camaraLenta
   const key = disparo?.key
 
   useEffect(() => {
-    if (!videoId) { onTerminarRef.current?.(); return undefined }
+    if (!videoId) { onEstadoRef.current?.('cancelada: el link de la transmisión no es un video de YouTube'); onTerminarRef.current?.(); return undefined }
     // `atras` son segundos de JUEGO. A velocidad normal-lenta (0.7) la repetición cubre esos
     // segundos completos (y dura más en pantalla); la cámara lenta (0.5, botón aparte) cubre la mitad.
     const velPedida = lento ? 0.5 : velocidad
@@ -50,8 +51,9 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
     let cancelado = false
     let player = null
     const t0 = Date.now()
-    let reprodujo = false, saltado = false, saltoEn = 0, revelado = false
-    const terminar = () => { if (!cancelado) { cancelado = true; onTerminarRef.current?.() } }
+    let reprodujo = false, saltado = false, saltoEn = 0, revelado = false, cabezaAntes = 0
+    const estado = m => onEstadoRef.current?.(m)
+    const terminar = (motivo) => { if (!cancelado) { cancelado = true; if (motivo) estado(motivo); onTerminarRef.current?.() } }
     const despues = (fn, ms) => timers.push(setTimeout(fn, Math.max(0, ms)))
 
     // Muestra la repetición: con imagen de apertura si hay (tapa el buffering), y después el video.
@@ -60,9 +62,13 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
       revelado = true
       // El salto no funcionó (sin DVR): el video seguiría en el borde en vivo → no mostrar nada.
       try {
-        const ahora = player.getCurrentTime(), dur = player.getDuration()
-        if (!(dur - ahora > contenido * 0.5)) return terminar()
-      } catch { return terminar() }
+        // Si el salto funcionó, el video va ~`contenido` segundos detrás de donde estaría sin saltar.
+        const ahora = player.getCurrentTime()
+        const transcurrido = (Date.now() - saltoEn) / 1000
+        const sinSaltar = cabezaAntes + transcurrido
+        if (!(sinSaltar - ahora > contenido * 0.5)) return terminar(`cancelada: YouTube no dejó retroceder (¿DVR apagado?). posición ${ahora.toFixed(0)}s, en vivo ${sinSaltar.toFixed(0)}s`)
+        estado(`mostrando (retrocedió ${(sinSaltar - ahora).toFixed(0)}s)`)
+      } catch { return terminar('cancelada: error leyendo la posición del video') }
       const hastaBumper = imagenUrl ? Math.max(0, BUMPER_MS - (Date.now() - saltoEn)) : 0
       despues(() => {
         if (cancelado) return
@@ -71,7 +77,7 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
           if (cancelado) return
           try { if (velReal !== 1) player.setPlaybackRate(1) } catch { /* nada */ }
           setFase('saliendo')
-          despues(terminar, SALE_MS)
+          despues(() => terminar('terminó'), SALE_MS)
         }, Math.round((contenido / velReal) * 1000))
       }, hastaBumper)
     }
@@ -79,9 +85,10 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
     function saltar() {
       if (saltado || cancelado) return
       saltado = true
-      let dur = 0
-      try { dur = player.getDuration() } catch { /* nada */ }
-      if (!dur || !isFinite(dur)) return terminar()
+      let cabeza = 0
+      try { cabeza = player.getCurrentTime() } catch { /* nada */ }
+      if (!cabeza || !isFinite(cabeza)) return terminar('cancelada: el reproductor no dio la posición del video')
+      cabezaAntes = cabeza
       // Velocidad: YouTube a veces solo acepta ciertos pasos (0.25, 0.5, 0.75, 1…); se usa el más cercano.
       try {
         if (velPedida !== 1) {
@@ -96,7 +103,8 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
       // Con imagen de apertura, parte del video corre escondido debajo de ella: se retrocede un poco más.
       const retroceso = contenido + (imagenUrl ? (BUMPER_MS / 1000) * velReal : 0)
       saltoEn = Date.now()
-      try { player.seekTo(Math.max(0, dur - retroceso), true) } catch { return terminar() }
+      estado(`retrocediendo ${retroceso.toFixed(0)}s (velocidad ${velReal})…`)
+      try { player.seekTo(Math.max(0, cabeza - retroceso), true) } catch { return terminar('cancelada: seekTo falló') }
       if (imagenUrl) setFase('bumper')
       // Cuando YouTube termina de cargar el tramo, se muestra; si tarda demasiado, igual.
       despues(revelar, 4000)
@@ -110,17 +118,18 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
       if (cancelado || !YT || !document.getElementById(idIframe)) return
       player = new YT.Player(idIframe, {
         events: {
-          onReady: () => { try { player.mute(); player.playVideo() } catch { /* nada */ } },
+          onReady: () => { estado('reproductor listo, iniciando video…'); try { player.mute(); player.playVideo() } catch { /* nada */ } },
           onStateChange: e => {
             if (e.data !== ESTADO_REPRODUCIENDO) return
-            if (!reprodujo) { reprodujo = true; despues(intentarSaltar, espera * 1000 - (Date.now() - t0)); intentarSaltar() }
+            if (!reprodujo) { reprodujo = true; estado(`video reproduciendo, esperando ${espera}s…`); despues(intentarSaltar, espera * 1000 - (Date.now() - t0)); intentarSaltar() }
             else if (saltado) despues(revelar, 700)
           },
-          onError: ev => { console.warn('[Repetición] YouTube no dejó controlar el video (código', ev?.data, ')'); terminar() },
+          onError: ev => { console.warn('[Repetición] YouTube no dejó controlar el video (código', ev?.data, ')'); terminar(`cancelada: error de YouTube (código ${ev?.data})`) },
         },
       })
     })
-    despues(terminar, SEGURO_MS)
+    estado('cargando YouTube…')
+    despues(() => terminar(reprodujo ? 'cancelada: tiempo agotado' : 'cancelada: el video no arrancó (¿autoplay bloqueado en este navegador?)'), SEGURO_MS)
 
     return () => {
       cancelado = true

@@ -13,7 +13,7 @@ import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import RepeticionTransmisionOverlay from '../components/RepeticionTransmisionOverlay'
-import { detectarPlataforma } from '../components/LiveEmbed'
+import { detectarPlataforma, parseYouTubeId } from '../components/LiveEmbed'
 import { disparoDeControl, disparoEsExclusivo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
@@ -378,10 +378,11 @@ export default function OverlayEnVivoPage() {
             void tick
             const hace = repeticionTs ? Math.round((Date.now() - repeticionTs) / 1000) : null
             const lineas = [
-              'DIAGNÓSTICO REPETICIÓN (v3)',
+              'DIAGNÓSTICO REPETICIÓN (v4)',
               `repetición activa: ${repeticionActiva ? 'SÍ' : 'NO (marca la casilla y guarda, o usa ?repeticion=1)'}`,
               `config: ${siteConfig ? 'cargada' : 'NO CARGÓ (sin internet o sin permiso)'} · id del link: ${String(streamId).slice(0, 8)}… · transmisiones: ${(Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []).map(x => String(x.id).slice(0, 8)).join(', ') || 'ninguna'}`,
               `transmisión: ${stream ? 'encontrada' : 'NO ENCONTRADA (revisa el id del link)'} · es YouTube: ${streamEsYouTube ? 'sí' : 'NO (revisa el link del directo)'}`,
+              `link del directo: ${stream?.url ? (parseYouTubeId(stream.url) ? `id de video ${parseYouTubeId(stream.url)}` : `NO SE PUEDE SACAR EL ID de: ${stream.url}`) : 'vacío'}`,
               `último clic en Repetición: ${hace === null ? 'ninguno' : `hace ${hace}s`}`,
               ...logRepeticion,
             ]
