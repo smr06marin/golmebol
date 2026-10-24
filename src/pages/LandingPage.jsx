@@ -18,7 +18,7 @@ import { useCanalesEnVivo, resolverStreams } from '../lib/enVivoCanal'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
-import { disparoDeControl, disparoEsExclusivo } from '../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
@@ -942,7 +942,7 @@ export default function LandingPage() {
               const partidoDeStream = partidoActivoDeStream(s, partidosVivo)
               const controlStream = siteConfig?.en_vivo_control?.[s.id]
               const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
-              const sponsorMostrando = patrocinadorIdMostrando ? patrocinadores.find(p => p.id === patrocinadorIdMostrando.id) : null
+              const sponsorMostrando = patrocinadorIdMostrando ? patrocinadoresDeControl(controlStream).find(p => p.id === patrocinadorIdMostrando.id) : null
               const descansoStream = !!partidoDeStream?.vivo?.descanso
               return (
                 <div key={s.id}>

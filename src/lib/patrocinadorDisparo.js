@@ -36,3 +36,11 @@ export function disparoEsExclusivo(d, descanso) {
   if (!d) return false
   return !(d.tipo === 'video' && tamanoVideoEfectivo(d.tamano, descanso) === 'pequeno')
 }
+
+// Patrocinadores de UNA transmisión: cada transmisión tiene los suyos, guardados
+// junto a su panel de control (site_config.en_vivo_control[idTransmisión].patrocinadores).
+// Cada uno: { id, nombre, logo_url, banners: [url], video_url }
+export function patrocinadoresDeControl(c) {
+  const lista = Array.isArray(c?.patrocinadores) ? c.patrocinadores : []
+  return lista.filter(p => p && p.id && p.nombre)
+}

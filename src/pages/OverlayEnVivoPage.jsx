@@ -11,7 +11,7 @@ import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
-import { disparoDeControl, disparoEsExclusivo } from '../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
@@ -65,7 +65,6 @@ export default function OverlayEnVivoPage() {
   const [siteConfig, setSiteConfig] = useState(null)
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [hermanosVivo, setHermanosVivo] = useState([])
-  const [patrocinadores, setPatrocinadores] = useState([])
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
   const [tick, setTick] = useState(0)
   const patrocinadorVistoRef = useRef(null)
@@ -98,14 +97,8 @@ export default function OverlayEnVivoPage() {
     setMatchesVivoRaw(data || [])
   }
 
-  async function fetchPatrocinadores() {
-    const { data, error } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden').order('created_at')
-    if (error) return
-    setPatrocinadores(data || [])
-  }
-
   useEffect(() => {
-    fetchSiteConfig(); fetchPartidosVivo(); fetchPatrocinadores()
+    fetchSiteConfig(); fetchPartidosVivo()
     const tReloj = setInterval(() => setTick(x => x + 1), 1000)
     const tConfig = setInterval(fetchSiteConfig, 3000)
     const tPartidos = setInterval(fetchPartidosVivo, 5000)
@@ -302,7 +295,7 @@ export default function OverlayEnVivoPage() {
   }, [siteConfig, patrocinadorTs, patrocinadorId, control?.patrocinador_tipo, control?.patrocinador_tamano]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(patrocinadorTimerRef.current), [])
 
-  const sponsor = patrocinadorMostrando ? patrocinadores.find(p => p.id === patrocinadorMostrando.id) : null
+  const sponsor = patrocinadorMostrando ? patrocinadoresDeControl(control).find(p => p.id === patrocinadorMostrando.id) : null
 
   return (
     <>

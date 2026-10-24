@@ -11,7 +11,7 @@ import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../../components/BotonesPatrocinadores'
 import PublicidadPatrocinadoresEnVivo from '../../components/PublicidadPatrocinadoresEnVivo'
-import { disparoDeControl, disparoEsExclusivo, cargaDisparo } from '../../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, cargaDisparo, patrocinadoresDeControl } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
@@ -69,7 +69,6 @@ export default function AdminConfigSitioPage() {
   // cada uno en el panel, para mostrar su publicidad encima del video cuando
   // Sebas quiera (no son las imágenes de la repetición del gol, que son
   // aparte y rotan solas).
-  const [patrocinadoresBtn, setPatrocinadoresBtn] = useState([])
   // Qué patrocinador se está mostrando AHORA MISMO en la vista previa, por
   // transmisión — a diferencia de tabla/goles/jugadores (que quedan
   // prendidos hasta apagarlos), esto se apaga solo después de unos segundos.
@@ -158,12 +157,7 @@ export default function AdminConfigSitioPage() {
     setPartidos(conVivo)
   }
 
-  async function fetchPatrocinadoresBtn() {
-    const { data } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden')
-    setPatrocinadoresBtn(data || [])
-  }
-
-  useEffect(() => { fetchConfig(); fetchPartidos(); fetchTorneos(); fetchPatrocinadoresBtn() }, [esOrganizador, miId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchConfig(); fetchPartidos(); fetchTorneos() }, [esOrganizador, miId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apenas cambia la marca de tiempo de "mostrar este patrocinador" (botón
   // del panel), lo prende acá en la vista previa durante unos segundos y
@@ -498,7 +492,7 @@ export default function AdminConfigSitioPage() {
     // pinta nada), y eso es justo lo que confundía: se veía acá pero no allá.
     const vivo = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
     const disparo = patrocinadorMostrando[s.id] || null
-    const patrocinador = disparo ? patrocinadoresBtn.find(p => p.id === disparo.id) : null
+    const patrocinador = disparo ? patrocinadoresDeControl(c).find(p => p.id === disparo.id) : null
     return (
       <>
         {partidoSeleccionado && vivo && (
@@ -564,6 +558,7 @@ export default function AdminConfigSitioPage() {
               const c = control[s.id] || {}
               const torneoIdActual = partidoSeleccionado?.tournament_id || s.torneo_auto || null
               const tieneTorneo = !!torneoIdActual
+              const patrocinadoresStream = patrocinadoresDeControl(c)
               const puedeGraficaPartido = !!partidoSeleccionado || !!s.torneo_auto // si la transmisión sigue un torneo, la gráfica queda elegida y sale cuando empiece el partido
               const urlVideo = esCanalYoutube(s.url) ? canalesEnVivo[s.id]?.url || null : s.url
               const linkControl = s.control_token ? `${window.location.origin}/en-vivo-control/${s.control_token}` : null
@@ -707,7 +702,7 @@ export default function AdminConfigSitioPage() {
                   })()}
 
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
-                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: patrocinadoresBtn.length ? '14px' : 0 }}>
+                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: patrocinadoresStream.length ? '14px' : 0 }}>
                     <button onClick={() => cambiarOverlay(s.id, null, null)}
                       style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: !c.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
                       <Ban size={13}/> Ninguna
@@ -729,12 +724,16 @@ export default function AdminConfigSitioPage() {
                     </button>
                   </div>
 
-                  {patrocinadoresBtn.length > 0 && (
+                  {patrocinadoresStream.length > 0 && (
                     <>
                       <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
-                      <BotonesPatrocinadores denso patrocinadores={patrocinadoresBtn} onMostrar={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)}/>
+                      <BotonesPatrocinadores denso patrocinadores={patrocinadoresStream} onMostrar={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)}/>
                     </>
                   )}
+
+                  <PublicidadPatrocinadoresEnVivo
+                    patrocinadores={patrocinadoresStream}
+                    onGuardar={lista => actualizarControl(s.id, { patrocinadores: lista })}/>
 
                   {partidoSeleccionado && !partidoSeleccionado.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#f5a623', marginTop:'10px' }}>
@@ -747,12 +746,6 @@ export default function AdminConfigSitioPage() {
           </div>
         </div>
       )}
-
-      <PublicidadPatrocinadoresEnVivo
-        patrocinadores={patrocinadoresBtn}
-        onCambio={(id, cambios) => setPatrocinadoresBtn(l => l.map(p => p.id === id ? { ...p, ...cambios } : p))}
-        onNuevo={nuevo => setPatrocinadoresBtn(l => [...l, nuevo])}
-        onQuitar={id => setPatrocinadoresBtn(l => l.filter(p => p.id !== id))}/>
 
       <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'600', color:'#202124', marginBottom:'4px' }}>

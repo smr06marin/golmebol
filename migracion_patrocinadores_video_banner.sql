@@ -1,38 +1,16 @@
 -- ============================================================
--- PATROCINADORES — TODO EN UNO (tabla + banners + video + almacenamiento)
+-- PUBLICIDAD DE LAS TRANSMISIONES — almacenamiento para logos, banners y VIDEOS
 -- Cómo ejecutar: Supabase → SQL Editor → pegar TODO → RUN.
--- Es seguro ejecutarlo más de una vez, y no borra ni cambia lo que ya existe.
--- Sirve aunque nunca hayas creado la tabla de patrocinadores.
+-- Es seguro ejecutarlo más de una vez. No toca ninguna tabla ni dato existente.
 --
--- Qué deja listo:
---  1. La tabla patrocinadores_golmebol (si no existía).
---  2. Las columnas banners (lista de imágenes) y video_url (video corto).
---  3. El almacenamiento "patrocinadores" para logos, banners Y VIDEOS:
---     imágenes de hasta 5 MB y videos de hasta 50 MB (límite del plan gratis).
+-- Los patrocinadores de cada transmisión (nombre, logo, banners y video) se guardan
+-- junto al panel de control de ESA transmisión, así que NO hace falta ninguna tabla.
+-- Lo único que se necesita es que el almacenamiento "patrocinadores" acepte:
+--   · imágenes de hasta 5 MB (logos y banners) y
+--   · videos de hasta 50 MB (MP4, WebM, MOV — 50 MB es el máximo del plan gratis).
+-- (El almacenamiento viejo solo aceptaba imágenes de 5 MB.)
 -- ============================================================
 
--- 1. Tabla
-create table if not exists public.patrocinadores_golmebol (
-  id          uuid primary key default gen_random_uuid(),
-  nombre      text not null,
-  logo_url    text,
-  whatsapp    text,
-  direccion   text,
-  facebook    text,
-  instagram   text,
-  tiktok      text,
-  activo      boolean not null default true,
-  orden       integer not null default 0,
-  created_at  timestamptz default now()
-);
-create index if not exists idx_patrocinadores_golmebol_orden on public.patrocinadores_golmebol(orden);
-alter table public.patrocinadores_golmebol disable row level security;
-
--- 2. Columnas nuevas
-alter table public.patrocinadores_golmebol add column if not exists banners   text[] not null default '{}';
-alter table public.patrocinadores_golmebol add column if not exists video_url text;
-
--- 3. Almacenamiento (el bucket de antes solo aceptaba imágenes de 5 MB: aquí se amplía para videos)
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'patrocinadores', 'patrocinadores', true,
@@ -65,6 +43,3 @@ drop policy if exists "patrocinadores_delete" on storage.objects;
 create policy "patrocinadores_delete"
 on storage.objects for delete
 using (bucket_id = 'patrocinadores' and auth.role() = 'authenticated');
-
--- Refresca la lista de tablas de la API para que reconozca la tabla y columnas nuevas
-notify pgrst, 'reload schema';

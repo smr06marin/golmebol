@@ -23,7 +23,7 @@ import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../components/BotonesPatrocinadores'
-import { disparoDeControl, disparoEsExclusivo, cargaDisparo } from '../lib/patrocinadorDisparo'
+import { disparoDeControl, disparoEsExclusivo, cargaDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
@@ -38,7 +38,6 @@ export default function EnVivoControlLinkPage() {
   const [siteConfig, setSiteConfig] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [partidosStream, setPartidosStream] = useState([])
-  const [patrocinadoresBtn, setPatrocinadoresBtn] = useState([])
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
   const [repeticion, setRepeticion] = useState(null)
   // Referencia al <LiveEmbed> de este stream — para leer, justo al apretar
@@ -54,6 +53,7 @@ export default function EnVivoControlLinkPage() {
   const canalesEnVivo = useCanalesEnVivo(streamParaCanal)
   const urlVideo = stream ? (esCanalYoutube(stream.url) ? canalesEnVivo[stream.id]?.url || null : stream.url) : null
   const control = (siteConfig?.en_vivo_control || {})[stream?.id] || {}
+  const patrocinadoresBtn = patrocinadoresDeControl(control)
 
   async function fetchSiteConfig() {
     const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
@@ -61,12 +61,7 @@ export default function EnVivoControlLinkPage() {
     setCargando(false)
   }
 
-  async function fetchPatrocinadoresBtn() {
-    const { data } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden')
-    setPatrocinadoresBtn(data || [])
-  }
-
-  useEffect(() => { fetchSiteConfig(); fetchPatrocinadoresBtn() }, [])
+  useEffect(() => { fetchSiteConfig() }, [])
 
   // Respaldo de refresco además del realtime de abajo (ver
   // migracion_realtime_site_config.sql) — así este panel igual se entera de
