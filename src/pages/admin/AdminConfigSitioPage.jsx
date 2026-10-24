@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Link2, Copy, Check, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import { esCanalYoutube, useCanalesEnVivo } from '../../lib/enVivoCanal'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
-import BotonesPartesTabla from '../../components/BotonesPartesTabla'
+import MesaControlEnVivo from '../../components/MesaControlEnVivo'
 import { overlayTapaMarcador } from '../../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
-import BotonesPatrocinadores from '../../components/BotonesPatrocinadores'
 import PublicidadPatrocinadoresEnVivo from '../../components/PublicidadPatrocinadoresEnVivo'
 import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
@@ -692,20 +691,17 @@ export default function AdminConfigSitioPage() {
                     En OBS: Fuentes → + → Navegador, pega este link, ancho 1920 y alto 1080, y pónlo encima de la cámara. Fondo transparente: lo que prendas o apagues en este panel se ve en el video de YouTube. (La repetición y la cámara lenta de abajo salen dentro del video si marcas la casilla "Repetición dentro de la transmisión" de esta transmisión; para ver qué pasa, abre este link con ?prueba=1&debug=1 al final.)
                   </div>
 
-                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
-                  <div style={{ fontSize:'.72rem', color:'#9aa0a6', marginBottom:'8px' }}>
-                    Devuélvete con la barra del video de arriba hasta la jugada que quieras repetir, pausalo ahí, y aprieta uno de estos dos — se muestra desde ese mismo punto.
-                  </div>
-                  <div style={{ display:'flex', gap:'8px', marginBottom:'14px' }}>
-                    <button onClick={() => dispararRepeticion(s, false)}
-                      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:S.green, border:'none', borderRadius:'8px', cursor:'pointer', color:'#0a0a0a', fontSize:'.8rem', fontWeight:'700' }}>
-                      <PlayCircle size={15}/> Repetición
-                    </button>
-                    <button onClick={() => dispararRepeticion(s, true)}
-                      style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'10px', background:'#2a2a2a', border:`1px solid ${S.green}`, borderRadius:'8px', cursor:'pointer', color:S.green, fontSize:'.8rem', fontWeight:'700' }}>
-                      <Gauge size={15}/> Cámara lenta
-                    </button>
-                  </div>
+                  <MesaControlEnVivo
+                    control={c} tieneTorneo={tieneTorneo} puedeGraficaPartido={puedeGraficaPartido}
+                    tablaTotal={tablas[c.overlay_tournament_id]?.length || 0}
+                    patrocinadores={patrocinadoresStream} activoPatrocinador={patrocinadorMostrando[s.id] || null}
+                    repeticionEnTransmision={!!s.repeticion_transmision}
+                    onRepeticion={lenta => dispararRepeticion(s, lenta)}
+                    onOverlay={o => cambiarOverlay(s.id, o, o === 'tabla' ? torneoIdActual : null)}
+                    onPagina={pag => actualizarControl(s.id, { tabla_pagina: pag })}
+                    onMostrarPatrocinador={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)}
+                    onApagarPatrocinador={() => apagarPatrocinador(s.id)}/>
+                  <div style={{ height:'14px' }}/>
 
                   {tieneTorneo && (() => {
                     const listaLogos = logosPorTorneo[torneoIdActual] || []
@@ -764,41 +760,6 @@ export default function AdminConfigSitioPage() {
                       </>
                     )
                   })()}
-
-                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
-                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: (patrocinadoresStream.length || c.overlay === 'tabla') ? '14px' : 0 }}>
-                    <button onClick={() => cambiarOverlay(s.id, null, null)}
-                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: !c.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
-                      <Ban size={13}/> Ninguna
-                    </button>
-                    <button onClick={() => cambiarOverlay(s.id, 'tabla', torneoIdActual)}
-                      disabled={!tieneTorneo} title={tieneTorneo ? '' : 'Elige un partido para esta transmisión, así se sabe de qué torneo mostrar la tabla'}
-                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'tabla' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: tieneTorneo ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: tieneTorneo ? 1 : .45 }}>
-                      <Table2 size={13}/> Tabla de posiciones
-                    </button>
-                    <button onClick={() => cambiarOverlay(s.id, 'goles', null)}
-                      disabled={!puedeGraficaPartido} title={puedeGraficaPartido ? '' : 'Elige un partido para esta transmisión, así se sabe de quién mostrar los goles'}
-                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
-                      <ListOrdered size={13}/> Goles del partido
-                    </button>
-                    <button onClick={() => cambiarOverlay(s.id, 'jugadores', null)}
-                      disabled={!puedeGraficaPartido} title={puedeGraficaPartido ? '' : 'Elige un partido para esta transmisión, así se sabe la nómina de quién mostrar'}
-                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
-                      <Users size={13}/> Jugadores
-                    </button>
-                  </div>
-
-                  {c.overlay === 'tabla' && (
-                    <BotonesPartesTabla denso total={tablas[c.overlay_tournament_id]?.length} pagina={c.tabla_pagina}
-                      onElegir={pag => actualizarControl(s.id, { tabla_pagina: pag })}/>
-                  )}
-
-                  {patrocinadoresStream.length > 0 && (
-                    <>
-                      <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
-                      <BotonesPatrocinadores denso patrocinadores={patrocinadoresStream} onMostrar={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)} onApagar={() => apagarPatrocinador(s.id)} activo={patrocinadorMostrando[s.id] || null}/>
-                    </>
-                  )}
 
                   <PublicidadPatrocinadoresEnVivo
                     patrocinadores={patrocinadoresStream}

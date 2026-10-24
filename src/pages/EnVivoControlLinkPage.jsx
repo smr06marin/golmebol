@@ -15,16 +15,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { PlayCircle, Gauge, Table2, ListOrdered, Ban, Users } from 'lucide-react'
 import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
-import BotonesPartesTabla from '../components/BotonesPartesTabla'
+import MesaControlEnVivo from '../components/MesaControlEnVivo'
 import { overlayTapaMarcador } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
-import BotonesPatrocinadores from '../components/BotonesPatrocinadores'
 import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
@@ -242,68 +240,22 @@ export default function EnVivoControlLinkPage() {
           </div>
         )}
 
-        <div style={{ marginTop:'20px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
-          <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
-          <div style={{ fontSize:'.74rem', color:'#9aa0a6', marginBottom:'10px' }}>
-            Devuélvete con la barra del video de arriba hasta la jugada que quieras repetir, pausalo ahí, y aprieta uno de estos dos — se muestra desde ese mismo punto.
-          </div>
-          <div style={{ display:'flex', gap:'8px', marginBottom:'4px' }}>
-            <button onClick={() => dispararRepeticion(false)}
-              style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'13px', background:S.green, border:'none', borderRadius:'10px', cursor:'pointer', color:'#0a0a0a', fontSize:'.85rem', fontWeight:'700' }}>
-              <PlayCircle size={17}/> Repetición
-            </button>
-            <button onClick={() => dispararRepeticion(true)}
-              style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'13px', background:'#2a2a2a', border:`1px solid ${S.green}`, borderRadius:'10px', cursor:'pointer', color:S.green, fontSize:'.85rem', fontWeight:'700' }}>
-              <Gauge size={17}/> Cámara lenta
-            </button>
-          </div>
-
-        </div>
-
-        <div style={{ marginTop:'14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
-          <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'8px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
-          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-            <button onClick={() => cambiarOverlay(null, null)}
-              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: !control.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'700' }}>
-              <Ban size={14}/> Ninguna
-            </button>
-            <button onClick={() => cambiarOverlay('tabla', torneoIdActual)}
-              disabled={!tieneTorneo}
-              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'tabla' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: tieneTorneo ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: tieneTorneo ? 1 : .45 }}>
-              <Table2 size={14}/> Tabla
-            </button>
-            <button onClick={() => cambiarOverlay('goles', null)}
-              disabled={!puedeGraficaPartido}
-              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
-              <ListOrdered size={14}/> Goles
-            </button>
-            <button onClick={() => cambiarOverlay('jugadores', null)}
-              disabled={!puedeGraficaPartido}
-              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
-              <Users size={14}/> Jugadores
-            </button>
-          </div>
-          {control.overlay === 'tabla' && (
-            <div style={{ marginTop:'12px' }}>
-              <BotonesPartesTabla total={tablas[control.overlay_tournament_id]?.length} pagina={control.tabla_pagina}
-                onElegir={pag => actualizarControl({ tabla_pagina: pag })}/>
-            </div>
-          )}
+        <div style={{ marginTop:'14px' }}>
+          <MesaControlEnVivo
+            control={control} tieneTorneo={tieneTorneo} puedeGraficaPartido={puedeGraficaPartido}
+            tablaTotal={tablas[control.overlay_tournament_id]?.length || 0}
+            patrocinadores={patrocinadoresBtn} activoPatrocinador={patrocinadorMostrando}
+            repeticionEnTransmision={!!stream.repeticion_transmision}
+            onRepeticion={dispararRepeticion}
+            onOverlay={o => cambiarOverlay(o, o === 'tabla' ? torneoIdActual : null)}
+            onPagina={pag => actualizarControl({ tabla_pagina: pag })}
+            onMostrarPatrocinador={mostrarPatrocinador} onApagarPatrocinador={apagarPatrocinador}/>
           {torneoAuto && !partido && (
-            <div style={{ fontSize:'.7rem', color:'#9aa0a6', marginTop:'10px', lineHeight:1.45 }}>
+            <div style={{ fontSize:'.78rem', color:'#9aa0a6', marginTop:'10px', lineHeight:1.45 }}>
               Todavía no hay un partido en vivo. La tabla ya se puede mostrar; Goles y Jugadores quedan elegidos y salen solos apenas el árbitro empiece la planilla.
             </div>
           )}
         </div>
-
-        {patrocinadoresBtn.length > 0 && (
-          <div style={{ marginTop:'14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
-            <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'8px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
-            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-              <div style={{ width:'100%' }}><BotonesPatrocinadores patrocinadores={patrocinadoresBtn} onMostrar={mostrarPatrocinador} onApagar={apagarPatrocinador} activo={patrocinadorMostrando}/></div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
