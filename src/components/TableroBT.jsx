@@ -106,8 +106,8 @@ export default function TableroBT({ partido, tag, goles, marcador, subtitulo, pi
           <div className="ev-bt-n ev-bt-nr"><span>{partido.away?.name || '—'}</span></div>
           <div className="ev-bt-cl ev-bt-cl-l" style={{ background: cl }}/>
           <div className="ev-bt-cl ev-bt-cl-r" style={{ background: cv }}/>
-          <div className="ev-bt-esc ev-bt-esc-l"><Escudo url={partido.home?.logo_url} name={partido.home?.name} size={13}/></div>
-          <div className="ev-bt-esc ev-bt-esc-r"><Escudo url={partido.away?.logo_url} name={partido.away?.name} size={13}/></div>
+          <div className="ev-bt-esc ev-bt-esc-l"><Escudo url={partido.home?.logo_url} name={partido.home?.name} size={15}/></div>
+          <div className="ev-bt-esc ev-bt-esc-r"><Escudo url={partido.away?.logo_url} name={partido.away?.name} size={15}/></div>
         </div>
         {cuerpo}
       </div>

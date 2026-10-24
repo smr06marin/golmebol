@@ -19,8 +19,10 @@ const claveGol = g => `${g.equipo}|${g.numero}|${g.jugador}|${g.periodo}|${g.min
 const contar = goles => goles.reduce((acc, g) => { const k = claveGol(g); acc[k] = (acc[k] || 0) + 1; return acc }, {})
 const mismas = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => a[k] === b[k]) }
 
-// `bottom`: altura del aviso (se sube cuando la lista de goles o la nómina están prendidas)
-export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
+// `bottom`: altura del aviso desde abajo.
+// `arriba`: el aviso sale arriba (en el lugar del marcador) en vez de abajo — se usa cuando hay un tablero
+// grande abajo (goles, alineaciones, descanso, final), que además esconde el marcador de arriba.
+export default function GolAvisoEnVivoOverlay({ partido, bottom = '17%', arriba = false }) {
   const goles = partido ? extraerGoles(partido) : []
   const idPartido = partido?.id ?? null
   const claves = contar(goles)
@@ -64,7 +66,7 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
   const local = aviso.equipo === 'local'
   const equipo = local ? partido.home : partido.away
   const color = (local ? partido.colores?.colorLocal : partido.colores?.colorVisitante) || '#1a73e8'
-  // Cuántos goles lleva ESTE jugador en el partido (con el que acaba de hacer). Solo se muestra si ya son 2 o más.
+  // Cuántos goles lleva ESTE jugador en el partido (con el que acaba de hacer): siempre se muestra, en una caja dorada grande.
   const totalJugador = goles.filter(g => g.equipo === aviso.equipo && g.numero === aviso.numero && g.jugador === aviso.jugador).length
 
   return (
@@ -82,7 +84,7 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
           <img src={fotoUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 18px rgba(0,0,0,.5))' }}/>
         </div>
       )}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom, zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      <div style={{ position: 'absolute', left: 0, right: 0, ...(arriba ? { top: '5%' } : { bottom }), zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
         <div key={aviso.n} className="ev-u ev-av-w">
           <div className="ev-av">
             {aviso.numero && (
@@ -90,14 +92,19 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '14%' }) {
             )}
             <div className="ev-av-body">
               <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span>
-                {totalJugador >= 2 && <span className="ev-av-cant">⚽ {totalJugador} GOLES{totalJugador === 3 ? ' · HAT-TRICK' : ''}</span>}
-                <span className="ev-av-firma">Datos en vivo · <b>GOLMEBOL</b></span></div>
+                {totalJugador === 3 && <span className="ev-av-cant">HAT-TRICK</span>}
+                <span className="ev-av-firma"><b>GOLMEBOL</b></span></div>
               <div className="ev-av-nom ev-txt">{aviso.jugador}</div>
               <div className="ev-av-eq">
                 <Escudo url={equipo?.logo_url} name={equipo?.name} size={4.6}/>
                 <span className="ev-txt">{equipo?.name || ''}</span>
                 <span className="ev-av-sc">{partido.vivo?.golesLocal ?? 0} – {partido.vivo?.golesVis ?? 0}</span>
               </div>
+            </div>
+            <div className="ev-av-ct" aria-label={`${totalJugador} ${totalJugador === 1 ? 'gol' : 'goles'} en el partido`}>
+              <b>{totalJugador}</b>
+              <span>{totalJugador === 1 ? 'Gol' : 'Goles'}</span>
+              <i>en el partido</i>
             </div>
           </div>
         </div>

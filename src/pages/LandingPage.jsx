@@ -16,6 +16,7 @@ import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
 import { useCanalesEnVivo, resolverStreams } from '../lib/enVivoCanal'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
+import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import { disparoDeControl, disparoEsExclusivo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
@@ -944,6 +945,8 @@ export default function LandingPage() {
               const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
               const sponsorMostrando = patrocinadorIdMostrando ? patrocinadoresDeControl(controlStream).find(p => p.id === patrocinadorIdMostrando.id) : null
               const descansoStream = !!partidoDeStream?.vivo?.descanso
+              // Con el tablero de goles abajo se esconde el marcador de arriba (la mirada se queda en el minuto a minuto)
+              const tapaMarcador = overlayTapaMarcador(controlStream?.overlay) && !!partidoDeStream && !(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream))
               return (
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
@@ -951,13 +954,13 @@ export default function LandingPage() {
                   <LiveEmbed url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
-                        {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
-                        {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} bottom={controlStream?.overlay === 'jugadores' ? '55%' : controlStream?.overlay === 'goles' ? '36%' : '14%'}/>}
+                        {partidoDeStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
+                        {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
                         {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} silencio onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
                         {!(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream)) && (
                           <>
                             {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
-                            {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]}/>}
+                            {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]} pagina={controlStream.tabla_pagina}/>}
                             {controlStream?.overlay === 'jugadores' && partidoDeStream && <JugadoresEnVivoOverlay partido={partidoDeStream}/>}
                           </>
                         )}

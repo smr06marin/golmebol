@@ -17,7 +17,8 @@ const LADO = { display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.2vw, 12
 // Cifras (marcador y cronómetro) en un trazo normal, sin negrilla, y de ancho
 // fijo por dígito: en video comprimido (YouTube, celular) una cifra delgada y
 // espaciada se lee mejor que una negrilla que se empasta.
-const NUMEROS = { fontFamily: '"Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif', fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }
+const FUENTE = '"Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif'
+const NUMEROS = { fontFamily: FUENTE, fontWeight: 500, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }
 
 // El color de uniforme lo elige el árbitro con un selector libre (planilla
 // completa) o de una paleta fija (planilla rápida) — en cualquier caso puede
@@ -41,7 +42,7 @@ function EscudoConTarjetas({ logo_url, name, amarillas, rojas, size = 'clamp(25p
       <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,.9)' }}>
         {logo_url
           ? <img src={logo_url} alt={name || ''} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/>
-          : <span style={{ fontSize: 'clamp(.65rem, 2.8vw, .9rem)', fontWeight: 900, color: '#1a3a8a' }}>{iniciales}</span>}
+          : <span style={{ fontSize: 'clamp(.65rem, 2.8vw, .9rem)', fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
       </div>
       {hayTarjetas && (
         <div style={{ position: 'absolute', bottom: -4, right: -6, display: 'flex', gap: '1px', background: '#000', borderRadius: '5px', padding: '1px 3px', lineHeight: 1, boxShadow: '0 0 0 1px rgba(255,255,255,.25)' }}>
@@ -61,8 +62,8 @@ function EtiquetaEquipo({ nombre, color, lado }) {
   const derecha = lado === 'derecha'
   return (
     <div style={{
-      background: bg, color: textoContraste(color), fontWeight: 900,
-      fontSize: 'clamp(.6rem, 3vw, 1.02rem)', letterSpacing: '.01em',
+      background: bg, color: textoContraste(color), fontFamily: FUENTE, fontWeight: 700,
+      fontSize: 'clamp(.58rem, 2.8vw, .95rem)', letterSpacing: '.01em',
       // el nombre va SIEMPRE en el centro de su placa (el padding de cada lado compensa el corte en diagonal)
       padding: derecha ? '5px 12px 5px 17px' : '5px 17px 5px 12px',
       // hasta 2 lineas: en celular un nombre largo baja de renglon en vez de cortarse
@@ -126,7 +127,7 @@ export default function MarcadorEnVivoOverlay({ partido }) {
         {/* tres columnas: el cronómetro (o DESCANSO) queda SIEMPRE en el centro, el punto rojo a su izquierda y faltas/global a su derecha */}
         <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ROJO_VIVO, justifySelf: 'end' }}/>
         <span style={vivo.descanso
-          ? { fontSize: 'clamp(.78rem, 3.3vw, .98rem)', fontWeight: 700, color: '#fff', letterSpacing: '.06em', whiteSpace: 'nowrap' }
+          ? { fontFamily: FUENTE, fontSize: 'clamp(.78rem, 3.3vw, .98rem)', fontWeight: 600, color: '#fff', letterSpacing: '.06em', whiteSpace: 'nowrap' }
           : { ...NUMEROS, fontSize: 'clamp(.9rem, 3.8vw, 1.12rem)', color: '#fff', letterSpacing: '.03em', whiteSpace: 'nowrap' }}>
           {vivo.descanso ? 'DESCANSO' : vivo.extra
             ? <><span style={{ fontSize: '.78em', fontWeight: 700, color: '#f5a623', letterSpacing: '.08em', marginRight: '.4em' }}>EXTRA</span>{vivo.extra}</>

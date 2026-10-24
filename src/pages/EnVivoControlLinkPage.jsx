@@ -20,6 +20,8 @@ import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
+import BotonesPartesTabla from '../components/BotonesPartesTabla'
+import { overlayTapaMarcador } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../components/BotonesPatrocinadores'
@@ -134,7 +136,7 @@ export default function EnVivoControlLinkPage() {
   }
 
   function cambiarOverlay(overlay, tournamentId) {
-    actualizarControl({ overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
+    actualizarControl({ overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null, tabla_pagina: null })
   }
 
   function mostrarPatrocinador(patrocinadorId, tipo, tamano) {
@@ -188,6 +190,8 @@ export default function EnVivoControlLinkPage() {
   }
 
   const sponsor = patrocinadorMostrando ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando.id) : null
+  // El tablero de goles (abajo) esconde el marcador de arriba para que la mirada se quede en él
+  const tapaMarcador = overlayTapaMarcador(control.overlay) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, !!vivo?.descanso))
   const tieneTorneo = !!torneoIdActual
   const puedeGraficaPartido = !!partido || !!torneoAuto // en una transmisión que sigue un torneo se puede dejar elegida la gráfica: aparece cuando empiece el partido
 
@@ -205,7 +209,7 @@ export default function EnVivoControlLinkPage() {
         {urlVideo && <LiveEmbed ref={liveEmbedRef} url={urlVideo} titulo={stream.titulo} S={S} logoTorneo={logoTorneoActual}
           overlay={(
             <>
-              {partido && vivo && (
+              {partido && vivo && !tapaMarcador && (
                 <MarcadorEnVivoOverlay partido={{
                   home: partido.home, away: partido.away, tournaments: partido.tournaments, vivo,
                   colores: derivarColoresUniforme(partido), detalle: derivarFaltasYTarjetas(partido),
@@ -215,7 +219,7 @@ export default function EnVivoControlLinkPage() {
               {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, !!vivo?.descanso)) && (
                 <>
                   {control.overlay === 'goles' && partido && vivo && <GolesEnVivoOverlay partido={partido}/>}
-                  {control.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[control.overlay_tournament_id]}/>}
+                  {control.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[control.overlay_tournament_id]} pagina={control.tabla_pagina}/>}
                   {control.overlay === 'jugadores' && partido && vivo && <JugadoresEnVivoOverlay partido={partido}/>}
                 </>
               )}
@@ -273,6 +277,12 @@ export default function EnVivoControlLinkPage() {
               <Users size={14}/> Jugadores
             </button>
           </div>
+          {control.overlay === 'tabla' && (
+            <div style={{ marginTop:'12px' }}>
+              <BotonesPartesTabla total={tablas[control.overlay_tournament_id]?.length} pagina={control.tabla_pagina}
+                onElegir={pag => actualizarControl({ tabla_pagina: pag })}/>
+            </div>
+          )}
           {torneoAuto && !partido && (
             <div style={{ fontSize:'.7rem', color:'#9aa0a6', marginTop:'10px', lineHeight:1.45 }}>
               Todavía no hay un partido en vivo. La tabla ya se puede mostrar; Goles y Jugadores quedan elegidos y salen solos apenas el árbitro empiece la planilla.

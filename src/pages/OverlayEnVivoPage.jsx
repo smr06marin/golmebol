@@ -9,6 +9,7 @@ import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
+import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import { disparoDeControl, disparoEsExclusivo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
@@ -296,6 +297,8 @@ export default function OverlayEnVivoPage() {
   useEffect(() => () => clearTimeout(patrocinadorTimerRef.current), [])
 
   const sponsor = patrocinadorMostrando ? patrocinadoresDeControl(control).find(p => p.id === patrocinadorMostrando.id) : null
+  // Con el tablero grande de abajo (goles / descanso / final) se esconde el marcador de arriba, para que la mirada se quede en el minuto a minuto
+  const tapaMarcador = overlayTapaMarcador(overlayActivo) && (overlayActivo !== 'final' || !!partidoFinal) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto))
 
   return (
     <>
@@ -311,13 +314,13 @@ export default function OverlayEnVivoPage() {
       }}>
         <div style={{ position: 'absolute', left: 0, top: 0, width: ANCHO_ESCENARIO, height: altoEscenario, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
           {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)}/>}
-          {partido && <MarcadorEnVivoOverlay partido={partido}/>}
-          {partido && <GolAvisoEnVivoOverlay partido={partido} bottom={overlayActivo === 'jugadores' ? '55%' : overlayActivo === 'goles' ? '36%' : '14%'}/>}
+          {partido && !tapaMarcador && <MarcadorEnVivoOverlay partido={partido}/>}
+          {partido && <GolAvisoEnVivoOverlay partido={partido} {...propsAvisoGol(overlayActivo, tapaMarcador)}/>}
           {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={descansoAuto} onTerminar={() => setPatrocinadorMostrando(null)}/>}
           {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto)) && (
             <>
               {overlayActivo === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
-              {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pie={pieInstitucional}/>}
+              {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pagina={control?.overlay === 'tabla' ? control.tabla_pagina : null} pie={pieInstitucional}/>}
               {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido} pie={pieInstitucional}/>}
               {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}
               {overlayActivo === 'final' && partidoFinal && <ResumenGolesOverlay partido={partidoFinal} goles={partidoFinal.goles} modo="final"/>}

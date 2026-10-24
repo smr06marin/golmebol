@@ -7,6 +7,8 @@ import { esCanalYoutube, useCanalesEnVivo } from '../../lib/enVivoCanal'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
+import BotonesPartesTabla from '../../components/BotonesPartesTabla'
+import { overlayTapaMarcador } from '../../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../../components/BotonesPatrocinadores'
@@ -440,7 +442,7 @@ export default function AdminConfigSitioPage() {
   // del video. Para la tabla hace falta saber de qué torneo — se usa el del
   // partido que ya tiene elegido esa transmisión (si tiene uno).
   function cambiarOverlay(streamId, overlay, tournamentId) {
-    actualizarControl(streamId, { overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
+    actualizarControl(streamId, { overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null, tabla_pagina: null })
   }
 
   // Muestra la publicidad de un patrocinador encima del video unos segundos
@@ -528,9 +530,11 @@ export default function AdminConfigSitioPage() {
     const vivo = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
     const disparo = patrocinadorMostrando[s.id] || null
     const patrocinador = disparo ? patrocinadoresDeControl(c).find(p => p.id === disparo.id) : null
+    // Los tableros grandes de abajo (goles) esconden el marcador de arriba para que la mirada se quede en ellos
+    const tapaMarcador = overlayTapaMarcador(c?.overlay) && !!partidoSeleccionado && !(patrocinador && disparoEsExclusivo(disparo, !!vivo?.descanso))
     return (
       <>
-        {partidoSeleccionado && vivo && (
+        {partidoSeleccionado && vivo && !tapaMarcador && (
           <MarcadorEnVivoOverlay partido={{
             home: partidoSeleccionado.home, away: partidoSeleccionado.away,
             tournaments: partidoSeleccionado.tournaments,
@@ -546,7 +550,7 @@ export default function AdminConfigSitioPage() {
         {!(patrocinador && disparoEsExclusivo(disparo, !!vivo?.descanso)) && (
           <>
             {c?.overlay === 'goles' && partidoSeleccionado && vivo && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
-            {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]}/>}
+            {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]} pagina={c.tabla_pagina}/>}
             {c?.overlay === 'jugadores' && partidoSeleccionado && vivo && <JugadoresEnVivoOverlay partido={partidoSeleccionado}/>}
           </>
         )}
@@ -755,7 +759,7 @@ export default function AdminConfigSitioPage() {
                   })()}
 
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>GRÁFICA ENCIMA DEL VIDEO</div>
-                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: patrocinadoresStream.length ? '14px' : 0 }}>
+                  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom: (patrocinadoresStream.length || c.overlay === 'tabla') ? '14px' : 0 }}>
                     <button onClick={() => cambiarOverlay(s.id, null, null)}
                       style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: !c.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
                       <Ban size={13}/> Ninguna
@@ -776,6 +780,11 @@ export default function AdminConfigSitioPage() {
                       <Users size={13}/> Jugadores
                     </button>
                   </div>
+
+                  {c.overlay === 'tabla' && (
+                    <BotonesPartesTabla denso total={tablas[c.overlay_tournament_id]?.length} pagina={c.tabla_pagina}
+                      onElegir={pag => actualizarControl(s.id, { tabla_pagina: pag })}/>
+                  )}
 
                   {patrocinadoresStream.length > 0 && (
                     <>
