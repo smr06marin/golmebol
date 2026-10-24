@@ -85,7 +85,7 @@ function Banners({ patrocinador, onTerminar: alTerminar }) {
   const pantallaCompleta = completo[i] === true
   return (
     <div style={pantallaCompleta
-      ? { position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }
+      ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 3, pointerEvents: 'none' }
       : { position: 'absolute', left: 0, right: 0, bottom: '3%', zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
       <style>{'@keyframes gmBannerEntra{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}'}</style>
       <img key={i} src={lista[i]} alt={patrocinador.nombre || ''} onLoad={alCargar}
@@ -130,7 +130,7 @@ function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTermina
   )
   if (grande) {
     return (
-      <div style={{ position: 'absolute', inset: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)', pointerEvents: 'none', padding: '5%', boxSizing: 'border-box' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)', pointerEvents: 'none', padding: '5%', boxSizing: 'border-box' }}>
         <div style={{ width: 'min(100%, 760px)', maxHeight: '100%', display: 'flex', justifyContent: 'center' }}>{video}</div>
       </div>
     )
