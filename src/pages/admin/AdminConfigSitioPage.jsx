@@ -47,6 +47,12 @@ export default function AdminConfigSitioPage() {
   const [msg, setMsg] = useState(null)
   const [partidos, setPartidos] = useState([]) // partidos elegibles para el marcador (no finalizados)
   const [diagnosticos, setDiagnosticos] = useState({}) // { [streamId]: texto } — respuesta de /api/yt-en-vivo?debug=1 (para ver qué recibe el servidor de YouTube)
+  // Pestaña elegida arriba para ver SOLO las transmisiones de un torneo ('todas' | id de torneo | 'sin')
+  const [torneoVista, setTorneoVistaEstado] = useState(() => { try { return localStorage.getItem('gm_en_vivo_torneo_vista') || 'todas' } catch { return 'todas' } })
+  function setTorneoVista(v) {
+    setTorneoVistaEstado(v)
+    try { localStorage.setItem('gm_en_vivo_torneo_vista', v) } catch { /* sin almacenamiento: solo se pierde la pestaña recordada */ }
+  }
   const [torneos, setTorneos] = useState([]) // torneos que una transmisión puede "seguir" (torneo_auto)
   const [canchasPorTorneo, setCanchasPorTorneo] = useState({}) // { [torneoId]: [{id, nombre, escenario}] }
   const [imagenesRepeticion, setImagenesRepeticion] = useState([]) // [{id, url}] — rotan en la repetición del gol
@@ -463,7 +469,10 @@ export default function AdminConfigSitioPage() {
   const tablas = useMemo(() => tablasConVivo(basesTabla, []), [basesTabla])
 
   function agregarStream() {
-    setStreams(s => [...s, streamVacio(esOrganizador ? miId : null)])
+    // Si estás viendo la pestaña de un torneo, la transmisión nueva ya queda siguiendo ese torneo
+    const nueva = streamVacio(esOrganizador ? miId : null)
+    if (vistaActual !== 'todas' && vistaActual !== 'sin') nueva.torneo_auto = vistaActual
+    setStreams(s => [...s, nueva])
   }
   function quitarStream(id) {
     setStreams(s => s.filter(x => x.id !== id))
@@ -477,6 +486,32 @@ export default function AdminConfigSitioPage() {
   // OBS), pero el video solo se muestra cuando el canal está transmitiendo.
   const canalesEnVivo = useCanalesEnVivo(streams)
   const streamsPreview = streams.filter(s => s.activo && (s.url || '').trim())
+
+  // ── Pestañas por torneo ──────────────────────────────────────────────
+  // El torneo de una transmisión: el que sigue solo (torneo_auto) o, si tiene
+  // un partido puntual elegido, el torneo de ese partido. Sin ninguno → 'sin'.
+  function torneoDeStream(st) {
+    if (st.torneo_auto) return st.torneo_auto
+    const ids = idsPartidosDeStream(st)
+    const m = ids.length ? partidos.find(x => ids.includes(x.id)) : null
+    return m?.tournament_id || null
+  }
+  const nombreTorneo = id => torneos.find(t => t.id === id)?.name || partidos.find(x => x.tournament_id === id)?.tournaments?.name || 'Torneo'
+  const pestanas = (() => {
+    const mapa = {}
+    streams.forEach(st => {
+      const k = torneoDeStream(st) || 'sin'
+      if (!mapa[k]) mapa[k] = { id: k, total: 0, enVivo: false }
+      mapa[k].total += 1
+      if (partidoActivoDeStream(st, partidos)?.enVivo) mapa[k].enVivo = true
+    })
+    return Object.values(mapa)
+      .map(x => ({ ...x, nombre: x.id === 'sin' ? 'Sin torneo' : nombreTorneo(x.id) }))
+      .sort((a, b) => (a.id === 'sin') - (b.id === 'sin') || a.nombre.localeCompare(b.nombre))
+  })()
+  const vistaActual = (torneoVista === 'todas' || pestanas.some(x => x.id === torneoVista)) ? torneoVista : 'todas'
+  const enVista = st => vistaActual === 'todas' || (torneoDeStream(st) || 'sin') === vistaActual
+  const streamsPreviewVista = streamsPreview.filter(enVista)
 
   // Arma lo que va ENCIMA del video para una transmisión: el marcador (si
   // tiene partido elegido) siempre va; debajo de todo, la gráfica de tabla o
@@ -538,13 +573,31 @@ export default function AdminConfigSitioPage() {
       <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:'0 0 4px' }}>Configuración del sitio</h1>
       <p style={{ color:'#5f6368', margin:'0 0 24px', fontSize:'.875rem' }}>Lo que pongas acá se muestra en la página de inicio pública (golmebol.com).</p>
 
+      {streams.length >= 2 && pestanas.length >= 1 && (
+        <div role="tablist" aria-label="Transmisiones por torneo"
+          style={{ display:'flex', gap:'8px', overflowX:'auto', WebkitOverflowScrolling:'touch', padding:'2px 2px 12px', margin:'0 -2px 8px', scrollbarWidth:'thin' }}>
+          {[{ id:'todas', nombre:'Todas', total: streams.length, enVivo: false }, ...pestanas].map(t => {
+            const activa = vistaActual === t.id
+            return (
+              <button key={t.id} role="tab" aria-selected={activa} onClick={() => setTorneoVista(t.id)}
+                style={{ flexShrink:0, display:'flex', alignItems:'center', gap:'7px', padding:'9px 14px', borderRadius:'999px', cursor:'pointer', fontSize:'.8rem', fontWeight:'700', whiteSpace:'nowrap',
+                  border: activa ? '1px solid #202124' : '1px solid #dadce0', background: activa ? '#202124' : '#fff', color: activa ? '#fff' : '#3c4043' }}>
+                {t.enVivo && <span style={{ width:'7px', height:'7px', borderRadius:'50%', background:S.red, boxShadow:'0 0 0 3px rgba(229,67,61,.25)' }} aria-label="en vivo"/>}
+                {t.nombre}
+                <span style={{ fontSize:'.7rem', fontWeight:'800', padding:'1px 7px', borderRadius:'999px', background: activa ? 'rgba(255,255,255,.2)' : '#f1f3f4', color: activa ? '#fff' : '#5f6368' }}>{t.total}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {msg && (
         <div style={{ padding:'10px 14px', borderRadius:'8px', marginBottom:'16px', fontSize:'.85rem', background: msg.type==='ok'?'#e6f4ea':'#fce8e6', color: msg.type==='ok'?'#1e8e3e':'#d93025' }}>
           {msg.text}
         </div>
       )}
 
-      {streamsPreview.length > 0 && (
+      {streamsPreviewVista.length > 0 && (
         <div style={{ background:S.bg, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'20px', marginBottom:'20px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'700', color:'#fff', marginBottom:'4px' }}>
             <PlayCircle size={16} color={S.green}/> Panel de control en vivo
@@ -553,7 +606,7 @@ export default function AdminConfigSitioPage() {
             Para usar DURANTE el partido: cada botón actúa al toque, sin tener que tocar "Guardar". Repetición dispara de una (no espera el retraso de la transmisión, porque acá lo aprietas vos mismo viendo el video).
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-            {streamsPreview.map(s => {
+            {streamsPreviewVista.map(s => {
               const partidoSeleccionado = partidoActivoDeStream(s, partidos)
               const c = control[s.id] || {}
               const torneoIdActual = partidoSeleccionado?.tournament_id || s.torneo_auto || null
@@ -763,6 +816,7 @@ export default function AdminConfigSitioPage() {
 
         <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
           {streams.map((s, i) => {
+            if (!enVista(s)) return null
             const plataforma = detectarPlataforma(s.url)
             return (
               <div key={s.id} style={{ border:'1px solid #e8eaed', borderRadius:'10px', padding:'14px' }}>
@@ -817,7 +871,7 @@ export default function AdminConfigSitioPage() {
 
                 <div style={{ marginBottom:'12px' }}>
                   <label style={lbl}>¿De dónde sale el marcador?</label>
-                  <select value={s.torneo_auto || ''} onChange={e => { actualizarStream(s.id, 'torneo_auto', e.target.value || null); actualizarStream(s.id, 'cancha_auto', null) }} style={inp}>
+                  <select value={s.torneo_auto || ''} onChange={e => { actualizarStream(s.id, 'torneo_auto', e.target.value || null); actualizarStream(s.id, 'cancha_auto', null); if (vistaActual !== 'todas') setTorneoVista(e.target.value || 'sin') }} style={inp}>
                     <option value="">Elegir los partidos a mano</option>
                     {torneos.map(t => <option key={t.id} value={t.id}>Seguir automáticamente: {t.name}</option>)}
                   </select>
