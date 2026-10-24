@@ -21,6 +21,9 @@ const BUCKET = 'patrocinadores'
 const MAX_VIDEO_MB = 50
 const MAX_BANNER_MB = 5
 
+// Motivo real del error (para saber qué falta en Supabase en vez de adivinar)
+const motivo = (e) => (e && (e.message || e.error_description || e.error)) ? ` — ${e.message || e.error_description || e.error}${e.code ? ` [${e.code}]` : ''}` : ''
+
 function rutaDeUrl(url) {
   if (!url) return null
   const i = url.indexOf(`/${BUCKET}/`)
@@ -54,7 +57,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
       const orden = patrocinadores.reduce((m, p) => Math.max(m, p.orden || 0), 0) + 1
       const { data, error } = await supabase.from('patrocinadores_golmebol')
         .insert({ nombre, orden, activo: true }).select().single()
-      if (error) { decir('No se pudo crear el patrocinador. Revisa que exista la tabla de patrocinadores en Supabase', 'error'); return }
+      if (error) { decir('No se pudo crear el patrocinador' + motivo(error), 'error'); return }
       onNuevo(data)
       setNombreNuevo('')
       decir('Patrocinador agregado ✓ — ahora súbele logo, banners o video')
@@ -68,10 +71,10 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
     try {
       const path = `logo_${p.id}_${Date.now()}.${extDe(file)}`
       const { error: e1 } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type })
-      if (e1) { decir('Error al subir el logo', 'error'); return }
+      if (e1) { decir('Error al subir el logo' + motivo(e1), 'error'); return }
       const url = urlPublica(path)
       const { error: e2 } = await supabase.from('patrocinadores_golmebol').update({ logo_url: url }).eq('id', p.id)
-      if (e2) { decir('Error al guardar el logo', 'error'); return }
+      if (e2) { decir('Error al guardar el logo' + motivo(e2), 'error'); return }
       const vieja = rutaDeUrl(p.logo_url)
       onCambio(p.id, { logo_url: url })
       if (vieja) await supabase.storage.from(BUCKET).remove([vieja])
@@ -91,13 +94,13 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
       for (let i = 0; i < files.length; i++) {
         const path = `banner_${p.id}_${Date.now()}_${i}.${extDe(files[i])}`
         const { error } = await supabase.storage.from(BUCKET).upload(path, files[i], { contentType: files[i].type })
-        if (error) { decir('Error al subir un banner', 'error'); break }
+        if (error) { decir('Error al subir un banner' + motivo(error), 'error'); break }
         nuevas.push(urlPublica(path))
       }
       if (!nuevas.length) return
       const todos = [...(p.banners || []), ...nuevas]
       const { error } = await supabase.from('patrocinadores_golmebol').update({ banners: todos }).eq('id', p.id)
-      if (error) { decir('Falta ejecutar migracion_patrocinadores_video_banner.sql en Supabase (SQL Editor)', 'error'); return }
+      if (error) { decir('No se pudo guardar' + motivo(error), 'error'); return }
       onCambio(p.id, { banners: todos })
       decir(nuevas.length > 1 ? `${nuevas.length} banners subidos ✓` : 'Banner subido ✓')
     } finally { setOcupado(null) }
@@ -107,7 +110,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
     if (ocupado) return
     const todos = (p.banners || []).filter(u => u !== url)
     const { error } = await supabase.from('patrocinadores_golmebol').update({ banners: todos }).eq('id', p.id)
-    if (error) { decir('Error al quitar el banner', 'error'); return }
+    if (error) { decir('Error al quitar el banner' + motivo(error), 'error'); return }
     onCambio(p.id, { banners: todos })
     const ruta = rutaDeUrl(url)
     if (ruta) await supabase.storage.from(BUCKET).remove([ruta])
@@ -123,10 +126,10 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
     try {
       const path = `video_${p.id}_${Date.now()}.${extDe(file)}`
       const { error: e1 } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type })
-      if (e1) { decir('Error al subir el video', 'error'); return }
+      if (e1) { decir('Error al subir el video' + motivo(e1), 'error'); return }
       const url = urlPublica(path)
       const { error: e2 } = await supabase.from('patrocinadores_golmebol').update({ video_url: url }).eq('id', p.id)
-      if (e2) { decir('Falta ejecutar migracion_patrocinadores_video_banner.sql en Supabase (SQL Editor)', 'error'); return }
+      if (e2) { decir('No se pudo guardar' + motivo(e2), 'error'); return }
       const vieja = rutaDeUrl(p.video_url)
       onCambio(p.id, { video_url: url })
       if (vieja) await supabase.storage.from(BUCKET).remove([vieja])
@@ -137,7 +140,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
   async function quitarVideo(p) {
     if (ocupado) return
     const { error } = await supabase.from('patrocinadores_golmebol').update({ video_url: null }).eq('id', p.id)
-    if (error) { decir('Error al quitar el video', 'error'); return }
+    if (error) { decir('Error al quitar el video' + motivo(error), 'error'); return }
     const ruta = rutaDeUrl(p.video_url)
     onCambio(p.id, { video_url: null })
     if (ruta) await supabase.storage.from(BUCKET).remove([ruta])
@@ -147,7 +150,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onCambi
     if (ocupado) return
     if (!confirm(`¿Ocultar "${p.nombre}" de los botones? (No se borra: puedes volver a activarlo en Patrocinadores.)`)) return
     const { error } = await supabase.from('patrocinadores_golmebol').update({ activo: false }).eq('id', p.id)
-    if (error) { decir('Error al ocultar', 'error'); return }
+    if (error) { decir('Error al ocultar' + motivo(error), 'error'); return }
     onQuitar(p.id)
   }
 
