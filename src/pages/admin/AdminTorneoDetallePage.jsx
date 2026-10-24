@@ -2900,7 +2900,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // Si el logo trae fondo liso (blanco) se le quita; si no, se sube tal cual.
     const { archivo, estado } = await prepararLogoParaSubir(file, { maxSize: 700, sinComprimir: true })
     const ext = archivo.name.split('.').pop()
-    const path = `logos/${id}.${ext}`
+    // Ruta NUEVA en cada subida (con la hora): si se reusa siempre la misma ruta, el navegador y el
+    // servidor siguen mostrando el logo viejo (caché) o la subida se rechaza por ya existir.
+    const path = `logos/${id}_${Date.now()}.${ext}`
     const { error: uploadError } = await supabase.storage.from('tournaments').upload(path, archivo, { upsert: true })
     if (uploadError) { setUploadingLogoMarca(false); return showMsg('Error al subir logo: ' + uploadError.message, 'error') }
     const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
@@ -4943,12 +4945,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <Camera size={8} color="#fff"/>
               <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
                 const file0 = e.target.files[0]; if (!file0) return
+                e.target.value = ''
                 const { archivo: file } = await prepararLogoParaSubir(file0, { maxSize: 700, sinComprimir: true })
-                const ext = file.name.split('.').pop(), path = `logos/${id}.${ext}`
-                await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
+                const ext = file.name.split('.').pop(), path = `logos/${id}_${Date.now()}.${ext}`
+                const { error: errSubida } = await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
+                if (errSubida) return showMsg('Error al subir el logo: ' + errSubida.message, 'error')
                 const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
-                await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
+                const { error: errGuardar } = await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
+                if (errGuardar) return showMsg('Error al guardar el logo: ' + errGuardar.message, 'error')
+                setFormMarca(f => ({ ...f, logo_url: urlData.publicUrl }))
                 setTorneo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
+                showMsg('Logo actualizado ✓')
               }}/>
             </label>
           </div>
