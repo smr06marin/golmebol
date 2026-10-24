@@ -325,14 +325,20 @@ export default function OverlayEnVivoPage() {
   const streamEsYouTube = detectarPlataforma(stream?.url) === 'youtube'
   useEffect(() => {
     if (!repeticionActiva || !siteConfig) return
-    if (repeticionVistaRef.current === null) { repeticionVistaRef.current = repeticionTs; return }
+    const anotar = m => setLogRepeticion(l => [...l.slice(-5), m])
+    if (repeticionVistaRef.current === null) {
+      repeticionVistaRef.current = repeticionTs
+      anotar(repeticionTs ? 'página recién abierta: el último clic ya estaba guardado, se ignora (aprieta Repetición ahora)' : 'página lista, esperando el clic en Repetición')
+      return
+    }
     if (!repeticionTs || repeticionVistaRef.current === repeticionTs) return
     repeticionVistaRef.current = repeticionTs
-    if (!streamEsYouTube) return
+    if (!streamEsYouTube) { anotar('clic recibido pero la transmisión no es de YouTube'); return }
+    anotar('clic recibido → iniciando repetición')
     const imagenes = Array.isArray(siteConfig.en_vivo_repeticion_imagenes) ? siteConfig.en_vivo_repeticion_imagenes : []
     const imagenUrl = imagenes.length ? imagenes[repeticionContadorRef.current % imagenes.length].url : null
     repeticionContadorRef.current += 1
-    setRepeticionDisparo(actual => actual || { key: repeticionTs, camaraLenta: !!control?.repeticion_camara_lenta, imagenUrl })
+    setRepeticionDisparo(actual => { if (actual) anotar('clic ignorado: ya hay una repetición en curso'); return actual || { key: repeticionTs, camaraLenta: !!control?.repeticion_camara_lenta, imagenUrl } })
   }, [repeticionActiva, siteConfig, repeticionTs, streamEsYouTube]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sponsor = patrocinadorDeDisparo(patrocinadoresDeControl(control), patrocinadorMostrando)
@@ -372,7 +378,7 @@ export default function OverlayEnVivoPage() {
             void tick
             const hace = repeticionTs ? Math.round((Date.now() - repeticionTs) / 1000) : null
             const lineas = [
-              'DIAGNÓSTICO REPETICIÓN (v2)',
+              'DIAGNÓSTICO REPETICIÓN (v3)',
               `repetición activa: ${repeticionActiva ? 'SÍ' : 'NO (marca la casilla y guarda, o usa ?repeticion=1)'}`,
               `config: ${siteConfig ? 'cargada' : 'NO CARGÓ (sin internet o sin permiso)'} · id del link: ${String(streamId).slice(0, 8)}… · transmisiones: ${(Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []).map(x => String(x.id).slice(0, 8)).join(', ') || 'ninguna'}`,
               `transmisión: ${stream ? 'encontrada' : 'NO ENCONTRADA (revisa el id del link)'} · es YouTube: ${streamEsYouTube ? 'sí' : 'NO (revisa el link del directo)'}`,
