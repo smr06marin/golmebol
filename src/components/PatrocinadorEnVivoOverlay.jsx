@@ -63,6 +63,10 @@ function Banners({ patrocinador, onTerminar: alTerminar }) {
   const onTerminar = useFnEstable(alTerminar)
   const lista = Array.isArray(patrocinador.banners) ? patrocinador.banners.filter(Boolean) : []
   const [i, setI] = useState(0)
+  // Banner "de pantalla completa": una imagen 16:9 transparente (ej. 1920x1080) con el banner ya ubicado
+  // abajo y un margen vacío alrededor. Esa se pone cubriendo TODO el video (el banner queda donde lo
+  // diseñaron, sin recuadro). Una imagen de otra forma (una franja) sale centrada abajo, como antes.
+  const [completo, setCompleto] = useState({})
   useEffect(() => {
     if (!lista.length) { onTerminar?.(); return }
     const t = setTimeout(() => {
@@ -72,11 +76,22 @@ function Banners({ patrocinador, onTerminar: alTerminar }) {
     return () => clearTimeout(t)
   }, [i, lista.length, onTerminar])
   if (!lista.length) return null
+  const alCargar = e => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget
+    const razon = h ? w / h : 0
+    setCompleto(m => ({ ...m, [i]: razon > 1.6 && razon < 1.95 }))
+  }
+  const listo = completo[i] !== undefined
+  const pantallaCompleta = completo[i] === true
   return (
-    <div style={{ position: 'absolute', left: 0, right: 0, bottom: '3%', zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+    <div style={pantallaCompleta
+      ? { position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' }
+      : { position: 'absolute', left: 0, right: 0, bottom: '3%', zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
       <style>{'@keyframes gmBannerEntra{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}'}</style>
-      <img key={i} src={lista[i]} alt={patrocinador.nombre || ''}
-        style={{ display: 'block', width: 'min(96%, 640px)', maxHeight: '34vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 18px rgba(0,0,0,.55)', animation: 'gmBannerEntra .35s ease-out both' }}/>
+      <img key={i} src={lista[i]} alt={patrocinador.nombre || ''} onLoad={alCargar}
+        style={pantallaCompleta
+          ? { display: 'block', width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', animation: 'gmBannerEntra .35s ease-out both' }
+          : { display: 'block', width: 'min(96%, 640px)', maxHeight: '34vh', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.55))', animation: 'gmBannerEntra .35s ease-out both', opacity: listo ? 1 : 0 }}/>
     </div>
   )
 }
