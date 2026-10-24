@@ -29,7 +29,7 @@ const BUMPER_MS = 2500
 const SALE_MS = 500
 const SEGURO_MS = 60000
 
-export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12, espera = 8, onTerminar }) {
+export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12, espera = 8, velocidad = 0.7, onTerminar }) {
   const [fase, setFase] = useState('cargando')
   const idIframe = `yt-repe-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const onTerminarRef = useRef(onTerminar)
@@ -41,7 +41,11 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
 
   useEffect(() => {
     if (!videoId) { onTerminarRef.current?.(); return undefined }
-    const velocidad = lento ? 0.5 : 1
+    // `atras` son segundos de JUEGO. A velocidad normal-lenta (0.7) la repetición cubre esos
+    // segundos completos (y dura más en pantalla); la cámara lenta (0.5, botón aparte) cubre la mitad.
+    const velPedida = lento ? 0.5 : velocidad
+    const contenido = lento ? atras * 0.5 : atras
+    let velReal = velPedida
     const timers = []
     let cancelado = false
     let player = null
@@ -57,7 +61,7 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
       // El salto no funcionó (sin DVR): el video seguiría en el borde en vivo → no mostrar nada.
       try {
         const ahora = player.getCurrentTime(), dur = player.getDuration()
-        if (!(dur - ahora > atras * velocidad * 0.5)) return terminar()
+        if (!(dur - ahora > contenido * 0.5)) return terminar()
       } catch { return terminar() }
       const hastaBumper = imagenUrl ? Math.max(0, BUMPER_MS - (Date.now() - saltoEn)) : 0
       despues(() => {
@@ -65,10 +69,10 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
         setFase('video')
         despues(() => {
           if (cancelado) return
-          try { if (lento) player.setPlaybackRate(1) } catch { /* nada */ }
+          try { if (velReal !== 1) player.setPlaybackRate(1) } catch { /* nada */ }
           setFase('saliendo')
           despues(terminar, SALE_MS)
-        }, atras * 1000)
+        }, Math.round((contenido / velReal) * 1000))
       }, hastaBumper)
     }
 
@@ -78,13 +82,21 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
       let dur = 0
       try { dur = player.getDuration() } catch { /* nada */ }
       if (!dur || !isFinite(dur)) return terminar()
-      // Con imagen de apertura, parte del video corre escondido debajo de ella: se retrocede un poco más.
-      const retroceso = (atras + (imagenUrl ? BUMPER_MS / 1000 : 0)) * velocidad
-      saltoEn = Date.now()
+      // Velocidad: YouTube a veces solo acepta ciertos pasos (0.25, 0.5, 0.75, 1…); se usa el más cercano.
       try {
-        player.seekTo(Math.max(0, dur - retroceso), true)
-        if (lento) player.setPlaybackRate(0.5)
-      } catch { return terminar() }
+        if (velPedida !== 1) {
+          player.setPlaybackRate(velPedida)
+          const disp = player.getAvailablePlaybackRates?.()
+          if (Array.isArray(disp) && disp.length && !disp.includes(velPedida)) {
+            velReal = disp.reduce((a, b) => (Math.abs(b - velPedida) < Math.abs(a - velPedida) ? b : a))
+            player.setPlaybackRate(velReal)
+          }
+        }
+      } catch { /* nada */ }
+      // Con imagen de apertura, parte del video corre escondido debajo de ella: se retrocede un poco más.
+      const retroceso = contenido + (imagenUrl ? (BUMPER_MS / 1000) * velReal : 0)
+      saltoEn = Date.now()
+      try { player.seekTo(Math.max(0, dur - retroceso), true) } catch { return terminar() }
       if (imagenUrl) setFase('bumper')
       // Cuando YouTube termina de cargar el tramo, se muestra; si tarda demasiado, igual.
       despues(revelar, 4000)
@@ -115,7 +127,7 @@ export default function RepeticionTransmisionOverlay({ url, disparo, atras = 12,
       timers.forEach(clearTimeout)
       try { player?.destroy?.() } catch { /* nada */ }
     }
-  }, [key, videoId, lento, imagenUrl, atras, espera, idIframe])
+  }, [key, videoId, lento, imagenUrl, atras, espera, velocidad, idIframe])
 
   if (!videoId) return null
   const origen = typeof window !== 'undefined' ? window.location.origin : ''

@@ -46,6 +46,7 @@ import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 //   ?prueba=1  fondo de cancha de mentiras, para verlo en un navegador normal
 //   ?logo=0    sin la marca de arriba a la izquierda (logo de Golmebol + logo del torneo + "Esta transmisión es gracias a Golmebol")
 //   ?repeticion=1  activa la repetición dentro de la transmisión aunque la casilla no esté marcada (?repeticion=0 la apaga)
+//   ?debug=1  muestra en pantalla un diagnóstico de la repetición (qué está pasando y por qué se cancela)
 //   ?velocidad=0.7  velocidad de la repetición (por defecto 0.7; la "Cámara lenta" va siempre a 0.5)
 //   ?atras=12  segundos que dura la repetición (por defecto 12)
 //   ?espera=8  segundos que espera antes de arrancarla, por el retraso de YouTube (por defecto 8)
@@ -71,6 +72,7 @@ export default function OverlayEnVivoPage() {
   const mostrarLogo = params.get('logo') !== '0'
   const graficosAuto = params.get('auto') !== '0'
   const repeticionParam = params.get('repeticion')
+  const modoDebug = params.get('debug') === '1'
   const velocidadRepeticion = Math.min(1, Math.max(0.25, Number(params.get('velocidad')) || 0.7))
   const segundosAtras = Math.min(60, Math.max(3, Number(params.get('atras')) || 12))
   const segundosEspera = Math.min(30, Math.max(0, params.get('espera') === null ? 8 : (Number(params.get('espera')) || 0)))
@@ -81,6 +83,7 @@ export default function OverlayEnVivoPage() {
   const [hermanosVivo, setHermanosVivo] = useState([])
   const [patrocinadorMostrando, setPatrocinadorMostrando] = useState(null)
   const [repeticionDisparo, setRepeticionDisparo] = useState(null)
+  const [logRepeticion, setLogRepeticion] = useState([])
   const repeticionVistaRef = useRef(null)
   const repeticionContadorRef = useRef(0)
   const [tick, setTick] = useState(0)
@@ -363,8 +366,24 @@ export default function OverlayEnVivoPage() {
             </>
           )}
           {repeticionActiva && repeticionDisparo && stream?.url && (
-            <RepeticionTransmisionOverlay key={repeticionDisparo.key} url={stream.url} disparo={repeticionDisparo} atras={segundosAtras} espera={segundosEspera} velocidad={velocidadRepeticion} onTerminar={() => setRepeticionDisparo(null)}/>
+            <RepeticionTransmisionOverlay key={repeticionDisparo.key} url={stream.url} disparo={repeticionDisparo} atras={segundosAtras} espera={segundosEspera} velocidad={velocidadRepeticion} onEstado={m => setLogRepeticion(l => [...l.slice(-5), m])} onTerminar={() => setRepeticionDisparo(null)}/>
           )}
+          {modoDebug && (() => {
+            void tick
+            const hace = repeticionTs ? Math.round((Date.now() - repeticionTs) / 1000) : null
+            const lineas = [
+              'DIAGNÓSTICO REPETICIÓN (v2)',
+              `repetición activa: ${repeticionActiva ? 'SÍ' : 'NO (marca la casilla y guarda, o usa ?repeticion=1)'}`,
+              `transmisión: ${stream ? 'encontrada' : 'NO ENCONTRADA (revisa el id del link)'} · es YouTube: ${streamEsYouTube ? 'sí' : 'NO (revisa el link del directo)'}`,
+              `último clic en Repetición: ${hace === null ? 'ninguno' : `hace ${hace}s`}`,
+              ...logRepeticion,
+            ]
+            return (
+              <div style={{ position: 'absolute', top: 90, left: 10, zIndex: 60, maxWidth: 620, padding: '8px 10px', background: 'rgba(0,0,0,.85)', color: '#7cfc8a', font: '13px/1.4 monospace', borderRadius: 6 }}>
+                {lineas.map((l, i) => <div key={i}>{l}</div>)}
+              </div>
+            )
+          })()}
           {partido?.tournament_id && (
             <PatrocinadoresTorneoOverlay logos={siteConfig?.patrocinador_logos_torneo?.[partido.tournament_id]} activos={control?.logos_activos}/>
           )}
