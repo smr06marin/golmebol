@@ -374,6 +374,7 @@ export default function OverlayEnVivoPage() {
             const lineas = [
               'DIAGNÓSTICO REPETICIÓN (v2)',
               `repetición activa: ${repeticionActiva ? 'SÍ' : 'NO (marca la casilla y guarda, o usa ?repeticion=1)'}`,
+              `config: ${siteConfig ? 'cargada' : 'NO CARGÓ (sin internet o sin permiso)'} · id del link: ${String(streamId).slice(0, 8)}… · transmisiones: ${(Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []).map(x => String(x.id).slice(0, 8)).join(', ') || 'ninguna'}`,
               `transmisión: ${stream ? 'encontrada' : 'NO ENCONTRADA (revisa el id del link)'} · es YouTube: ${streamEsYouTube ? 'sí' : 'NO (revisa el link del directo)'}`,
               `último clic en Repetición: ${hace === null ? 'ninguno' : `hace ${hace}s`}`,
               ...logRepeticion,

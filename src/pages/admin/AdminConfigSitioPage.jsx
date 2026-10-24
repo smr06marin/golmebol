@@ -689,7 +689,7 @@ export default function AdminConfigSitioPage() {
                     </button>
                   </div>
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', marginBottom:'14px', lineHeight:1.45 }}>
-                    En OBS: Fuentes → + → Navegador, pega este link, ancho 1920 y alto 1080, y pónlo encima de la cámara. Fondo transparente: lo que prendas o apagues en este panel se ve en el video de YouTube. (La repetición y cámara lenta de abajo solo funcionan en golmebol.com, no dentro de OBS.)
+                    En OBS: Fuentes → + → Navegador, pega este link, ancho 1920 y alto 1080, y pónlo encima de la cámara. Fondo transparente: lo que prendas o apagues en este panel se ve en el video de YouTube. (La repetición y la cámara lenta de abajo salen dentro del video si marcas la casilla "Repetición dentro de la transmisión" de esta transmisión; para ver qué pasa, abre este link con ?prueba=1&debug=1 al final.)
                   </div>
 
                   <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>REPETICIÓN</div>
