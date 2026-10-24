@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, duracionPeriodo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
+import { useLogosTorneos } from '../lib/useLogosTorneos'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
@@ -145,6 +146,7 @@ export default function OverlayEnVivoPage() {
   ), [siteConfig, streamId])
 
   const partido = stream ? partidoActivoDeStream(stream, partidosVivo) : null
+  const logoDeTorneo = useLogosTorneos(stream?.torneo_auto ? [stream.torneo_auto] : [])
   const control = (siteConfig?.en_vivo_control || {})[streamId] || null
 
   // Gráficos AUTOMÁTICOS (para transmitir sin nadie operando el panel):
@@ -313,7 +315,7 @@ export default function OverlayEnVivoPage() {
         background: modoPrueba ? 'linear-gradient(135deg,#1f6b2c,#2f8f3f 50%,#1f6b2c)' : 'transparent',
       }}>
         <div style={{ position: 'absolute', left: 0, top: 0, width: ANCHO_ESCENARIO, height: altoEscenario, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
-          {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url}/>}
+          {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)}/>}
           {partido && <MarcadorEnVivoOverlay partido={partido}/>}
           {partido && <GolAvisoEnVivoOverlay partido={partido} bottom={overlayActivo === 'jugadores' ? '55%' : overlayActivo === 'goles' ? '36%' : '14%'}/>}
           {sponsor ? <PatrocinadorEnVivoOverlay patrocinador={sponsor}/> : (

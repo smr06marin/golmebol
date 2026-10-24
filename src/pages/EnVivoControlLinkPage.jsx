@@ -26,6 +26,7 @@ import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverl
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
+import { useLogosTorneos } from '../lib/useLogosTorneos'
 import { esCanalYoutube, useCanalesEnVivo } from '../lib/enVivoCanal'
 
 const S = { bg: '#0a0a0a', card: '#161616', border: '#2a2a2a', red: '#e5433d', green: '#6fcf3d', text: '#fff' }
@@ -112,6 +113,10 @@ export default function EnVivoControlLinkPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- streamIds es un arreglo nuevo en cada render (viene de stream, que se recalcula con cada refresco de siteConfig); el intervalo solo debe reiniciarse cuando cambian los ids (o el torneo/cancha que sigue) en sí, por eso la dependencia real es streamIdsKey
   }, [streamIdsKey])
   const partido = torneoAuto ? partidoAutoDeTorneo(stream, partidosStream) : elegirPartidoActivo(partidosStream)
+  // Torneo conocido aunque todavía no haya partido en vivo (transmisión que sigue un torneo)
+  const logoDeTorneo = useLogosTorneos(torneoAuto ? [torneoAuto] : [])
+  const torneoIdActual = partido?.tournament_id || torneoAuto || null
+  const logoTorneoActual = partido?.tournaments?.logo_url || logoDeTorneo(torneoAuto)
 
   const vivo = partido ? derivarEnVivo(partido) : null
 
@@ -185,7 +190,8 @@ export default function EnVivoControlLinkPage() {
   }
 
   const sponsor = patrocinadorMostrando ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando) : null
-  const tieneTorneo = !!partido?.tournament_id
+  const tieneTorneo = !!torneoIdActual
+  const puedeGraficaPartido = !!partido || !!torneoAuto // en una transmisión que sigue un torneo se puede dejar elegida la gráfica: aparece cuando empiece el partido
 
   return (
     <div style={{ minHeight:'100vh', background:S.bg, fontFamily:'system-ui, sans-serif', padding:'16px', boxSizing:'border-box' }}>
@@ -198,7 +204,7 @@ export default function EnVivoControlLinkPage() {
             Tu canal de YouTube todavía no está transmitiendo en vivo. Apenas empieces, el video aparece aquí solo.
           </div>
         )}
-        {urlVideo && <LiveEmbed ref={liveEmbedRef} url={urlVideo} titulo={stream.titulo} S={S} logoTorneo={partido?.tournaments?.logo_url}
+        {urlVideo && <LiveEmbed ref={liveEmbedRef} url={urlVideo} titulo={stream.titulo} S={S} logoTorneo={logoTorneoActual}
           overlay={(
             <>
               {partido && vivo && (
@@ -252,22 +258,27 @@ export default function EnVivoControlLinkPage() {
               style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: !control.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'700' }}>
               <Ban size={14}/> Ninguna
             </button>
-            <button onClick={() => cambiarOverlay('tabla', partido?.tournament_id)}
+            <button onClick={() => cambiarOverlay('tabla', torneoIdActual)}
               disabled={!tieneTorneo}
               style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'tabla' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: tieneTorneo ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: tieneTorneo ? 1 : .45 }}>
               <Table2 size={14}/> Tabla
             </button>
             <button onClick={() => cambiarOverlay('goles', null)}
-              disabled={!partido}
-              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: partido ? 1 : .45 }}>
+              disabled={!puedeGraficaPartido}
+              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
               <ListOrdered size={14}/> Goles
             </button>
             <button onClick={() => cambiarOverlay('jugadores', null)}
-              disabled={!partido}
-              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: partido ? 1 : .45 }}>
+              disabled={!puedeGraficaPartido}
+              style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background: control.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.8rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
               <Users size={14}/> Jugadores
             </button>
           </div>
+          {torneoAuto && !partido && (
+            <div style={{ fontSize:'.7rem', color:'#9aa0a6', marginTop:'10px', lineHeight:1.45 }}>
+              Todavía no hay un partido en vivo. La tabla ya se puede mostrar; Goles y Jugadores quedan elegidos y salen solos apenas el árbitro empiece la planilla.
+            </div>
+          )}
         </div>
 
         {patrocinadoresBtn.length > 0 && (

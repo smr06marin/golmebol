@@ -10,6 +10,7 @@ import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 // El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
 // una transmisión en vivo: se descarga aparte, sin frenar la portada.
 const LiveEmbed = lazy(() => import('../components/LiveEmbed'))
+import BotonAvisos from '../components/BotonAvisos'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
@@ -20,6 +21,7 @@ import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
+import { useLogosTorneos } from '../lib/useLogosTorneos'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
 import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
@@ -452,6 +454,8 @@ export default function LandingPage() {
   ).filter(s => s.activo && (s.url || '').trim()), [siteConfig])
   const canalesEnVivo = useCanalesEnVivo(streamsConfig)
   const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo), [streamsConfig, canalesEnVivo])
+  const idsTorneoAuto = useMemo(() => streamsVivos.map(s => s.torneo_auto).filter(Boolean), [streamsVivos])
+  const logoDeTorneoAuto = useLogosTorneos(idsTorneoAuto)
 
   // Mientras haya alguna transmisión con marcador activa, escucha los
   // cambios de la tabla matches casi al instante (en vez de esperar hasta
@@ -899,6 +903,7 @@ export default function LandingPage() {
               <Radio size={15} color={S.red}/> VER EN VIVO
             </button>
           </div>
+          <BotonAvisos/>
         </div>
       </div>
 
@@ -938,7 +943,7 @@ export default function LandingPage() {
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
                   <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoDeStream?.tournaments?.logo_url}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
                         {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}

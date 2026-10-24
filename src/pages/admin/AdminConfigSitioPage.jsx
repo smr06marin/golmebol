@@ -120,7 +120,7 @@ export default function AdminConfigSitioPage() {
   // Torneos que se pueden "seguir" desde una transmisión: todos para el admin;
   // para un organizador, solo los suyos.
   async function fetchTorneos() {
-    let q = supabase.from('tournaments').select('id, name').order('created_at', { ascending: false }).limit(80)
+    let q = supabase.from('tournaments').select('id, name, logo_url').order('created_at', { ascending: false }).limit(80)
     if (esOrganizador) q = q.eq('organizador_id', miId)
     const { data } = await q
     setTorneos(data || [])
@@ -556,7 +556,9 @@ export default function AdminConfigSitioPage() {
             {streamsPreview.map(s => {
               const partidoSeleccionado = partidoActivoDeStream(s, partidos)
               const c = control[s.id] || {}
-              const tieneTorneo = !!partidoSeleccionado?.tournament_id
+              const torneoIdActual = partidoSeleccionado?.tournament_id || s.torneo_auto || null
+              const tieneTorneo = !!torneoIdActual
+              const puedeGraficaPartido = !!partidoSeleccionado || !!s.torneo_auto // si la transmisión sigue un torneo, la gráfica queda elegida y sale cuando empiece el partido
               const urlVideo = esCanalYoutube(s.url) ? canalesEnVivo[s.id]?.url || null : s.url
               const linkControl = s.control_token ? `${window.location.origin}/en-vivo-control/${s.control_token}` : null
               return (
@@ -576,7 +578,7 @@ export default function AdminConfigSitioPage() {
                         Tu canal de YouTube todavía no está transmitiendo en vivo. Apenas empieces, el video aparece aquí solo.
                       </div>
                     ) : (
-                      <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={urlVideo} titulo={s.titulo} S={S} logoTorneo={partidoSeleccionado?.tournaments?.logo_url} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
+                      <LiveEmbed ref={el => { liveEmbedRefs.current[s.id] = el }} url={urlVideo} titulo={s.titulo} S={S} logoTorneo={partidoSeleccionado?.tournaments?.logo_url || torneos.find(t => t.id === s.torneo_auto)?.logo_url} overlay={overlayDe(s, partidoSeleccionado)} repeticion={repeticiones[s.id]}/>
                     )}
                   </div>
                   {s.torneo_auto && !partidoSeleccionado && (
@@ -704,19 +706,19 @@ export default function AdminConfigSitioPage() {
                       style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: !c.overlay ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
                       <Ban size={13}/> Ninguna
                     </button>
-                    <button onClick={() => cambiarOverlay(s.id, 'tabla', partidoSeleccionado?.tournament_id)}
+                    <button onClick={() => cambiarOverlay(s.id, 'tabla', torneoIdActual)}
                       disabled={!tieneTorneo} title={tieneTorneo ? '' : 'Elige un partido para esta transmisión, así se sabe de qué torneo mostrar la tabla'}
                       style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'tabla' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: tieneTorneo ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: tieneTorneo ? 1 : .45 }}>
                       <Table2 size={13}/> Tabla de posiciones
                     </button>
                     <button onClick={() => cambiarOverlay(s.id, 'goles', null)}
-                      disabled={!partidoSeleccionado} title={partidoSeleccionado ? '' : 'Elige un partido para esta transmisión, así se sabe de quién mostrar los goles'}
-                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partidoSeleccionado ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: partidoSeleccionado ? 1 : .45 }}>
+                      disabled={!puedeGraficaPartido} title={puedeGraficaPartido ? '' : 'Elige un partido para esta transmisión, así se sabe de quién mostrar los goles'}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'goles' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
                       <ListOrdered size={13}/> Goles del partido
                     </button>
                     <button onClick={() => cambiarOverlay(s.id, 'jugadores', null)}
-                      disabled={!partidoSeleccionado} title={partidoSeleccionado ? '' : 'Elige un partido para esta transmisión, así se sabe la nómina de quién mostrar'}
-                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: partidoSeleccionado ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: partidoSeleccionado ? 1 : .45 }}>
+                      disabled={!puedeGraficaPartido} title={puedeGraficaPartido ? '' : 'Elige un partido para esta transmisión, así se sabe la nómina de quién mostrar'}
+                      style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background: c.overlay === 'jugadores' ? S.red : '#2a2a2a', border:'none', borderRadius:'8px', cursor: puedeGraficaPartido ? 'pointer' : 'not-allowed', color:'#fff', fontSize:'.76rem', fontWeight:'700', opacity: puedeGraficaPartido ? 1 : .45 }}>
                       <Users size={13}/> Jugadores
                     </button>
                   </div>
