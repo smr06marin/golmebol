@@ -123,7 +123,19 @@ export default function CronometroCentral({
   const botonPasar2T = periodo === 1 && tiempoAgotado
   const botonFinal = periodo === 2 && tiempoAgotado && !!onFinalizar
   const botonTerminar = enExtra && !!onTerminarTiempo
-  const bottomPx = (botonPasar2T || botonFinal || botonTerminar) ? 100 : 12
+  // BOTÓN DE CIERRE DE TIEMPO — vive DENTRO del cronómetro (antes eran botones enormes flotando
+  // aparte, abajo de la pantalla). Según el momento dice:
+  //   · tiempo cumplido (reloj en EXTRA): IR AL DESCANSO (1er tiempo) / FINALIZAR PARTIDO (2do)
+  //   · ya en descanso:                   INICIAR 2DO TIEMPO
+  //   · partido terminado:                TERMINAR Y GUARDAR RESULTADO
+  const accionCierre = botonTerminar
+    ? { txt: periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO', bg: periodo === 1 ? '#e8710a' : '#1a73e8', fn: () => { onTerminarTiempo(); if (periodo === 2 && onFinalizar) onFinalizar() } }
+    : botonPasar2T
+      ? { txt: '▶ INICIAR 2DO TIEMPO', bg: '#1e8e3e', fn: onCambiarPeriodo }
+      : botonFinal
+        ? { txt: '🏁 TERMINAR Y GUARDAR RESULTADO', bg: '#1a73e8', fn: onFinalizar }
+        : null
+  const bottomPx = 12
   const btnBase = { border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '800', fontFamily: 'inherit' }
 
   return (
@@ -173,6 +185,14 @@ export default function CronometroCentral({
             </>
           )}
 
+          {/* ── Botón de cierre de tiempo (IR AL DESCANSO / INICIAR 2DO TIEMPO / GUARDAR) ── */}
+          {accionCierre && (
+            <button onClick={accionCierre.fn}
+              style={{ ...btnBase, marginTop: '8px', width: '100%', padding: miniEf ? '12px 8px' : '15px 8px', background: accionCierre.bg, color: '#fff', fontSize: miniEf ? '.88rem' : '1.02rem', letterSpacing: '.02em', border: '2px solid #fff', boxShadow: '0 4px 14px rgba(0,0,0,.4)', touchAction: 'manipulation' }}>
+              {accionCierre.txt}
+            </button>
+          )}
+
           {/* ── Confirmación en el mismo widget ── */}
           {!miniEf && confirmar && (
             <div style={{ marginTop: '10px', background: 'rgba(0,0,0,.35)', borderRadius: '12px', padding: '10px' }}>
@@ -215,12 +235,12 @@ export default function CronometroCentral({
                   style={{ ...btnBase, flex: 1, padding: '9px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.78rem', opacity: (segundos === 0 && !corriendo) ? .45 : 1 }}>
                   ↺ Reiniciar
                 </button>
-                {periodo === 1 ? (
+                {periodo === 1 ? (botonPasar2T ? null : (
                   <button onClick={() => (tiempoAgotado ? onCambiarPeriodo && onCambiarPeriodo() : pedirConfirmacion('periodo'))}
                     style={{ ...btnBase, flex: 1.2, padding: '9px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.78rem' }}>
                     2º tiempo →
                   </button>
-                ) : (
+                )) : (
                   <button onClick={() => pedirConfirmacion('volver')}
                     style={{ ...btnBase, flex: 1.2, padding: '9px 4px', background: 'rgba(255,255,255,.2)', color: '#fff', fontSize: '.78rem' }}>
                     ↩ Volver al 1º
@@ -232,31 +252,6 @@ export default function CronometroCentral({
         </div>
       </div>
 
-      {/* Se acabó el partido: botón enorme para ir a guardar el resultado (sin guardar,
-          el partido no queda jugado y se quita de la transmisión en vivo). */}
-      {botonFinal && (
-        <button onClick={onFinalizar}
-          style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: '#1a73e8', color: '#fff', fontSize: '1.15rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
-          🏁 TERMINAR Y GUARDAR RESULTADO
-        </button>
-      )}
-
-      {/* Se cumplió el tiempo y el reloj sigue en EXTRA: botón enorme para cerrar el
-          tiempo. En el 1er tiempo manda al descanso; en el 2do cierra el partido y abre el guardado. */}
-      {botonTerminar && (
-        <button onClick={() => { onTerminarTiempo(); if (periodo === 2 && onFinalizar) onFinalizar() }}
-          style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: periodo === 1 ? '#e8710a' : '#1a73e8', color: '#fff', fontSize: '1.2rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
-          {periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO'}
-        </button>
-      )}
-
-      {/* Se acabó el 1er tiempo: botón enorme y solo ese paso. */}
-      {botonPasar2T && (
-        <button onClick={onCambiarPeriodo}
-          style={{ ...btnBase, position: 'fixed', left: '12px', right: '12px', bottom: 'max(12px, env(safe-area-inset-bottom))', zIndex: 950, padding: '18px 10px', background: '#1e8e3e', color: '#fff', fontSize: '1.2rem', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.6), 0 0 0 3px #fff' }}>
-          ▶ PASAR A SEGUNDO TIEMPO
-        </button>
-      )}
     </>
   )
 }

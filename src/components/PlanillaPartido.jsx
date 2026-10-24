@@ -1966,6 +1966,16 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const progreso = Math.min(segundos / limiteSegundos, 1)
   const enExtra  = !tiempoAgotado && segundos >= limiteSegundos
   const cronoBg  = tiempoAgotado ? '#b71c1c' : enExtra ? '#b45309' : periodo === 1 ? AZUL : ROJO
+  // BOTÓN DE CIERRE DE TIEMPO — vive DENTRO del cronómetro (antes era un botón flotante aparte
+  // que el árbitro no encontraba). Según el momento dice:
+  //   · tiempo cumplido (reloj en EXTRA): IR AL DESCANSO (1er periodo) / FINALIZAR PARTIDO (2do)
+  //   · ya en descanso:                   INICIAR 2DO PERIODO
+  //   · partido terminado:                GUARDAR RESULTADO
+  const accionCierre = enExtra
+    ? { txt: periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO', bg: periodo === 1 ? '#e8710a' : '#1a73e8', fn: terminarTiempo, off: false }
+    : tiempoAgotado
+      ? { txt: periodo === 1 ? '▶ INICIAR 2DO PERIODO' : '💾 GUARDAR RESULTADO', bg: '#1e8e3e', fn: periodo === 1 ? iniciarPeriodo2 : handleClickGuardar, off: periodo === 2 && (guardandoDB || !isOnline) }
+      : null
   const textoReloj = enExtra
     ? <><span style={{ fontSize: '.45em', letterSpacing: '.14em', color: '#ffe066', marginRight: '.3em', fontFamily: 'system-ui,sans-serif', verticalAlign: 'middle' }}>EXTRA</span>+{formatTiempo(segundos - limiteSegundos)}</>
     : formatTiempo(segundos)
@@ -2456,25 +2466,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <X size={22}/>
       </button>
 
-      {/* BOTÓN GRANDE de cierre de tiempo: aparece al cumplirse el tiempo (reloj en EXTRA) y
-          después del descanso / fin del partido, para dar el siguiente paso sin buscar nada. */}
-      {(enExtra || tiempoAgotado) && (
-        <button className="no-print"
-          onClick={() => {
-            if (enExtra) terminarTiempo()
-            else if (periodo === 1) iniciarPeriodo2()
-            else handleClickGuardar()
-          }}
-          disabled={!enExtra && periodo === 2 && (guardandoDB || !isOnline)}
-          style={{ position: 'fixed', left: '12px', right: '88px', bottom: '24px', zIndex: 9997, padding: '18px 10px', border: '3px solid #fff', borderRadius: '16px', cursor: 'pointer', color: '#fff', fontSize: '1.1rem', fontWeight: '900', letterSpacing: '.02em', boxShadow: '0 8px 30px rgba(0,0,0,.55)',
-            background: enExtra ? (periodo === 1 ? '#e8710a' : '#1a73e8') : (periodo === 1 ? '#1e8e3e' : '#1e8e3e') }}>
-          {enExtra ? (periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO') : (periodo === 1 ? '▶ INICIAR 2DO PERIODO' : '💾 GUARDAR RESULTADO')}
-        </button>
-      )}
-
       {/* CRONÓMETRO */}
       <div onMouseDown={onDragStart} onTouchStart={onDragStart}
-        style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono?'50px':'20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono?'150px':'310px', userSelect: 'none', touchAction: 'none', cursor: 'grab' }}>
+        style={{ position: 'fixed', left: cronoPos.x, top: cronoPos.y, zIndex: 9999, background: cronoBg, borderRadius: miniCrono ? (accionCierre ? '26px' : '50px') : '20px', boxShadow: '0 8px 32px rgba(0,0,0,.5)', minWidth: miniCrono ? (accionCierre ? '210px' : '150px') : '310px', userSelect: 'none', touchAction: 'none', cursor: 'grab' }}>
         <div style={{ padding: miniCrono?'8px 12px':'10px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Move size={miniCrono?12:14} color="rgba(255,255,255,.6)"/>
@@ -2519,7 +2513,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   </button>
                 )}
                 <button onClick={seguirJugando} style={{ width: '100%', padding: '6px', background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.4)', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '600' }}>↩ Seguir jugando (EXTRA)</button>
-                {periodo === 1 && <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,.4)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>→ Iniciar 2do Periodo</button>}
               </div>
             ) : (
               <div>
@@ -2530,7 +2523,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   <button onClick={() => { pararAlarma(); setCorriendo(false); setSegundos(0); setTiempoAgotado(false); setTiempoExtra(0) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px', background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem' }}><RotateCcw size={14}/> Reset</button>
                 </div>
                 <div style={{ textAlign: 'center', marginTop: '6px', fontSize: '9px', color: 'rgba(255,255,255,.7)' }}>{enExtra ? 'Tiempo cumplido · el reloj sigue en EXTRA' : <>Restante: {formatTiempo(Math.max(0, limiteSegundos - segundos))}</>}{tiempoExtra > 0 && <span style={{ color: '#ffdd44' }}> (+{tiempoExtra}' extra)</span>}</div>
-                {periodo===1 && <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '7px', background: 'rgba(0,0,0,.3)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>→ Saltar a 2do Periodo</button>}
+                {periodo===1 && !enExtra && <button onClick={iniciarPeriodo2} style={{ width: '100%', marginTop: '8px', padding: '7px', background: 'rgba(0,0,0,.3)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '700' }}>→ Saltar a 2do Periodo</button>}
               </div>
             )}
             <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '1.4rem', fontWeight: '900', color: '#fff' }}>{golesLocalTotal} — {golesVisTotal}</div>
@@ -2543,6 +2536,14 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                 </div>
               </div>
             )}
+          </div>
+        )}
+        {accionCierre && (
+          <div style={{ padding: miniCrono ? '0 10px 10px' : '0 16px 14px' }}>
+            <button className="no-print" onClick={accionCierre.fn} disabled={accionCierre.off}
+              style={{ width: '100%', padding: miniCrono ? '12px 8px' : '16px 10px', border: '2px solid #fff', borderRadius: '14px', cursor: accionCierre.off ? 'not-allowed' : 'pointer', color: '#fff', fontSize: miniCrono ? '.9rem' : '1.05rem', fontWeight: '900', letterSpacing: '.02em', background: accionCierre.bg, boxShadow: '0 4px 14px rgba(0,0,0,.4)', opacity: accionCierre.off ? .6 : 1, touchAction: 'manipulation' }}>
+              {accionCierre.txt}
+            </button>
           </div>
         )}
       </div>
