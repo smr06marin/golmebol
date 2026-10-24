@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, Megaphone, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
+import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Gauge, Table2, ListOrdered, Ban, Link2, Copy, Check, Users, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
 import { esCanalYoutube, useCanalesEnVivo } from '../../lib/enVivoCanal'
 import MarcadorEnVivoOverlay from '../../components/MarcadorEnVivoOverlay'
@@ -9,6 +9,8 @@ import GolesEnVivoOverlay from '../../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
+import BotonesPatrocinadores from '../../components/BotonesPatrocinadores'
+import { disparoDeControl, disparoEsExclusivo, cargaDisparo } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
@@ -156,7 +158,7 @@ export default function AdminConfigSitioPage() {
   }
 
   async function fetchPatrocinadoresBtn() {
-    const { data } = await supabase.from('patrocinadores_golmebol').select('id, nombre, logo_url').eq('activo', true).order('orden')
+    const { data } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden')
     setPatrocinadoresBtn(data || [])
   }
 
@@ -166,13 +168,14 @@ export default function AdminConfigSitioPage() {
   // del panel), lo prende acá en la vista previa durante unos segundos y
   // después se apaga solo — mismo patrón que usa LandingPage para la
   // repetición manual.
-  const TIEMPO_PATROCINADOR_MS = 8000
+  const TIEMPO_PATROCINADOR_MS = 240000
   useEffect(() => {
     Object.entries(control).forEach(([streamId, c]) => {
       if (!c?.patrocinador_ts || patrocinadorVistoRef.current[streamId] === c.patrocinador_ts) return
       patrocinadorVistoRef.current[streamId] = c.patrocinador_ts
-      setPatrocinadorMostrando(m => ({ ...m, [streamId]: c.patrocinador_id }))
-      setTimeout(() => setPatrocinadorMostrando(m => ({ ...m, [streamId]: null })), TIEMPO_PATROCINADOR_MS)
+      setPatrocinadorMostrando(m => ({ ...m, [streamId]: disparoDeControl(c) }))
+      // Seguro: la propia publicidad avisa cuando termina (logo 8 s, banners 10 s cada uno, video al acabar)
+      setTimeout(() => setPatrocinadorMostrando(m => (m[streamId]?.clave === c.patrocinador_ts ? { ...m, [streamId]: null } : m)), TIEMPO_PATROCINADOR_MS)
     })
   }, [control])
 
@@ -442,8 +445,8 @@ export default function AdminConfigSitioPage() {
   // Muestra la publicidad de un patrocinador encima del video unos segundos
   // — a diferencia de los overlays de arriba, este no se queda prendido: se
   // apaga solo (ver el efecto que escucha patrocinador_ts más arriba).
-  function mostrarPatrocinador(streamId, patrocinadorId) {
-    actualizarControl(streamId, { patrocinador_id: patrocinadorId, patrocinador_ts: Date.now() })
+  function mostrarPatrocinador(streamId, patrocinadorId, tipo, tamano) {
+    actualizarControl(streamId, cargaDisparo(patrocinadorId, tipo, tamano))
   }
 
   // Genera (o reutiliza) el link para manejar el panel de control desde otro
@@ -493,7 +496,8 @@ export default function AdminConfigSitioPage() {
     // pública nunca aparece (ahí si no está en vivo, directamente no se
     // pinta nada), y eso es justo lo que confundía: se veía acá pero no allá.
     const vivo = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
-    const patrocinador = patrocinadorMostrando[s.id] ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando[s.id]) : null
+    const disparo = patrocinadorMostrando[s.id] || null
+    const patrocinador = disparo ? patrocinadoresBtn.find(p => p.id === disparo.id) : null
     return (
       <>
         {partidoSeleccionado && vivo && (
@@ -508,7 +512,8 @@ export default function AdminConfigSitioPage() {
         {/* La publicidad de un patrocinador tapa, mientras dura, cualquier
             otra gráfica de abajo (tabla/goles/jugadores) — son mutuamente
             excluyentes en este mismo espacio para no amontonar texto. */}
-        {patrocinador ? <PatrocinadorEnVivoOverlay patrocinador={patrocinador}/> : (
+        {patrocinador && <PatrocinadorEnVivoOverlay key={disparo.clave} patrocinador={patrocinador} tipo={disparo.tipo} tamano={disparo.tamano} descanso={!!vivo?.descanso} silencio onTerminar={() => setPatrocinadorMostrando(m => ({ ...m, [s.id]: null }))}/>}
+        {!(patrocinador && disparoEsExclusivo(disparo, !!vivo?.descanso)) && (
           <>
             {c?.overlay === 'goles' && partidoSeleccionado && vivo && <GolesEnVivoOverlay partido={partidoSeleccionado}/>}
             {c?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[c.overlay_tournament_id]}/>}
@@ -726,14 +731,7 @@ export default function AdminConfigSitioPage() {
                   {patrocinadoresBtn.length > 0 && (
                     <>
                       <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
-                      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-                        {patrocinadoresBtn.map(p => (
-                          <button key={p.id} onClick={() => mostrarPatrocinador(s.id, p.id)}
-                            style={{ display:'flex', alignItems:'center', gap:'5px', padding:'8px 12px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.76rem', fontWeight:'700' }}>
-                            <Megaphone size={13}/> {p.nombre}
-                          </button>
-                        ))}
-                      </div>
+                      <BotonesPatrocinadores denso patrocinadores={patrocinadoresBtn} onMostrar={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)}/>
                     </>
                   )}
 

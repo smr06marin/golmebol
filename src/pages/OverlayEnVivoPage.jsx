@@ -11,6 +11,7 @@ import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
+import { disparoDeControl, disparoEsExclusivo } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
@@ -294,13 +295,14 @@ export default function OverlayEnVivoPage() {
     if (patrocinadorVistoRef.current === null) { patrocinadorVistoRef.current = patrocinadorTs; return }
     if (!patrocinadorTs || patrocinadorVistoRef.current === patrocinadorTs) return
     patrocinadorVistoRef.current = patrocinadorTs
-    setPatrocinadorMostrando(patrocinadorId)
+    setPatrocinadorMostrando(disparoDeControl(control))
     clearTimeout(patrocinadorTimerRef.current)
-    patrocinadorTimerRef.current = setTimeout(() => setPatrocinadorMostrando(null), 8000)
-  }, [siteConfig, patrocinadorTs, patrocinadorId])
+    // Seguro: la propia publicidad avisa cuando termina (logo 8 s, banners 10 s cada uno, video al acabar)
+    patrocinadorTimerRef.current = setTimeout(() => setPatrocinadorMostrando(null), 240000)
+  }, [siteConfig, patrocinadorTs, patrocinadorId, control?.patrocinador_tipo, control?.patrocinador_tamano]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(patrocinadorTimerRef.current), [])
 
-  const sponsor = patrocinadorMostrando ? patrocinadores.find(p => p.id === patrocinadorMostrando) : null
+  const sponsor = patrocinadorMostrando ? patrocinadores.find(p => p.id === patrocinadorMostrando.id) : null
 
   return (
     <>
@@ -318,7 +320,8 @@ export default function OverlayEnVivoPage() {
           {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)}/>}
           {partido && <MarcadorEnVivoOverlay partido={partido}/>}
           {partido && <GolAvisoEnVivoOverlay partido={partido} bottom={overlayActivo === 'jugadores' ? '55%' : overlayActivo === 'goles' ? '36%' : '14%'}/>}
-          {sponsor ? <PatrocinadorEnVivoOverlay patrocinador={sponsor}/> : (
+          {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={descansoAuto} onTerminar={() => setPatrocinadorMostrando(null)}/>}
+          {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto)) && (
             <>
               {overlayActivo === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
               {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pie={pieInstitucional}/>}

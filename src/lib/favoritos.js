@@ -24,6 +24,10 @@ function escribir(ids) {
   try { window.dispatchEvent(new Event(EVENTO)) } catch { /* ignorar */ }
 }
 
+// Para código fuera de React (p. ej. avisos push). Devuelve los ids de equipos seguidos.
+export function leerFavoritosIds() { return leer() }
+export const EVENTO_FAVORITOS = EVENTO
+
 export function useFavoritos() {
   const [ids, setIds] = useState(leer)
 

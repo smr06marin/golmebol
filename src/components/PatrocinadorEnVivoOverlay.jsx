@@ -1,16 +1,39 @@
-// Gráfica de publicidad de un patrocinador, encima del video en vivo —
-// disparada a propósito desde el panel de control (botón por patrocinador),
-// no es automática. A diferencia de Tabla/Goles/Jugadores (que quedan
-// prendidas hasta que alguien las apague), esta aparece unos segundos y se
-// va sola (ver TIEMPO_VISIBLE_MS más abajo y cómo LandingPage/
-// EnVivoControlLinkPage arman su temporizador). Reutiliza los mismos datos
-// de /admin/patrocinadores (tabla patrocinadores_golmebol) que ya se
-// muestran rotando en el banner de la portada — no hace falta subir nada
-// nuevo para esto.
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { tamanoVideoEfectivo, DURACION_LOGO_MS, DURACION_BANNER_MS, DURACION_MAXIMA_VIDEO_MS } from '../lib/patrocinadorDisparo'
+
+// Publicidad de un patrocinador, encima del video en vivo — disparada a
+// propósito desde el panel de control (botones por patrocinador), nunca
+// automática. Tiene tres formas (prop `tipo`):
+//
+//  · 'logo'   (el de siempre) franja con logo + "PRESENTA" + nombre, 8 segundos.
+//  · 'banner' franja de abajo, ancho completo, con cada imagen del patrocinador
+//             (campo `banners`) durante 10 segundos. Si hay varias salen todas,
+//             una detrás de otra, solas.
+//  · 'video'  el video corto del patrocinador (campo `video_url`):
+//               - GRANDE y centrado (en el descanso, con la transmisión de fondo), o
+//               - PEQUEÑO arriba a la derecha, sin tapar el marcador, mientras se juega.
+//             `tamano` = 'auto' (grande si `descanso`, pequeño si no) | 'grande' | 'pequeno'.
+//             Se quita solo cuando el video termina.
+//
+// Cuando termina llama a `onTerminar` para que quien lo muestra lo saque.
+// `silencio`: true en las vistas web públicas (el navegador no deja reproducir
+// con sonido sin que la persona toque); el overlay de OBS lo deja con sonido.
 const ROJO_VIVO = '#e5433d'
 
-export default function PatrocinadorEnVivoOverlay({ patrocinador }) {
-  if (!patrocinador) return null
+// onTerminar llega como función nueva en cada dibujo de la página; esto la vuelve
+// estable para que los temporizadores no se reinicien con cada refresco.
+function useFnEstable(fn) {
+  const ref = useRef(fn)
+  useEffect(() => { ref.current = fn })
+  return useCallback((...a) => ref.current?.(...a), [])
+}
+
+function Logo({ patrocinador, onTerminar: alTerminar }) {
+  const onTerminar = useFnEstable(alTerminar)
+  useEffect(() => {
+    const t = setTimeout(() => onTerminar?.(), DURACION_LOGO_MS)
+    return () => clearTimeout(t)
+  }, [onTerminar])
   return (
     <div style={{
       position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 3,
@@ -34,4 +57,69 @@ export default function PatrocinadorEnVivoOverlay({ patrocinador }) {
       </div>
     </div>
   )
+}
+
+function Banners({ patrocinador, onTerminar: alTerminar }) {
+  const onTerminar = useFnEstable(alTerminar)
+  const lista = Array.isArray(patrocinador.banners) ? patrocinador.banners.filter(Boolean) : []
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    if (!lista.length) { onTerminar?.(); return }
+    const t = setTimeout(() => {
+      if (i + 1 >= lista.length) onTerminar?.()
+      else setI(i + 1)
+    }, DURACION_BANNER_MS)
+    return () => clearTimeout(t)
+  }, [i, lista.length, onTerminar])
+  if (!lista.length) return null
+  return (
+    <div style={{ position: 'absolute', left: 0, right: 0, bottom: '3%', zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+      <style>{'@keyframes gmBannerEntra{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}'}</style>
+      <img key={i} src={lista[i]} alt={patrocinador.nombre || ''}
+        style={{ display: 'block', width: 'min(96%, 640px)', maxHeight: '34vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 18px rgba(0,0,0,.55)', animation: 'gmBannerEntra .35s ease-out both' }}/>
+    </div>
+  )
+}
+
+function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTerminar }) {
+  const onTerminar = useFnEstable(alTerminar)
+  const ref = useRef(null)
+  const grande = tamanoVideoEfectivo(tamano, descanso) === 'grande'
+  useEffect(() => {
+    const t = setTimeout(() => onTerminar?.(), DURACION_MAXIMA_VIDEO_MS)
+    return () => clearTimeout(t)
+  }, [onTerminar])
+  useEffect(() => {
+    const v = ref.current
+    if (!v) return
+    const p = v.play()
+    if (p && p.catch) p.catch(() => { v.muted = true; v.play().catch(() => onTerminar?.()) }) // sin permiso para sonido: se intenta mudo
+  }, [onTerminar])
+  if (!patrocinador.video_url) return null
+  const video = (
+    <video ref={ref} src={patrocinador.video_url} autoPlay playsInline muted={!!silencio} preload="auto"
+      onEnded={() => onTerminar?.()} onError={() => onTerminar?.()}
+      style={grande
+        ? { display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', background: '#000', boxShadow: '0 8px 30px rgba(0,0,0,.6)' }
+        : { display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', background: '#000' }}/>
+  )
+  if (grande) {
+    return (
+      <div style={{ position: 'absolute', inset: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)', pointerEvents: 'none', padding: '5%', boxSizing: 'border-box' }}>
+        <div style={{ width: 'min(100%, 760px)', maxHeight: '100%', display: 'flex', justifyContent: 'center' }}>{video}</div>
+      </div>
+    )
+  }
+  return (
+    <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 3, width: 'clamp(110px, 26%, 300px)', maxHeight: '45%', display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none', border: '1px solid rgba(255,255,255,.35)', borderRadius: '9px', boxShadow: '0 3px 14px rgba(0,0,0,.55)', overflow: 'hidden', background: '#000' }}>
+      {video}
+    </div>
+  )
+}
+
+export default function PatrocinadorEnVivoOverlay({ patrocinador, tipo = 'logo', tamano = 'auto', descanso = false, silencio = false, onTerminar }) {
+  if (!patrocinador) return null
+  if (tipo === 'banner') return <Banners patrocinador={patrocinador} onTerminar={onTerminar}/>
+  if (tipo === 'video') return <Video patrocinador={patrocinador} tamano={tamano} descanso={descanso} silencio={silencio} onTerminar={onTerminar}/>
+  return <Logo patrocinador={patrocinador} onTerminar={onTerminar}/>
 }

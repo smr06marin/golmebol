@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Megaphone, Upload, X, Plus, Trash2 } from 'lucide-react'
+import { Megaphone, Upload, X, Plus, Trash2, Film, Image as IconoImagen } from 'lucide-react'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 
 const inputStyle = {
@@ -14,11 +14,23 @@ const labelStyle = {
   display: 'block', marginBottom: '4px',
 }
 
+const MAX_VIDEO_MB = 50
+const MAX_BANNER_MB = 5
+
+// Ruta del archivo dentro del bucket a partir de su URL pública
+function rutaDeUrl(url) {
+  if (!url) return null
+  const i = url.indexOf('/patrocinadores/')
+  return i < 0 ? null : decodeURIComponent(url.slice(i + '/patrocinadores/'.length).split('?')[0])
+}
+const extDe = (f) => (f.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'bin'
+
 export default function AdminPatrocinadoresPage() {
   const [patrocinadores, setPatrocinadores] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
   const [uploading, setUploading] = useState(null)
+  const [subiendoMedia, setSubiendoMedia] = useState(null) // `${id}:banner` | `${id}:video`
   const [msg, setMsg] = useState(null)
   const guardandoRef = useRef({}) // { [id]: bool } — bloqueo inmediato por fila, evita doble clic en "Guardar"
   const creandoRef = useRef(false) // bloqueo inmediato para "Agregar patrocinador"
@@ -79,6 +91,8 @@ export default function AdminPatrocinadoresPage() {
       const path = `${patro.id}.${patro.logo_url.split('.').pop().split('?')[0]}`
       await supabase.storage.from('patrocinadores').remove([path])
     }
+    const rutas = [...(patro.banners || []), patro.video_url].map(rutaDeUrl).filter(Boolean)
+    if (rutas.length) await supabase.storage.from('patrocinadores').remove(rutas)
     setPatrocinadores(prev => prev.filter(p => p.id !== patro.id))
     showMsg('Patrocinador eliminado')
   }
@@ -97,6 +111,77 @@ export default function AdminPatrocinadoresPage() {
     setPatrocinadores(prev => prev.map(p => p.id === patro.id ? { ...p, logo_url: logoUrl } : p))
     setUploading(null)
     showMsg('Logo subido ✓')
+  }
+
+  // Banners: se pueden subir varios a la vez; cada uno con nombre único (así nunca se ve uno viejo guardado en caché)
+  async function handleBanners(patro, fileList) {
+    const files = Array.from(fileList || [])
+    if (!files.length || subiendoMedia) return
+    const malos = files.filter(f => !f.type.startsWith('image/') || f.size > MAX_BANNER_MB * 1024 * 1024)
+    if (malos.length) { showMsg(`Cada banner debe ser una imagen de máximo ${MAX_BANNER_MB} MB`, 'error'); return }
+    setSubiendoMedia(`${patro.id}:banner`)
+    try {
+      const nuevas = []
+      for (let i = 0; i < files.length; i++) {
+        const path = `banner_${patro.id}_${Date.now()}_${i}.${extDe(files[i])}`
+        const { error } = await supabase.storage.from('patrocinadores').upload(path, files[i], { contentType: files[i].type })
+        if (error) { showMsg('Error al subir un banner. Revisa que exista el almacenamiento "patrocinadores"', 'error'); break }
+        nuevas.push(supabase.storage.from('patrocinadores').getPublicUrl(path).data.publicUrl)
+      }
+      if (!nuevas.length) return
+      const lista = [...(patro.banners || []), ...nuevas]
+      const { error } = await supabase.from('patrocinadores_golmebol').update({ banners: lista }).eq('id', patro.id)
+      if (error) { showMsg('Falta ejecutar migracion_patrocinadores_video_banner.sql en Supabase', 'error'); return }
+      updateLocal(patro.id, 'banners', lista)
+      showMsg(nuevas.length > 1 ? `${nuevas.length} banners subidos ✓` : 'Banner subido ✓')
+    } finally {
+      setSubiendoMedia(null)
+    }
+  }
+
+  async function handleQuitarBanner(patro, url) {
+    if (subiendoMedia) return
+    const lista = (patro.banners || []).filter(u => u !== url)
+    const { error } = await supabase.from('patrocinadores_golmebol').update({ banners: lista }).eq('id', patro.id)
+    if (error) { showMsg('Error al quitar el banner', 'error'); return }
+    updateLocal(patro.id, 'banners', lista)
+    const ruta = rutaDeUrl(url)
+    if (ruta) await supabase.storage.from('patrocinadores').remove([ruta])
+    showMsg('Banner quitado')
+  }
+
+  // Video: uno por patrocinador (si sube otro, reemplaza al anterior)
+  async function handleVideo(patro, file) {
+    if (!file || subiendoMedia) return
+    if (!file.type.startsWith('video/')) { showMsg('Elige un archivo de video (mejor MP4)', 'error'); return }
+    if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+      showMsg(`El video pesa ${(file.size / 1048576).toFixed(0)} MB y el máximo es ${MAX_VIDEO_MB} MB. Comprímelo y vuelve a subirlo`, 'error'); return
+    }
+    setSubiendoMedia(`${patro.id}:video`)
+    try {
+      const path = `video_${patro.id}_${Date.now()}.${extDe(file)}`
+      const { error: upErr } = await supabase.storage.from('patrocinadores').upload(path, file, { contentType: file.type })
+      if (upErr) { showMsg('Error al subir el video. Revisa que exista el almacenamiento "patrocinadores"', 'error'); return }
+      const url = supabase.storage.from('patrocinadores').getPublicUrl(path).data.publicUrl
+      const { error } = await supabase.from('patrocinadores_golmebol').update({ video_url: url }).eq('id', patro.id)
+      if (error) { showMsg('Falta ejecutar migracion_patrocinadores_video_banner.sql en Supabase', 'error'); return }
+      const vieja = rutaDeUrl(patro.video_url)
+      updateLocal(patro.id, 'video_url', url)
+      if (vieja) await supabase.storage.from('patrocinadores').remove([vieja])
+      showMsg('Video subido ✓')
+    } finally {
+      setSubiendoMedia(null)
+    }
+  }
+
+  async function handleQuitarVideo(patro) {
+    if (subiendoMedia) return
+    const { error } = await supabase.from('patrocinadores_golmebol').update({ video_url: null }).eq('id', patro.id)
+    if (error) { showMsg('Error al quitar el video', 'error'); return }
+    const ruta = rutaDeUrl(patro.video_url)
+    updateLocal(patro.id, 'video_url', null)
+    if (ruta) await supabase.storage.from('patrocinadores').remove([ruta])
+    showMsg('Video quitado')
   }
 
   function updateLocal(id, field, value) {
@@ -208,6 +293,60 @@ export default function AdminPatrocinadoresPage() {
                       style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: saving === patro.id ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: saving === patro.id ? .7 : 1 }}>
                       {saving === patro.id ? 'Guardando...' : 'Guardar'}
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px dashed #dadce0' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124', marginBottom: '2px' }}>Publicidad para las transmisiones en vivo</div>
+                <p style={{ margin: '0 0 12px', fontSize: '.75rem', color: '#5f6368' }}>Lo que subas aquí aparece como botones en el control de la transmisión (“Banner” y “Video”) para mostrarlo cuando tú quieras.</p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+                  <div>
+                    <label style={labelStyle}><IconoImagen size={12} style={{ verticalAlign: '-2px', marginRight: '3px' }}/>Banners (cada uno sale 10 s; si hay varios salen todos, uno tras otro)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                      {(patro.banners || []).map((url, i) => (
+                        <div key={url} style={{ position: 'relative', width: '120px', height: '54px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '6px', overflow: 'hidden' }}>
+                          <img src={url} alt={`Banner ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                          <button type="button" onClick={() => handleQuitarBanner(patro, url)} title="Quitar este banner"
+                            style={{ position: 'absolute', top: '2px', right: '2px', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.65)', border: 'none', borderRadius: '50%', color: '#fff', cursor: 'pointer', padding: 0 }}>
+                            <X size={12}/>
+                          </button>
+                        </div>
+                      ))}
+                      {!(patro.banners || []).length && <span style={{ fontSize: '.75rem', color: '#9aa0a6' }}>Sin banners</span>}
+                    </div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '5px 10px', cursor: subiendoMedia ? 'not-allowed' : 'pointer', opacity: subiendoMedia ? .6 : 1 }}>
+                      <Upload size={12}/> {subiendoMedia === `${patro.id}:banner` ? 'Subiendo...' : 'Subir banners'}
+                      <input type="file" accept="image/*" multiple style={{ display: 'none' }} disabled={!!subiendoMedia}
+                        onChange={e => { handleBanners(patro, e.target.files); e.target.value = '' }}/>
+                    </label>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Imágenes horizontales (ej. 1280×360), máx. {MAX_BANNER_MB} MB cada una.</div>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}><Film size={12} style={{ verticalAlign: '-2px', marginRight: '3px' }}/>Video (grande en el descanso, pequeño mientras se juega)</label>
+                    {patro.video_url ? (
+                      <div style={{ marginBottom: '8px' }}>
+                        <video src={patro.video_url} controls preload="metadata" playsInline style={{ display: 'block', width: '100%', maxWidth: '260px', maxHeight: '150px', borderRadius: '6px', background: '#000' }}/>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '.75rem', color: '#9aa0a6', marginBottom: '8px' }}>Sin video</div>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '5px 10px', cursor: subiendoMedia ? 'not-allowed' : 'pointer', opacity: subiendoMedia ? .6 : 1 }}>
+                        <Upload size={12}/> {subiendoMedia === `${patro.id}:video` ? 'Subiendo video...' : patro.video_url ? 'Cambiar video' : 'Subir video'}
+                        <input type="file" accept="video/*" style={{ display: 'none' }} disabled={!!subiendoMedia}
+                          onChange={e => { handleVideo(patro, e.target.files[0]); e.target.value = '' }}/>
+                      </label>
+                      {patro.video_url && (
+                        <button type="button" onClick={() => handleQuitarVideo(patro)} disabled={!!subiendoMedia}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#d93025', background: 'none', border: '1px solid #d93025', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer' }}>
+                          <Trash2 size={12}/> Quitar video
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>MP4, máx. {MAX_VIDEO_MB} MB. Puede tardar un poco en subir.</div>
                   </div>
                 </div>
               </div>

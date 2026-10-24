@@ -1,4 +1,7 @@
 {
+    "functions": {
+      "api/push-enviar.js": { "maxDuration": 60 }
+    },
     "rewrites": [
       { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
     ],

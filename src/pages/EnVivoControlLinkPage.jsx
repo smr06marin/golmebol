@@ -15,13 +15,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { PlayCircle, Gauge, Table2, ListOrdered, Ban, Users, Megaphone } from 'lucide-react'
+import { PlayCircle, Gauge, Table2, ListOrdered, Ban, Users } from 'lucide-react'
 import LiveEmbed from '../components/LiveEmbed'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
+import BotonesPatrocinadores from '../components/BotonesPatrocinadores'
+import { disparoDeControl, disparoEsExclusivo, cargaDisparo } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
@@ -60,7 +62,7 @@ export default function EnVivoControlLinkPage() {
   }
 
   async function fetchPatrocinadoresBtn() {
-    const { data } = await supabase.from('patrocinadores_golmebol').select('id, nombre, logo_url').eq('activo', true).order('orden')
+    const { data } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden')
     setPatrocinadoresBtn(data || [])
   }
 
@@ -140,8 +142,8 @@ export default function EnVivoControlLinkPage() {
     actualizarControl({ overlay, overlay_tournament_id: overlay === 'tabla' ? (tournamentId || null) : null })
   }
 
-  function mostrarPatrocinador(patrocinadorId) {
-    actualizarControl({ patrocinador_id: patrocinadorId, patrocinador_ts: Date.now() })
+  function mostrarPatrocinador(patrocinadorId, tipo, tamano) {
+    actualizarControl(cargaDisparo(patrocinadorId, tipo, tamano))
   }
 
   // Tabla de posiciones de la vista previa: se refresca sola y suma lo que se está jugando ahora
@@ -167,8 +169,9 @@ export default function EnVivoControlLinkPage() {
   useEffect(() => {
     if (!control.patrocinador_ts || patrocinadorVistoRef.current === control.patrocinador_ts) return
     patrocinadorVistoRef.current = control.patrocinador_ts
-    setPatrocinadorMostrando(control.patrocinador_id)
-    const t = setTimeout(() => setPatrocinadorMostrando(null), 8000)
+    setPatrocinadorMostrando(disparoDeControl(control))
+    // Seguro: la propia publicidad avisa cuando termina (logo 8 s, banners 10 s cada uno, video al acabar)
+    const t = setTimeout(() => setPatrocinadorMostrando(null), 240000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [control.patrocinador_ts])
@@ -189,7 +192,7 @@ export default function EnVivoControlLinkPage() {
     )
   }
 
-  const sponsor = patrocinadorMostrando ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando) : null
+  const sponsor = patrocinadorMostrando ? patrocinadoresBtn.find(p => p.id === patrocinadorMostrando.id) : null
   const tieneTorneo = !!torneoIdActual
   const puedeGraficaPartido = !!partido || !!torneoAuto // en una transmisión que sigue un torneo se puede dejar elegida la gráfica: aparece cuando empiece el partido
 
@@ -213,7 +216,8 @@ export default function EnVivoControlLinkPage() {
                   colores: derivarColoresUniforme(partido), detalle: derivarFaltasYTarjetas(partido),
                 }}/>
               )}
-              {sponsor ? <PatrocinadorEnVivoOverlay patrocinador={sponsor}/> : (
+              {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={!!vivo?.descanso} silencio onTerminar={() => setPatrocinadorMostrando(null)}/>}
+              {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, !!vivo?.descanso)) && (
                 <>
                   {control.overlay === 'goles' && partido && vivo && <GolesEnVivoOverlay partido={partido}/>}
                   {control.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablas[control.overlay_tournament_id]}/>}
@@ -285,12 +289,7 @@ export default function EnVivoControlLinkPage() {
           <div style={{ marginTop:'14px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'14px' }}>
             <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'8px' }}>MOSTRAR PUBLICIDAD DE UN PATROCINADOR</div>
             <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-              {patrocinadoresBtn.map(p => (
-                <button key={p.id} onClick={() => mostrarPatrocinador(p.id)}
-                  style={{ display:'flex', alignItems:'center', gap:'5px', padding:'10px 14px', background:'#2a2a2a', border:`1px solid ${S.border}`, borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.8rem', fontWeight:'700' }}>
-                  <Megaphone size={14}/> {p.nombre}
-                </button>
-              ))}
+              <div style={{ width:'100%' }}><BotonesPatrocinadores patrocinadores={patrocinadoresBtn} onMostrar={mostrarPatrocinador}/></div>
             </div>
           </div>
         )}

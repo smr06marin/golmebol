@@ -18,6 +18,7 @@ import { useCanalesEnVivo, resolverStreams } from '../lib/enVivoCanal'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
+import { disparoDeControl, disparoEsExclusivo } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
@@ -558,15 +559,18 @@ export default function LandingPage() {
   // diferencia de tabla/goles/jugadores, esto no se queda prendido — aparece
   // unos segundos encima del video y se apaga solo.
   const patrocinadorVistoRef = useRef({}) // { [streamId]: último patrocinador_ts ya mostrado }
-  const [patrocinadoresMostrando, setPatrocinadoresMostrando] = useState({}) // { [streamId]: patrocinadorId }
+  const patrocinadorTimersRef = useRef({}) // { [streamId]: seguro para apagar la publicidad }
+  const [patrocinadoresMostrando, setPatrocinadoresMostrando] = useState({}) // { [streamId]: { id, tipo, tamano, clave } }
   useEffect(() => {
     const control = siteConfig?.en_vivo_control || {}
     streamsVivos.forEach(s => {
       const c = control[s.id]
       if (!c?.patrocinador_ts || patrocinadorVistoRef.current[s.id] === c.patrocinador_ts) return
       patrocinadorVistoRef.current[s.id] = c.patrocinador_ts
-      setPatrocinadoresMostrando(m => ({ ...m, [s.id]: c.patrocinador_id }))
-      setTimeout(() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null })), 8000)
+      setPatrocinadoresMostrando(m => ({ ...m, [s.id]: disparoDeControl(c) }))
+      clearTimeout(patrocinadorTimersRef.current[s.id])
+      // Seguro: la propia publicidad avisa cuando termina (logo 8 s, banners 10 s cada uno, video al acabar)
+      patrocinadorTimersRef.current[s.id] = setTimeout(() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null })), 240000)
     })
   }, [siteConfig, streamsVivos])
 
@@ -938,7 +942,8 @@ export default function LandingPage() {
               const partidoDeStream = partidoActivoDeStream(s, partidosVivo)
               const controlStream = siteConfig?.en_vivo_control?.[s.id]
               const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
-              const sponsorMostrando = patrocinadorIdMostrando ? patrocinadores.find(p => p.id === patrocinadorIdMostrando) : null
+              const sponsorMostrando = patrocinadorIdMostrando ? patrocinadores.find(p => p.id === patrocinadorIdMostrando.id) : null
+              const descansoStream = !!partidoDeStream?.vivo?.descanso
               return (
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
@@ -948,7 +953,8 @@ export default function LandingPage() {
                       <>
                         {partidoDeStream && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
                         {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} bottom={controlStream?.overlay === 'jugadores' ? '55%' : controlStream?.overlay === 'goles' ? '36%' : '14%'}/>}
-                        {sponsorMostrando ? <PatrocinadorEnVivoOverlay patrocinador={sponsorMostrando}/> : (
+                        {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} silencio onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
+                        {!(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream)) && (
                           <>
                             {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
                             {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]}/>}

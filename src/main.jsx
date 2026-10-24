@@ -17,6 +17,9 @@ try {
   else if (ruta.startsWith('/t/')) import('./pages/TorneoPublicoPage') // tabla pública de un torneo
 } catch (e) { /* si algo falla, la app carga la página normal más tarde */ }
 
+// App (Android/iPhone): deja listas las notificaciones push. En la web no hace nada.
+import('./lib/avisos').then(m => m.iniciarAvisos()).catch(() => {})
+
 import('./App.jsx').then(({ default: App }) => {
   createRoot(document.getElementById('root')).render(
     <StrictMode>
