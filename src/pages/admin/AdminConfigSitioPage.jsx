@@ -648,7 +648,7 @@ export default function AdminConfigSitioPage() {
                   </div>
 
                   {tieneTorneo && (() => {
-                    const listaLogos = logosPorTorneo[partidoSeleccionado.tournament_id] || []
+                    const listaLogos = logosPorTorneo[torneoIdActual] || []
                     return (
                       <>
                         <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LOGOS DE PATROCINADOR DEL TORNEO</div>
@@ -658,7 +658,7 @@ export default function AdminConfigSitioPage() {
                         <label style={{ display:'inline-flex', alignItems:'center', gap:'6px', marginBottom:'10px', padding:'9px 14px', background:'#fff', border:'1px dashed #1a73e8', borderRadius:'8px', cursor:'pointer', color:'#1a73e8', fontSize:'.78rem', fontWeight:'700' }}>
                           <ImagePlus size={14}/> {subiendoLogoTorneo ? 'Subiendo...' : 'Subir logo'}
                           <input type="file" accept="image/*" hidden disabled={subiendoLogoTorneo}
-                            onChange={e => { const f = e.target.files?.[0]; if (f) subirLogoTorneo(partidoSeleccionado.tournament_id, f); e.target.value = '' }}/>
+                            onChange={e => { const f = e.target.files?.[0]; if (f) subirLogoTorneo(torneoIdActual, f); e.target.value = '' }}/>
                         </label>
                         <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginBottom:'14px' }}>
                           {listaLogos.map(logo => {
@@ -681,7 +681,7 @@ export default function AdminConfigSitioPage() {
                                     </button>
                                   </div>
                                 ) : (
-                                  <button onClick={() => editarLogoTorneo(s.id, partidoSeleccionado.tournament_id, logo)}
+                                  <button onClick={() => editarLogoTorneo(s.id, torneoIdActual, logo)}
                                     style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', padding:'6px', marginBottom:'4px', background:'#2a2a2a', border:'none', borderRadius:'6px', cursor:'pointer', color:'#fff', fontSize:'.68rem', fontWeight:'700' }}>
                                     <Pencil size={11}/> Editar posición
                                   </button>
@@ -691,7 +691,7 @@ export default function AdminConfigSitioPage() {
                                     style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'3px', padding:'6px', background: estaPublicado ? S.red : S.green, border:'none', borderRadius:'6px', cursor:'pointer', color: estaPublicado ? '#fff' : '#0a0a0a', fontSize:'.68rem', fontWeight:'700' }}>
                                     {estaPublicado ? <><EyeOff size={11}/> Quitar</> : <><Eye size={11}/> Publicar</>}
                                   </button>
-                                  <button onClick={() => borrarLogoTorneo(partidoSeleccionado.tournament_id, logo)}
+                                  <button onClick={() => borrarLogoTorneo(torneoIdActual, logo)}
                                     style={{ padding:'6px 8px', background:'#2a2a2a', border:'none', borderRadius:'6px', cursor:'pointer', color:'#9aa0a6' }}>
                                     <Trash2 size={11}/>
                                   </button>
