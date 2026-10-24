@@ -10,6 +10,7 @@ import TablaEnVivoOverlay from '../../components/TablaEnVivoOverlay'
 import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import BotonesPatrocinadores from '../../components/BotonesPatrocinadores'
+import PublicidadPatrocinadoresEnVivo from '../../components/PublicidadPatrocinadoresEnVivo'
 import { disparoDeControl, disparoEsExclusivo, cargaDisparo } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
@@ -746,6 +747,12 @@ export default function AdminConfigSitioPage() {
           </div>
         </div>
       )}
+
+      <PublicidadPatrocinadoresEnVivo
+        patrocinadores={patrocinadoresBtn}
+        onCambio={(id, cambios) => setPatrocinadoresBtn(l => l.map(p => p.id === id ? { ...p, ...cambios } : p))}
+        onNuevo={nuevo => setPatrocinadoresBtn(l => [...l, nuevo])}
+        onQuitar={id => setPatrocinadoresBtn(l => l.filter(p => p.id !== id))}/>
 
       <div style={{ background:'#fff', border:'1px solid #e8eaed', borderRadius:'12px', padding:'20px', boxShadow:'0 1px 3px rgba(0,0,0,.06)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'600', color:'#202124', marginBottom:'4px' }}>
