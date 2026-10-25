@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense, Component } from 'react'
+import { useEffect, useRef, useState, lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase, supabaseSilent } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
@@ -372,6 +372,7 @@ export default function App() {
   // nueva contraseña" en /login EN VEZ de mandarlo derecho al panel (que es
   // lo que pasaría igual, porque esa sesión también cuenta como "ya logueado").
   const [enRecuperacion, setEnRecuperacion] = useState(false)
+  const ultimoUserIdRef = useRef(null) // id de la persona con sesión (para no reprocesar la misma)
 
   async function cargarRol(u) {
     if (!u?.email) { setRol(null); return }
@@ -436,17 +437,30 @@ export default function App() {
     try { haySesionGuardada = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('-auth-token')) } catch {}
 
     const timeout = setTimeout(() => setLoading(false), haySesionGuardada ? 8000 : 2000)
+    // OJO (por qué esto es así): Supabase vuelve a avisar "hay sesión"
+    // (SIGNED_IN / TOKEN_REFRESHED) cada vez que se regresa a la pestaña —
+    // por ejemplo al volver de WhatsApp. Antes, cada aviso reiniciaba la
+    // carga del rol y ProtectedRoute mostraba "Cargando…" un instante, lo que
+    // DESMONTABA toda la pantalla y borraba lo que la persona estaba
+    // escribiendo. Ahora, si es la MISMA persona, no se toca nada: ni el
+    // usuario, ni el rol, ni la pantalla.
+    function aplicarSesion(session) {
+      const u = session?.user ?? null
+      const id = u?.id ?? null
+      if (id !== null && id === ultimoUserIdRef.current && useAuthStore.getState().user?.id === id) { setLoading(false); return }
+      if (id === null && ultimoUserIdRef.current !== null) import('./lib/borradorFormularios').then(m => m.olvidarBorradores()).catch(() => {}) // cerró sesión: no dejar borradores en el celular
+      ultimoUserIdRef.current = id
+      setUser(u)
+      setLoading(false)
+      cargarRol(u)
+    }
     supabase.auth.getSession().then(({ data: { session } }) => {
       clearTimeout(timeout)
-      setUser(session?.user ?? null)
-      setLoading(false)
-      cargarRol(session?.user)
+      aplicarSesion(session)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setEnRecuperacion(true)
-      setUser(session?.user ?? null)
-      setLoading(false)
-      cargarRol(session?.user)
+      aplicarSesion(session)
     })
     return () => { subscription.unsubscribe(); clearTimeout(timeout) }
   }, [])

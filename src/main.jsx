@@ -20,6 +20,10 @@ try {
 // App (Android/iPhone): deja listas las notificaciones push. En la web no hace nada.
 import('./lib/avisos').then(m => m.iniciarAvisos()).catch(() => {})
 
+// Guarda borradores de lo que se escribe en cualquier formulario: si el celular recarga
+// la página al volver de WhatsApp u otra app, lo escrito se recupera solo.
+import('./lib/borradorFormularios').then(m => m.iniciarBorradores()).catch(() => {})
+
 import('./App.jsx').then(({ default: App }) => {
   createRoot(document.getElementById('root')).render(
     <StrictMode>
