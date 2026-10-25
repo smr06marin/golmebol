@@ -742,7 +742,11 @@ export default function LandingPage() {
   async function fetchPortada() {
     const { data, error } = await supabase.from('site_config').select('portada_inicio').eq('id', true).maybeSingle()
     if (error) return
-    const p = data?.portada_inicio?.url ? data.portada_inicio : null
+    // { url: computador, url_movil: celular } — si solo hay una, se usa en las dos
+    const crudo = data?.portada_inicio || {}
+    const pc = crudo.url || crudo.url_movil || null
+    const movil = crudo.url_movil || crudo.url || null
+    const p = pc ? { url: pc, pc, movil } : null
     setPortadaInicio(p)
     guardarCacheRapido('landing_portada', p)
   }
@@ -861,6 +865,14 @@ export default function LandingPage() {
         .gm-carousel-flecha:hover { filter: brightness(1.25) }
         @media (pointer: coarse) { .gm-carousel-flecha { display: none !important } }
         .gm-hover:hover { filter: brightness(1.08) }
+        /* Portada del inicio: una foto para computador y otra (vertical) para celular */
+        .gm-hero-portada { min-height: clamp(440px, 34vw, 600px) }
+        .gm-portada-movil { display: none }
+        @media (max-width: 700px) {
+          .gm-hero-portada { min-height: 520px }
+          .gm-portada-pc { display: none }
+          .gm-portada-movil { display: block }
+        }
         @keyframes gm-fadein { from { opacity: 0 } to { opacity: 1 } }
         .gm-fade { animation: gm-fadein 1s ease }
         /* Header en celulares angostos (≈360px): que INGRESAR y ADMIN siempre quepan sin correr la pantalla */
@@ -901,11 +913,12 @@ export default function LandingPage() {
       </div>
 
       {/* ── Hero: oscuro con acento verde ── */}
-      <div style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', minHeight: portadaInicio?.url ? '440px' : undefined, display: portadaInicio?.url ? 'flex' : undefined, alignItems: portadaInicio?.url ? 'flex-end' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
+      <div className={portadaInicio?.url ? 'gm-hero-portada' : undefined} style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', display: portadaInicio?.url ? 'flex' : undefined, alignItems: portadaInicio?.url ? 'flex-end' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
         {portadaInicio?.url ? (
           <>
             {/* Portada: la foto de fondo y un degradado oscuro que la funde con el resto de la página (sin borde duro abajo) */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+            <div className="gm-portada-pc" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.pc || portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+            <div className="gm-portada-movil" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.movil || portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: `linear-gradient(180deg, rgba(10,10,10,.12) 0%, rgba(10,10,10,.12) 45%, rgba(10,10,10,.7) 80%, ${S.bg} 100%)` }}/>
           </>
         ) : (
