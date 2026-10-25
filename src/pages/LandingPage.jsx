@@ -455,7 +455,9 @@ export default function LandingPage() {
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []
   ).filter(s => s.activo && (s.url || '').trim()), [siteConfig])
   const canalesEnVivo = useCanalesEnVivo(streamsConfig)
-  const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo), [streamsConfig, canalesEnVivo])
+  // Videos que YouTube dice que ya no existen / son privados: la transmisión se esconde en vez de mostrar "Video no disponible"
+  const [streamsCaidos, setStreamsCaidos] = useState({}) // { [idTransmisión]: url }
+  const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo).filter(s => streamsCaidos[s.id] !== s.url), [streamsConfig, canalesEnVivo, streamsCaidos])
   const idsTorneoAuto = useMemo(() => streamsVivos.map(s => s.torneo_auto).filter(Boolean), [streamsVivos])
   const logoDeTorneoAuto = useLogosTorneos(idsTorneoAuto)
 
@@ -953,7 +955,7 @@ export default function LandingPage() {
                 <div key={s.id}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
                   <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
                         {partidoDeStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}

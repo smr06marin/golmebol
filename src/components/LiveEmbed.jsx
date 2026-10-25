@@ -238,8 +238,12 @@ export function cargarYouTubeAPI() {
 // panel de control (admin o el link de otro celular) para leer hasta dónde
 // se devolvió Sebas a mano con la barra de YouTube, justo antes de armar la
 // repetición manual.
-const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false }, ref) {
+const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false, onNoDisponible }, ref) {
   const plataforma = detectarPlataforma(url)
+  // `onNoDisponible`: se llama cuando YouTube dice que el video ya no existe, es privado o no se puede incrustar
+  // (códigos 100 / 101 / 150). La portada lo usa para esconder la transmisión en vez de mostrar "Video no disponible".
+  const noDisponibleRef = useRef(onNoDisponible)
+  useEffect(() => { noDisponibleRef.current = onNoDisponible })
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
   const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
@@ -325,7 +329,10 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
           // videos/streams según cómo los configuró el dueño del canal), que
           // quede al menos en la consola — así no se ve como un error
           // "silencioso" si algún día hay que revisar por qué no rebobina.
-          onError: e => console.warn('[LiveEmbed] YouTube player no se pudo controlar (código', e?.data, ')'),
+          onError: e => {
+            console.warn('[LiveEmbed] YouTube player no se pudo controlar (código', e?.data, ')')
+            if ([100, 101, 150].includes(e?.data)) noDisponibleRef.current?.()
+          },
         },
       })
     })
