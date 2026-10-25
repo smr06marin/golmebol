@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Star, MapPin } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, Star, MapPin } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useFavoritos } from '../lib/favoritos'
@@ -52,7 +52,7 @@ function EscudoMini({ logo_url, name, size = 24 }) {
 
 const ESTILO = `
 @keyframes gmPdPulso { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
-.gm-pd-fila { display: grid; grid-template-columns: 30px minmax(0,1fr) 70px minmax(0,1fr) 30px; align-items: center; column-gap: 4px; padding: 9px 8px; min-height: 58px; cursor: pointer; border-top: 1px solid #242424; background: transparent; width: 100%; border-left: none; border-right: none; border-bottom: none; color: inherit; font-family: inherit; text-align: left; }
+.gm-pd-fila { box-sizing: border-box; display: grid; grid-template-columns: 30px minmax(0,1fr) 70px minmax(0,1fr) 30px; align-items: center; column-gap: 4px; padding: 9px 8px; min-height: 58px; cursor: pointer; border-top: 1px solid #242424; background: transparent; width: 100%; border-left: none; border-right: none; border-bottom: none; color: inherit; font-family: inherit; text-align: left; }
 .gm-pd-fila:hover { background: #1c1c1c; }
 .gm-pd-lugar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; margin-top: 5px; font-size: .66rem; font-weight: 600; color: #8a8a8a; }
 .gm-pd-lugar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -60,6 +60,13 @@ const ESTILO = `
 .gm-pd-local { justify-content: flex-end; text-align: right; }
 .gm-pd-nombre { font-size: .78rem; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; min-width: 0; }
 .gm-pd-chips::-webkit-scrollbar { display: none }
+.gm-pd-cab { display: flex; align-items: center; gap: 11px; width: 100%; box-sizing: border-box; padding: 13px 14px; background: transparent; border: none; color: #fff; cursor: pointer; text-align: left; font-family: inherit; -webkit-tap-highlight-color: transparent; }
+.gm-pd-cab:hover { background: #1b1b1b; }
+.gm-pd-tit { font-weight: 800; font-size: .86rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; }
+.gm-pd-sub { font-size: .7rem; color: #8a8a8a; font-weight: 600; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.gm-pd-chev { transition: transform .2s ease; flex-shrink: 0; }
+.gm-pd-ver { display: block; width: 100%; box-sizing: border-box; padding: 11px 12px; background: transparent; border: none; border-top: 1px solid #242424; color: #6fcf3d; font-size: .74rem; font-weight: 800; cursor: pointer; font-family: inherit; }
+.gm-pd-ver:hover { background: #1b1b1b; }
 `
 
 export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, senalVivo = 0 }) {
@@ -69,6 +76,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const [filtro, setFiltro] = useState('todos') // todos | vivo | proximos | finales | favoritos
   const [partidos, setPartidos] = useState([])
   const [cargado, setCargado] = useState(false)
+  const [abiertos, setAbiertos] = useState({}) // torneo.id -> true/false (lo que la persona abrió o cerró a mano)
   const cacheDias = useRef(new Map()) // offset -> partidos, para que volver a un día ya visto sea instantáneo
 
   const vivoPorId = useMemo(() => {
@@ -205,6 +213,28 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     return [...set].slice(0, 2).join(' · ')
   }
 
+  // Por defecto solo está abierto el torneo que tiene algo en vivo (o todos, si se filtra por "Mis equipos").
+  const hayVivoEn = g => g.partidos.some(m => vivoPorId.has(m.id))
+  const estaAbierto = g => (g.id in abiertos ? abiertos[g.id] : (hayVivoEn(g) || filtro === 'favoritos'))
+  const todosAbiertos = grupos.length > 0 && grupos.every(estaAbierto)
+  function alternarGrupo(g) { setAbiertos(a => ({ ...a, [g.id]: !estaAbierto(g) })) }
+  function alternarTodos() {
+    const nuevo = {}
+    grupos.forEach(g => { nuevo[g.id] = !todosAbiertos })
+    setAbiertos(a => ({ ...a, ...nuevo }))
+  }
+  function resumenGrupo(g) {
+    const n = g.partidos.length
+    const horas = g.partidos.map(m => m.played_at).filter(Boolean).sort()
+    const h1 = horas.length ? fmtHoraDate(horas[0]) : ''
+    const h2 = horas.length ? fmtHoraDate(horas[horas.length - 1]) : ''
+    const todosFin = g.partidos.every(m => estadoDe(m) === 'final')
+    return {
+      n,
+      cuando: todosFin ? 'Finalizados' : h1 && h2 && h1 !== h2 ? `${h1} – ${h2}` : h1,
+    }
+  }
+
   function abrir(m) {
     prefetchTorneoPublico(m.tournament_id)
     navigate('/t/' + m.tournament_id)
@@ -259,17 +289,41 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
           ) : 'No hay partidos con este filtro.'}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, margin: '0 2px 10px', fontSize: '.74rem', color: S.muted, fontWeight: 600 }}>
+          <span>{grupos.reduce((n, g) => n + g.partidos.length, 0)} partidos · {grupos.length} {grupos.length === 1 ? 'torneo' : 'torneos'}</span>
+          {grupos.length > 1 && (
+            <button type="button" onClick={alternarTodos} style={{ background: 'none', border: 'none', color: S.green, fontWeight: 800, fontSize: '.74rem', cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit' }}>
+              {todosAbiertos ? 'Cerrar todos' : 'Abrir todos'}
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {grupos.map(g => (
             <div key={g.id} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, overflow: 'hidden' }}>
-              <button onClick={() => { prefetchTorneoPublico(g.id); navigate('/t/' + g.id) }} {...propsPrefetchTorneo(g.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '11px 12px', background: S.card2, border: 'none', color: S.text, cursor: 'pointer', textAlign: 'left' }}>
-                <EscudoMini logo_url={g.torneo?.logo_url} name={g.torneo?.name} size={22}/>
-                <span style={{ fontWeight: 800, fontSize: '.8rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.torneo?.name}</span>
-                {etiquetaRonda(g) && <span style={{ fontSize: '.66rem', color: S.muted, fontWeight: 700, flexShrink: 0 }}>{etiquetaRonda(g)}</span>}
-                <ChevronRight size={14} color={S.muted} style={{ flexShrink: 0 }}/>
-              </button>
-              {g.partidos.map(m => {
+              {(() => {
+                const abierto = estaAbierto(g)
+                const vivo = hayVivoEn(g)
+                const r = resumenGrupo(g)
+                const ronda = etiquetaRonda(g)
+                return (
+                  <button type="button" className="gm-pd-cab" aria-expanded={abierto} onClick={() => alternarGrupo(g)} {...propsPrefetchTorneo(g.id)}
+                    style={{ background: abierto ? S.card2 : undefined }}>
+                    <EscudoMini logo_url={g.torneo?.logo_url} name={g.torneo?.name} size={32}/>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span className="gm-pd-tit" style={{ display: '-webkit-box' }}>{g.torneo?.name}</span>
+                      <span className="gm-pd-sub">
+                        {vivo && <span style={{ color: S.red, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: S.red, animation: 'gmPdPulso 1.2s ease-in-out infinite' }}/>EN VIVO</span>}
+                        {ronda && <span>{ronda}</span>}
+                        <span>{r.n} {r.n === 1 ? 'partido' : 'partidos'}</span>
+                        {r.cuando && <span>{r.cuando}</span>}
+                      </span>
+                    </span>
+                    <ChevronDown className="gm-pd-chev" size={18} color={S.muted} style={{ transform: abierto ? 'rotate(180deg)' : 'rotate(0deg)' }}/>
+                  </button>
+                )
+              })()}
+              {estaAbierto(g) && g.partidos.map(m => {
                 const e = estadoDe(m)
                 const pv = vivoPorId.get(m.id)
                 const v = pv?.vivo
@@ -313,9 +367,13 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
                   </div>
                 )
               })}
+              {estaAbierto(g) && (
+                <button type="button" className="gm-pd-ver" onClick={() => { prefetchTorneoPublico(g.id); navigate('/t/' + g.id) }}>Ver torneo completo ›</button>
+              )}
             </div>
           ))}
         </div>
+        </>
       )}
     </div>
   )
