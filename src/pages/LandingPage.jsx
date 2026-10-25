@@ -59,6 +59,8 @@ const FILTROS_TORNEO = [
   { k: 'categoria', titulo: 'Categoría' },
   { k: 'genero',    titulo: 'Género' },
 ]
+// Escuelas de fútbol en el inicio: oculto por ahora. Para volver a mostrarlo, poner true.
+const MOSTRAR_ESCUELAS = false
 const FILTROS_VACIOS = { pais: '', dep: '', mun: '', modalidad: '', categoria: '', genero: '' }
 
 // Cada valor se compara por una CLAVE normalizada (sin tildes, mayúsculas ni signos) y se
@@ -332,7 +334,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
   const [escenarios, setEscenarios] = useState(() => leerCacheRapido('landing_escenarios') || [])
   const [escenarioIdx, setEscenarioIdx] = useState(0) // qué foto de escenario se muestra ahora en el carrusel
-  const [escuelas, setEscuelas] = useState(() => leerCacheRapido('landing_escuelas') || [])
+  const [escuelas, setEscuelas] = useState(() => (MOSTRAR_ESCUELAS ? leerCacheRapido('landing_escuelas') : null) || [])
   const [tick, setTick] = useState(0)
   const [siteConfig, setSiteConfig] = useState(null)
   const [patrocinadores, setPatrocinadores] = useState(() => leerCacheRapido('landing_patrocinadores') || [])
@@ -379,7 +381,7 @@ export default function LandingPage({ modo = 'inicio' }) {
       fetchTorneosActivos(); fetchPartidosVivo(); fetchVisitasHoy(); fetchSiteConfig()
       return
     }
-    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores(); fetchPortada()
+    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); if (MOSTRAR_ESCUELAS) fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores(); fetchPortada()
     registrarVisita('inicio')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -932,7 +934,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             Todos los torneos en<br/>un <span style={{ color: S.green }}>solo lugar</span>
           </h1>
           <p style={{ color: S.text2, fontSize: '.95rem', margin: '0 0 30px', lineHeight: 1.6 }}>
-            Torneos en vivo, tablas de posiciones, récords, escenarios deportivos y escuelas de fútbol — todo en Golmebol.
+            Torneos en vivo, tablas de posiciones, récords, escenarios deportivos{MOSTRAR_ESCUELAS ? ' y escuelas de fútbol' : ''} — todo en Golmebol.
           </p>
           </>)}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
