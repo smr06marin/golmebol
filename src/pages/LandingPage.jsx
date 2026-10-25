@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, Search, SlidersHorizontal } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
@@ -86,24 +86,6 @@ function Escudo({ logo_url, name, size = 40, radius = 10 }) {
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
   )
-}
-
-// Tamaño de letra del nombre del torneo según su largo — así un nombre
-// largo se ve completo (más chiquito, hasta 2 líneas) en vez de cortarse
-// con "..." en la tarjeta de la portada.
-function tamNombreTorneo(nombre) {
-  const len = (nombre || '').length
-  if (len > 28) return '.7rem'
-  if (len > 20) return '.78rem'
-  if (len > 14) return '.85rem'
-  return '.92rem'
-}
-
-function fmtFecha(iso) {
-  if (!iso) return null
-  try {
-    return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-  } catch { return null }
 }
 
 // Etiqueta corta del momento del partido: "1T · 12:34" o "DESCANSO"
@@ -361,8 +343,6 @@ export default function LandingPage() {
   // Arrastrar con el mouse para mover el carrusel de torneos en PC — en
   // celular ya se mueve con el dedo (scroll táctil nativo), pero en
   // computador sin pantalla táctil no había forma de moverlo.
-  const scrollerRef = useRef(null)
-  const arrastreRef = useRef({ activo: false, x: 0, scrollLeft: 0, movido: false })
 
   // Con la portada ya pintada, en un rato libre se baja el código de la página
   // del torneo: así "Ver torneo" no espera descarga, solo los datos.
@@ -372,24 +352,22 @@ export default function LandingPage() {
     return () => { if (ric) window.cancelIdleCallback?.(h); else clearTimeout(h) }
   }, [])
 
-  function iniciarArrastre(e) {
-    const el = scrollerRef.current
-    if (!el) return
-    arrastreRef.current = { activo: true, x: e.pageX, scrollLeft: el.scrollLeft, movido: false }
-  }
-  function moverArrastre(e) {
-    const st = arrastreRef.current
-    const el = scrollerRef.current
-    if (!st.activo || !el) return
-    const delta = e.pageX - st.x
-    if (Math.abs(delta) > 4) st.movido = true
-    el.scrollLeft = st.scrollLeft - delta
-  }
-  function terminarArrastre() {
-    arrastreRef.current.activo = false
-  }
-  function moverCarrusel(direccion) {
-    scrollerRef.current?.scrollBy({ left: direccion * 260, behavior: 'smooth' })
+  // ── Buscador y cuadrícula de torneos ──
+  const [busqueda, setBusqueda] = useState('')
+  const [verTodosTorneos, setVerTodosTorneos] = useState(false)
+  const [panelFiltros, setPanelFiltros] = useState(false)
+  const [equiposPorTorneo, setEquiposPorTorneo] = useState(null) // { torneoId: [nombres de equipos] } — se baja al tocar el buscador
+  const cargandoEquiposRef = useRef(false)
+  function cargarEquiposBusqueda() {
+    if (equiposPorTorneo || cargandoEquiposRef.current || torneos.length === 0) return
+    cargandoEquiposRef.current = true
+    supabase.from('tournament_teams').select('tournament_id, teams(name)').in('tournament_id', torneos.map(t => t.id)).limit(2000).then(({ data, error }) => {
+      cargandoEquiposRef.current = false
+      if (error) return
+      const m = {}
+      ;(data || []).forEach(r => { const n = r.teams?.name; if (n) (m[r.tournament_id] = m[r.tournament_id] || []).push(n) })
+      setEquiposPorTorneo(m)
+    }, () => { cargandoEquiposRef.current = false })
   }
 
   useEffect(() => {
@@ -826,7 +804,6 @@ export default function LandingPage() {
       if (k === 'dep') nuevo.mun = ''
       return nuevo
     })
-    if (scrollerRef.current) scrollerRef.current.scrollLeft = 0
   }
   // Seguridad: si una selección ya no está entre las opciones posibles, se limpia.
   useEffect(() => {
@@ -865,6 +842,15 @@ export default function LandingPage() {
         .gm-carousel-flecha:hover { filter: brightness(1.25) }
         @media (pointer: coarse) { .gm-carousel-flecha { display: none !important } }
         .gm-hover:hover { filter: brightness(1.08) }
+        /* Torneos: cuadrícula de escudos (2 columnas en celular) */
+        .gm-tg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px }
+        @media (min-width: 640px) { .gm-tg { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px } }
+        @media (min-width: 960px) { .gm-tg { grid-template-columns: repeat(4, minmax(0, 1fr)) } }
+        .gm-tcard { display: flex; flex-direction: column; align-items: center; text-align: center; background: #161616; border: 1px solid #2a2a2a; border-radius: 16px; padding: 16px 10px 14px; cursor: pointer; color: #fff; font-family: inherit; min-width: 0; -webkit-tap-highlight-color: transparent; transition: border-color .15s ease, background .15s ease }
+        .gm-tcard:hover { border-color: #3a3a3a; background: #1a1a1a }
+        .gm-tcard:active { background: #1c1c1c }
+        .gm-tnom { font-weight: 800; font-size: .84rem; line-height: 1.2; margin-top: 10px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; min-height: 2.4em }
+        .gm-tbusca:focus-within { border-color: #6fcf3d !important }
         /* Portada del inicio: una foto para computador y otra (vertical) para celular */
         .gm-hero-portada { min-height: clamp(440px, 34vw, 600px) }
         .gm-portada-movil { display: none }
@@ -1022,142 +1008,148 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* ── Torneos en juego (carrusel horizontal) ── */}
-      <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 0 8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', padding: '0 16px' }}>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trophy size={18} color={S.green}/> Torneos
-          </h2>
-        </div>
-        {torneosOrdenados.length > 0 && (
-          <div className="gm-scrollx" style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 16px 14px' }}>
-            {[
-              ['todos', 'Todos'],
-              ['juego', 'En juego'],
-              ['comenzar', 'Por comenzar'],
-              ['finalizados', 'Finalizados'],
-            ].filter(([k]) => k === 'todos' || conteoTorneos[k] > 0).map(([k, txt]) => {
-              const activo = filtroTorneos === k
-              return (
-                <button key={k} onClick={() => { setFiltroTorneos(k); if (scrollerRef.current) scrollerRef.current.scrollLeft = 0 }}
-                  style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: '999px', border: `1px solid ${activo ? S.green : S.border}`, background: activo ? 'rgba(111,207,61,.15)' : 'transparent', color: activo ? S.green : S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  {txt} <span style={{ opacity: .75 }}>{conteoTorneos[k]}</span>
+      {/* ── Torneos: buscador + cuadrícula de escudos ── */}
+      {(() => {
+        const norm = x => (x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        const q = norm(busqueda.trim())
+        const buscando = q.length >= 2
+        // Al buscar se mira en TODOS los torneos (sin importar los filtros), por nombre, lugar o nombre de un equipo.
+        const resultados = buscando
+          ? torneosOrdenados.map(t => {
+              const porNombre = norm(`${t.name} ${textoUbicacion(t) || ''}`).includes(q)
+              const equipo = porNombre ? null : (equiposPorTorneo?.[t.id] || []).find(n => norm(n).includes(q))
+              return (porNombre || equipo) ? { t, equipo } : null
+            }).filter(Boolean)
+          : torneosFiltrados.map(t => ({ t, equipo: null }))
+        const LIMITE = 8
+        const recortado = !buscando && !verTodosTorneos && resultados.length > LIMITE
+        const visibles = recortado ? resultados.slice(0, LIMITE) : resultados
+        const nFiltrosAttr = Object.values(filtrosAttr).filter(Boolean).length
+        const hayFiltrosAttr = FILTROS_TORNEO.some(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k])
+        const cajaVacia = { margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }
+        return (
+          <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 16px 8px' }}>
+            <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Trophy size={18} color={S.green}/> Torneos
+            </h2>
+
+            {/* Buscador */}
+            <div className="gm-tbusca" style={{ display: 'flex', alignItems: 'center', gap: '10px', height: '50px', padding: '0 14px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', marginBottom: '12px' }}>
+              <Search size={18} color={S.muted} style={{ flexShrink: 0 }}/>
+              <input data-sin-borrador type="text" inputMode="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" spellCheck={false}
+                value={busqueda} onChange={e => setBusqueda(e.target.value)} onFocus={cargarEquiposBusqueda}
+                placeholder="Busca tu torneo o tu equipo…" aria-label="Buscar torneo o equipo"
+                style={{ flex: 1, minWidth: 0, height: '100%', background: 'transparent', border: 'none', outline: 'none', color: S.text, fontSize: '.95rem', fontFamily: 'inherit' }}/>
+              {busqueda && (
+                <button type="button" onClick={() => setBusqueda('')} aria-label="Borrar búsqueda"
+                  style={{ flexShrink: 0, width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#2a2a2a', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <X size={14}/>
                 </button>
-              )
-            })}
-          </div>
-        )}
-        {torneosOrdenados.length > 0 && FILTROS_TORNEO.some(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k]) && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '0 16px 14px', alignItems: 'center' }}>
-            {FILTROS_TORNEO.filter(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k]).map(({ k, titulo }) => (
-              <select key={k} value={filtrosAttr[k]} aria-label={`Filtrar por ${titulo.toLowerCase()}`}
-                onChange={e => cambiarFiltroAttr(k, e.target.value)}
-                style={{ maxWidth: '100%', padding: '7px 12px', borderRadius: '999px', border: `1px solid ${filtrosAttr[k] ? S.green : S.border}`, background: filtrosAttr[k] ? 'rgba(111,207,61,.12)' : S.card, color: filtrosAttr[k] ? S.green : S.text2, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                <option value="">{titulo}: todos</option>
-                {opcionesAttr[k].map(o => <option key={o.key} value={o.key}>{o.texto}</option>)}
-              </select>
-            ))}
-            {hayFiltroAttr && (
-              <button onClick={() => setFiltrosAttr(FILTROS_VACIOS)}
-                style={{ padding: '7px 12px', borderRadius: '999px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>
-                Limpiar filtros
-              </button>
+              )}
+            </div>
+
+            {/* Estado + botón de filtros */}
+            {!buscando && torneosOrdenados.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <div className="gm-scrollx" style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
+                  {[['todos', 'Todos'], ['juego', 'En juego'], ['comenzar', 'Por comenzar'], ['finalizados', 'Finalizados']]
+                    .filter(([k]) => k === 'todos' || conteoTorneos[k] > 0).map(([k, txt]) => {
+                      const activo = filtroTorneos === k
+                      return (
+                        <button key={k} onClick={() => { setFiltroTorneos(k); setVerTodosTorneos(false) }}
+                          style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: '999px', border: `1px solid ${activo ? S.green : S.border}`, background: activo ? 'rgba(111,207,61,.15)' : 'transparent', color: activo ? S.green : S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          {txt} <span style={{ opacity: .75 }}>{conteoTorneos[k]}</span>
+                        </button>
+                      )
+                    })}
+                </div>
+                {hayFiltrosAttr && (
+                  <button type="button" onClick={() => setPanelFiltros(v => !v)} aria-expanded={panelFiltros}
+                    style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '999px', border: `1px solid ${nFiltrosAttr || panelFiltros ? S.green : S.border}`, background: nFiltrosAttr ? 'rgba(111,207,61,.12)' : 'transparent', color: nFiltrosAttr || panelFiltros ? S.green : S.text2, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <SlidersHorizontal size={13}/> Filtros{nFiltrosAttr > 0 && <span style={{ background: S.green, color: '#0a1a00', borderRadius: '999px', minWidth: '16px', height: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.64rem', padding: '0 4px' }}>{nFiltrosAttr}</span>}
+                  </button>
+                )}
+              </div>
+            )}
+            {!buscando && panelFiltros && hayFiltrosAttr && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '12px', marginBottom: '12px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', alignItems: 'center' }}>
+                {FILTROS_TORNEO.filter(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k]).map(({ k, titulo }) => (
+                  <select key={k} value={filtrosAttr[k]} aria-label={`Filtrar por ${titulo.toLowerCase()}`}
+                    onChange={e => { cambiarFiltroAttr(k, e.target.value); setVerTodosTorneos(false) }}
+                    style={{ maxWidth: '100%', padding: '7px 12px', borderRadius: '999px', border: `1px solid ${filtrosAttr[k] ? S.green : S.border}`, background: filtrosAttr[k] ? 'rgba(111,207,61,.12)' : S.card2, color: filtrosAttr[k] ? S.green : S.text2, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <option value="">{titulo}: todos</option>
+                    {opcionesAttr[k].map(o => <option key={o.key} value={o.key}>{o.texto}</option>)}
+                  </select>
+                ))}
+                {hayFiltroAttr && (
+                  <button onClick={() => setFiltrosAttr(FILTROS_VACIOS)}
+                    style={{ padding: '7px 12px', borderRadius: '999px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            )}
+
+            {buscando && (
+              <div style={{ fontSize: '.74rem', color: S.muted, fontWeight: 600, margin: '0 2px 10px' }}>
+                {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'} para «{busqueda.trim()}»
+              </div>
+            )}
+
+            {torneosOrdenados.length === 0 && !torneosCargados ? (
+              <div className="gm-tg" aria-hidden="true">
+                <style>{`@keyframes gmEsqueleto { 0%,100% { opacity: .45 } 50% { opacity: .9 } }`}</style>
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} style={{ height: '176px', borderRadius: '16px', background: S.card, border: `1px solid ${S.border}`, animation: 'gmEsqueleto 1.3s ease-in-out infinite', animationDelay: `${i * .15}s` }}/>
+                ))}
+              </div>
+            ) : torneosOrdenados.length === 0 ? (
+              <div style={{ ...cajaVacia, margin: 0 }}>No hay torneos activos en este momento.</div>
+            ) : resultados.length === 0 ? (
+              <div style={{ ...cajaVacia, margin: 0 }}>
+                {buscando ? <>No encontramos nada con «{busqueda.trim()}».<br/>Prueba con otra parte del nombre.</> : 'Ningún torneo coincide con estos filtros.'}
+              </div>
+            ) : (
+              <>
+                <div className="gm-tg">
+                  {visibles.map(({ t, equipo }) => {
+                    const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
+                    const badge = t.finalizado ? { txt: 'FINALIZADO', color: S.muted }
+                      : enVivo ? { txt: 'EN VIVO', color: S.red }
+                      : esPorComenzar(t) ? { txt: 'POR COMENZAR', color: S.gold }
+                      : { txt: 'EN JUEGO', color: S.green }
+                    const meta = t.finalizado && t.campeon ? `🏆 ${t.campeon.name}`
+                      : [`${t.equipos} equipos`, (!t.finalizado && !esPorComenzar(t)) ? t.estado : null].filter(Boolean).join(' · ')
+                    return (
+                      <button key={t.id} className="gm-tcard" {...propsPrefetchTorneo(t.id)} onClick={() => { prefetchTorneoPublico(t.id); navigate('/t/' + t.id) }} style={{ opacity: t.finalizado ? .85 : 1 }}>
+                        <Escudo logo_url={t.logo_url} name={t.name} size={64} radius={16}/>
+                        <div className="gm-tnom">{t.name}</div>
+                        {equipo && <div style={{ fontSize: '.68rem', fontWeight: 700, color: S.green, marginTop: '4px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Equipo: {equipo}</div>}
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '8px', fontSize: '.6rem', fontWeight: 900, letterSpacing: '.04em', color: badge.color }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color, flexShrink: 0 }}/>{badge.txt}
+                        </div>
+                        <div style={{ fontSize: '.68rem', color: S.muted, fontWeight: 600, marginTop: '4px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+                {recortado && (
+                  <button type="button" onClick={() => setVerTodosTorneos(true)}
+                    style={{ display: 'block', width: '100%', marginTop: '12px', padding: '13px', borderRadius: '12px', border: `1px solid ${S.border}`, background: S.card, color: S.green, fontSize: '.82rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Ver los {resultados.length} torneos
+                  </button>
+                )}
+                {!buscando && verTodosTorneos && resultados.length > LIMITE && (
+                  <button type="button" onClick={() => { setVerTodosTorneos(false); torneosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+                    style={{ display: 'block', width: '100%', marginTop: '12px', padding: '11px', borderRadius: '12px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.78rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Ver menos
+                  </button>
+                )}
+              </>
             )}
           </div>
-        )}
-        {torneosOrdenados.length > 0 && torneosFiltrados.length === 0 && (
-          <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
-            Ningún torneo coincide con estos filtros.
-          </div>
-        )}
-        {torneosOrdenados.length === 0 && !torneosCargados ? (
-          <div style={{ display: 'flex', gap: '14px', padding: '0 16px', overflow: 'hidden' }} aria-hidden="true">
-            <style>{`@keyframes gmEsqueleto { 0%,100% { opacity: .45 } 50% { opacity: .9 } }`}</style>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{ flex: '0 0 250px', height: '170px', borderRadius: '16px', background: S.card, border: `1px solid ${S.border}`, animation: 'gmEsqueleto 1.3s ease-in-out infinite', animationDelay: `${i * .15}s` }}/>
-            ))}
-          </div>
-        ) : torneosOrdenados.length === 0 ? (
-          <div style={{ margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }}>
-            No hay torneos activos en este momento.
-          </div>
-        ) : (
-          <div style={{ position: 'relative', display: torneosFiltrados.length === 0 ? 'none' : 'block' }}>
-            <button
-              className="gm-carousel-flecha"
-              onClick={() => moverCarrusel(-1)}
-              aria-label="Ver torneos anteriores"
-              style={{ position: 'absolute', left: '4px', top: '50%', transform: 'translateY(-50%)', zIndex: 5, width: '38px', height: '38px', borderRadius: '50%', border: `1px solid ${S.border}`, background: 'rgba(22,22,22,.88)', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            >
-              <ChevronLeft size={20}/>
-            </button>
-            <button
-              className="gm-carousel-flecha"
-              onClick={() => moverCarrusel(1)}
-              aria-label="Ver más torneos"
-              style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', zIndex: 5, width: '38px', height: '38px', borderRadius: '50%', border: `1px solid ${S.border}`, background: 'rgba(22,22,22,.88)', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            >
-              <ChevronRight size={20}/>
-            </button>
-            <div
-              ref={scrollerRef}
-              className="gm-scrollx"
-              onMouseDown={iniciarArrastre}
-              onMouseMove={moverArrastre}
-              onMouseUp={terminarArrastre}
-              onMouseLeave={terminarArrastre}
-              style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '0 16px 8px', scrollSnapType: 'x proximity', cursor: 'grab' }}
-            >
-            {torneosFiltrados.map(t => {
-              const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
-              const inicio = fmtFecha(t.created_at)
-              const badge = t.finalizado ? { txt: 'FINALIZADO', bg: 'rgba(138,138,138,.18)', color: S.muted }
-                : enVivo ? { txt: '● EN VIVO', bg: 'rgba(229,67,61,.15)', color: S.red }
-                : esPorComenzar(t) ? { txt: 'POR COMENZAR', bg: 'rgba(245,166,35,.15)', color: S.gold }
-                : { txt: 'EN JUEGO', bg: 'rgba(111,207,61,.15)', color: S.green }
-              return (
-                <button key={t.id} className="gm-hover" {...propsPrefetchTorneo(t.id)} onClick={() => { if (arrastreRef.current.movido) return; prefetchTorneoPublico(t.id); navigate('/t/' + t.id) }} style={{ scrollSnapAlign: 'start', flex: '0 0 240px', width: '240px', minHeight: '292px', display: 'flex', flexDirection: 'column', textAlign: 'left', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '16px', cursor: 'pointer', color: S.text, opacity: t.finalizado ? .8 : 1 }}>
-                  <div style={{ marginBottom: '12px' }}>
-                    <span style={{ display: 'inline-block', fontSize: '.62rem', fontWeight: 900, padding: '4px 10px', borderRadius: '999px', background: badge.bg, color: badge.color }}>
-                      {badge.txt}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
-                    <Escudo logo_url={t.logo_url} name={t.name} size={56} radius={14}/>
-                  </div>
-                  <div style={{ fontWeight: 800, fontSize: tamNombreTorneo(t.name), textAlign: 'center', marginBottom: '10px', lineHeight: 1.25, wordBreak: 'break-word' }}>{t.name}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '.72rem', color: S.muted, marginBottom: '8px' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={12}/> {t.equipos} equipos</span>
-                    {textoUbicacion(t) && <span style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}><MapPin size={12} style={{ flexShrink: 0 }}/><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{textoUbicacion(t)}</span></span>}
-                    {inicio && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Calendar size={12}/> {esPorComenzar(t) ? 'Creado' : 'Inició'}: {inicio}</span>}
-                    {!t.finalizado && !esPorComenzar(t) && <span style={{ color: S.green, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.estado}</span>}
-                  </div>
-                  {t.finalizado && t.campeon ? (
-                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '.6rem', fontWeight: 900, color: S.gold, letterSpacing: '.08em' }}>🏆 CAMPEÓN</span>
-                      <Escudo logo_url={t.campeon.logo_url} name={t.campeon.name} size={46} radius={12}/>
-                      <span style={{ fontSize: tamNombreTorneo(t.campeon.name), fontWeight: 800, color: S.text, textAlign: 'center', maxWidth: '100%', lineHeight: 1.25, wordBreak: 'break-word', padding: '0 4px' }}>{t.campeon.name}</span>
-                    </div>
-                  ) : !t.finalizado && t.campeonVigente?.team ? (
-                    // Esta edición todavía no tiene su propio campeón (recién
-                    // empieza) — se muestra el de la edición anterior ya
-                    // finalizada, para que la tarjeta no se vea vacía.
-                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '.6rem', fontWeight: 900, color: S.gold, letterSpacing: '.08em' }}>🏆 CAMPEÓN VIGENTE</span>
-                      <Escudo logo_url={t.campeonVigente.team.logo_url} name={t.campeonVigente.team.name} size={46} radius={12}/>
-                      <span style={{ fontSize: tamNombreTorneo(t.campeonVigente.team.name), fontWeight: 800, color: S.text, textAlign: 'center', maxWidth: '100%', lineHeight: 1.25, wordBreak: 'break-word', padding: '0 4px' }}>{t.campeonVigente.team.name}</span>
-                    </div>
-                  ) : (
-                    <div style={{ flex: 1, minHeight: 0 }}/>
-                  )}
-                  <div style={{ width: '100%', textAlign: 'center', padding: '9px', borderRadius: '9px', background: S.card2, color: t.finalizado ? S.muted : S.green, fontSize: '.75rem', fontWeight: 800 }}>VER TORNEO</div>
-                </button>
-              )
-            })}
-            </div>
-          </div>
-        )}
-      </div>
+        )
+      })()}
 
       {/* ── Partidos (hoy / por día) con los que están en vivo ya incluidos; "VER EN VIVO" del inicio baja hasta acá ── */}
       <div ref={vivoRef}>
