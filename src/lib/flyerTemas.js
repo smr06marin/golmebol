@@ -51,3 +51,17 @@ export const TEMAS_RESULTADO = [
   { id: 'negro',   nombre: 'Negro',   swatch: '#2a2a2a', arriba: '#2e2e2e', abajo: '#070707', luz: 'rgba(255,255,255,.35)', acento: '#f9a825', acentoSuave: '#fbc767', linea: 'rgba(255,255,255,.14)' },
   { id: 'naranja', nombre: 'Naranja', swatch: '#b85c00', arriba: '#c25f00', abajo: '#240e00', luz: 'rgba(255,190,90,.5)',   acento: '#00c8ff', acentoSuave: '#8fe3ff', linea: 'rgba(255,255,255,.14)' },
 ]
+
+// Flyer de RESULTADO del partido (el que comparten los equipos): fondo partido
+// en diagonal, un color por equipo. `izq`/`der` son los dos colores de fondo; en
+// el tema "equipos" (`auto`) salen del color del escudo de cada equipo y estos
+// valores solo son el respaldo. `mvp` es el degradado de la tarjeta del MVP.
+// (Aparte de TEMAS_RESULTADO, que usa la tabla de posiciones.)
+export const TEMAS_RESULTADO_PARTIDO = [
+  { id: 'equipos', auto: true, nombre: 'Colores de los equipos', swatch: 'linear-gradient(135deg, #1a3a8a 50%, #c8102e 50%)', izq: '#12307a', der: '#8f1226', abajo: '#0a0f24', acento: '#ffc926', acentoSuave: '#ffe07a', mvp: ['#d4142f', '#8f0b1f'] },
+  { id: 'clasico', nombre: 'Azul y rojo', swatch: 'linear-gradient(135deg, #12307a 50%, #a3142b 50%)', izq: '#12307a', der: '#a3142b', abajo: '#0a0f24', acento: '#ffc926', acentoSuave: '#ffe07a', mvp: ['#d4142f', '#8f0b1f'] },
+  { id: 'verde', nombre: 'Verde y azul', swatch: 'linear-gradient(135deg, #0d6b3d 50%, #0b2f4f 50%)', izq: '#0d6b3d', der: '#0b2f4f', abajo: '#04140d', acento: '#ffd54f', acentoSuave: '#ffe59c', mvp: ['#d4142f', '#8f0b1f'] },
+  { id: 'morado', nombre: 'Morado', swatch: 'linear-gradient(135deg, #4a1a8a 50%, #1b0c3a 50%)', izq: '#4a1a8a', der: '#1b0c3a', abajo: '#0b0420', acento: '#ffc926', acentoSuave: '#ffe07a', mvp: ['#d4142f', '#8f0b1f'] },
+  { id: 'naranja', nombre: 'Naranja', swatch: 'linear-gradient(135deg, #c25f00 50%, #5a1d00 50%)', izq: '#c25f00', der: '#5a1d00', abajo: '#240e00', acento: '#ffe07a', acentoSuave: '#fff0b8', mvp: ['#1a3a8a', '#0d2155'] },
+  { id: 'negro', nombre: 'Negro', swatch: 'linear-gradient(135deg, #3a3a3a 50%, #0c0c0c 50%)', izq: '#3a3a3a', der: '#0c0c0c', abajo: '#070707', acento: '#f9a825', acentoSuave: '#fbc767', mvp: ['#d4142f', '#8f0b1f'] },
+]
