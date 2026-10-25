@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
+import { guardarOriginal, guardarOriginalDesdeUrl, restaurarOriginal, useTieneOriginal } from '../../lib/logoOriginal'
 import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock, Upload } from 'lucide-react'
 import { responderPregunta } from '../../lib/motorPreguntas'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
@@ -164,6 +165,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [msg,                   setMsg]                   = useState(null)
   const [subiendoLogo,          setSubiendoLogo]          = useState(false)
   const [previewFondo,          setPreviewFondo]          = useState(null)   // { archivo, urlAntes, urlDespues } — vista previa del recorte de fondo
+  const tieneOriginalLogo = useTieneOriginal('teams', equipo?.logo_url) // ¿hay copia del escudo de antes de quitarle el fondo?
 
   const [cedulaBuscar,      setCedulaBuscar]      = useState('')
   const [buscando,          setBuscando]          = useState(false)
@@ -567,10 +569,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     // Si el escudo trae fondo liso (blanco) se lo quita; si ya es transparente se conserva
     const { archivo, estado } = await prepararLogoParaSubir(file, { maxSize: 500 })
     const ext  = archivo.name.split('.').pop()
-    const path = `logos/${id}.${ext}`
+    // Ruta nueva en cada subida: así cada escudo conserva su propia copia del original (para "Volver al original")
+    const path = `logos/${id}_${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('teams').upload(path, archivo, { upsert: true })
     if (error) { showMsg('Error al subir logo', 'error'); setSubiendoLogo(false); return }
     const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+    if (estado === 'quitado') await guardarOriginal('teams', urlData.publicUrl, file)
     await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', id)
     setEquipo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
     showMsg(estado === 'quitado' ? 'Logo actualizado ✓ — se le quitó el fondo' : 'Logo actualizado ✓')
@@ -594,6 +598,23 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     setSubiendoLogo(false)
   }
 
+  // Devuelve el escudo a como estaba antes de quitarle el fondo
+  async function handleVolverOriginalLogo() {
+    if (!puedeEditar || !equipo?.logo_url) return
+    if (!confirm('¿Volver al escudo original (con su fondo)?')) return
+    setSubiendoLogo(true)
+    try {
+      const url = await restaurarOriginal('teams', equipo.logo_url, `logos/${id}`)
+      const { error } = await supabase.from('teams').update({ logo_url: url }).eq('id', id)
+      if (error) throw error
+      setEquipo(prev => ({ ...prev, logo_url: url }))
+      showMsg('Escudo original restaurado ✓')
+    } catch (e) {
+      showMsg('No se pudo volver al original: ' + (e?.message || 'error'), 'error')
+    }
+    setSubiendoLogo(false)
+  }
+
   function cancelarQuitarFondo() {
     if (previewFondo?.urlDespues) URL.revokeObjectURL(previewFondo.urlDespues)
     setPreviewFondo(null)
@@ -608,10 +629,11 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       const { error } = await supabase.storage.from('teams').upload(path, previewFondo.archivo, { upsert: true, contentType: 'image/png' })
       if (error) throw error
       const { data: urlData } = supabase.storage.from('teams').getPublicUrl(path)
+      await guardarOriginalDesdeUrl('teams', urlData.publicUrl, previewFondo.urlAntes) // copia de cómo estaba, para poder volver
       const { error: errGuardar } = await supabase.from('teams').update({ logo_url: urlData.publicUrl }).eq('id', id)
       if (errGuardar) throw errGuardar
       setEquipo(prev => ({ ...prev, logo_url: urlData.publicUrl }))
-      showMsg('Fondo quitado ✓')
+      showMsg('Fondo quitado ✓ — si no te gusta, toca «Volver al original»')
       cancelarQuitarFondo()
     } catch (e) {
       showMsg('No se pudo guardar el escudo: ' + (e?.message || 'error'), 'error')
@@ -1024,6 +1046,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               <button onClick={handleQuitarFondoLogo} disabled={subiendoLogo}
                 style={{ display: 'block', margin: '18px 0 0', background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '8px', color: '#fff', fontSize: '.65rem', fontWeight: '700', padding: '4px 8px', cursor: subiendoLogo ? 'default' : 'pointer', opacity: subiendoLogo ? .6 : 1, whiteSpace: 'nowrap' }}>
                 ✨ Quitar fondo
+              </button>
+            )}
+            {!modoLectura && puedeEditar && equipo.logo_url && tieneOriginalLogo && (
+              <button onClick={handleVolverOriginalLogo} disabled={subiendoLogo}
+                style={{ display: 'block', margin: '6px 0 0', background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '8px', color: '#fff', fontSize: '.65rem', fontWeight: '700', padding: '4px 8px', cursor: subiendoLogo ? 'default' : 'pointer', opacity: subiendoLogo ? .6 : 1, whiteSpace: 'nowrap' }}>
+                ↩️ Volver al original
               </button>
             )}
             {previewFondo && <ModalQuitarFondo urlAntes={previewFondo.urlAntes} urlDespues={previewFondo.urlDespues} guardando={subiendoLogo} onAplicar={aplicarQuitarFondo} onCancelar={cancelarQuitarFondo}/>}

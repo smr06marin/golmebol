@@ -23,6 +23,7 @@ import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
 import { comprimirImagen } from '../../lib/imageCompress'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
+import { guardarOriginal, guardarOriginalDesdeUrl, restaurarOriginal, useTieneOriginal } from '../../lib/logoOriginal'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
@@ -1052,6 +1053,7 @@ export default function AdminTorneoDetallePage() {
   const [uploadingFavicon,   setUploadingFavicon]   = useState(false)
   const [uploadingLogoMarca, setUploadingLogoMarca] = useState(false)
   const [previewFondoLogo, setPreviewFondoLogo] = useState(null) // { archivo, urlAntes, urlDespues } — vista previa del recorte de fondo del logo
+  const tieneOriginalLogoTorneo = useTieneOriginal('tournaments', formMarca.logo_url || torneo?.logo_url) // ¿hay copia del logo de antes de quitarle el fondo?
   const [torneoSponsors,     setTorneoSponsors]     = useState([])
   const [loadingSponsors,    setLoadingSponsors]    = useState(false)
   const [uploadingSponsorId, setUploadingSponsorId] = useState(null)
@@ -2907,6 +2909,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (uploadError) { setUploadingLogoMarca(false); return showMsg('Error al subir logo: ' + uploadError.message, 'error') }
     const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
     const url = urlData.publicUrl
+    if (estado === 'quitado') await guardarOriginal('tournaments', url, file) // copia de cómo era, para poder volver
     const { error } = await supabase.from('tournaments').update({ logo_url: url }).eq('id', id)
     setUploadingLogoMarca(false)
     if (error) return showMsg('Error al guardar logo', 'error')
@@ -2933,6 +2936,25 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setUploadingLogoMarca(false)
   }
 
+  // Devuelve el logo del torneo a como estaba antes de quitarle el fondo
+  async function handleVolverOriginalLogoTorneo() {
+    const actual = formMarca.logo_url || torneo?.logo_url
+    if (!actual) return
+    if (!confirm('¿Volver al logo original (con su fondo)?')) return
+    setUploadingLogoMarca(true)
+    try {
+      const url = await restaurarOriginal('tournaments', actual, `logos/${id}`)
+      const { error } = await supabase.from('tournaments').update({ logo_url: url }).eq('id', id)
+      if (error) throw error
+      setFormMarca(f => ({ ...f, logo_url: url }))
+      setTorneo(p => ({ ...p, logo_url: url }))
+      showMsg('Logo original restaurado ✓')
+    } catch (e) {
+      showMsg('No se pudo volver al original: ' + (e?.message || 'error'), 'error')
+    }
+    setUploadingLogoMarca(false)
+  }
+
   function cancelarQuitarFondoLogo() {
     if (previewFondoLogo?.urlDespues) URL.revokeObjectURL(previewFondoLogo.urlDespues)
     setPreviewFondoLogo(null)
@@ -2947,11 +2969,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const { error: errSubida } = await supabase.storage.from('tournaments').upload(path, previewFondoLogo.archivo, { upsert: true, contentType: 'image/png' })
       if (errSubida) throw errSubida
       const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
+      await guardarOriginalDesdeUrl('tournaments', urlData.publicUrl, previewFondoLogo.urlAntes) // copia de cómo estaba, para poder volver
       const { error: errGuardar } = await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
       if (errGuardar) throw errGuardar
       setFormMarca(f => ({ ...f, logo_url: urlData.publicUrl }))
       setTorneo(p => ({ ...p, logo_url: urlData.publicUrl }))
-      showMsg('Fondo quitado ✓')
+      showMsg('Fondo quitado ✓ — si no te gusta, toca «Volver al original»')
       cancelarQuitarFondoLogo()
     } catch (e) {
       showMsg('No se pudo guardar el logo: ' + (e?.message || 'error'), 'error')
@@ -4946,11 +4969,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async e => {
                 const file0 = e.target.files[0]; if (!file0) return
                 e.target.value = ''
-                const { archivo: file } = await prepararLogoParaSubir(file0, { maxSize: 700, sinComprimir: true })
+                const { archivo: file, estado: estadoLogo } = await prepararLogoParaSubir(file0, { maxSize: 700, sinComprimir: true })
                 const ext = file.name.split('.').pop(), path = `logos/${id}_${Date.now()}.${ext}`
                 const { error: errSubida } = await supabase.storage.from('tournaments').upload(path, file, { upsert: true })
                 if (errSubida) return showMsg('Error al subir el logo: ' + errSubida.message, 'error')
                 const { data: urlData } = supabase.storage.from('tournaments').getPublicUrl(path)
+                if (estadoLogo === 'quitado') await guardarOriginal('tournaments', urlData.publicUrl, file0)
                 const { error: errGuardar } = await supabase.from('tournaments').update({ logo_url: urlData.publicUrl }).eq('id', id)
                 if (errGuardar) return showMsg('Error al guardar el logo: ' + errGuardar.message, 'error')
                 setFormMarca(f => ({ ...f, logo_url: urlData.publicUrl }))
@@ -4973,6 +4997,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <button onClick={handleQuitarFondoLogoTorneo} disabled={uploadingLogoMarca} title="Quitar el fondo del logo del torneo (queda transparente)"
                   style={{ color: '#6c35de', background: '#fff', border: '1px solid #6c35de', borderRadius: '8px', padding: '1px 8px', fontWeight: '700', fontSize: '.68rem', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
                   ✨ Quitar fondo del logo
+                </button>
+              )}
+              {torneo.logo_url && tieneOriginalLogoTorneo && (
+                <button onClick={handleVolverOriginalLogoTorneo} disabled={uploadingLogoMarca} title="Volver al logo como estaba antes de quitarle el fondo"
+                  style={{ color: '#5f6368', background: '#fff', border: '1px solid #9aa0a6', borderRadius: '8px', padding: '1px 8px', fontWeight: '700', fontSize: '.68rem', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
+                  ↩️ Volver al original
                 </button>
               )}
             </div>
@@ -7643,6 +7673,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       <button onClick={handleQuitarFondoLogoTorneo} disabled={uploadingLogoMarca}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#6c35de', background: '#fff', border: '1px solid #6c35de', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
                         ✨ Quitar fondo
+                      </button>
+                    )}
+                    {(formMarca.logo_url || torneo.logo_url) && tieneOriginalLogoTorneo && (
+                      <button onClick={handleVolverOriginalLogoTorneo} disabled={uploadingLogoMarca}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#5f6368', background: '#fff', border: '1px solid #9aa0a6', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
+                        ↩️ Volver al original
                       </button>
                     )}
                     <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
