@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, X } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { supabase } from '../lib/supabase'
@@ -6,15 +6,16 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_RESULTADO_PARTIDO } from '../lib/flyerTemas'
 import { colorDominante } from '../lib/portadaYoutube'
-import { COLOR_TARJETA, FASE_LABEL, acortarNombre, datosParaFlyer, penalesDe } from '../lib/resumenPartido'
+import { FASE_LABEL, acortarNombre, datosParaFlyer, penalesDe } from '../lib/resumenPartido'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
 import LogoFlyer from './LogoFlyer'
 
 // Flyer de RESULTADO que los equipos publican en sus redes.
 //
-// Diseño: fondo partido en diagonal (un color por equipo, sacado del escudo),
-// escudos grandes a cada lado, marcador gigante con el ganador en dorado,
-// goles y tarjetas por equipo, y la tarjeta roja del MVP del partido.
+// Diseño: dos mitades (un color por equipo, sacado del escudo) divididas por una
+// línea dorada. Cada mitad lleva el escudo grande, el nombre y el resultado
+// grande (el ganador en dorado); en el centro, montado sobre la línea, va el MVP
+// del partido; abajo, los goleadores de cada equipo con los minutos. Sin tarjetas.
 //
 // Se dibuja siempre a tamaño real (1080 de ancho); la vista previa es una copia
 // encogida con transform:scale() y la descarga captura otra copia oculta, sin
@@ -24,18 +25,13 @@ import LogoFlyer from './LogoFlyer'
 
 const ANCHO = 1080
 const FORMATOS = [
-  { id: 'historia', nombre: 'Historia', sub: '1080×1920', alto: 1920, escudo: 270, score: 320, padY: 80 },
-  { id: 'post',     nombre: 'Post',     sub: '1080×1350', alto: 1350, escudo: 180, score: 230, padY: 44 },
+  { id: 'historia', nombre: 'Historia', sub: '1080×1920', alto: 1920, escudo: 270, score: 330, padY: 76 },
+  { id: 'post',     nombre: 'Post',     sub: '1080×1350', alto: 1350, escudo: 180, score: 240, padY: 44 },
 ]
 
 const F_TITULO = "'Bebas Neue', 'Barlow Condensed', Impact, sans-serif"
 const F_TEXTO = "'Barlow Condensed', 'Arial Narrow', Arial, sans-serif"
 
-const MIN_FILA = 40
-const MAX_FILA = 58
-const ALTO_CABECERA = 54
-const ESPACIO_SECCION = 18
-const ANGULO = 11 // inclinación de la diagonal, en grados
 
 // ---------- color ----------
 
@@ -141,51 +137,39 @@ function IconoUbicacion({ color, size }) {
   )
 }
 
-function CabeceraSeccion({ texto, tema, icono }) {
-  return (
-    <div style={{ height: ALTO_CABECERA, display: 'flex', alignItems: 'center', gap: 22, marginBottom: 6 }}>
-      <div style={{ flex: 1, height: 3, background: `linear-gradient(90deg, rgba(255,255,255,0), ${tema.acento})` }}/>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, fontFamily: F_TITULO, fontSize: 42, letterSpacing: 7, color: tema.acento, lineHeight: 1 }}>
-        {icono}{texto}
-      </span>
-      <div style={{ flex: 1, height: 3, background: `linear-gradient(270deg, rgba(255,255,255,0), ${tema.acento})` }}/>
-    </div>
-  )
+// "12:34" (reloj del cronómetro) -> "12'"
+function minutoCorto(m) {
+  const mm = /^(\d+):\d{2}$/.exec(String(m || ''))
+  return mm ? `${Number(mm[1])}'` : ''
 }
 
-// Un equipo en una sección: a la izquierda el nombre pegado a la izquierda y
-// los íconos después; a la derecha los íconos y luego el nombre pegado a la derecha.
-function FilaEquipo({ lado, texto, icono, rowH, vacio }) {
+// Un gol por jugador: balón + nombre + minutos en que lo metió. El equipo de la
+// izquierda va pegado a la izquierda; el de la derecha, espejo (pegado a la derecha).
+function FilaGol({ g, lado, rowH, acento }) {
   const derecha = lado === 'visitante'
-  const fuente = Math.min(38, Math.round(rowH * 0.64))
-  const nombre = (
-    <span key="n" style={{ flex: 1, minWidth: 0, textAlign: derecha ? 'right' : 'left', fontFamily: F_TEXTO, fontWeight: 700, fontSize: fuente, color: vacio ? 'rgba(255,255,255,.45)' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', lineHeight: 1 }}>{texto}</span>
-  )
+  const fuente = Math.min(36, Math.round(rowH * 0.66))
+  const mins = (g.minutos || []).map(minutoCorto).filter(Boolean)
+  const textoMin = mins.length ? mins.join(' · ') : (g.cantidad > 1 ? `×${g.cantidad}` : '')
+  const balon = <GiSoccerBall key="b" size={Math.round(rowH * 0.62)} color="#fff" style={{ flexShrink: 0 }}/>
+  const nombre = <span key="n" style={{ fontFamily: F_TEXTO, fontWeight: 700, fontSize: fuente, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', lineHeight: 1, minWidth: 0 }}>{acortarNombre(g.jugador, 17)}</span>
+  const min = <span key="m" style={{ fontFamily: F_TEXTO, fontWeight: 700, fontSize: Math.round(fuente * 0.84), color: acento, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 }}>{textoMin}</span>
   return (
-    <div style={{ height: rowH, display: 'flex', alignItems: 'center', gap: 12, boxSizing: 'border-box', borderBottom: '2px solid rgba(255,255,255,.12)' }}>
-      {derecha ? [icono, nombre] : [nombre, icono]}
+    <div style={{ height: rowH, display: 'flex', alignItems: 'center', gap: 12, justifyContent: derecha ? 'flex-end' : 'flex-start', borderBottom: '2px solid rgba(255,255,255,.14)', boxSizing: 'border-box' }}>
+      {derecha ? [min, nombre, balon] : [balon, nombre, min]}
     </div>
   )
 }
 
-function Balones({ cantidad, rowH, color }) {
-  const t = Math.round(rowH * 0.66)
-  if (cantidad > 3) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, fontFamily: F_TITULO, fontSize: Math.round(rowH * 0.72), color, lineHeight: 1 }}>
-        <GiSoccerBall size={t} color="#fff"/>×{cantidad}
-      </span>
-    )
-  }
+function ColumnaGoles({ goles, lado, filas, rowH, acento }) {
+  const { visibles, mas } = recortar(goles, filas)
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-      {Array.from({ length: cantidad }).map((_, i) => <GiSoccerBall key={i} size={t} color="#fff"/>)}
-    </span>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      {visibles.map((g, i) => <FilaGol key={i} g={g} lado={lado} rowH={rowH} acento={acento}/>)}
+      {mas > 0 && (
+        <div style={{ height: rowH, display: 'flex', alignItems: 'center', justifyContent: lado === 'visitante' ? 'flex-end' : 'flex-start', fontFamily: F_TEXTO, fontWeight: 700, fontSize: Math.round(rowH * 0.6), color: 'rgba(255,255,255,.6)' }}>+{mas} más</div>
+      )}
+    </div>
   )
-}
-
-function Tarjeta({ color, rowH }) {
-  return <span style={{ width: Math.round(rowH * 0.36), height: Math.round(rowH * 0.52), borderRadius: 5, background: COLOR_TARJETA[color] || '#999', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,.35)' }}/>
 }
 
 // Recorta una lista a `max` filas; si sobran, la última fila pasa a ser "+N más".
@@ -195,63 +179,42 @@ function recortar(lista, max) {
   return { visibles: lista.slice(0, v), mas: lista.length - v }
 }
 
-function SeccionDoble({ titulo, icono, izq, der, filas, rowH, tema, render }) {
-  const col = (lista, lado) => {
-    const { visibles, mas } = recortar(lista, filas)
-    const usadas = visibles.length + (mas ? 1 : 0) || 1
-    const relleno = filas - usadas
-    return (
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {visibles.length === 0 && !mas && <FilaEquipo lado={lado} texto="—" vacio rowH={rowH}/>}
-        {visibles.map((it, i) => render(it, i, lado))}
-        {mas > 0 && <FilaEquipo lado={lado} texto={`+${mas} más`} rowH={rowH} vacio/>}
-        {relleno > 0 && <div style={{ height: relleno * rowH }}/>}
-      </div>
-    )
-  }
+// Etiqueta con el nombre del equipo, ligeramente girada (como un recorte pegado).
+function EtiquetaEquipo({ nombre, color, grados, gran, apagado }) {
+  const n = (nombre || '').toUpperCase()
+  // El texto cabe en una sola línea: el tamaño baja según cuántas letras tiene el nombre.
+  const fuente = Math.min(gran ? 84 : 64, Math.floor((gran ? 436 : 340) / (0.5 * Math.max(n.length, 6))))
   return (
-    <div>
-      <CabeceraSeccion texto={titulo} icono={icono} tema={tema}/>
-      <div style={{ display: 'flex', gap: 56 }}>
-        {col(izq, 'local')}
-        {col(der, 'visitante')}
-      </div>
+    <div style={{ transform: `rotate(${grados}deg)`, background: color, padding: gran ? '10px 24px 4px' : '8px 18px 2px', maxWidth: gran ? 480 : 380, boxSizing: 'border-box', opacity: apagado ? 0.8 : 1, boxShadow: '0 6px 16px rgba(0,0,0,.3)' }}>
+      <div style={{ fontFamily: F_TITULO, fontSize: fuente, letterSpacing: 2, lineHeight: 1.05, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textAlign: 'center' }}>{n}</div>
     </div>
   )
 }
 
-function TarjetaMvp({ mvp, tema, gran }) {
+// MVP en el centro, montado sobre la línea que divide los dos equipos.
+function BloqueMvp({ mvp, tema, gran }) {
   const nombre = acortarNombre(mvp.nombre, 20).toUpperCase()
-  const fuenteNombre = Math.max(gran ? 42 : 34, (gran ? 66 : 54) - Math.max(0, nombre.length - 12) * (gran ? 2.8 : 2.4))
+  const fuenteNombre = Math.max(gran ? 40 : 32, (gran ? 62 : 50) - Math.max(0, nombre.length - 12) * (gran ? 2.6 : 2.2))
   const ini = (mvp.nombre || '?').split(' ').filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   // Parámetro extra: evita que el navegador reutilice una copia de la foto guardada sin permisos CORS (rompería la descarga).
   const foto = mvp.foto && !mvp.foto.startsWith('data:') ? mvp.foto + (mvp.foto.includes('?') ? '&' : '?') + 'gmcors=1' : mvp.foto
-  const badge = gran ? 150 : 118
+  const badge = gran ? 240 : 180
   const partes = []
   if (mvp.equipo) partes.push(mvp.equipo.toUpperCase())
   if (mvp.goles > 0) partes.push(`${mvp.goles} ${mvp.goles === 1 ? 'GOL' : 'GOLES'}`)
   return (
-    <div style={{
-      position: 'relative', overflow: 'hidden', flexShrink: 0, boxSizing: 'border-box', borderRadius: 30,
-      background: `linear-gradient(135deg, ${tema.mvp[0]} 0%, ${tema.mvp[1]} 100%)`, border: '3px solid rgba(255,255,255,.28)',
-      padding: gran ? '26px 34px' : '18px 30px', display: 'flex', alignItems: 'center', gap: gran ? 30 : 24,
-    }}>
-      <span style={{ position: 'absolute', right: 18, bottom: gran ? -34 : -26, fontFamily: F_TITULO, fontSize: gran ? 230 : 170, lineHeight: 1, letterSpacing: 4, color: 'rgba(255,255,255,.13)' }}>
-        {mvp.goles > 0 ? mvp.goles : 'MVP'}
-      </span>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       {foto ? (
-        <img src={foto} alt="" crossOrigin="anonymous" style={{ width: badge, height: badge, borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top', border: `6px solid ${tema.acento}`, boxSizing: 'border-box', flexShrink: 0, background: '#fff', position: 'relative' }}/>
+        <img src={foto} alt="" crossOrigin="anonymous" style={{ width: badge, height: badge, borderRadius: '50%', objectFit: 'cover', objectPosition: 'center top', border: `9px solid ${tema.acento}`, boxSizing: 'border-box', background: '#fff', boxShadow: '0 10px 30px rgba(0,0,0,.45)' }}/>
       ) : (
-        <div style={{ width: badge, height: badge, borderRadius: '50%', background: tema.acento, border: '6px solid rgba(255,255,255,.55)', boxSizing: 'border-box', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-          <span style={{ fontFamily: F_TITULO, fontSize: badge * 0.46, color: '#14142a', letterSpacing: 2, lineHeight: 1, paddingTop: 4 }}>{ini}</span>
+        <div style={{ width: badge, height: badge, borderRadius: '50%', background: tema.acento, border: '9px solid rgba(255,255,255,.6)', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 30px rgba(0,0,0,.45)' }}>
+          <span style={{ fontFamily: F_TITULO, fontSize: badge * 0.44, color: '#14142a', letterSpacing: 2, lineHeight: 1, paddingTop: 6 }}>{ini}</span>
         </div>
       )}
-      <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: F_TITULO, fontSize: gran ? 40 : 32, letterSpacing: 7, color: tema.acentoSuave, lineHeight: 1 }}>MVP DEL PARTIDO</div>
-        <div style={{ marginTop: 8, fontFamily: F_TEXTO, fontWeight: 800, fontSize: fuenteNombre, lineHeight: 1.05, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden' }}>{nombre}</div>
-        {partes.length > 0 && (
-          <div style={{ marginTop: 10, fontFamily: F_TEXTO, fontWeight: 600, fontSize: gran ? 32 : 27, letterSpacing: 2, color: 'rgba(255,255,255,.85)', whiteSpace: 'nowrap', overflow: 'hidden' }}>{partes.join('  ·  ')}</div>
-        )}
+      <div style={{ marginTop: gran ? -34 : -26, transform: 'rotate(-1.5deg)', background: `linear-gradient(135deg, ${tema.mvp[0]} 0%, ${tema.mvp[1]} 100%)`, border: '3px solid rgba(255,255,255,.35)', padding: gran ? '12px 36px 14px' : '8px 28px 10px', textAlign: 'center', maxWidth: 800, boxSizing: 'border-box', boxShadow: '0 8px 22px rgba(0,0,0,.4)' }}>
+        <div style={{ fontFamily: F_TITULO, fontSize: gran ? 34 : 26, letterSpacing: 8, color: tema.acentoSuave, lineHeight: 1 }}>MVP DEL PARTIDO</div>
+        <div style={{ marginTop: 4, fontFamily: F_TEXTO, fontWeight: 800, fontSize: fuenteNombre, lineHeight: 1.05, color: '#fff', whiteSpace: 'nowrap' }}>{nombre}</div>
+        {partes.length > 0 && <div style={{ marginTop: 4, fontFamily: F_TEXTO, fontWeight: 600, fontSize: gran ? 28 : 22, letterSpacing: 2, color: 'rgba(255,255,255,.88)', whiteSpace: 'nowrap' }}>{partes.join('  ·  ')}</div>}
       </div>
     </div>
   )
@@ -260,46 +223,15 @@ function TarjetaMvp({ mvp, tema, gran }) {
 // ---------- el flyer ----------
 
 function Flyer({ partido, torneo, datos, tema, colores, mvp, formato }) {
-  const statsRef = useRef(null)
-  const [alturaStats, setAlturaStats] = useState(0)
-
-  useLayoutEffect(() => {
-    const el = statsRef.current
-    if (!el) return undefined
-    const medir = () => setAlturaStats(el.clientHeight)
-    medir()
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const obs = new ResizeObserver(medir)
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [formato.id, !!mvp]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { golesLocal, golesVisitante, tarjetasLocal, tarjetasVisitante } = datos
+  const { golesLocal, golesVisitante } = datos
   const esW = partido.tipo_resultado === 'w'
   const esDesierto = partido.tipo_resultado === 'desierto'
-  const hayGoles = golesLocal.length + golesVisitante.length > 0
-  const hayTarjetas = tarjetasLocal.length + tarjetasVisitante.length > 0
-  const sinEstadisticas = !!partido.tipo_resultado || (!hayGoles && !hayTarjetas)
-
-  // Cuántas filas caben en el espacio que queda para goles + tarjetas.
-  const nSecciones = (hayGoles ? 1 : 0) + (hayTarjetas ? 1 : 0)
-  const disponible = alturaStats > 0 ? alturaStats - nSecciones * (ALTO_CABECERA + 6) - Math.max(0, nSecciones - 1) * ESPACIO_SECCION - 6 : 0
-  const cap = alturaStats > 0 ? Math.max(2, Math.floor(disponible / MIN_FILA)) : 99
-  const gNec = Math.max(golesLocal.length, golesVisitante.length)
-  const tNec = Math.max(tarjetasLocal.length, tarjetasVisitante.length)
-  let gFilas = hayGoles ? gNec : 0
-  let tFilas = hayTarjetas ? tNec : 0
-  if (gFilas + tFilas > cap) {
-    if (!hayTarjetas) gFilas = cap
-    else if (!hayGoles) tFilas = cap
-    else {
-      tFilas = Math.max(1, Math.min(tNec, cap - gFilas))
-      if (tFilas < Math.min(tNec, 3)) { tFilas = Math.min(tNec, 3); gFilas = Math.max(1, cap - tFilas) }
-    }
-  }
-  const rowH = alturaStats > 0
-    ? Math.max(MIN_FILA, Math.min(MAX_FILA, Math.floor(disponible / Math.max(1, gFilas + tFilas))))
-    : 48
+  const hayGoles = !partido.tipo_resultado && golesLocal.length + golesVisitante.length > 0
+  const gran = formato.id === 'historia'
+  const H = formato.alto
+  const filasMax = gran ? 4 : 3
+  const rowH = gran ? 56 : 46
+  const filas = Math.min(filasMax, Math.max(golesLocal.length, golesVisitante.length))
 
   const hs = Number(partido.home_score) || 0
   const as = Number(partido.away_score) || 0
@@ -320,115 +252,91 @@ function Flyer({ partido, torneo, datos, tema, colores, mvp, formato }) {
     : (partido.matchday ? `FECHA ${partido.matchday}` : 'FASE DE GRUPOS')
 
   const nombreTorneo = (torneo?.name || '').toUpperCase()
-  const gran = formato.id === 'historia'
   const tam = {
     chip: gran ? 40 : 34,
-    nombreEquipo: gran ? 54 : 44,
-    meta: gran ? 36 : 30,
-    torneo: (gran ? 56 : 46) * (nombreTorneo.length > 34 ? 0.76 : nombreTorneo.length > 24 ? 0.9 : 1),
-    logo: gran ? 128 : 100,
+    meta: gran ? 34 : 28,
+    torneo: (gran ? 54 : 44) * (nombreTorneo.length > 34 ? 0.76 : nombreTorneo.length > 24 ? 0.9 : 1),
+    logo: gran ? 120 : 92,
   }
-  const digitos = String(hs).length + String(as).length
-  const fuenteScore = digitos > 2 ? formato.score * 0.78 : formato.score
-  const ladoEquipo = { textAlign: 'center', fontFamily: F_TEXTO, fontWeight: 800, fontSize: tam.nombreEquipo, lineHeight: 1.02, textTransform: 'uppercase', maxHeight: tam.nombreEquipo * 2.15, overflow: 'hidden' }
+  const escudo = gran ? 330 : 230
+  const fuenteScore = Math.max(String(hs).length, String(as).length) > 1 ? formato.score * 0.78 : formato.score
+  const etiquetaL = mezclar(colores.izq, '#ffffff', 0.3)
+  const etiquetaV = mezclar(colores.der, '#ffffff', 0.3)
 
-  const ganador = visible => (
-    <div style={{ height: gran ? 44 : 36, marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {visible && <span style={{ fontFamily: F_TITULO, fontSize: gran ? 38 : 31, letterSpacing: 8, lineHeight: 1, color: tema.acento }}>GANADOR</span>}
-    </div>
-  )
-
-  const H = formato.alto
+  const mitad = (lado) => {
+    const local = lado === 'local'
+    const equipo = local ? partido.home : partido.away
+    const gana = local ? ganaLocal : ganaVisitante
+    const score = local ? hs : as
+    return (
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Escudo url={equipo?.logo_url} nombre={equipo?.name} size={escudo} radio={Math.round(escudo * 0.2)}/>
+        <div style={{ marginTop: gran ? 22 : 14 }}>
+          <EtiquetaEquipo nombre={equipo?.name} color={local ? etiquetaL : etiquetaV} grados={local ? -2 : 2} gran={gran} apagado={hayGanador && !gana}/>
+        </div>
+        <div style={{ marginTop: gran ? 6 : 2, fontFamily: F_TITULO, fontSize: fuenteScore, lineHeight: 1, letterSpacing: 4, color: colorScore(gana), textShadow: brillo(gana) }}>{score}</div>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ width: ANCHO, height: H, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', background: `linear-gradient(180deg, ${colores.izq} 0%, ${mezclar(colores.izq, '#000000', 0.55)} 100%)`, color: '#fff', fontFamily: F_TEXTO }}>
-      {/* Mitad del visitante: un panel girado cuyo borde izquierdo es la diagonal */}
-      <div style={{ position: 'absolute', left: ANCHO / 2, top: -H * 0.6, width: ANCHO * 1.6, height: H * 2.2, transform: `rotate(${ANGULO}deg)`, transformOrigin: '0 50%', background: `linear-gradient(180deg, ${colores.der} 0%, ${mezclar(colores.der, '#000000', 0.55)} 100%)` }}/>
-      {/* Línea dorada de la diagonal */}
-      <div style={{ position: 'absolute', left: ANCHO / 2 - 3, top: -H * 0.6, width: 6, height: H * 2.2, transform: `rotate(${ANGULO}deg)`, transformOrigin: '3px 50%', background: `linear-gradient(180deg, rgba(255,201,38,0) 0%, ${tema.acento} 18%, ${tema.acento} 82%, rgba(255,201,38,0) 100%)`, opacity: 0.9 }}/>
-      {/* Luz suave arriba y sombra abajo */}
-      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: H * 0.5, background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 65%)' }}/>
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: H * 0.35, background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%)' }}/>
+    <div style={{ width: ANCHO, height: H, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', background: colores.izq, color: '#fff', fontFamily: F_TEXTO }}>
+      {/* Dos mitades: el equipo local a la izquierda, el visitante a la derecha */}
+      <div style={{ position: 'absolute', left: 0, top: 0, width: ANCHO / 2, height: H, background: `linear-gradient(180deg, ${mezclar(colores.izq, '#ffffff', 0.08)} 0%, ${colores.izq} 40%, ${mezclar(colores.izq, '#000000', 0.6)} 100%)` }}/>
+      <div style={{ position: 'absolute', left: ANCHO / 2, top: 0, width: ANCHO / 2, height: H, background: `linear-gradient(180deg, ${mezclar(colores.der, '#ffffff', 0.08)} 0%, ${colores.der} 40%, ${mezclar(colores.der, '#000000', 0.6)} 100%)` }}/>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: H * 0.4, background: 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 65%)' }}/>
+      {/* Línea dorada que divide */}
+      <div style={{ position: 'absolute', left: ANCHO / 2 - 3, top: 0, width: 6, height: H, background: `linear-gradient(180deg, rgba(255,201,38,0) 0%, ${tema.acento} 14%, ${tema.acento} 86%, rgba(255,201,38,0) 100%)` }}/>
 
-      <div style={{ position: 'relative', zIndex: 2, height: '100%', boxSizing: 'border-box', padding: `${formato.padY}px 56px ${formato.padY - 6}px`, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'relative', zIndex: 2, height: '100%', boxSizing: 'border-box', padding: `${formato.padY}px 44px ${formato.padY - 6}px`, display: 'flex', flexDirection: 'column' }}>
 
         {/* Torneo + FINAL */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 26 }}>
-          {torneo?.logo_url && <LogoFlyer url={torneo.logo_url} size={tam.logo} radio={28} pad={10}/>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          {torneo?.logo_url && <LogoFlyer url={torneo.logo_url} size={tam.logo} radio={26} pad={10}/>}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: F_TEXTO, fontWeight: 800, fontSize: tam.torneo, lineHeight: 1.02, letterSpacing: 1, textTransform: 'uppercase', maxHeight: tam.torneo * 2.1, overflow: 'hidden' }}>{nombreTorneo}</div>
-            <div style={{ marginTop: 8, fontFamily: F_TEXTO, fontWeight: 700, fontSize: tam.chip - 4, letterSpacing: 5, lineHeight: 1, color: tema.acento }}>{faseTxt}</div>
+            <div style={{ fontFamily: F_TEXTO, fontWeight: 800, fontSize: tam.torneo, lineHeight: 1.02, letterSpacing: 1, textTransform: 'uppercase', maxHeight: tam.torneo * 2.1, overflow: 'hidden', textShadow: '0 3px 8px rgba(0,0,0,.45)' }}>{nombreTorneo}</div>
+            <div style={{ marginTop: 6, fontFamily: F_TEXTO, fontWeight: 700, fontSize: tam.chip - 6, letterSpacing: 5, lineHeight: 1, color: tema.acento, textShadow: '0 2px 6px rgba(0,0,0,.5)' }}>{faseTxt}</div>
           </div>
-          <span style={{ alignSelf: 'flex-start', fontFamily: F_TITULO, fontSize: tam.chip + 6, letterSpacing: 5, lineHeight: 1, background: tema.acento, color: '#14142a', borderRadius: 14, padding: '12px 28px 8px', flexShrink: 0 }}>FINAL</span>
+          <span style={{ alignSelf: 'flex-start', fontFamily: F_TITULO, fontSize: tam.chip + 4, letterSpacing: 5, lineHeight: 1, background: tema.acento, color: '#14142a', borderRadius: 12, padding: '10px 24px 6px', flexShrink: 0 }}>FINAL</span>
         </div>
 
-        <div style={sinEstadisticas ? { flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center' } : undefined}>
-          {/* Escudos + marcador */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: 8, marginTop: gran ? 54 : 28 }}>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <Escudo url={partido.home?.logo_url} nombre={partido.home?.name} size={formato.escudo} radio={Math.round(formato.escudo * 0.2)}/>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: F_TITULO, lineHeight: 0.9, fontSize: fuenteScore, letterSpacing: 4 }}>
-              <span style={{ color: colorScore(ganaLocal), textShadow: brillo(ganaLocal) }}>{hs}</span>
-              <span style={{ color: 'rgba(255,255,255,.8)', fontSize: fuenteScore * 0.5, margin: '0 14px', position: 'relative', top: -fuenteScore * 0.04 }}>-</span>
-              <span style={{ color: colorScore(ganaVisitante), textShadow: brillo(ganaVisitante) }}>{as}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <Escudo url={partido.away?.logo_url} nombre={partido.away?.name} size={formato.escudo} radio={Math.round(formato.escudo * 0.2)}/>
-            </div>
-          </div>
-          {/* Nombres (el que perdió, apagado) y GANADOR */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: 8, marginTop: 20, alignItems: 'start' }}>
-            <div>
-              <div style={{ ...ladoEquipo, color: hayGanador && !ganaLocal ? 'rgba(255,255,255,.55)' : '#fff' }}>{partido.home?.name}</div>
-              {ganador(ganaLocal)}
-            </div>
-            <div style={{ width: fuenteScore * (digitos > 2 ? 0.8 : 0.95) }}/>
-            <div>
-              <div style={{ ...ladoEquipo, color: hayGanador && !ganaVisitante ? 'rgba(255,255,255,.55)' : '#fff' }}>{partido.away?.name}</div>
-              {ganador(ganaVisitante)}
-            </div>
+        {/* Zona central: escudos, nombres y resultado a cada lado + MVP en medio */}
+        <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0 }}>
+          <div style={{ display: 'flex', gap: 0, marginTop: gran ? 24 : 12 }}>
+            {mitad('local')}
+            {mitad('visitante')}
           </div>
 
           {(pen || esW || esDesierto) && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
-              <span style={{ fontFamily: F_TITULO, fontSize: tam.chip, letterSpacing: 4, lineHeight: 1, color: tema.acentoSuave, border: '2px solid rgba(255,255,255,.25)', background: 'rgba(0,0,0,.28)', borderRadius: 40, padding: '10px 30px 8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: gran ? 6 : 2 }}>
+              <span style={{ fontFamily: F_TITULO, fontSize: tam.chip, letterSpacing: 4, lineHeight: 1, color: tema.acentoSuave, border: '2px solid rgba(255,255,255,.3)', background: 'rgba(0,0,0,.4)', borderRadius: 40, padding: '10px 30px 8px' }}>
                 {pen ? `PENALES ${pen.local} - ${pen.visitante}` : esW ? 'GANADO POR W' : 'PARTIDO DESIERTO'}
               </span>
             </div>
           )}
+
+          {mvp && <div style={{ marginTop: gran ? 26 : 14 }}><BloqueMvp mvp={mvp} tema={tema} gran={gran}/></div>}
+
+          {hayGoles && (
+            <div style={{ marginTop: gran ? 30 : 16 }}>
+              <div style={{ height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, fontFamily: F_TITULO, fontSize: gran ? 40 : 32, letterSpacing: 8, color: tema.acento, lineHeight: 1, marginBottom: 4 }}>
+                <GiSoccerBall size={gran ? 36 : 28} color={tema.acento}/>GOLES
+              </div>
+              <div style={{ display: 'flex', gap: 72 }}>
+                <ColumnaGoles goles={golesLocal} lado="local" filas={filas} rowH={rowH} acento={tema.acento}/>
+                <ColumnaGoles goles={golesVisitante} lado="visitante" filas={filas} rowH={rowH} acento={tema.acento}/>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Goles y tarjetas */}
-        {!sinEstadisticas && (
-          <div ref={statsRef} style={{ flex: '1 1 0', minHeight: 0, overflow: 'hidden', marginTop: gran ? 36 : 22, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            {hayGoles && (
-              <SeccionDoble titulo="GOLES" icono={<GiSoccerBall size={38} color={tema.acento}/>} izq={golesLocal} der={golesVisitante}
-                filas={gFilas} rowH={rowH} tema={tema}
-                render={(g, i, lado) => (
-                  <FilaEquipo key={i} lado={lado} rowH={rowH} texto={acortarNombre(g.jugador, 19)} icono={<Balones key="b" cantidad={g.cantidad} rowH={rowH} color={tema.acento}/>}/>
-                )}/>
-            )}
-            {hayGoles && hayTarjetas && <div style={{ height: ESPACIO_SECCION }}/>}
-            {hayTarjetas && (
-              <SeccionDoble titulo="TARJETAS" izq={tarjetasLocal} der={tarjetasVisitante} filas={tFilas} rowH={rowH} tema={tema}
-                render={(t, i, lado) => (
-                  <FilaEquipo key={i} lado={lado} rowH={rowH} texto={acortarNombre(t.jugador, 21)} icono={<Tarjeta key="t" color={t.color} rowH={rowH}/>}/>
-                )}/>
-            )}
-          </div>
-        )}
-
-        {/* MVP */}
-        {mvp && <div style={{ marginTop: gran ? 28 : 18 }}><TarjetaMvp mvp={mvp} tema={tema} gran={gran}/></div>}
-
         {/* Fecha, hora, lugar y marca */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: 38, rowGap: 8, marginTop: gran ? 28 : 18, fontFamily: F_TEXTO, fontWeight: 600, fontSize: tam.meta, color: 'rgba(255,255,255,.9)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: 34, rowGap: 6, marginTop: gran ? 18 : 10, fontFamily: F_TEXTO, fontWeight: 600, fontSize: tam.meta, color: 'rgba(255,255,255,.92)', textShadow: '0 2px 6px rgba(0,0,0,.5)' }}>
           {fechaTxt && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><IconoCalendario color={tema.acento} size={tam.meta + 2}/>{fechaTxt}</span>}
           {hora && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><IconoReloj color={tema.acento} size={tam.meta + 2}/>{hora}</span>}
           {partido.location && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}><IconoUbicacion color={tema.acento} size={tam.meta + 2}/>{acortarNombre(partido.location, 34)}</span>}
         </div>
-        <div style={{ textAlign: 'center', marginTop: gran ? 22 : 12, fontFamily: F_TITULO, fontSize: gran ? 34 : 28, letterSpacing: 8, color: 'rgba(255,255,255,.6)', lineHeight: 1 }}>GOLMEBOL.COM</div>
+        <div style={{ textAlign: 'center', marginTop: gran ? 14 : 8, fontFamily: F_TITULO, fontSize: gran ? 32 : 26, letterSpacing: 8, color: 'rgba(255,255,255,.65)', lineHeight: 1 }}>GOLMEBOL.COM</div>
       </div>
     </div>
   )
