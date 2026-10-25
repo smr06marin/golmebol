@@ -482,7 +482,8 @@ export default function App() {
         <Routes>
 
           {/* Inicio público */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<LandingPage key="inicio" />} />
+          <Route path="/torneos" element={<LandingPage key="torneos" modo="torneos" />} />
           <Route path="/records" element={<RecordsPage />} />
           {/* Perfiles públicos (sin login): equipo y jugador */}
           <Route path="/e/:id" element={<EquipoPublicoPage />} />

@@ -13,7 +13,7 @@ try {
   const hostPropio = host === 'localhost' || host === '127.0.0.1' || host.endsWith('golmebol.com') || host.endsWith('.vercel.app')
   const ruta = window.location.pathname
   if (!hostPropio) import('./pages/TorneoPublicoPage')            // dominio propio de un torneo/organizador
-  else if (ruta === '/') import('./pages/LandingPage')            // inicio de Golmebol
+  else if (ruta === '/' || ruta === '/torneos') import('./pages/LandingPage') // inicio de Golmebol y lista de torneos
   else if (ruta.startsWith('/t/')) import('./pages/TorneoPublicoPage') // tabla pública de un torneo
 } catch (e) { /* si algo falla, la app carga la página normal más tarde */ }
 

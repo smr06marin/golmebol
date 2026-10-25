@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, Search, SlidersHorizontal } from 'lucide-react'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, ChevronLeft, Search, SlidersHorizontal } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
@@ -316,7 +316,9 @@ function calcularCampeon(mts) {
   return equipo ? { id: ganadorId, name: equipo.name, logo_url: equipo.logo_url } : null
 }
 
-export default function LandingPage() {
+// modo 'inicio' = página principal; modo 'torneos' = /torneos (buscador y lista de torneos)
+export default function LandingPage({ modo = 'inicio' }) {
+  const soloTorneos = modo === 'torneos'
   const navigate = useNavigate()
   // Lo último que se vio queda guardado: al volver a entrar la portada se pinta
   // de una (números, torneos, escenarios, patrocinadores) y lo fresco llega
@@ -371,8 +373,15 @@ export default function LandingPage() {
   }
 
   useEffect(() => {
+    if (soloTorneos) {
+      // /torneos: solo hace falta lo de los torneos (y los partidos en vivo para marcar "EN VIVO")
+      window.scrollTo(0, 0)
+      fetchTorneosActivos(); fetchPartidosVivo(); fetchVisitasHoy(); fetchSiteConfig()
+      return
+    }
     fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores(); fetchPortada()
     registrarVisita('inicio')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Reloj de los partidos en vivo: recalcula localmente cada segundo, y cada
@@ -880,7 +889,7 @@ export default function LandingPage() {
       {/* ── Header: fondo claro, como el mockup ── */}
       <div style={{ position: 'sticky', top: 0, zIndex: 50, background: '#ffffff', borderBottom: '1px solid #eaeaea' }}>
         <div className="gm-hdr-in" style={{ maxWidth: '1120px', margin: '0 auto', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-          <div className="gm-hdr-marca" style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+          <div className="gm-hdr-marca" onClick={() => { if (soloTorneos) navigate('/') }} style={{ display: 'flex', alignItems: 'center', gap: '9px', cursor: soloTorneos ? 'pointer' : undefined }}>
             <img className="gm-hdr-logo" src="/icon-192.png" alt="Golmebol" style={{ height: '34px', width: '34px', borderRadius: '9px', flexShrink: 0 }}/>
             <div style={{ minWidth: 0 }}>
               <div className="gm-hdr-nom" style={{ fontWeight: 900, fontSize: '1.05rem', letterSpacing: '.01em', color: '#111', lineHeight: 1.1 }}>GOLMEBOL</div>
@@ -898,6 +907,7 @@ export default function LandingPage() {
         </div>
       </div>
 
+      {!soloTorneos && (<>
       {/* ── Hero: oscuro con acento verde ── */}
       <div className={portadaInicio?.url ? 'gm-hero-portada' : undefined} style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', display: portadaInicio?.url ? 'flex' : undefined, alignItems: portadaInicio?.url ? 'flex-end' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
         {portadaInicio?.url ? (
@@ -926,7 +936,7 @@ export default function LandingPage() {
           </p>
           </>)}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button className="gm-hover" onClick={() => scrollA(torneosRef)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
+            <button className="gm-hover" onClick={() => navigate('/torneos')} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
               VER TORNEOS <ArrowRight size={16}/>
             </button>
             <button className="gm-hover" onClick={() => { setSenalVivo(n => n + 1); scrollA(vivoRef) }} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
@@ -1008,8 +1018,10 @@ export default function LandingPage() {
         </div>
       )}
 
+      </>)}
+
       {/* ── Torneos: buscador + cuadrícula de escudos ── */}
-      {(() => {
+      {soloTorneos && (() => {
         const norm = x => (x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
         const q = norm(busqueda.trim())
         const buscando = q.length >= 2
@@ -1028,9 +1040,13 @@ export default function LandingPage() {
         const hayFiltrosAttr = FILTROS_TORNEO.some(({ k }) => opcionesAttr[k].length > 1 || filtrosAttr[k])
         const cajaVacia = { margin: '0 16px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '24px', textAlign: 'center', color: S.muted, fontSize: '.85rem' }
         return (
-          <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '52px 16px 8px' }}>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Trophy size={18} color={S.green}/> Torneos
+          <div ref={torneosRef} style={{ maxWidth: '1120px', margin: '0 auto', padding: '22px 16px 8px' }}>
+            <button type="button" onClick={() => navigate('/')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.muted, fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', padding: '4px 0', marginBottom: '8px', fontFamily: 'inherit' }}>
+              <ChevronLeft size={16}/> Volver al inicio
+            </button>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 900, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Trophy size={20} color={S.green}/> Torneos
             </h2>
 
             {/* Buscador */}
@@ -1151,6 +1167,7 @@ export default function LandingPage() {
         )
       })()}
 
+      {!soloTorneos && (<>
       {/* ── Partidos (hoy / por día) con los que están en vivo ya incluidos; "VER EN VIVO" del inicio baja hasta acá ── */}
       <div ref={vivoRef}>
         <PartidosDelDia partidosVivo={partidosVivo} onVerDetalleVivo={setDetalleVivoId} senalVivo={senalVivo}/>
@@ -1204,6 +1221,8 @@ export default function LandingPage() {
 
       {/* ── Patrocinadores oficiales: franja discreta con logo y número de contacto (se gestionan en /admin/patrocinadores) ── */}
       <PatrocinadoresFranja patrocinadores={patrocinadores} onSelect={setPatroDetalle} S={S}/>
+
+      </>)}
 
       {/* ── Footer ── */}
       <div style={{ borderTop: `1px solid ${S.border}`, marginTop: '54px', padding: '28px 16px', textAlign: 'center' }}>
