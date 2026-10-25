@@ -9,6 +9,8 @@ import { colorDominante } from '../lib/portadaYoutube'
 import { FASE_LABEL, acortarNombre, datosParaFlyer, penalesDe } from '../lib/resumenPartido'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
 import LogoFlyer from './LogoFlyer'
+import FranjaPatrocinadoresFlyer from './FranjaPatrocinadoresFlyer'
+import { usePatrocinadoresFlyer } from '../lib/patrocinadoresFlyer'
 
 // Flyer de RESULTADO que los equipos publican en sus redes.
 //
@@ -192,13 +194,13 @@ function EtiquetaEquipo({ nombre, color, grados, gran, apagado }) {
 }
 
 // MVP en el centro, montado sobre la línea que divide los dos equipos.
-function BloqueMvp({ mvp, tema, gran }) {
+function BloqueMvp({ mvp, tema, gran, k = 1 }) {
   const nombre = acortarNombre(mvp.nombre, 20).toUpperCase()
   const fuenteNombre = Math.max(gran ? 40 : 32, (gran ? 62 : 50) - Math.max(0, nombre.length - 12) * (gran ? 2.6 : 2.2))
   const ini = (mvp.nombre || '?').split(' ').filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   // Parámetro extra: evita que el navegador reutilice una copia de la foto guardada sin permisos CORS (rompería la descarga).
   const foto = mvp.foto && !mvp.foto.startsWith('data:') ? mvp.foto + (mvp.foto.includes('?') ? '&' : '?') + 'gmcors=1' : mvp.foto
-  const badge = gran ? 240 : 180
+  const badge = Math.round((gran ? 240 : 180) * k)
   const partes = []
   if (mvp.equipo) partes.push(mvp.equipo.toUpperCase())
   if (mvp.goles > 0) partes.push(`${mvp.goles} ${mvp.goles === 1 ? 'GOL' : 'GOLES'}`)
@@ -230,7 +232,8 @@ function Flyer({ partido, torneo, datos, tema, colores, mvp, formato }) {
   const gran = formato.id === 'historia'
   const H = formato.alto
   const filasMax = gran ? 4 : 3
-  const rowH = gran ? 56 : 46
+  const k = Math.min(1, H / (gran ? 1920 : 1350)) * (!gran && H < 1350 ? 0.88 : 1)
+  const rowH = Math.round((gran ? 56 : 46) * (k < 1 ? (gran ? 0.9 : 0.8) : 1))
   const filas = Math.min(filasMax, Math.max(golesLocal.length, golesVisitante.length))
 
   const hs = Number(partido.home_score) || 0
@@ -254,12 +257,13 @@ function Flyer({ partido, torneo, datos, tema, colores, mvp, formato }) {
   const nombreTorneo = (torneo?.name || '').toUpperCase()
   const tam = {
     chip: gran ? 40 : 34,
-    meta: gran ? 34 : 28,
+    meta: Math.round((gran ? 34 : 28) * (H < (gran ? 1920 : 1350) ? 0.92 : 1)),
     torneo: (gran ? 54 : 44) * (nombreTorneo.length > 34 ? 0.76 : nombreTorneo.length > 24 ? 0.9 : 1),
     logo: gran ? 120 : 92,
   }
-  const escudo = gran ? 330 : 230
-  const fuenteScore = Math.max(String(hs).length, String(as).length) > 1 ? formato.score * 0.78 : formato.score
+  // Con la franja de patrocinadores el flyer tiene menos alto: los bloques grandes se achican en proporción.
+  const escudo = Math.round((gran ? 330 : 230) * k)
+  const fuenteScore = (Math.max(String(hs).length, String(as).length) > 1 ? formato.score * 0.78 : formato.score) * k
   const etiquetaL = mezclar(colores.izq, '#ffffff', 0.3)
   const etiquetaV = mezclar(colores.der, '#ffffff', 0.3)
 
@@ -315,7 +319,7 @@ function Flyer({ partido, torneo, datos, tema, colores, mvp, formato }) {
             </div>
           )}
 
-          {mvp && <div style={{ marginTop: gran ? 26 : 14 }}><BloqueMvp mvp={mvp} tema={tema} gran={gran}/></div>}
+          {mvp && <div style={{ marginTop: gran ? 26 : 14 }}><BloqueMvp mvp={mvp} tema={tema} gran={gran} k={k}/></div>}
 
           {hayGoles && (
             <div style={{ marginTop: gran ? 30 : 16 }}>
@@ -338,6 +342,22 @@ function Flyer({ partido, torneo, datos, tema, colores, mvp, formato }) {
         </div>
         <div style={{ textAlign: 'center', marginTop: gran ? 14 : 8, fontFamily: F_TITULO, fontSize: gran ? 32 : 26, letterSpacing: 8, color: 'rgba(255,255,255,.65)', lineHeight: 1 }}>GOLMEBOL.COM</div>
       </div>
+    </div>
+  )
+}
+
+// Si el torneo lo organiza Golmebol, al pie va la franja blanca con los patrocinadores: el flyer
+// conserva su tamaño total (1080×1920 / 1080×1350) y el diseño se acomoda en el alto que queda.
+function FlyerConBanda({ patrocinadores, ...props }) {
+  const { formato } = props
+  const alturaBanda = patrocinadores.length ? (formato.id === 'historia' ? 150 : 120) : 0
+  if (!alturaBanda) return <Flyer {...props}/>
+  return (
+    <div style={{ width: ANCHO, height: formato.alto, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ width: ANCHO, height: formato.alto - alturaBanda, overflow: 'hidden' }}>
+        <Flyer {...props} formato={{ ...formato, alto: formato.alto - alturaBanda }}/>
+      </div>
+      <FranjaPatrocinadoresFlyer patrocinadores={patrocinadores} ancho={ANCHO} alto={alturaBanda}/>
     </div>
   )
 }
@@ -385,6 +405,7 @@ export default function FlyerResultadoPartido({ partido, torneo, eventos, nombre
   const datos = useMemo(() => datosParaFlyer(partido, eventos || [], nombreDe), [partido, eventos, nombreDe])
   const { cargado: mvpCargado, mvp } = useMvpDelPartido(partido, eventos)
   const colores = useColoresEquipos(partido.home?.logo_url, partido.away?.logo_url, tema)
+  const { lista: patrocinadores, listo: patroListo } = usePatrocinadoresFlyer({ id: partido.tournament_id || torneo?.id, organizador_id: torneo?.organizador_id })
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -422,7 +443,7 @@ export default function FlyerResultadoPartido({ partido, torneo, eventos, nombre
     border: activo ? '2px solid #1a73e8' : '1px solid #dadce0',
     background: activo ? '#e8f0fe' : '#fff', color: activo ? '#1a73e8' : '#5f6368',
   })
-  const bloqueado = descargando || !mvpCargado
+  const bloqueado = descargando || !mvpCargado || !patroListo
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.8)', zIndex: 620, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -453,7 +474,7 @@ export default function FlyerResultadoPartido({ partido, torneo, eventos, nombre
         <div ref={wrapperRef} style={{ width: '100%' }}>
           <div style={{ width: ANCHO * escala, height: formato.alto * escala, margin: '0 auto', position: 'relative', overflow: 'hidden', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.25)' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, width: ANCHO, height: formato.alto, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
-              <Flyer partido={partido} torneo={torneo} datos={datos} tema={tema} colores={colores} mvp={mvp} formato={formato}/>
+              <FlyerConBanda partido={partido} torneo={torneo} datos={datos} tema={tema} colores={colores} mvp={mvp} formato={formato} patrocinadores={patrocinadores}/>
             </div>
           </div>
         </div>
@@ -463,14 +484,14 @@ export default function FlyerResultadoPartido({ partido, torneo, eventos, nombre
             contenedor con transform:scale (la vista previa de arriba). */}
         <div aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, width: ANCHO, height: formato.alto, pointerEvents: 'none' }}>
           <div ref={flyerRef} style={{ width: ANCHO, height: formato.alto }}>
-            <Flyer partido={partido} torneo={torneo} datos={datos} tema={tema} colores={colores} mvp={mvp} formato={formato}/>
+            <FlyerConBanda partido={partido} torneo={torneo} datos={datos} tema={tema} colores={colores} mvp={mvp} formato={formato} patrocinadores={patrocinadores}/>
           </div>
         </div>
 
         {errorDescarga && <div style={{ marginTop: 12, color: '#d93025', fontSize: '.8rem', textAlign: 'center' }}>{errorDescarga}</div>}
         <button onClick={handleDescargar} disabled={bloqueado}
           style={{ marginTop: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#1a73e8', border: 'none', borderRadius: 12, padding: '14px', cursor: bloqueado ? 'wait' : 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: 800, opacity: bloqueado ? 0.7 : 1 }}>
-          <Download size={18}/> {descargando ? 'Generando imagen...' : !mvpCargado ? 'Preparando flyer...' : 'Descargar / Compartir'}
+          <Download size={18}/> {descargando ? 'Generando imagen...' : (!mvpCargado || !patroListo) ? 'Preparando flyer...' : 'Descargar / Compartir'}
         </button>
         <button onClick={onClose}
           style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: 12, padding: '13px', cursor: 'pointer', color: '#3c4043', fontWeight: 800, fontSize: '.95rem' }}>

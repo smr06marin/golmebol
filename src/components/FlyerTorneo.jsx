@@ -3,6 +3,8 @@ import { Shield, Trophy, Download, X, Ticket } from 'lucide-react'
 import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_TORNEO } from '../lib/flyerTemas'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
+import FranjaPatrocinadoresFlyer from './FranjaPatrocinadoresFlyer'
+import { usePatrocinadoresFlyer } from '../lib/patrocinadoresFlyer'
 
 const CENTER_TAM = 124 // diámetro del escudo del torneo, al centro
 const HEADER_H   = 122 // alto del bloque de título arriba
@@ -68,6 +70,8 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
 
   const [paso, setPaso] = useState(cuposRestantes > 0 ? 'preguntar' : 'flyer')
   const [mostrarCupos, setMostrarCupos] = useState(false)
+  // Torneo organizado por Golmebol: el flyer lleva al pie la franja de patrocinadores.
+  const { lista: patrocinadores, listo: patroListo } = usePatrocinadoresFlyer(torneo)
 
   async function handleDescargar() {
     if (!flyerRef.current) return
@@ -122,8 +126,9 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
 
   const circleSize  = radioMax * 2
   const footerH     = FOOTER_H + (mostrarCupos && cuposRestantes > 0 ? FOOTER_CUPOS_H : 0)
-  const flyerHeight = HEADER_H + circleSize + footerH
   const flyerWidth  = Math.max(460, circleSize + 60)
+  const bandaH      = patrocinadores.length ? Math.round(flyerWidth * 0.14) : 0
+  const flyerHeight = HEADER_H + circleSize + footerH + bandaH
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -139,9 +144,9 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
                 ← Cambiar cupos
               </button>
             )}
-            <button onClick={handleDescargar} disabled={descargando}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: descargando ? .7 : 1 }}>
-              <Download size={16}/> {descargando ? 'Generando...' : 'Descargar'}
+            <button onClick={handleDescargar} disabled={descargando || !patroListo}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: (descargando || !patroListo) ? .7 : 1 }}>
+              <Download size={16}/> {descargando ? 'Generando...' : !patroListo ? 'Preparando...' : 'Descargar'}
             </button>
             <button onClick={onClose}
               style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.875rem', fontWeight: '500' }}>
@@ -204,7 +209,7 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
           </div>
 
           {/* Footer */}
-          <div style={{ position: 'absolute', bottom: '16px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
+          <div style={{ position: 'absolute', bottom: `${16 + bandaH}px`, left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
             {mostrarCupos && cuposRestantes > 0 && (
               <div style={{ display: 'inline-block', background: 'rgba(249,168,37,.16)', border: '1.5px solid #f9a825', borderRadius: '20px', padding: '6px 16px', marginBottom: '8px' }}>
                 <span style={{ color: '#f9a825', fontSize: '11px', fontWeight: '800', letterSpacing: '1px' }}>
@@ -214,6 +219,13 @@ export default function FlyerTorneo({ torneo, equipos, onClose }) {
             )}
             <div style={{ color: 'rgba(255,255,255,.55)', fontSize: '10px', fontWeight: '700', letterSpacing: '1px' }}>GOLMEBOL · LA CASA DEL MICROFÚTBOL</div>
           </div>
+
+          {/* Patrocinadores de Golmebol (solo torneos organizados por Golmebol) */}
+          {bandaH > 0 && (
+            <div style={{ position: 'absolute', left: 0, bottom: 0, zIndex: 11 }}>
+              <FranjaPatrocinadoresFlyer patrocinadores={patrocinadores} ancho={flyerWidth} alto={bandaH}/>
+            </div>
+          )}
         </div>
       </div>
     </div>

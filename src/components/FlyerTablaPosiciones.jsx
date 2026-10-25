@@ -4,6 +4,8 @@ import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_RESULTADO } from '../lib/flyerTemas'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
 import LogoFlyer from './LogoFlyer'
+import FranjaPatrocinadoresFlyer from './FranjaPatrocinadoresFlyer'
+import { usePatrocinadoresFlyer } from '../lib/patrocinadoresFlyer'
 import { useLogoLimpio } from '../lib/useLogoLimpio'
 
 // Flyer de la TABLA DE POSICIONES para publicar en redes. Mismo sistema que el
@@ -233,6 +235,22 @@ function Flyer({ torneo, filas, titulo, subtitulo, fecha, tema, formato }) {
   )
 }
 
+// Si el torneo lo organiza Golmebol, al pie va la franja blanca con los patrocinadores: el flyer
+// conserva su tamaño total (1080×1920 / 1080×1350) y las filas se acomodan en el alto que queda.
+function FlyerConBanda({ patrocinadores, ...props }) {
+  const { formato } = props
+  const alturaBanda = patrocinadores.length ? (formato.id === 'historia' ? 150 : 120) : 0
+  if (!alturaBanda) return <Flyer {...props}/>
+  return (
+    <div style={{ width: ANCHO, height: formato.alto, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ width: ANCHO, height: formato.alto - alturaBanda, overflow: 'hidden' }}>
+        <Flyer {...props} formato={{ ...formato, alto: formato.alto - alturaBanda }}/>
+      </div>
+      <FranjaPatrocinadoresFlyer patrocinadores={patrocinadores} ancho={ANCHO} alto={alturaBanda}/>
+    </div>
+  )
+}
+
 export default function FlyerTablaPosiciones({ torneo, filas, titulo = 'TABLA DE POSICIONES', subtitulo = '', onClose }) {
   const wrapperRef = useRef(null)
   const flyerRef = useRef(null)
@@ -246,6 +264,7 @@ export default function FlyerTablaPosiciones({ torneo, filas, titulo = 'TABLA DE
   const formato = FORMATOS.find(f => f.id === formatoId) || FORMATOS[0]
   const tema = TEMAS_RESULTADO.find(t => t.id === temaId) || TEMAS_RESULTADO[0]
   const fecha = useMemo(() => hoy.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }), [hoy])
+  const { lista: patrocinadores, listo: patroListo } = usePatrocinadoresFlyer(torneo)
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -313,7 +332,7 @@ export default function FlyerTablaPosiciones({ torneo, filas, titulo = 'TABLA DE
         <div ref={wrapperRef} style={{ width: '100%' }}>
           <div style={{ width: ANCHO * escala, height: formato.alto * escala, margin: '0 auto', position: 'relative', overflow: 'hidden', borderRadius: 10, boxShadow: '0 6px 24px rgba(0,0,0,.25)' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, width: ANCHO, height: formato.alto, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
-              <Flyer torneo={torneo} filas={filas} titulo={titulo} subtitulo={subtitulo} fecha={fecha} tema={tema} formato={formato}/>
+              <FlyerConBanda torneo={torneo} filas={filas} titulo={titulo} subtitulo={subtitulo} fecha={fecha} tema={tema} formato={formato} patrocinadores={patrocinadores}/>
             </div>
           </div>
         </div>
@@ -321,14 +340,14 @@ export default function FlyerTablaPosiciones({ torneo, filas, titulo = 'TABLA DE
         {/* Copia a tamaño real, fuera de pantalla y SIN transform: es la que se captura */}
         <div aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, width: ANCHO, height: formato.alto, pointerEvents: 'none' }}>
           <div ref={flyerRef} style={{ width: ANCHO, height: formato.alto }}>
-            <Flyer torneo={torneo} filas={filas} titulo={titulo} subtitulo={subtitulo} fecha={fecha} tema={tema} formato={formato}/>
+            <FlyerConBanda torneo={torneo} filas={filas} titulo={titulo} subtitulo={subtitulo} fecha={fecha} tema={tema} formato={formato} patrocinadores={patrocinadores}/>
           </div>
         </div>
 
         {errorDescarga && <div style={{ marginTop: 12, color: '#d93025', fontSize: '.8rem', textAlign: 'center' }}>{errorDescarga}</div>}
-        <button onClick={handleDescargar} disabled={descargando}
-          style={{ marginTop: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#1a73e8', border: 'none', borderRadius: 12, padding: '14px', cursor: descargando ? 'default' : 'pointer', color: '#fff', fontWeight: 800, fontSize: '.95rem', opacity: descargando ? 0.7 : 1 }}>
-          <Download size={18}/> {descargando ? 'Generando imagen...' : 'Descargar / Compartir'}
+        <button onClick={handleDescargar} disabled={descargando || !patroListo}
+          style={{ marginTop: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#1a73e8', border: 'none', borderRadius: 12, padding: '14px', cursor: (descargando || !patroListo) ? 'default' : 'pointer', color: '#fff', fontWeight: 800, fontSize: '.95rem', opacity: (descargando || !patroListo) ? 0.7 : 1 }}>
+          <Download size={18}/> {descargando ? 'Generando imagen...' : !patroListo ? 'Preparando flyer...' : 'Descargar / Compartir'}
         </button>
         <button onClick={onClose}
           style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: 12, padding: '13px', cursor: 'pointer', color: '#3c4043', fontWeight: 800, fontSize: '.95rem' }}>
