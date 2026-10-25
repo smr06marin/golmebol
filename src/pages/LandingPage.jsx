@@ -901,12 +901,12 @@ export default function LandingPage() {
       </div>
 
       {/* ── Hero: oscuro con acento verde ── */}
-      <div style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', minHeight: portadaInicio?.url ? '440px' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
+      <div style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', minHeight: portadaInicio?.url ? '440px' : undefined, display: portadaInicio?.url ? 'flex' : undefined, alignItems: portadaInicio?.url ? 'flex-end' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
         {portadaInicio?.url ? (
           <>
             {/* Portada: la foto de fondo y un degradado oscuro que la funde con el resto de la página (sin borde duro abajo) */}
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: `linear-gradient(180deg, rgba(10,10,10,.6) 0%, rgba(10,10,10,.48) 38%, rgba(10,10,10,.82) 78%, ${S.bg} 100%)` }}/>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: `linear-gradient(180deg, rgba(10,10,10,.12) 0%, rgba(10,10,10,.12) 45%, rgba(10,10,10,.7) 80%, ${S.bg} 100%)` }}/>
           </>
         ) : (
           <>
@@ -914,7 +914,8 @@ export default function LandingPage() {
             <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '280px', height: '280px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
           </>
         )}
-        <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto' }}>
+        <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto', width: portadaInicio?.url ? '100%' : undefined }}>
+          {!portadaInicio?.url && (<>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', border: `1px solid ${S.border}`, color: S.green, fontSize: '.68rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '20px' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.green, display: 'inline-block' }}/> LIGA AMATEUR · ARMENIA, QUINDÍO
           </div>
@@ -924,6 +925,7 @@ export default function LandingPage() {
           <p style={{ color: S.text2, fontSize: '.95rem', margin: '0 0 30px', lineHeight: 1.6 }}>
             Torneos en vivo, tablas de posiciones, récords, escenarios deportivos y escuelas de fútbol — todo en Golmebol.
           </p>
+          </>)}
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button className="gm-hover" onClick={() => scrollA(torneosRef)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
               VER TORNEOS <ArrowRight size={16}/>
