@@ -133,8 +133,12 @@ export const CSS_EV = `
   clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 2) 100%, 0 100%); }
 .ev-av-body { flex: 1; min-width: 0; padding: calc(var(--u) * 2.2) calc(var(--u) * 2.4) calc(var(--u) * 2.2) calc(var(--u) * 1.6); display: flex; flex-direction: column; justify-content: center; gap: calc(var(--u) * 1); }
 .ev-av-top { display: flex; align-items: center; gap: calc(var(--u) * 2); }
-.ev-av-firma { margin-left: auto; color: var(--tenue); font-weight: 700; font-size: calc(var(--u) * 2.2); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.ev-av-firma b { color: #fff; font-weight: 800; }
+/* Sello de la app, pegado debajo de la tarjeta: deja claro que el dato lo registra GOLMEBOL */
+.ev-av-marca { display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * 1.8); width: max-content; max-width: 100%; box-sizing: border-box; margin: calc(var(--u) * 1.2) auto 0;
+  padding: calc(var(--u) * .9) calc(var(--u) * 3) calc(var(--u) * .9) calc(var(--u) * 2); border-radius: calc(var(--u) * 1.4); background: rgba(6,8,13,.95); box-shadow: 0 4px 14px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08);
+  color: #d3d9e3; font-weight: 700; font-size: calc(var(--u) * 2.7); letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; animation: evAviso 8s cubic-bezier(.2,.8,.2,1) both; }
+.ev-av-marca img { height: calc(var(--u) * 4.6); width: auto; flex-shrink: 0; }
+.ev-av-marca b { color: #fff; font-weight: 800; letter-spacing: .09em; }
 .ev-av-gol { background: var(--rojo); font-weight: 800; font-size: calc(var(--u) * 3.1); letter-spacing: .12em; padding: .12em .8em .12em .6em; clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 1.1) 100%, 0 100%); }
 .ev-av-cant { background: var(--oro); color: #1a1200; font-weight: 800; font-size: calc(var(--u) * 2.8); letter-spacing: .06em; padding: .14em .8em; border-radius: calc(var(--u) * 1); white-space: nowrap; }
 /* Goles que lleva el jugador en el partido: caja dorada grande a la derecha de la tarjeta */

@@ -93,7 +93,7 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '17%', arriba 
             <div className="ev-av-body">
               <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span>
                 {totalJugador === 3 && <span className="ev-av-cant">HAT-TRICK</span>}
-                <span className="ev-av-firma"><b>GOLMEBOL</b></span></div>
+              </div>
               <div className="ev-av-nom ev-txt">{aviso.jugador}</div>
               <div className="ev-av-eq">
                 <Escudo url={equipo?.logo_url} name={equipo?.name} size={4.6}/>
@@ -106,6 +106,11 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '17%', arriba 
               <span>{totalJugador === 1 ? 'Gol' : 'Goles'}</span>
               <i>en el partido</i>
             </div>
+          </div>
+          {/* Sello: que se vea que el gol lo registra la app de GOLMEBOL */}
+          <div key={'m' + aviso.n} className="ev-av-marca">
+            <img src="/marca/watermark-logo.png" alt=""/>
+            <span>Gol registrado con la app <b>GOLMEBOL</b></span>
           </div>
         </div>
       </div>
