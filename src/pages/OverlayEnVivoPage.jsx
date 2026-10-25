@@ -18,6 +18,7 @@ import { disparoDeControl, disparoEsExclusivo, patrocinadorDeDisparo, patrocinad
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
 import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
+import IntermedioDescansoOverlay from '../components/IntermedioDescansoOverlay'
 
 // Página de overlay para OBS (u otro programa de transmisión): dibuja SOLO
 // los gráficos de Golmebol (marcador, goles, tabla, nómina, publicidad,
@@ -53,8 +54,10 @@ import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 //   ?auto=0    sin los gráficos automáticos (alineación al abrir la planilla; goles y tabla en el descanso y al finalizar)
 
 const ANCHO_ESCENARIO = 860
-// Cuánto dura en pantalla cada gráfico automático (alineación, tablero de goles, tabla): 2 minutos
+// Cuánto dura en pantalla la alineación automática: 2 minutos
 const DURACION_AUTO_MS = 120000
+// Cuánto dura el tablero grande de goles y la tabla de posiciones (descanso y final): 1 minuto cada uno
+const DURACION_TABLERO_MS = 60000
 
 function useEscala() {
   const [medidas, setMedidas] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
@@ -172,10 +175,13 @@ export default function OverlayEnVivoPage() {
   //    alineación de los dos equipos, hasta 2 min; si el árbitro toca
   //    "Iniciar" antes, se quita;
   //  · en el descanso: primero el tablero grande de goles (con quién hizo cada
-  //    gol) 2 min, y después la tabla de posiciones otros 2 min;
+  //    gol) 1 min, después la tabla de posiciones otro minuto y, si la
+  //    transmisión tiene jugadas o videos de patrocinadores subidos, estos
+  //    hasta que arranque el 2.º tiempo: jugada (2 veces) → patrocinador →
+  //    jugada (2 veces) → otro patrocinador… (ver IntermedioDescansoOverlay);
   //  · al finalizar (el árbitro cierra la planilla y la transmisión sigue): el
-  //    tablero grande con el resultado 2 min, y después la tabla de
-  //    posiciones otros 2 min.
+  //    tablero grande con el resultado 1 min, y después la tabla de
+  //    posiciones otro minuto.
   // Cada uno sale UNA vez por partido. Si el panel de control prende algo a
   // mano, eso manda. Al abrir la página con el partido ya iniciado no sale la
   // alineación.
@@ -200,6 +206,8 @@ export default function OverlayEnVivoPage() {
   const esperandoSegundoTiempo = periodoAuto === 2 && !vivoP?.corriendo && segsReloj === 0
   // El árbitro ya inició el partido (reloj corriendo o con tiempo): la alineación se quita
   const partidoYaInicio = periodoAuto > 1 || segsReloj > 0 || !!vivoP?.corriendo
+  // ¿Hay jugadas o videos de patrocinadores para pasar en el descanso?
+  const hayIntermedio = (Array.isArray(control?.jugadas) ? control.jugadas : []).some(j => j?.url) || patrocinadoresDeControl(control).some(p => p.video_url)
 
   // Muestra un gráfico automático `cual` después de `retrasoMs` y lo quita a
   // los `duracionMs` (solo si sigue siendo ese el que está en pantalla).
@@ -231,8 +239,10 @@ export default function OverlayEnVivoPage() {
       a.descansoHecho = true
       const tid = partido?.tournament_id || null
       a.timers.push(setTimeout(() => setTorneoAuto(tid), 0))
-      programarAuto('resumen', 0, DURACION_AUTO_MS)
-      programarAuto('tabla', DURACION_AUTO_MS, DURACION_AUTO_MS)
+      programarAuto('resumen', 0, DURACION_TABLERO_MS)
+      programarAuto('tabla', DURACION_TABLERO_MS, DURACION_TABLERO_MS)
+      // jugadas y patrocinadores: desde el minuto 2 hasta que arranque el 2.º tiempo (se quita solo)
+      if (hayIntermedio) programarAuto('intermedio', DURACION_TABLERO_MS * 2, 60 * 60 * 1000)
     }
   }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj, segundoTiempoCorriendo, partidoYaInicio]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -276,8 +286,8 @@ export default function OverlayEnVivoPage() {
         setPartidoFinal({ ...m, colores: base?.colores, goles })
         const tidFinal = m.tournament_id || null
         a.timers.push(setTimeout(() => setTorneoAuto(tidFinal), 0))
-        programarAuto('final', 0, DURACION_AUTO_MS)
-        programarAuto('tabla', DURACION_AUTO_MS, DURACION_AUTO_MS)
+        programarAuto('final', 0, DURACION_TABLERO_MS)
+        programarAuto('tabla', DURACION_TABLERO_MS, DURACION_TABLERO_MS)
         return
       }
       if (intentos < 6) a.timers.push(setTimeout(revisar, 5000))
@@ -295,7 +305,7 @@ export default function OverlayEnVivoPage() {
   // arranca el 2.º tiempo antes de los 2 minutos, se quita. Y con el 2.º tiempo
   // corriendo no sale ningún gráfico automático.
   // La alineación se quita apenas el árbitro inicia el reloj.
-  const autoVisible = (autoOverlay === 'resumen' && !descansoAuto && !esperandoSegundoTiempo) || (autoOverlay === 'jugadores' && partidoYaInicio) || segundoTiempoCorriendo ? null : autoOverlay
+  const autoVisible = ((autoOverlay === 'resumen' || autoOverlay === 'intermedio') && !descansoAuto && !esperandoSegundoTiempo) || (autoOverlay === 'jugadores' && partidoYaInicio) || segundoTiempoCorriendo ? null : autoOverlay
   const overlayActivo = control?.overlay || (graficosAuto ? autoVisible : null)
   // Los gráficos que salen SOLOS llevan el mensaje institucional; los que
   // prende el panel de control llevan la leyenda normal de cada gráfica.
@@ -383,6 +393,7 @@ export default function OverlayEnVivoPage() {
               {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pagina={control?.overlay === 'tabla' ? control.tabla_pagina : null} pie={pieInstitucional}/>}
               {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido} pie={pieInstitucional}/>}
               {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}
+              {overlayActivo === 'intermedio' && <IntermedioDescansoOverlay jugadas={control?.jugadas} patrocinadores={patrocinadoresDeControl(control)}/>}
               {overlayActivo === 'final' && partidoFinal && <ResumenGolesOverlay partido={partidoFinal} goles={partidoFinal.goles} modo="final"/>}
             </>
           )}
