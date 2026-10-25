@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Trophy, Users, Target, Radio, Building2, GraduationCap, Calendar, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
+import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
+import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
@@ -239,7 +241,7 @@ function LiveMatchDetalle({ m, onClose, onVerTorneo }) {
 // Enlace directo de WhatsApp — acepta el número con o sin indicativo, con
 // espacios/guiones/paréntesis, y arma el link con un mensaje ya escrito.
 function linkWhatsapp(numero, texto) {
-  const digitos = (numero || '').replace(/\D/g, '')
+  const digitos = digitosWhatsapp(numero)
   if (!digitos) return null
   return `https://wa.me/${digitos}?text=${encodeURIComponent(texto)}`
 }
@@ -350,7 +352,7 @@ export default function LandingPage() {
   const [tick, setTick] = useState(0)
   const [siteConfig, setSiteConfig] = useState(null)
   const [patrocinadores, setPatrocinadores] = useState(() => leerCacheRapido('landing_patrocinadores') || [])
-  const [patroIdx, setPatroIdx] = useState(0) // qué patrocinador se muestra ahora en el banner
+  const [portadaInicio, setPortadaInicio] = useState(() => leerCacheRapido('landing_portada') || null) // { url } — imagen de fondo del inicio (se sube en /admin/patrocinadores)
   const [patroDetalle, setPatroDetalle] = useState(null) // patrocinador abierto en el modal de detalle
 
   const torneosRef = useRef(null)
@@ -391,7 +393,7 @@ export default function LandingPage() {
   }
 
   useEffect(() => {
-    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores()
+    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores(); fetchPortada()
     registrarVisita('inicio')
   }, [])
 
@@ -414,13 +416,11 @@ export default function LandingPage() {
     return () => { clearInterval(tRelog); clearInterval(tRefetch); clearInterval(tVisitas); clearInterval(tControl) }
   }, [])
 
-  // Carrusel de fotos de escenarios y banner de patrocinadores: cada uno
-  // avanza solo cada 5 segundos, para que se vean todos sin que nadie tenga
-  // que hacer nada.
+  // Carrusel de fotos de escenarios: avanza solo cada 5 segundos, para que se
+  // vean todas sin que nadie tenga que hacer nada.
   useEffect(() => {
     const tEsc = setInterval(() => setEscenarioIdx(i => i + 1), 5000)
-    const tPatro = setInterval(() => setPatroIdx(i => i + 1), 5000)
-    return () => { clearInterval(tEsc); clearInterval(tPatro) }
+    return () => clearInterval(tEsc)
   }, [])
 
   // Ida y vuelta: para cada partido en vivo que sea de una fase de
@@ -737,6 +737,16 @@ export default function LandingPage() {
   // portada pública (se gestionan desde /admin/patrocinadores). Si la tabla
   // todavía no existe (falta correr migracion_patrocinadores_golmebol.sql),
   // simplemente no se muestra nada, sin romper el resto de la página.
+  // Portada del inicio: consulta aparte (y tolerante) para que, si la columna todavía no existe
+  // (falta correr migracion_site_config_portada_inicio.sql), no se caiga nada más de la página.
+  async function fetchPortada() {
+    const { data, error } = await supabase.from('site_config').select('portada_inicio').eq('id', true).maybeSingle()
+    if (error) return
+    const p = data?.portada_inicio?.url ? data.portada_inicio : null
+    setPortadaInicio(p)
+    guardarCacheRapido('landing_portada', p)
+  }
+
   async function fetchPatrocinadores() {
     const { data, error } = await supabase.from('patrocinadores_golmebol').select('*').eq('activo', true).order('orden').order('created_at')
     if (error) return
@@ -891,14 +901,24 @@ export default function LandingPage() {
       </div>
 
       {/* ── Hero: oscuro con acento verde ── */}
-      <div style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', background: `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
-        <div style={{ position: 'absolute', top: '-140px', right: '-100px', width: '420px', height: '420px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
-        <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '280px', height: '280px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
+      <div style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', minHeight: portadaInicio?.url ? '440px' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
+        {portadaInicio?.url ? (
+          <>
+            {/* Portada: la foto de fondo y un degradado oscuro que la funde con el resto de la página (sin borde duro abajo) */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: `linear-gradient(180deg, rgba(10,10,10,.6) 0%, rgba(10,10,10,.48) 38%, rgba(10,10,10,.82) 78%, ${S.bg} 100%)` }}/>
+          </>
+        ) : (
+          <>
+            <div style={{ position: 'absolute', top: '-140px', right: '-100px', width: '420px', height: '420px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
+            <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '280px', height: '280px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
+          </>
+        )}
         <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', border: `1px solid ${S.border}`, color: S.green, fontSize: '.68rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '20px' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.green, display: 'inline-block' }}/> LIGA AMATEUR · ARMENIA, QUINDÍO
           </div>
-          <h1 style={{ fontSize: 'clamp(1.9rem, 5.5vw, 2.7rem)', fontWeight: 900, lineHeight: 1.12, margin: '0 0 16px', letterSpacing: '-.01em' }}>
+          <h1 style={{ fontSize: 'clamp(1.9rem, 5.5vw, 2.7rem)', fontWeight: 900, lineHeight: 1.12, margin: '0 0 16px', letterSpacing: '-.01em', textShadow: portadaInicio?.url ? '0 2px 18px rgba(0,0,0,.55)' : undefined }}>
             Todos los torneos en<br/>un <span style={{ color: S.green }}>solo lugar</span>
           </h1>
           <p style={{ color: S.text2, fontSize: '.95rem', margin: '0 0 30px', lineHeight: 1.6 }}>
@@ -1175,34 +1195,8 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* ── Patrocinadores oficiales ── */}
-      {patrocinadores.length > 0 && (() => {
-        const actual = patrocinadores[patroIdx % patrocinadores.length]
-        return (
-          <div style={{ maxWidth: '780px', margin: '48px auto 0', padding: '0 16px' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 900, margin: '0 0 14px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
-              <Megaphone size={17} color={S.green}/> Patrocinadores oficiales Golmebol
-            </h2>
-            <div onClick={() => setPatroDetalle(actual)} className="gm-hover"
-              style={{ cursor: 'pointer', background: S.card, border: `1px solid ${S.border}`, borderRadius: '16px', padding: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '110px' }}>
-              <div key={actual.id} className="gm-fade" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '64px', height: '64px', borderRadius: '14px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                  {actual.logo_url ? <img src={actual.logo_url} alt={actual.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px' }}/> : <Megaphone size={22} color="#1a3a8a"/>}
-                </div>
-                <div style={{ fontWeight: 800, fontSize: '.85rem' }}>{actual.nombre}</div>
-                <div style={{ fontSize: '.68rem', color: S.muted }}>Toca para ver más</div>
-              </div>
-            </div>
-            {patrocinadores.length > 1 && (
-              <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', marginTop: '10px' }}>
-                {patrocinadores.map((pp, i) => (
-                  <span key={pp.id} style={{ width: '6px', height: '6px', borderRadius: '50%', background: i === patroIdx % patrocinadores.length ? S.green : S.border }}/>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })()}
+      {/* ── Patrocinadores oficiales: franja discreta con logo y número de contacto (se gestionan en /admin/patrocinadores) ── */}
+      <PatrocinadoresFranja patrocinadores={patrocinadores} onSelect={setPatroDetalle} S={S}/>
 
       {/* ── Footer ── */}
       <div style={{ borderTop: `1px solid ${S.border}`, marginTop: '54px', padding: '28px 16px', textAlign: 'center' }}>

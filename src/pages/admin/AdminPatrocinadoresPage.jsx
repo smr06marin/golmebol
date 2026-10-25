@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import PortadaInicioAdmin from '../../components/PortadaInicioAdmin'
 import { supabase } from '../../lib/supabase'
 import { Megaphone, Upload, X, Plus, Trash2 } from 'lucide-react'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
@@ -111,10 +112,12 @@ export default function AdminPatrocinadoresPage() {
         </div>
       )}
 
+      <PortadaInicioAdmin/>
+
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', gap: '12px', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Patrocinadores oficiales</h1>
-          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>El banner que rota cada 5 segundos en la página de inicio pública. Al hacer clic en uno, la gente ve su info y puede escribirle por WhatsApp.</p>
+          <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>Salen en la franja "Con el apoyo de" de la página de inicio, con su logo y su número de WhatsApp (escríbelo con el indicativo, ej. 573001234567, o solo los 10 dígitos). Al tocar el logo, la gente ve su info completa y puede escribirle.</p>
         </div>
         <button onClick={handleAgregar} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600' }}>
           <Plus size={16}/> Agregar patrocinador
