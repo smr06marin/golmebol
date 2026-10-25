@@ -82,13 +82,27 @@ export default function PortadaInicioAdmin() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>
         <IconoImagen size={18} color="#1a73e8"/> Portada de la página de inicio
       </div>
-      <p style={{ color: '#5f6368', margin: '0 0 14px', fontSize: '.8rem', lineHeight: 1.5 }}>
-        Es la imagen de fondo de la parte de arriba de golmebol.com, detrás del título y los botones. Usa una foto horizontal y de buena calidad (de un partido, una final, la cancha). Se oscurece sola para que el texto se lea; si no subes ninguna, queda el diseño oscuro de siempre.
+      <p style={{ color: '#5f6368', margin: '0 0 12px', fontSize: '.8rem', lineHeight: 1.5 }}>
+        Es la imagen de fondo de la parte de arriba de golmebol.com, con los botones encima. Usa una foto limpia, SIN letras (de un partido, una final, la cancha): si la foto trae texto, se ve mal y se corta. Si no subes ninguna, queda el diseño oscuro de siempre.
       </p>
+      <div style={{ background: '#e8f0fe', border: '1px solid #c6dafc', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '.8rem', lineHeight: 1.55, color: '#174ea6' }}>
+        <div style={{ fontWeight: 800, marginBottom: '2px' }}>TAMAÑO RECOMENDADO: 1920 × 1080 px (horizontal, 16:9)</div>
+        JPG o PNG, mínimo 1600 px de ancho. Pon lo importante (jugadores, balón) en el CENTRO: en el celular se recortan los lados y en el computador se recorta un poco arriba y abajo. Más abajo ves cómo se recorta.
+      </div>
       {portada?.url && (
-        <div style={{ position: 'relative', maxWidth: '520px', aspectRatio: '16 / 7', borderRadius: '10px', overflow: 'hidden', border: '1px solid #e8eaed', marginBottom: '12px', backgroundImage: `url(${portada.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(180deg, rgba(10,10,10,.5), rgba(10,10,10,.85))' }}/>
-          <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', textAlign: 'center', color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>Así se ve detrás del título</div>
+        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '12px' }}>
+          {[{ t: 'Así se ve en computador', w: 300, h: 100 }, { t: 'Así se ve en celular', w: 100, h: 112 }].map(v => (
+            <div key={v.t}>
+              <div style={{ position: 'relative', width: v.w, height: v.h, borderRadius: '8px', overflow: 'hidden', border: '1px solid #e8eaed', backgroundImage: `url(${portada.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(180deg, rgba(10,10,10,.12) 0%, rgba(10,10,10,.12) 45%, rgba(10,10,10,.7) 80%, #0a0a0a 100%)' }}/>
+                <div style={{ position: 'absolute', left: '50%', bottom: 8, transform: 'translateX(-50%)', display: 'flex', gap: 3 }}>
+                  <span style={{ width: v.w > 200 ? 34 : 22, height: 7, borderRadius: 2, background: '#6cd63a' }}/>
+                  <span style={{ width: v.w > 200 ? 30 : 20, height: 7, borderRadius: 2, border: '1px solid rgba(255,255,255,.5)' }}/>
+                </div>
+              </div>
+              <div style={{ fontSize: '.68rem', color: '#80868b', marginTop: 4 }}>{v.t}</div>
+            </div>
+          ))}
         </div>
       )}
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
