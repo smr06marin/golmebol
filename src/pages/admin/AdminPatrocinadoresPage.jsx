@@ -46,7 +46,7 @@ export default function AdminPatrocinadoresPage() {
       const maxOrden = patrocinadores.reduce((m, p) => Math.max(m, p.orden || 0), 0)
       const { data, error } = await supabase.from('patrocinadores_golmebol')
         .insert({ nombre: 'Nuevo patrocinador', orden: maxOrden + 1, activo: true }).select().single()
-      if (error) { showMsg('Error al crear', 'error'); return }
+      if (error) { console.error('patrocinadores_golmebol insert', error); showMsg('Error al crear: ' + (error.message || error.code || 'desconocido'), 'error'); return }
       setPatrocinadores(prev => [...prev, data])
       showMsg('Patrocinador agregado ✓')
     } finally {
@@ -64,7 +64,7 @@ export default function AdminPatrocinadoresPage() {
         facebook: patro.facebook, instagram: patro.instagram, tiktok: patro.tiktok,
         orden: patro.orden, activo: patro.activo,
       }).eq('id', patro.id)
-      if (error) showMsg('Error al guardar', 'error')
+      if (error) showMsg('Error al guardar: ' + (error.message || error.code || 'desconocido'), 'error')
       else showMsg('Guardado ✓')
     } finally {
       guardandoRef.current[patro.id] = false
