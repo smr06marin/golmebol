@@ -13,6 +13,7 @@ import JugadoresEnVivoOverlay from '../../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverlay'
 import PublicidadPatrocinadoresEnVivo from '../../components/PublicidadPatrocinadoresEnVivo'
 import JugadasDescansoEnVivo from '../../components/JugadasDescansoEnVivo'
+import PortadaYouTubeEnVivo from '../../components/PortadaYouTubeEnVivo'
 import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
@@ -769,6 +770,8 @@ export default function AdminConfigSitioPage() {
                   <JugadasDescansoEnVivo
                     jugadas={Array.isArray(c?.jugadas) ? c.jugadas.filter(j => j && j.url) : []}
                     onGuardar={lista => actualizarControl(s.id, { jugadas: lista })}/>
+
+                  <PortadaYouTubeEnVivo stream={s}/>
 
                   {partidoSeleccionado && !partidoSeleccionado.enVivo && (
                     <div style={{ fontSize:'.68rem', color:'#f5a623', marginTop:'10px' }}>
