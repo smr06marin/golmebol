@@ -125,7 +125,16 @@ export default function MarcadorEnVivoOverlay({ partido }) {
         borderBottom: `3px solid ${ROJO_VIVO}`, boxShadow: '0 3px 10px rgba(0,0,0,.45)', maxWidth: '100%',
       }}>
         {/* tres columnas: el cronómetro (o DESCANSO) queda SIEMPRE en el centro, el punto rojo a su izquierda y faltas/global a su derecha */}
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ROJO_VIVO, justifySelf: 'end' }}/>
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', minWidth: 0 }}>
+          {/* en qué tiempo va el partido: 1T / 2T (en el descanso no se muestra, ahí ya dice DESCANSO) */}
+          {!vivo.descanso && (
+            <span style={{
+              fontFamily: FUENTE, fontWeight: 800, fontSize: 'clamp(.58rem, 2.6vw, .74rem)', letterSpacing: '.06em', lineHeight: 1,
+              color: '#fff', background: 'rgba(255,255,255,.16)', borderRadius: '4px', padding: '2px 5px', whiteSpace: 'nowrap',
+            }}>{vivo.periodo === 2 ? '2T' : '1T'}</span>
+          )}
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: ROJO_VIVO, flexShrink: 0 }}/>
+        </span>
         <span style={vivo.descanso
           ? { fontFamily: FUENTE, fontSize: 'clamp(.78rem, 3.3vw, .98rem)', fontWeight: 600, color: '#fff', letterSpacing: '.06em', whiteSpace: 'nowrap' }
           : { ...NUMEROS, fontSize: 'clamp(.9rem, 3.8vw, 1.12rem)', color: '#fff', letterSpacing: '.03em', whiteSpace: 'nowrap' }}>

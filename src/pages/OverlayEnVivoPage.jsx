@@ -50,9 +50,11 @@ import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 //   ?velocidad=0.7  velocidad de la repetición (por defecto 0.7; la "Cámara lenta" va siempre a 0.5)
 //   ?atras=12  segundos que dura la repetición (por defecto 12)
 //   ?espera=8  segundos que espera antes de arrancarla, por el retraso de YouTube (por defecto 8)
-//   ?auto=0    sin los gráficos automáticos (alineación al arrancar, tabla y goles en el descanso, goles al finalizar)
+//   ?auto=0    sin los gráficos automáticos (alineación al abrir la planilla; goles y tabla en el descanso y al finalizar)
 
 const ANCHO_ESCENARIO = 860
+// Cuánto dura en pantalla cada gráfico automático (alineación, tablero de goles, tabla): 2 minutos
+const DURACION_AUTO_MS = 120000
 
 function useEscala() {
   const [medidas, setMedidas] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
@@ -166,18 +168,21 @@ export default function OverlayEnVivoPage() {
   const repeticionActiva = repeticionParam === '1' || (repeticionParam !== '0' && !!stream?.repeticion_transmision)
 
   // Gráficos AUTOMÁTICOS (para transmitir sin nadie operando el panel):
-  //  · al arrancar el partido (reloj en los primeros 30 s del 1er tiempo): la
-  //    alineación de los dos equipos, 15 s;
-  //  · en el descanso: "así va la tabla" 20 s apenas empieza, y 1 minuto
-  //    después el tablero grande de goles minuto a minuto, que se queda 2 min;
+  //  · al abrir el árbitro la planilla (antes de iniciar el reloj): la
+  //    alineación de los dos equipos, hasta 2 min; si el árbitro toca
+  //    "Iniciar" antes, se quita;
+  //  · en el descanso: primero el tablero grande de goles (con quién hizo cada
+  //    gol) 2 min, y después la tabla de posiciones otros 2 min;
   //  · al finalizar (el árbitro cierra la planilla y la transmisión sigue): el
-  //    mismo tablero de goles con los datos del partido que acaba de terminar,
-  //    2 min.
+  //    tablero grande con el resultado 2 min, y después la tabla de
+  //    posiciones otros 2 min.
   // Cada uno sale UNA vez por partido. Si el panel de control prende algo a
-  // mano, eso manda. Al abrir la página con el partido ya avanzado no vuelve a
-  // salir la alineación (solo si el reloj sigue en los primeros 30 s).
+  // mano, eso manda. Al abrir la página con el partido ya iniciado no sale la
+  // alineación.
   const [autoOverlay, setAutoOverlay] = useState(null)
   const [partidoFinal, setPartidoFinal] = useState(null)
+  // Torneo de la tabla automática (descanso / final); en el final ya no hay partido en vivo del cual sacarlo
+  const [torneoAuto, setTorneoAuto] = useState(null)
   const autoRef = useRef({ partidoId: null, inicioHecho: false, descansoHecho: false, timers: [], finalesHechos: new Set(), desmontado: false })
   const ultimoPartidoRef = useRef(null)
   const idAnteriorRef = useRef(null)
@@ -193,6 +198,8 @@ export default function OverlayEnVivoPage() {
   // Ya tocaron "2.º tiempo" pero todavía no inician el reloj: los gráficos del
   // descanso se quedan en pantalla esperando hasta que el reloj arranque.
   const esperandoSegundoTiempo = periodoAuto === 2 && !vivoP?.corriendo && segsReloj === 0
+  // El árbitro ya inició el partido (reloj corriendo o con tiempo): la alineación se quita
+  const partidoYaInicio = periodoAuto > 1 || segsReloj > 0 || !!vivoP?.corriendo
 
   // Muestra un gráfico automático `cual` después de `retrasoMs` y lo quita a
   // los `duracionMs` (solo si sigue siendo ese el que está en pantalla).
@@ -215,15 +222,19 @@ export default function OverlayEnVivoPage() {
       setTimeout(() => setAutoOverlay(null), 0)
       return
     }
-    if (!a.inicioHecho && periodoAuto === 1 && !descansoAuto && segsReloj <= 30) {
+    if (!a.inicioHecho && periodoAuto === 1 && !descansoAuto) {
       a.inicioHecho = true
-      programarAuto('jugadores', 0, 15000)
+      // Planilla abierta y el reloj todavía sin iniciar: sale la alineación. Si la
+      // página se abre con el partido ya iniciado, no sale.
+      if (!partidoYaInicio) programarAuto('jugadores', 0, DURACION_AUTO_MS)
     } else if (descansoAuto && !a.descansoHecho) {
       a.descansoHecho = true
-      programarAuto('tabla', 0, 20000)
-      programarAuto('resumen', 60000, 120000)
+      const tid = partido?.tournament_id || null
+      a.timers.push(setTimeout(() => setTorneoAuto(tid), 0))
+      programarAuto('resumen', 0, DURACION_AUTO_MS)
+      programarAuto('tabla', DURACION_AUTO_MS, DURACION_AUTO_MS)
     }
-  }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj, segundoTiempoCorriendo])
+  }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj, segundoTiempoCorriendo, partidoYaInicio]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Guarda el último partido que se vio en vivo (para saber sus colores de
   // uniforme cuando ya no esté en vivo).
@@ -245,7 +256,7 @@ export default function OverlayEnVivoPage() {
       if (a.desmontado || a.finalesHechos.has(previo)) return
       intentos++
       const { data: m } = await supabase.from('matches')
-        .select('id, status, home_team_id, home_score, away_score, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)')
+        .select('id, status, tournament_id, home_team_id, home_score, away_score, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)')
         .eq('id', previo).maybeSingle()
       if (a.desmontado) return
       if (m?.status === 'finished') {
@@ -263,7 +274,10 @@ export default function OverlayEnVivoPage() {
           minuto: e.minute || null, periodo: e.periodo || 1, duracion: duracionPeriodo(base),
         })).sort((x, y) => (x.periodo - y.periodo) || ((parseInt(x.minuto) || 0) - (parseInt(y.minuto) || 0)))
         setPartidoFinal({ ...m, colores: base?.colores, goles })
-        programarAuto('final', 0, 120000)
+        const tidFinal = m.tournament_id || null
+        a.timers.push(setTimeout(() => setTorneoAuto(tidFinal), 0))
+        programarAuto('final', 0, DURACION_AUTO_MS)
+        programarAuto('tabla', DURACION_AUTO_MS, DURACION_AUTO_MS)
         return
       }
       if (intentos < 6) a.timers.push(setTimeout(revisar, 5000))
@@ -280,7 +294,8 @@ export default function OverlayEnVivoPage() {
   // El tablero de goles del descanso solo vale mientras siga el descanso: si
   // arranca el 2.º tiempo antes de los 2 minutos, se quita. Y con el 2.º tiempo
   // corriendo no sale ningún gráfico automático.
-  const autoVisible = (autoOverlay === 'resumen' && !descansoAuto && !esperandoSegundoTiempo) || segundoTiempoCorriendo ? null : autoOverlay
+  // La alineación se quita apenas el árbitro inicia el reloj.
+  const autoVisible = (autoOverlay === 'resumen' && !descansoAuto && !esperandoSegundoTiempo) || (autoOverlay === 'jugadores' && partidoYaInicio) || segundoTiempoCorriendo ? null : autoOverlay
   const overlayActivo = control?.overlay || (graficosAuto ? autoVisible : null)
   // Los gráficos que salen SOLOS llevan el mensaje institucional; los que
   // prende el panel de control llevan la leyenda normal de cada gráfica.
@@ -289,7 +304,7 @@ export default function OverlayEnVivoPage() {
   // Tabla de posiciones: se trae cuando se prende el gráfico (a mano o automático)
   // y se refresca cada 30s mientras siga prendido (la transmisión dura horas y
   // la tabla cambia al terminar cada partido).
-  const tablaTorneoId = overlayActivo === 'tabla' ? (control?.overlay === 'tabla' ? control.overlay_tournament_id : partido?.tournament_id) || null : null
+  const tablaTorneoId = overlayActivo === 'tabla' ? (control?.overlay === 'tabla' ? control.overlay_tournament_id : (torneoAuto || partido?.tournament_id)) || null : null
   // Los partidos guardados se refrescan cada 30 s; lo que se está jugando AHORA
   // viene de matchesVivoRaw (cada 5 s + tiempo real) y se suma encima: así la
   // tabla muestra "así va" con el gol apenas lo marca el árbitro (provisional).
