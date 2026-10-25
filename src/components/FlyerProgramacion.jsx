@@ -3,8 +3,6 @@ import { Download, X, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
 import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_PROGRAMACION } from '../lib/flyerTemas'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
-import FranjaPatrocinadoresFlyer from './FranjaPatrocinadoresFlyer'
-import { usePatrocinadoresFlyer } from '../lib/patrocinadoresFlyer'
 
 // Tamaño fijo de "historia" de Instagram (1080x1920 = relación 9:16). Se
 // dibuja a mitad de escala (540x960) y se exporta con scale:2 en
@@ -233,15 +231,6 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, canchas =
   const [descargando, setDescargando] = useState(false)
   const [temaId, setTemaId] = useState(TEMAS_PROGRAMACION[0].id)
   const paleta = TEMAS_PROGRAMACION.find(t => t.id === temaId) || TEMAS_PROGRAMACION[0]
-  // Franja de patrocinadores de Golmebol al pie: solo si el flyer es de torneos que organiza Golmebol
-  // (un torneo, o varios si TODOS son de Golmebol).
-  const torneosDelFlyer = useMemo(() => {
-    if (torneo?.id) return [torneo]
-    const ids = [...new Set((partidos || []).map(p => p.tournament_id || p.tournaments?.id).filter(Boolean))]
-    return ids.map(id => ({ id }))
-  }, [torneo, partidos])
-  const { lista: patrocinadores, listo: patroListo } = usePatrocinadoresFlyer(torneosDelFlyer)
-  const BANDA_H = patrocinadores.length ? 70 : 0
   const [modo, setModo] = useState(() => {
     const hayProximos = partidos.some(p => p.status !== 'finished')
     return hayProximos ? 'proximos' : 'jugados'
@@ -286,8 +275,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, canchas =
   // muestra el encabezado de siempre. Al no haber encabezado sobra más
   // alto libre, así que entran más partidos por página.
   const sinEncabezado = !torneo?.name
-  // Con la franja de patrocinadores al pie el flyer tiene menos alto libre: entran 1-2 partidos menos por página.
-  const porPagina = (sinEncabezado ? POR_PAGINA_SIN_TORNEO : POR_PAGINA_CON_TORNEO) - (BANDA_H ? (sinEncabezado ? 1 : 2) : 0)
+  const porPagina = sinEncabezado ? POR_PAGINA_SIN_TORNEO : POR_PAGINA_CON_TORNEO
 
   // Los partidos siempre quedan ordenados por fecha/hora real ascendente
   // (ordenarPartidos), así que si hay partidos el sábado y el domingo,
@@ -492,7 +480,7 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, canchas =
               <BandaChevron arriba paleta={paleta}/>
               <BandaChevron paleta={paleta}/>
 
-              <div style={{ position: 'relative', zIndex: 2, height: `${ALTO - BANDA_H}px`, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
                 {/* Header — solo cuando el flyer es de UN torneo (torneo
                     viene con nombre). Cuando junta partidos de varios
                     torneos no hay título ni escudo: va directo a la lista
@@ -550,24 +538,17 @@ export default function FlyerProgramacion({ torneo, equipos, partidos, canchas =
                   <img src="/marca/watermark-logo.png" alt="" style={{ height: '20px', width: 'auto', opacity: .8 }}/>
                 </div>
               </div>
-
-              {/* Patrocinadores de Golmebol (solo torneos organizados por Golmebol) */}
-              {BANDA_H > 0 && (
-                <div style={{ position: 'relative', zIndex: 3 }}>
-                  <FranjaPatrocinadoresFlyer patrocinadores={patrocinadores} ancho={ANCHO} alto={BANDA_H}/>
-                </div>
-              )}
             </div>
             </div>
 
             {/* Descargar */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '18px', flexWrap: 'wrap' }}>
-              <button onClick={handleDescargarActual} disabled={descargando || !patroListo}
+              <button onClick={handleDescargarActual} disabled={descargando}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '9px 16px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600', opacity: descargando ? .7 : 1 }}>
-                <Download size={16}/> {descargando ? 'Generando...' : !patroListo ? 'Preparando...' : totalPaginas > 1 ? `Descargar página ${paginaActual + 1}` : 'Descargar'}
+                <Download size={16}/> {descargando ? 'Generando...' : totalPaginas > 1 ? `Descargar página ${paginaActual + 1}` : 'Descargar'}
               </button>
               {totalPaginas > 1 && (
-                <button onClick={handleDescargarTodas} disabled={descargando || !patroListo}
+                <button onClick={handleDescargarTodas} disabled={descargando}
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #1a73e8', borderRadius: '8px', padding: '9px 16px', cursor: 'pointer', color: '#1a73e8', fontSize: '.85rem', fontWeight: '600', opacity: descargando ? .7 : 1 }}>
                   <Download size={16}/> Descargar las {totalPaginas} páginas
                 </button>

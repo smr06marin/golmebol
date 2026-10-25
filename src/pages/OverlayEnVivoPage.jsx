@@ -19,6 +19,7 @@ import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverl
 import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 import IntermedioDescansoOverlay from '../components/IntermedioDescansoOverlay'
+import MvpPartidoOverlay, { DURACION_MVP_MS } from '../components/MvpPartidoOverlay'
 
 // Página de overlay para OBS (u otro programa de transmisión): dibuja SOLO
 // los gráficos de Golmebol (marcador, goles, tabla, nómina, publicidad,
@@ -58,6 +59,32 @@ const ANCHO_ESCENARIO = 860
 const DURACION_AUTO_MS = 120000
 // Cuánto dura el tablero grande de goles y la tabla de posiciones (descanso y final): 1 minuto cada uno
 const DURACION_TABLERO_MS = 60000
+
+// MVP que el árbitro escogió al cerrar la planilla (tournament_logros, tipo 'mvp'): su foto, nombre, equipo y goles.
+// Devuelve null si todavía no hay MVP guardado (o no escogieron uno).
+async function buscarMvp(partidoId, m, colores) {
+  const { data: logro } = await supabase.from('tournament_logros').select('player_id').eq('match_id', partidoId).eq('tipo', 'mvp').limit(1).maybeSingle()
+  if (!logro?.player_id) return null
+  const [jug, st, ev] = await Promise.all([
+    supabase.from('players_publico').select('id, name, photo_url, photo_face_url').eq('id', logro.player_id).maybeSingle(),
+    supabase.from('player_match_stats').select('team_id').eq('match_id', partidoId).eq('player_id', logro.player_id).maybeSingle(),
+    supabase.from('match_events').select('team_id, event_type').eq('match_id', partidoId).eq('player_id', logro.player_id),
+  ])
+  const nombre = jug.data?.name
+  if (!nombre) return null
+  const eventos = ev.data || []
+  const teamId = st.data?.team_id || (eventos.find(e => e.team_id) || {}).team_id || null
+  const local = teamId ? teamId === m.home_team_id : null
+  const equipo = local === null ? null : (local ? m.home : m.away)
+  return {
+    nombre,
+    foto: jug.data?.photo_face_url || jug.data?.photo_url || null,
+    equipo: equipo?.name || null,
+    escudo: equipo?.logo_url || null,
+    color: local === null ? null : ((local ? colores?.colorLocal : colores?.colorVisitante) || null),
+    goles: eventos.filter(e => e.event_type === 'goal').length,
+  }
+}
 
 function useEscala() {
   const [medidas, setMedidas] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
@@ -187,6 +214,7 @@ export default function OverlayEnVivoPage() {
   // alineación.
   const [autoOverlay, setAutoOverlay] = useState(null)
   const [partidoFinal, setPartidoFinal] = useState(null)
+  const [mvpFinal, setMvpFinal] = useState(null)
   // Torneo de la tabla automática (descanso / final); en el final ya no hay partido en vivo del cual sacarlo
   const [torneoAuto, setTorneoAuto] = useState(null)
   const autoRef = useRef({ partidoId: null, inicioHecho: false, descansoHecho: false, timers: [], finalesHechos: new Set(), desmontado: false })
@@ -286,8 +314,18 @@ export default function OverlayEnVivoPage() {
         setPartidoFinal({ ...m, colores: base?.colores, goles })
         const tidFinal = m.tournament_id || null
         a.timers.push(setTimeout(() => setTorneoAuto(tidFinal), 0))
-        programarAuto('final', 0, DURACION_TABLERO_MS)
-        programarAuto('tabla', DURACION_TABLERO_MS, DURACION_TABLERO_MS)
+        // MVP: apenas se cierra la planilla sale la tarjeta del MVP (12 s) y después el tablero del final y la tabla.
+        // El MVP se guarda casi a la vez que el cierre: se intenta 3 veces (0, 1.5 y 3 s) y, si no hay, sigue sin él.
+        let mvp = null
+        for (let i = 0; i < 3 && !mvp && !a.desmontado; i++) {
+          if (i > 0) await new Promise(r => setTimeout(r, 1500))
+          try { mvp = await buscarMvp(previo, m, base?.colores) } catch { mvp = null }
+        }
+        if (a.desmontado) return
+        const espera = mvp ? DURACION_MVP_MS : 0
+        if (mvp) { setMvpFinal(mvp); programarAuto('mvp', 0, DURACION_MVP_MS) }
+        programarAuto('final', espera, DURACION_TABLERO_MS)
+        programarAuto('tabla', espera + DURACION_TABLERO_MS, DURACION_TABLERO_MS)
         return
       }
       if (intentos < 6) a.timers.push(setTimeout(revisar, 5000))
@@ -394,6 +432,7 @@ export default function OverlayEnVivoPage() {
               {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido} pie={pieInstitucional}/>}
               {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}
               {overlayActivo === 'intermedio' && <IntermedioDescansoOverlay jugadas={control?.jugadas} patrocinadores={patrocinadoresDeControl(control)}/>}
+              {overlayActivo === 'mvp' && mvpFinal && <MvpPartidoOverlay mvp={mvpFinal}/>}
               {overlayActivo === 'final' && partidoFinal && <ResumenGolesOverlay partido={partidoFinal} goles={partidoFinal.goles} modo="final"/>}
             </>
           )}

@@ -5,8 +5,6 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 import { descargarFlyer } from '../lib/flyerDescarga'
 import { TEMAS_PARTIDO } from '../lib/flyerTemas'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
-import FranjaPatrocinadoresFlyer from './FranjaPatrocinadoresFlyer'
-import { usePatrocinadoresFlyer } from '../lib/patrocinadoresFlyer'
 
 export default function FlyerPartido({ partido, onClose }) {
   const flyerRef = useRef(null)
@@ -14,8 +12,6 @@ export default function FlyerPartido({ partido, onClose }) {
   const [temaId, setTemaId] = useState(TEMAS_PARTIDO[0].id)
   const tema = TEMAS_PARTIDO.find(t => t.id === temaId) || TEMAS_PARTIDO[0]
   const { principal, secundario, watermark } = tema
-  // Torneo organizado por Golmebol: el flyer lleva al pie la franja de patrocinadores.
-  const { lista: patrocinadores, listo: patroListo } = usePatrocinadoresFlyer({ id: partido.tournament_id || partido.tournaments?.id, organizador_id: partido.tournaments?.organizador_id })
 
   async function handleDescargar() {
     if (!flyerRef.current) return
@@ -45,9 +41,9 @@ export default function FlyerPartido({ partido, onClose }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Vista previa del flyer</span>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={handleDescargar} disabled={descargando || !patroListo}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: (descargando || !patroListo) ? .7 : 1 }}>
-              <Download size={16}/> {descargando ? 'Generando...' : !patroListo ? 'Preparando...' : 'Descargar'}
+            <button onClick={handleDescargar} disabled={descargando}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: descargando ? .7 : 1 }}>
+              <Download size={16}/> {descargando ? 'Generando...' : 'Descargar'}
             </button>
             <button onClick={onClose}
               style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.875rem', fontWeight: '500' }}>
@@ -58,15 +54,15 @@ export default function FlyerPartido({ partido, onClose }) {
 
         <SelectorTemaFlyer temas={TEMAS_PARTIDO} temaId={temaId} onElegir={setTemaId} />
 
-        {/* FLYER (la franja blanca de patrocinadores, si el torneo es de Golmebol, va debajo del diseño) */}
-        <div ref={flyerRef} style={{ width: '400px', margin: '0 auto', background: '#fff' }}>
-        <div style={{
+        {/* FLYER */}
+        <div ref={flyerRef} style={{
           width: '400px',
           height: '700px',
           position: 'relative',
           overflow: 'hidden',
           fontFamily: "'Arial Black', 'Impact', sans-serif",
           background: principal,
+          margin: '0 auto',
         }}>
           {/* Fondo azul central */}
           <div style={{ position: 'absolute', top: '60px', left: '20px', right: '20px', bottom: '60px', background: secundario, borderRadius: '4px' }}/>
@@ -187,8 +183,6 @@ export default function FlyerPartido({ partido, onClose }) {
           {/* Pelota decorativa esquina */}
           <div style={{ position: 'absolute', top: '55px', right: '10px', fontSize: '50px', opacity: .25, zIndex: 5 }}>⚽</div>
           <div style={{ position: 'absolute', bottom: '55px', left: '8px', fontSize: '35px', opacity: .2, zIndex: 5 }}>⚽</div>
-        </div>
-        <FranjaPatrocinadoresFlyer patrocinadores={patrocinadores} ancho={400} alto={60}/>
         </div>
       </div>
     </div>
