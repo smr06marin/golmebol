@@ -16,7 +16,7 @@
 // árbitros de algún partido del torneo, o registró un reclamo en él.
 // "Inició" = hay al menos un partido jugado o en juego.
 
-export function clasificarTorneos({ partidos = [], torneosInfo = null, misTorneos = null, reclamos = [], yoId = null }) {
+export function clasificarTorneos({ partidos = [], torneosInfo = null, misTorneos = null, reclamos = [], yoId = null, soltados = null }) {
   const info = torneosInfo || {}
   const inferidos = new Set()
   const torneoDeMatch = new Map()
@@ -34,6 +34,8 @@ export function clasificarTorneos({ partidos = [], torneosInfo = null, misTorneo
   new Set(partidos.map(p => p.tournament_id)).forEach(tid => {
     const t = info[tid]
     if (t && (t.status === 'finished' || t.archivado)) { clasif[tid] = 'cerrado'; return }
+    // «Ya no lo dirijo»: lo que el coordinador decidió a mano manda sobre lo que se deduce de los partidos.
+    if (soltados && soltados.has(tid)) { clasif[tid] = 'ajeno'; return }
     if ((misTorneos && misTorneos.has(tid)) || inferidos.has(tid)) { clasif[tid] = 'mio'; return }
     if (!iniciados.has(tid)) { clasif[tid] = 'nuevo'; return }
     // Ya inició y nunca lo manejó → lo dirige otro. (Sin la tabla torneo_coordinadores, por correr la
