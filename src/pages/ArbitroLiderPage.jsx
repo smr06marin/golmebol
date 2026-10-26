@@ -543,6 +543,8 @@ export default function ArbitroLiderPage() {
   const [misTorneos,  setMisTorneos]  = useState(null)   // Set de torneos que ya manejó (null = falta correr la migración)
   const [soltados,    setSoltados]    = useState(new Set()) // torneos que marcó «Ya no lo dirijo»
   const [grupoTorneos, setGrupoTorneos] = useEstadoUI('gm_ui_lider_grupo', 'dirijo') // dirijo | nodirijo | todos
+  // Dentro de un torneo: qué botón se tocó (por jugar / jugados) y en qué escenario/cancha. Va atado al torneo para reiniciarse solo al cambiar de torneo
+  const [selTorneo, setSelTorneo] = useState({ t:'', est:'', sede:'' })
   useRestaurarScroll('gm_ui_lider_scroll', !loading)
   const liderRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
@@ -1059,28 +1061,72 @@ export default function ArbitroLiderPage() {
           <div style={{ fontSize:'.68rem', color:'#6b829a', textAlign:'center', margin:'-4px 0 12px' }}>Toca el logo de un torneo para ver sus partidos y marcar si lo diriges o no.</div>
         )}
 
-        {/* Torneo escogido: partidos sin jugar y partidos jugados */}
-        {vistaTorneo && (
-          <div>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px', margin:'4px 2px 10px' }}>
-              <span style={{ width:8, height:8, borderRadius:'50%', background:'#e8710a' }}/>
-              <span style={{ fontWeight:800, fontSize:'.86rem', color:'#e8f4fd' }}>Partidos sin jugar</span>
-              <span style={{ fontSize:'.72rem', fontWeight:800, color:'#e8710a', background:'rgba(232,113,10,.12)', borderRadius:'9px', padding:'1px 9px' }}>{torneoSinJugar.length}</span>
-            </div>
-            {torneoSinJugar.length === 0
-              ? <div style={{ textAlign:'center', padding:'22px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5', fontSize:'.8rem', marginBottom:'14px' }}>No hay partidos pendientes en este torneo</div>
-              : torneoSinJugar.map(p => <CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onCambiarPlanilla={handleCambiarPlanilla}/>)}
+        {/* Torneo escogido: SOLO dos botones (Por jugar / Jugados); al tocar uno salen los filtros por escenario/cancha y sus partidos */}
+        {vistaTorneo && (() => {
+          const est  = selTorneo.t === filtroVigente ? selTorneo.est : ''
+          const sede = (selTorneo.t === filtroVigente && selTorneo.est === est) ? selTorneo.sede : ''
+          const lista = est === 'pend' ? torneoSinJugar : est === 'jug' ? torneoJugados : []
+          const claveSede = p => (p.location || '').trim().toLowerCase() || '__sin'
+          const sedes = []
+          lista.forEach(p => {
+            const k = claveSede(p)
+            const f = sedes.find(x => x.k === k)
+            if (f) f.n++
+            else sedes.push({ k, label:(p.location || '').trim() || 'Sin escenario', n:1 })
+          })
+          sedes.sort((x, y) => (x.k === '__sin') - (y.k === '__sin') || x.label.localeCompare(y.label))
+          const sedeVigente = sedes.some(x => x.k === sede) ? sede : ''
+          const visibles = sedeVigente === '' ? lista : lista.filter(p => claveSede(p) === sedeVigente)
+          const elegirEst = e => setSelTorneo({ t:filtroVigente, est: est === e ? '' : e, sede:'' })
+          const botones = [
+            { id:'pend', label:'Por jugar', n:torneoSinJugar.length, color:'#e8710a', bg:'rgba(232,113,10,.12)', border:'rgba(232,113,10,.45)' },
+            { id:'jug',  label:'Jugados',   n:torneoJugados.length,  color:'#4d94ff', bg:'rgba(26,115,232,.12)', border:'rgba(26,115,232,.45)' },
+          ]
+          return (
+            <div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'12px' }}>
+                {botones.map(b => {
+                  const act = est === b.id
+                  return (
+                    <button key={b.id} onClick={() => elegirEst(b.id)}
+                      style={{ background:act ? b.bg : '#111827', border:`2px solid ${act ? b.color : '#1e2d3d'}`, borderRadius:'14px', padding:'14px 8px', cursor:'pointer', fontFamily:'inherit', textAlign:'center', WebkitTapHighlightColor:'transparent' }}>
+                      <div style={{ fontSize:'1.7rem', fontWeight:900, color:b.color, lineHeight:1 }}>{b.n}</div>
+                      <div style={{ fontSize:'.82rem', fontWeight:800, color:act ? '#fff' : '#9fb6cc', marginTop:'4px' }}>{b.label}</div>
+                    </button>
+                  )
+                })}
+              </div>
 
-            <div style={{ display:'flex', alignItems:'center', gap:'8px', margin:'18px 2px 10px' }}>
-              <span style={{ width:8, height:8, borderRadius:'50%', background:'#1a73e8' }}/>
-              <span style={{ fontWeight:800, fontSize:'.86rem', color:'#e8f4fd' }}>Partidos jugados</span>
-              <span style={{ fontSize:'.72rem', fontWeight:800, color:'#1a73e8', background:'rgba(26,115,232,.12)', borderRadius:'9px', padding:'1px 9px' }}>{torneoJugados.length}</span>
+              {!est && (
+                <div style={{ fontSize:'.7rem', color:'#6b829a', textAlign:'center', margin:'2px 0 12px' }}>Toca «Por jugar» o «Jugados» para ver los partidos.</div>
+              )}
+
+              {est && sedes.length > 0 && (
+                <div style={{ display:'flex', gap:'7px', flexWrap:'wrap', marginBottom:'12px' }}>
+                  {[{ k:'', label:'Todos', n:lista.length, todos:true }, ...sedes].map(x => {
+                    const act = x.todos ? sedeVigente === '' : sedeVigente === x.k
+                    return (
+                      <button key={x.todos ? '__todos' : 's_' + x.k} onClick={() => setSelTorneo({ t:filtroVigente, est, sede:x.k })}
+                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:act ? '#f9a825' : '#111827', border:`1px solid ${act ? '#f9a825' : '#2a4766'}`, color:act ? '#0b0f17' : '#cfe0f1', borderRadius:'999px', padding:'8px 13px', fontSize:'.76rem', fontWeight:800, cursor:'pointer', fontFamily:'inherit', maxWidth:'100%', WebkitTapHighlightColor:'transparent' }}>
+                        {!x.todos && <MapPin size={12}/>}
+                        <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{x.label}</span>
+                        <span style={{ fontSize:'.68rem', fontWeight:900, background:act ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.08)', borderRadius:'8px', padding:'0 7px' }}>{x.n}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {est && visibles.length === 0 && (
+                <div style={{ textAlign:'center', padding:'22px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5', fontSize:'.8rem' }}>
+                  {est === 'pend' ? 'No hay partidos por jugar aquí' : 'Todavía no se ha jugado ningún partido aquí'}
+                </div>
+              )}
+              {est === 'pend' && visibles.map(p => <CardPartido key={p.id} partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onCambiarPlanilla={handleCambiarPlanilla}/>)}
+              {est === 'jug' && [...visibles].reverse().map(renderJugado)}
             </div>
-            {torneoJugados.length === 0
-              ? <div style={{ textAlign:'center', padding:'22px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5', fontSize:'.8rem' }}>Todavía no se ha jugado ningún partido</div>
-              : [...torneoJugados].reverse().map(renderJugado)}
-          </div>
-        )}
+          )
+        })()}
 
         {/* Tab Sin árbitro */}
         {!vistaTorneo && tab==='sin_asignar' && (
