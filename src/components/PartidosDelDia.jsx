@@ -77,6 +77,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const [partidos, setPartidos] = useState([])
   const [cargado, setCargado] = useState(false)
   const [abiertos, setAbiertos] = useState({}) // torneo.id -> true/false (lo que la persona abrió o cerró a mano)
+  const [extendidos, setExtendidos] = useState({}) // torneo.id -> true: ya pidió ver también los partidos que no están en vivo
   const cacheDias = useRef(new Map()) // offset -> partidos, para que volver a un día ya visto sea instantáneo
 
   const vivoPorId = useMemo(() => {
@@ -214,7 +215,10 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   }
 
   // Por defecto solo está abierto el torneo que tiene algo en vivo (o todos, si se filtra por "Mis equipos").
+  // Un torneo con partido en vivo muestra SOLO el partido en vivo; los demás de ese torneo salen con un botón.
   const hayVivoEn = g => g.partidos.some(m => vivoPorId.has(m.id))
+  const soloVivosEn = g => filtro === 'todos' && hayVivoEn(g) && !extendidos[g.id]
+  const partidosVisibles = g => (soloVivosEn(g) ? g.partidos.filter(m => vivoPorId.has(m.id)) : g.partidos)
   const estaAbierto = g => (g.id in abiertos ? abiertos[g.id] : (hayVivoEn(g) || filtro === 'favoritos'))
   const todosAbiertos = grupos.length > 0 && grupos.every(estaAbierto)
   function alternarGrupo(g) { setAbiertos(a => ({ ...a, [g.id]: !estaAbierto(g) })) }
@@ -323,7 +327,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
                   </button>
                 )
               })()}
-              {estaAbierto(g) && g.partidos.map(m => {
+              {estaAbierto(g) && partidosVisibles(g).map(m => {
                 const e = estadoDe(m)
                 const pv = vivoPorId.get(m.id)
                 const v = pv?.vivo
@@ -367,6 +371,11 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
                   </div>
                 )
               })}
+              {estaAbierto(g) && soloVivosEn(g) && g.partidos.length > partidosVisibles(g).length && (
+                <button type="button" className="gm-pd-ver" onClick={() => setExtendidos(x => ({ ...x, [g.id]: true }))}>
+                  Ver {g.partidos.length - partidosVisibles(g).length === 1 ? 'el otro partido' : `los otros ${g.partidos.length - partidosVisibles(g).length} partidos`} de hoy ›
+                </button>
+              )}
               {estaAbierto(g) && (
                 <button type="button" className="gm-pd-ver" onClick={() => { prefetchTorneoPublico(g.id); navigate('/t/' + g.id) }}>Ver torneo completo ›</button>
               )}
