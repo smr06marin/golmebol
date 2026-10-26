@@ -453,74 +453,65 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
   )
 }
 
-// ── Selector de torneo ──────────────────────────────────────────────────────
-// Antes eran decenas de botones apilados, difícil de escoger. Ahora es UN botón que
-// abre una lista con buscador: solo los torneos que tienen partidos en la pestaña
-// actual, primero los que tienen partido más próximo, con cuántos partidos y cuándo es el siguiente.
-function fmtDiaCorto(d) {
-  try { return new Date(d).toLocaleDateString('es-CO', { weekday:'short', day:'numeric', month:'short' }).replace('.', '') } catch (e) { return '' }
-}
-function SelectorTorneo({ opciones, valor, totalTodos, onCambiar, etiquetaFecha }) {
-  const [abierto, setAbierto] = useState(false)
-  const [q, setQ] = useState('')
-  const actual = opciones.find(o => o.id === valor)
-  const lista = opciones.filter(o => !q.trim() || o.name.toLowerCase().includes(q.trim().toLowerCase()))
-  const elegir = id => { onCambiar(id); setAbierto(false); setQ('') }
+// ── Menú de torneos ─────────────────────────────────────────────────────────
+// Menú visual de torneos del coordinador: arriba "Dirijo / No dirijo / Todos" y debajo un cuadro por torneo con
+// su LOGO. Tocar un logo muestra solo los partidos de ese torneo (volver a tocarlo, o "Todos", los muestra todos).
+function LogoTorneo({ url, name, size = 54 }) {
+  const iniciales = (name || '?').split(/\s+/).filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   return (
-    <>
-      <button onClick={()=>setAbierto(true)}
-        style={{ width:'100%', display:'flex', alignItems:'center', gap:'10px', background:'#111827', border:`1px solid ${valor?'#1a73e8':'#1e2d3d'}`, borderRadius:'12px', padding:'10px 14px', cursor:'pointer', fontFamily:'inherit', textAlign:'left', marginBottom:'12px' }}>
-        <Trophy size={16} color={valor?'#1a73e8':'#7a9ab5'}/>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:'.6rem', color:'#7a9ab5', fontWeight:'700', letterSpacing:'.06em', textTransform:'uppercase' }}>Torneo</div>
-          <div style={{ fontSize:'.86rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{actual ? actual.name : `Todos los torneos (${opciones.length})`}</div>
-        </div>
-        <span style={{ fontSize:'.72rem', fontWeight:'800', color:'#7a9ab5' }}>{actual ? actual.n : totalTodos}</span>
-        <ChevronDown size={16} color="#7a9ab5"/>
-      </button>
+    <div style={{ width:size, height:size, borderRadius:Math.round(size*.28), background:'#fff', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      {url
+        ? <img src={url} alt="" loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'contain', padding:Math.round(size*.07) }}/>
+        : <span style={{ fontSize:size*.34, fontWeight:900, color:'#1a3a8a' }}>{iniciales}</span>}
+    </div>
+  )
+}
 
-      {abierto && (
-        <div onClick={()=>{ setAbierto(false); setQ('') }} style={{ position:'fixed', inset:0, zIndex:900, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-          <div onClick={e=>e.stopPropagation()} style={{ width:'100%', maxWidth:'700px', maxHeight:'82vh', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'18px 18px 0 0', display:'flex', flexDirection:'column' }}>
-            <div style={{ padding:'14px 16px 10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ fontWeight:'800', fontSize:'.95rem', color:'#e8f4fd' }}>Escoge un torneo</div>
-              <button onClick={()=>{ setAbierto(false); setQ('') }} aria-label="Cerrar" style={{ background:'none', border:'none', color:'#7a9ab5', cursor:'pointer', padding:'4px' }}><X size={20}/></button>
-            </div>
-            {opciones.length > 6 && (
-              <div style={{ padding:'0 16px 10px' }}>
-                <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar torneo…" style={{ ...inp, padding:'10px 12px' }}/>
-              </div>
-            )}
-            <div style={{ overflowY:'auto', WebkitOverflowScrolling:'touch', padding:'0 12px 18px' }}>
-              {!q.trim() && (
-                <button onClick={()=>elegir('')}
-                  style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', background:!valor?'rgba(26,115,232,.15)':'#111827', border:`1px solid ${!valor?'#1a73e8':'#1e2d3d'}`, borderRadius:'10px', padding:'12px', marginBottom:'6px', cursor:'pointer', fontFamily:'inherit', color:'#e8f4fd', fontWeight:'700', fontSize:'.84rem' }}>
-                  <span>Todos los torneos</span><span style={{ color:'#7a9ab5' }}>{totalTodos}</span>
-                </button>
-              )}
-              {lista.length === 0 && <div style={{ textAlign:'center', color:'#7a9ab5', fontSize:'.8rem', padding:'20px' }}>Ningún torneo coincide</div>}
-              {lista.map((o, i) => (
-                <div key={o.id}>
-                {o.vencido && (i === 0 || !lista[i-1].vencido) && i > 0 && (
-                  <div style={{ fontSize:'.62rem', fontWeight:'800', color:'#8a6d3b', letterSpacing:'.06em', textTransform:'uppercase', margin:'12px 4px 6px' }}>Fechas ya pasadas, sin jugarse</div>
-                )}
-                <button onClick={()=>elegir(o.id)}
-                  style={{ width:'100%', display:'flex', alignItems:'center', gap:'10px', background:valor===o.id?'rgba(26,115,232,.15)':'#111827', border:`1px solid ${valor===o.id?'#1a73e8':'#1e2d3d'}`, borderRadius:'10px', padding:'11px 12px', marginBottom:'6px', cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:'.84rem', fontWeight:'700', color:'#e8f4fd', lineHeight:1.25, overflowWrap:'anywhere' }}>
-                      {o.name}{o.tag ? <span style={{ marginLeft:'6px', fontSize:'.6rem', fontWeight:'800', color:'#f9a825', background:'rgba(249,168,37,.14)', borderRadius:'8px', padding:'1px 6px', verticalAlign:'middle' }}>{o.tag}</span> : null}
-                    </div>
-                    {o.fecha && <div style={{ fontSize:'.66rem', color:o.vencido?'#8a6d3b':'#7a9ab5', marginTop:'2px' }}>{o.vencido ? `Último sin jugar: ${fmtDiaCorto(o.fecha)}` : `${etiquetaFecha} ${fmtDiaCorto(o.fecha)}`}</div>}
-                  </div>
-                  <span style={{ fontSize:'.78rem', fontWeight:'800', color:'#e8f4fd', background:'#1e2d3d', borderRadius:'10px', padding:'2px 9px' }}>{o.n}</span>
-                </button>
-                </div>
-              ))}
-            </div>
-          </div>
+function MenuTorneos({ grupos, grupo, onGrupo, opciones, valor, totalTodos, onCambiar }) {
+  return (
+    <div style={{ marginBottom:'14px' }}>
+      {/* Dirijo / No dirijo / Todos */}
+      <div role="tablist" aria-label="Qué torneos ver" style={{ display:'flex', gap:'4px', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'14px', padding:'4px', marginBottom:'12px' }}>
+        {grupos.map(g => {
+          const activo = grupo === g.id
+          return (
+            <button key={g.id} role="tab" aria-selected={activo} onClick={() => onGrupo(g.id)}
+              style={{ flex:1, minWidth:0, padding:'9px 4px', borderRadius:'10px', border:'none', cursor:'pointer', fontFamily:'inherit', background:activo ? g.color : 'transparent', color:activo ? '#0b0f17' : '#9fb6cc', fontWeight:800, fontSize:'.76rem', lineHeight:1.15, WebkitTapHighlightColor:'transparent' }}>
+              {g.label}
+              <span style={{ display:'block', fontSize:'.62rem', fontWeight:700, opacity:.8, marginTop:'2px' }}>{g.n} {g.n === 1 ? 'torneo' : 'torneos'}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {opciones.length === 0 ? (
+        <div style={{ textAlign:'center', color:'#7a9ab5', fontSize:'.8rem', padding:'18px 12px', background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', lineHeight:1.45 }}>
+          {grupo === 'dirijo' ? 'No tienes torneos con partidos en esta pestaña. Mira «No dirijo» o «Todos».' : 'No hay torneos con partidos en esta pestaña.'}
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(96px, 1fr))', gap:'8px' }}>
+          {/* Todos los torneos del grupo */}
+          <button onClick={() => onCambiar('')} aria-pressed={!valor}
+            style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'6px', padding:'10px 6px 9px', borderRadius:'14px', cursor:'pointer', fontFamily:'inherit', background:!valor ? 'rgba(249,168,37,.14)' : '#111827', border:`1.5px solid ${!valor ? '#f9a825' : '#1e2d3d'}`, WebkitTapHighlightColor:'transparent' }}>
+            <div style={{ width:54, height:54, borderRadius:15, background:'#1e2d3d', display:'flex', alignItems:'center', justifyContent:'center' }}><Trophy size={24} color="#f9a825"/></div>
+            <div style={{ fontSize:'.7rem', fontWeight:800, color:'#e8f4fd', lineHeight:1.2 }}>Todos</div>
+            <span style={{ fontSize:'.68rem', fontWeight:800, color:'#0b0f17', background:'#f9a825', borderRadius:'9px', padding:'1px 8px' }}>{totalTodos}</span>
+          </button>
+          {opciones.map(o => {
+            const activo = valor === o.id
+            return (
+              <button key={o.id} onClick={() => onCambiar(activo ? '' : o.id)} aria-pressed={activo}
+                style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', gap:'6px', padding:'10px 6px 9px', borderRadius:'14px', cursor:'pointer', fontFamily:'inherit', minWidth:0, background:activo ? 'rgba(249,168,37,.14)' : '#111827', border:`1.5px solid ${activo ? '#f9a825' : '#1e2d3d'}`, boxShadow:activo ? '0 0 0 3px rgba(249,168,37,.14)' : 'none', opacity:o.vencido && !activo ? .75 : 1, WebkitTapHighlightColor:'transparent' }}>
+                <LogoTorneo url={o.logo} name={o.name}/>
+                <div style={{ width:'100%', fontSize:'.68rem', fontWeight:700, color:'#e8f4fd', lineHeight:1.2, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', overflowWrap:'anywhere', minHeight:'1.6em' }}>{o.name}</div>
+                <span style={{ fontSize:'.68rem', fontWeight:800, color:'#e8f4fd', background:'#1e2d3d', borderRadius:'9px', padding:'1px 8px' }}>{o.n}</span>
+                {o.tag && <span style={{ fontSize:'.54rem', fontWeight:800, color:'#f9a825', background:'rgba(249,168,37,.12)', border:'1px solid rgba(249,168,37,.4)', borderRadius:'7px', padding:'1px 6px', textTransform:'uppercase', letterSpacing:'.03em', whiteSpace:'nowrap' }}>{o.tag}</span>}
+              </button>
+            )
+          })}
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -546,7 +537,7 @@ export default function ArbitroLiderPage() {
   // Qué torneos ve este coordinador (ver lib/torneosCoordinador.js)
   const [torneosInfo, setTorneosInfo] = useState(null)   // { [id]: { status, archivado } } (null = no se pudo leer)
   const [misTorneos,  setMisTorneos]  = useState(null)   // Set de torneos que ya manejó (null = falta correr la migración)
-  const [verAjenos,   setVerAjenos]   = useState(false)  // mostrar también los torneos en curso de otros coordinadores
+  const [grupoTorneos, setGrupoTorneos] = useEstadoUI('gm_ui_lider_grupo', 'dirijo') // dirijo | nodirijo | todos
   useRestaurarScroll('gm_ui_lider_scroll', !loading)
   const liderRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
@@ -638,7 +629,7 @@ export default function ArbitroLiderPage() {
     // y era la parte más pesada de la entrada (todo el historial de todos los torneos).
     const rT = await pTorneos
     let q = supabase.from('matches')
-      .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
+      .select('*, tournaments(id,name,modalidad,logo_url), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
       .order('played_at', { ascending: true })
     if (!rT.error) {
       const abiertos = (rT.data||[]).filter(t => !(t.status === 'finished' || t.archivado)).map(t => t.id)
@@ -853,8 +844,15 @@ export default function ArbitroLiderPage() {
     partidos, torneosInfo, misTorneos, yoId: lider?.id,
     reclamos: Object.values(reclamosMap).flat(),
   })
-  const idsAjenos = Object.keys(clasif).filter(t => clasif[t] === 'ajeno')
-  const visible = p => { const c = clasif[p.tournament_id]; return c === 'mio' || c === 'nuevo' || (verAjenos && c === 'ajeno') }
+  // Dirijo = los que ya manejó + los nuevos que aún no inician · No dirijo = en curso con otro coordinador · Todos = los dos
+  const grupoDe = c => (c === 'ajeno' ? 'nodirijo' : (c === 'mio' || c === 'nuevo') ? 'dirijo' : null)
+  const nTorneosGrupo = g => Object.keys(clasif).filter(t => { const gr = grupoDe(clasif[t]); return gr && (g === 'todos' || g === gr) }).length
+  const gruposMenu = [
+    { id:'dirijo',   label:'Torneos que dirijo',    color:'#f9a825', n:nTorneosGrupo('dirijo') },
+    { id:'nodirijo', label:'Torneos que no dirijo', color:'#7fb2ff', n:nTorneosGrupo('nodirijo') },
+    { id:'todos',    label:'Todos',                 color:'#8fe3a0', n:nTorneosGrupo('todos') },
+  ]
+  const visible = p => { const gr = grupoDe(clasif[p.tournament_id]); return !!gr && (grupoTorneos === 'todos' || grupoTorneos === gr) }
   const partidosVis = partidos.filter(visible)
 
   // Filtrar por torneo (si el recordado ya no se muestra, vale "todos")
@@ -880,7 +878,7 @@ export default function ArbitroLiderPage() {
     // pendientes: la fecha del próximo partido (>= hoy); si todos están vencidos, el último. Jugados: el más reciente.
     const proximas = fechas.filter(f => new Date(f) >= inicioHoy)
     const fecha = pendiente ? (proximas[0] || fechas[fechas.length-1] || null) : (fechas[fechas.length-1] || null)
-    return { id:t.id, name:t.name, n:ps.length, fecha, vencido: pendiente && !proximas.length && !!fechas.length,
+    return { id:t.id, name:t.name, logo:t.logo_url, n:ps.length, fecha, vencido: pendiente && !proximas.length && !!fechas.length,
              tag: clasif[t.id]==='nuevo' ? 'nuevo' : clasif[t.id]==='ajeno' ? 'otro coord.' : '' }
   })
   .filter(o => o.n > 0 || o.id === filtroVigente)
@@ -969,41 +967,22 @@ export default function ArbitroLiderPage() {
           ))}
         </div>
 
-        {/* Filtro torneo (solo para tabs de partidos): un selector con buscador en vez de decenas de botones */}
-        {tab !== 'arbitros' && opcionesTorneo.length > 1 && (
-          <SelectorTorneo opciones={opcionesTorneo} valor={filtroVigente} totalTodos={totalTab}
-            onCambiar={setTorneoFiltro} etiquetaFecha={pendiente ? 'Próximo:' : 'Último:'}/>
+        {/* Menú de torneos con logo (solo para las pestañas de partidos): tocar un logo muestra los partidos de ese torneo */}
+        {tab !== 'arbitros' && (
+          <MenuTorneos grupos={gruposMenu} grupo={grupoTorneos} onGrupo={g => { setGrupoTorneos(g); setTorneoFiltro('') }}
+            opciones={opcionesTorneo} valor={filtroVigente} totalTodos={totalTab} onCambiar={setTorneoFiltro}/>
         )}
 
-        {/* Torneos ya iniciados que dirige otro coordinador: ocultos, con salida por si hace falta */}
-        {tab !== 'arbitros' && idsAjenos.length > 0 && (
-          <div style={{ marginBottom:'12px' }}>
-            <button onClick={()=>setVerAjenos(v=>!v)}
-              style={{ background:'none', border:'1px dashed #1e2d3d', borderRadius:'10px', padding:'7px 12px', color:'#7a9ab5', fontSize:'.72rem', cursor:'pointer', fontFamily:'inherit', width:'100%' }}>
-              {verAjenos
-                ? 'Ocultar los torneos que dirigen otros coordinadores'
-                : `Ver ${idsAjenos.length} torneo${idsAjenos.length === 1 ? '' : 's'} en curso que no dirijo (de otros coordinadores)`}
+        {/* Torneo en curso que dirige otro coordinador: se puede reclamar con un toque */}
+        {tab !== 'arbitros' && filtroVigente && clasif[filtroVigente] === 'ajeno' && (
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'12px', padding:'10px 12px', background:'#111827', border:'1px dashed #3a5470', borderRadius:'12px' }}>
+            <div style={{ flex:1, minWidth:0, fontSize:'.72rem', color:'#9fb6cc', lineHeight:1.4 }}>
+              <b style={{ color:'#e8f4fd' }}>{opcionesTorneo.find(o => o.id === filtroVigente)?.name || 'Este torneo'}</b> lo dirige otro coordinador. Si asignas árbitros o abres una planilla aquí, pasa a ser tuyo.
+            </div>
+            <button onClick={() => marcarComoMio(filtroVigente, opcionesTorneo.find(o => o.id === filtroVigente)?.name)}
+              style={{ flexShrink:0, background:'rgba(249,168,37,.15)', border:'1px solid #f9a825', borderRadius:'8px', padding:'7px 12px', color:'#f9a825', fontSize:'.72rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+              👑 Yo lo dirijo
             </button>
-            {verAjenos && (
-              <div style={{ marginTop:'8px', background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', overflow:'hidden' }}>
-                {idsAjenos.map(tid => {
-                  const t = partidos.find(p => p.tournament_id === tid)?.tournaments
-                  return (
-                    <div key={tid} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', borderBottom:'1px solid #1e2d3d' }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:'.8rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t?.name || 'Torneo'}</div>
-                        <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>En curso · lo dirige otro coordinador</div>
-                      </div>
-                      <button onClick={()=>marcarComoMio(tid, t?.name)}
-                        style={{ flexShrink:0, background:'rgba(249,168,37,.15)', border:'1px solid #f9a825', borderRadius:'8px', padding:'6px 12px', color:'#f9a825', fontSize:'.72rem', fontWeight:'700', cursor:'pointer', fontFamily:'inherit' }}>
-                        👑 Yo lo dirijo
-                      </button>
-                    </div>
-                  )
-                })}
-                <div style={{ fontSize:'.64rem', color:'#4b5a6b', padding:'8px 12px', lineHeight:1.4 }}>Sus partidos ya se ven abajo. Si le das «Yo lo dirijo» pasa a ser tuyo y te sigue saliendo siempre. Si asignas árbitros o abres una planilla ahí, también pasa a ser tuyo.</div>
-              </div>
-            )}
           </div>
         )}
 
