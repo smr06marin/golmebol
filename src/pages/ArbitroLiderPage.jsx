@@ -563,7 +563,7 @@ export default function ArbitroLiderPage() {
     if (planillaPartido) { try { localStorage.removeItem(`planilla_partido_shell_${planillaPartido.id}`) } catch (e) {} }
     setPlanillaPartido(null)
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
-    fetchTodo()
+    refrescarSilencioso() // sin pantalla de "Cargando...": la lista se actualiza por detrás
   }
 
   useEffect(() => {
@@ -603,13 +603,17 @@ export default function ArbitroLiderPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data:{user} } = await supabase.auth.getUser()
+    // La sesión se lee del propio teléfono (getSession): getUser() iba a la red en cada entrada.
+    const { data:{ session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) { navigate('/jugador/login'); return }
-    const { data:p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
+    // Perfil, partidos, torneos, reclamos y árbitros salen TODOS A LA VEZ (antes eran ~8 consultas una detrás de otra).
+    const pPerfil = supabase.from('players').select('*').eq('user_id', user.id).single()
+    const liderIdP = pPerfil.then(r => r.data?.id || null, () => null)
+    const [{ data:p }] = await Promise.all([pPerfil, fetchPartidos(liderIdP), fetchArbitros()])
     if (!p||!p.es_arbitro_lider) { navigate('/jugador/login'); return }
     setLider(p)
     liderRef.current = p
-    await Promise.all([fetchPartidos(), fetchArbitros()])
     setLoading(false)
   }
 
@@ -620,23 +624,33 @@ export default function ArbitroLiderPage() {
     await Promise.all([fetchPartidos(), fetchArbitros()])
   }
 
-  async function fetchPartidos() {
-    const { data } = await supabase.from('matches')
+  async function fetchPartidos(liderIdP = Promise.resolve(liderRef.current?.id || null)) {
+    // Lo que no depende de lo demás sale a la vez: estado de los torneos, torneos que ya manejó este coordinador y reclamos.
+    const pTorneos = (async () => {
+      let r = await supabase.from('tournaments').select('id, status, archivado')
+      if (r.error) r = await supabase.from('tournaments').select('id, status') // sin la columna archivado
+      return r
+    })()
+    const pMios = liderIdP.then(id => (id ? supabase.from('torneo_coordinadores').select('tournament_id').eq('coordinador_id', id) : null))
+    const pReclamos = supabase.from('arbitro_reclamos').select('match_id, estado, arbitro_id, registrado_por')
+
+    // Los partidos de torneos finalizados o archivados NO se muestran nunca (ver clasificarTorneos): ya no se descargan,
+    // y era la parte más pesada de la entrada (todo el historial de todos los torneos).
+    const rT = await pTorneos
+    let q = supabase.from('matches')
       .select('*, tournaments(id,name,modalidad), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
       .order('played_at', { ascending: true })
+    if (!rT.error) {
+      const abiertos = (rT.data||[]).filter(t => !(t.status === 'finished' || t.archivado)).map(t => t.id)
+      if (abiertos.length <= 300) q = q.in('tournament_id', abiertos)
+    }
+    const [{ data }, rC, { data: recs }] = await Promise.all([q, pMios, pReclamos])
+
     setPartidos(data||[])
     setTorneoFiltro(f => (f && !(data||[]).some(p => p.tournament_id === f)) ? '' : f) // el torneo recordado ya no tiene partidos
-    // Estado de cada torneo (activo / finalizado / archivado) y los que este coordinador ya manejó.
     // Si algo de esto falla, no se oculta nada: mejor ver de más que quedarse sin torneos.
-    let rT = await supabase.from('tournaments').select('id, status, archivado')
-    if (rT.error) rT = await supabase.from('tournaments').select('id, status') // sin la columna archivado
     if (!rT.error) setTorneosInfo(Object.fromEntries((rT.data||[]).map(t => [t.id, { status: t.status, archivado: !!t.archivado }])))
-    if (liderRef.current) {
-      const rC = await supabase.from('torneo_coordinadores').select('tournament_id').eq('coordinador_id', liderRef.current.id)
-      setMisTorneos(rC.error ? null : new Set((rC.data||[]).map(r => r.tournament_id)))
-    }
-    // Cargar reclamos por partido
-    const { data: recs } = await supabase.from('arbitro_reclamos').select('match_id, estado, arbitro_id, registrado_por')
+    if (rC) setMisTorneos(rC.error ? null : new Set((rC.data||[]).map(r => r.tournament_id)))
     const rm = {}
     ;(recs||[]).forEach(r => { if (!rm[r.match_id]) rm[r.match_id] = []; rm[r.match_id].push(r) })
     setReclamosMap(rm)
@@ -645,8 +659,18 @@ export default function ArbitroLiderPage() {
   async function fetchArbitros() {
     const { data } = await supabase.from('players').select('id,name,photo_url,photo_face_url,activo_membresia,fecha_vencimiento,numero_cedula,telefono')
       .or('rol.eq.arbitro,es_arbitro.eq.true').order('name')
-    // Contar partidos por árbitro
+    // La lista sale de una; los conteos de partidos por árbitro llegan por detrás (no frenan la entrada).
+    setArbitros(prev => {
+      const previo = new Map(prev.map(a => [a.id, a.stats]))
+      return (data||[]).map(a => ({ ...a, stats: previo.get(a.id) || { total:0, jugados:0 } }))
+    })
+    cargarStatsArbitros()
+  }
+
+  // Cuántos partidos ha tenido cada árbitro (de todos los torneos). Solo se piden los partidos que tienen árbitro.
+  async function cargarStatsArbitros() {
     const { data: stats } = await supabase.from('matches').select('arbitro1_id,arbitro2_id,arbitro3_id,status')
+      .or('arbitro1_id.not.is.null,arbitro2_id.not.is.null,arbitro3_id.not.is.null')
     const countMap = {}
     ;(stats||[]).forEach(m=>{
       [m.arbitro1_id,m.arbitro2_id,m.arbitro3_id].filter(Boolean).forEach(aid=>{
@@ -655,7 +679,7 @@ export default function ArbitroLiderPage() {
         if (m.status==='finished') countMap[aid].jugados++
       })
     })
-    setArbitros((data||[]).map(a=>({...a, stats:countMap[a.id]||{total:0,jugados:0}})))
+    setArbitros(prev => prev.map(a => ({ ...a, stats: countMap[a.id] || { total:0, jugados:0 } })))
   }
 
   // Anota que este coordinador maneja el torneo (asignó árbitros, abrió una planilla, etc.).

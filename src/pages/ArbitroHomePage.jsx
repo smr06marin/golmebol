@@ -192,7 +192,9 @@ export default function ArbitroHomePage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    // La sesión se lee del propio teléfono (getSession): getUser() iba a la red en cada entrada.
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).or('rol.eq.arbitro,es_arbitro.eq.true').single()
     if (!p) { navigate('/jugador/login'); return }
@@ -208,6 +210,8 @@ export default function ArbitroHomePage() {
     // Se separan en consultas independientes (en vez de un solo .or() con el
     // nombre metido en el filtro) para que un nombre con caracteres raros no
     // rompa el filtro entero y haga desaparecer TODOS los partidos asignados.
+    // Las notificaciones salen a la vez que los partidos (antes esperaban a que terminaran).
+    const pNots = supabase.from('notificaciones').select('*').eq('player_id', p.id).eq('leida', false).order('created_at',{ascending:false})
     const [porId, porNombre1, porNombre2] = await Promise.all([
       supabase.from('matches').select(selectCols)
         .or(`arbitro1_id.eq.${p.id},arbitro2_id.eq.${p.id},arbitro3_id.eq.${p.id}`),
@@ -225,7 +229,7 @@ export default function ArbitroHomePage() {
     setPartidos(lista)
     setStats({ total:lista.length, jugados:lista.filter(m=>m.status==='finished').length, torneos:new Set(lista.map(m=>m.tournament_id)).size })
     // Notificaciones no leídas
-    const { data: nots } = await supabase.from('notificaciones').select('*').eq('player_id', p.id).eq('leida', false).order('created_at',{ascending:false})
+    const { data: nots } = await pNots
     setNotifs(nots||[])
   }
 

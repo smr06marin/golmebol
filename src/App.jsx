@@ -213,6 +213,11 @@ function PlayerRoute({ children }) {
 function ArbitroRoute({ children }) {
   const { user, loading } = useAuthStore()
   const [estado, setEstado] = useState('cargando') // cargando | ok | no_arbitro | sin_perfil
+  // Si en este mismo teléfono ya se comprobó que esta cuenta es de árbitro, la pantalla se muestra DE UNA
+  // (sin esperar la consulta) y la comprobación sigue por detrás: si resultara que ya no lo es, lo saca.
+  // Antes cada entrada esperaba una consulta completa a la base solo para decidir si mostrar la página.
+  let conocido = false
+  try { conocido = !!user && sessionStorage.getItem('gm_arbitro_ok') === user.id } catch {}
 
   useEffect(() => {
     if (loading) return
@@ -222,19 +227,24 @@ function ArbitroRoute({ children }) {
       .then(({ data: p }) => {
         if (cancelado) return
         if (!p) setEstado('sin_perfil')
-        else if (p.rol === 'arbitro' || p.es_arbitro || p.es_arbitro_lider) setEstado('ok')
-        else setEstado('no_arbitro')
+        else if (p.rol === 'arbitro' || p.es_arbitro || p.es_arbitro_lider) {
+          try { sessionStorage.setItem('gm_arbitro_ok', user.id) } catch {}
+          setEstado('ok')
+        } else {
+          try { sessionStorage.removeItem('gm_arbitro_ok') } catch {}
+          setEstado('no_arbitro')
+        }
       })
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return (
+  if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
+  if (estado === 'no_arbitro')  return <Navigate to="/jugador" replace/>
+  if (!conocido && (loading || estado === 'cargando')) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
       CARGANDO...
     </div>
   )
-  if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
-  if (estado === 'no_arbitro')  return <Navigate to="/jugador" replace/>
   return children
 }
 

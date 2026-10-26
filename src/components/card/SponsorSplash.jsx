@@ -1,22 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CARD_DESIGNS } from './designs/cardDesigns'
 
 export default function SponsorSplash({ cardType, sponsor, cardColor, cardNombre, onDone }) {
   const [fase, setFase] = useState('sponsor') // sponsor → tarjeta → done
+  const hecho = useRef(false)
+  const terminar = () => { if (hecho.current) return; hecho.current = true; onDone() } // un toque o el tiempo: solo cuenta una vez
 
   useEffect(() => {
-    // Fase 1: sponsor 1.8s
-    const t1 = setTimeout(() => setFase('tarjeta'), 1800)
-    // Fase 2: nombre tarjeta 1.2s
-    const t2 = setTimeout(() => onDone(), 3000)
+    // Fase 1: sponsor 1.1s · Fase 2: nombre de la tarjeta 0.8s (antes 3 s en total; ahora 1.9 s y se salta con un toque)
+    const t1 = setTimeout(() => setFase('tarjeta'), 1100)
+    const t2 = setTimeout(terminar, 1900)
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [])
 
   const color = cardColor || '#00ee55'
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
+    <div onClick={terminar} style={{
+      position: 'fixed', inset: 0, zIndex: 9999, cursor: 'pointer',
       background: '#07070e',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       transition: 'opacity .4s',

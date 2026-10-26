@@ -154,6 +154,32 @@ function ModalRecuperarPass({ onClose }) {
   )
 }
 
+// A dónde va cada cuenta al terminar de entrar (jugador por defecto).
+function rutaDeCuenta(p) {
+  if (p?.es_arbitro_lider) return '/arbitro/lider'
+  if (p?.rol === 'arbitro' && !p?.es_arbitro) return '/arbitro'
+  if (p?.rol === 'profesor' || p?.es_profesor || p?.es_profesor_coordinador) return '/escuela'
+  if (p?.es_encargado_escenario) return '/escenario'
+  if (p?.es_acudiente) return '/acudiente'
+  if (p?.es_jugador_escuela) return '/mi-tarjeta'
+  return '/jugador'
+}
+
+// Baja el código de la pantalla de destino mientras todavía se está entrando (así no hay que esperarlo después).
+// Es el mismo archivo que usa App.jsx con lazy(): el navegador lo descarga una sola vez.
+function precargarDestino(ruta) {
+  const cargar = {
+    '/arbitro/lider': () => import('./ArbitroLiderPage'),
+    '/arbitro': () => import('./ArbitroHomePage'),
+    '/escuela': () => import('./EscuelaHomePage'),
+    '/escenario': () => import('./EscenarioHomePage'),
+    '/acudiente': () => import('./AcudientePage'),
+    '/mi-tarjeta': () => import('./MiTarjetaEscuelaPage'),
+    '/jugador': () => import('./PlayerHomePage'),
+  }[ruta]
+  if (cargar) cargar().catch(() => {})
+}
+
 export default function PlayerLoginPage() {
   const navigate = useNavigate()
 
@@ -349,11 +375,22 @@ export default function PlayerLoginPage() {
       await conTimeout((async () => {
         const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
         if (authError) { setError('Contraseña incorrecta'); return }
+        // Mientras se verifica lo demás, ya se va bajando la pantalla de destino.
+        const ruta = rutaDeCuenta(player)
+        precargarDestino(ruta)
         // Golmebol es gratis: ya no se revisa membresía activa ni verificación
         // manual — con contraseña correcta y cédula ya registrada, entra directo.
         const { data: pActual } = await supabase.from('players').select('primer_ingreso, card_type').eq('id', player.id).single()
         if (pActual?.primer_ingreso !== false) {
           setShowCambiarPass(true)
+          return
+        }
+        // Árbitros, coordinadores, profesores, encargados y acudientes entran DIRECTO: sin pantalla de
+        // bienvenida (esa es la de la tarjeta del jugador) y sin consultar el patrocinador. A veces hay que
+        // cambiar árbitros rápido, cada segundo cuenta.
+        if (ruta !== '/jugador' && ruta !== '/mi-tarjeta') {
+          await registrarSesionDispositivo(player.id)
+          navigate(ruta)
           return
         }
         // Reclamar la sesión del dispositivo y traer los datos de la pantalla de bienvenida
@@ -428,15 +465,7 @@ export default function PlayerLoginPage() {
       sponsor={splash.sponsor}
       cardColor={splash.cardColor}
       cardNombre={splash.cardNombre}
-      onDone={() => {
-        if (player?.es_arbitro_lider) navigate('/arbitro/lider')
-        else if (player?.rol === 'arbitro' && !player?.es_arbitro) navigate('/arbitro')
-        else if (player?.rol === 'profesor' || player?.es_profesor || player?.es_profesor_coordinador) navigate('/escuela')
-        else if (player?.es_encargado_escenario) navigate('/escenario')
-        else if (player?.es_acudiente) navigate('/acudiente')
-        else if (player?.es_jugador_escuela) navigate('/mi-tarjeta')
-        else navigate('/jugador')
-      }}
+      onDone={() => navigate(rutaDeCuenta(player))}
     />
   )
 
