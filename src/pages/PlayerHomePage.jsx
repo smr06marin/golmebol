@@ -1,3 +1,4 @@
+import { PantallaCargando } from '../components/PantallaCargando'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -95,7 +96,6 @@ export default function PlayerHomePage() {
   const [notifs,            setNotifs]            = useState([])
   const [splashPreview,     setSplashPreview]     = useState(null)
   const [pendingPreview,    setPendingPreview]    = useState(null)
-  const [splash,            setSplash]            = useState(null)
   const [sinEquipo,         setSinEquipo]         = useState(false) // no está en ningún equipo → solo PREDIX
   // Logros, progreso y stats precargados UNA vez: así al tocar cualquier
   // tarjeta la lista de logros sale AL INSTANTE (antes eran 3 consultas por toque)
@@ -552,11 +552,7 @@ export default function PlayerHomePage() {
     }
   }
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: '#1a73e8', fontSize: '.9rem', fontWeight: '500' }}>Cargando...</div>
-    </div>
-  )
+  if (loading) return <PantallaCargando/>
 
   if (!player) return null
 
@@ -668,16 +664,6 @@ export default function PlayerHomePage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* SPLASH LOGIN */}
-      {splash && (
-        <SponsorSplash
-          sponsor={splash.sponsor}
-          cardColor={splash.cardColor}
-          cardNombre={splash.cardNombre}
-          onDone={() => setSplash(null)}
-        />
       )}
 
       {/* SPLASH PREVIEW */}

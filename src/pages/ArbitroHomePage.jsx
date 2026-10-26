@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { PantallaCargando } from '../components/PantallaCargando'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Lock, FileText, Key, Circle } from 'lucide-react'
@@ -241,7 +242,7 @@ export default function ArbitroHomePage() {
     await cargarPartidos(arbitroRef.current)
   }
 
-  if (loading) return <div style={{ minHeight:'100vh', background:'#07070e', display:'flex', alignItems:'center', justifyContent:'center', color:'#00ddd0', fontSize:'.9rem' }}>Cargando...</div>
+  if (loading) return <PantallaCargando/>
 
   // "partidos" viene del más reciente al más antiguo (para que jugados
   // muestre el último resultado primero). Próximos necesita el orden

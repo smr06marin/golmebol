@@ -39,7 +39,7 @@ export default function MiTarjetaEscuelaPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null // sesión del propio teléfono: getUser() iba a la red en cada entrada
     if (!user) { navigate('/jugador/login'); return }
     // maybeSingle (no single): si por algún motivo hay más de una fila o
     // ninguna con este user_id, no explota — se muestra un aviso en vez de

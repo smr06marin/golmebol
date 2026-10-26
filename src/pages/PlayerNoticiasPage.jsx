@@ -27,7 +27,7 @@ export default function PlayerNoticiasPage() {
   useEffect(() => { if (torneoId) fetchNoticias() }, [torneoId])
 
   async function fetchTodo() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null // sesión del propio teléfono: getUser() iba a la red en cada entrada
     if (!user) { navigate('/jugador/login'); return }
 
     const { data: player } = await supabase.from('players').select('id').eq('user_id', user.id).single()

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { PantallaCargando } from '../components/PantallaCargando'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check, AlertTriangle, CheckCircle, ClipboardList, Circle, MapPin, User, Trophy, FileText, CreditCard, Key, Pencil, CheckSquare, Square, Smartphone, Crown, PartyPopper, Zap } from 'lucide-react'
@@ -870,7 +871,7 @@ export default function ArbitroLiderPage() {
     fetchPartidos()
   }
 
-  if (loading) return <div style={{ minHeight:'100vh',background:'#07070e',display:'flex',alignItems:'center',justifyContent:'center',color:'#00ddd0' }}>Cargando...</div>
+  if (loading) return <PantallaCargando/>
 
   // Solo torneos que este coordinador maneja y torneos nuevos que aún no inician
   const clasif = clasificarTorneos({

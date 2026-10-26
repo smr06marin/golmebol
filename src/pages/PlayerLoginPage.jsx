@@ -8,8 +8,6 @@ const MSG_TIMEOUT = 'Esto está tardando demasiado. Revisa tu internet e intenta
 const MSG_CONEXION = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'
 const msgFalla = (err) => (err?.message === 'TIMEOUT' ? MSG_TIMEOUT : MSG_CONEXION)
 import BotonVolverLogin from '../components/BotonVolverLogin'
-import SponsorSplash from '../components/card/SponsorSplash'
-import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 
 const inp = {
   width: '100%', background: '#fff', border: '1.5px solid #dadce0',
@@ -193,25 +191,6 @@ export default function PlayerLoginPage() {
   const [error,           setError]           = useState('')
   const [showRecuperar,   setShowRecuperar]   = useState(false)
   const [showCambiarPass, setShowCambiarPass] = useState(false)
-  const [splash,          setSplash]          = useState(null)
-
-  // `cardTypeConocido` (opcional): si quien llama ya leyó card_type, no se vuelve a pedir (una vuelta menos al servidor).
-  async function fetchSplashData(playerId, cardTypeConocido) {
-    let ct = cardTypeConocido
-    if (ct === undefined) {
-      const { data: p } = await supabase.from('players').select('card_type').eq('id', playerId).single()
-      ct = p?.card_type
-    }
-    const cardType   = ct || 'nivel1_verde'
-    const cardDesign = CARD_DESIGNS.find(d => d.id === cardType)
-    const { data: sponsor } = await supabase.from('sponsors').select('*').eq('card_id', cardType).eq('activo', true).single()
-    return {
-      sponsor:    sponsor || null,
-      cardColor:  cardDesign?.color  || '#00ee55',
-      cardNombre: cardDesign?.nombre || 'EL DEBUT',
-      cardType,
-    }
-  }
 
   // Error "la función no existe todavía en la base" → se usa el camino de antes.
   const faltaFuncion = (err) => !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''))
@@ -378,28 +357,20 @@ export default function PlayerLoginPage() {
         // Mientras se verifica lo demás, ya se va bajando la pantalla de destino.
         const ruta = rutaDeCuenta(player)
         precargarDestino(ruta)
-        // Golmebol es gratis: ya no se revisa membresía activa ni verificación
-        // manual — con contraseña correcta y cédula ya registrada, entra directo.
-        const { data: pActual } = await supabase.from('players').select('primer_ingreso, card_type').eq('id', player.id).single()
-        if (pActual?.primer_ingreso !== false) {
-          setShowCambiarPass(true)
-          return
+        // Golmebol es gratis: con contraseña correcta y cédula ya registrada, entra directo.
+        // `primer_ingreso` ya vino en la búsqueda de la cédula: solo si parece primer ingreso se confirma en la base
+        // (antes se consultaba SIEMPRE, una ida y vuelta más en cada entrada).
+        if (player?.primer_ingreso !== false) {
+          const { data: pActual } = await supabase.from('players').select('primer_ingreso').eq('id', player.id).single()
+          if (pActual?.primer_ingreso !== false) {
+            setShowCambiarPass(true)
+            return
+          }
         }
-        // Árbitros, coordinadores, profesores, encargados y acudientes entran DIRECTO: sin pantalla de
-        // bienvenida (esa es la de la tarjeta del jugador) y sin consultar el patrocinador. A veces hay que
-        // cambiar árbitros rápido, cada segundo cuenta.
-        if (ruta !== '/jugador' && ruta !== '/mi-tarjeta') {
-          await registrarSesionDispositivo(player.id)
-          navigate(ruta)
-          return
-        }
-        // Reclamar la sesión del dispositivo y traer los datos de la pantalla de bienvenida
-        // al mismo tiempo (antes eran 3 pasos uno detrás de otro, lento en datos móviles).
-        const [, splashData] = await Promise.all([
-          registrarSesionDispositivo(player.id),
-          fetchSplashData(player.id, pActual?.card_type || null),
-        ])
-        setSplash(splashData)
+        // Sin pantalla de bienvenida para nadie: se entra de una. La sesión del dispositivo se reclama por detrás
+        // (SessionGuard ya espera ese instante, no expulsa a quien acaba de entrar).
+        registrarSesionDispositivo(player.id).catch(() => {})
+        navigate(ruta)
       })())
     } catch (err) {
       setError(msgFalla(err))
@@ -433,18 +404,16 @@ export default function PlayerLoginPage() {
             return
           }
           if (!player.user_id) await vincularCuenta(player.id, signInData.user.id)
-          await registrarSesionDispositivo(player.id)
-          const splashData = await fetchSplashData(player.id)
-          setSplash(splashData)
+          registrarSesionDispositivo(player.id).catch(() => {})
+          navigate(rutaDeCuenta(player))
           return
         }
         setError('Error: ' + authError.message)
         return
       }
       await vincularCuenta(player.id, authData.user.id)
-      await registrarSesionDispositivo(player.id)
-      const splashData = await fetchSplashData(player.id)
-      setSplash(splashData)
+      registrarSesionDispositivo(player.id).catch(() => {})
+      navigate(rutaDeCuenta(player))
       })())
     } catch (err) {
       setError(msgFalla(err))
@@ -458,17 +427,6 @@ export default function PlayerLoginPage() {
     setNombreVerif(''); setPlayer(null)
   }
 
-  // Mostrar splash
-  if (splash) return (
-    <SponsorSplash
-      cardType={splash.cardType}
-      sponsor={splash.sponsor}
-      cardColor={splash.cardColor}
-      cardNombre={splash.cardNombre}
-      onDone={() => navigate(rutaDeCuenta(player))}
-    />
-  )
-
   return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
       <BotonVolverLogin tema="claro"/>
@@ -477,9 +435,8 @@ export default function PlayerLoginPage() {
         {showCambiarPass && (
           <ModalCambiarPass cedula={cedula} onCambiada={async () => {
             setShowCambiarPass(false)
-            await registrarSesionDispositivo(player.id)
-            const splashData = await fetchSplashData(player.id)
-            setSplash(splashData)
+            registrarSesionDispositivo(player.id).catch(() => {})
+            navigate(rutaDeCuenta(player))
           }}/>
         )}
 

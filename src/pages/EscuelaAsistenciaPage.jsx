@@ -42,7 +42,7 @@ export default function EscuelaAsistenciaPage() {
 
   async function fetchInicial() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null // sesión del propio teléfono: getUser() iba a la red en cada entrada
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p || !(p.rol === 'profesor' || p.es_profesor || p.es_profesor_coordinador)) { navigate('/jugador'); return }

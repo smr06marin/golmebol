@@ -198,11 +198,7 @@ function ProtectedRoute({ children }) {
 
 function PlayerRoute({ children }) {
   const { user, loading } = useAuthStore()
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
-      CARGANDO...
-    </div>
-  )
+  if (loading) return <PantallaCargando/>
   if (!user) return <Navigate to="/jugador/login" replace/>
   return children
 }
@@ -240,11 +236,7 @@ function ArbitroRoute({ children }) {
 
   if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_arbitro')  return <Navigate to="/jugador" replace/>
-  if (!conocido && (loading || estado === 'cargando')) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
-      CARGANDO...
-    </div>
-  )
+  if (!conocido && (loading || estado === 'cargando')) return <PantallaCargando/>
   return children
 }
 
@@ -269,11 +261,7 @@ function EscuelaRoute({ children }) {
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
-      CARGANDO...
-    </div>
-  )
+  if (loading || estado === 'cargando') return <PantallaCargando/>
   if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_profesor') return <Navigate to="/jugador" replace/>
   // La barra de abajo (con el balón que vuelve al panel de /escuela) va en
@@ -307,11 +295,7 @@ function EscenarioRoute({ children }) {
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
-      CARGANDO...
-    </div>
-  )
+  if (loading || estado === 'cargando') return <PantallaCargando/>
   if (estado === 'sin_perfil')   return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_encargado') return <Navigate to="/jugador" replace/>
   return children
@@ -337,11 +321,7 @@ function AcudienteRoute({ children }) {
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#07070e', color: '#00ddd0', fontFamily: 'var(--font-display)', letterSpacing: '.2em', fontSize: '1rem' }}>
-      CARGANDO...
-    </div>
-  )
+  if (loading || estado === 'cargando') return <PantallaCargando/>
   if (estado === 'sin_perfil')    return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_acudiente')  return <Navigate to="/jugador" replace/>
   return children
@@ -386,8 +366,20 @@ export default function App() {
 
   async function cargarRol(u) {
     if (!u?.email) { setRol(null); return }
-    empezarCargaRol() // evita usar el rol viejo mientras se consulta el nuevo
     const email = u.email.toLowerCase()
+    // ENTRADA RÁPIDA: el rol de esta cuenta se recuerda en este teléfono/computador. Si ya está, el panel se abre de
+    // una y el rol se vuelve a confirmar por detrás (si cambió, se actualiza solo). Los correos de admin principal
+    // entran como admin sin esperar. Es solo la pantalla: los permisos de verdad los pone la base de datos.
+    const claveRol = `gm_rol_${u.id}`
+    let recordado = null
+    try { recordado = JSON.parse(localStorage.getItem(claveRol) || 'null') } catch { recordado = null }
+    if (recordado?.rol) setRol(recordado)
+    else if (ADMINS_PRINCIPALES.includes(email)) setRol({ rol: 'admin' })
+    else empezarCargaRol() // sin rol recordado: espera la consulta
+    const fijarRol = r => {
+      setRol(r)
+      try { if (r?.rol) localStorage.setItem(claveRol, JSON.stringify(r)); else localStorage.removeItem(claveRol) } catch { /* sin almacenamiento: no pasa nada */ }
+    }
     try {
       // debe_cambiar_password: lo prende un admin cuando le resetea la
       // contraseña a alguien desde "Usuarios y permisos" (ver
@@ -401,17 +393,17 @@ export default function App() {
       }
       if (error) throw error
       if (data && data.activo !== false) {
-        setRol({ rol: data.rol, plan: data.plan, debeCambiarPassword: !!data.debe_cambiar_password })
+        fijarRol({ rol: data.rol, plan: data.plan, debeCambiarPassword: !!data.debe_cambiar_password })
         // Vincular la cuenta al rol (para que el admin vea de quién es cada torneo)
         // — con el cliente silencioso: esto corre solo en cada sesión, no es
         // una acción de la persona, no debe salir el aviso de "cambios guardados".
         supabaseSilent.from('roles_plataforma').update({ user_id: u.id }).eq('email', email).then(() => {}, () => {})
       }
-      else if (ADMINS_PRINCIPALES.includes(email)) setRol({ rol: 'admin' })
-      else setRol({ rol: null })
+      else if (ADMINS_PRINCIPALES.includes(email)) fijarRol({ rol: 'admin' })
+      else fijarRol({ rol: null })
     } catch {
       // Tabla de roles aún no creada: comportamiento clásico (todo usuario logueado es admin)
-      setRol({ rol: 'admin' })
+      if (!recordado?.rol) setRol({ rol: 'admin' })
     }
   }
 
