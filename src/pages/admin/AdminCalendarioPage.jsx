@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { useAuthStore } from '../../store/authStore'
-import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp, Link2, Search, Trophy, Watch } from 'lucide-react'
+import { Calendar, Check, Clock, Image, MapPin, Pencil, Shield, ChevronDown, ChevronUp, Link2, Search, Trophy, Watch } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
@@ -164,77 +164,105 @@ function agruparPorTorneo(partidos) {
   })
 }
 
+// Estilos del calendario (clases para poder adaptar el diseño a celular).
+const ESTILOS_CAL = `
+.gcal-row{padding:16px 18px;border-top:1px solid #eef0f2;display:flex;flex-direction:column;gap:14px;background:#fff}
+.gcal-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:#5f6368}
+.gcal-meta .when{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:#3c4043}
+.gcal-meta .loc{display:inline-flex;align-items:center;gap:4px;color:#1a73e8;font-weight:500;min-width:0}
+.gcal-pill{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.7rem;font-weight:700;letter-spacing:.02em;border-radius:999px;padding:3px 10px 3px 8px;white-space:nowrap}
+.gcal-pill i{width:7px;height:7px;border-radius:50%;display:block}
+.gcal-pill.ok{background:#e6f4ea;color:#137333}.gcal-pill.ok i{background:#1e8e3e}
+.gcal-pill.pend{background:#fef3e6;color:#b45309}.gcal-pill.pend i{background:#e8710a}
+.gcal-board{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px}
+.gcal-team{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;min-width:0}
+.gcal-logo{width:44px;height:44px;border-radius:12px;background:#f8f9fa;border:1px solid #eef0f2;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.gcal-name{font-weight:700;color:#202124;font-size:.88rem;line-height:1.25;overflow-wrap:break-word;word-break:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%}
+.gcal-mid{display:flex;align-items:center;justify-content:center;min-width:76px}
+.gcal-score{display:inline-flex;align-items:center;gap:8px;background:#202124;color:#fff;border-radius:10px;padding:6px 14px;font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.gcal-score span{opacity:.5;font-weight:600}
+.gcal-vs{font-size:.72rem;font-weight:800;letter-spacing:.1em;color:#5f6368;background:#f1f3f4;border-radius:999px;padding:6px 12px}
+.gcal-actions{display:flex;flex-wrap:wrap;gap:8px;padding-top:2px}
+.gcal-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 14px;border-radius:9px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:.78rem;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
+.gcal-btn:disabled{opacity:.6;cursor:default}
+.gcal-btn.primary{background:#1a73e8;border-color:#1a73e8;color:#fff}
+.gcal-btn.dark{background:#fff;border-color:#202124;color:#202124}
+.gcal-btn svg{flex-shrink:0}
+.gcal-chip{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 9px;background:#f1f3f4;color:#5f6368;white-space:nowrap}
+.gcal-chip.ok{background:#e6f4ea;color:#137333}.gcal-chip.pend{background:#fef3e6;color:#b45309}
+.gcal-chip.fase{background:rgba(255,255,255,.2);color:#fff}
+.gcal-seg{display:flex;gap:4px;background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:3px}
+.gcal-seg button{padding:0 16px;min-height:36px;border-radius:8px;border:none;cursor:pointer;font-size:.82rem;font-weight:600;font-family:inherit}
+@media (min-width:601px){
+  .gcal-board{gap:18px}
+  .gcal-team{flex-direction:row;gap:12px;text-align:left}
+  .gcal-team.home{flex-direction:row-reverse;text-align:right}
+  .gcal-name{font-size:.95rem}
+  .gcal-actions{justify-content:flex-end}
+}
+@media (max-width:600px){
+  .gcal-board{align-items:start}
+  .gcal-mid{align-self:flex-start;margin-top:3px}
+  .gcal-name{-webkit-line-clamp:3}
+  .gcal-row{padding:14px 14px 16px}
+  .gcal-actions .gcal-btn{flex:1 1 calc(50% - 4px);padding:0 8px}
+  .gcal-actions .gcal-btn.primary,.gcal-actions .gcal-btn.dark{flex-basis:100%;min-height:42px}
+  .gcal-seg{width:100%}.gcal-seg button{flex:1;padding:0 6px}
+  .gcal-mid{min-width:64px}
+  .gcal-score{padding:6px 11px;font-size:1.05rem}
+}
+`
+
 // ── Una fila de partido (no se vuelve a dibujar al abrir/cerrar otras secciones) ──
 const FilaPartido = memo(function FilaPartido({ p, abriendo, acc }) {
   const esJugado = p.status === 'finished'
   return (
-    <div style={{ padding: '12px 18px', borderTop: '1px solid #f1f3f4', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Fecha y hora */}
-        <div style={{ minWidth: '64px', flexShrink: 0 }}>
-          {p.played_at && (
-            <>
-              <div style={{ fontSize: '.68rem', color: '#5f6368', fontWeight: '600' }}>{fmtDiaCorto.format(new Date(p.played_at))}</div>
-              <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>{fmtHoraDate(p.played_at)}</div>
-            </>
-          )}
-          {p.location && <div style={{ fontSize: '.62rem', color: '#1a73e8', marginTop: '2px' }}>📍 {p.location}</div>}
-        </div>
+    <div className="gcal-row">
+      {/* Cuándo, dónde y estado */}
+      <div className="gcal-meta">
+        {p.played_at ? (
+          <span className="when"><Clock size={13}/> {cap(fmtDiaCorto.format(new Date(p.played_at)))} · {fmtHoraDate(p.played_at)}</span>
+        ) : (
+          <span className="when"><Clock size={13}/> Por confirmar</span>
+        )}
+        {p.location && <span className="loc"><MapPin size={13}/> {p.location}</span>}
+        <span className={`gcal-pill ${esJugado ? 'ok' : 'pend'}`}><i/>{esJugado ? 'Jugado' : 'Pendiente'}</span>
+      </div>
 
-        {/* Partido */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-            <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', textAlign: 'right', lineHeight: 1.2, wordBreak: 'break-word' }}>{p.home?.name}</span>
-            <div style={{ width: '26px', height: '26px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
-              <TeamLogo logo_url={p.home?.logo_url} size={26}/>
-            </div>
-          </div>
-          {esJugado ? (
-            <div style={{ fontWeight: '800', fontSize: '.92rem', color: '#202124', background: '#f1f3f4', padding: '3px 10px', borderRadius: '8px', flexShrink: 0, minWidth: '50px', textAlign: 'center' }}>
-              {p.home_score} - {p.away_score}
-            </div>
-          ) : (
-            <div style={{ fontWeight: '700', fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', padding: '3px 9px', borderRadius: '8px', flexShrink: 0 }}>VS</div>
-          )}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{ width: '26px', height: '26px', borderRadius: '7px', overflow: 'hidden', flexShrink: 0 }}>
-              <TeamLogo logo_url={p.away?.logo_url} size={26}/>
-            </div>
-            <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', lineHeight: 1.2, wordBreak: 'break-word' }}>{p.away?.name}</span>
-          </div>
+      {/* Marcador */}
+      <div className="gcal-board">
+        <div className="gcal-team home">
+          <div className="gcal-logo"><TeamLogo logo_url={p.home?.logo_url} size={34}/></div>
+          <span className="gcal-name">{p.home?.name}</span>
+        </div>
+        <div className="gcal-mid">
+          {esJugado
+            ? <div className="gcal-score">{p.home_score}<span>–</span>{p.away_score}</div>
+            : <div className="gcal-vs">VS</div>}
+        </div>
+        <div className="gcal-team">
+          <div className="gcal-logo"><TeamLogo logo_url={p.away?.logo_url} size={34}/></div>
+          <span className="gcal-name">{p.away?.name}</span>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '.65rem', fontWeight: '600', color: esJugado ? '#1e8e3e' : '#e8710a', background: esJugado ? '#e6f4ea' : '#fce8d9', borderRadius: '6px', padding: '1px 6px', flexShrink: 0 }}>
-          {esJugado ? '✓ Jugado' : '⏳ Pendiente'}
-        </span>
-
-        {/* Acciones */}
-        <div style={{ display: 'flex', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
-          <button onClick={() => acc.flyer(p)}
-            style={{ background: '#6c35de', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontSize: '.7rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <Image size={11}/> Flyer
+      {/* Acciones: la principal arriba y ancha, el resto en rejilla */}
+      <div className="gcal-actions">
+        <button className={`gcal-btn ${esJugado ? 'dark' : 'primary'}`} onClick={() => acc.planilla(p)} disabled={abriendo}>
+          {abriendo ? 'Abriendo…' : esJugado ? <><Pencil size={14}/> Editar resultado</> : <><Check size={14}/> Registrar resultado</>}
+        </button>
+        <button className="gcal-btn" onClick={() => acc.flyer(p)}><Image size={14} color="#6c35de"/> Flyer</button>
+        {!esJugado && (
+          <button className="gcal-btn" onClick={() => acc.link(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido (puedes agregarle más partidos del mismo torneo)">
+            <Link2 size={14} color="#00958c"/> Link árbitro
           </button>
-          {!esJugado && (
-            <button onClick={() => acc.link(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido (puedes agregarle más partidos del mismo torneo)"
-              style={{ background: '#fff', border: '1px solid #00b8ad', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#00958c', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <Link2 size={11}/> Link árbitro
-            </button>
-          )}
-          {!esJugado && (
-            <button onClick={() => acc.reloj(p)} title="Link aparte para registrar goles, tarjetas y cambios desde el navegador de un smartwatch"
-              style={{ background: '#fff', border: '1px solid #6c35de', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#6c35de', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <Watch size={11}/> Link reloj
-            </button>
-          )}
-          <button onClick={() => acc.planilla(p)} disabled={abriendo}
-            style={{ background: esJugado ? 'none' : '#1a73e8', border: esJugado ? '1px solid #dadce0' : 'none', borderRadius: '6px', padding: '5px 8px', cursor: abriendo ? 'default' : 'pointer', color: esJugado ? '#5f6368' : '#fff', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px', opacity: abriendo ? 0.6 : 1 }}>
-            {abriendo ? 'Abriendo…' : esJugado ? '✏️ Editar' : <><Check size={11}/> Resultado</>}
+        )}
+        {!esJugado && (
+          <button className="gcal-btn" onClick={() => acc.reloj(p)} title="Link aparte para registrar goles, tarjetas y cambios desde el navegador de un smartwatch">
+            <Watch size={14} color="#6c35de"/> Link reloj
           </button>
-          <button onClick={() => acc.verTorneo(p.tournament_id)}
-            style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#5f6368', fontSize: '.7rem' }}>Ver torneo →</button>
-        </div>
+        )}
+        <button className="gcal-btn" onClick={() => acc.verTorneo(p.tournament_id)}>Ver torneo →</button>
       </div>
     </div>
   )
@@ -249,24 +277,29 @@ const JornadaBloque = memo(function JornadaBloque({ jornada, abierto, defaultAbi
   return (
     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
       <div onClick={() => acc.toggle(jornada.key, defaultAbierto)}
-        style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', background: esFase ? 'linear-gradient(135deg,#1a73e8,#6c35de)' : '#fff' }}>
+        style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer', background: esFase ? 'linear-gradient(135deg,#1a73e8,#6c35de)' : '#fff' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: '700', fontSize: '.92rem', color: headerColor }}>{jornada.label}</div>
-          <div style={{ fontSize: '.72rem', color: esFase ? 'rgba(255,255,255,.75)' : '#9aa0a6', marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {jornada.fechas.length > 0 && <span>📅 {jornada.fechas.slice(0, 3).join(' · ')}{jornada.fechas.length > 3 ? ` · +${jornada.fechas.length - 3}` : ''}</span>}
-            <span>{jornada.partidos.length} partido{jornada.partidos.length !== 1 ? 's' : ''}</span>
-            {jugados > 0 && <span style={{ color: esFase ? 'rgba(255,255,255,.85)' : '#1e8e3e' }}>✓ {jugados} jugado{jugados !== 1 ? 's' : ''}</span>}
-            {pendientes > 0 && <span style={{ color: esFase ? 'rgba(255,255,255,.85)' : '#e8710a' }}>⏳ {pendientes} pendiente{pendientes !== 1 ? 's' : ''}</span>}
+          <div style={{ fontWeight: '700', fontSize: '1rem', color: headerColor }}>{jornada.label}</div>
+          {jornada.fechas.length > 0 && (
+            <div style={{ fontSize: '.76rem', color: esFase ? 'rgba(255,255,255,.8)' : '#5f6368', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Calendar size={13} style={{ flexShrink: 0 }}/>
+              <span>{jornada.fechas.slice(0, 3).join(' · ')}{jornada.fechas.length > 3 ? ` · +${jornada.fechas.length - 3}` : ''}</span>
+            </div>
+          )}
+          <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <span className={`gcal-chip ${esFase ? 'fase' : ''}`}>{jornada.partidos.length} partido{jornada.partidos.length !== 1 ? 's' : ''}</span>
+            {jugados > 0 && <span className={`gcal-chip ${esFase ? 'fase' : 'ok'}`}>{jugados} jugado{jugados !== 1 ? 's' : ''}</span>}
+            {pendientes > 0 && <span className={`gcal-chip ${esFase ? 'fase' : 'pend'}`}>{pendientes} pendiente{pendientes !== 1 ? 's' : ''}</span>}
           </div>
         </div>
         <button
           onClick={e => { e.stopPropagation(); acc.flyerGrupo(jornada.partidos) }}
-          style={{ background: esFase ? 'rgba(255,255,255,.18)' : '#f3ecfd', border: 'none', borderRadius: '6px', padding: '5px 9px', cursor: 'pointer', color: esFase ? '#fff' : '#6c35de', fontSize: '.7rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-          <Image size={12}/> Flyer
+          style={{ background: esFase ? 'rgba(255,255,255,.18)' : '#f3ecfd', border: 'none', borderRadius: '6px', padding: '5px 9px', cursor: 'pointer', color: esFase ? '#fff' : '#6c35de', fontSize: '.74rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, minHeight: '34px' }}>
+          <Image size={13}/> Flyer
         </button>
-        {abierto
+        <span style={{ display: 'flex', alignItems: 'center', minHeight: '34px' }}>{abierto
           ? <ChevronUp size={18} color={esFase ? 'rgba(255,255,255,.8)' : '#9aa0a6'}/>
-          : <ChevronDown size={18} color={esFase ? 'rgba(255,255,255,.8)' : '#9aa0a6'}/>}
+          : <ChevronDown size={18} color={esFase ? 'rgba(255,255,255,.8)' : '#9aa0a6'}/>}</span>
       </div>
       {abierto && (
         <div>
@@ -283,7 +316,7 @@ function ListaJornadas({ partidos, prefijo, abiertos, forzarAbierto, abriendoId,
   // Sin nada guardado, se abre solo la jornada del próximo partido pendiente
   const sugerida = jornadas.find(j => j.partidos.some(p => p.status !== 'finished'))?.key
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {jornadas.map(j => {
         const def = forzarAbierto || j.key === sugerida
         return <JornadaBloque key={j.key} jornada={j} abierto={abiertos[j.key] ?? def} defaultAbierto={def} abriendoId={abriendoId} acc={acc}/>
@@ -301,7 +334,7 @@ const TorneoBloque = memo(function TorneoBloque({ grupo, abierto, defaultAbierto
   return (
     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
       <div onClick={() => acc.toggle(claveTorneo, defaultAbierto)}
-        style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', background: abierto ? '#f8f9fa' : '#fff' }}>
+        style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', background: abierto ? '#f8f9fa' : '#fff' }}>
         <div style={{ width: '40px', height: '40px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {torneo?.logo_url
             ? <img src={torneo.logo_url} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
@@ -309,20 +342,24 @@ const TorneoBloque = memo(function TorneoBloque({ grupo, abierto, defaultAbierto
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: '700', fontSize: '.98rem', color: '#202124' }}>{torneo?.name}</span>
+            <span style={{ fontWeight: '700', fontSize: '1.02rem', color: '#202124', lineHeight: 1.25 }}>{torneo?.name}</span>
             {!activo && <span style={{ fontSize: '.6rem', fontWeight: '700', color: '#5f6368', background: '#f1f3f4', borderRadius: '5px', padding: '1px 6px' }}>NO ACTIVO</span>}
           </div>
-          <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '3px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <span>{partidos.length} partido{partidos.length !== 1 ? 's' : ''}</span>
-            {jugados > 0 && <span style={{ color: '#1e8e3e' }}>✓ {jugados} jugado{jugados !== 1 ? 's' : ''}</span>}
-            {pendientes > 0 && <span style={{ color: '#e8710a' }}>⏳ {pendientes} pendiente{pendientes !== 1 ? 's' : ''}</span>}
-            {proximo && <span style={{ color: '#1a73e8' }}>Próximo: {fmtDiaCorto.format(new Date(proximo))} · {fmtHoraDate(proximo)}</span>}
+          <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <span className="gcal-chip">{partidos.length} partido{partidos.length !== 1 ? 's' : ''}</span>
+            {jugados > 0 && <span className="gcal-chip ok">{jugados} jugado{jugados !== 1 ? 's' : ''}</span>}
+            {pendientes > 0 && <span className="gcal-chip pend">{pendientes} pendiente{pendientes !== 1 ? 's' : ''}</span>}
           </div>
+          {proximo && (
+            <div style={{ marginTop: '8px', fontSize: '.76rem', color: '#1a73e8', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Clock size={13} style={{ flexShrink: 0 }}/> Próximo partido: {cap(fmtDiaCorto.format(new Date(proximo)))} · {fmtHoraDate(proximo)}
+            </div>
+          )}
         </div>
         {abierto ? <ChevronUp size={20} color="#9aa0a6"/> : <ChevronDown size={20} color="#9aa0a6"/>}
       </div>
       {abierto && (
-        <div style={{ padding: '10px', borderTop: '1px solid #f1f3f4', background: '#fafbfc' }}>
+        <div style={{ padding: '12px', borderTop: '1px solid #f1f3f4', background: '#f4f6f8' }}>
           <ListaJornadas partidos={partidos} prefijo={grupo.id} abiertos={abiertos} forzarAbierto={forzarAbierto} abriendoId={abriendoId} acc={acc}/>
         </div>
       )}
@@ -792,6 +829,7 @@ export default function AdminCalendarioPage() {
 
   return (
     <div>
+      <style>{ESTILOS_CAL}</style>
       {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
       {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
       {planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
@@ -809,16 +847,16 @@ export default function AdminCalendarioPage() {
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '4px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '8px', padding: '3px' }}>
+        <div className="gcal-seg">
           {[{ id: 'todos', label: 'Todos' }, { id: 'pendientes', label: 'Pendientes' }, { id: 'jugados', label: 'Jugados' }].map(f => (
             <button key={f.id} onClick={() => setFiltro(f.id)}
-              style={{ padding: '5px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', background: filtro === f.id ? '#1a73e8' : 'transparent', color: filtro === f.id ? '#fff' : '#5f6368' }}>
+              style={{ background: filtro === f.id ? '#1a73e8' : 'transparent', color: filtro === f.id ? '#fff' : '#5f6368' }}>
               {f.label}
             </button>
           ))}
         </div>
         <select value={torneoFiltro} onChange={e => setTorneoFiltro(e.target.value)}
-          style={{ padding: '7px 12px', border: '1px solid #dadce0', borderRadius: '8px', fontSize: '.875rem', color: '#202124', outline: 'none', background: '#fff', maxWidth: '100%' }}>
+          style={{ flex: '1 1 200px', minWidth: 0, minHeight: '40px', padding: '7px 12px', border: '1px solid #dadce0', borderRadius: '10px', fontSize: '.875rem', color: '#202124', outline: 'none', background: '#fff', maxWidth: '100%' }}>
           <option value="">Todos los torneos</option>
           {activos.length > 0 && (
             <optgroup label="Activos">
@@ -831,10 +869,10 @@ export default function AdminCalendarioPage() {
             </optgroup>
           )}
         </select>
-        <div style={{ position: 'relative', flex: '1 1 180px', minWidth: '160px', maxWidth: '320px' }}>
+        <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 0, maxWidth: '360px' }}>
           <Search size={14} color="#9aa0a6" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}/>
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar equipo o cancha…"
-            style={{ width: '100%', boxSizing: 'border-box', padding: '7px 12px 7px 30px', border: '1px solid #dadce0', borderRadius: '8px', fontSize: '.875rem', color: '#202124', outline: 'none', background: '#fff' }}/>
+            style={{ width: '100%', boxSizing: 'border-box', minHeight: '40px', padding: '7px 12px 7px 32px', border: '1px solid #dadce0', borderRadius: '10px', fontSize: '.875rem', color: '#202124', outline: 'none', background: '#fff' }}/>
         </div>
         {torneoFiltro && filtrados.length > 0 && (
           <button onClick={() => setFlyerGrupo({ torneo: construirTorneoFlyer(filtrados), partidos: filtrados })}
@@ -842,11 +880,11 @@ export default function AdminCalendarioPage() {
             <Image size={13}/> Crear flyer (todos)
           </button>
         )}
-        <div style={{ marginLeft: 'auto', fontSize: '.8rem', color: '#9aa0a6', textAlign: 'right' }}>
-          {torneosVista.length > 1 && <span>{torneosVista.length} torneos · </span>}
-          {filtrados.length} partido{filtrados.length !== 1 ? 's' : ''}
-          {pendientesTotal > 0 && filtro === 'todos' && <span> · ⏳ {pendientesTotal}</span>}
-          {cargandoMas && <span> · cargando más…</span>}
+        <div style={{ flexBasis: '100%', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {torneosVista.length > 1 && <span className="gcal-chip">{torneosVista.length} torneos</span>}
+          <span className="gcal-chip">{filtrados.length} partido{filtrados.length !== 1 ? 's' : ''}</span>
+          {pendientesTotal > 0 && filtro === 'todos' && <span className="gcal-chip pend">{pendientesTotal} pendiente{pendientesTotal !== 1 ? 's' : ''}</span>}
+          {cargandoMas && <span style={{ fontSize: '.74rem', color: '#9aa0a6' }}>cargando más…</span>}
         </div>
       </div>
 
