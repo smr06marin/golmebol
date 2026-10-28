@@ -32,11 +32,9 @@ function textoContraste(hex) {
   return luminancia > 0.6 ? '#0c1116' : '#fff'
 }
 
-// Escudo con las tarjetas del equipo como insignia pequeña en la esquina —
-// solo aparece si el equipo ya tiene alguna.
-function EscudoConTarjetas({ logo_url, name, amarillas, rojas, size = 'clamp(25px, 7.2vw, 38px)' }) {
+// Escudo del equipo (las faltas y tarjetas van aparte, debajo del nombre — ver StatsEquipo)
+function Escudo({ logo_url, name, size = 'clamp(25px, 7.2vw, 38px)' }) {
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
-  const hayTarjetas = (amarillas || 0) > 0 || (rojas || 0) > 0
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,.9)' }}>
@@ -44,12 +42,39 @@ function EscudoConTarjetas({ logo_url, name, amarillas, rojas, size = 'clamp(25p
           ? <img src={logo_url} alt={name || ''} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/>
           : <span style={{ fontSize: 'clamp(.65rem, 2.8vw, .9rem)', fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
       </div>
-      {hayTarjetas && (
-        <div style={{ position: 'absolute', bottom: -4, right: -6, display: 'flex', gap: '1px', background: '#000', borderRadius: '5px', padding: '1px 3px', lineHeight: 1, boxShadow: '0 0 0 1px rgba(255,255,255,.25)' }}>
-          {amarillas > 0 && <span style={{ fontSize: '.6rem', fontWeight: 900 }}>🟨{amarillas}</span>}
-          {rojas > 0 && <span style={{ fontSize: '.6rem', fontWeight: 900 }}>🟥{rojas}</span>}
-        </div>
+    </div>
+  )
+}
+
+const COLOR_TARJETA = { amarilla: '#f9c400', azul: '#2f7bff', roja: '#e5283b' }
+
+// Lo que lleva cada equipo, debajo de su nombre: FALTAS del tiempo en juego
+// (se reinician al empezar el 2.º tiempo) y las TARJETAS de todo el partido
+// (amarilla, azul y roja, con ×cantidad) — estas no se borran hasta que el
+// partido termina.
+function StatsEquipo({ faltas, mostrarFaltas, amarillas, azules, rojas }) {
+  const tarjetas = [['amarilla', amarillas], ['azul', azules], ['roja', rojas]].filter(([, n]) => (n || 0) > 0)
+  if (!mostrarFaltas && tarjetas.length === 0) return <div/>
+  return (
+    <div style={{
+      // si no caben en una línea (celular), las tarjetas bajan a una segunda línea en vez de salirse de la pantalla
+      justifySelf: 'center', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', columnGap: 'clamp(5px, 2vw, 9px)', rowGap: '1px',
+      minWidth: 0, maxWidth: '100%', boxSizing: 'border-box',
+      background: 'rgba(6,6,8,.94)', borderRadius: '0 0 10px 10px', padding: '3px 8px 4px', marginTop: '-1px',
+      boxShadow: '0 3px 10px rgba(0,0,0,.45)',
+    }}>
+      {mostrarFaltas && (
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: '4px', whiteSpace: 'nowrap' }}>
+          <span style={{ fontFamily: FUENTE, fontWeight: 700, fontSize: 'clamp(.5rem, 2.2vw, .62rem)', letterSpacing: '.08em', color: '#9aa0a6' }}>FALTAS</span>
+          <span style={{ ...NUMEROS, fontWeight: 700, fontSize: 'clamp(.78rem, 3.2vw, .98rem)', color: '#fff' }}>{faltas || 0}</span>
+        </span>
       )}
+      {tarjetas.map(([tipo, n]) => (
+        <span key={tipo} style={{ display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
+          <span style={{ width: 'clamp(7px, 2.2vw, 9px)', height: 'clamp(10px, 3.1vw, 13px)', borderRadius: '2px', background: COLOR_TARJETA[tipo], display: 'inline-block', boxShadow: '0 0 0 1px rgba(0,0,0,.4)' }}/>
+          <span style={{ ...NUMEROS, fontWeight: 700, fontSize: 'clamp(.72rem, 3vw, .92rem)', color: '#fff' }}>×{n}</span>
+        </span>
+      ))}
     </div>
   )
 }
@@ -79,14 +104,13 @@ function EtiquetaEquipo({ nombre, color, lado }) {
 
 // `partido` viene con la misma forma que arma `partidosVivo` en LandingPage:
 // { home, away: {name, logo_url}, vivo: {golesLocal, golesVis, reloj, descanso},
-//   colores?: {colorLocal, colorVisitante}, detalle?: {faltasLocal, faltasVisitante, amarillas*, rojas*}, global? }
+//   colores?: {colorLocal, colorVisitante}, detalle?: {faltasLocal, faltasVisitante, mostrarFaltas, amarillas*, azules*, rojas*}, global? }
 // Si no hay partido en vivo que mostrar, no renderiza nada.
 export default function MarcadorEnVivoOverlay({ partido }) {
   if (!partido?.vivo) return null
   const { home, away, vivo, global } = partido
   const col = partido.colores || {}
   const det = partido.detalle || {}
-  const hayFaltas = (det.faltasLocal || 0) > 0 || (det.faltasVisitante || 0) > 0
 
   return (
     <div style={{
@@ -105,7 +129,7 @@ export default function MarcadorEnVivoOverlay({ partido }) {
             queda exactamente en el centro, igual que el cronómetro de abajo */}
         <div style={LADO}>
           <EtiquetaEquipo nombre={home?.name} color={col.colorLocal} lado="izquierda"/>
-          <EscudoConTarjetas logo_url={home?.logo_url} name={home?.name} amarillas={det.amarillasLocal} rojas={det.rojasLocal}/>
+          <Escudo logo_url={home?.logo_url} name={home?.name}/>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.1vw, 9px)', flexShrink: 0, padding: '0 2px' }}>
           <span style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesLocal}</span>
@@ -113,11 +137,14 @@ export default function MarcadorEnVivoOverlay({ partido }) {
           <span style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesVis}</span>
         </div>
         <div style={LADO}>
-          <EscudoConTarjetas logo_url={away?.logo_url} name={away?.name} amarillas={det.amarillasVisitante} rojas={det.rojasVisitante}/>
+          <Escudo logo_url={away?.logo_url} name={away?.name}/>
           <EtiquetaEquipo nombre={away?.name} color={col.colorVisitante} lado="derecha"/>
         </div>
       </div>
 
+      {/* ── Fila de abajo: faltas/tarjetas del local · reloj · faltas/tarjetas del visitante ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', columnGap: 'clamp(4px, 2.2vw, 12px)', width: '100%', boxSizing: 'border-box' }}>
+      <StatsEquipo faltas={det.faltasLocal} mostrarFaltas={det.mostrarFaltas} amarillas={det.amarillasLocal} azules={det.azulesLocal} rojas={det.rojasLocal}/>
       {/* ── Reloj del partido, en su propia píldora debajo, con acento rojo de "en vivo" ── */}
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: '8px', background: 'rgba(6,6,8,.94)',
@@ -143,17 +170,14 @@ export default function MarcadorEnVivoOverlay({ partido }) {
             : vivo.reloj}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {hayFaltas && (
-            <span style={{ ...NUMEROS, fontSize: 'clamp(.75rem, 3vw, .9rem)', color: '#c9c9c9', whiteSpace: 'nowrap' }}>
-              F {det.faltasLocal || 0}-{det.faltasVisitante || 0}
-            </span>
-          )}
           {global && (
             <span style={{ ...NUMEROS, fontSize: 'clamp(.75rem, 3vw, .9rem)', color: '#f5a623', whiteSpace: 'nowrap' }}>
               Global {global.local}-{global.visitante}
             </span>
           )}
         </div>
+      </div>
+      <StatsEquipo faltas={det.faltasVisitante} mostrarFaltas={det.mostrarFaltas} amarillas={det.amarillasVisitante} azules={det.azulesVisitante} rojas={det.rojasVisitante}/>
       </div>
     </div>
   )

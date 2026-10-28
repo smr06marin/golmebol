@@ -108,43 +108,52 @@ export function derivarColoresUniforme(match) {
 }
 
 // Faltas acumuladas (las que llevan a tiro libre directo desde la 5ta, solo
-// aplica a Fútbol 5) y tarjetas amarillas/rojas, TOTALIZADAS POR EQUIPO (no
+// aplica a Fútbol 5) y tarjetas amarillas/azules/rojas, TOTALIZADAS POR EQUIPO (no
 // por jugador) — pensado para mostrarlas chiquitas en el marcador en vivo de
 // la portada, como un canal deportivo. Las faltas cuentan solo las del
 // período actual (se reinician cada mitad, igual que en la pantalla del
 // árbitro); las tarjetas cuentan todo el partido.
 export function derivarFaltasYTarjetas(match) {
-  const vacio = { faltasLocal: 0, faltasVisitante: 0, amarillasLocal: 0, amarillasVisitante: 0, rojasLocal: 0, rojasVisitante: 0 }
+  const vacio = { faltasLocal: 0, faltasVisitante: 0, amarillasLocal: 0, amarillasVisitante: 0, azulesLocal: 0, azulesVisitante: 0, rojasLocal: 0, rojasVisitante: 0, mostrarFaltas: false }
   const picked = snapshotMasReciente(match)
   if (!picked) return vacio
   const { snap, tipo } = picked
   const periodoActual = snap.periodo || 1
+  // Las faltas acumuladas solo existen en Fútbol 5; si no se sabe la modalidad, se muestran solo cuando ya hay alguna.
+  const modalidad = match?.tournaments?.modalidad || null
+  const mostrarFaltas = modalidad ? modalidad === 'Fútbol 5' : null
 
   if (tipo === 'rapida') {
     const eventos = snap.eventos || []
     const contar = (team, tipoEvento, soloPeriodoActual) => eventos.filter(e =>
       e.team === team && e.tipo === tipoEvento && (!soloPeriodoActual || e.periodo === periodoActual)
     ).length
-    return {
+    const r = {
       faltasLocal:         contar('local',      'falta_acum', true),
       faltasVisitante:     contar('visitante',  'falta_acum', true),
       amarillasLocal:      contar('local',      'yellow_card', false),
       amarillasVisitante:  contar('visitante',  'yellow_card', false),
+      azulesLocal:         contar('local',      'blue_card', false),
+      azulesVisitante:     contar('visitante',  'blue_card', false),
       rojasLocal:          contar('local',      'red_card', false),
       rojasVisitante:      contar('visitante',  'red_card', false),
     }
+    return { ...r, mostrarFaltas: mostrarFaltas ?? (r.faltasLocal > 0 || r.faltasVisitante > 0) }
   }
 
   const faltasPeriodo = (faltasAcum) => (faltasAcum?.[`p${periodoActual}`] || []).filter(Boolean).length
   const conTarjeta = (jugs, campo) => (jugs || []).filter(j => j[campo]).length
-  return {
+  const r = {
     faltasLocal:         faltasPeriodo(snap.faltasAcumLocal),
     faltasVisitante:     faltasPeriodo(snap.faltasAcumVis),
     amarillasLocal:      conTarjeta(snap.jugadoresLocal, 'amarilla'),
     amarillasVisitante:  conTarjeta(snap.jugadoresVisitante, 'amarilla'),
+    azulesLocal:         conTarjeta(snap.jugadoresLocal, 'azul'),
+    azulesVisitante:     conTarjeta(snap.jugadoresVisitante, 'azul'),
     rojasLocal:          conTarjeta(snap.jugadoresLocal, 'roja'),
     rojasVisitante:      conTarjeta(snap.jugadoresVisitante, 'roja'),
   }
+  return { ...r, mostrarFaltas: mostrarFaltas ?? (r.faltasLocal > 0 || r.faltasVisitante > 0) }
 }
 
 // Lista de goles (jugador + número de camiseta + minuto) del partido, sacada
