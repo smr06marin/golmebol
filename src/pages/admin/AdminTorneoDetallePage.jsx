@@ -206,6 +206,11 @@ function TeamStats({ jugadores, equipo, logo }) {
 
 // Orden = camino real del torneo. "paso" numera lo que se hace en orden;
 // "mas" guarda lo que no se toca todos los días (en celular van todas en una fila).
+// El árbol de eliminatorias ya no se arma desde acá: las llaves se crean a mano en Calendario
+// (con tercer puesto, ida y vuelta y sus reglas). Se deja en false en vez de borrar el código,
+// por si algún día se quiere volver a mostrar.
+const MOSTRAR_TAB_ELIMINATORIAS = false
+
 const TABS = [
   { id: 'actividad',       label: 'Inicio',          icon: <Trophy size={16}/> },
   { id: 'equipos',         label: 'Equipos',         icon: <Shield size={16}/>,    paso: 1 },
@@ -242,6 +247,10 @@ const FASES = [
   { value: 'semifinal', label: '⚡ Semifinal' },
   { value: 'final',     label: '🏆 Final' },
 ]
+// Fases al CREAR un partido a mano: las de siempre + tercer puesto (que por dentro
+// se guarda como fase 'final' con ronda "Tercer puesto", igual que el que arma el sistema).
+const FASES_CREAR = [...FASES, { value: 'tercer_puesto', label: '🥉 Tercer puesto' }]
+const FASES_CON_LLAVE = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto']
 const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final' }
 
 const COLORES_GRUPO = ['#1a73e8','#e8710a','#1e8e3e','#9955ff','#d93025','#00a896','#f9a825','#4488ff']
@@ -1075,6 +1084,9 @@ export default function AdminTorneoDetallePage() {
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
   const [verAvanzadoMarca, setVerAvanzadoMarca] = useState(false) // dominio propio y favicon: rara vez se tocan
+  // La pestaña Grupos solo tiene sentido si el torneo es por grupos: un todos contra todos
+  // (un solo grupo) o una eliminación directa no la necesitan.
+  const mostrarGrupos = !(['Todos contra todos', 'Eliminación directa'].includes(torneo?.formato) && grupos.length <= 1)
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
@@ -3746,30 +3758,53 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       if (tipoPartidoForm !== 'inter' && (gl !== tipoPartidoForm || gv !== tipoPartidoForm)) return showMsg('Los dos equipos deben ser del grupo elegido', 'error')
     }
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
+    const esTercero = formPartido.fase === 'tercer_puesto'
+    const llaveIdaVuelta = !!formPartido.ida_vuelta && formPartido.fase !== 'grupo'
+    if (llaveIdaVuelta && formPartido.vuelta_modo === 'con_fecha' && !formPartido.vuelta_fecha) return showMsg('Pon la fecha del partido de vuelta, o elige "Sin fecha todavía"', 'error')
     setLoadingPartido(true)
+    // Reglas de la llave (opcionales, "avanzado"): solo se guardan si cambian lo normal
+    // (global por goles + el que pierde queda eliminado), así lo de siempre no toca la base.
+    const reglas = {}
+    if (formPartido.fase !== 'grupo') {
+      if (llaveIdaVuelta && formPartido.criterio === 'puntos') reglas.criterio = 'puntos'
+      if (formPartido.elimina === false) reglas.elimina = false
+    }
     const base = {
       tournament_id: id,
       location: formPartido.location || null, cancha_id: formPartido.cancha_id ? String(formPartido.cancha_id) : null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
-      fase: formPartido.fase || 'grupo', status: 'scheduled',
+      fase: esTercero ? 'final' : (formPartido.fase || 'grupo'), status: 'scheduled',
+      ...(Object.keys(reglas).length > 0 ? { config_llave: reglas } : {}),
       arbitro1_id: formPartido.arbitro1_id || null, arbitro2_id: formPartido.arbitro2_id || null, arbitro3_id: formPartido.arbitro3_id || null,
     }
     // Ida y vuelta: crea los DOS partidos de una — la vuelta con los equipos
     // invertidos (el local de ida visita en la vuelta) y sin fecha todavía
     // (se le pone después, cuando se sepa cuándo se juega).
-    const conVuelta = formPartido.ida_vuelta && formPartido.fase !== 'grupo'
+    const conVuelta = llaveIdaVuelta
+    const nombreRonda = esTercero ? 'Tercer puesto' : null
+    const fechaVuelta = conVuelta && formPartido.vuelta_modo === 'con_fecha' && formPartido.vuelta_fecha
+      ? formPartido.vuelta_fecha + (formPartido.vuelta_hora ? 'T' + formPartido.vuelta_hora : 'T00:00') + ':00-05:00'
+      : null
     const inserts = [{
       ...base, home_team_id: formPartido.home_team_id, away_team_id: formPartido.away_team_id,
       played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00') + ':00-05:00',
-      ronda: conVuelta ? 'Ida' : null,
+      ronda: conVuelta ? (esTercero ? 'Tercer puesto (ida)' : 'Ida') : nombreRonda,
     }]
     if (conVuelta) {
-      inserts.push({ ...base, home_team_id: formPartido.away_team_id, away_team_id: formPartido.home_team_id, played_at: null, ronda: 'Vuelta' })
+      inserts.push({ ...base, home_team_id: formPartido.away_team_id, away_team_id: formPartido.home_team_id, played_at: fechaVuelta, ronda: esTercero ? 'Tercer puesto (vuelta)' : 'Vuelta' })
     }
     let { error } = await supabase.from('matches').insert(inserts)
     if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').insert(inserts.map(({ cancha_id, ...resto }) => resto)))
+    // Si todavía no se corrió el SQL de reglas de llave, el partido se crea igual (sin las reglas) y se avisa.
+    let sinReglas = false
+    if (error && (error.message || '').includes('config_llave')) {
+      sinReglas = true
+      ;({ error } = await supabase.from('matches').insert(inserts.map(({ config_llave, ...resto }) => resto)))
+    }
     if (error) showMsg('Error al crear partido', 'error')
     else {
-      showMsg(conVuelta ? 'Partido de ida creado ✓ — ponle fecha a la vuelta cuando la sepas' : 'Partido creado ✓')
+      showMsg(sinReglas
+        ? 'Partido creado ✓, pero las reglas de la llave (global y eliminación) no se guardaron: falta activar esa opción en la base de datos'
+        : conVuelta ? (fechaVuelta ? 'Partidos de ida y de vuelta creados ✓' : 'Partido de ida creado ✓ — la vuelta quedó sin fecha, póngale la fecha cuando la sepa') : 'Partido creado ✓')
       setShowFormPartido(false)
       setTipoPartidoForm('')
       setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', cancha_id: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
@@ -5069,7 +5104,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
       {/* Tabs: en el orden en que se trabaja. En computador "Más" guarda lo menos usado; en celular todas van en una sola fila que se desliza */}
       {(() => {
-        const visibles = TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado))
+        const visibles = TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado) && (t.id !== 'grupos' || mostrarGrupos) && (t.id !== 'eliminatorias' || MOSTRAR_TAB_ELIMINATORIAS))
+        const pasosVisibles = visibles.filter(x => x.paso)
         const principales = isMobile ? visibles : visibles.filter(t => !t.mas)
         const secundarias = isMobile ? [] : visibles.filter(t => t.mas)
         const activaEnMas = secundarias.find(t => t.id === tab)
@@ -5079,7 +5115,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <button key={t.id} onClick={() => setTab(t.id)} data-tab-activa={activa ? '1' : '0'}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, whiteSpace: 'nowrap', minHeight: isMobile ? '42px' : 'auto', padding: isMobile ? '8px 14px' : '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: isMobile ? '.85rem' : '.8rem', fontWeight: activa ? '600' : '500', transition: 'all .15s', background: activa ? '#1a73e8' : 'transparent', color: activa ? '#fff' : '#5f6368' }}>
               {t.paso
-                ? <span style={{ width: '20px', height: '20px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.68rem', fontWeight: '700', background: activa ? '#fff' : '#e8f0fe', color: '#1a73e8' }}>{t.paso}</span>
+                ? <span style={{ width: '20px', height: '20px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.68rem', fontWeight: '700', background: activa ? '#fff' : '#e8f0fe', color: '#1a73e8' }}>{pasosVisibles.indexOf(t) + 1}</span>
                 : t.icon}
               {t.label}
             </button>
@@ -5121,8 +5157,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           { label: 'Ingresar Resultados', done: partidosJugados.length > 0,  tab: 'calendario',    titulo: 'Registra los resultados',   detalle: 'Cuando se juegue un partido, anota su resultado.', boton: 'Ir a Calendario →' },
           { label: 'Fase Eliminatorias',  done: gruposFinalizados,           tab: 'eliminatorias', titulo: 'Arma las eliminatorias',    detalle: 'Cuando termine la fase de grupos, arma las llaves finales.', boton: 'Ir a Eliminatorias →' },
         ]
-        const siguiente = pasosInicio.find(p => !p.done)
-        const hechos = pasosInicio.filter(p => p.done).length
+        const pasosInicioVisibles = pasosInicio.filter(p => (p.tab !== 'grupos' || mostrarGrupos) && (p.tab !== 'eliminatorias' || MOSTRAR_TAB_ELIMINATORIAS))
+        const siguiente = pasosInicioVisibles.find(p => !p.done)
+        const hechos = pasosInicioVisibles.filter(p => p.done).length
         return (
         <div>
           <div style={{ background: siguiente ? '#e8f0fe' : '#e6f4ea', border: `1px solid ${siguiente ? '#d2e3fc' : '#ceead6'}`, borderRadius: '12px', padding: '18px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
@@ -5132,7 +5169,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <div style={{ fontSize: '.82rem', color: '#5f6368', lineHeight: 1.45 }}>{siguiente ? siguiente.detalle : 'Puedes revisar las estadísticas o las cuentas cuando quieras.'}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-              <span style={{ fontSize: '.78rem', color: '#5f6368', fontWeight: '600' }}>{hechos} de {pasosInicio.length}</span>
+              <span style={{ fontSize: '.78rem', color: '#5f6368', fontWeight: '600' }}>{hechos} de {pasosInicioVisibles.length}</span>
               <button onClick={() => setTab(siguiente ? siguiente.tab : 'estadisticas')}
                 style={{ padding: '11px 20px', background: siguiente ? '#1a73e8' : '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.88rem', minHeight: '44px' }}>
                 {siguiente ? siguiente.boton : 'Ver estadísticas →'}
@@ -5142,8 +5179,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '20px' }}>
           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
             <div style={{ fontWeight: '600', color: '#202124', marginBottom: '16px', fontSize: '.9rem' }}>✅ Actividad del torneo</div>
-            {pasosInicio.map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < 5 ? '1px solid #f1f3f4' : 'none' }}>
+            {pasosInicioVisibles.map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < pasosInicioVisibles.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: item.done ? '#e6f4ea' : '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {item.done ? <Check size={14} color="#1e8e3e"/> : <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dadce0' }}/>}
@@ -5599,7 +5636,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.hora} onChange={e => setFormPartido(f => ({ ...f, hora: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Cancha</label><select value={formPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormPartido(f => ({ ...f, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
-                      <div><label style={labelStyle}>Fase</label><select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
+                      <div><label style={labelStyle}>Fase</label><select value={formPartido.fase} onChange={e => setFormPartido(f => ({ ...f, fase: e.target.value }))} style={inputStyle}>{FASES_CREAR.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
                     </div>
                     {formPartido.home_team_id && formPartido.away_team_id && formPartido.home_team_id !== formPartido.away_team_id && (() => {
                       const opts = { fecha: formPartido.played_at, hora: formPartido.hora, canchaId: formPartido.cancha_id }
@@ -5613,26 +5650,81 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         </div>
                       )
                     })()}
-                    {formPartido.fase !== 'grupo' && (
-                      <div>
-                        <label style={labelStyle}>¿Se juega ida y vuelta?</label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button type="button" onClick={() => setFormPartido(f => ({ ...f, ida_vuelta: false }))}
-                            style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: !formPartido.ida_vuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: !formPartido.ida_vuelta ? '#e8f0fe' : '#fff', color: !formPartido.ida_vuelta ? '#1a73e8' : '#5f6368' }}>
-                            Partido único
-                          </button>
-                          <button type="button" onClick={() => setFormPartido(f => ({ ...f, ida_vuelta: true }))}
-                            style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', border: formPartido.ida_vuelta ? '2px solid #1a73e8' : '1px solid #dadce0', background: formPartido.ida_vuelta ? '#e8f0fe' : '#fff', color: formPartido.ida_vuelta ? '#1a73e8' : '#5f6368' }}>
-                            Ida y vuelta
-                          </button>
-                        </div>
-                        {formPartido.ida_vuelta && (
-                          <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '6px' }}>
-                            Se crea este partido como "Ida" con la fecha de arriba, y otro "Vuelta" (con los equipos invertidos) sin fecha todavía — se la pones cuando la sepas. En la planilla y en vivo de la vuelta se va a ver el marcador global sumando los goles de ambos partidos.
+                    {formPartido.fase !== 'grupo' && (() => {
+                      const idaVuelta = !!formPartido.ida_vuelta
+                      const elimina = formPartido.elimina !== false
+                      const criterio = formPartido.criterio === 'puntos' ? 'puntos' : 'goles'
+                      const vueltaConFecha = formPartido.vuelta_modo === 'con_fecha'
+                      // Tarjeta de opción (misma forma para todas, para que se vea ordenado)
+                      const tarjeta = (activo, onClick, titulo, sub) => (
+                        <button type="button" onClick={onClick}
+                          style={{ flex: '1 1 160px', textAlign: 'left', padding: '10px 12px', minHeight: '48px', borderRadius: '10px', cursor: 'pointer', border: activo ? '2px solid #1a73e8' : '1px solid #dadce0', background: activo ? '#e8f0fe' : '#fff' }}>
+                          <span style={{ display: 'block', fontSize: '.82rem', fontWeight: '700', color: activo ? '#1a73e8' : '#202124' }}>{titulo}</span>
+                          {sub && <span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368', marginTop: '2px', lineHeight: 1.35 }}>{sub}</span>}
+                        </button>
+                      )
+                      return (
+                        <div style={{ border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px', background: '#fafbfc', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                          <div>
+                            <label style={labelStyle}>¿Se juega ida y vuelta?</label>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              {tarjeta(!idaVuelta, () => setFormPartido(f => ({ ...f, ida_vuelta: false })), 'Partido único', 'Se juega un solo partido')}
+                              {tarjeta(idaVuelta, () => setFormPartido(f => ({ ...f, ida_vuelta: true })), 'Ida y vuelta', 'Dos partidos entre los mismos equipos')}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )}
+
+                          {idaVuelta && (
+                            <div>
+                              <label style={labelStyle}>Partido de vuelta</label>
+                              <div style={{ fontSize: '.72rem', color: '#5f6368', marginBottom: '8px', lineHeight: 1.4 }}>
+                                Se crea junto con la ida, con los equipos invertidos (el local de la ida visita en la vuelta).
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {tarjeta(!vueltaConFecha, () => setFormPartido(f => ({ ...f, vuelta_modo: 'sin_fecha' })), 'Sin fecha todavía', 'La creo ahora y le pongo la fecha después')}
+                                {tarjeta(vueltaConFecha, () => setFormPartido(f => ({ ...f, vuelta_modo: 'con_fecha' })), 'Ponerle fecha ahora', 'Elijo el día y la hora de la vuelta')}
+                              </div>
+                              {vueltaConFecha && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                                  <div><label style={labelStyle}>Fecha de la vuelta *</label><input type="date" value={formPartido.vuelta_fecha || ''} onChange={e => setFormPartido(f => ({ ...f, vuelta_fecha: e.target.value }))} style={inputStyle}/></div>
+                                  <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.vuelta_hora || ''} onChange={e => setFormPartido(f => ({ ...f, vuelta_hora: e.target.value }))} style={inputStyle}/></div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Reglas de la llave: escondidas por defecto, para no recargar el formulario */}
+                          <div>
+                            <button type="button" onClick={() => setFormPartido(f => ({ ...f, reglas_abiertas: !f.reglas_abiertas }))} aria-expanded={!!formPartido.reglas_abiertas}
+                              style={{ background: 'none', border: 'none', padding: '4px 0', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '700', minHeight: '32px' }}>
+                              ⚙️ Reglas de la llave (avanzado) {formPartido.reglas_abiertas ? '▴' : '▾'}
+                            </button>
+                            {formPartido.reglas_abiertas && (
+                              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '12px', borderTop: '1px dashed #e3e6ea' }}>
+                                <div>
+                                  <label style={labelStyle}>Eliminación directa</label>
+                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    {tarjeta(elimina, () => setFormPartido(f => ({ ...f, elimina: true })), 'Sí, el que pierda queda eliminado', 'Si terminan empatados se define por penales')}
+                                    {tarjeta(!elimina, () => setFormPartido(f => ({ ...f, elimina: false })), 'No, el empate es válido', 'No se pregunta por penales al terminar')}
+                                  </div>
+                                </div>
+                                {idaVuelta && (
+                                  <div>
+                                    <label style={labelStyle}>¿Cómo se define quién avanza (global)?</label>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                      {tarjeta(criterio === 'goles', () => setFormPartido(f => ({ ...f, criterio: 'goles' })), 'Por goles', 'Se suman los goles de los dos partidos')}
+                                      {tarjeta(criterio === 'puntos', () => setFormPartido(f => ({ ...f, criterio: 'puntos' })), 'Por puntos', '3 puntos por ganar y 1 por empatar en cada partido; avanza quien sume más')}
+                                    </div>
+                                    <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '8px', lineHeight: 1.4 }}>
+                                      En la planilla y en vivo de la vuelta se muestra el global con este criterio. Si quedan iguales, se define por penales (si eligió eliminación directa).
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                     <button onClick={handleCrearPartido} disabled={loadingPartido} style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loadingPartido ? .7 : 1 }}>{loadingPartido ? 'Guardando...' : 'Crear partido'}</button>

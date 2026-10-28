@@ -17,7 +17,7 @@ import { construirDeudaTarjetas, fetchMatchesInfo } from '../../lib/tarjetasDeud
 import { comprimirImagen } from '../../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../../lib/statsPartido'
 import PlanillaPenales, { PreguntaPenales } from '../PlanillaPenales'
-import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador } from '../../lib/penales'
+import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador, sumarGlobal, criterioLlave, eliminacionDirecta } from '../../lib/penales'
 import PantallaPapel from '../planillaPapel/PantallaPapel'
 import ModalCierrePapel from '../planillaPapel/ModalCierrePapel'
 import { papelVacio, normalizarPapel, papelParaGuardar } from '../../lib/planillaPapel'
@@ -1583,7 +1583,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const gl = eventosLocal.filter(e => e.tipo === 'goal').length
     const gv = eventosVis.filter(e => e.tipo === 'goal').length
     // En la hoja de papel, si ya marcaron "Hubo penales" arriba no se vuelve a preguntar.
-    if (necesitaPreguntarPenales({ fase: partido?.fase, golesLocal: gl, golesVis: gv, globalLlave }) && !(esPapel && papel.penales.hubo)) {
+    if (necesitaPreguntarPenales({ fase: partido?.fase, golesLocal: gl, golesVis: gv, globalLlave, eliminacion: eliminacionDirecta(partido) }) && !(esPapel && papel.penales.hubo)) {
       setCierrePendiente(datos)
       return
     }
@@ -1737,7 +1737,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const invertido = partidoHermano.home_team_id === partido.away_team_id
     const otroLocal     = invertido ? (partidoHermano.away_score || 0) : (partidoHermano.home_score || 0)
     const otroVisitante = invertido ? (partidoHermano.home_score || 0) : (partidoHermano.away_score || 0)
-    return { local: golesLocalActual + otroLocal, visitante: golesVisActual + otroVisitante }
+    return sumarGlobal({ criterio: criterioLlave(partido), propioLocal: golesLocalActual, propioVis: golesVisActual, otroLocal, otroVis: otroVisitante })
   })()
 
   // ── Hoja de papel ──────────────────────────────────────────────────────

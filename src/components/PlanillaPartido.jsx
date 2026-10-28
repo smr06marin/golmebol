@@ -11,7 +11,7 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 import { comprimirImagen } from '../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido'
 import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
-import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador } from '../lib/penales'
+import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador, sumarGlobal, criterioLlave, eliminacionDirecta } from '../lib/penales'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../lib/alarmaTiempo'
 
 const AZUL = '#1a3a8a'
@@ -996,7 +996,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const invertido = partidoHermano.home_team_id === partido.away_team_id
     const otroLocal     = invertido ? (partidoHermano.away_score || 0) : (partidoHermano.home_score || 0)
     const otroVisitante = invertido ? (partidoHermano.home_score || 0) : (partidoHermano.away_score || 0)
-    return { local: golesLocal.filter(Boolean).length + otroLocal, visitante: golesVisitante.filter(Boolean).length + otroVisitante }
+    return sumarGlobal({ criterio: criterioLlave(partido), propioLocal: golesLocal.filter(Boolean).length, propioVis: golesVisitante.filter(Boolean).length, otroLocal, otroVis: otroVisitante })
   })()
 
   // Si un admin registra el pago de una tarjeta desde otro lado (o desde otro
@@ -1725,6 +1725,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       golesLocal: golesLocal.filter(Boolean).length,
       golesVis: golesVisitante.filter(Boolean).length,
       globalLlave,
+      eliminacion: eliminacionDirecta(partido),
     })
     if (empate && !tandaPenales && !hubopenales && !penalesDeclinado) { setPreguntaPenales(true); return }
     setShowMVP(true)

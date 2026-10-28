@@ -1,3 +1,4 @@
+import { sumarGlobal, criterioLlave } from './penales'
 // Deriva el estado "en vivo" de un partido a partir del snapshot que YA suben
 // en tiempo real la planilla completa (matches.live_state) o la planilla
 // rápida (matches.live_state_rapida) mientras el árbitro está cargando el
@@ -358,7 +359,9 @@ export function marcadorGlobal(match, hermano) {
   const invertido = hermano.home_team_id === match.away_team_id
   const otroLocal     = invertido ? otro.visitante : otro.local
   const otroVisitante = invertido ? otro.local      : otro.visitante
-  return { local: propio.local + otroLocal, visitante: propio.visitante + otroVisitante, hayHermano: true }
+  // El criterio (goles o puntos) lo eligió el organizador al crear la llave; si no hay nada guardado, suma goles como siempre.
+  const g = sumarGlobal({ criterio: criterioLlave(match), propioLocal: propio.local, propioVis: propio.visitante, otroLocal, otroVis: otroVisitante })
+  return { local: g.local, visitante: g.visitante, hayHermano: true }
 }
 
 // ── Varios partidos en una misma transmisión ────────────────────────────

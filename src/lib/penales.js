@@ -97,11 +97,27 @@ export function filasParaGuardar(matchId, tournamentId, kicks, ids) {
   }))
 }
 
+// ── Reglas de la llave (se eligen al crear el partido, ver config_llave en matches) ──
+//  criterio: cómo se define el GLOBAL de una llave ida y vuelta — 'goles' (suma de goles, lo de siempre)
+//  o 'puntos' (3 por ganar cada partido, 1 por empatar). elimina: si el que pierde la llave queda
+//  eliminado (por defecto sí); si es false, un empate no obliga a definir por penales.
+export function criterioLlave(partido) { return partido?.config_llave?.criterio === 'puntos' ? 'puntos' : 'goles' }
+export function eliminacionDirecta(partido) { return partido?.config_llave?.elimina !== false }
+const puntosDe = (a, b) => (a > b ? 3 : a === b ? 1 : 0)
+export function sumarGlobal({ criterio, propioLocal, propioVis, otroLocal, otroVis }) {
+  if (criterio === 'puntos') {
+    return { local: puntosDe(propioLocal, propioVis) + puntosDe(otroLocal, otroVis), visitante: puntosDe(propioVis, propioLocal) + puntosDe(otroVis, otroLocal) }
+  }
+  return { local: propioLocal + otroLocal, visitante: propioVis + otroVis }
+}
+
 // ¿Esta eliminatoria quedó empatada de verdad y toca preguntar por penales?
 //  fase: la del partido ('grupo', 'octavos', ...). golesLocal/golesVis: de ESTE partido.
 //  globalLlave: { local, visitante } si es la vuelta de una llave ida/vuelta ya jugada (si no, null).
-export function necesitaPreguntarPenales({ fase, golesLocal, golesVis, globalLlave }) {
+export function necesitaPreguntarPenales({ fase, golesLocal, golesVis, globalLlave, eliminacion = true }) {
   if (!fase || fase === 'grupo') return false
+  // Si la llave se creó SIN eliminación directa, un empate puede quedar como empate (no hay penales).
+  if (eliminacion === false) return false
   if (globalLlave) return globalLlave.local === globalLlave.visitante
   return golesLocal === golesVis
 }
