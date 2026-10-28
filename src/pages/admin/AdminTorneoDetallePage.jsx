@@ -1064,6 +1064,7 @@ export default function AdminTorneoDetallePage() {
   const [movimientos,      setMovimientos]      = useState([])
   const [statsTarjetas,    setStatsTarjetas]    = useState([])
   const [pendientesTarjetas, setPendientesTarjetas] = useState({}) // { player_id: { am, az, rj } } tarjetas sin pagar
+  const [pendientesPartidos, setPendientesPartidos] = useState({}) // { player_id: [{ am, az, rj }] } una fila por partido con tarjeta sin pagar (para calcular el monto exacto)
   const [showConfigFin,    setShowConfigFin]    = useState(false)
   const [formFin,          setFormFin]          = useState({})
   const [formCanchaPrecios, setFormCanchaPrecios] = useState({}) // { [cancha_id]: { precio_partido, precio_w } } — vacío = usa el valor por defecto del torneo
@@ -2473,14 +2474,18 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // (independiente del saldo del equipo) — para el botón "Pagar" y para
     // que deje de salirle la advertencia en la planilla del próximo partido.
     const pendientes = {}
+    const pendientesPorPartido = {}
     ;(st || []).forEach(s => {
       if (!s.player_id) return
       if (!pendientes[s.player_id]) pendientes[s.player_id] = { am: 0, az: 0, rj: 0 }
+      const filaPartido = { am: (s.yellow_cards || 0) > 0 && !s.yellow_paid, az: (s.blue_cards || 0) > 0 && !s.blue_paid, rj: (s.red_cards || 0) > 0 && !s.red_paid }
+      if (filaPartido.am || filaPartido.az || filaPartido.rj) (pendientesPorPartido[s.player_id] = pendientesPorPartido[s.player_id] || []).push(filaPartido)
       if ((s.yellow_cards || 0) > 0 && !s.yellow_paid) pendientes[s.player_id].am += 1
       if ((s.blue_cards   || 0) > 0 && !s.blue_paid)   pendientes[s.player_id].az += 1
       if ((s.red_cards    || 0) > 0 && !s.red_paid)    pendientes[s.player_id].rj += 1
     })
     setPendientesTarjetas(pendientes)
+    setPendientesPartidos(pendientesPorPartido)
 
     let eventos = evs
     if (!eventos) {
@@ -2672,10 +2677,54 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       .eq('tournament_id', id).eq('player_id', playerId).gt(cantidad, 0)
   }
 
+  // Precio de UNA tarjeta de cada color, según los precios del torneo.
+  const precioTarjeta = color => {
+    const fc = torneo?.finanzas_config || {}
+    return color === 'am' ? (fc.precio_amarilla || 0) : color === 'az' ? (fc.precio_azul || 0) : (fc.precio_roja || 0)
+  }
+
+  // Cuánto cuesta saldar las tarjetas que se marcaron en el modal de pago.
+  // Misma regla de siempre: si en un mismo partido el jugador tiene varias
+  // tarjetas sin pagar, solo se cobra la más cara de ese partido.
+  function montoTarjetasMarcadas(lista) {
+    const porJugador = {}
+    lista.forEach(t => { (porJugador[t.player_id] = porJugador[t.player_id] || new Set()).add(t.color) })
+    let total = 0
+    Object.entries(porJugador).forEach(([pid, colores]) => {
+      (pendientesPartidos[pid] || []).forEach(fila => {
+        total += Math.max(0, ...[...colores].filter(c => fila[c]).map(precioTarjeta))
+      })
+    })
+    return total
+  }
+
   function toggleTarjetaAPagar(playerId, color, nombre) {
-    setTarjetasAPagar(prev => prev.some(t => t.player_id === playerId && t.color === color)
-      ? prev.filter(t => !(t.player_id === playerId && t.color === color))
-      : [...prev, { player_id: playerId, color, nombre }])
+    const yaMarcada = tarjetasAPagar.some(t => t.player_id === playerId && t.color === color)
+    const siguiente = yaMarcada
+      ? tarjetasAPagar.filter(t => !(t.player_id === playerId && t.color === color))
+      : [...tarjetasAPagar, { player_id: playerId, color, nombre }]
+    setTarjetasAPagar(siguiente)
+    // El monto y el concepto se llenan solos con lo que marcó (se pueden
+    // seguir editando a mano). Si no queda nada marcado, se limpia el monto.
+    const total = montoTarjetasMarcadas(siguiente)
+    const nombres = [...new Set(siguiente.map(t => t.nombre))]
+    setPagoForm(f => ({
+      ...f,
+      monto: total > 0 ? String(Math.round(total)) : '',
+      concepto: (!f.concepto || f.concepto.startsWith('Tarjeta')) ? (nombres.length ? `Tarjeta(s) de ${nombres.join(', ')}` : '') : f.concepto,
+    }))
+  }
+
+  // Al cambiar "¿Qué paga?" dentro del modal, el monto se llena con lo que
+  // el equipo debe en ESA cuenta (tarjetas, W/multas o inscripción).
+  function cambiarTipoPago(tipo) {
+    const fila = calcFinanzas().filas.find(r => r.equipo.id === pagoModal?.id)
+    let sugerido = 0
+    if (tipo === 'pago_tarjetas') sugerido = tarjetasAPagar.length > 0 ? montoTarjetasMarcadas(tarjetasAPagar) : (fila?.saldo || 0)
+    else if (tipo === 'pago_cargos') sugerido = fila?.saldoMultas || 0
+    else if (tipo === 'abono_inscripcion') sugerido = fila?.saldoInscripcion || 0
+    if (tipo !== 'pago_tarjetas') setTarjetasAPagar([])
+    setPagoForm(f => ({ ...f, tipo, monto: sugerido > 0 ? String(Math.round(sugerido)) : '', concepto: (f.concepto || '').startsWith('Tarjeta') ? '' : f.concepto }))
   }
 
   async function handleRegistrarPago() {
@@ -7305,15 +7354,53 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               const yaRecaudado = fin.recaudado + (llevar ? fin.inscripcionRecaudada + fin.multasRecaudado : 0)
               const deben = fin.filas.filter(r => pendiente(r) > 0).sort((a, b) => pendiente(b) - pendiente(a))
               const alDia = fin.filas.filter(r => pendiente(r) <= 0)
-              const conceptos = r => [
-                llevar && r.saldoInscripcion > 0 ? 'Inscripción' : null,
-                llevar && r.saldoMultas > 0 ? 'Multa o W' : null,
-                r.saldo > 0 ? 'Tarjetas' : null,
-              ].filter(Boolean).join(' · ')
+              // Qué debe el equipo, concepto por concepto y con su monto.
+              const conceptos = r => {
+                const lineas = []
+                if (llevar && r.saldoInscripcion > 0) {
+                  lineas.push({
+                    clave: 'insc', etiqueta: '📝 Inscripción', valor: r.saldoInscripcion,
+                    detalle: [
+                      r.modoJugador ? `${r.inscritos} jugador(es) × ${fmt(r.tarifaJug)} = ${fmt(r.inscripcion)}` : `Total ${fmt(r.inscripcion)}`,
+                      r.pagosInscripcion > 0 ? `ya pagó ${fmt(r.pagosInscripcion)}` : null,
+                    ].filter(Boolean).join(' · '),
+                  })
+                }
+                if (llevar && r.saldoMultas > 0) {
+                  lineas.push({
+                    clave: 'multa', etiqueta: '⛔ Multa / W', valor: r.saldoMultas,
+                    detalle: [
+                      r.w > 0 ? `W: ${fmt(r.w)}` : null,
+                      r.multas > 0 ? `Multa por no presentarse: ${fmt(r.multas)}` : null,
+                      r.deudas > 0 ? `Deudas anotadas: ${fmt(r.deudas)}` : null,
+                      r.pagosMultas > 0 ? `ya pagó ${fmt(r.pagosMultas)}` : null,
+                    ].filter(Boolean).join(' · '),
+                  })
+                }
+                if (r.saldo > 0) {
+                  // Jugadores con tarjetas sin pagar y cuánto vale lo suyo.
+                  const jugadoresDeben = (r.tarjetasDetalle || []).map(j => {
+                    const pend = (j.player_id && pendientesTarjetas[j.player_id]) || { am: 0, az: 0, rj: 0 }
+                    const marcas = [
+                      ...(pend.am > 0 ? [{ player_id: j.player_id, color: 'am' }] : []),
+                      ...(pend.az > 0 ? [{ player_id: j.player_id, color: 'az' }] : []),
+                      ...(pend.rj > 0 ? [{ player_id: j.player_id, color: 'rj' }] : []),
+                    ]
+                    return { nombre: j.nombre, pend, monto: montoTarjetasMarcadas(marcas) }
+                  }).filter(j => j.pend.am + j.pend.az + j.pend.rj > 0)
+                  lineas.push({
+                    clave: 'tarj', etiqueta: '💳 Tarjetas', valor: r.saldo,
+                    detalle: r.pagosTarjetas > 0 ? `ya pagó ${fmt(r.pagosTarjetas)}` : '',
+                    jugadores: jugadoresDeben,
+                  })
+                }
+                return lineas
+              }
               const abrirPago = r => {
                 const tipo = (llevar && r.saldoInscripcion > Math.max(r.saldo, 0) && r.saldoInscripcion >= (llevar ? r.saldoMultas : 0)) ? 'abono_inscripcion'
                   : (llevar && r.saldoMultas > Math.max(r.saldo, 0)) ? 'pago_cargos' : 'pago_tarjetas'
-                setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
+                const debido = tipo === 'abono_inscripcion' ? r.saldoInscripcion : tipo === 'pago_cargos' ? r.saldoMultas : r.saldo
+                setPagoForm({ tipo, monto: debido > 0 ? String(Math.round(debido)) : '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
               }
               return (
                 <div style={{ marginBottom: '20px' }}>
@@ -7342,7 +7429,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 16px' }}>
                         <div style={{ minWidth: 0, flex: '1 1 160px' }}>
                           <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
-                          <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{conceptos(r)}</div>
+                          <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto'}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <b style={{ color: '#d93025', fontSize: '1.05rem' }}>{fmt(pendiente(r))}</b>
@@ -7350,6 +7437,28 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
                             Registrar pago
                           </button>
+                        </div>
+                        <div style={{ flexBasis: '100%', borderTop: '1px solid #f1f3f4', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {conceptos(r).map(c => (
+                            <div key={c.clave}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>
+                                <span>{c.etiqueta}</span><span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
+                              </div>
+                              {c.detalle && <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '1px' }}>{c.detalle}</div>}
+                              {c.jugadores && c.jugadores.length > 0 && (
+                                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  {c.jugadores.map((j, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.74rem', color: '#3c4043' }}>
+                                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {j.pend.am > 0 ? '🟨'.repeat(j.pend.am) : ''}{j.pend.az > 0 ? '🟦'.repeat(j.pend.az) : ''}{j.pend.rj > 0 ? '🟥'.repeat(j.pend.rj) : ''} {j.nombre}
+                                      </span>
+                                      <span style={{ whiteSpace: 'nowrap' }}>{fmt(j.monto)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -7474,7 +7583,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
                     <div style={{ textAlign: 'right', display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end', alignContent: 'center' }}>
-                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: r.saldo > 0 ? String(Math.round(r.saldo)) : '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         💵 Pago
                       </button>
@@ -7483,7 +7592,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#d93025', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         ➖ Deuda
                       </button>
-                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'abono_inscripcion', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'abono_inscripcion', monto: r.saldoInscripcion > 0 ? String(Math.round(r.saldoInscripcion)) : '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         title="Registrar un abono a inscripción — independiente de tarjetas, arbitrajes, W y multas"
                         style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
@@ -8057,15 +8166,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>¿Qué paga?</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_tarjetas' }))}
+                  <button onClick={() => cambiarTipoPago('pago_tarjetas')}
                     style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_tarjetas' ? '2px solid #e8710a' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_tarjetas' ? '#fff4e5' : '#fff', color: pagoForm.tipo === 'pago_tarjetas' ? '#e8710a' : '#5f6368' }}>
                     💳 Tarjetas
                   </button>
-                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'pago_cargos' }))}
+                  <button onClick={() => cambiarTipoPago('pago_cargos')}
                     style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_cargos' ? '2px solid #b45309' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_cargos' ? '#fef3c7' : '#fff', color: pagoForm.tipo === 'pago_cargos' ? '#b45309' : '#5f6368' }}>
                     ⛔ W / Multas
                   </button>
-                  <button onClick={() => setPagoForm(f => ({ ...f, tipo: 'abono_inscripcion' }))}
+                  <button onClick={() => cambiarTipoPago('abono_inscripcion')}
                     style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'abono_inscripcion' ? '2px solid #6c35de' : '1px solid #dadce0', background: pagoForm.tipo === 'abono_inscripcion' ? '#f2ebfd' : '#fff', color: pagoForm.tipo === 'abono_inscripcion' ? '#6c35de' : '#5f6368' }}>
                     📝 Inscripción
                   </button>
@@ -8090,21 +8199,22 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 const pendientesDelEquipo = (pagoModal.tarjetasDetalle || []).flatMap(j => {
                   const pend = (j.player_id && pendientesTarjetas[j.player_id]) || { am: 0, az: 0, rj: 0 }
                   const items = []
-                  if (pend.am > 0) items.push({ player_id: j.player_id, color: 'am', nombre: j.nombre, emoji: '🟨' })
-                  if (pend.az > 0) items.push({ player_id: j.player_id, color: 'az', nombre: j.nombre, emoji: '🟦' })
-                  if (pend.rj > 0) items.push({ player_id: j.player_id, color: 'rj', nombre: j.nombre, emoji: '🟥' })
+                  if (pend.am > 0) items.push({ player_id: j.player_id, color: 'am', nombre: j.nombre, emoji: '🟨', cantidad: pend.am })
+                  if (pend.az > 0) items.push({ player_id: j.player_id, color: 'az', nombre: j.nombre, emoji: '🟦', cantidad: pend.az })
+                  if (pend.rj > 0) items.push({ player_id: j.player_id, color: 'rj', nombre: j.nombre, emoji: '🟥', cantidad: pend.rj })
                   return items
                 })
                 if (pendientesDelEquipo.length === 0) return null
                 return (
                   <div style={{ marginBottom: '12px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 12px' }}>
-                    <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '8px' }}>¿Qué tarjetas cubre este pago? (las que marques quedan desbloqueadas en la planilla)</div>
+                    <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '8px' }}>¿Qué tarjetas cubre este pago? Al marcar una, el monto se llena solo y el jugador queda desbloqueado en la planilla.</div>
                     {pendientesDelEquipo.map(t => {
                       const marcada = tarjetasAPagar.some(x => x.player_id === t.player_id && x.color === t.color)
                       return (
                         <label key={t.player_id + t.color} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', cursor: 'pointer', fontSize: '.78rem', color: '#202124' }}>
                           <input type="checkbox" checked={marcada} onChange={() => toggleTarjetaAPagar(t.player_id, t.color, t.nombre)}/>
-                          {t.emoji} {t.nombre}
+                          <span style={{ flex: 1, minWidth: 0 }}>{t.emoji} {t.nombre}{t.cantidad > 1 ? ` (x${t.cantidad})` : ''}</span>
+                          <b style={{ color: marcada ? '#137333' : '#5f6368', whiteSpace: 'nowrap' }}>{fmt(montoTarjetasMarcadas([t]))}</b>
                         </label>
                       )
                     })}
