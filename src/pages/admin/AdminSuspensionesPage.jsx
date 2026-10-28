@@ -13,8 +13,9 @@ import { notify } from '../../lib/notify'
 //    (por si fue un error) o darle más tiempo.
 //  · Suspender a un jugador SOLO en un torneo (el organizador tiene poder solo
 //    sobre los jugadores de SUS torneos).
-//  · Para suspender a un jugador en TODOS los torneos, el organizador manda una
-//    solicitud con el motivo y el administrador la aprueba o la rechaza
+//  · VETO DE GOLMEBOL: el jugador no puede jugar NINGÚN torneo de la plataforma.
+//    El organizador no lo decide: manda una solicitud a Golmebol con el motivo y
+//    Golmebol (el administrador de la plataforma) la aprueba o la rechaza
 //    (tabla solicitudes_suspension, ver migracion_solicitudes_suspension.sql).
 // Todo se guarda en la tabla `sanciones`, la misma que ya leen las planillas.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ function ModalResolver({ solicitud, nombre, modo, guardando, onConfirmar, onClos
   const [respuesta, setRespuesta] = useState('')
   const aprobar = modo === 'aprobar'
   return (
-    <Hoja titulo={aprobar ? 'Suspender en todos los torneos' : 'Rechazar la solicitud'} subtitulo={`${nombre} · pedido por ${solicitud.solicitante_nombre || 'un organizador'}`} onClose={onClose}>
+    <Hoja titulo={aprobar ? 'Vetar de toda la plataforma' : 'Rechazar la solicitud'} subtitulo={`${nombre} · pedido por ${solicitud.solicitante_nombre || 'un organizador'}`} onClose={onClose}>
       <div style={{ background: '#f8f9fa', border: '1px solid #eceff1', borderRadius: '12px', padding: '10px 12px', marginBottom: '14px', fontSize: '.84rem', color: '#3c4043', lineHeight: 1.45 }}>
         <b>Motivo que dieron:</b> {solicitud.motivo}
       </div>
@@ -155,9 +156,10 @@ function ModalResolver({ solicitud, nombre, modo, guardando, onConfirmar, onClos
         <div style={{ marginBottom: '14px' }}>
           <label style={etiqueta}>DURACIÓN</label>
           <select value={meses} onChange={e => setMeses(e.target.value)} style={inputBase}>
+            <option value="indef">Indefinido (veto definitivo)</option>
             {MESES.map(([m, t]) => <option key={m} value={m}>{t}</option>)}
-            <option value="indef">Indefinida</option>
           </select>
+          <div style={{ fontSize: '.76rem', color: '#80868b', marginTop: '6px', lineHeight: 1.4 }}>Al aprobar, el jugador no podrá jugar ningún torneo de Golmebol.</div>
         </div>
       )}
       <div style={{ marginBottom: '16px' }}>
@@ -168,7 +170,7 @@ function ModalResolver({ solicitud, nombre, modo, guardando, onConfirmar, onClos
         <button onClick={onClose} style={botonSec}>Cancelar</button>
         <button onClick={() => onConfirmar({ meses: meses === 'indef' ? null : Number(meses), respuesta: respuesta.trim() })} disabled={guardando}
           style={{ ...botonPrim(aprobar ? ROJO : '#5f6368', guardando), flex: 1 }}>
-          {guardando ? 'Guardando…' : aprobar ? 'Aprobar y suspender' : 'Rechazar solicitud'}
+          {guardando ? 'Guardando…' : aprobar ? 'Aprobar y vetar' : 'Rechazar solicitud'}
         </button>
       </div>
     </Hoja>
@@ -355,6 +357,11 @@ export default function AdminSuspensionesPage() {
   const yaSancionado = jugador && sanciones.some(s => s.player_id === jugador.player_id && (s.tournament_id === formTorneo || !s.tournament_id))
   const formValido = !!jugador && motivo.trim().length >= 3 && (porTiempo || Number(nPartidos || 0) >= 1)
 
+  function cambiarAlcance(v) {
+    setAlcance(v)
+    setMesesForm(v === 'todos' ? 'indef' : '1') // un veto es definitivo salvo que se escoja otra cosa
+  }
+
   function limpiarForm() {
     setJugador(null); setBuscaJugador(''); setMotivo(''); setNPartidos('1'); setMesesForm('1'); setTipoDuracion('partidos'); setAlcance('torneo')
   }
@@ -374,7 +381,7 @@ export default function AdminSuspensionesPage() {
           const falta = er.code === '42P01' || /does not exist|schema cache/i.test(er.message || '')
           return notify(falta ? avisoMigracion('migracion_solicitudes_suspension.sql') : errorAmigable(er, 'No se pudo enviar la solicitud'), 'error')
         }
-        notify('Solicitud enviada al administrador ✓')
+        notify('Solicitud enviada a Golmebol ✓')
         limpiarForm(); await cargarSolicitudes(); setVista('solicitudes')
         return
       }
@@ -405,7 +412,7 @@ export default function AdminSuspensionesPage() {
         const fecha_fin = meses ? new Date(Date.now() + meses * MES_MS).toISOString() : null
         const { error: er } = await supabase.from('sanciones').insert({
           player_id: solicitud.player_id, tournament_id: null, activa: true, fecha_fin,
-          motivo: `${solicitud.motivo} (pedido por ${solicitud.solicitante_nombre || 'un organizador'})`,
+          motivo: `Veto de Golmebol: ${solicitud.motivo} (pedido por ${solicitud.solicitante_nombre || 'un organizador'})`,
         })
         if (er) return notify(errorAmigable(er, 'No se pudo suspender al jugador'), 'error')
       }
@@ -413,7 +420,7 @@ export default function AdminSuspensionesPage() {
         estado: modo === 'aprobar' ? 'aprobada' : 'rechazada', respuesta: respuesta || null, resuelta_por: user?.id || null, resuelta_at: new Date().toISOString(),
       }).eq('id', solicitud.id)
       if (er2) return notify(errorAmigable(er2, 'La suspensión quedó, pero no se pudo marcar la solicitud'), 'error')
-      notify(modo === 'aprobar' ? 'Jugador suspendido en todos los torneos ✓' : 'Solicitud rechazada')
+      notify(modo === 'aprobar' ? 'Jugador vetado de Golmebol ✓' : 'Solicitud rechazada')
       setResolviendo(null)
       await cargarTodo()
     } finally {
@@ -456,13 +463,13 @@ export default function AdminSuspensionesPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: '900', fontSize: '1rem', color: '#202124', lineHeight: 1.25 }}>{nom}</div>
             <div style={{ fontSize: '.78rem', color: '#80868b', marginTop: '2px' }}>
-              {s.team_id && equipos[s.team_id] ? `${equipos[s.team_id]} · ` : ''}{global ? 'Todos los torneos' : nombreTorneo(s.tournament_id)}
+              {s.team_id && equipos[s.team_id] ? `${equipos[s.team_id]} · ` : ''}{global ? 'Toda la plataforma' : nombreTorneo(s.tournament_id)}
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
           {roja ? <Etiqueta bg="#fce8e6" color={ROJO}>🟥 Roja automática</Etiqueta> : <Etiqueta bg="#f1f3f4" color="#3c4043">✍️ Manual</Etiqueta>}
-          {global && <Etiqueta bg="#ede7fb" color="#6c35de"><Globe size={11}/> Todos los torneos</Etiqueta>}
+          {global && <Etiqueta bg="#ede7fb" color="#6c35de"><Globe size={11}/> Vetado de Golmebol</Etiqueta>}
           <Etiqueta bg="#fff4e0" color="#b45309"><Clock size={11}/> {duracionTexto(s)}</Etiqueta>
         </div>
         {s.match_id && partidosRoja[s.match_id] && <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '4px' }}>Partido: <b>{partidosRoja[s.match_id]}</b></div>}
@@ -473,7 +480,7 @@ export default function AdminSuspensionesPage() {
             <button onClick={() => setEditando(s)} style={{ ...botonSec, flex: 1, minHeight: '44px' }}>+ Más tiempo</button>
           </div>
         ) : (
-          <div style={{ fontSize: '.74rem', color: '#80868b', background: '#f8f9fa', borderRadius: '10px', padding: '8px 10px' }}>Esta suspensión vale en todos los torneos: solo el administrador de Golmebol puede cambiarla.</div>
+          <div style={{ fontSize: '.74rem', color: '#80868b', background: '#f8f9fa', borderRadius: '10px', padding: '8px 10px' }}>Este jugador está vetado de toda la plataforma: solo Golmebol puede cambiarlo.</div>
         )}
       </div>
     )
@@ -490,7 +497,7 @@ export default function AdminSuspensionesPage() {
           {(torneos.length > 1 || esAdmin) && (
             <select value={filtroTorneo} onChange={e => setFiltroTorneo(e.target.value)} style={{ ...inputBase, flex: '1 1 200px', width: 'auto' }}>
               <option value="">Todos los torneos</option>
-              {esAdmin && <option value="global">Solo las de todos los torneos</option>}
+              {esAdmin && <option value="global">Solo los vetados de Golmebol</option>}
               {torneos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
@@ -564,15 +571,16 @@ export default function AdminSuspensionesPage() {
 
         <div>
           <label style={etiqueta}>3 · ¿DÓNDE SE SUSPENDE?</label>
-          <Segmentos valor={alcance} onChange={setAlcance} opciones={[
+          <Segmentos valor={alcance} onChange={cambiarAlcance} opciones={[
             { id: 'torneo', texto: 'Solo en este torneo' },
-            { id: 'todos', texto: esAdmin ? 'En todos los torneos' : 'Todos los torneos (pedir permiso)' },
+            { id: 'todos', texto: esAdmin ? '🚫 Vetar de Golmebol' : '🚫 Pedir veto a Golmebol' },
           ]}/>
-          {esSolicitud && <div style={{ fontSize: '.76rem', color: '#6c35de', background: '#f5f0ff', borderRadius: '10px', padding: '8px 10px', marginTop: '8px', lineHeight: 1.4 }}>Tú solo mandas la solicitud con el motivo. El administrador decide si el jugador queda suspendido en todos los torneos.</div>}
+          {esSolicitud && <div style={{ fontSize: '.76rem', color: '#6c35de', background: '#f5f0ff', borderRadius: '10px', padding: '8px 10px', marginTop: '8px', lineHeight: 1.4 }}>Le mandas la solicitud a Golmebol con el motivo. Si la aprueba, el jugador queda vetado: no podrá jugar ningún torneo de Golmebol, ni de tu torneo ni de los demás.</div>}
+          {globalDirecto && <div style={{ fontSize: '.76rem', color: ROJO, background: '#fdecea', borderRadius: '10px', padding: '8px 10px', marginTop: '8px', lineHeight: 1.4 }}>El jugador quedará vetado de toda la plataforma: no podrá jugar ningún torneo de Golmebol.</div>}
         </div>
 
         <div>
-          <label style={etiqueta}>{esSolicitud ? '4 · DURACIÓN QUE SUGIERES' : '4 · DURACIÓN'}</label>
+          <label style={etiqueta}>{esSolicitud ? '4 · DURACIÓN QUE SUGIERES' : alcance === 'todos' ? '4 · DURACIÓN DEL VETO' : '4 · DURACIÓN'}</label>
           {alcance === 'torneo' && (
             <div style={{ marginBottom: '10px' }}>
               <Segmentos valor={tipoDuracion} onChange={setTipoDuracion} opciones={[{ id: 'partidos', texto: 'Por partidos' }, { id: 'tiempo', texto: 'Por tiempo' }]}/>
@@ -580,8 +588,9 @@ export default function AdminSuspensionesPage() {
           )}
           {porTiempo ? (
             <select value={mesesForm} onChange={e => setMesesForm(e.target.value)} style={inputBase}>
+              {alcance === 'todos' && <option value="indef">Indefinido (veto definitivo)</option>}
               {MESES.map(([m, t]) => <option key={m} value={m}>{t}</option>)}
-              <option value="indef">Indefinida</option>
+              {alcance !== 'todos' && <option value="indef">Indefinida</option>}
             </select>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -592,13 +601,13 @@ export default function AdminSuspensionesPage() {
         </div>
 
         <div>
-          <label style={etiqueta}>5 · MOTIVO {esSolicitud ? '(el administrador lo va a leer)' : ''}</label>
+          <label style={etiqueta}>5 · MOTIVO {esSolicitud ? '(Golmebol lo va a leer)' : ''}</label>
           <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3} placeholder="Ej: agresión a un árbitro en la jornada 5" style={{ ...inputBase, padding: '12px 14px', resize: 'vertical' }}/>
         </div>
 
         <button onClick={enviarForm} disabled={!formValido || guardando}
           style={{ ...botonPrim(esSolicitud ? '#6c35de' : ROJO, !formValido || guardando), width: '100%', minHeight: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-          {guardando ? 'Guardando…' : esSolicitud ? <><Send size={16}/> Enviar solicitud al administrador</> : <><Ban size={16}/> Suspender jugador</>}
+          {guardando ? 'Guardando…' : esSolicitud ? <><Send size={16}/> Enviar solicitud a Golmebol</> : <><Ban size={16}/> {globalDirecto ? 'Vetar de Golmebol' : 'Suspender jugador'}</>}
         </button>
       </div>
     )
@@ -639,8 +648,8 @@ export default function AdminSuspensionesPage() {
       return (
         <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '16px', padding: '36px 20px', textAlign: 'center', color: '#9aa0a6' }}>
           <Globe size={34} style={{ opacity: .35, marginBottom: '8px' }}/>
-          <div style={{ fontSize: '.9rem', fontWeight: '700', color: '#5f6368' }}>{esAdmin ? 'No hay solicitudes' : 'No has pedido ninguna suspensión en todos los torneos'}</div>
-          {!esAdmin && <div style={{ fontSize: '.8rem', marginTop: '4px' }}>Se piden desde “Suspender jugador”, escogiendo “Todos los torneos”.</div>}
+          <div style={{ fontSize: '.9rem', fontWeight: '700', color: '#5f6368' }}>{esAdmin ? 'No hay solicitudes de veto' : 'No has pedido ningún veto a Golmebol'}</div>
+          {!esAdmin && <div style={{ fontSize: '.8rem', marginTop: '4px' }}>Se piden desde “Suspender jugador”, escogiendo “Pedir veto a Golmebol”.</div>}
         </div>
       )
     }
@@ -652,7 +661,7 @@ export default function AdminSuspensionesPage() {
       <div style={{ marginBottom: '16px' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#202124', margin: 0 }}>Suspensiones</h1>
         <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem', lineHeight: 1.4 }}>
-          {esAdmin ? 'Jugadores suspendidos en todos los torneos.' : 'Los jugadores suspendidos de tus torneos. Solo mandas sobre los de tus torneos.'}
+          {esAdmin ? 'Suspendidos por torneo y vetados de la plataforma.' : 'Los jugadores suspendidos de tus torneos. Solo mandas sobre los de tus torneos; para vetar a alguien de toda la plataforma, se lo pides a Golmebol.'}
         </p>
       </div>
 

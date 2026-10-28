@@ -1,15 +1,16 @@
 -- ============================================================
--- SOLICITUDES DE SUSPENSIÓN EN TODOS LOS TORNEOS
+-- SOLICITUDES DE VETO DE GOLMEBOL (suspensión de toda la plataforma)
 -- Cómo ejecutar: Supabase → SQL Editor → pegar todo → RUN
 -- Es seguro ejecutarlo más de una vez.
 --
 -- Para qué sirve: un organizador solo puede suspender jugadores EN SU torneo.
--- Si quiere que un jugador quede suspendido en TODOS los torneos, manda una
--- solicitud (con el motivo) desde la página SUSPENSIONES y el administrador
--- la aprueba o la rechaza.
+-- Si quiere que un jugador quede vetado de TODA la plataforma (que no pueda
+-- jugar ningún torneo de Golmebol), manda una solicitud a Golmebol con el
+-- motivo, desde la página SUSPENSIONES. Golmebol (el administrador de la
+-- plataforma) la aprueba o la rechaza.
 --
 -- Quién ve qué:
---   · el administrador de la plataforma: todas las solicitudes
+--   · Golmebol (administrador de la plataforma): todas las solicitudes
 --   · un organizador: solo las que él mandó
 -- ============================================================
 
@@ -59,7 +60,7 @@ create policy solic_susp_insert on public.solicitudes_suspension
     and (coalesce(public.es_admin_plataforma(), false) or coalesce(public.es_organizador_plataforma(), false))
   );
 
--- Aprobar / rechazar / borrar: solo el administrador
+-- Aprobar / rechazar / borrar: solo Golmebol (administrador)
 create policy solic_susp_update_admin on public.solicitudes_suspension
   for update to authenticated
   using (coalesce(public.es_admin_plataforma(), false))
