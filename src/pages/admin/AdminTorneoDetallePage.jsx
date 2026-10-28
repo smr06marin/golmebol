@@ -751,6 +751,7 @@ export default function AdminTorneoDetallePage() {
   const [guardandoPref,   setGuardandoPref]   = useState(null) // tournament_team_id que se está guardando
   const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
   const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
+  const [intergrupoPorEquipo, setIntergrupoPorEquipo] = useState(draftJornada?.intergrupoN || 1) // máx. de partidos contra otro grupo por equipo
   const [editJornadaIdx,  setEditJornadaIdx]  = useState(null) // índice del partido generado en edición (hora/cancha)
   const [drag,            setDrag]            = useState(null)
   const [dragOver,        setDragOver]        = useState(null)
@@ -789,6 +790,9 @@ export default function AdminTorneoDetallePage() {
   const [generandoGrupos,  setGenerandoGrupos]  = useState(false)
   const [fechaGrupos,      setFechaGrupos]      = useState('')
   const [moviendoEquipoId, setMoviendoEquipoId] = useState(null) // team_id con el menú de "mover a otro grupo" abierto
+  const [dragGrupo, setDragGrupo] = useState(null)       // equipo que se está arrastrando a otro grupo: { teamId, name, logo, desde, x, y }
+  const [grupoSobre, setGrupoSobre] = useState(null)     // grupo que está debajo del dedo/mouse mientras se arrastra
+  const dragGrupoRef = useRef(null)
   const [horaGrupos,       setHoraGrupos]       = useState('08:00')
 
   // ── ELIMINATORIAS ───────────────────────────────────
@@ -1123,9 +1127,9 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => {
     const hayBorrador = jornadaGenerada.length > 0 || configJornada.fecha || configJornada.numero || Object.keys(configJornada.dias_por_escenario || {}).length > 0
     if (hayBorrador) {
-      localStorage.setItem(draftJornadaKey, JSON.stringify({ config: configJornada, jornada: jornadaGenerada, intergrupo: permitirIntergrupo }))
+      localStorage.setItem(draftJornadaKey, JSON.stringify({ config: configJornada, jornada: jornadaGenerada, intergrupo: permitirIntergrupo, intergrupoN: intergrupoPorEquipo }))
     }
-  }, [jornadaGenerada, configJornada, permitirIntergrupo])
+  }, [jornadaGenerada, configJornada, permitirIntergrupo, intergrupoPorEquipo])
 
   function salirJornada() {
     localStorage.removeItem(draftJornadaKey)
@@ -1618,6 +1622,41 @@ export default function AdminTorneoDetallePage() {
     showMsg('Equipo movido ✓')
     fetchGrupos()
   }
+
+  // Arrastrar un equipo de un grupo a otro (Pointer Events: sirve con mouse y con el dedo en celular).
+  function iniciarDragGrupo(e, equipo, grupoId) {
+    if (!equipo) return
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    const d = { teamId: equipo.id, name: equipo.name, logo: equipo.logo_url, desde: grupoId, x: e.clientX, y: e.clientY }
+    dragGrupoRef.current = d
+    setDragGrupo(d)
+    setGrupoSobre(null)
+  }
+  function moverDragGrupo(e) {
+    const d = dragGrupoRef.current
+    if (!d) return
+    d.x = e.clientX; d.y = e.clientY
+    setDragGrupo({ ...d })
+    // al acercarse al borde de la pantalla, la página se desplaza sola para poder llegar a otro grupo
+    if (e.clientY < 80) window.scrollBy(0, -18)
+    else if (e.clientY > window.innerHeight - 80) window.scrollBy(0, 18)
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const g = el?.closest('[data-drop-grupo]')?.dataset.dropGrupo || null
+    setGrupoSobre(g && g !== String(d.desde) ? g : null)
+  }
+  function soltarDragGrupo(e) {
+    const d = dragGrupoRef.current
+    if (!d) return
+    dragGrupoRef.current = null
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const g = el?.closest('[data-drop-grupo]')?.dataset.dropGrupo || null
+    setDragGrupo(null); setGrupoSobre(null)
+    if (g && g !== String(d.desde)) {
+      const destino = grupos.find(x => String(x.id) === g)
+      if (destino) handleMoverEquipoGrupo(d.teamId, destino.id)
+    }
+  }
+  function cancelarDragGrupo() { dragGrupoRef.current = null; setDragGrupo(null); setGrupoSobre(null) }
 
   async function handleGenerarPartidosGrupos() {
     if (!fechaGrupos) return showMsg('Selecciona una fecha', 'error')
@@ -3706,34 +3745,27 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     return k && k.startsWith('id:') ? k.slice(3) : ''
   }
 
+  // Sorteo + programación automática. Una jornada por semana: con "Programar hasta" se arman varias
+  // (una por cada semana hasta esa fecha), sin repetir cruces y sin pasarse del tope de partidos
+  // intergrupo por equipo. Los intergrupo sirven para que no queden equipos descansando.
   function generarJornada() {
     setEditJornadaIdx(null)
     if (!configJornada.fecha) return showMsg('Selecciona la fecha de inicio', 'error')
     if (canchas.length === 0) return showMsg('Agrega al menos una cancha', 'error')
     if (equipos.length < 2) return showMsg('Necesitas al menos 2 equipos', 'error')
 
-    // Equipos que el admin marcó para que DESCANSEN en esta jornada: no se
-    // les busca rival (ni se les programa); salen en la lista como "descansa".
+    // Equipos que el admin marcó para que DESCANSEN en la primera jornada
     const idsDescansan = new Set(configJornada.alguno_descansa ? (configJornada.descansan_ids || []).filter(tid => equipos.some(e => e.id === tid)) : [])
     if (configJornada.alguno_descansa && idsDescansan.size === 0) return showMsg('Marca qué equipos descansan en esta jornada, o elige "Todos juegan"', 'error')
-    const equiposJuegan = equipos.filter(e => !idsDescansan.has(e.id))
-    if (equiposJuegan.length < 2) return showMsg('Con esos descansos quedan menos de 2 equipos para jugar. Deja marcados menos equipos', 'error')
+    if (equipos.filter(e => !idsDescansan.has(e.id)).length < 2) return showMsg('Con esos descansos quedan menos de 2 equipos para jugar. Deja marcados menos equipos', 'error')
 
-    // Canchas a usar en ESTA jornada (checkboxes de arriba) — si no se tocó
-    // nada, se usan todas como antes.
     const canchasUsadas = canchas.filter(c => (configJornada.cancha_ids || canchas.map(x => x.id)).includes(c.id))
     if (canchasUsadas.length === 0) return showMsg('Selecciona al menos una cancha/escenario para esta jornada', 'error')
 
-    // Qué días se juega en total (unión de lo marcado en cada escenario —
-    // ver toggleDiaEscenario, ya no hay un selector global aparte).
     const diasCheck = Array.from(new Set(Object.values(configJornada.dias_por_escenario || {}).flat()))
     if (diasCheck.length === 0) return showMsg('Marca qué días juega cada escenario/cancha', 'error')
 
-    // Cada CANCHA tiene sus propios horarios por día (ej: la cancha 1 de un
-    // escenario juega sábado a las 7,8,9 y la cancha 2 del mismo escenario
-    // ese sábado solo a las 7 y las 10) — se valida que toda cancha, en
-    // cada uno de los días que juega su escenario, tenga al menos una hora
-    // marcada.
+    // Cada CANCHA tiene sus propios horarios por día
     function horasDeCanchaEnDia(canchaId, diaKey) {
       return (configJornada.horarios_por_cancha_dia || {})[canchaId]?.[diaKey] || []
     }
@@ -3745,10 +3777,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }
     if (faltaHorario) return showMsg('Marca al menos un horario para cada cancha, en cada uno de los días que juega', 'error')
 
-    // Qué canchas (de las seleccionadas) se pueden usar en una fecha dada,
-    // según el día de la semana que sea y lo marcado para su escenario (ej:
-    // Old Traffod solo sábados, Gol solo domingo y lunes) — un escenario
-    // SIN días marcados no juega ningún día (hay que marcarlos).
     function canchasDisponiblesEnFecha(fechaIso) {
       const diaKey = DIAS_SEMANA[new Date(fechaIso + 'T00:00:00').getDay()].key
       return canchasUsadas.filter(c => {
@@ -3757,13 +3785,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         return dias.includes(diaKey)
       })
     }
-
-    // Slots concretos (cancha + hora) disponibles en una fecha dada — cada
-    // par cancha/hora es un cupo único (una cancha solo puede tener UN
-    // partido a una hora dada). Esto es lo que reemplaza el viejo "horario
-    // del día" compartido por todas las canchas: cada cancha aporta
-    // exactamente las horas que se le marcaron a ELLA para ese día de la
-    // semana.
     function slotsDeFecha(fechaIso) {
       const diaKey = DIAS_SEMANA[new Date(fechaIso + 'T00:00:00').getDay()].key
       const slots = []
@@ -3772,316 +3793,183 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       })
       return slots
     }
+    const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
 
-    // Rango de fechas disponible para programar ESTA jornada: solo la
-    // primera vez que cae cada día marcado desde la fecha de inicio (ej: si
-    // se marcó sábado y domingo, es ESE sábado y ESE domingo — no los de
-    // las semanas siguientes). Antes se buscaba en las próximas 4 semanas,
-    // lo que hacía que, si el fin de semana alcanzaba de sobra para todos
-    // los cruces, el sorteo igual esparciera partidos en fines de semana
-    // futuros dejando huecos sin usar en el más cercano. Si de verdad no
-    // alcanza el cupo de esta semana, esos equipos quedan descansando por
-    // falta de disponibilidad (se resuelve generando otra jornada después).
+    // Cuántas semanas (jornadas) armar: una sola, o una por semana hasta la fecha final
     const fechaIni = configJornada.fecha
-    let fechasDisponibles = []
-    const d0 = new Date(fechaIni + 'T00:00:00')
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(d0); d.setDate(d0.getDate() + i)
-      fechasDisponibles.push({ iso: d.toISOString().slice(0, 10), dow: d.getDay() })
+    let nSemanas = 1
+    if (configJornada.fecha_fin) {
+      if (configJornada.fecha_fin < fechaIni) return showMsg('La fecha final no puede ser antes de la fecha de inicio', 'error')
+      const dias = Math.round((new Date(configJornada.fecha_fin + 'T00:00:00') - new Date(fechaIni + 'T00:00:00')) / 86400000)
+      nSemanas = Math.min(40, Math.floor(dias / 7) + 1)
     }
-    fechasDisponibles = fechasDisponibles.filter(f => canchasDisponiblesEnFecha(f.iso).length > 0)
-    if (fechasDisponibles.length === 0) return showMsg('Ningún día desde la fecha de inicio (esa semana) tiene canchas disponibles (revisa los días marcados por escenario)', 'error')
+    const numeroBase = parseInt(configJornada.numero) || (fechas.length + 1)
 
-    // Cruces que ya existen en el torneo (jugados o programados)
+    // Estado que se va acumulando entre jornadas
     const yaJugaron = new Set()
     partidos.forEach(p => {
       yaJugaron.add(`${p.home_team_id}|${p.away_team_id}`)
       yaJugaron.add(`${p.away_team_id}|${p.home_team_id}`)
     })
-
-    // Grupo de cada equipo (si el torneo tiene grupos)
     const grupoDe = {}
     grupoEquipos.forEach(ge => { grupoDe[ge.team_id] = ge.grupo_id })
     const hayGrupos = grupos.length > 1
-
-    // Dos equipos son "compatibles" en día si al menos uno de los dos no
-    // marcó preferencia, o si sus días preferidos se cruzan en algo. Se
-    // intenta emparejar primero equipos compatibles entre sí — así un
-    // equipo que "solo juega sábado" no termina cruzado con uno que "solo
-    // juega domingo" (cruce que después no tiene ninguna fecha que le
-    // sirva a los dos).
-    function diasCompatibles(a, b) {
-      const da = a.dias_preferidos || []
-      const db = b.dias_preferidos || []
-      if (da.length === 0 || db.length === 0) return true
-      return da.some(d => db.includes(d))
+    // Intergrupo: tope por equipo en TODO el torneo (los ya programados cuentan)
+    const tope = Math.max(1, parseInt(intergrupoPorEquipo, 10) || 1)
+    const interHechos = {}
+    if (hayGrupos) {
+      partidos.forEach(p => {
+        const ga = grupoDe[p.home_team_id], gb = grupoDe[p.away_team_id]
+        if (ga && gb && ga !== gb) {
+          interHechos[p.home_team_id] = (interHechos[p.home_team_id] || 0) + 1
+          interHechos[p.away_team_id] = (interHechos[p.away_team_id] || 0) + 1
+        }
+      })
     }
+    const puedeInter = t => permitirIntergrupo && (interHechos[t.id] || 0) < tope
+    const descansosHechos = {}
 
-    // Un equipo "tiene preferencia" si marcó días y/o una hora mínima — a
-    // esos hay que darles prioridad: se procesan primero (para que puedan
-    // elegir rival mientras todavía hay equipos sin preferencia libres) y,
-    // al buscarles rival, se prefiere emparejarlos con un equipo SIN
-    // preferencia (más flexible) antes que con otro que también tenga la
-    // suya — así el que sí pidió algo tiene más chances de que se le
-    // respete, en vez de quedar cruzado con otro equipo igual de exigente.
-    function tienePreferencia(t) {
-      return (t.dias_preferidos && t.dias_preferidos.length > 0) || !!t.hora_preferida
-    }
-
-    const conPreferencia = equiposJuegan.filter(tienePreferencia).sort(() => Math.random() - 0.5)
-    const sinPreferencia = equiposJuegan.filter(t => !tienePreferencia(t)).sort(() => Math.random() - 0.5)
-    const eq = [...conPreferencia, ...sinPreferencia]
-    const usados = new Set()
-    const pares = []
-    const descansan = []
-
-    // Busca rival para "a" entre los que cumplen "filtro"; si "a" tiene
-    // preferencia, prioriza un rival flexible (sin preferencia) entre los
-    // que cumplen el filtro, y solo si no hay ninguno flexible acepta uno
-    // que también tenga preferencia propia.
-    function elegirRival(a, filtro) {
-      const candidatos = eq.filter(b => !usados.has(b.id) && filtro(b))
-      if (candidatos.length === 0) return null
-      if (tienePreferencia(a)) {
-        const flexibles = candidatos.filter(b => !tienePreferencia(b))
-        if (flexibles.length > 0) return flexibles[0]
-      }
-      return candidatos[0]
-    }
-
-    for (const a of eq) {
-      if (usados.has(a.id)) continue
-      usados.add(a.id)
-      // 1) Rival del mismo grupo, compatible en día, con el que no haya jugado
-      let rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]) && diasCompatibles(a, b))
-      // 2) Si no hay, mismo grupo pero sin exigir compatibilidad de día
-      if (!rival) {
-        rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
-      }
-      // 3) Si no hay y está permitido, rival de otro grupo compatible en día
-      if (!rival && hayGrupos && permitirIntergrupo) {
-        rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`) && diasCompatibles(a, b))
-      }
-      // 4) Último recurso: rival de otro grupo sin exigir nada más
-      if (!rival && hayGrupos && permitirIntergrupo) {
-        rival = elegirRival(a, b => !yaJugaron.has(`${a.id}|${b.id}`))
-      }
-      if (rival) {
-        usados.add(rival.id)
-        pares.push({ local: a, visitante: rival, intergrupo: hayGrupos && grupoDe[a.id] !== grupoDe[rival.id] })
-      } else {
-        descansan.push(a)
-      }
-    }
-    // 3) Ya sin rivales nuevos: descansan
-    descansan.forEach(a => pares.push({ local: a, visitante: null, descanso: true }))
-    // Los que el admin pidió que descansen (van al final, como descansos)
-    equipos.filter(e => idsDescansan.has(e.id)).forEach(a => pares.push({ local: a, visitante: null, descanso: true, descansoElegido: true }))
-
-    // Fecha (dentro del rango) según lo que hayan marcado los dos equipos —
-    // se cruzan sus días preferidos; si ninguno coincide (o ninguno marcó
-    // nada) se usa cualquier fecha del rango, y se avisa con
-    // "sinCoincidencia" para que el admin lo revise si quiere.
-    //
-    // Además, para no amontonar todos los cruces en un solo día (dejando
-    // otros días/escenarios vacíos), se calcula la capacidad de cada fecha
-    // (horas marcadas para ese día de la semana × canchas disponibles ese
-    // día) y se reparte primero entre las fechas que todavía tienen cupo,
-    // la que menos partidos lleve — solo cuando NINGUNA fecha candidata
-    // tiene cupo libre se empieza a sobrecargar alguna (ahí es cuando
-    // aparecen horas extra fuera de lo marcado).
-    const capacidadFecha = {}
-    fechasDisponibles.forEach(f => { capacidadFecha[f.iso] = slotsDeFecha(f.iso).length })
-    const usoFecha = {}
-    fechasDisponibles.forEach(f => { usoFecha[f.iso] = 0 })
-
-    // Historial de en qué día de la semana ha jugado cada equipo hasta
-    // ahora en este torneo — para que, entre fechas igual de cargadas, se
-    // prefiera la que caiga en el día que MENOS haya jugado esa pareja de
-    // equipos (así no le toca siempre sábado al mismo equipo, por ejemplo).
+    // Historiales para repartir días / horas / canchas y que no le toque siempre lo mismo al mismo equipo
     const historialDia = {}
-    function sumarHistorialDia(teamId, diaKey) {
+    const sumarHistorialDia = (teamId, diaKey) => {
       if (!teamId || !diaKey) return
       historialDia[teamId] = historialDia[teamId] || {}
       historialDia[teamId][diaKey] = (historialDia[teamId][diaKey] || 0) + 1
     }
-    partidos.forEach(m => {
-      if (!m.played_at) return
-      sumarHistorialDia(m.home_team_id, DIAS_SEMANA[new Date(m.played_at).getDay()].key)
-      sumarHistorialDia(m.away_team_id, DIAS_SEMANA[new Date(m.played_at).getDay()].key)
-    })
-
-    const conFecha = pares.flatMap(p => {
-      if (p.descanso) return [p]
-      const diasA = p.local.dias_preferidos || []
-      const diasB = p.visitante.dias_preferidos || []
-      let preferidas = null
-      let sinCoincidencia = false
-      if (diasA.length > 0 || diasB.length > 0) {
-        const validos = diasA.length > 0 && diasB.length > 0 ? diasA.filter(d => diasB.includes(d)) : (diasA.length > 0 ? diasA : diasB)
-        if (validos.length > 0) {
-          preferidas = fechasDisponibles.filter(f => validos.includes(DIAS_SEMANA[f.dow].key))
-        } else {
-          sinCoincidencia = true // los dos equipos piden días que no se cruzan entre sí
-        }
-      }
-      // El día preferido del equipo es eso, preferido — NO obligatorio. Si
-      // ese día ya no tiene cupo, se programa en cualquier otro día que sí
-      // se esté programando (no se deja el partido esperando un día que
-      // ya no da abasto).
-      const preferidasConCupo = preferidas ? preferidas.filter(f => capacidadFecha[f.iso] == null || usoFecha[f.iso] < capacidadFecha[f.iso]) : null
-      let pool
-      let sinCupoPreferencia = false
-      if (preferidasConCupo && preferidasConCupo.length > 0) {
-        pool = preferidasConCupo
-      } else {
-        if (preferidas && preferidas.length > 0) sinCupoPreferencia = true
-        const conCupoGeneral = fechasDisponibles.filter(f => capacidadFecha[f.iso] == null || usoFecha[f.iso] < capacidadFecha[f.iso])
-        if (conCupoGeneral.length === 0) {
-          // Ya no queda NINGÚN cupo (cancha+hora) libre en ninguna de las
-          // fechas de esta jornada — en vez de inventar una fecha nueva o
-          // forzar el cruce sin cupo, los dos equipos quedan descansando
-          // por falta de disponibilidad (se programan en otra jornada).
-          return [
-            { local: p.local, visitante: null, descanso: true, sinDisponibilidad: true },
-            { local: p.visitante, visitante: null, descanso: true, sinDisponibilidad: true },
-          ]
-        }
-        pool = conCupoGeneral
-      }
-      const minUso = Math.min(...pool.map(f => usoFecha[f.iso]))
-      const empatadas = pool.filter(f => usoFecha[f.iso] === minUso)
-      // Entre las que empatan en uso, se prefiere la que caiga en el día de
-      // la semana que MENOS haya jugado esta pareja de equipos hasta ahora
-      // (para intercalar sábados/domingos/etc en vez de repetir siempre el
-      // mismo), y solo como último desempate la fecha más próxima — así se
-      // llena primero el fin de semana más cercano en vez de esparcir
-      // partidos a semanas futuras que también tenían cupo.
-      const pesoDia = f => (historialDia[p.local.id]?.[DIAS_SEMANA[f.dow].key] || 0) + (historialDia[p.visitante.id]?.[DIAS_SEMANA[f.dow].key] || 0)
-      const minDia = Math.min(...empatadas.map(pesoDia))
-      const empatadasDia = empatadas.filter(f => pesoDia(f) === minDia)
-      const elegida = [...empatadasDia].sort((a, b) => a.iso.localeCompare(b.iso))[0]
-      usoFecha[elegida.iso] = (usoFecha[elegida.iso] || 0) + 1
-      sumarHistorialDia(p.local.id, DIAS_SEMANA[elegida.dow].key)
-      sumarHistorialDia(p.visitante.id, DIAS_SEMANA[elegida.dow].key)
-      return [{ ...p, fecha: elegida.iso, sinCoincidencia, sinCupoPreferencia }]
-    })
-
-    // Historial de a qué hora ha jugado cada equipo hasta ahora en este
-    // torneo (partidos ya jugados o programados) — para repartir bien los
-    // horarios entre jornadas: que no le toque siempre el mismo horario al
-    // mismo equipo, sobre todo el que menos les guste.
     const historialHora = {}
-    function sumarHistorial(teamId, horaStr) {
+    const sumarHistorial = (teamId, horaStr) => {
       if (!teamId || !horaStr) return
       historialHora[teamId] = historialHora[teamId] || {}
       historialHora[teamId][horaStr] = (historialHora[teamId][horaStr] || 0) + 1
     }
-    partidos.forEach(m => {
-      if (!m.played_at) return
-      const horaStr = `${String(new Date(m.played_at).getHours()).padStart(2, '0')}:00`
-      sumarHistorial(m.home_team_id, horaStr)
-      sumarHistorial(m.away_team_id, horaStr)
-    })
-
-    // Lo mismo con la CANCHA: cuántas veces ha jugado cada equipo en cada
-    // cancha EXACTA (escenario + cancha, no solo el nombre) —
-    // así, entre los cupos libres, se prefiere la cancha donde esa pareja ha
-    // jugado MENOS y no le toca siempre el mismo campo al mismo equipo.
     const historialCancha = {}
-    function sumarHistorialCancha(teamId, claveCancha) {
+    const sumarHistorialCancha = (teamId, claveCancha) => {
       if (!teamId || !claveCancha) return
       historialCancha[teamId] = historialCancha[teamId] || {}
       historialCancha[teamId][claveCancha] = (historialCancha[teamId][claveCancha] || 0) + 1
     }
     partidos.forEach(m => {
       if (!m.played_at) return
-      const k = claveCanchaPartido(m, canchas) // escenario + cancha, no solo el nombre
-      sumarHistorialCancha(m.home_team_id, k)
-      sumarHistorialCancha(m.away_team_id, k)
+      const dk = DIAS_SEMANA[new Date(m.played_at).getDay()].key
+      const hs = `${String(new Date(m.played_at).getHours()).padStart(2, '0')}:00`
+      const kc = claveCanchaPartido(m, canchas)
+      sumarHistorialDia(m.home_team_id, dk); sumarHistorialDia(m.away_team_id, dk)
+      sumarHistorial(m.home_team_id, hs); sumarHistorial(m.away_team_id, hs)
+      sumarHistorialCancha(m.home_team_id, kc); sumarHistorialCancha(m.away_team_id, kc)
     })
 
-    // Cancha + hora, por cada fecha por separado. Cada cancha aporta sus
-    // PROPIAS horas para ese día (slotsDeFecha), así que si la cancha 1
-    // juega sábado a las 7,8,9 y la cancha 2 ese sábado solo a las 7 y las
-    // 10, un partido nunca termina en una cancha a una hora que esa cancha
-    // no tiene marcada. Se reparte así:
-    //  1) primero los cruces con hora mínima ("no antes de") de alguno de
-    //     los dos equipos, para asegurarles un cupo que sí les sirva;
-    //  2) el resto, en orden al azar;
-    //  3) a cada cruce se le da, entre los slots (cancha+hora) que le
-    //     sirven y todavía están libres, el que MENOS veces haya jugado esa
-    //     hora la pareja de equipos (así no se repite siempre el mismo
-    //     horario para el mismo equipo semana a semana).
-    const porFecha = {}
-    conFecha.forEach(p => { if (!p.descanso) (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
-    Object.entries(porFecha).forEach(([fechaIso, lista]) => {
-      // Slots (cancha, hora) concretos disponibles ese día — cada uno es un
-      // cupo único, así que se identifican por "canchaId|hora".
-      const slots = slotsDeFecha(fechaIso)
-      const libre = {}
-      slots.forEach(s => { libre[`${s.cancha.id}|${s.hora}`] = s })
+    const resultado = []
+    let numeroActual = numeroBase
+    let primeraVacia = null
+    for (let k = 0; k < nSemanas; k++) {
+      const inicioSemana = sumarDias(fechaIni, 7 * k)
+      const fechasDisponibles = []
+      for (let i = 0; i < 7; i++) {
+        const iso = sumarDias(inicioSemana, i)
+        if (canchasDisponiblesEnFecha(iso).length > 0) fechasDisponibles.push({ iso, dow: new Date(iso + 'T00:00:00').getDay() })
+      }
+      if (fechasDisponibles.length === 0) { if (k === 0) primeraVacia = true; continue }
 
-      lista.forEach(p => {
-        const minA = p.local.hora_preferida ? parseInt(p.local.hora_preferida.split(':')[0], 10) : -1
-        const minB = p.visitante.hora_preferida ? parseInt(p.visitante.hora_preferida.split(':')[0], 10) : -1
-        p._minHora = Math.max(minA, minB)
-      })
-      const conRestriccion = lista.filter(p => p._minHora > -1)
-      const sinRestriccion = lista.filter(p => p._minHora === -1).sort(() => Math.random() - 0.5)
+      const juegan = equipos.filter(e => k > 0 || !idsDescansan.has(e.id))
+      // Los que más han descansado van primero para que les toque jugar; el resto, al azar
+      const eq = [...juegan].sort((a, b) => (descansosHechos[b.id] || 0) - (descansosHechos[a.id] || 0) || Math.random() - 0.5)
+      const usados = new Set()
+      const pares = []
 
-      ;[...conRestriccion, ...sinRestriccion].forEach(p => {
-        // 1) ideal: dentro del "no antes de" del equipo. 2) si no hay, se
-        //    relaja todo (cualquier slot libre) — se avisa con
-        //    sinHorarioDisponible para que se revise a mano.
-        const slotsLibres = Object.values(libre)
-        let candidatos = slotsLibres.filter(s => p._minHora < 0 || parseInt(s.hora, 10) >= p._minHora)
-        let sinHorarioDisponible = false
-        if (candidatos.length === 0) {
-          candidatos = slotsLibres
-          sinHorarioDisponible = true
+      // Pasada 1: cruces dentro del mismo grupo (sin repetir)
+      for (const a of eq) {
+        if (usados.has(a.id)) continue
+        const rival = eq.find(b => b.id !== a.id && !usados.has(b.id) && !yaJugaron.has(`${a.id}|${b.id}`) && (!hayGrupos || grupoDe[a.id] === grupoDe[b.id]))
+        if (rival) { usados.add(a.id); usados.add(rival.id); pares.push({ local: a, visitante: rival, intergrupo: false }) }
+      }
+      // Pasada 2: a los que quedaron sin rival se les busca uno de OTRO grupo (sin repetir y sin pasar el tope de intergrupo de ninguno de los dos)
+      if (hayGrupos && permitirIntergrupo) {
+        for (const a of eq) {
+          if (usados.has(a.id) || !puedeInter(a)) continue
+          const candidatos = eq.filter(b => b.id !== a.id && !usados.has(b.id) && grupoDe[a.id] !== grupoDe[b.id] && !yaJugaron.has(`${a.id}|${b.id}`) && puedeInter(b))
+          if (candidatos.length === 0) continue
+          candidatos.sort((x, y) => (interHechos[x.id] || 0) - (interHechos[y.id] || 0))
+          const rival = candidatos[0]
+          usados.add(a.id); usados.add(rival.id)
+          interHechos[a.id] = (interHechos[a.id] || 0) + 1
+          interHechos[rival.id] = (interHechos[rival.id] || 0) + 1
+          pares.push({ local: a, visitante: rival, intergrupo: true })
         }
-        if (candidatos.length === 0) {
-          // Ya no queda ninguna cancha/hora libre ese día con lo que
-          // marcaste — no se inventa una hora nueva, queda sin programar
-          // para ubicarlo a mano.
-          p.hora = null
-          p.cancha = null
-          p.sinCupo = true
-          delete p._minHora
-          return
-        }
-        const elegido = candidatos
-          .map(s => ({ s, peso:
-            (historialHora[p.local.id]?.[s.hora] || 0) + (historialHora[p.visitante.id]?.[s.hora] || 0) +
-            (historialCancha[p.local.id]?.[`id:${s.cancha.id}`] || 0) + (historialCancha[p.visitante.id]?.[`id:${s.cancha.id}`] || 0) +
-            Math.random() * 0.001 }))
-          .sort((a, b) => a.peso - b.peso)[0].s
-        delete libre[`${elegido.cancha.id}|${elegido.hora}`]
-        p.hora = elegido.hora
-        p.cancha = elegido.cancha
-        p.sinHorarioDisponible = sinHorarioDisponible
-        delete p._minHora
-        sumarHistorial(p.local.id, elegido.hora)
-        sumarHistorial(p.visitante.id, elegido.hora)
-        sumarHistorialCancha(p.local.id, `id:${elegido.cancha.id}`)
-        sumarHistorialCancha(p.visitante.id, `id:${elegido.cancha.id}`)
-      })
-    })
+      }
+      const sobran = eq.filter(e => !usados.has(e.id))
 
-    // Se ordena por fecha y, dentro de cada fecha, por hora — así la
-    // jornada generada se ve en orden cronológico real (primero el
-    // sábado, después el domingo, y dentro de cada día de más temprano a
-    // más tarde) en vez del orden al azar en que se fueron armando los
-    // cruces. Los que quedan descansando (sin fecha/hora) van al final.
-    const ordenada = [...conFecha].sort((a, b) => {
-      if (a.descanso && b.descanso) return 0
-      if (a.descanso) return 1
-      if (b.descanso) return -1
-      if (a.fecha !== b.fecha) return (a.fecha || '').localeCompare(b.fecha || '')
-      return (a.hora || '').localeCompare(b.hora || '')
-    })
-    setJornadaGenerada(ordenada)
+      // Fecha de cada cruce: se reparte entre los días con cupo, el que menos partidos lleve
+      const capacidadFecha = {}
+      const usoFecha = {}
+      fechasDisponibles.forEach(f => { capacidadFecha[f.iso] = slotsDeFecha(f.iso).length; usoFecha[f.iso] = 0 })
+      const sinCupoDia = []
+      const conFecha = []
+      pares.forEach(p => {
+        const pool = fechasDisponibles.filter(f => usoFecha[f.iso] < capacidadFecha[f.iso])
+        if (pool.length === 0) { sinCupoDia.push(p); return }
+        const minUso = Math.min(...pool.map(f => usoFecha[f.iso]))
+        const empatadas = pool.filter(f => usoFecha[f.iso] === minUso)
+        const pesoDia = f => (historialDia[p.local.id]?.[DIAS_SEMANA[f.dow].key] || 0) + (historialDia[p.visitante.id]?.[DIAS_SEMANA[f.dow].key] || 0)
+        const minDia = Math.min(...empatadas.map(pesoDia))
+        const elegida = empatadas.filter(f => pesoDia(f) === minDia).sort((a, b) => a.iso.localeCompare(b.iso))[0]
+        usoFecha[elegida.iso]++
+        sumarHistorialDia(p.local.id, DIAS_SEMANA[elegida.dow].key)
+        sumarHistorialDia(p.visitante.id, DIAS_SEMANA[elegida.dow].key)
+        conFecha.push({ ...p, fecha: elegida.iso })
+      })
+
+      // Cancha + hora de cada cruce, por fecha (cada cancha aporta sus propias horas de ese día)
+      const porFecha = {}
+      conFecha.forEach(p => { (porFecha[p.fecha] = porFecha[p.fecha] || []).push(p) })
+      Object.entries(porFecha).forEach(([fechaIso, lista]) => {
+        const libre = {}
+        slotsDeFecha(fechaIso).forEach(s => { libre[`${s.cancha.id}|${s.hora}`] = s })
+        lista.sort(() => Math.random() - 0.5).forEach(p => {
+          const slotsLibres = Object.values(libre)
+          if (slotsLibres.length === 0) { p.hora = null; p.cancha = null; p.sinCupo = true; return }
+          const elegido = slotsLibres
+            .map(s => ({ s, peso:
+              (historialHora[p.local.id]?.[s.hora] || 0) + (historialHora[p.visitante.id]?.[s.hora] || 0) +
+              (historialCancha[p.local.id]?.[`id:${s.cancha.id}`] || 0) + (historialCancha[p.visitante.id]?.[`id:${s.cancha.id}`] || 0) +
+              Math.random() * 0.001 }))
+            .sort((a, b) => a.peso - b.peso)[0].s
+          delete libre[`${elegido.cancha.id}|${elegido.hora}`]
+          p.hora = elegido.hora
+          p.cancha = elegido.cancha
+          sumarHistorial(p.local.id, elegido.hora)
+          sumarHistorial(p.visitante.id, elegido.hora)
+          sumarHistorialCancha(p.local.id, `id:${elegido.cancha.id}`)
+          sumarHistorialCancha(p.visitante.id, `id:${elegido.cancha.id}`)
+        })
+      })
+
+      // Los cruces que sí se programaron cuentan como jugados; los que no tuvieron cupo se devuelven (no se pierden)
+      conFecha.forEach(p => {
+        yaJugaron.add(`${p.local.id}|${p.visitante.id}`)
+        yaJugaron.add(`${p.visitante.id}|${p.local.id}`)
+      })
+      sinCupoDia.forEach(p => {
+        if (p.intergrupo) {
+          interHechos[p.local.id]--; interHechos[p.visitante.id]--
+        }
+        sobran.push(p.local, p.visitante)
+      })
+      if (conFecha.length === 0) continue // esta semana no se pudo armar ningún partido nuevo
+
+      const ordenados = [...conFecha].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '') || (a.hora || '').localeCompare(b.hora || ''))
+      ordenados.forEach(p => resultado.push({ ...p, jn: numeroActual }))
+      const idsSinCupo = new Set(sinCupoDia.flatMap(p => [p.local.id, p.visitante.id]))
+      sobran.forEach(a => {
+        descansosHechos[a.id] = (descansosHechos[a.id] || 0) + 1
+        resultado.push({ local: a, visitante: null, descanso: true, jn: numeroActual, semana: inicioSemana, sinDisponibilidad: idsSinCupo.has(a.id) })
+      })
+      if (k === 0) equipos.filter(e => idsDescansan.has(e.id)).forEach(a => resultado.push({ local: a, visitante: null, descanso: true, descansoElegido: true, jn: numeroActual, semana: inicioSemana }))
+      numeroActual++
+    }
+    if (resultado.length === 0) {
+      return showMsg(primeraVacia ? 'Ningún día de esa semana tiene canchas disponibles (revisa los días marcados por escenario)' : 'No se pudo armar ningún cruce nuevo: todos los equipos ya se enfrentaron entre sí (o se llegó al tope de intergrupo)', 'error')
+    }
+    setJornadaGenerada(resultado)
   }
 
   function actualizarPartidoJornada(i, cambios) {
@@ -4103,27 +3991,33 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const sinHora = jornadaGenerada.filter(p => !p.descanso && p.visitante && !p.hora)
     if (sinHora.length > 0) return showMsg(`${sinHora.length} partido(s) quedaron sin hora/cancha por falta de cupo ese día — edítalos a mano (✏️ Editar) antes de guardar`, 'error')
     setLoadingPartido(true)
-    // fecha_inicio de la jornada = la más temprana entre todos los partidos
-    // generados (pueden quedar repartidos en varios días si se puso un
-    // rango de fechas).
-    const fechasPartidos = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => p.fecha || configJornada.fecha)
-    const fechaInicioJornada = fechasPartidos.length > 0 ? fechasPartidos.reduce((a, b) => a < b ? a : b) : configJornada.fecha
-    const { data: fechaData, error: fechaErr } = await supabase.from('fechas').insert({
-      tournament_id: id, numero: parseInt(configJornada.numero) || (fechas.length + 1),
-      nombre: `Jornada ${configJornada.numero || fechas.length + 1}`, fecha_inicio: fechaInicioJornada,
-    }).select().single()
-    if (fechaErr) { showMsg('Error al crear jornada', 'error'); setLoadingPartido(false); return }
-    const inserts = jornadaGenerada.filter(p => !p.descanso && p.visitante).map(p => ({
-      tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
-      played_at: `${p.fecha || configJornada.fecha}T${p.hora || '08:00'}:00-05:00`, location: p.cancha?.nombre || null, cancha_id: p.cancha ? String(p.cancha.id) : null,
-      matchday: parseInt(configJornada.numero) || (fechas.length + 1), fecha_id: fechaData.id,
-      status: 'scheduled', fase: 'grupo',
-    }))
-    let { error } = await supabase.from('matches').insert(inserts)
-    // Falta migracion_cancha_id_partidos.sql: se guarda igual, sin la cancha exacta.
-    if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').insert(inserts.map(({ cancha_id, ...resto }) => resto)))
-    if (error) showMsg('Error al guardar partidos', 'error')
-    else { showMsg(`Jornada creada con ${inserts.length} partidos ✓`); salirJornada(); fetchPartidos(); fetchFechas() }
+    const base = parseInt(configJornada.numero) || (fechas.length + 1)
+    const reales = jornadaGenerada.filter(p => !p.descanso && p.visitante)
+    const numeros = [...new Set(reales.map(p => p.jn ?? base))].sort((a, b) => a - b)
+    let total = 0
+    for (const num of numeros) {
+      const delNum = reales.filter(p => (p.jn ?? base) === num)
+      // fecha_inicio de la jornada = la más temprana entre sus partidos
+      const fechasPartidos = delNum.map(p => p.fecha || configJornada.fecha)
+      const fechaInicioJornada = fechasPartidos.reduce((a, b) => a < b ? a : b)
+      const { data: fechaData, error: fechaErr } = await supabase.from('fechas').insert({
+        tournament_id: id, numero: num, nombre: `Jornada ${num}`, fecha_inicio: fechaInicioJornada,
+      }).select().single()
+      if (fechaErr) { showMsg(`Error al crear la jornada ${num}${total > 0 ? ` (las anteriores ya se guardaron: ${total} partidos)` : ''}`, 'error'); setLoadingPartido(false); fetchPartidos(); fetchFechas(); return }
+      const inserts = delNum.map(p => ({
+        tournament_id: id, home_team_id: p.local.id, away_team_id: p.visitante.id,
+        played_at: `${p.fecha || configJornada.fecha}T${p.hora || '08:00'}:00-05:00`, location: p.cancha?.nombre || null, cancha_id: p.cancha ? String(p.cancha.id) : null,
+        matchday: num, fecha_id: fechaData.id,
+        status: 'scheduled', fase: 'grupo',
+      }))
+      let { error } = await supabase.from('matches').insert(inserts)
+      // Falta migracion_cancha_id_partidos.sql: se guarda igual, sin la cancha exacta.
+      if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').insert(inserts.map(({ cancha_id, ...resto }) => resto)))
+      if (error) { showMsg(`Error al guardar los partidos de la jornada ${num}`, 'error'); setLoadingPartido(false); fetchPartidos(); fetchFechas(); return }
+      total += inserts.length
+    }
+    showMsg(`${numeros.length > 1 ? `${numeros.length} jornadas creadas` : 'Jornada creada'} con ${total} partidos ✓`)
+    salirJornada(); fetchPartidos(); fetchFechas()
     setLoadingPartido(false)
   }
 
@@ -4162,13 +4056,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   function ejecutarSwapEquipo(drag, tpi, tslot) {
     if (drag.pi === tpi && drag.slot === tslot) { setDrag(null); setDragOver(null); return }
     const nueva = jornadaGenerada.map(p => ({ ...p }))
+    if ((nueva[tpi].jn ?? null) !== (nueva[drag.pi].jn ?? null)) { showMsg('Solo puedes intercambiar equipos dentro de la misma jornada', 'error'); setDrag(null); setDragOver(null); return }
 
     // Dos equipos que descansan → crear un partido nuevo entre ellos
     if (drag.pi !== tpi && nueva[tpi].descanso && nueva[drag.pi].descanso) {
       const numPartidos = nueva.filter(p => !p.descanso).length
       const [hIni] = (configJornada.hora_inicio || '08:00').split(':').map(Number)
       const partidoNuevo = {
-        local: nueva[tpi].local, visitante: nueva[drag.pi].local,
+        local: nueva[tpi].local, visitante: nueva[drag.pi].local, jn: nueva[tpi].jn, fecha: nueva[tpi].semana || configJornada.fecha,
         cancha: canchas.length > 0 ? canchas[numPartidos % canchas.length] : null,
         hora: `${String(hIni + Math.floor(numPartidos / Math.max(canchas.length, 1))).padStart(2, '0')}:00`,
       }
@@ -5134,7 +5029,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
               {grupos.length > 0 && (
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
-                  🔀 Tocá el ícono junto a cada equipo (en las tablas de abajo) para moverlo a otro grupo manualmente. "Regenerar grupos" vuelve a sortear todo desde cero — no lo uses si ya acomodaste los grupos a mano. Si movés equipos después de haber generado los partidos, volvé a tocar "Generar partidos todos vs todos" para que se actualicen.
+                  🔀 Arrastra un equipo (con el ícono ⋮⋮ a la izquierda de su nombre) y suéltalo sobre otro grupo para moverlo, o toca el botón de mezclar junto al equipo. "Regenerar grupos" vuelve a sortear todo desde cero — no lo uses si ya acomodaste los grupos a mano. Si movés equipos después de haber generado los partidos, volvé a tocar "Generar partidos todos vs todos" para que se actualicen.
                 </div>
               )}
             </div>
@@ -5147,7 +5042,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 const color = COLORES_GRUPO[gi % COLORES_GRUPO.length]
                 const tabla = getTablaGrupo(grupo.id)
                 return (
-                  <div key={grupo.id} style={{ background: '#fff', border: `1px solid ${color}33`, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                  <div key={grupo.id} data-drop-grupo={grupo.id} style={{ background: String(grupoSobre) === String(grupo.id) ? `${color}12` : '#fff', border: String(grupoSobre) === String(grupo.id) ? `2px dashed ${color}` : `1px solid ${color}33`, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', transition: 'background .12s' }}>
                     <div style={{ background: `${color}22`, borderBottom: `2px solid ${color}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ fontWeight: '700', color, fontSize: '.9rem' }}>{grupo.nombre}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -5181,6 +5076,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               <tr key={row.equipo?.id || i} style={{ borderTop: '1px solid #f1f3f4', background: clasifica ? `${color}08` : '#fff' }}>
                                 <td style={{ padding: '8px 12px', position: 'relative' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {!gruposFinalizados && row.equipo && grupos.length > 1 && (
+                                      <span title="Arrastra para mover a otro grupo"
+                                        onPointerDown={e => iniciarDragGrupo(e, row.equipo, grupo.id)}
+                                        onPointerMove={moverDragGrupo}
+                                        onPointerUp={soltarDragGrupo}
+                                        onPointerCancel={cancelarDragGrupo}
+                                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '30px', margin: '-4px 0 -4px -6px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: dragGrupo?.teamId === row.equipo.id ? .35 : 1 }}>
+                                        <GripVertical size={15} color="#9aa0a6"/>
+                                      </span>
+                                    )}
                                     <span style={{ fontSize: '.65rem', fontWeight: '700', color: clasifica ? color : '#9aa0a6', minWidth: '14px' }}>{i + 1}</span>
                                     <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={row.equipo?.logo_url} name={row.equipo?.name} size={20}/></div>
                                     <span style={{ fontWeight: clasifica ? '700' : '500', color: '#202124', whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.equipo?.name}</span>
@@ -5303,6 +5208,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
               <Users size={36} style={{ opacity: .3, marginBottom: '8px' }}/>
               <div>Configura y crea los grupos arriba</div>
+            </div>
+          )}
+
+          {dragGrupo && (
+            <div style={{ position: 'fixed', left: dragGrupo.x, top: dragGrupo.y, transform: 'translate(-50%, -130%)', zIndex: 900, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', border: '2px solid #1a73e8', borderRadius: '12px', padding: '8px 12px', boxShadow: '0 8px 24px rgba(0,0,0,.28)', maxWidth: '70vw' }}>
+              <div style={{ width: '26px', height: '26px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={dragGrupo.logo} name={dragGrupo.name} size={26}/></div>
+              <span style={{ fontWeight: '700', fontSize: '.82rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dragGrupo.name}</span>
             </div>
           )}
 
@@ -5578,42 +5490,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           {subTab === 'jornada' && (
             <div style={{ marginTop: '16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}><Calendar size={18} color="#1a73e8"/> Preferencias de días y hora por equipo</div>
-                <div style={{ fontSize: '.78rem', color: '#9aa0a6', marginBottom: '14px' }}>Opcional — el sorteo intenta programar cada cruce en un día que les sirva a los dos equipos (dentro del rango de fechas de abajo) y respeta el "no antes de" de cada uno. Además reparte los horarios entre jornadas para que no le toque siempre el mismo horario al mismo equipo. Se guarda solo, no hace falta botón.</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '10px' }}>
-                  {equipos.map(e => (
-                    <div key={e.tournament_team_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '4px 0' }}>
-                      <div style={{ width: '22px', height: '22px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={22}/></div>
-                      <span style={{ fontSize: '.78rem', fontWeight: '600', color: '#202124', minWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
-                      <div style={{ display: 'flex', gap: '3px' }}>
-                        {DIAS_SEMANA_UI.map(d => {
-                          const activo = (e.dias_preferidos || []).includes(d.key)
-                          return (
-                            <button key={d.key} onClick={() => toggleDiaPreferido(e, d.key)} title={d.key}
-                              style={{ width: '24px', height: '24px', borderRadius: '6px', border: activo ? 'none' : '1px solid #dadce0', background: activo ? '#1a73e8' : '#fff', color: activo ? '#fff' : '#9aa0a6', fontSize: '.68rem', fontWeight: '700', cursor: 'pointer' }}>
-                              {d.corta}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <span style={{ fontSize: '.7rem', color: '#9aa0a6' }}>no antes de</span>
-                      <input type="time" value={e.hora_preferida || ''} onChange={ev => guardarPreferenciaEquipo(e, { hora_preferida: ev.target.value })}
-                        title="No programar antes de esta hora (opcional) — ej: 19:00 si prefieren jugar después de las 7pm"
-                        style={{ fontSize: '.75rem', padding: '3px 6px', border: '1px solid #dadce0', borderRadius: '6px', color: '#202124', width: '90px' }}/>
-                      {guardandoPref === e.tournament_team_id && <span style={{ fontSize: '.68rem', color: '#9aa0a6' }}>guardando...</span>}
-                    </div>
-                  ))}
-                  {equipos.length === 0 && <div style={{ fontSize: '.78rem', color: '#9aa0a6' }}>Agrega equipos al torneo primero.</div>}
-                </div>
-              </div>
-
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><Shuffle size={18} color="#1a73e8"/> Configurar jornada automática</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                   <div><label style={labelStyle}>Número de jornada</label><input type="number" value={configJornada.numero} onChange={e => setConfigJornada(f => ({ ...f, numero: e.target.value }))} style={inputStyle} placeholder={fechas.length + 1}/></div>
                   <div><label style={labelStyle}>Fecha inicio *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
                 </div>
-                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Desde esta fecha, el sorteo usa solo la primera vez que cae cada día que marques abajo (ej: el sábado y domingo de ESA semana, no de las siguientes) — no hace falta poner una "fecha fin". Si no alcanza el cupo de horarios/canchas, los equipos que sobran quedan descansando.</div>
+                <div style={{ marginTop: '12px' }}>
+                  <label style={labelStyle}>Programar hasta (opcional)</label>
+                  <input type="date" min={configJornada.fecha || undefined} value={configJornada.fecha_fin || ''} onChange={e => setConfigJornada(f => ({ ...f, fecha_fin: e.target.value }))} style={inputStyle}/>
+                </div>
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Sin fecha final: se arma UNA jornada con los días de esa semana (los que marques abajo). Con fecha final (ej: diciembre): se arma una jornada por cada semana desde la fecha de inicio hasta esa fecha, sin repetir cruces. Si no alcanza el cupo de horarios/canchas, los equipos que sobran quedan descansando.</div>
 
                 <div style={{ marginTop: '16px' }}>
                   <label style={labelStyle}>Escenarios, canchas, días y horarios de cada cancha</label>
@@ -5744,10 +5630,27 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   )}
                 </div>
                 {grupos.length > 1 && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', cursor: 'pointer', fontSize: '.8rem', color: '#5f6368' }}>
-                    <input type="checkbox" checked={permitirIntergrupo} onChange={e => setPermitirIntergrupo(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }}/>
-                    Permitir partidos intergrupo cuando un equipo ya enfrentó a todos los de su grupo
-                  </label>
+                  <div style={{ marginTop: '14px', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '12px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.8rem', color: '#202124', fontWeight: '600' }}>
+                      <input type="checkbox" checked={permitirIntergrupo} onChange={e => setPermitirIntergrupo(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }}/>
+                      Permitir partidos intergrupo
+                    </label>
+                    {permitirIntergrupo && (
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ fontSize: '.74rem', color: '#5f6368', marginBottom: '6px' }}>Partidos intergrupo por equipo</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #dadce0', borderRadius: '10px', overflow: 'hidden' }}>
+                          <button type="button" onClick={() => setIntergrupoPorEquipo(n => Math.max(1, (parseInt(n, 10) || 1) - 1))}
+                            style={{ width: '44px', height: '40px', border: 'none', background: '#f8f9fa', cursor: 'pointer', fontSize: '1.2rem', fontWeight: '700', color: '#5f6368' }}>−</button>
+                          <div style={{ minWidth: '48px', textAlign: 'center', fontSize: '1rem', fontWeight: '800', color: '#202124' }}>{intergrupoPorEquipo}</div>
+                          <button type="button" onClick={() => setIntergrupoPorEquipo(n => Math.min(10, (parseInt(n, 10) || 1) + 1))}
+                            style={{ width: '44px', height: '40px', border: 'none', background: '#f8f9fa', cursor: 'pointer', fontSize: '1.2rem', fontWeight: '700', color: '#5f6368' }}>+</button>
+                        </div>
+                        <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '8px', lineHeight: 1.45 }}>
+                          Para que ningún equipo descanse: si a un equipo no le queda rival de su grupo en la jornada, se le programa uno de otro grupo (sin repetir cruces). Cada equipo jugará como máximo {intergrupoPorEquipo} partido{intergrupoPorEquipo > 1 ? 's' : ''} intergrupo en todo el torneo — los ya programados cuentan. Puede ser incluso su primer partido.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
                   ℹ️ El sorteo evita repetir cruces ya jugados o programados. Si un equipo no tiene rival nuevo, queda descansando.
@@ -5759,7 +5662,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               {jornadaGenerada.length > 0 && (
                 <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Jornada {configJornada.numero || fechas.length + 1}</div>
+                    <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{new Set(jornadaGenerada.map(p => p.jn ?? 0)).size > 1 ? `${new Set(jornadaGenerada.map(p => p.jn ?? 0)).size} jornadas` : `Jornada ${jornadaGenerada[0]?.jn ?? (configJornada.numero || fechas.length + 1)}`}</div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={salirJornada} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}><X size={14}/> Salir</button>
                       <button onClick={generarJornada} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}><Shuffle size={14}/> Regenerar</button>
@@ -5769,8 +5672,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {jornadaGenerada.map((p, i) => {
                       const veces = p.descanso ? 0 : vecesEnfrentados(p.local?.id, p.visitante?.id)
+                      const nuevaJornada = i === 0 || (jornadaGenerada[i - 1].jn ?? null) !== (p.jn ?? null)
+                      const multiples = new Set(jornadaGenerada.map(x => x.jn ?? 0)).size > 1
                       return (
-                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 12px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
+                      <Fragment key={i}>
+                      {multiples && nuevaJornada && (
+                        <div style={{ margin: i === 0 ? '0 0 2px' : '14px 0 2px', fontWeight: '800', fontSize: '.82rem', color: '#1a73e8', borderBottom: '2px solid #e8f0fe', paddingBottom: '4px' }}>Jornada {p.jn}</div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 12px', borderRadius: '10px', border: veces > 0 ? '1px solid #f9ab00' : '1px solid #e8eaed', background: p.descanso ? '#f8f9fa' : veces > 0 ? '#fffbf0' : '#fff' }}>
                         {p.descanso ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <div data-drop-pi={i} data-drop-slot="local"
@@ -5885,6 +5794,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           ]}/>
                         })()}
                       </div>
+                      </Fragment>
                       )
                     })}
                   </div>
