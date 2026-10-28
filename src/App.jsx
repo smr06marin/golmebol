@@ -5,6 +5,7 @@ import { useAuthStore } from './store/authStore'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import GlobalToast from './components/GlobalToast'
 import SessionGuard from './components/SessionGuard'
+import InstalarApp from './components/InstalarApp'
 import MarcaGolmebol from './components/MarcaGolmebol'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
 import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
@@ -479,6 +480,7 @@ export default function App() {
     <DominioPersonalizadoGate>
     <BrowserRouter>
       <SessionGuard/>
+      <InstalarApp/>
       <MarcaGolmebol conInicio/>
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>

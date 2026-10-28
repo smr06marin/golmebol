@@ -20,6 +20,9 @@ try {
 // App (Android/iPhone): deja listas las notificaciones push. En la web no hace nada.
 import('./lib/avisos').then(m => m.iniciarAvisos()).catch(() => {})
 
+// Guarda el aviso de "instalar" de Chrome (Android) desde el primer momento, para la guía de instalación.
+import('./lib/instalarApp').then(m => m.iniciarInstalacion()).catch(() => {})
+
 // Guarda borradores de lo que se escribe en cualquier formulario: si el celular recarga
 // la página al volver de WhatsApp u otra app, lo escrito se recupera solo.
 import('./lib/borradorFormularios').then(m => m.iniciarBorradores()).catch(() => {})
