@@ -85,15 +85,22 @@ export function detectarDispositivo() {
   return { esIOS, esAndroid, movil, enApp, navegador }
 }
 
-// Pasos según el celular. icono = nombre del dibujo que usa la guía.
+// Pasos según el celular. Cada paso trae un "escena": el dibujo de la pantalla con la flecha que señala dónde tocar.
+//   barra-abajo  { iconos:[...], objetivo:n }   barra de botones abajo (Safari, Samsung, Edge)
+//   barra-arriba { objetivo:'compartir'|'puntos-v'|'puntos-h' }   dirección arriba con su botón a la derecha
+//   menu         { filas:[...], objetivo:n }    lista del menú con una fila señalada
+//   dialogo-ios / dialogo-android { boton:'Agregar' }
+//   inicio       pantalla de inicio con el ícono de Golmebol
+//   icono        { nombre }   dibujo grande sin flecha (copiar enlace, abrir otra app…)
 export function pasosParaInstalar(d, directo) {
+  const inicio = { escena: { tipo: 'inicio' }, titulo: 'Listo: busca el ícono de Golmebol', texto: 'Ya está en tu pantalla, como cualquier otra app. Ábrela siempre desde ahí.' }
   if (d.enApp) {
     return {
       titulo: d.esIOS ? 'iPhone · navegador de otra app' : 'Android · navegador de otra app',
       pasos: [
-        { icono: d.esIOS ? 'puntos-h' : 'puntos-v', titulo: 'Abre el menú de arriba', texto: 'Toca los tres puntos (⋯ o ⋮) que aparecen arriba o abajo en esta pantalla.' },
-        { icono: 'externo', titulo: d.esIOS ? 'Toca «Abrir en Safari»' : 'Toca «Abrir en Chrome» o «Abrir en el navegador»', texto: 'Estás viendo Golmebol dentro de otra app (WhatsApp, Instagram, Facebook…). Aquí no se puede instalar: hay que abrirla en tu navegador.' },
-        { icono: 'celular', titulo: 'Vuelve a tocar «Instalar»', texto: 'Cuando se abra en tu navegador, aparecerá otra vez esta guía con los pasos para instalarla.' },
+        { escena: { tipo: 'barra-arriba', objetivo: d.esIOS ? 'puntos-h' : 'puntos-v' }, titulo: 'Toca los tres puntitos', texto: 'Están arriba o abajo de esta pantalla.' },
+        { escena: { tipo: 'menu', filas: ['Copiar enlace', d.esIOS ? 'Abrir en Safari' : 'Abrir en Chrome', 'Compartir'], objetivo: 1 }, titulo: d.esIOS ? 'Toca «Abrir en Safari»' : 'Toca «Abrir en Chrome»', texto: 'Ahora estás dentro de otra app (WhatsApp, Instagram…). Ahí no se puede instalar. Si dice «Abrir en el navegador», toca esa.' },
+        { escena: { tipo: 'icono', nombre: 'celular' }, titulo: 'Vuelve a tocar «Ver cómo»', texto: 'Cuando se abra en tu navegador, esta guía sale otra vez.' },
       ],
     }
   }
@@ -102,9 +109,9 @@ export function pasosParaInstalar(d, directo) {
       return {
         titulo: 'iPhone · ' + (d.navegador === 'firefox-ios' ? 'Firefox' : 'Opera'),
         pasos: [
-          { icono: 'copiar', titulo: 'Copia el enlace', texto: 'En este navegador no se puede instalar. Copia la dirección golmebol.com.' },
-          { icono: 'safari', titulo: 'Ábrelo en Safari', texto: 'Abre Safari (el navegador azul con la brújula), pega el enlace y entra.' },
-          { icono: 'celular', titulo: 'Sigue la guía de Safari', texto: 'Ya en Safari, vuelve a tocar «Instalar» y te muestra los pasos.' },
+          { escena: { tipo: 'icono', nombre: 'copiar' }, titulo: 'Copia el enlace golmebol.com', texto: 'En este navegador no se puede instalar.' },
+          { escena: { tipo: 'icono', nombre: 'safari' }, titulo: 'Ábrelo en Safari', texto: 'Safari es el navegador azul con una brújula. Pega el enlace y entra.' },
+          { escena: { tipo: 'icono', nombre: 'celular' }, titulo: 'Vuelve a tocar «Ver cómo»', texto: 'Ya en Safari, esta guía te muestra los pasos.' },
         ],
       }
     }
@@ -112,46 +119,55 @@ export function pasosParaInstalar(d, directo) {
     return {
       titulo: 'iPhone · ' + (esSafari ? 'Safari' : d.navegador === 'chrome-ios' ? 'Chrome' : 'Edge'),
       pasos: [
-        { icono: 'compartir', titulo: 'Toca el botón «Compartir»', texto: esSafari ? 'Es el cuadro con una flecha hacia arriba, abajo en el centro. Si solo ves tres puntos (⋯), tócalos y busca «Compartir». En iPad está arriba a la derecha.' : 'Es el cuadro con una flecha hacia arriba, arriba a la derecha junto a la dirección. Si no lo ves, abre golmebol.com en Safari.' },
-        { icono: 'agregar', titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Desliza el menú hacia abajo hasta verla. Si no aparece, toca «Ver más» al final de la lista.' },
-        { icono: 'ok', titulo: 'Toca «Agregar»', texto: 'Está arriba a la derecha. Golmebol queda en tu pantalla como cualquier otra app: ábrela desde ahí.' },
+        esSafari
+          ? { escena: { tipo: 'barra-abajo', iconos: ['atras', 'adelante', 'compartir', 'libro', 'pestanas'], objetivo: 2 }, titulo: 'Toca el botón «Compartir»', texto: 'Es el cuadrito con una flecha hacia arriba. Si solo ves tres puntos (⋯), tócalos y luego «Compartir».' }
+          : { escena: { tipo: 'barra-arriba', objetivo: 'compartir' }, titulo: 'Toca el botón «Compartir»', texto: 'Es el cuadrito con una flecha hacia arriba, arriba a la derecha. Si no lo ves, abre golmebol.com en Safari.' },
+        { escena: { tipo: 'menu', filas: ['Copiar', 'Agregar a marcadores', 'Agregar a pantalla de inicio', 'Buscar en la página'], objetivo: 2 }, titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Desliza el menú hacia abajo con el dedo hasta verla.' },
+        { escena: { tipo: 'dialogo-ios', boton: 'Agregar' }, titulo: 'Toca «Agregar»', texto: 'Está arriba a la derecha.' },
+        inicio,
       ],
     }
   }
   // Android
   const n = d.navegador
-  const final = { icono: 'ok', titulo: 'Abre Golmebol desde tu pantalla', texto: 'Queda como cualquier otra app. Entra siempre desde ese ícono.' }
+  const dialogoInstalar = (boton) => ({ escena: { tipo: 'dialogo-android', boton }, titulo: `Toca «${boton}»`, texto: 'Se pone el ícono de Golmebol en tu pantalla.' })
   if (n === 'samsung') {
     return { titulo: 'Android · Samsung Internet', pasos: [
-      { icono: 'menu', titulo: 'Toca el menú ☰', texto: 'Son las tres rayitas, abajo a la derecha del navegador.' },
-      { icono: 'agregar', titulo: 'Toca «Agregar página a» y luego «Pantalla de inicio»', texto: 'Si aparece «Instalar aplicación», tócala y listo.' },
-      { icono: 'ok', titulo: 'Toca «Agregar»', texto: final.texto },
+      { escena: { tipo: 'barra-abajo', iconos: ['atras', 'adelante', 'inicio', 'libro', 'menu'], objetivo: 4 }, titulo: 'Toca las tres rayitas ☰', texto: 'Están abajo a la derecha.' },
+      { escena: { tipo: 'menu', filas: ['Descargas', 'Historial', 'Agregar página a', 'Compartir'], objetivo: 2 }, titulo: 'Toca «Agregar página a»', texto: 'Si ves «Instalar aplicación», toca esa y listo.' },
+      { escena: { tipo: 'menu', filas: ['Marcadores', 'Pantalla de inicio', 'Página guardada'], objetivo: 1 }, titulo: 'Toca «Pantalla de inicio»', texto: '' },
+      dialogoInstalar('Agregar'),
+      inicio,
     ] }
   }
   if (n === 'firefox') {
     return { titulo: 'Android · Firefox', pasos: [
-      { icono: 'puntos-v', titulo: 'Toca el menú ⋮', texto: 'Son los tres puntos, arriba o abajo a la derecha.' },
-      { icono: 'descargar', titulo: 'Toca «Instalar»', texto: 'Si no aparece, busca «Agregar a la pantalla de inicio».' },
-      final,
+      { escena: { tipo: 'barra-arriba', objetivo: 'puntos-v' }, titulo: 'Toca los tres puntitos ⋮', texto: 'Están arriba o abajo a la derecha.' },
+      { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Instalar', 'Compartir'], objetivo: 1 }, titulo: 'Toca «Instalar»', texto: 'Si no aparece, busca «Agregar a la pantalla de inicio».' },
+      dialogoInstalar('Agregar'),
+      inicio,
     ] }
   }
   if (n === 'edge') {
     return { titulo: 'Android · Edge', pasos: [
-      { icono: 'puntos-h', titulo: 'Toca el menú ⋯', texto: 'Son los tres puntos, abajo en el centro.' },
-      { icono: 'descargar', titulo: 'Toca «Agregar al teléfono»', texto: 'Si no aparece, busca «Agregar a pantalla de inicio».' },
-      final,
+      { escena: { tipo: 'barra-abajo', iconos: ['atras', 'adelante', 'mas', 'pestanas', 'puntos-h'], objetivo: 4 }, titulo: 'Toca los tres puntitos ⋯', texto: 'Están abajo a la derecha.' },
+      { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Agregar al teléfono', 'Compartir'], objetivo: 1 }, titulo: 'Toca «Agregar al teléfono»', texto: 'Si no aparece, busca «Agregar a pantalla de inicio».' },
+      dialogoInstalar('Agregar'),
+      inicio,
     ] }
   }
   if (n === 'chrome') {
-    return { titulo: 'Android · Chrome', pasos: [
-      { icono: 'puntos-v', titulo: 'Toca el menú ⋮', texto: 'Son los tres puntos, arriba a la derecha de Chrome.' },
-      { icono: 'descargar', titulo: 'Toca «Instalar aplicación»', texto: 'En algunos celulares dice «Agregar a la pantalla principal».' },
-      { icono: 'ok', titulo: 'Toca «Instalar»', texto: final.texto },
-    ] , directo }
+    return { titulo: 'Android · Chrome', directo, pasos: [
+      { escena: { tipo: 'barra-arriba', objetivo: 'puntos-v' }, titulo: 'Toca los tres puntitos ⋮', texto: 'Están arriba a la derecha.' },
+      { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Historial', 'Instalar aplicación', 'Compartir…'], objetivo: 2 }, titulo: 'Toca «Instalar aplicación»', texto: 'En algunos celulares dice «Agregar a la pantalla principal».' },
+      dialogoInstalar('Instalar'),
+      inicio,
+    ] }
   }
   return { titulo: 'Android', pasos: [
-    { icono: 'puntos-v', titulo: 'Abre el menú del navegador', texto: 'Toca los tres puntos (⋮ o ⋯) o las tres rayitas (☰), arriba o abajo.' },
-    { icono: 'agregar', titulo: 'Busca «Agregar a pantalla de inicio» o «Instalar»', texto: 'Si no ves esa opción, abre golmebol.com en Chrome: ahí siempre aparece.' },
-    { icono: 'ok', titulo: 'Confirma con «Agregar»', texto: final.texto },
+    { escena: { tipo: 'barra-arriba', objetivo: 'puntos-v' }, titulo: 'Toca los tres puntitos', texto: 'Están arriba o abajo del navegador (⋮ o ⋯ o ☰).' },
+    { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Historial', 'Agregar a pantalla de inicio', 'Compartir'], objetivo: 2 }, titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Si no ves esa opción, abre golmebol.com en Chrome: ahí siempre aparece.' },
+    dialogoInstalar('Agregar'),
+    inicio,
   ] }
 }
