@@ -45,16 +45,17 @@ export default function PantallaPartido({
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <style>{ESTILO_RESALTE}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: `1px solid ${BORDE}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <button onClick={onSalir} title="Salir sin guardar resultado — el partido queda pendiente para seguir después"
+          style={{ background: 'rgba(255,255,255,.08)', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO, fontSize: '.78rem', fontWeight: '800', cursor: 'pointer', padding: '5px 10px', minHeight: '32px' }}>‹ Atrás</button>
         <button onClick={onVolverLista}
           style={nuevosSinNumero > 0
             ? { background: AMARILLO, border: 'none', borderRadius: '7px', color: '#1a1a1a', fontSize: '.7rem', fontWeight: '900', cursor: 'pointer', padding: '5px 8px', animation: ANIM_RESALTE, whiteSpace: 'nowrap' }
             : { background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.72rem', cursor: 'pointer', padding: '4px' }}>
           {nuevosSinNumero > 0 ? `👥 ${nuevosSinNumero} nuevo${nuevosSinNumero > 1 ? 's' : ''}` : '👥 Jugadores'}
         </button>
-        <span style={{ fontSize: '.68rem', color: TEXTO_TENUE, fontWeight: '700' }}>PLANILLA RÁPIDA</span>
+        </div>
         <div style={{ display: 'flex', gap: '6px' }}>
-          <button onClick={onSalir} title="Salir sin guardar resultado — el partido queda pendiente para seguir después"
-            style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '5px 8px' }}>⏸ Suspender</button>
           <button onClick={onAbrirEspecial} title="Partido por W o Desierto (no se jugó)"
             style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '5px 8px' }}>⚠️ W</button>
           <button onClick={onAbrirCierre}

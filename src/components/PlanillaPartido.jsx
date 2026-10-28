@@ -1678,6 +1678,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     // pausa antes de guardar, para que el tiempo restante quede correcto al
     // retomar el partido (si no, al reabrirlo se extrapolaría como si
     // hubiera seguido corriendo todo el tiempo que estuvo cerrada la app).
+    // Partido ya jugado que se está revisando/editando: solo se sale (no se
+    // guarda borrador ni se toca el resultado que ya estaba guardado).
+    if (partido.status === 'finished') {
+      if (!window.confirm('Vas a salir de la planilla.\n\nEl resultado que ya estaba guardado no se cambia (los cambios que no hayas guardado se pierden).\n\n¿Salir?')) return
+      onClose()
+      return
+    }
     if (corriendo) setCorriendo(false)
     // pausado:true → para que este partido deje de salir en "en vivo" en la
     // pantalla de inicio hasta que el árbitro vuelva a entrar y siga jugando
@@ -2557,15 +2564,17 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
 
           {/* Barra superior */}
           <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>📋 {partido.home?.name} vs {partido.away?.name}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <button onClick={handleCerrar} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
+                style={{ padding:'7px 14px', background:'#fff', border:'1px solid #9aa0a6', borderRadius:'8px', cursor:'pointer', color:'#202124', fontSize:'.85rem', fontWeight:'800', minHeight:'36px' }}>
+                ‹ Atrás
+              </button>
+              <span style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>📋 {partido.home?.name} vs {partido.away?.name}</span>
+            </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}
               {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales</span>}
               {mvpId && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff8e1', borderRadius: '6px', padding: '4px 10px', fontWeight: '600', border: '1px solid #ffe082' }}>⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || '...'}</span>}
-              <button onClick={handleCerrar} title="Pausa el cronómetro y guarda un borrador — el partido queda pendiente para seguir después, sin marcarlo como jugado"
-                style={{ padding:'6px 12px', background:'none', border:'1px solid #dadce0', borderRadius:'8px', cursor:'pointer', color:'#5f6368', fontSize:'.8rem', fontWeight:'600', display:'flex', alignItems:'center', gap:'4px' }}>
-                ⏸ Suspender
-              </button>
               <button onClick={() => { if (!informeTipo) setInformeTipo('otro'); setShowInforme({ motivo: 'otro' }) }} style={{ padding: '6px 12px', background: informeGuardado ? '#1e8e3e' : '#7b1fa2', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>{informeGuardado ? '✓ Informe' : '📝 Informe'}</button>
               <button onClick={() => setShowEspecial('w')} style={{ padding: '6px 12px', background: '#e8710a', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>🏆 Por W</button>
               <button onClick={() => setShowEspecial('desierto')} style={{ padding: '6px 12px', background: '#5f6368', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>❌ Desierto</button>

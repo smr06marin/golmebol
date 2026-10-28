@@ -61,13 +61,16 @@ function BloqueEquipo({ titulo, color, jugadores, onAbrir, tarifaInscripcion, id
 // (ver AlertaNumeroDesconocido.jsx), que no pasa por esta pantalla.
 export default function PantallaAsignarNumeros({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
-  onAbrirJugador, onContinuar, onVolverColores, volviendoDesdePartido, tarifaInscripcion = 0,
+  onAbrirJugador, onContinuar, onVolverColores, onSalir, volviendoDesdePartido, tarifaInscripcion = 0,
   idsNuevos = [], onActualizar, actualizando = false,
 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, background: '#0d1117', borderBottom: `1px solid ${BORDE}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <button onClick={onVolverColores} style={{ background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.78rem', cursor: 'pointer' }}>‹ Colores</button>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button onClick={onVolverColores} style={{ background: 'rgba(255,255,255,.08)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.78rem', fontWeight: '800', cursor: 'pointer', padding: '7px 11px', minHeight: '36px' }}>‹ Atrás</button>
+          {onSalir && <button onClick={onSalir} style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO_TENUE, fontSize: '.72rem', fontWeight: '700', cursor: 'pointer', padding: '7px 9px', minHeight: '36px' }}>✕ Salir</button>}
+        </div>
         <div style={{ fontSize: '.85rem', fontWeight: '800' }}>Asignar camisetas</div>
         <button onClick={onActualizar} disabled={actualizando} title="Volver a pedir la lista de jugadores inscritos"
           style={{ background: 'rgba(255,255,255,.08)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.7rem', fontWeight: '800', cursor: 'pointer', padding: '6px 9px', opacity: actualizando ? .6 : 1 }}>

@@ -581,11 +581,11 @@ export default function PantallaPapel({
 
           {/* Botones de arriba: los mismos de la planilla profesional */}
           <div className="gm-papel-no-imprimir" style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '8px 10px', margin: '8px 0 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <button type="button" onClick={onSalir} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
+              style={botonBarra('#fff', { color: '#202124', border: '1px solid #9aa0a6', fontWeight: '800' })}>‹ Atrás</button>
             {!compacta && <span style={{ fontWeight: '700', fontSize: '.82rem', color: '#202124', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>📋 {nombreLocal} vs {nombreVis}</span>}
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
               {!enLinea && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 8px', fontWeight: '700', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}
-              <button type="button" onClick={onSalir} title="Pausa y guarda un borrador — el partido queda pendiente para seguir después, sin marcarlo como jugado"
-                style={botonBarra('#fff', { color: GRIS, border: '1px solid #dadce0' })}>⏸ Suspender</button>
               <button type="button" onClick={irAlInforme} style={botonBarra(informeListo ? '#1e8e3e' : '#7b1fa2')}>{informeListo ? '✓ Informe' : '📝 Informe'}</button>
               <button type="button" onClick={() => onAbrirEspecial('w')} style={botonBarra('#e8710a')}>🏆 Por W</button>
               <button type="button" onClick={() => onAbrirEspecial('desierto')} style={botonBarra('#5f6368')}>❌ Desierto</button>

@@ -1077,6 +1077,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   // quede correcto al retomarlo, guarda el borrador ya mismo y sale. Al volver
   // a entrar a este mismo partido, la planilla se restaura tal cual quedó.
   function pausarYSalir() {
+    // Partido ya jugado que se está revisando/editando: no hay nada que "suspender",
+    // solo se sale sin tocar el resultado guardado.
+    if (partido?.status === 'finished') {
+      if (!window.confirm('Vas a salir de la planilla.\n\nEl resultado que ya estaba guardado no se cambia (los cambios que no hayas guardado se pierden).\n\n¿Salir?')) return
+      onClose && onClose()
+      return
+    }
     // Con otro celular todavía planillando, salir de ESTE no pausa ni "suspende"
     // el partido: el otro sigue con el reloj y todo lo cargado. Además de la
     // presencia (que puede tardar o fallar con mala señal) se mira si el otro
@@ -1084,7 +1091,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     // la presencia no había cargado PAUSABA el reloj en todos los celulares.
     const hayOtroActivo = otrosCelulares > 0 || (Date.now() - ultimoAjenoRef.current < 25000)
     if (hayOtroActivo) {
-      if (!window.confirm('Vas a salir de esta planilla SIN guardar el resultado.\n\nEl otro celular sigue con el partido (reloj, goles y tarjetas siguen igual). Podés volver a entrar cuando quieras.\n\n¿Continuar?')) return
+      if (!window.confirm('Vas a salir de esta planilla SIN guardar el resultado.\n\nEl otro celular sigue con el partido (reloj, goles y tarjetas siguen igual). Puedes volver a entrar cuando quieras.\n\n¿Continuar?')) return
       pararAlarma()
       guardarRemotoInmediato(construirSnap())
       onClose && onClose()
@@ -1699,6 +1706,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         nombreLocal={nombreLocal} nombreVis={nombreVis} colorLocal={colorLocal} colorVis={colorVis}
         onElegir={(team, hex) => { team === 'local' ? setColorLocal(hex) : setColorVis(hex) }}
         onContinuar={() => setStep('asignar')}
+        onSalir={() => onClose && onClose()}
       />
     </>
   )
@@ -1711,6 +1719,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         jugadoresLocal={jugadoresLocal} jugadoresVisitante={jugadoresVisitante}
         onAbrirJugador={abrirJugador}
         onVolverColores={() => setStep('colores')}
+        onSalir={volviendoDesdePartido ? pausarYSalir : () => onClose && onClose()}
         onContinuar={() => { setStep('partido'); setVolviendoDesdePartido(false) }}
         volviendoDesdePartido={volviendoDesdePartido}
         tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0}

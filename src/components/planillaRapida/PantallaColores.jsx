@@ -4,7 +4,7 @@ import { FONDO, PANEL, BORDE, TEXTO, TEXTO_TENUE, btnPrimario } from './estilosR
 // Primer paso: elegir el color de cada uniforme para pintar la pantalla
 // dividida del partido. Con un toque alcanza — pensado para elegir parados
 // en la cancha antes de arrancar.
-export default function PantallaColores({ nombreLocal, nombreVis, colorLocal, colorVis, onElegir, onContinuar }) {
+export default function PantallaColores({ nombreLocal, nombreVis, colorLocal, colorVis, onElegir, onContinuar, onSalir }) {
   const puedeContinuar = !!colorLocal && !!colorVis
 
   function Paleta({ equipo, seleccionado, otro }) {
@@ -31,6 +31,11 @@ export default function PantallaColores({ nombreLocal, nombreVis, colorLocal, co
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, overflowY: 'auto', background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', padding: '20px 16px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      {onSalir && (
+        <button onClick={onSalir} style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,.08)', border: `1px solid ${BORDE}`, borderRadius: '9px', color: TEXTO, fontSize: '.85rem', fontWeight: '800', cursor: 'pointer', padding: '9px 14px', minHeight: '40px' }}>
+          ‹ Atrás
+        </button>
+      )}
       <div style={{ textAlign: 'center', marginBottom: '4px' }}>
         <div style={{ fontSize: '.7rem', color: TEXTO_TENUE, letterSpacing: '.08em' }}>PLANILLA RÁPIDA</div>
         <div style={{ fontSize: '1rem', fontWeight: '800' }}>Elige el color de cada uniforme</div>
