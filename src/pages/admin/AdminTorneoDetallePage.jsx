@@ -5490,31 +5490,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         )}
                       </div>
                     )}
-                    {arbitrosAdmin.length > 0 && (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-                        <div>
-                          <label style={labelStyle}>🟡 Árbitro principal</label>
-                          <select value={formPartido.arbitro1_id} onChange={e => setFormPartido(f => ({ ...f, arbitro1_id: e.target.value }))} style={inputStyle}>
-                            <option value="">Sin asignar</option>
-                            {arbitrosAdmin.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label style={labelStyle}>🟡 Árbitro asistente 1</label>
-                          <select value={formPartido.arbitro2_id} onChange={e => setFormPartido(f => ({ ...f, arbitro2_id: e.target.value }))} style={inputStyle}>
-                            <option value="">Sin asignar</option>
-                            {arbitrosAdmin.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label style={labelStyle}>🟡 Árbitro asistente 2</label>
-                          <select value={formPartido.arbitro3_id} onChange={e => setFormPartido(f => ({ ...f, arbitro3_id: e.target.value }))} style={inputStyle}>
-                            <option value="">Sin asignar</option>
-                            {arbitrosAdmin.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                     <button onClick={handleCrearPartido} disabled={loadingPartido} style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loadingPartido ? .7 : 1 }}>{loadingPartido ? 'Guardando...' : 'Crear partido'}</button>
