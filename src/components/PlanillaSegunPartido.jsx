@@ -48,7 +48,10 @@ export default function PlanillaSegunPartido({ contexto, ...props }) {
   if (tipoTorneo === undefined) {
     return (
       <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5f6368', fontSize: '1rem', fontFamily: 'system-ui, sans-serif' }}>
-        Cargando planilla…
+        <div style={{ textAlign: 'center' }}>
+          <div>Cargando planilla…</div>
+          {props.onClose && <button onClick={props.onClose} style={{ marginTop: '18px', padding: '10px 18px', borderRadius: '10px', border: '1px solid #9aa0a6', background: '#fff', color: '#202124', fontWeight: '800', fontSize: '.9rem', cursor: 'pointer' }}>‹ Atrás</button>}
+        </div>
       </div>
     )
   }

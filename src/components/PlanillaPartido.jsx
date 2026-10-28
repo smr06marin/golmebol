@@ -2563,7 +2563,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
         <div style={{ background: '#fff', width: '100%', maxWidth: '980px', minHeight: '100%' }}>
 
           {/* Barra superior */}
-          <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '8px' }}>
+          <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 20, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #e8eaed', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
               <button onClick={handleCerrar} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
                 style={{ padding:'7px 14px', background:'#fff', border:'1px solid #9aa0a6', borderRadius:'8px', cursor:'pointer', color:'#202124', fontSize:'.85rem', fontWeight:'800', minHeight:'36px' }}>

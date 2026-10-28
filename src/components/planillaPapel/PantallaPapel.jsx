@@ -523,6 +523,8 @@ export default function PantallaPapel({
 
       {/* Cronómetro + marcador (siempre a la vista) */}
       <div className="gm-papel-no-imprimir" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px', padding: '6px 10px', background: fondoReloj, color: '#fff', flexShrink: 0 }}>
+        <button type="button" onClick={onSalir} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
+          style={{ ...boton, background: '#fff', color: '#202124', border: '1px solid #fff' }}>‹ Atrás</button>
         <span style={{ fontSize: '.78rem', fontWeight: '800', background: 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '2px 8px' }}>{periodo === 1 ? '1T' : '2T'}</span>
         <span style={{ fontSize: '2rem', fontWeight: '900', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
           {enExtra && <span style={{ fontSize: '.7rem', letterSpacing: '.14em', color: '#ffe066', marginRight: '6px', fontFamily: 'system-ui,sans-serif' }}>EXTRA</span>}
@@ -581,8 +583,6 @@ export default function PantallaPapel({
 
           {/* Botones de arriba: los mismos de la planilla profesional */}
           <div className="gm-papel-no-imprimir" style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '8px 10px', margin: '8px 0 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-            <button type="button" onClick={onSalir} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
-              style={botonBarra('#fff', { color: '#202124', border: '1px solid #9aa0a6', fontWeight: '800' })}>‹ Atrás</button>
             {!compacta && <span style={{ fontWeight: '700', fontSize: '.82rem', color: '#202124', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>📋 {nombreLocal} vs {nombreVis}</span>}
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
               {!enLinea && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 8px', fontWeight: '700', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}

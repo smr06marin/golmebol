@@ -1695,7 +1695,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
 
   if (loading) return (
     <div style={{ minHeight: '100dvh', background: FONDO, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CIAN, fontFamily: 'system-ui,sans-serif' }}>
-      Cargando planilla rápida...
+      <div style={{ textAlign: 'center' }}>
+        <div>Cargando planilla rápida...</div>
+        {onClose && <button onClick={onClose} style={{ marginTop: '18px', padding: '10px 18px', borderRadius: '10px', border: '1px solid rgba(255,255,255,.3)', background: 'rgba(255,255,255,.1)', color: '#fff', fontWeight: '800', fontSize: '.9rem', cursor: 'pointer' }}>‹ Atrás</button>}
+      </div>
     </div>
   )
 
