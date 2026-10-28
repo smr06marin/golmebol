@@ -1616,10 +1616,36 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleMoverEquipoGrupo(teamId, grupoIdDestino) {
+    const yaEnGrupo = grupoEquipos.some(ge => ge.team_id === teamId)
+    if (!yaEnGrupo) {
+      // Equipo que se agregó al torneo después de crear los grupos: entra al grupo elegido
+      const { error: errIns } = await supabase.from('grupo_equipos').insert({ grupo_id: grupoIdDestino, team_id: teamId, tournament_id: id })
+      if (errIns) { showMsg(`No se pudo poner el equipo en el grupo: ${errIns.message}`, 'error'); return }
+      showMsg('Equipo agregado al grupo ✓')
+      fetchGrupos()
+      return
+    }
     const { data, error } = await supabase.from('grupo_equipos').update({ grupo_id: grupoIdDestino }).eq('team_id', teamId).eq('tournament_id', id).select('team_id')
     if (error) { showMsg(`No se pudo mover el equipo: ${error.message}`, 'error'); return }
     if (!data || data.length === 0) { showMsg('No se pudo mover el equipo (sin permisos)', 'error'); return }
     showMsg('Equipo movido ✓')
+    fetchGrupos()
+  }
+
+  // Reparte los equipos que no tienen grupo, de uno en uno, al grupo que tenga menos equipos
+  async function handleRepartirSinGrupo() {
+    const sinGrupo = equipos.filter(e => !grupoEquipos.some(ge => ge.team_id === e.id))
+    if (sinGrupo.length === 0 || grupos.length === 0) return
+    const conteo = {}
+    grupos.forEach(g => { conteo[g.id] = grupoEquipos.filter(ge => ge.grupo_id === g.id).length })
+    const inserts = sinGrupo.map(e => {
+      const destino = grupos.reduce((m, g) => (conteo[g.id] < conteo[m.id] ? g : m), grupos[0])
+      conteo[destino.id]++
+      return { grupo_id: destino.id, team_id: e.id, tournament_id: id }
+    })
+    const { error } = await supabase.from('grupo_equipos').insert(inserts)
+    if (error) { showMsg(`No se pudieron repartir los equipos: ${error.message}`, 'error'); return }
+    showMsg(`${inserts.length} equipo${inserts.length > 1 ? 's' : ''} repartido${inserts.length > 1 ? 's' : ''} ✓`)
     fetchGrupos()
   }
 
@@ -5034,6 +5060,51 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               )}
             </div>
           )}
+
+          {/* Equipos del torneo que todavía no están en ningún grupo (los que se agregaron después de crear los grupos) */}
+          {grupos.length > 0 && !gruposFinalizados && (() => {
+            const sinGrupo = equipos.filter(e => !grupoEquipos.some(ge => ge.team_id === e.id))
+            if (sinGrupo.length === 0) return null
+            return (
+              <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                  <div style={{ fontWeight: '700', color: '#795548', fontSize: '.9rem' }}>Equipos sin grupo · {sinGrupo.length}</div>
+                  <button onClick={handleRepartirSinGrupo}
+                    style={{ background: '#fff', border: '1px solid #ffb300', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', color: '#795548', fontSize: '.75rem', fontWeight: '700' }}>
+                    Repartir en los grupos con menos equipos
+                  </button>
+                </div>
+                <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>Elige el grupo de cada equipo con los botones, o arrástralo (⋮⋮) y suéltalo sobre el grupo.</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {sinGrupo.map(e => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#fff', borderRadius: '10px', padding: '8px 10px', opacity: dragGrupo?.teamId === e.id ? .35 : 1 }}>
+                      <span title="Arrastra a un grupo"
+                        onPointerDown={ev => iniciarDragGrupo(ev, e, null)}
+                        onPointerMove={moverDragGrupo}
+                        onPointerUp={soltarDragGrupo}
+                        onPointerCancel={cancelarDragGrupo}
+                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '30px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}>
+                        <GripVertical size={15} color="#9aa0a6"/>
+                      </span>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={24}/></div>
+                      <span style={{ flex: '1 1 120px', minWidth: 0, fontWeight: '600', fontSize: '.82rem', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {grupos.map((g, gi) => {
+                          const c = COLORES_GRUPO[gi % COLORES_GRUPO.length]
+                          return (
+                            <button key={g.id} onClick={() => handleMoverEquipoGrupo(e.id, g.id)}
+                              style={{ background: `${c}18`, border: `1px solid ${c}`, color: c, borderRadius: '999px', padding: '7px 12px', fontSize: '.74rem', fontWeight: '800', cursor: 'pointer' }}>
+                              → {g.nombre}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Grupos con tablas */}
           {grupos.length > 0 ? (
