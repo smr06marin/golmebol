@@ -1075,6 +1075,7 @@ export default function AdminTorneoDetallePage() {
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
   const [verAvanzadoMarca, setVerAvanzadoMarca] = useState(false) // dominio propio y favicon: rara vez se tocan
+  const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
   const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
@@ -2715,14 +2716,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }))
   }
 
-  // Al cambiar "¿Qué paga?" dentro del modal, el monto se llena con lo que
-  // el equipo debe en ESA cuenta (tarjetas, W/multas o inscripción).
+  // Al cambiar "¿Qué paga?" dentro del modal el monto arranca en cero. Solo
+  // se llena solo si hay tarjetas marcadas (y estás en la pestaña Tarjetas).
   function cambiarTipoPago(tipo) {
-    const fila = calcFinanzas().filas.find(r => r.equipo.id === pagoModal?.id)
-    let sugerido = 0
-    if (tipo === 'pago_tarjetas') sugerido = tarjetasAPagar.length > 0 ? montoTarjetasMarcadas(tarjetasAPagar) : (fila?.saldo || 0)
-    else if (tipo === 'pago_cargos') sugerido = fila?.saldoMultas || 0
-    else if (tipo === 'abono_inscripcion') sugerido = fila?.saldoInscripcion || 0
+    const sugerido = tipo === 'pago_tarjetas' && tarjetasAPagar.length > 0 ? montoTarjetasMarcadas(tarjetasAPagar) : 0
     if (tipo !== 'pago_tarjetas') setTarjetasAPagar([])
     setPagoForm(f => ({ ...f, tipo, monto: sugerido > 0 ? String(Math.round(sugerido)) : '', concepto: (f.concepto || '').startsWith('Tarjeta') ? '' : f.concepto }))
   }
@@ -2796,8 +2793,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   async function handleEliminarPago(mv) {
-    if (!(await confirmar('¿Eliminar este pago?'))) return
-    await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    const queEs = mv.tipo === 'cargo_manual' ? 'esta deuda anotada' : 'este pago'
+    if (!(await confirmar(`¿Eliminar ${queEs} de ${fmt(mv.monto)}${mv.teams?.name ? ` de ${mv.teams.name}` : ''}${mv.concepto ? ` (${mv.concepto})` : ''}? El saldo del equipo se recalcula.`))) return
+    const { error } = await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
+    if (error) return showMsg(errorAmigable(error, 'No se pudo eliminar'), 'error')
+    showMsg('Movimiento eliminado ✓')
     fetchFinanzas()
   }
 
@@ -7396,11 +7396,45 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 }
                 return lineas
               }
+              // Historial de pagos/deudas de UN equipo, con botón para borrar
+              // si hubo un error al registrarlo.
+              const historialEquipo = r => {
+                const movs = pagosRegistrados.filter(m => m.team_id === r.equipo.id)
+                const abierto = !!histEquipos[r.equipo.id]
+                const nombreTipo = m => m.tipo === 'cargo_manual' ? 'Deuda anotada' : m.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : m.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de W/multa'
+                return (
+                  <div style={{ flexBasis: '100%' }}>
+                    <button onClick={() => setHistEquipos(h => ({ ...h, [r.equipo.id]: !h[r.equipo.id] }))} aria-expanded={abierto}
+                      style={{ background: 'none', border: 'none', padding: '6px 0', cursor: 'pointer', color: '#1a73e8', fontSize: '.78rem', fontWeight: '700', minHeight: '32px' }}>
+                      🧾 {abierto ? 'Ocultar' : 'Ver'} historial de pagos ({movs.length}) {abierto ? '▴' : '▾'}
+                    </button>
+                    {abierto && (
+                      <div style={{ marginTop: '4px', border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
+                        {movs.length === 0 && <div style={{ padding: '12px', fontSize: '.78rem', color: '#9aa0a6', textAlign: 'center' }}>Este equipo todavía no tiene pagos ni deudas registradas.</div>}
+                        {movs.map((m, i) => (
+                          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', borderTop: i > 0 ? '1px solid #f1f3f4' : 'none', background: '#fafafa' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124' }}>{nombreTipo(m)}</div>
+                              <div style={{ fontSize: '.7rem', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {new Date(m.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}{m.concepto ? ` · ${m.concepto}` : ''}{m.tipo === 'cargo_manual' && m.pagado ? ' · ✓ ya pagada' : ''}
+                              </div>
+                            </div>
+                            <b style={{ fontSize: '.88rem', color: m.tipo === 'cargo_manual' ? '#d93025' : '#1e8e3e', whiteSpace: 'nowrap' }}>{m.tipo === 'cargo_manual' ? '−' : '+'}{fmt(m.monto)}</b>
+                            <button onClick={() => handleEliminarPago(m)} title="Eliminar este movimiento (por si te equivocaste)"
+                              style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', padding: '6px 10px', minHeight: '36px', cursor: 'pointer', color: '#d93025', fontSize: '.74rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                              🗑 Borrar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
               const abrirPago = r => {
                 const tipo = (llevar && r.saldoInscripcion > Math.max(r.saldo, 0) && r.saldoInscripcion >= (llevar ? r.saldoMultas : 0)) ? 'abono_inscripcion'
                   : (llevar && r.saldoMultas > Math.max(r.saldo, 0)) ? 'pago_cargos' : 'pago_tarjetas'
-                const debido = tipo === 'abono_inscripcion' ? r.saldoInscripcion : tipo === 'pago_cargos' ? r.saldoMultas : r.saldo
-                setPagoForm({ tipo, monto: debido > 0 ? String(Math.round(debido)) : '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
+                setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
               }
               return (
                 <div style={{ marginBottom: '20px' }}>
@@ -7460,12 +7494,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             </div>
                           ))}
                         </div>
+                        {historialEquipo(r)}
                       </div>
                     ))}
                     {alDia.map(r => (
-                      <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: '#f8fff9', border: '1px solid #e1f3e5', borderRadius: '12px', padding: '10px 16px' }}>
+                      <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 10px', background: '#f8fff9', border: '1px solid #e1f3e5', borderRadius: '12px', padding: '10px 16px' }}>
                         <div style={{ fontSize: '.88rem', fontWeight: '700', color: '#202124' }}>{r.equipo.name}</div>
                         <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#137333', background: '#e6f4ea', borderRadius: '999px', padding: '4px 12px' }}>Al día</span>
+                        {historialEquipo(r)}
                       </div>
                     ))}
                   </div>
@@ -7583,7 +7619,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     <div style={{ textAlign: 'right', fontSize: '.78rem', color: '#1e8e3e' }}>{fmt(r.pagado)}</div>
                     <div style={{ textAlign: 'right', fontSize: '.82rem', fontWeight: '800', color: r.saldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(r.saldo)}</div>
                     <div style={{ textAlign: 'right', display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end', alignContent: 'center' }}>
-                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: r.saldo > 0 ? String(Math.round(r.saldo)) : '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'pago_tarjetas', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         style={{ background: '#1a73e8', border: 'none', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#fff', fontSize: '.68rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         💵 Pago
                       </button>
@@ -7592,7 +7628,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#d93025', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         ➖ Deuda
                       </button>
-                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'abono_inscripcion', monto: r.saldoInscripcion > 0 ? String(Math.round(r.saldoInscripcion)) : '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                      <button onClick={e => { e.stopPropagation(); setPagoForm({ tipo: 'abono_inscripcion', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                         title="Registrar un abono a inscripción — independiente de tarjetas, arbitrajes, W y multas"
                         style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
