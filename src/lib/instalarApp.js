@@ -108,11 +108,14 @@ export function pasosParaInstalar(d, directo) {
     }
   }
   if (d.esIOS) {
+    // Así se instala en el iPhone (Safari), grabado en un iPhone real: ⋯ → Compartir → Ver más → Agregar a Inicio → Agregar
     const pasosSafari = [
-      { escena: { tipo: 'barra-abajo', iconos: ['atras', 'adelante', 'compartir', 'libro', 'pestanas'], objetivo: 2 }, titulo: 'Toca el botón «Compartir»', texto: 'Es el cuadrito con una flecha hacia arriba. Si solo ves tres puntos (⋯), tócalos y luego «Compartir».' },
-      { escena: { tipo: 'menu', filas: ['Copiar', 'Agregar a marcadores', 'Agregar a pantalla de inicio', 'Buscar en la página'], objetivo: 2 }, titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Desliza el menú hacia abajo con el dedo hasta verla.' },
-      { escena: { tipo: 'dialogo-ios', boton: 'Agregar' }, titulo: 'Toca «Agregar»', texto: 'Está arriba a la derecha.' },
-      inicio,
+      { escena: { tipo: 'safari-barra', objetivo: 'puntos' }, titulo: 'Toca los tres puntitos ⋯', texto: 'Están abajo a la derecha, al lado de golmebol.com. (Si en tu iPhone ves abajo el cuadrito con la flecha ↑, toca ese y pasa al paso 3.)' },
+      { escena: { tipo: 'menu', filas: ['Compartir', 'Agregar a Marcadores', 'Agregar marcador a…', 'Nueva pestaña'], objetivo: 0 }, titulo: 'Toca «Compartir»', texto: 'Es la primera opción de la lista, arriba.' },
+      { escena: { tipo: 'hoja-compartir' }, titulo: 'Toca «Ver más»', texto: 'Está a la derecha, debajo de WhatsApp. Si ya ves «Agregar a Inicio», pasa al paso 4.' },
+      { escena: { tipo: 'menu', filas: ['Agregar marcador a…', 'Agregar a Favoritos', 'Agregar a nota rápida', 'Buscar en la página', 'Agregar a Inicio'], objetivo: 4 }, titulo: 'Toca «Agregar a Inicio»', texto: 'Si no la ves, desliza la lista hacia arriba con el dedo. En algunos iPhone dice «Agregar a pantalla de inicio».' },
+      { escena: { tipo: 'dialogo-ios', boton: 'Agregar' }, titulo: 'Toca «Agregar»', texto: 'Es el botón azul de arriba a la derecha. Deja prendido «Abrir como app web».' },
+      { escena: { tipo: 'inicio' }, titulo: 'Listo: busca el ícono de Golmebol', texto: 'Aparece al final de tus apps, en la pantalla de inicio. Ábrela siempre desde ahí.' },
     ]
     if (d.navegador === 'safari') return { titulo: 'iPhone · Safari', pasos: pasosSafari }
     // En iPhone la app SOLO se instala desde Safari: si está en otro navegador (Chrome, Firefox, el de WhatsApp…) primero hay que pasarse a Safari
@@ -121,7 +124,7 @@ export function pasosParaInstalar(d, directo) {
       pasos: [
         { escena: { tipo: 'safari-inicio' }, titulo: 'En iPhone se instala desde Safari', texto: 'Safari es el navegador azul con una brújula que ya trae tu iPhone. Búscalo y ábrelo.' },
         { escena: { tipo: 'copiar' }, accion: 'copiar', titulo: 'Copia el enlace de Golmebol', texto: 'Toca el botón de abajo. Después lo pegas en Safari.' },
-        { escena: { tipo: 'direccion' }, titulo: 'En Safari, pega el enlace y entra', texto: 'Toca la barra de abajo, mantén el dedo, elige «Pegar y buscar». Cuando cargue Golmebol, esta guía te sigue explicando.' },
+        { escena: { tipo: 'safari-barra', objetivo: 'direccion' }, titulo: 'En Safari, pega el enlace y entra', texto: 'Toca la barra de abajo, mantén el dedo, elige «Pegar y buscar». Cuando cargue Golmebol, esta guía te sigue explicando.' },
         ...pasosSafari,
       ],
     }

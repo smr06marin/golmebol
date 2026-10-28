@@ -136,7 +136,7 @@ function Escena({ e }) {
               const obj = i === e.objetivo
               return (
                 <div key={i} className={obj ? 'gm-late' : undefined}
-                  style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, height: 42, padding: '0 10px', borderRadius: 10, background: obj ? 'rgba(255,45,85,.12)' : 'transparent', border: obj ? `2px solid ${ROJO}` : '2px solid transparent', color: obj ? '#111' : '#9aa0ab', fontWeight: obj ? 800 : 600, fontSize: 14.5, lineHeight: 1.1 }}>
+                  style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, height: e.filas.length > 4 ? 35 : 42, padding: '0 10px', borderRadius: 10, background: obj ? 'rgba(255,45,85,.12)' : 'transparent', border: obj ? `2px solid ${ROJO}` : '2px solid transparent', color: obj ? '#111' : '#9aa0ab', fontWeight: obj ? 800 : 600, fontSize: e.filas.length > 4 ? 13.5 : 14.5, lineHeight: 1.1 }}>
                   <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: obj ? ROJO : '#d7dce5' }}/>
                   <span style={{ minWidth: 0 }}>{f}</span>
                   {obj && <Flecha dir="derecha" estilo={{ left: -50, top: '50%', marginTop: -20 }}/>}
@@ -151,19 +151,23 @@ function Escena({ e }) {
   if (e.tipo === 'dialogo-ios') {
     return (
       <div style={pantalla}>
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.18)' }}/>
-        <div style={{ position: 'absolute', left: 8, right: 8, top: 12, background: '#f7f7fa', borderRadius: 16, boxShadow: '0 6px 18px rgba(0,0,0,.25)', padding: '10px 12px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 14, marginBottom: 12 }}>
-            <span style={{ color: '#2a7cf6' }}>Cancelar</span>
-            <b style={{ color: '#111', fontSize: 13 }}>Agregar a inicio</b>
+        <div style={{ position: 'absolute', inset: 0, background: '#f2f2f7' }}/>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, padding: '12px 12px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ width: 30, height: 30, borderRadius: '50%', background: '#e3e3e8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} color="#333"/></span>
+            <b style={{ color: '#111', fontSize: 16, flex: 1 }}>Agregar a Inicio</b>
             <span style={{ position: 'relative', display: 'flex' }}>
-              <Objetivo redondo={false} estilo={{ padding: '4px 10px', margin: '-4px -6px', background: 'rgba(255,45,85,.12)', border: `2px solid ${ROJO}` }}><b style={{ color: '#2a7cf6', fontSize: 14.5 }}>{e.boton}</b></Objetivo>
-              <Flecha dir="arriba" estilo={{ top: 38, right: -2 }}/>
+              <Objetivo redondo={false} estilo={{ padding: '6px 14px', borderRadius: 18, background: '#0a84ff', border: `2px solid ${ROJO}` }}><b style={{ color: '#fff', fontSize: 14.5 }}>{e.boton}</b></Objetivo>
+              <Flecha dir="arriba" estilo={{ top: 40, right: 0 }}/>
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 10, padding: 8 }}>
-            <img src="/icon-192.png" alt="" width={40} height={40} style={{ borderRadius: 9 }}/>
-            <div><div style={{ fontWeight: 800, color: '#111', fontSize: 15 }}>Golmebol</div><div style={{ color: '#8a8f99', fontSize: 12 }}>golmebol.com</div></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 12, padding: 8 }}>
+            <img src="/icon-192.png" alt="" width={38} height={38} style={{ borderRadius: 9 }}/>
+            <div><div style={{ fontWeight: 700, color: '#111', fontSize: 15 }}>Golmebol</div><div style={{ color: '#9a9aa3', fontSize: 11.5 }}>https://www.golmebol.com/</div></div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', borderRadius: 12, padding: '9px 12px', marginTop: 8, fontSize: 14, color: '#111' }}>
+            Abrir como app web
+            <span style={{ width: 40, height: 24, borderRadius: 12, background: '#34c759', position: 'relative' }}><span style={{ position: 'absolute', right: 2, top: 2, width: 20, height: 20, borderRadius: '50%', background: '#fff' }}/></span>
           </div>
         </div>
       </div>
@@ -184,6 +188,56 @@ function Escena({ e }) {
               <Objetivo redondo={false} estilo={{ padding: '5px 12px', margin: '-5px -4px', background: 'rgba(255,45,85,.12)', border: `2px solid ${ROJO}` }}><b style={{ color: '#1a73e8', fontSize: 14.5 }}>{e.boton}</b></Objetivo>
               <Flecha dir="abajo" estilo={{ bottom: 36, right: -2 }}/>
             </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (e.tipo === 'safari-barra') {
+    const dirObj = e.objetivo === 'direccion'
+    return (
+      <div style={pantalla}>
+        {pagina}
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 64, background: '#f6f6f8', borderTop: '1px solid #cfd6e2', display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px' }}>
+          <span style={{ width: 40, height: 40, borderRadius: '50%', background: '#fff', border: '1px solid #dde1e8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><ChevronLeft size={22} color="#555"/></span>
+          <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+            {dirObj ? (
+              <>
+                <Objetivo redondo={false} estilo={{ height: 40, borderRadius: 20, background: 'rgba(255,45,85,.1)', border: `2px solid ${ROJO}`, justifyContent: 'center', gap: 6, color: '#333', fontWeight: 700, fontSize: 15, boxSizing: 'border-box' }}><Lock size={13}/> golmebol.com</Objetivo>
+                <Flecha dir="abajo" estilo={{ bottom: 50, left: '50%', marginLeft: -26 }}/>
+              </>
+            ) : (
+              <div style={{ height: 40, borderRadius: 20, background: '#fff', border: '1px solid #dde1e8', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#333', fontWeight: 700, fontSize: 15 }}><Lock size={13}/> golmebol.com</div>
+            )}
+          </div>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            {!dirObj ? (
+              <>
+                <Objetivo estilo={{ width: 44, height: 44, background: 'rgba(255,45,85,.12)', border: `2px solid ${ROJO}` }}><MoreHorizontal size={24} color="#1c1c1e"/></Objetivo>
+                <Flecha dir="abajo" estilo={{ bottom: 50, right: -4 }}/>
+              </>
+            ) : <span style={{ width: 40, height: 40, borderRadius: '50%', background: '#fff', border: '1px solid #dde1e8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MoreHorizontal size={22} color="#555"/></span>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (e.tipo === 'hoja-compartir') {
+    const apps = [['AirDrop', '#2a7cf6'], ['Mensajes', '#34c759'], ['Mail', '#2a7cf6'], ['WhatsApp', '#25d366']]
+    return (
+      <div style={{ ...pantalla, height: 236 }}>
+        <div style={{ position: 'absolute', inset: 0, background: '#dfe3ea' }}/>
+        <div style={{ position: 'absolute', left: 8, right: 8, top: 8, background: '#f7f7fa', borderRadius: 16, padding: '10px 10px 8px', boxShadow: '0 4px 14px rgba(0,0,0,.18)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: 10 }}>
+            {apps.map(([n, c]) => <div key={n} style={{ textAlign: 'center', fontSize: 10.5, color: '#666' }}><div style={{ width: 40, height: 40, borderRadius: 10, background: c, margin: '0 auto 3px' }}/>{n}</div>)}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'flex-start' }}>
+            {['Copiar', 'Agregar a Marcadores', 'Agregar a Lecturas'].map(n => <div key={n} style={{ textAlign: 'center', fontSize: 10, color: '#666', width: 70, lineHeight: 1.1 }}><div style={{ width: 40, height: 40, borderRadius: '50%', background: '#e8e8ed', margin: '0 auto 3px' }}/>{n}</div>)}
+            <div style={{ position: 'relative', textAlign: 'center', fontSize: 10.5, color: '#111', width: 60, fontWeight: 800 }}>
+              <Objetivo estilo={{ width: 44, height: 44, margin: '-2px auto 1px', background: 'rgba(255,45,85,.12)', border: `2px solid ${ROJO}` }}><ArrowUp size={22} color="#333"/></Objetivo>
+              Ver más
+              <Flecha dir="arriba" estilo={{ top: 66, left: '50%', marginLeft: -26 }}/>
+            </div>
           </div>
         </div>
       </div>
