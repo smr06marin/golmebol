@@ -77,6 +77,16 @@ function SafariLogo({ size = 48 }) {
   )
 }
 
+function ChromeLogo({ size = 48 }) {
+  return (
+    <div aria-label="Chrome" role="img" style={{ width: size, height: size, borderRadius: '50%', background: 'conic-gradient(from -30deg, #ea4335 0deg 120deg, #34a853 120deg 240deg, #fbbc04 240deg 360deg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: size * 0.5, height: size * 0.5, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: size * 0.36, height: size * 0.36, borderRadius: '50%', background: '#4285f4' }}/>
+      </div>
+    </div>
+  )
+}
+
 function Escena({ e }) {
   if (e.tipo === 'barra-abajo') {
     const n = e.iconos.length
@@ -103,6 +113,20 @@ function Escena({ e }) {
     )
   }
   if (e.tipo === 'barra-arriba') {
+    if (e.objetivo === 'direccion') {
+      return (
+        <div style={pantalla}>
+          {pagina}
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 58, background: '#fff', borderBottom: '1px solid #cfd6e2', display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 10px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Objetivo redondo={false} estilo={{ height: 38, borderRadius: 19, background: 'rgba(255,45,85,.1)', border: `2px solid ${ROJO}`, justifyContent: 'flex-start', gap: 6, padding: '0 12px', color: '#444', fontWeight: 700, fontSize: 15, boxSizing: 'border-box' }}><Lock size={13}/> golmebol.com</Objetivo>
+              <Flecha dir="arriba" estilo={{ top: 44, left: '50%', marginLeft: -26 }}/>
+            </div>
+            <span style={{ width: 40, display: 'flex', justifyContent: 'center' }}><MoreVertical size={22} color="#777"/></span>
+          </div>
+        </div>
+      )
+    }
     const Ic = ICONOS_BARRA[e.objetivo] || MoreVertical
     const dentro = e.objetivo === 'compartir' // en Chrome de iPhone el botón va dentro de la dirección
     return (
@@ -243,13 +267,14 @@ function Escena({ e }) {
       </div>
     )
   }
-  if (e.tipo === 'safari-inicio') {
+  if (e.tipo === 'logo-inicio') {
+    const Logo = e.app === 'chrome' ? ChromeLogo : SafariLogo
     return (
       <div style={{ ...pantalla, background: 'linear-gradient(160deg,#1b3a6b,#2b1d5c)' }}>
         <div style={{ position: 'absolute', inset: 0, padding: '22px 14px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gridTemplateRows: 'repeat(3, 1fr)', gap: 10, justifyItems: 'center', alignItems: 'center' }}>
           {Array.from({ length: 12 }, (_, i) => i).map(i => i === 6 ? (
             <div key={i} style={{ position: 'relative' }}>
-              <div className="gm-late" style={{ borderRadius: 16, border: `2px solid ${ROJO}`, padding: 2, display: 'flex' }}><SafariLogo size={46}/></div>
+              <div className="gm-late" style={{ borderRadius: e.app === 'chrome' ? '50%' : 16, border: `2px solid ${ROJO}`, padding: 2, display: 'flex' }}><Logo size={46}/></div>
               <Flecha dir="arriba" estilo={{ top: 56, left: '50%', marginLeft: -26 }}/>
             </div>
           ) : <div key={i} style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255,255,255,.16)' }}/>)}

@@ -122,7 +122,7 @@ export function pasosParaInstalar(d, directo) {
     return {
       titulo: 'iPhone · hay que usar Safari',
       pasos: [
-        { escena: { tipo: 'safari-inicio' }, titulo: 'En iPhone se instala desde Safari', texto: 'Safari es el navegador azul con una brújula que ya trae tu iPhone. Búscalo y ábrelo.' },
+        { escena: { tipo: 'logo-inicio', app: 'safari' }, titulo: 'En iPhone se instala desde Safari', texto: 'Safari es el navegador azul con una brújula que ya trae tu iPhone. Búscalo y ábrelo.' },
         { escena: { tipo: 'copiar' }, accion: 'copiar', titulo: 'Copia el enlace de Golmebol', texto: 'Toca el botón de abajo. Después lo pegas en Safari.' },
         { escena: { tipo: 'safari-barra', objetivo: 'direccion' }, titulo: 'En Safari, pega el enlace y entra', texto: 'Toca la barra de abajo, mantén el dedo, elige «Pegar y buscar». Cuando cargue Golmebol, esta guía te sigue explicando.' },
         ...pasosSafari,
@@ -157,18 +157,21 @@ export function pasosParaInstalar(d, directo) {
       inicio,
     ] }
   }
-  if (n === 'chrome') {
-    return { titulo: 'Android · Chrome', directo, pasos: [
-      { escena: { tipo: 'barra-arriba', objetivo: 'puntos-v' }, titulo: 'Toca los tres puntitos ⋮', texto: 'Están arriba a la derecha.' },
-      { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Historial', 'Instalar aplicación', 'Compartir…'], objetivo: 2 }, titulo: 'Toca «Instalar aplicación»', texto: 'En algunos celulares dice «Agregar a la pantalla principal».' },
-      dialogoInstalar('Instalar'),
-      inicio,
-    ] }
-  }
-  return { titulo: 'Android', pasos: [
-    { escena: { tipo: 'barra-arriba', objetivo: 'puntos-v' }, titulo: 'Toca los tres puntitos', texto: 'Están arriba o abajo del navegador (⋮ o ⋯ o ☰).' },
-    { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Historial', 'Agregar a pantalla de inicio', 'Compartir'], objetivo: 2 }, titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Si no ves esa opción, abre golmebol.com en Chrome: ahí siempre aparece.' },
-    dialogoInstalar('Agregar'),
+  const pasosChrome = [
+    { escena: { tipo: 'barra-arriba', objetivo: 'puntos-v' }, titulo: 'Toca los tres puntitos ⋮', texto: 'Están arriba a la derecha de Chrome.' },
+    { escena: { tipo: 'menu', filas: ['Nueva pestaña', 'Historial', 'Compartir…', 'Instalar app'], objetivo: 3 }, titulo: 'Toca «Instalar app»', texto: 'Si no la ves, desliza el menú hacia arriba. En algunos celulares dice «Agregar a la pantalla principal» o «Añadir a pantalla de inicio»: es lo mismo.' },
+    { escena: { tipo: 'dialogo-android', boton: 'Instalar' }, titulo: 'Toca «Instalar»', texto: 'Si dice «Agregar» en vez de «Instalar», toca esa. Si el celular pregunta otra vez, toca «Agregar».' },
     inicio,
-  ] }
+  ]
+  if (n === 'chrome') return { titulo: 'Android · Chrome', directo, pasos: pasosChrome }
+  // Xiaomi/Redmi, Oppo, Opera y otros navegadores propios del celular: cada uno tiene su menú distinto, así que lo más fácil es pasarse a Chrome (viene en casi todos los Android)
+  return {
+    titulo: 'Android · hay que usar Chrome',
+    pasos: [
+      { escena: { tipo: 'logo-inicio', app: 'chrome' }, titulo: 'Se instala desde Chrome', texto: 'Chrome es el navegador con el círculo rojo, amarillo, verde y azul. Búscalo en tu celular y ábrelo.' },
+      { escena: { tipo: 'copiar' }, accion: 'copiar', titulo: 'Copia el enlace de Golmebol', texto: 'Toca el botón de abajo. Después lo pegas en Chrome.' },
+      { escena: { tipo: 'barra-arriba', objetivo: 'direccion' }, titulo: 'En Chrome, pega el enlace y entra', texto: 'Toca la barra de arriba, mantén el dedo, elige «Pegar» y toca Ir. Cuando cargue Golmebol, esta guía te sigue explicando.' },
+      ...pasosChrome,
+    ],
+  }
 }
