@@ -14,7 +14,7 @@
 export const TIPOS_TARJETA = { yellow_card: 'amarilla', blue_card: 'azul', red_card: 'roja' }
 export const COLOR_TARJETA = { amarilla: '#f9c400', azul: '#1a73e8', roja: '#d93025' }
 export const FASE_LABEL = {
-  grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final', amistoso: 'Partido amistoso',
+  grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final', otra: 'Otra fase',
 }
 
 // "12:34" -> 754 · "12" / "12'" -> 720 (formato viejo, solo minutos) · otro -> null

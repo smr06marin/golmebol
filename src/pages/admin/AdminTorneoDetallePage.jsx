@@ -249,9 +249,9 @@ const FASES = [
 ]
 // Fases al CREAR un partido a mano: las de siempre + tercer puesto (que por dentro
 // se guarda como fase 'final' con ronda "Tercer puesto", igual que el que arma el sistema).
-const FASES_CREAR = [...FASES, { value: 'tercer_puesto', label: '🥉 Tercer puesto' }, { value: 'otro', label: '✨ Otro (amistoso, sétette…)' }]
+const FASES_CREAR = [...FASES, { value: 'tercer_puesto', label: '🥉 Tercer puesto' }, { value: 'otro', label: '✨ Otra fase (repechaje, sétette, amistoso…)' }]
 const FASES_CON_LLAVE = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto']
-const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final', amistoso:'✨ Amistoso' }
+const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final', otra:'✨ Otra fase' }
 
 const COLORES_GRUPO = ['#1a73e8','#e8710a','#1e8e3e','#9955ff','#d93025','#00a896','#f9a825','#4488ff']
 
@@ -3760,22 +3760,22 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
     const esTercero = formPartido.fase === 'tercer_puesto'
     const esOtro = formPartido.fase === 'otro'
-    const nombreOtro = (formPartido.nombre_otro ?? 'Amistoso').trim()
-    if (esOtro && !nombreOtro) return showMsg('Escribe cómo se llama este partido (ej: Amistoso, Sétette)', 'error')
-    const llaveIdaVuelta = !!formPartido.ida_vuelta && formPartido.fase !== 'grupo' && !esOtro
+    const nombreOtro = (formPartido.nombre_otro ?? '').trim()
+    if (esOtro && !nombreOtro) return showMsg('Escribe cómo se llama esta fase (ej: Repechaje, Sétette, Amistoso)', 'error')
+    const llaveIdaVuelta = !!formPartido.ida_vuelta && formPartido.fase !== 'grupo'
     if (llaveIdaVuelta && formPartido.vuelta_modo === 'con_fecha' && !formPartido.vuelta_fecha) return showMsg('Pon la fecha del partido de vuelta, o elige "Sin fecha todavía"', 'error')
     setLoadingPartido(true)
     // Reglas de la llave (opcionales, "avanzado"): solo se guardan si cambian lo normal
     // (global por goles + el que pierde queda eliminado), así lo de siempre no toca la base.
     const reglas = {}
-    if (formPartido.fase !== 'grupo' && !esOtro) {
+    if (formPartido.fase !== 'grupo') {
       if (llaveIdaVuelta && formPartido.criterio === 'puntos') reglas.criterio = 'puntos'
       if (formPartido.elimina === false) reglas.elimina = false
     }
     const base = {
       tournament_id: id,
       location: formPartido.location || null, cancha_id: formPartido.cancha_id ? String(formPartido.cancha_id) : null, matchday: formPartido.matchday ? parseInt(formPartido.matchday) : null,
-      fase: esTercero ? 'final' : esOtro ? 'amistoso' : (formPartido.fase || 'grupo'), status: 'scheduled',
+      fase: esTercero ? 'final' : esOtro ? 'otra' : (formPartido.fase || 'grupo'), status: 'scheduled',
       ...(Object.keys(reglas).length > 0 ? { config_llave: reglas } : {}),
       arbitro1_id: formPartido.arbitro1_id || null, arbitro2_id: formPartido.arbitro2_id || null, arbitro3_id: formPartido.arbitro3_id || null,
     }
@@ -4485,9 +4485,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const grupos = {}
     lista.forEach(p => {
       let key, label, esFase = false, faseOrden = 0
-      if (p.fase === 'amistoso') {
-        // Partido suelto con nombre propio (amistoso, sétette…): un bloque por nombre
-        const nombre = p.ronda || 'Amistoso'
+      if (p.fase === 'otra') {
+        // Fase con nombre propio (repechaje, sétette, amistoso…): un bloque por nombre
+        const nombre = p.ronda || 'Otra fase'
         key = `otro_${nombre}`; label = nombre
         esFase = true; faseOrden = 0
       } else if (p.fase && p.fase !== 'grupo') {
@@ -4900,7 +4900,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 })()}
               </div>
               <div><label style={labelStyle}>Jornada #</label><input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
-              <div><label style={labelStyle}>Fase</label><select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>{(formEditPartido.fase === 'amistoso' ? [...FASES, { value: 'amistoso', label: '✨ Amistoso / otro' }] : FASES).map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
+              <div><label style={labelStyle}>Fase</label><select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>{(formEditPartido.fase === 'otra' ? [...FASES, { value: 'otra', label: '✨ Otra fase' }] : FASES).map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar cambios</button>
@@ -5648,10 +5648,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     </div>
                     {formPartido.fase === 'otro' && (
                       <div>
-                        <label style={labelStyle}>¿Cómo se llama este partido? *</label>
-                        <input value={formPartido.nombre_otro ?? 'Amistoso'} onChange={e => setFormPartido(f => ({ ...f, nombre_otro: e.target.value }))} maxLength={40} style={inputStyle} placeholder="Ej: Amistoso, Sétette, Partido de exhibición"/>
+                        <label style={labelStyle}>¿Cómo se llama esta fase? *</label>
+                        <input value={formPartido.nombre_otro ?? ''} onChange={e => setFormPartido(f => ({ ...f, nombre_otro: e.target.value }))} maxLength={40} style={inputStyle} placeholder="Ej: Repechaje, Sétette, Amistoso"/>
                         <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.4 }}>
-                          Es un partido aparte: <b>no suma puntos</b> en la tabla de posiciones ni forma parte de las eliminatorias, y puede terminar empatado.
+                          Es una fase aparte con este nombre: se agrupa en el calendario con ese título y <b>no suma puntos</b> en la tabla de posiciones de los grupos. Abajo eliges si es eliminación directa y si es ida y vuelta.
                         </div>
                       </div>
                     )}
@@ -5667,7 +5667,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         </div>
                       )
                     })()}
-                    {formPartido.fase !== 'grupo' && formPartido.fase !== 'otro' && (() => {
+                    {formPartido.fase !== 'grupo' && (() => {
                       const idaVuelta = !!formPartido.ida_vuelta
                       const elimina = formPartido.elimina !== false
                       const criterio = formPartido.criterio === 'puntos' ? 'puntos' : 'goles'
@@ -5711,11 +5711,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
                           {/* Reglas de la llave: escondidas por defecto, para no recargar el formulario */}
                           <div>
-                            <button type="button" onClick={() => setFormPartido(f => ({ ...f, reglas_abiertas: !f.reglas_abiertas }))} aria-expanded={!!formPartido.reglas_abiertas}
+                            <button type="button" onClick={() => setFormPartido(f => ({ ...f, reglas_abiertas: !(f.reglas_abiertas ?? f.fase === 'otro') }))} aria-expanded={!!(formPartido.reglas_abiertas ?? formPartido.fase === 'otro')}
                               style={{ background: 'none', border: 'none', padding: '4px 0', cursor: 'pointer', color: '#1a73e8', fontSize: '.8rem', fontWeight: '700', minHeight: '32px' }}>
-                              ⚙️ Reglas de la llave (avanzado) {formPartido.reglas_abiertas ? '▴' : '▾'}
+                              ⚙️ Reglas de la llave (avanzado) {(formPartido.reglas_abiertas ?? formPartido.fase === 'otro') ? '▴' : '▾'}
                             </button>
-                            {formPartido.reglas_abiertas && (
+                            {(formPartido.reglas_abiertas ?? formPartido.fase === 'otro') && (
                               <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '12px', borderTop: '1px dashed #e3e6ea' }}>
                                 <div>
                                   <label style={labelStyle}>Eliminación directa</label>
