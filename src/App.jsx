@@ -31,6 +31,7 @@ const EquipoPublicoPage       = lazy(() => import('./pages/EquipoPublicoPage'))
 const JugadorPublicoPage      = lazy(() => import('./pages/JugadorPublicoPage'))
 const AdminTorneoDetallePage  = lazy(() => import('./pages/admin/AdminTorneoDetallePage'))
 const AdminTarjetasPage       = lazy(() => import('./pages/admin/AdminTarjetasPage'))
+const AdminSuspensionesPage   = lazy(() => import('./pages/admin/AdminSuspensionesPage'))
 const AdminNoticiasPage       = lazy(() => import('./pages/admin/AdminNoticiasPage'))
 const AdminRecordsPage        = lazy(() => import('./pages/admin/AdminRecordsPage'))
 const AdminArbitrosPage       = lazy(() => import('./pages/admin/AdminArbitrosPage'))
@@ -508,6 +509,7 @@ export default function App() {
             <Route path="calendario"    element={<Navigate to="/admin/torneos" replace/>}/>
             <Route path="sponsors"      element={<AdminSponsorsPage/>}/>
             <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
+            <Route path="suspensiones"  element={<AdminSuspensionesPage/>}/>
             <Route path="noticias"      element={<AdminNoticiasPage/>}/>
             <Route path="records"       element={<AdminRecordsPage/>}/>
             <Route path="arbitros"      element={<AdminArbitrosPage/>}/>

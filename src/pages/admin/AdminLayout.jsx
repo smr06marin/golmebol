@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
+import { Ban, Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
 import { errorAmigable } from '../../lib/mensajesError'
 import ConfirmHost from '../../components/ConfirmHost'
@@ -13,6 +13,7 @@ const MENU_COMPLETO = [
   { icon: <Globe size={22}/>,        label: 'MI DOMINIO', ruta: '/admin/perfil-organizador', ocultoOrganizador: true },
   { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true },
   { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true },
+  { icon: <Ban size={22}/>,          label: 'SUSPENSIONES', ruta: '/admin/suspensiones' },
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias', ocultoOrganizador: true },
