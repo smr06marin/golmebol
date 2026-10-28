@@ -5,6 +5,8 @@ import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { useAuthStore } from '../../store/authStore'
 import { Calendar, Check, Clock, Image, MapPin, Pencil, Shield, ChevronDown, ChevronUp, Link2, Search, Trophy, Watch } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
+import FlyerResultadoPartido from '../../components/FlyerResultadoPartido'
+import { hydratePlayersPublico } from '../../lib/playersPublico'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
@@ -166,24 +168,31 @@ function agruparPorTorneo(partidos) {
 
 // Estilos del calendario (clases para poder adaptar el diseño a celular).
 const ESTILOS_CAL = `
-.gcal-row{padding:16px 18px;border-top:1px solid #eef0f2;display:flex;flex-direction:column;gap:14px;background:#fff}
-.gcal-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:#5f6368}
-.gcal-meta .when{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:#3c4043}
-.gcal-meta .loc{display:inline-flex;align-items:center;gap:4px;color:#1a73e8;font-weight:500;min-width:0}
-.gcal-pill{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.7rem;font-weight:700;letter-spacing:.02em;border-radius:999px;padding:3px 10px 3px 8px;white-space:nowrap}
+.gcal-row{border-top:1px solid #eef0f2;background:#fff}
+.gcal-head{display:grid;grid-template-columns:50px minmax(0,1fr) 18px;align-items:center;gap:10px;padding:10px 14px;min-height:60px;cursor:pointer;-webkit-tap-highlight-color:transparent;outline:none}
+.gcal-head:hover,.gcal-head:focus-visible{background:#f8f9fa}
+.gcal-when{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}
+.gcal-when b{font-size:.74rem;color:#3c4043;font-weight:700;white-space:nowrap}
+.gcal-when span{font-size:.7rem;color:#80868b;white-space:nowrap}
+.gcal-match{display:grid;grid-template-columns:22px minmax(0,1fr) auto;column-gap:8px;row-gap:6px;align-items:center;min-width:0}
+.gcal-lg{width:22px;height:22px;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:6px}
+.gcal-tn{font-size:.86rem;font-weight:700;color:#202124;line-height:1.15;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-width:0}
+.gcal-tn.lost{font-weight:500;color:#5f6368}
+.gcal-n{font-size:.95rem;font-weight:800;color:#202124;min-width:24px;text-align:right;font-variant-numeric:tabular-nums}
+.gcal-n.lost{color:#80868b;font-weight:600}
+.gcal-pend{grid-row:1/3;grid-column:3;font-size:.68rem;font-weight:700;color:#b45309;background:#fef3e6;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.gcal-chev{color:#9aa0a6;transition:transform .15s}
+.gcal-chev.on{transform:rotate(180deg)}
+.gcal-more{padding:4px 14px 14px;display:flex;flex-direction:column;gap:12px;background:#f8f9fa;border-top:1px dashed #e3e6ea}
+.gcal-info{display:flex;flex-direction:column;gap:6px;padding-top:10px;font-size:.78rem;color:#3c4043}
+.gcal-info .l{display:flex;align-items:center;gap:7px}
+.gcal-info .loc{color:#1a73e8;font-weight:600}
+.gcal-pill{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;font-weight:700;border-radius:999px;padding:3px 10px 3px 8px;white-space:nowrap}
 .gcal-pill i{width:7px;height:7px;border-radius:50%;display:block}
 .gcal-pill.ok{background:#e6f4ea;color:#137333}.gcal-pill.ok i{background:#1e8e3e}
 .gcal-pill.pend{background:#fef3e6;color:#b45309}.gcal-pill.pend i{background:#e8710a}
-.gcal-board{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px}
-.gcal-team{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;min-width:0}
-.gcal-logo{width:44px;height:44px;border-radius:12px;background:#f8f9fa;border:1px solid #eef0f2;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
-.gcal-name{font-weight:700;color:#202124;font-size:.88rem;line-height:1.25;overflow-wrap:break-word;word-break:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%}
-.gcal-mid{display:flex;align-items:center;justify-content:center;min-width:76px}
-.gcal-score{display:inline-flex;align-items:center;gap:8px;background:#202124;color:#fff;border-radius:10px;padding:6px 14px;font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}
-.gcal-score span{opacity:.5;font-weight:600}
-.gcal-vs{font-size:.72rem;font-weight:800;letter-spacing:.1em;color:#5f6368;background:#f1f3f4;border-radius:999px;padding:6px 12px}
-.gcal-actions{display:flex;flex-wrap:wrap;gap:8px;padding-top:2px}
-.gcal-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 14px;border-radius:9px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:.78rem;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
+.gcal-actions{display:flex;flex-wrap:wrap;gap:8px}
+.gcal-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border-radius:9px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:.78rem;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
 .gcal-btn:disabled{opacity:.6;cursor:default}
 .gcal-btn.primary{background:#1a73e8;border-color:#1a73e8;color:#fff}
 .gcal-btn.dark{background:#fff;border-color:#202124;color:#202124}
@@ -194,76 +203,112 @@ const ESTILOS_CAL = `
 .gcal-seg{display:flex;gap:4px;background:#fff;border:1px solid #e8eaed;border-radius:10px;padding:3px}
 .gcal-seg button{padding:0 16px;min-height:36px;border-radius:8px;border:none;cursor:pointer;font-size:.82rem;font-weight:600;font-family:inherit}
 @media (min-width:601px){
-  .gcal-board{gap:18px}
-  .gcal-team{flex-direction:row;gap:12px;text-align:left}
-  .gcal-team.home{flex-direction:row-reverse;text-align:right}
-  .gcal-name{font-size:.95rem}
-  .gcal-actions{justify-content:flex-end}
+  .gcal-head{grid-template-columns:70px minmax(0,1fr) 18px;padding:10px 18px}
+  .gcal-more{padding:4px 18px 14px 88px}
+  .gcal-match{max-width:520px}
 }
 @media (max-width:600px){
-  .gcal-board{align-items:start}
-  .gcal-mid{align-self:flex-start;margin-top:3px}
-  .gcal-name{-webkit-line-clamp:3}
-  .gcal-row{padding:14px 14px 16px}
   .gcal-actions .gcal-btn{flex:1 1 calc(50% - 4px);padding:0 8px}
   .gcal-actions .gcal-btn.primary,.gcal-actions .gcal-btn.dark{flex-basis:100%;min-height:42px}
   .gcal-seg{width:100%}.gcal-seg button{flex:1;padding:0 6px}
-  .gcal-mid{min-width:64px}
-  .gcal-score{padding:6px 11px;font-size:1.05rem}
 }
 `
+
+// Flyer de un partido YA JUGADO: es exactamente el mismo flyer de resultado que
+// ven los equipos en la página pública (FlyerResultadoPartido), con los mismos
+// datos (partido completo + eventos con nombres), no un diseño aparte.
+const nombreDeEvento = e => e.players?.name || e.player_nombre || 'Jugador'
+function FlyerResultadoAdmin({ partido, onClose }) {
+  const [datos, setDatos] = useState(null)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    let activo = true
+    ;(async () => {
+      try {
+        const [r1, r2] = await Promise.all([
+          supabase.from('matches').select(COLUMNAS_COMPLETO).eq('id', partido.id).single(),
+          supabase.from('match_events').select('id, event_type, minute, periodo, team_id, player_id, player_nombre').eq('match_id', partido.id),
+        ])
+        if (r1.error || r2.error) throw (r1.error || r2.error)
+        let filas = r2.data || []
+        try { filas = await hydratePlayersPublico(filas, { columns: 'id, name' }) } catch { /* sin nombres: se muestra player_nombre o "Jugador" */ }
+        if (activo) setDatos({ partido: r1.data, torneo: r1.data.tournaments || partido.tournaments, eventos: filas })
+      } catch (e) {
+        if (activo) setError(errorAmigable(e, 'No se pudo preparar el flyer'))
+      }
+    })()
+    return () => { activo = false }
+  }, [partido.id])
+
+  if (datos) return <FlyerResultadoPartido partido={datos.partido} torneo={datos.torneo} eventos={datos.eventos} nombreDe={nombreDeEvento} onClose={onClose}/>
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 2200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ background: '#fff', borderRadius: '14px', padding: '22px 26px', fontSize: '.88rem', fontWeight: '600', color: error ? '#d93025' : '#202124', textAlign: 'center', maxWidth: '320px' }}>
+        {error || 'Preparando el flyer…'}
+      </div>
+    </div>
+  )
+}
 
 // ── Una fila de partido (no se vuelve a dibujar al abrir/cerrar otras secciones) ──
 const FilaPartido = memo(function FilaPartido({ p, abriendo, acc }) {
   const esJugado = p.status === 'finished'
+  const [abierto, setAbierto] = useState(false)
+  const gH = esJugado && p.home_score > p.away_score
+  const gA = esJugado && p.away_score > p.home_score
+  // "Sáb 29" y la hora, compactos; la fecha completa sale al abrir el partido.
+  let dia = '', hora = ''
+  if (p.played_at) {
+    const partes = fmtDiaCorto.formatToParts(new Date(p.played_at))
+    const get = t => (partes.find(x => x.type === t)?.value || '').replace('.', '')
+    dia = `${cap(get('weekday'))} ${get('day')}`
+    hora = fmtHoraDate(p.played_at)
+  }
+  const alternar = () => setAbierto(v => !v)
   return (
     <div className="gcal-row">
-      {/* Cuándo, dónde y estado */}
-      <div className="gcal-meta">
-        {p.played_at ? (
-          <span className="when"><Clock size={13}/> {cap(fmtDiaCorto.format(new Date(p.played_at)))} · {fmtHoraDate(p.played_at)}</span>
-        ) : (
-          <span className="when"><Clock size={13}/> Por confirmar</span>
-        )}
-        {p.location && <span className="loc"><MapPin size={13}/> {p.location}</span>}
-        <span className={`gcal-pill ${esJugado ? 'ok' : 'pend'}`}><i/>{esJugado ? 'Jugado' : 'Pendiente'}</span>
+      <div className="gcal-head" role="button" tabIndex={0} aria-expanded={abierto}
+        onClick={alternar} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar() } }}>
+        <div className="gcal-when">
+          {p.played_at ? <><b>{dia}</b><span>{hora}</span></> : <span>Por confirmar</span>}
+        </div>
+        <div className="gcal-match">
+          <div className="gcal-lg"><TeamLogo logo_url={p.home?.logo_url} size={22}/></div>
+          <span className={`gcal-tn ${gA ? 'lost' : ''}`}>{p.home?.name}</span>
+          {esJugado ? <span className={`gcal-n ${gA ? 'lost' : ''}`}>{p.home_score}</span> : <span className="gcal-pend">Pendiente</span>}
+          <div className="gcal-lg"><TeamLogo logo_url={p.away?.logo_url} size={22}/></div>
+          <span className={`gcal-tn ${gH ? 'lost' : ''}`}>{p.away?.name}</span>
+          {esJugado && <span className={`gcal-n ${gH ? 'lost' : ''}`}>{p.away_score}</span>}
+        </div>
+        <ChevronDown size={18} className={`gcal-chev ${abierto ? 'on' : ''}`}/>
       </div>
 
-      {/* Marcador */}
-      <div className="gcal-board">
-        <div className="gcal-team home">
-          <div className="gcal-logo"><TeamLogo logo_url={p.home?.logo_url} size={34}/></div>
-          <span className="gcal-name">{p.home?.name}</span>
+      {abierto && (
+        <div className="gcal-more">
+          <div className="gcal-info">
+            {p.played_at && <div className="l"><Clock size={14}/> {cap(fmtDiaLargo.format(new Date(p.played_at)))} · {fmtHoraDate(p.played_at)}</div>}
+            {p.location && <div className="l loc"><MapPin size={14}/> {p.location}</div>}
+            <div><span className={`gcal-pill ${esJugado ? 'ok' : 'pend'}`}><i/>{esJugado ? 'Partido jugado' : 'Partido pendiente'}</span></div>
+          </div>
+          <div className="gcal-actions">
+            <button className={`gcal-btn ${esJugado ? 'dark' : 'primary'}`} onClick={() => acc.planilla(p)} disabled={abriendo}>
+              {abriendo ? 'Abriendo…' : esJugado ? <><Pencil size={14}/> Editar resultado</> : <><Check size={14}/> Registrar resultado</>}
+            </button>
+            <button className="gcal-btn" onClick={() => acc.flyer(p)}><Image size={14} color="#6c35de"/> Flyer</button>
+            {!esJugado && (
+              <button className="gcal-btn" onClick={() => acc.link(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido (puedes agregarle más partidos del mismo torneo)">
+                <Link2 size={14} color="#00958c"/> Link árbitro
+              </button>
+            )}
+            {!esJugado && (
+              <button className="gcal-btn" onClick={() => acc.reloj(p)} title="Link aparte para registrar goles, tarjetas y cambios desde el navegador de un smartwatch">
+                <Watch size={14} color="#6c35de"/> Link reloj
+              </button>
+            )}
+            <button className="gcal-btn" onClick={() => acc.verTorneo(p.tournament_id)}>Ver torneo →</button>
+          </div>
         </div>
-        <div className="gcal-mid">
-          {esJugado
-            ? <div className="gcal-score">{p.home_score}<span>–</span>{p.away_score}</div>
-            : <div className="gcal-vs">VS</div>}
-        </div>
-        <div className="gcal-team">
-          <div className="gcal-logo"><TeamLogo logo_url={p.away?.logo_url} size={34}/></div>
-          <span className="gcal-name">{p.away?.name}</span>
-        </div>
-      </div>
-
-      {/* Acciones: la principal arriba y ancha, el resto en rejilla */}
-      <div className="gcal-actions">
-        <button className={`gcal-btn ${esJugado ? 'dark' : 'primary'}`} onClick={() => acc.planilla(p)} disabled={abriendo}>
-          {abriendo ? 'Abriendo…' : esJugado ? <><Pencil size={14}/> Editar resultado</> : <><Check size={14}/> Registrar resultado</>}
-        </button>
-        <button className="gcal-btn" onClick={() => acc.flyer(p)}><Image size={14} color="#6c35de"/> Flyer</button>
-        {!esJugado && (
-          <button className="gcal-btn" onClick={() => acc.link(p)} title="Copia un link de 24h para que un árbitro sin cuenta planille este partido (puedes agregarle más partidos del mismo torneo)">
-            <Link2 size={14} color="#00958c"/> Link árbitro
-          </button>
-        )}
-        {!esJugado && (
-          <button className="gcal-btn" onClick={() => acc.reloj(p)} title="Link aparte para registrar goles, tarjetas y cambios desde el navegador de un smartwatch">
-            <Watch size={14} color="#6c35de"/> Link reloj
-          </button>
-        )}
-        <button className="gcal-btn" onClick={() => acc.verTorneo(p.tournament_id)}>Ver torneo →</button>
-      </div>
+      )}
     </div>
   )
 })
@@ -830,7 +875,9 @@ export default function AdminCalendarioPage() {
   return (
     <div>
       <style>{ESTILOS_CAL}</style>
-      {flyerPartido    && <FlyerPartido    partido={flyerPartido}    onClose={() => setFlyerPartido(null)}/>}
+      {flyerPartido && (flyerPartido.status === 'finished'
+        ? <FlyerResultadoAdmin partido={flyerPartido} onClose={() => setFlyerPartido(null)}/>
+        : <FlyerPartido partido={flyerPartido} onClose={() => setFlyerPartido(null)}/>)}
       {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
       {planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
       {relojModal && <ModalLinkReloj modal={relojModal} generando={generandoLink}
