@@ -790,6 +790,7 @@ export default function AdminTorneoDetallePage() {
   const [generandoGrupos,  setGenerandoGrupos]  = useState(false)
   const [fechaGrupos,      setFechaGrupos]      = useState('')
   const [moviendoEquipoId, setMoviendoEquipoId] = useState(null) // team_id con el menú de "mover a otro grupo" abierto
+  const [tipoPartidoForm, setTipoPartidoForm] = useState('') // en 'Crear partido' con grupos: id del grupo, 'inter' (intergrupo) o '' (sin elegir)
   const [dragGrupo, setDragGrupo] = useState(null)       // equipo que se está arrastrando a otro grupo: { teamId, name, logo, desde, x, y }
   const [grupoSobre, setGrupoSobre] = useState(null)     // grupo que está debajo del dedo/mouse mientras se arrastra
   const dragGrupoRef = useRef(null)
@@ -3632,9 +3633,30 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setCanchas(prev => prev.filter(x => x.id !== cancha.id)); showMsg('Cancha eliminada')
   }
 
+  // "Crear partido" con grupos: se elige primero el grupo (o intergrupo) y solo salen los equipos que corresponden
+  const grupoDeEquipo = teamId => grupoEquipos.find(ge => ge.team_id === teamId)?.grupo_id || null
+  const nombreGrupo = gid => grupos.find(g => g.id === gid)?.nombre || ''
+  const filtraPorGrupo = grupos.length > 1 && (formPartido.fase || 'grupo') === 'grupo'
+  function equiposParaPartido(lado) {
+    if (!filtraPorGrupo) return equipos
+    if (!tipoPartidoForm) return []
+    if (tipoPartidoForm === 'inter') {
+      const conGrupo = equipos.filter(e => grupoDeEquipo(e.id))
+      if (lado === 'home') return conGrupo
+      const gLocal = grupoDeEquipo(formPartido.home_team_id)
+      return gLocal ? conGrupo.filter(e => grupoDeEquipo(e.id) !== gLocal) : []
+    }
+    return equipos.filter(e => grupoDeEquipo(e.id) === tipoPartidoForm)
+  }
+
   async function handleCrearPartido() {
     if (!formPartido.home_team_id || !formPartido.away_team_id) return showMsg('Selecciona los dos equipos', 'error')
     if (formPartido.home_team_id === formPartido.away_team_id) return showMsg('Los equipos no pueden ser iguales', 'error')
+    if (filtraPorGrupo && tipoPartidoForm) {
+      const gl = grupoDeEquipo(formPartido.home_team_id), gv = grupoDeEquipo(formPartido.away_team_id)
+      if (tipoPartidoForm === 'inter' && (!gl || !gv || gl === gv)) return showMsg('En un partido intergrupo los equipos deben ser de grupos distintos', 'error')
+      if (tipoPartidoForm !== 'inter' && (gl !== tipoPartidoForm || gv !== tipoPartidoForm)) return showMsg('Los dos equipos deben ser del grupo elegido', 'error')
+    }
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
     setLoadingPartido(true)
     const base = {
@@ -3661,6 +3683,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     else {
       showMsg(conVuelta ? 'Partido de ida creado ✓ — ponle fecha a la vuelta cuando la sepas' : 'Partido creado ✓')
       setShowFormPartido(false)
+      setTipoPartidoForm('')
       setFormPartido({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', cancha_id: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
       fetchPartidos()
     }
@@ -5373,18 +5396,40 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                   <div style={{ fontWeight: '600', color: '#202124', marginBottom: '16px' }}>Nuevo partido</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {filtraPorGrupo && (
+                      <div>
+                        <label style={labelStyle}>¿De qué grupo es el partido? *</label>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {grupos.map((g, gi) => {
+                            const c = COLORES_GRUPO[gi % COLORES_GRUPO.length]
+                            const act = tipoPartidoForm === g.id
+                            return (
+                              <button key={g.id} type="button" onClick={() => { setTipoPartidoForm(g.id); setFormPartido(f => ({ ...f, home_team_id: '', away_team_id: '' })) }}
+                                style={{ padding: '9px 16px', borderRadius: '999px', border: `2px solid ${c}`, background: act ? c : '#fff', color: act ? '#fff' : c, fontWeight: '800', fontSize: '.82rem', cursor: 'pointer' }}>
+                                {g.nombre}
+                              </button>
+                            )
+                          })}
+                          <button type="button" onClick={() => { setTipoPartidoForm('inter'); setFormPartido(f => ({ ...f, home_team_id: '', away_team_id: '' })) }}
+                            style={{ padding: '9px 16px', borderRadius: '999px', border: '2px solid #9955ff', background: tipoPartidoForm === 'inter' ? '#9955ff' : '#fff', color: tipoPartidoForm === 'inter' ? '#fff' : '#9955ff', fontWeight: '800', fontSize: '.82rem', cursor: 'pointer' }}>
+                            Intergrupo
+                          </button>
+                        </div>
+                        {!tipoPartidoForm && <div style={{ fontSize: '.7rem', color: '#e8710a', marginTop: '6px' }}>Elige primero el grupo (o intergrupo) para que salgan los equipos.</div>}
+                      </div>
+                    )}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '12px', alignItems: 'end' }}>
                       <div>
                         <label style={labelStyle}>Equipo local *</label>
-                        <select value={formPartido.home_team_id} onChange={e => setFormPartido(f => ({ ...f, home_team_id: e.target.value }))} style={inputStyle}>
-                          <option value="">Seleccionar...</option>{equipos.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                        <select value={formPartido.home_team_id} disabled={filtraPorGrupo && !tipoPartidoForm} onChange={e => setFormPartido(f => ({ ...f, home_team_id: e.target.value, away_team_id: tipoPartidoForm === 'inter' ? '' : f.away_team_id }))} style={inputStyle}>
+                          <option value="">Seleccionar...</option>{equiposParaPartido('home').map(e => <option key={e.id} value={e.id}>{e.name}{tipoPartidoForm === 'inter' ? ` (${nombreGrupo(grupoDeEquipo(e.id))})` : ''}</option>)}
                         </select>
                       </div>
                       <div style={{ textAlign: 'center', fontWeight: '700', color: '#5f6368', paddingBottom: '8px' }}>VS</div>
                       <div>
                         <label style={labelStyle}>Equipo visitante *</label>
-                        <select value={formPartido.away_team_id} onChange={e => setFormPartido(f => ({ ...f, away_team_id: e.target.value }))} style={inputStyle}>
-                          <option value="">Seleccionar...</option>{equipos.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                        <select value={formPartido.away_team_id} disabled={filtraPorGrupo && (!tipoPartidoForm || (tipoPartidoForm === 'inter' && !formPartido.home_team_id))} onChange={e => setFormPartido(f => ({ ...f, away_team_id: e.target.value }))} style={inputStyle}>
+                          <option value="">{tipoPartidoForm === 'inter' && !formPartido.home_team_id ? 'Elige primero el local...' : 'Seleccionar...'}</option>{equiposParaPartido('away').filter(e => e.id !== formPartido.home_team_id).map(e => <option key={e.id} value={e.id}>{e.name}{tipoPartidoForm === 'inter' ? ` (${nombreGrupo(grupoDeEquipo(e.id))})` : ''}</option>)}
                         </select>
                       </div>
                       {formPartido.home_team_id && formPartido.away_team_id && formPartido.home_team_id !== formPartido.away_team_id && (() => {
