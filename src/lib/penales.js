@@ -115,7 +115,7 @@ export function sumarGlobal({ criterio, propioLocal, propioVis, otroLocal, otroV
 //  fase: la del partido ('grupo', 'octavos', ...). golesLocal/golesVis: de ESTE partido.
 //  globalLlave: { local, visitante } si es la vuelta de una llave ida/vuelta ya jugada (si no, null).
 export function necesitaPreguntarPenales({ fase, golesLocal, golesVis, globalLlave, eliminacion = true }) {
-  if (!fase || fase === 'grupo') return false
+  if (!fase || fase === 'grupo' || fase === 'amistoso') return false // un amistoso (u otro partido suelto) puede terminar empatado
   // Si la llave se creó SIN eliminación directa, un empate puede quedar como empate (no hay penales).
   if (eliminacion === false) return false
   if (globalLlave) return globalLlave.local === globalLlave.visitante

@@ -80,7 +80,7 @@ function TeamLogo({ logo_url, size = 32 }) {
 
 const FASE_LABEL = {
   grupo: 'Fase de Grupos', octavos: 'Octavos de Final', cuartos: 'Cuartos de Final',
-  semifinal: 'Semifinales', tercero: 'Tercer Puesto', final: 'Final',
+  semifinal: 'Semifinales', tercero: 'Tercer Puesto', final: 'Final', amistoso: 'Amistoso',
 }
 
 function sinTildes(s) {
@@ -105,7 +105,14 @@ function agruparPorJornada(partidos, prefijo) {
   partidos.forEach(p => {
     // Clave de agrupación: fase especial primero, luego por jornada, luego por fecha
     let key, label, esFase = false, faseOrden = 0
-    if (p.fase && p.fase !== 'grupo') {
+    if (p.fase === 'amistoso') {
+      // Partido suelto con nombre propio (amistoso, sétette…): un bloque por nombre
+      const nombre = p.ronda || 'Amistoso'
+      key = `otro_${nombre}`
+      label = nombre
+      esFase = true
+      faseOrden = 0
+    } else if (p.fase && p.fase !== 'grupo') {
       key = `fase_${p.fase}`
       label = FASE_LABEL[p.fase] || p.fase
       esFase = true

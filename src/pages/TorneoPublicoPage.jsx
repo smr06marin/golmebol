@@ -40,7 +40,7 @@ function TeamLogo({ logo_url, name, size = 28 }) {
   )
 }
 
-const FASE_LABEL = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final' }
+const FASE_LABEL = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final', amistoso: 'Amistoso' }
 
 // Tamaño de letra del nombre del equipo según su largo — así un nombre
 // largo se ve completo (más chiquito) en vez de cortarse con "..." o
