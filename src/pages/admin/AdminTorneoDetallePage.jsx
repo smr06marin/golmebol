@@ -4770,11 +4770,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
               <div><label style={labelStyle}>Jornada #</label><input type="number" value={formEditPartido.matchday || ''} onChange={e => setFormEditPartido(p => ({ ...p, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
               <div><label style={labelStyle}>Fase</label><select value={formEditPartido.fase || 'grupo'} onChange={e => setFormEditPartido(p => ({ ...p, fase: e.target.value }))} style={inputStyle}>{FASES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
-              {arbitrosAdmin.length > 0 && <>
-                <div><label style={labelStyle}>🟡 Árbitro principal</label><select value={formEditPartido.arbitro1_id||''} onChange={e => setFormEditPartido(p=>({...p,arbitro1_id:e.target.value}))} style={inputStyle}><option value="">Sin asignar</option>{arbitrosAdmin.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-                <div><label style={labelStyle}>🟡 Árbitro asistente 1</label><select value={formEditPartido.arbitro2_id||''} onChange={e => setFormEditPartido(p=>({...p,arbitro2_id:e.target.value}))} style={inputStyle}><option value="">Sin asignar</option>{arbitrosAdmin.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-                <div><label style={labelStyle}>🟡 Árbitro asistente 2</label><select value={formEditPartido.arbitro3_id||''} onChange={e => setFormEditPartido(p=>({...p,arbitro3_id:e.target.value}))} style={inputStyle}><option value="">Sin asignar</option>{arbitrosAdmin.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-              </>}
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
               <button onClick={handleGuardarEditPartido} style={{ flex: 1, padding: '10px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>Guardar cambios</button>
