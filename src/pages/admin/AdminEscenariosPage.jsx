@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
 import { Plus, Upload, X, Building2 } from 'lucide-react'
+import { confirmar } from '../../lib/confirmar'
 
 const EMPTY = { name: '', telefono: '', numero_cedula: '', city: '', genero: '' }
 const inp = { width:'100%', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'8px 12px', color:'#202124', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
@@ -209,11 +211,11 @@ export default function AdminEscenariosPage() {
     const nombreNorm = nombreNuevo.trim().toLowerCase()
     const ciudadNorm = ciudadNueva.trim().toLowerCase()
     const yaExiste = escenarios.some(e => (e.name||'').trim().toLowerCase() === nombreNorm && (e.city||'').trim().toLowerCase() === ciudadNorm)
-    if (yaExiste) { setErrorEsc('Ya existe un escenario con ese nombre y ciudad. Buscalo en la lista de abajo y usá "+ Asignar encargado" ahí, no crees uno nuevo.'); return }
+    if (yaExiste) { setErrorEsc('Ya existe un escenario con ese nombre y ciudad. Búscalo en la lista de abajo y usa "+ Asignar encargado" ahí, no crees uno nuevo.'); return }
     setGuardandoEsc(true)
     const { error } = await supabase.from('escenarios').insert({ name: nombreNuevo.trim(), city: ciudadNueva.trim() || null })
     setGuardandoEsc(false)
-    if (error) { setErrorEsc('No se pudo crear: ' + error.message); return }
+    if (error) { setErrorEsc(errorAmigable(error, 'No se pudo crear el escenario')); return }
     setShowCrear(false); setNombreNuevo(''); setCiudadNueva('')
     showMsgFn('Escenario creado ✓ — ahora asignale un encargado')
     fetchEscenarios()
@@ -224,22 +226,22 @@ export default function AdminEscenariosPage() {
     base.setMonth(base.getMonth() + meses)
     const payload = { activo: true, fecha_vencimiento: base.toISOString(), meses_pagados: (escenario.meses_pagados || 0) + meses }
     const { error } = await supabase.from('escenarios').update(payload).eq('id', escenario.id)
-    if (error) return 'Error al activar: ' + error.message
+    if (error) return errorAmigable(error, 'No se pudo activar el escenario')
     showMsgFn(`✅ ${escenario.name} activado por ${meses} mes${meses>1?'es':''}`)
     setModalActivarEsc(null); fetchEscenarios(); return null
   }
 
   async function handleBloquearEscenario(escenario) {
-    if (!confirm(`¿Bloquear "${escenario.name}"? El encargado no va a poder entrar a su portal y la página pública de reservas quedará deshabilitada hasta que lo reactives.`)) return
+    if (!(await confirmar(`¿Bloquear "${escenario.name}"? El encargado no va a poder entrar a su portal y la página pública de reservas quedará deshabilitada hasta que lo reactives.`))) return
     const { error } = await supabase.from('escenarios').update({ activo: false }).eq('id', escenario.id)
-    if (error) return showMsgFn('Error al bloquear: ' + error.message, 'error')
+    if (error) return showMsgFn(errorAmigable(error, 'Error al bloquear'), 'error')
     showMsgFn(`🔒 ${escenario.name} bloqueado`)
     fetchEscenarios()
   }
 
   async function handleDesbloquearEscenario(escenario) {
     const { error } = await supabase.from('escenarios').update({ activo: true }).eq('id', escenario.id)
-    if (error) return showMsgFn('Error al desbloquear: ' + error.message, 'error')
+    if (error) return showMsgFn(errorAmigable(error, 'Error al desbloquear'), 'error')
     showMsgFn(`✅ ${escenario.name} desbloqueado`)
     fetchEscenarios()
   }
@@ -259,7 +261,7 @@ export default function AdminEscenariosPage() {
     const { data: filas } = await supabase.from('players').select('*').eq('numero_cedula', cedulaBuscar.trim())
     const candidatas = filas || []
     if (candidatas.length > 1) {
-      showMsgFn(`⚠️ Esta cédula tiene ${candidatas.length} registros duplicados en Golmebol — corré migracion_fusionar_cedulas_duplicadas.sql en Supabase antes de asignar, si no la persona puede terminar entrando por la fila equivocada.`, 'error')
+      showMsgFn(`⚠️ Esta cédula tiene ${candidatas.length} registros duplicados en Golmebol — avísale al administrador de Golmebol para que las unifique antes de asignar; si no, la persona puede terminar entrando por el perfil equivocado.`, 'error'); console.warn('[Golmebol] Falta correr la migración: migracion_fusionar_cedulas_duplicadas.sql')
     }
     const data = candidatas.length > 0
       ? [...candidatas].sort((a, b) => (b.user_id ? 1 : 0) - (a.user_id ? 1 : 0))[0]
@@ -287,7 +289,7 @@ export default function AdminEscenariosPage() {
       ? { es_encargado_escenario: true }
       : { es_encargado_escenario: true, activo_membresia: true, fecha_vencimiento: null }
     const { error } = await supabase.from('players').update(payload).eq('id', existente.id)
-    if (error) { setLoading(false); return showMsgFn('Error al habilitar como encargado: ' + error.message, 'error') }
+    if (error) { setLoading(false); return showMsgFn(errorAmigable(error, 'Error al habilitar como encargado'), 'error') }
     const errSync = await sincronizarAsignaciones(existente.id, escenariosAsignados, soloLecturaMap)
     setLoading(false)
     if (errSync) return showMsgFn(errSync, 'error')
@@ -302,7 +304,7 @@ export default function AdminEscenariosPage() {
     setLoading(true)
     if (editId) {
       const { error } = await supabase.from('players').update(form).eq('id', editId)
-      if (error) { setLoading(false); return showMsgFn('Error al guardar: ' + error.message, 'error') }
+      if (error) { setLoading(false); return showMsgFn(errorAmigable(error, 'Error al guardar'), 'error') }
       const errSync = await sincronizarAsignaciones(editId, escenariosAsignados, soloLecturaMap)
       if (errSync) showMsgFn(errSync, 'error')
       else { showMsgFn('Encargado actualizado ✓'); setEditId(null) }
@@ -314,7 +316,7 @@ export default function AdminEscenariosPage() {
       const { data: nuevo, error } = await supabase.from('players').insert(payload).select().single()
       let errSync = null
       if (!error && nuevo) errSync = await sincronizarAsignaciones(nuevo.id, escenariosAsignados, soloLecturaMap)
-      if (error) showMsgFn('Error al crear: ' + error.message, 'error')
+      if (error) showMsgFn(errorAmigable(error, 'Error al crear'), 'error')
       else if (errSync) showMsgFn(errSync, 'error')
       else showMsgFn('Encargado creado ✓ — ya puede entrar con su cédula en /jugador/login')
     }
@@ -369,13 +371,13 @@ export default function AdminEscenariosPage() {
   }
 
   async function handleDesactivar(encargado) {
-    if (!confirm(`¿Desactivar acceso de ${encargado.name}?`)) return
+    if (!(await confirmar(`¿Desactivar acceso de ${encargado.name}?`))) return
     await supabase.from('players').update({ activo_membresia: false }).eq('id', encargado.id)
     showMsgFn('Acceso desactivado'); fetchEncargados()
   }
 
   async function handleQuitarRol(encargado) {
-    if (!confirm(`¿Quitar rol de encargado a ${encargado.name}?`)) return
+    if (!(await confirmar(`¿Quitar rol de encargado a ${encargado.name}?`))) return
     await supabase.from('players').update({ es_encargado_escenario: false }).eq('id', encargado.id)
     await supabase.from('escenario_encargados').delete().eq('player_id', encargado.id)
     showMsgFn('Rol de encargado removido')
@@ -546,7 +548,7 @@ export default function AdminEscenariosPage() {
           </div>
           <div style={{ fontSize:'.85rem', color:'#202124', marginBottom:'16px' }}>
             {personaEncontrada.es_encargado_escenario
-              ? <>Ya es encargado — marcá los escenarios que debe tener asignados (podés sumarle más sin quitarle los que ya tiene).</>
+              ? <>Ya es encargado — marca los escenarios que debe tener asignados (puedes sumarle más sin quitarle los que ya tiene).</>
               : <>¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando como encargado? Si confirmas, podrá entrar con la misma cuenta y contraseña a los dos portales.</>}
           </div>
           <div style={{ display:'flex', gap:'8px' }}>

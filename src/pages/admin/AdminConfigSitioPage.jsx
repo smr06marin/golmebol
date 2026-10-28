@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { useAuthStore } from '../../store/authStore'
 import { Radio, Plus, Trash2, Upload, Repeat, X, PlayCircle, Link2, Copy, Check, ImagePlus, Pencil, Eye, EyeOff } from 'lucide-react'
 import LiveEmbed, { detectarPlataforma } from '../../components/LiveEmbed'
@@ -48,6 +49,7 @@ export default function AdminConfigSitioPage() {
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [avanzadoStream, setAvanzadoStream] = useState({}) // por transmisión: ¿se ven título y repetición dentro del video?
   const [partidos, setPartidos] = useState([]) // partidos elegibles para el marcador (no finalizados)
   const [diagnosticos, setDiagnosticos] = useState({}) // { [streamId]: texto } — respuesta de /api/yt-en-vivo?debug=1 (para ver qué recibe el servidor de YouTube)
   // Pestaña elegida arriba para ver SOLO las transmisiones de un torneo ('todas' | id de torneo | 'sin')
@@ -214,7 +216,7 @@ export default function AdminConfigSitioPage() {
     setLoading(true)
     const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
     if (error) {
-      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql y migracion_site_config_repeticion_imagenes.sql en Supabase' : error.message, type:'error' })
+      setMsg({ text: /does not exist|column/.test(error.message||'') ? avisoMigracion('migracion_site_config_en_vivo_streams.sql y migracion_site_config_repeticion_imagenes.sql') : errorAmigable(error, 'No se pudo guardar'), type:'error' })
       setLoading(false)
       return
     }
@@ -266,8 +268,8 @@ export default function AdminConfigSitioPage() {
     if (!silencioso) setGuardando(false)
     if (error) {
       const msgError = /en_vivo_streams/.test(error.message||'') || /column .* does not exist/.test(error.message||'')
-        ? '⚠️ Falta correr migracion_site_config_en_vivo_streams.sql en Supabase'
-        : 'Error al guardar: ' + error.message
+        ? avisoMigracion('migracion_site_config_en_vivo_streams.sql')
+        : errorAmigable(error, 'No se pudo guardar')
       setMsg({ text: msgError, type:'error' })
       return false
     }
@@ -301,7 +303,7 @@ export default function AdminConfigSitioPage() {
     const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_repeticion_imagenes: nuevaLista, updated_at: new Date().toISOString() }, { onConflict: 'id' })
     setSubiendoImagen(false)
     if (error) {
-      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_site_config_repeticion_imagenes.sql en Supabase' : 'Error al guardar la imagen', type:'error' })
+      setMsg({ text: /does not exist|column/.test(error.message||'') ? avisoMigracion('migracion_site_config_repeticion_imagenes.sql') : 'Error al guardar la imagen', type:'error' })
       return
     }
     setImagenesRepeticion(nuevaLista)
@@ -329,7 +331,7 @@ export default function AdminConfigSitioPage() {
     const next = { ...baseLogos, [tournamentId]: lista }
     const { error } = await supabase.from('site_config').upsert({ id: true, patrocinador_logos_torneo: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
     if (error) {
-      setMsg({ text: /does not exist|column/.test(error.message||'') ? '⚠️ Falta correr migracion_patrocinador_logos_torneo.sql en Supabase' : 'Error al guardar el logo', type:'error' })
+      setMsg({ text: /does not exist|column/.test(error.message||'') ? avisoMigracion('migracion_patrocinador_logos_torneo.sql') : 'Error al guardar el logo', type:'error' })
       return false
     }
     setLogosPorTorneo(next)
@@ -418,7 +420,7 @@ export default function AdminConfigSitioPage() {
       const next = { ...base, [streamId]: { ...base[streamId], ...cambios } }
       const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       if (error) {
-        setMsg({ text: /en_vivo_control|column .* does not exist/.test(error.message||'') ? '⚠️ Falta correr migracion_en_vivo_control.sql en Supabase' : 'Error al actualizar el panel de control', type:'error' })
+        setMsg({ text: /en_vivo_control|column .* does not exist/.test(error.message||'') ? avisoMigracion('migracion_en_vivo_control.sql') : 'Error al actualizar el panel de control', type:'error' })
       }
     }).catch(() => {})
   }
@@ -582,7 +584,7 @@ export default function AdminConfigSitioPage() {
 
   return (
     <div style={{ maxWidth:'640px' }}>
-      <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:'0 0 4px' }}>Configuración del sitio</h1>
+      <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:'0 0 4px' }}>En vivo</h1>
       <p style={{ color:'#5f6368', margin:'0 0 24px', fontSize:'.875rem' }}>Lo que pongas acá se muestra en la página de inicio pública (golmebol.com).</p>
 
       {streams.length >= 2 && pestanas.length >= 1 && (
@@ -615,7 +617,7 @@ export default function AdminConfigSitioPage() {
             <PlayCircle size={16} color={S.green}/> Panel de control en vivo
           </div>
           <div style={{ fontSize:'.8rem', color:'#9aa0a6', marginBottom:'16px' }}>
-            Para usar DURANTE el partido: cada botón actúa al toque, sin tener que tocar "Guardar". Repetición dispara de una (no espera el retraso de la transmisión, porque acá lo aprietas vos mismo viendo el video).
+            Para usar DURANTE el partido: cada botón actúa al toque, sin tener que tocar "Guardar". Repetición dispara de una (no espera el retraso de la transmisión, porque acá lo aprietas tú mismo viendo el video).
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
             {streamsPreviewVista.map(s => {
@@ -711,7 +713,7 @@ export default function AdminConfigSitioPage() {
                       <>
                         <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LOGOS DE PATROCINADOR DEL TORNEO</div>
                         <div style={{ fontSize:'.72rem', color:'#9aa0a6', marginBottom:'8px' }}>
-                          Se suben una sola vez por torneo y quedan para todos sus partidos. Subí la imagen, "Editar posición" para arrastrarla y agrandarla/achicarla en el video de arriba (ahí SOLO la ves vos), "Guardar posición" cuando quede bien, y recién "Publicar" para que la vea todo el mundo. Podés tener varias publicadas a la vez.
+                          Se suben una sola vez por torneo y quedan para todos sus partidos. Sube la imagen, "Editar posición" para arrastrarla y agrandarla/achicarla en el video de arriba (ahí SOLO la ves tú), "Guardar posición" cuando quede bien, y recién "Publicar" para que la vea todo el mundo. Puedes tener varias publicadas a la vez.
                         </div>
                         <label style={{ display:'inline-flex', alignItems:'center', gap:'6px', marginBottom:'10px', padding:'9px 14px', background:'#fff', border:'1px dashed #1a73e8', borderRadius:'8px', cursor:'pointer', color:'#1a73e8', fontSize:'.78rem', fontWeight:'700' }}>
                           <ImagePlus size={14}/> {subiendoLogoTorneo ? 'Subiendo...' : 'Subir logo'}
@@ -849,20 +851,6 @@ export default function AdminConfigSitioPage() {
                 </div>
 
                 <div style={{ marginBottom:'12px' }}>
-                  <label style={lbl}>Título (opcional)</label>
-                  <input value={s.titulo || ''} onChange={e => actualizarStream(s.id, 'titulo', e.target.value)} style={inp}
-                    placeholder="Ej: Cancha 1 · Final del Torneo Relámpago"/>
-                </div>
-
-                <div style={{ marginBottom:'12px', padding:'10px 12px', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px' }}>
-                  <label style={{ display:'flex', alignItems:'flex-start', gap:'8px', fontSize:'.8rem', color:'#202124', cursor:'pointer' }}>
-                    <input type="checkbox" checked={!!s.repeticion_transmision} onChange={e => actualizarStream(s.id, 'repeticion_transmision', e.target.checked)} style={{ marginTop:'2px' }}/>
-                    <span><b>Repetición dentro de la transmisión (Prism / OBS)</b><br/>
-                      <span style={{ fontSize:'.72rem', color:'#5f6368' }}>El botón "Repetición" muestra los últimos 12 s dentro del video que sale en YouTube (con el overlay de este directo) y se apaga la repetición del sitio, para que no salga dos veces. Necesita el DVR activado en YouTube.</span></span>
-                  </label>
-                </div>
-
-                <div style={{ marginBottom:'12px' }}>
                   <label style={lbl}>¿De dónde sale el marcador?</label>
                   <select value={s.torneo_auto || ''} onChange={e => { actualizarStream(s.id, 'torneo_auto', e.target.value || null); actualizarStream(s.id, 'cancha_auto', null); if (vistaActual !== 'todas') setTorneoVista(e.target.value || 'sin') }} style={inp}>
                     <option value="">Elegir los partidos a mano</option>
@@ -941,6 +929,37 @@ export default function AdminConfigSitioPage() {
                   </div>
                 </div>
                 )}
+
+                {(() => {
+                  const abierto = avanzadoStream[s.id] ?? !!(s.titulo || s.repeticion_transmision)
+                  return (
+                    <div style={{ marginTop:'14px', borderTop:'1px solid #f1f3f4', paddingTop:'12px' }}>
+                      <button type="button" onClick={() => setAvanzadoStream(m => ({ ...m, [s.id]: !abierto }))} aria-expanded={abierto}
+                        style={{ display:'block', width:'100%', textAlign:'left', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'11px 12px', cursor:'pointer', minHeight:'44px' }}>
+                        <span style={{ display:'block', fontSize:'.8rem', fontWeight:'700', color:'#202124' }}>Opciones avanzadas {abierto ? '▴' : '▾'}</span>
+                        <span style={{ display:'block', fontSize:'.7rem', color:'#5f6368', marginTop:'2px' }}>Título de la transmisión y repetición dentro del video (Prism / OBS)</span>
+                      </button>
+                      {abierto && (
+                        <div style={{ marginTop:'12px' }}>
+                <div style={{ marginBottom:'12px' }}>
+                  <label style={lbl}>Título (opcional)</label>
+                  <input value={s.titulo || ''} onChange={e => actualizarStream(s.id, 'titulo', e.target.value)} style={inp}
+                    placeholder="Ej: Cancha 1 · Final del Torneo Relámpago"/>
+                </div>
+
+                <div style={{ marginBottom:'12px', padding:'10px 12px', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px' }}>
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:'8px', fontSize:'.8rem', color:'#202124', cursor:'pointer' }}>
+                    <input type="checkbox" checked={!!s.repeticion_transmision} onChange={e => actualizarStream(s.id, 'repeticion_transmision', e.target.checked)} style={{ marginTop:'2px' }}/>
+                    <span><b>Repetición dentro de la transmisión (Prism / OBS)</b><br/>
+                      <span style={{ fontSize:'.72rem', color:'#5f6368' }}>El botón "Repetición" muestra los últimos 12 s dentro del video que sale en YouTube (con el overlay de este directo) y se apaga la repetición del sitio, para que no salga dos veces. Necesita el DVR activado en YouTube.</span></span>
+                  </label>
+                </div>
+
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}

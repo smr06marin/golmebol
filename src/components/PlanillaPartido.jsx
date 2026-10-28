@@ -1790,7 +1790,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       tipo: informeTipo, descripcion: informeTexto.trim(), creado_por: creadoPor,
     })
     setGuardandoInforme(false)
-    if (error) { alert('No se pudo guardar el informe: ' + error.message + '\nRevisa la señal e intenta de nuevo.'); return }
+    if (error) { console.error('[Golmebol] guardar informe', error); alert('No se pudo guardar el informe. Revisa la señal e intenta de nuevo.'); return }
     setInformeGuardado(true)
     const pendiente = showInforme
     setShowInforme(null)

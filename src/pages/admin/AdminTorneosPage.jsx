@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { Plus, Pencil, Trash2, Trophy, Eye, Star, X, Archive, ArchiveRestore } from 'lucide-react'
@@ -8,6 +9,7 @@ import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { ubicacionDeTorneo } from '../../lib/ubicaciones'
 import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import SelectorPlanillaTorneo from '../../components/SelectorPlanillaTorneo'
+import { confirmar } from '../../lib/confirmar'
 
 
 const EMPTY = { name: '', season: '', city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
@@ -62,6 +64,8 @@ export default function AdminTorneosPage() {
   const [errorPlanilla, setErrorPlanilla] = useState(false) // se intentó guardar sin escoger planilla
   const [msg, setMsg] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  // Crear torneo: primero solo lo básico; puntos, W, límites y dinero van en "Opciones avanzadas" (con los valores de siempre).
+  const [verAvanzado, setVerAvanzado] = useState(false)
   const [search, setSearch] = useState('')
   const [verArchivados, setVerArchivados] = useState(false) // por defecto los torneos archivados (ediciones viejas ya cerradas) no se muestran, para que la lista no se llene
   const [menuTorneo, setMenuTorneo] = useState(null) // torneo con menú ⋮ abierto
@@ -102,11 +106,11 @@ export default function AdminTorneosPage() {
 
   async function handleTogglePremium(t) {
     if (!esAdmin) return
-    if (!confirm(t.premium
+    if (!(await confirmar(t.premium
       ? `¿Quitar Premium a "${t.name}"? El organizador perderá noticias, cuentas de dinero y ediciones.`
-      : `¿Marcar "${t.name}" como Premium (pago recibido)? Habilita noticias, cuentas de dinero, ediciones y le permite al organizador crear otro torneo.`)) return
+      : `¿Marcar "${t.name}" como Premium (pago recibido)? Habilita noticias, cuentas de dinero, ediciones y le permite al organizador crear otro torneo.`))) return
     const { error } = await supabase.from('tournaments').update({ premium: !t.premium }).eq('id', t.id)
-    if (error) return showMsg(error.message?.includes('premium') ? 'Falta ejecutar migracion_roles.sql en Supabase' : 'Error al actualizar', 'error')
+    if (error) return showMsg(error.message?.includes('premium') ? avisoMigracion('migracion_roles.sql') : 'Error al actualizar', 'error')
     showMsg(t.premium ? 'Premium desactivado' : 'Torneo marcado como Premium ⭐')
     fetchTorneos()
   }
@@ -118,11 +122,11 @@ export default function AdminTorneosPage() {
   // cualquier torneo que ya no se esté usando.
   async function handleToggleArchivado(t) {
     const nuevo = !t.archivado
-    if (!confirm(nuevo
+    if (!(await confirmar(nuevo
       ? `¿Archivar "${t.name}"? Desaparece de esta lista (no se borra nada) — lo volvés a ver con "Ver archivados". Se puede desarchivar cuando quieras.`
-      : `¿Desarchivar "${t.name}"? Vuelve a aparecer en la lista principal.`)) return
+      : `¿Desarchivar "${t.name}"? Vuelve a aparecer en la lista principal.`))) return
     const { error } = await supabase.from('tournaments').update({ archivado: nuevo }).eq('id', t.id)
-    if (error) return showMsg(`Falta ejecutar migracion_archivar_torneos.sql en Supabase (${error.message})`, 'error')
+    if (error) return showMsg(avisoMigracion('migracion_archivar_torneos.sql'), 'error')
     showMsg(nuevo ? 'Torneo archivado ✓' : 'Torneo desarchivado ✓')
     fetchTorneos()
   }
@@ -223,44 +227,44 @@ export default function AdminTorneosPage() {
       let { data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id')
       if (error && esErrorFinanzas(error)) {
         payload = formNorm
-        avisoDegradado = 'Torneo actualizado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
+        avisoDegradado = 'Torneo actualizado, pero los precios NO se guardaron. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorW(error)) {
         // Falta correr migracion_w_y_descuentos.sql: si el W está en lo normal (3-0) no hay nada que perder y no se avisa.
         payload = sinW(payload)
-        if (!wEsDefault) avisoDegradado = 'Torneo actualizado, pero la configuración del W NO se guardó: ejecuta migracion_w_y_descuentos.sql en Supabase'
+        if (!wEsDefault) avisoDegradado = 'Torneo actualizado, pero la configuración del W NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorPuntos(error)) {
         payload = sinPuntos(payload)
-        avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+        avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorLimite(error)) {
         payload = sinLimite(payload)
-        avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
+        avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorDuracion(error)) {
         payload = sinDuracion(payload)
-        avisoDegradado = 'Torneo actualizado, pero la duración de cada tiempo NO se guardó: ejecuta migracion_duracion_tiempo.sql en Supabase'
+        avisoDegradado = 'Torneo actualizado, pero la duración de cada tiempo NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorUbicacion(error)) {
         payload = sinUbicacion(payload)
-        avisoDegradado = 'Torneo actualizado, pero país/departamento/municipio NO se guardaron: ejecuta migracion_ubicacion_torneos.sql en Supabase (la ciudad sí quedó)'
+        avisoDegradado = 'Torneo actualizado, pero país/departamento/municipio NO se guardaron. La ciudad sí quedó. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorPlanilla(error)) {
         payload = sinPlanilla(payload)
-        avisoDegradado = 'Torneo actualizado, pero la planilla NO se guardó: ejecuta migracion_planilla_torneo.sql en Supabase'
+        avisoDegradado = 'Torneo actualizado, pero la planilla NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
-      if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al guardar: ${error.message || error.code || 'desconocido'}`, 'error') }
+      if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(errorAmigable(error, 'Error al guardar'), 'error') }
       // Si no vino error pero tampoco ninguna fila afectada, el update no
       // escribió nada (típicamente permisos/RLS) — evita el falso "✓".
-      else if (!data || data.length === 0) showMsg('El torneo no se actualizó: no tenés permiso para editarlo (revisa las políticas RLS de "tournaments" en Supabase)', 'error')
+      else if (!data || data.length === 0) showMsg('El torneo no se actualizó: no tienes permiso para editarlo. Si crees que es un error, avísale al administrador.', 'error')
       else {
         // Los W ya jugados guardan su marcador: se actualizan al nuevo W configurado
         let avisoW = ''
@@ -283,37 +287,37 @@ export default function AdminTorneosPage() {
       let { error } = await supabase.from('tournaments').insert(payload)
       if (error && esErrorFinanzas(error)) {
         payload = cleanForm
-        avisoDegradado = 'Torneo creado, pero los precios NO se guardaron: ejecuta migracion_finanzas.sql en Supabase'
+        avisoDegradado = 'Torneo creado, pero los precios NO se guardaron. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error && esErrorW(error)) {
         payload = sinW(payload)
-        if (!wEsDefault) avisoDegradado = 'Torneo creado, pero la configuración del W NO se guardó: ejecuta migracion_w_y_descuentos.sql en Supabase'
+        if (!wEsDefault) avisoDegradado = 'Torneo creado, pero la configuración del W NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error && esErrorPuntos(error)) {
         payload = sinPuntos(payload)
-        avisoDegradado = 'Torneo creado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+        avisoDegradado = 'Torneo creado, pero el sistema de puntos NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error && esErrorLimite(error)) {
         payload = sinLimite(payload)
-        avisoDegradado = 'Torneo creado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
+        avisoDegradado = 'Torneo creado, pero el límite de jugadores por equipo NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error && esErrorDuracion(error)) {
         payload = sinDuracion(payload)
-        avisoDegradado = 'Torneo creado, pero la duración de cada tiempo NO se guardó: ejecuta migracion_duracion_tiempo.sql en Supabase'
+        avisoDegradado = 'Torneo creado, pero la duración de cada tiempo NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error && esErrorUbicacion(error)) {
         payload = sinUbicacion(payload)
-        avisoDegradado = 'Torneo creado, pero país/departamento/municipio NO se guardaron: ejecuta migracion_ubicacion_torneos.sql en Supabase (la ciudad sí quedó)'
+        avisoDegradado = 'Torneo creado, pero país/departamento/municipio NO se guardaron. La ciudad sí quedó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error && esErrorPlanilla(error)) {
         payload = sinPlanilla(payload)
-        avisoDegradado = 'Torneo creado, pero la planilla NO se guardó: ejecuta migracion_planilla_torneo.sql en Supabase'
+        avisoDegradado = 'Torneo creado, pero la planilla NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
       if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
@@ -351,6 +355,7 @@ export default function AdminTorneosPage() {
       pago_arbitro_w:       fc.pago_arbitro_w || '',
     })
     setEditId(t.id)
+    setVerAvanzado(true)
     setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -399,7 +404,7 @@ export default function AdminTorneosPage() {
 
       const { error } = await supabase.from('tournaments').delete().eq('id', t.id)
       if (error) {
-        showMsg(`No se pudo eliminar del todo: ${error.message}`, 'error')
+        showMsg(errorAmigable(error, 'No se pudo eliminar del todo'), 'error')
         return
       }
       setTorneoAEliminar(null)
@@ -431,7 +436,7 @@ export default function AdminTorneosPage() {
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Torneos</h1>
           <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{torneos.length - archivadosCount} torneos activos{archivadosCount > 0 ? ` · ${archivadosCount} archivados` : ''}</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setErrorPlanilla(false); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setShowForm(true) }}
+        <button onClick={() => { setForm(EMPTY); setErrorPlanilla(false); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setVerAvanzado(false); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
           <Plus size={18}/> Nuevo torneo
         </button>
@@ -491,10 +496,33 @@ export default function AdminTorneosPage() {
                 <label style={label}>Fecha inicio</label>
                 <input type="date" value={form.fecha_inicio} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} style={input}/>
               </div>
-              <div>
+            </div>
+
+            {/* Planilla del torneo: Fútbol de salón o Fútbol 11 (capturas reales de las dos) */}
+            <div id="selector-planilla-torneo">
+              <SelectorPlanillaTorneo
+                value={form.planilla_tipo}
+                onChange={v => { setForm(f => ({ ...f, planilla_tipo: v })); setErrorPlanilla(false) }}
+                mostrarError={errorPlanilla}
+                requerido={!editId}
+                isMobile={isMobile}/>
+            </div>
+
+
+            {!editId && (
+              <button type="button" onClick={() => setVerAvanzado(v => !v)} aria-expanded={verAvanzado}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', width: '100%', textAlign: 'left', padding: '14px 16px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', cursor: 'pointer', minHeight: '48px' }}>
+                <span>
+                  <span style={{ display: 'block', fontSize: '.88rem', fontWeight: '700', color: '#202124' }}>Opciones avanzadas {verAvanzado ? '▴' : '▾'}</span>
+                  <span style={{ display: 'block', fontSize: '.74rem', color: '#5f6368', marginTop: '2px' }}>Puntos, partido por W, límite de jugadores, duración y dinero. Ya vienen listos: 3-1-0 puntos y el tiempo típico de la modalidad. Puedes cambiarlos después.</span>
+                </span>
+              </button>
+            )}
+            {(verAvanzado || editId) && (
+              <>
+            <div>
               <label style={label}>Fecha fin <span style={{ color: '#9aa0a6', fontWeight: '400' }}>(opcional — puede definirse después)</span></label>
               <input type="date" value={form.fecha_fin} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} style={input}/>
-              </div>
             </div>
 
             {/* Sistema de puntos de la tabla de posiciones */}
@@ -549,16 +577,6 @@ export default function AdminTorneosPage() {
               </div>
               <input type="number" min="1" value={form.duracion_tiempo_min} onChange={e => setForm(f => ({ ...f, duracion_tiempo_min: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}
                 placeholder={form.modalidad && DURACION_SUGERIDA[form.modalidad] ? `${DURACION_SUGERIDA[form.modalidad]} (por defecto)` : 'Ej: 25'}/>
-            </div>
-
-            {/* Planilla del torneo: Fútbol de salón o Fútbol 11 (capturas reales de las dos) */}
-            <div id="selector-planilla-torneo">
-              <SelectorPlanillaTorneo
-                value={form.planilla_tipo}
-                onChange={v => { setForm(f => ({ ...f, planilla_tipo: v })); setErrorPlanilla(false) }}
-                mostrarError={errorPlanilla}
-                requerido={!editId}
-                isMobile={isMobile}/>
             </div>
 
             {/* Asignar organizador — solo el admin principal, y solo al editar un torneo ya creado */}
@@ -633,6 +651,8 @@ export default function AdminTorneosPage() {
                 </div>
               )}
             </div>
+              </>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
             <button onClick={handleSave} disabled={loading}

@@ -256,8 +256,31 @@ export default function AdminDashboard() {
         </div>
 
         {misTorneos.length === 0 ? (
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '40px 20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.9rem' }}>
-            Todavía no tienes un torneo creado. <button onClick={() => navigate('/admin/torneos')} style={{ background: 'none', border: 'none', color: '#1a73e8', cursor: 'pointer', fontWeight: '600', fontSize: '.9rem' }}>Crear mi primer torneo →</button>
+          <div>
+            <div style={{ background: 'linear-gradient(135deg, #1a73e8, #6c35de)', borderRadius: '16px', padding: '28px 22px', color: '#fff', marginBottom: '16px' }}>
+              <div style={{ fontSize: '1.35rem', fontWeight: '800', marginBottom: '6px' }}>¡Bienvenido a Golmebol!</div>
+              <div style={{ fontSize: '.92rem', opacity: .92, lineHeight: 1.5, marginBottom: '18px' }}>Vamos a armar tu primer torneo. Son solo 3 pasos.</div>
+              <button onClick={() => navigate('/admin/torneos')}
+                style={{ background: '#fff', color: '#1a73e8', border: 'none', borderRadius: '12px', padding: '14px 26px', fontSize: '1rem', fontWeight: '800', cursor: 'pointer', minHeight: '48px' }}>
+                Crear mi torneo
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+              {[
+                { n: 1, t: 'Crea el torneo', d: 'Nombre, modalidad y fecha de inicio.' },
+                { n: 2, t: 'Inscribe equipos', d: 'Agrégalos o envíales el link de registro.' },
+                { n: 3, t: 'Programa partidos', d: 'Grupos, canchas y calendario.' },
+              ].map(p => (
+                <div key={p.n} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px', display: 'flex', gap: '12px', alignItems: 'flex-start', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                  <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#e8f0fe', color: '#1a73e8', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{p.n}</div>
+                  <div>
+                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.92rem', marginBottom: '2px' }}>{p.t}</div>
+                    <div style={{ fontSize: '.8rem', color: '#5f6368', lineHeight: 1.4 }}>{p.d}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '.8rem', color: '#9aa0a6', textAlign: 'center' }}>Cuando tengas torneos, aquí verás tus partidos de hoy y los últimos resultados.</div>
           </div>
         ) : (
           <>
@@ -313,6 +336,7 @@ export default function AdminDashboard() {
           </>
         )}
 
+        {misTorneos.length > 0 && (
         <div>
           <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '12px' }}>Acciones rápidas</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
@@ -338,6 +362,7 @@ export default function AdminDashboard() {
             ))}
           </div>
         </div>
+        )}
       </div>
     )
   }

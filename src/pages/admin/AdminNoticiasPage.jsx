@@ -6,6 +6,7 @@ import { Newspaper, Zap, RefreshCw, Copy, Check, Send, X, MessageSquare, Flag, C
 import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { apiUrl } from '../../lib/apiBase'
+import { confirmar } from '../../lib/confirmar'
 
 // La llamada a la IA ya NO se hace directo desde el navegador (eso dejaba la
 // clave de Anthropic visible en el código fuente de la página, cualquiera
@@ -236,9 +237,9 @@ export default function AdminNoticiasPage() {
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3500) }
 
   // Evita gastar otra llamada a la IA por accidente sobre algo que ya se generó.
-  function confirmarRegenerar(yaGenerada) {
+  async function confirmarRegenerar(yaGenerada) {
     if (!yaGenerada) return true
-    return confirm('Ya existe una noticia para esto. ¿Generar de nuevo? (gasta otra llamada a la IA)')
+    return (await confirmar('Ya existe una noticia para esto. ¿Generar de nuevo? (gasta otra llamada a la IA)'))
   }
 
   async function fetchTorneos() {
@@ -847,7 +848,7 @@ Texto plano, sin markdown. 10 segundos de lectura.`
   }
 
   async function handleEliminar(id) {
-    if (!confirm('¿Eliminar esta noticia?')) return
+    if (!(await confirmar('¿Eliminar esta noticia?'))) return
     await supabase.from('noticias').delete().eq('id', id)
     fetchNoticias()
     showMsg('Noticia eliminada')
@@ -1060,7 +1061,7 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
                       {yaGenerada && <span style={{ color:'#1e8e3e' }}>✓</span>}
                     </div>
                   </div>
-                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) abrirChat(p, 'pre_partido') }}
+                  <button onClick={async () => { if (await confirmarRegenerar(yaGenerada)) abrirChat(p, 'pre_partido') }}
                     style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:esFaseElim?'#e8710a':'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600', marginBottom:'6px' }}>
                     <MessageSquare size={13}/> {yaGenerada?'Analizar y Regenerar':'Analizar y Generar'}
                   </button>
@@ -1068,7 +1069,7 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
                     onChange={e => setIndicaciones(prev => ({ ...prev, [`pre_partido_${p.id}`]: e.target.value }))}
                     placeholder="¿Qué quieres que diga? (opcional)"
                     style={{ width:'100%', boxSizing:'border-box', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
-                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) generarNoticiaDirecta(p, 'pre_partido') }} disabled={generandoDirecto===`pre_partido_${p.id}`}
+                  <button onClick={async () => { if (await confirmarRegenerar(yaGenerada)) generarNoticiaDirecta(p, 'pre_partido') }} disabled={generandoDirecto===`pre_partido_${p.id}`}
                     title="Genera de una sola vez, sin chat previo — más barato"
                     style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'6px', background:'#fff', border:'1px solid '+(esFaseElim?'#e8710a':'#1a73e8'), borderRadius:'8px', cursor:generandoDirecto?'not-allowed':'pointer', color:esFaseElim?'#e8710a':'#1a73e8', fontSize:'.72rem', fontWeight:'600', opacity:generandoDirecto&&generandoDirecto!==`pre_partido_${p.id}`?.5:1 }}>
                     {generandoDirecto===`pre_partido_${p.id}` ? <><RefreshCw size={12} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar directo</>}
@@ -1101,7 +1102,7 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
                       {yaGenerada && <span style={{ color:'#1e8e3e' }}>✓</span>}
                     </div>
                   </div>
-                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) abrirChat(p, 'post_partido') }}
+                  <button onClick={async () => { if (await confirmarRegenerar(yaGenerada)) abrirChat(p, 'post_partido') }}
                     style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'7px', background:'#1e8e3e', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontSize:'.75rem', fontWeight:'600', marginBottom:'6px' }}>
                     <MessageSquare size={13}/> {yaGenerada?'Analizar y Regenerar':'Analizar y Generar'}
                   </button>
@@ -1109,7 +1110,7 @@ Texto plano, sin markdown. 15 segundos de lectura.${indicacion ? `\n\nINDICACIÓ
                     onChange={e => setIndicaciones(prev => ({ ...prev, [`post_partido_${p.id}`]: e.target.value }))}
                     placeholder="¿Qué quieres que diga? (opcional)"
                     style={{ width:'100%', boxSizing:'border-box', background:'#f8f9fa', border:'1px solid #e8eaed', borderRadius:'8px', padding:'6px 8px', fontSize:'.72rem', color:'#202124', outline:'none', marginBottom:'6px' }}/>
-                  <button onClick={() => { if (confirmarRegenerar(yaGenerada)) generarNoticiaDirecta(p, 'post_partido') }} disabled={generandoDirecto===`post_partido_${p.id}`}
+                  <button onClick={async () => { if (await confirmarRegenerar(yaGenerada)) generarNoticiaDirecta(p, 'post_partido') }} disabled={generandoDirecto===`post_partido_${p.id}`}
                     title="Genera de una sola vez, sin chat previo — más barato"
                     style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', padding:'6px', background:'#fff', border:'1px solid #1e8e3e', borderRadius:'8px', cursor:generandoDirecto?'not-allowed':'pointer', color:'#1e8e3e', fontSize:'.72rem', fontWeight:'600', opacity:generandoDirecto&&generandoDirecto!==`post_partido_${p.id}`?.5:1 }}>
                     {generandoDirecto===`post_partido_${p.id}` ? <><RefreshCw size={12} style={{ animation:'spin 1s linear infinite' }}/> Generando...</> : <>⚡ Generar directo</>}

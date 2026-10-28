@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, memo, useDeferredValue } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { useAuthStore } from '../../store/authStore'
 import { Calendar, Check, Image, Shield, ChevronDown, ChevronUp, Link2, Search, Trophy, Watch } from 'lucide-react'
 import FlyerPartido from '../../components/FlyerPartido'
@@ -685,7 +686,7 @@ export default function AdminCalendarioPage() {
 
   async function copiarLinkUnico(p) {
     const { data, error } = await supabase.rpc('generar_link_planilla', { p_match_id: p.id })
-    if (error) { notify('Error al generar el link: ' + error.message, 'error'); return false }
+    if (error) { notify(errorAmigable(error, 'Error al generar el link'), 'error'); return false }
     navigator.clipboard.writeText(mensajeUnico(p, `${window.location.origin}/planillar/${data.token}`))
     notify('Link copiado con la descripción ✓')
     return true
@@ -705,8 +706,8 @@ export default function AdminCalendarioPage() {
       if (error) {
         const faltaMigracion = error.code === 'PGRST202' || (/generar_link_planilla_grupo/.test(error.message || '') && /not find|does not exist|schema cache/i.test(error.message || ''))
         notify(faltaMigracion
-          ? 'Falta correr migracion_link_arbitro_grupo.sql en Supabase'
-          : 'Error al generar el link: ' + error.message, 'error')
+          ? avisoMigracion('migracion_link_arbitro_grupo.sql')
+          : errorAmigable(error, 'Error al generar el link'), 'error')
         return
       }
       const ordenados = [...orden].sort(porHora)
@@ -726,7 +727,7 @@ export default function AdminCalendarioPage() {
       const { data, error } = await supabase.rpc('generar_link_reloj', { p_match_id: partido.id, p_con_faltas: !!conFaltas })
       if (error) {
         const falta = error.code === 'PGRST202' || (/generar_link_reloj/.test(error.message || '') && /not find|does not exist|schema cache/i.test(error.message || ''))
-        notify(falta ? 'Falta correr migracion_reloj.sql en Supabase' : 'Error al generar el link: ' + error.message, 'error')
+        notify(falta ? avisoMigracion('migracion_reloj.sql') : errorAmigable(error, 'Error al generar el link'), 'error')
         return
       }
       const link = `${window.location.origin}/reloj/${data.token}`

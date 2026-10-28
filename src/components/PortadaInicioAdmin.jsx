@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Image as IconoImagen, Upload, Trash2, Monitor, Smartphone, Crop } from 'lucide-react'
+import { confirmar } from '../lib/confirmar'
 
 // Portada de la página de inicio (imagen de fondo de la parte de arriba de golmebol.com).
 //
@@ -212,7 +213,7 @@ export default function PortadaInicioAdmin() {
 
   async function quitar() {
     if (guardando) return
-    if (!confirm('¿Quitar la portada? La página de inicio vuelve al diseño oscuro de siempre.')) return
+    if (!(await confirmar('¿Quitar la portada? La página de inicio vuelve al diseño oscuro de siempre.'))) return
     const error = await guardar({ url: null, url_movil: null, url_original: null })
     if (error) { setAviso({ texto: 'No se pudo quitar — ' + error.message, tipo: 'error' }); return }
     const viejos = [portada.url, portada.url_movil, portada.url_original].map(rutaDeUrl).filter(Boolean)

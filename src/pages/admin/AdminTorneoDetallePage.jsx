@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { resolverPrediccionesPartido } from '../../lib/predix'
 import { getPuntosTorneo, puntosVictoria, cargarDescuentos, reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
@@ -29,6 +30,9 @@ import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
 import { apiUrl } from '../../lib/apiBase'
+import AyudaTermino from '../../components/AyudaTermino'
+import { useIsMobile } from '../../hooks/useIsMobile'
+import { confirmar } from '../../lib/confirmar'
 
 // Le pone un límite de tiempo a una consulta a Supabase para que un botón
 // nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
@@ -200,15 +204,17 @@ function TeamStats({ jugadores, equipo, logo }) {
   )
 }
 
+// Orden = camino real del torneo. "paso" numera lo que se hace en orden;
+// "mas" guarda lo que no se toca todos los días (en celular van todas en una fila).
 const TABS = [
-  { id: 'actividad',       label: 'Actividad',       icon: <Trophy size={16}/> },
-  { id: 'grupos',          label: 'Grupos',          icon: <Users size={16}/> },
-  { id: 'calendario',      label: 'Calendario',      icon: <Calendar size={16}/> },
-  { id: 'equipos',         label: 'Equipos',         icon: <Shield size={16}/> },
-  { id: 'estadisticas',    label: 'Estadísticas',    icon: <BarChart2 size={16}/> },
-  { id: 'eliminatorias',   label: 'Eliminatorias',   icon: <GitBranch size={16}/> },
-  { id: 'finanzas',        label: 'Finanzas',        icon: <DollarSign size={16}/> },
-  { id: 'personalizacion', label: 'Personalización', icon: <Palette size={16}/> },
+  { id: 'actividad',       label: 'Inicio',          icon: <Trophy size={16}/> },
+  { id: 'equipos',         label: 'Equipos',         icon: <Shield size={16}/>,    paso: 1 },
+  { id: 'grupos',          label: 'Grupos',          icon: <Users size={16}/>,     paso: 2 },
+  { id: 'calendario',      label: 'Calendario',      icon: <Calendar size={16}/>,  paso: 3 },
+  { id: 'eliminatorias',   label: 'Eliminatorias',   icon: <GitBranch size={16}/>, paso: 4 },
+  { id: 'estadisticas',    label: 'Estadísticas',    icon: <BarChart2 size={16}/>, mas: true },
+  { id: 'finanzas',        label: 'Finanzas',        icon: <DollarSign size={16}/>, mas: true },
+  { id: 'personalizacion', label: 'Personalización', icon: <Palette size={16}/>,   mas: true },
 ]
 
 function hexValido(v, fallback = '#1a73e8') {
@@ -222,7 +228,7 @@ const inputStyle = {
   width: '100%', background: '#fff', border: '1px solid #dadce0',
   borderRadius: '8px', padding: '8px 12px', color: '#202124',
   fontSize: '.875rem', outline: 'none', boxSizing: 'border-box',
-  fontFamily: 'system-ui, sans-serif',
+  fontFamily: 'system-ui, sans-serif', minHeight: '40px',
 }
 const labelStyle = {
   fontSize: '.75rem', fontWeight: '500', color: '#5f6368',
@@ -678,8 +684,8 @@ export default function AdminTorneoDetallePage() {
     setGuardandoDescuento(false)
     if (error) {
       showMsg(/descuentos_puntos|relation|schema cache/i.test(error.message || '')
-        ? 'Falta la tabla de descuentos: ejecuta migracion_w_y_descuentos.sql en Supabase'
-        : 'No se pudo guardar el descuento: ' + error.message, 'error')
+        ? avisoMigracion('migracion_w_y_descuentos.sql')
+        : errorAmigable(error, 'No se pudo guardar el descuento'), 'error')
       return
     }
     setFormDescuento({ signo: -1, puntos: '', motivo: '' })
@@ -690,7 +696,7 @@ export default function AdminTorneoDetallePage() {
     if (borrarDescuentoId !== d.id) { setBorrarDescuentoId(d.id); return }
     const { error } = await supabase.from('descuentos_puntos').delete().eq('id', d.id)
     setBorrarDescuentoId(null)
-    if (error) { showMsg('No se pudo quitar el descuento: ' + error.message, 'error'); return }
+    if (error) { showMsg(errorAmigable(error, 'No se pudo quitar el descuento'), 'error'); return }
     await recargarDescuentos()
     showMsg('Descuento eliminado')
   }
@@ -710,8 +716,30 @@ export default function AdminTorneoDetallePage() {
   const [tab, setTabState] = useState(() => searchParams.get('tab') || (draftJornada ? 'partidos' : 'actividad'))
   function setTab(id) {
     setTabState(id)
+    setMenuMasAbierto(false)
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('tab', id); return n }, { replace: true })
   }
+  const isMobile = useIsMobile()
+  const [menuMasAbierto, setMenuMasAbierto] = useState(false)
+  const filaTabsRef = useRef(null)
+  // En celular las pestañas van en una sola fila que se desliza: la activa siempre queda a la vista.
+  useEffect(() => {
+    const cont = filaTabsRef.current
+    const activa = cont?.querySelector('[data-tab-activa="1"]')
+    if (cont && activa) {
+      const izq = activa.offsetLeft - 12
+      if (izq < cont.scrollLeft || activa.offsetLeft + activa.offsetWidth > cont.scrollLeft + cont.clientWidth) {
+        cont.scrollTo({ left: Math.max(0, izq), behavior: 'smooth' })
+      }
+    }
+  }, [tab, isMobile])
+  // El menú "Más" se cierra al tocar fuera.
+  useEffect(() => {
+    if (!menuMasAbierto) return
+    const cerrar = e => { if (!e.target.closest?.('[data-menu-mas]')) setMenuMasAbierto(false) }
+    document.addEventListener('pointerdown', cerrar)
+    return () => document.removeEventListener('pointerdown', cerrar)
+  }, [menuMasAbierto])
   const [msg,       setMsg]       = useState(null)
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [cargaRapidaPartido, setCargaRapidaPartido] = useState(null) // partido con la "Carga rápida" de resultado abierta (fallback cuando el árbitro no llenó planilla)
@@ -1045,6 +1073,8 @@ export default function AdminTorneoDetallePage() {
   const [tarjetasAPagar,   setTarjetasAPagar]   = useState([]) // [{player_id, color, nombre}] a marcar pagadas junto con este pago
   const [guardandoPago,    setGuardandoPago]    = useState(false)
   const [equipoFinAbierto, setEquipoFinAbierto] = useState(null)
+  const [verAvanzadoMarca, setVerAvanzadoMarca] = useState(false) // dominio propio y favicon: rara vez se tocan
+  const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
   const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
   const [guardandoEdicionMov, setGuardandoEdicionMov] = useState(false)
@@ -1201,13 +1231,13 @@ export default function AdminTorneoDetallePage() {
       URL.revokeObjectURL(url)
     } catch (err) {
       if (err?.name === 'AbortError') return // el usuario cerró el cuadro de compartir sin elegir nada
-      showMsg('No se pudo descargar el escudo: ' + err.message)
+      showMsg(errorAmigable(err, 'No se pudo descargar el escudo'))
     }
   }
 
   // Desactiva al equipo en este torneo: sus jugadores quedan inactivos y el equipo sale del torneo
   async function handleDesactivarEquipo(equipo) {
-    if (!confirm(`¿Desactivar a "${equipo.name}" de este torneo? Sus jugadores quedarán inactivos y el equipo saldrá del torneo. Sus partidos y estadísticas se conservan.`)) return
+    if (!(await confirmar(`¿Desactivar a "${equipo.name}" de este torneo? Sus jugadores quedarán inactivos y el equipo saldrá del torneo. Sus partidos y estadísticas se conservan.`))) return
     await supabase.from('tournament_player_registrations').update({ activo: false }).eq('tournament_id', id).eq('team_id', equipo.id)
     await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
     showMsg(`${equipo.name} desactivado del torneo`)
@@ -1219,7 +1249,7 @@ export default function AdminTorneoDetallePage() {
       showMsg(`Preparando la planilla de ${equipo.name}…`)
       setPlanillaEquipo(await cargarPlanillaEquipoOrganizador(equipo.id, id))
     } catch (err) {
-      showMsg(err.message || 'No se pudo cargar la planilla del equipo', 'error')
+      showMsg(errorAmigable(err, 'No se pudo cargar la planilla del equipo'), 'error')
     }
   }
 
@@ -1228,7 +1258,7 @@ export default function AdminTorneoDetallePage() {
     if (!e) return
     const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
     const dTexto = duracionLinkDias === 1 ? '1 día' : `${duracionLinkDias} días`
-    const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+    const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPuedes inscribir tú mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
     navigator.clipboard.writeText(mensaje)
     // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
     // duración que se haya elegido (1, 2 o 3 días). Antes se mandaba "y se
@@ -1450,7 +1480,7 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function handleLevantarSancion(sancionId) {
-    if (!confirm('¿Levantar esta sanción?')) return
+    if (!(await confirmar('¿Levantar esta sanción?'))) return
     await supabase.from('sanciones').update({ activa: false }).eq('id', sancionId)
     showMsg('Sanción levantada ✓')
     fetchSanciones()
@@ -1469,7 +1499,7 @@ export default function AdminTorneoDetallePage() {
       showMsg(`${equipoDestino.name} ya alcanzó el límite de jugadores del torneo (${torneo.limite_jugadores_equipo})`, 'error')
       return
     }
-    if (!confirm(`¿Mover a ${reg.players?.name || 'este jugador'} a ${equipoDestino.name}? Sus estadísticas de partidos ya jugados se conservan con el equipo con el que los jugó.`)) return
+    if (!(await confirmar(`¿Mover a ${reg.players?.name || 'este jugador'} a ${equipoDestino.name}? Sus estadísticas de partidos ya jugados se conservan con el equipo con el que los jugó.`))) return
     const { error } = await supabase.from('tournament_player_registrations').update({ team_id: nuevoEquipoId }).eq('id', reg.id)
     if (error) { showMsg('Error al mover el jugador', 'error'); return }
     const { data: yaEnEquipoNuevo } = await supabase.from('team_players').select('id').eq('team_id', nuevoEquipoId).eq('player_id', reg.player_id).maybeSingle()
@@ -1627,7 +1657,7 @@ export default function AdminTorneoDetallePage() {
       return
     }
     const { data, error } = await supabase.from('grupo_equipos').update({ grupo_id: grupoIdDestino }).eq('team_id', teamId).eq('tournament_id', id).select('team_id')
-    if (error) { showMsg(`No se pudo mover el equipo: ${error.message}`, 'error'); return }
+    if (error) { showMsg(errorAmigable(error, 'No se pudo mover el equipo'), 'error'); return }
     if (!data || data.length === 0) { showMsg('No se pudo mover el equipo (sin permisos)', 'error'); return }
     showMsg('Equipo movido ✓')
     fetchGrupos()
@@ -1645,7 +1675,7 @@ export default function AdminTorneoDetallePage() {
       return { grupo_id: destino.id, team_id: e.id, tournament_id: id }
     })
     const { error } = await supabase.from('grupo_equipos').insert(inserts)
-    if (error) { showMsg(`No se pudieron repartir los equipos: ${error.message}`, 'error'); return }
+    if (error) { showMsg(errorAmigable(error, 'No se pudieron repartir los equipos'), 'error'); return }
     showMsg(`${inserts.length} equipo${inserts.length > 1 ? 's' : ''} repartido${inserts.length > 1 ? 's' : ''} ✓`)
     fetchGrupos()
   }
@@ -1779,7 +1809,7 @@ export default function AdminTorneoDetallePage() {
   // ── FINALIZAR GRUPOS ────────────────────────────────
 
   async function handleFinalizarGrupos() {
-    if (!confirm(`¿Finalizar fase de grupos? Clasifican los ${clasificanPorGrupo} mejores de cada grupo.`)) return
+    if (!(await confirmar(`¿Finalizar fase de grupos? Clasifican los ${clasificanPorGrupo} mejores de cada grupo.`))) return
 
     // Obtener clasificados
     const clasificados = []
@@ -2194,10 +2224,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         return { fecha: c?.fecha || fechaElim, hora: c?.hora || horaElim || '08:00' }
       }
       const faltaFecha = parejas.some((_, i) => !fechaHoraLlave(i).fecha)
-      if (faltaFecha) return showMsg('Faltan fechas — completalas en la vista previa en vivo (o poné una fecha general en "Ajustar cupos/formato" como respaldo)', 'error')
+      if (faltaFecha) return showMsg('Faltan fechas — complétalas en la vista previa en vivo (o pon una fecha general en "Ajustar cupos/formato" como respaldo)', 'error')
 
       const avisoBye = byeTeam ? ` — ${byeTeam.name} pasa directo a la siguiente ronda sin jugar` : ''
-      if (!window.confirm(`Esto va a crear ${parejas.length} partido${parejas.length !== 1 ? 's' : ''} programado${parejas.length !== 1 ? 's' : ''} de verdad (no es la vista previa), con las fechas que armaste en la vista previa${avisoBye}. ¿Seguro que ya terminó la fase de grupos y querés crearlos?`)) return
+      if (!(await confirmar(`Esto va a crear ${parejas.length} partido${parejas.length !== 1 ? 's' : ''} programado${parejas.length !== 1 ? 's' : ''} de verdad (no es la vista previa), con las fechas que armaste en la vista previa${avisoBye}. ¿Seguro que ya terminó la fase de grupos y quieres crearlos?`))) return
       setGenerandoElim(true)
 
       // Aviso de tarjetas sin pagar — ya no bloquea, solo recuerda que hay
@@ -2236,7 +2266,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       })
 
       const { error } = await supabase.from('matches').insert(inserts)
-      if (error) { showMsg(`Error al crear el bracket: ${error.message}`, 'error'); return }
+      if (error) { showMsg(errorAmigable(error, 'Error al crear el bracket'), 'error'); return }
       await supabase.from('tournaments').update({ fase_actual: 'eliminatorias', bye_inicial_team_id: byeTeam?.id || null }).eq('id', id)
       showMsg(`${ronda} creada con ${parejas.length} llave${parejas.length !== 1 ? 's' : ''}${byeTeam ? ` — 🎟️ ${byeTeam.name} pasa directo` : ''} ✓`)
       setShowWizardElim(false)
@@ -2253,11 +2283,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // eliminatorias (no toca los de grupos) y vuelve a dejar solo la vista
   // previa en vivo, por si se creó por error.
   async function handleQuitarBracket() {
-    if (!window.confirm('¿Quitar el árbol de eliminatorias? Se borran todos los partidos de eliminatorias que ya se crearon (los de grupos quedan intactos) y volvés a ver solo la vista previa en vivo.')) return
+    if (!(await confirmar('¿Quitar el árbol de eliminatorias? Se borran todos los partidos de eliminatorias que ya se crearon (los de grupos quedan intactos) y volvés a ver solo la vista previa en vivo.'))) return
     setGenerandoElim(true)
     try {
       const { error } = await supabase.from('matches').delete().eq('tournament_id', id).neq('fase', 'grupo')
-      if (error) { showMsg(`No se pudo quitar: ${error.message}`, 'error'); return }
+      if (error) { showMsg(errorAmigable(error, 'No se pudo quitar'), 'error'); return }
       await supabase.from('tournaments').update({ fase_actual: 'grupos', bye_inicial_team_id: null }).eq('id', id)
       showMsg('Árbol de eliminatorias quitado — volviste a la vista previa ✓')
       fetchPartidos(); fetchBracket(); fetchTorneo()
@@ -2660,7 +2690,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         : pagoForm.tipo === 'abono_inscripcion' ? 'Abono a inscripción'
         : 'Pago de W/multa'),
     })
-    if (error) { setGuardandoPago(false); return showMsg('Error al registrar (¿ejecutaste migracion_finanzas.sql?)', 'error') }
+    if (error) { setGuardandoPago(false); return showMsg(errorAmigable(error, 'No se pudo registrar el pago'), 'error') }
 
     // Si al registrar el pago se marcaron tarjetas puntuales como pagadas
     // (checklist del modal), eso es lo que de verdad desbloquea al jugador
@@ -2691,14 +2721,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       tournament_id: id, team_id: equipo.id, player_id: j.player_id, tipo: 'abono_inscripcion', monto: tarifa,
       concepto: `Inscripción — ${j.players?.name || 'jugador'}`,
     }))).select('id')
-    if (error) { setPagandoInscJug(false); return showMsg('Error al registrar el pago: ' + error.message, 'error') }
+    if (error) { setPagandoInscJug(false); return showMsg(errorAmigable(error, 'Error al registrar el pago'), 'error') }
     const { error: e2 } = await supabase.from('tournament_player_registrations')
       .update({ inscripcion_pagada: true, inscripcion_pagada_at: new Date().toISOString() })
       .in('id', pendientes.map(j => j.id))
     if (e2) {
       await supabase.from('torneo_finanzas').delete().in('id', (movs || []).map(m => m.id))
       setPagandoInscJug(false)
-      return showMsg('No se pudo marcar el pago (¿ejecutaste migracion_inscripcion_por_jugador.sql en Supabase?)', 'error')
+      return showMsg(avisoMigracion('migracion_inscripcion_por_jugador.sql'), 'error')
     }
     setPagandoInscJug(false)
     showMsg(pendientes.length === 1 ? `Pago de ${pendientes[0].players?.name || 'jugador'} registrado ✓ — ya sale en la planilla` : `${pendientes.length} jugadores pagados ✓ — ya salen en la planilla`)
@@ -2706,18 +2736,18 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   async function deshacerPagoInscripcionJugador(equipo, j) {
-    if (!confirm(`¿Deshacer el pago de inscripción de ${j.players?.name || 'este jugador'}? Volverá a quedar bloqueado en la planilla.`)) return
+    if (!(await confirmar(`¿Deshacer el pago de inscripción de ${j.players?.name || 'este jugador'}? Volverá a quedar bloqueado en la planilla.`))) return
     setPagandoInscJug(true)
     await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('team_id', equipo.id).eq('player_id', j.player_id).eq('tipo', 'abono_inscripcion')
     const { error } = await supabase.from('tournament_player_registrations').update({ inscripcion_pagada: false, inscripcion_pagada_at: null }).eq('id', j.id)
     setPagandoInscJug(false)
-    if (error) return showMsg('No se pudo deshacer el pago: ' + error.message, 'error')
+    if (error) return showMsg(errorAmigable(error, 'No se pudo deshacer el pago'), 'error')
     showMsg('Pago deshecho ✓')
     fetchFinanzas(); fetchJugadores()
   }
 
   async function handleEliminarPago(mv) {
-    if (!confirm('¿Eliminar este pago?')) return
+    if (!(await confirmar('¿Eliminar este pago?'))) return
     await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
     fetchFinanzas()
   }
@@ -2745,7 +2775,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // es lo único que sigue a un jugador a los próximos torneos del MISMO
   // organizador. Se marca pagada acá cuando el jugador se pone al día.
   async function handleMarcarDeudaPersonalPagada(mv) {
-    if (!confirm(`¿Marcar como pagada la deuda de ${mv.players?.name || 'este jugador'} (${fmt(mv.monto)})?`)) return
+    if (!(await confirmar(`¿Marcar como pagada la deuda de ${mv.players?.name || 'este jugador'} (${fmt(mv.monto)})?`))) return
     const { error } = await supabase.from('torneo_finanzas').update({ pagado: true }).eq('id', mv.id)
     if (error) return showMsg('Error al marcar como pagada', 'error')
     showMsg('Deuda personal marcada como pagada ✓ — ya puede inscribirse en próximos torneos de este organizador')
@@ -2762,7 +2792,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // jugador_tiene_deuda en la BD). Si se usa más de una vez para el mismo
   // equipo, reemplaza la deuda anterior (no la duplica).
   async function handleBloquearEquipoPorInscripcion(equipo, saldoInscripcion) {
-    if (!confirm(`¿Bloquear a los jugadores inscritos de ${equipo.name} por inscripción sin pagar (${fmt(saldoInscripcion)} x2)?\n\nQuedarán sin poder inscribirse en próximos torneos tuyos hasta que se marque la deuda como pagada.`)) return
+    if (!(await confirmar(`¿Bloquear a los jugadores inscritos de ${equipo.name} por inscripción sin pagar (${fmt(saldoInscripcion)} x2)?\n\nQuedarán sin poder inscribirse en próximos torneos tuyos hasta que se marque la deuda como pagada.`))) return
     try {
       const { data: registros, error: errReg } = await supabase
         .from('tournament_player_registrations')
@@ -2797,7 +2827,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // del equipo. No la borra, solo queda marcada (se puede ver en el
   // historial de Movimientos registrados).
   async function handleMarcarCargoPagado(mv) {
-    if (!confirm(`¿Marcar como pagada esta deuda de ${mv.teams?.name || 'el equipo'} (${fmt(mv.monto)})${mv.concepto ? ` — ${mv.concepto}` : ''}?`)) return
+    if (!(await confirmar(`¿Marcar como pagada esta deuda de ${mv.teams?.name || 'el equipo'} (${fmt(mv.monto)})${mv.concepto ? ` — ${mv.concepto}` : ''}?`))) return
     const { error } = await supabase.from('torneo_finanzas').update({ pagado: true }).eq('id', mv.id)
     if (error) return showMsg('Error al marcar como pagada', 'error')
     showMsg('Deuda marcada como pagada ✓')
@@ -2850,7 +2880,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         supabase.rpc('generar_link_deudores', { p_tournament_id: id }),
         supabase.rpc('ver_password_link_deudores', { p_tournament_id: id }),
       ]))
-      if (error || errPass) { showMsg('Error al abrir el link (¿ejecutaste migracion_link_deudores_tarjetas.sql?): ' + (error || errPass).message, 'error'); return }
+      if (error || errPass) { showMsg(errorAmigable(error || errPass, 'No se pudo abrir el link de deudores'), 'error'); return }
       const link = `${window.location.origin}/deudores-tarjetas/${data.token}`
       setPasswordDeudoresForm(passwordActual || '')
       setModalLinkDeudores({ link, password: passwordActual || '' })
@@ -2863,7 +2893,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setGuardandoPasswordDeudores(true)
     try {
       const { error } = await conTimeout(supabase.rpc('set_password_link_deudores', { p_tournament_id: id, p_password: passwordDeudoresForm }))
-      if (error) { showMsg('Error al guardar la contraseña: ' + error.message, 'error'); return }
+      if (error) { showMsg(errorAmigable(error, 'Error al guardar la contraseña'), 'error'); return }
       setModalLinkDeudores(prev => prev && { ...prev, password: passwordDeudoresForm })
       showMsg(passwordDeudoresForm.trim() ? 'Contraseña guardada ✓' : 'Contraseña quitada — el link queda abierto para cualquiera que lo tenga')
     } catch (e) {
@@ -2897,7 +2927,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const fc = { ...(torneo?.finanzas_config || {}), llevar_cuentas: true }
     Object.keys(formFin).forEach(k => { fc[k] = k === 'inscripcion_modo' ? (formFin[k] === 'jugador' ? 'jugador' : 'equipo') : (parseFloat(formFin[k]) || 0) })
     const { error } = await supabase.from('tournaments').update({ finanzas_config: fc }).eq('id', id)
-    if (error) { setGuardandoFin(false); return showMsg('Error al guardar precios: ' + error.message, 'error') }
+    if (error) { setGuardandoFin(false); return showMsg(errorAmigable(error, 'Error al guardar precios'), 'error') }
 
     // Precio propio por cancha — vacío = null = usa el valor por defecto.
     const erroresCancha = (await Promise.all(canchas.map(c => {
@@ -2924,7 +2954,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       .eq('tournament_id', id)
       .order('orden', { ascending: true })
     setLoadingSponsors(false)
-    if (error) return showMsg('Error cargando patrocinadores (¿ejecutaste migracion_tournament_sponsors.sql?)', 'error')
+    if (error) return showMsg(errorAmigable(error, 'No se pudieron cargar los patrocinadores'), 'error')
     setTorneoSponsors(data || [])
   }
 
@@ -2939,7 +2969,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }
     const { error } = await supabase.from('tournaments').update(payload).eq('id', id)
     setGuardandoMarca(false)
-    if (error) return showMsg('Error al guardar marca: ' + error.message, 'error')
+    if (error) return showMsg(errorAmigable(error, 'Error al guardar marca'), 'error')
     setTorneo(p => ({ ...p, ...payload }))
     showMsg('Marca guardada ✓')
   }
@@ -3006,7 +3036,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   async function handleVolverOriginalLogoTorneo() {
     const actual = formMarca.logo_url || torneo?.logo_url
     if (!actual) return
-    if (!confirm('¿Volver al logo original (con su fondo)?')) return
+    if (!(await confirmar('¿Volver al logo original (con su fondo)?'))) return
     setUploadingLogoMarca(true)
     try {
       const url = await restaurarOriginal('tournaments', actual, `logos/${id}`)
@@ -3068,7 +3098,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       link: null,
       orden,
     }).select().single()
-    if (error) return showMsg('Error al agregar patrocinador: ' + error.message, 'error')
+    if (error) return showMsg(errorAmigable(error, 'Error al agregar patrocinador'), 'error')
     setTorneoSponsors(prev => [...prev, data])
   }
 
@@ -3088,7 +3118,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   async function handleEliminarSponsor(sponsor) {
-    if (!confirm(`¿Eliminar patrocinador${sponsor.nombre ? ` "${sponsor.nombre}"` : ''}?`)) return
+    if (!(await confirmar(`¿Eliminar patrocinador${sponsor.nombre ? ` "${sponsor.nombre}"` : ''}?`))) return
     const { error } = await supabase.from('tournament_sponsors').delete().eq('id', sponsor.id)
     if (error) return showMsg('Error al eliminar', 'error')
     setTorneoSponsors(prev => prev.filter(s => s.id !== sponsor.id))
@@ -3118,7 +3148,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const porFase = getLlavesPorFase()
     const llaveFinal = porFase['final']?.find(l => !(l.matches[0].ronda || '').toLowerCase().includes('tercer'))
     if (!llaveFinal?.ganador) return showMsg('La final aún no tiene ganador', 'error')
-    if (!confirm('¿Guardar los logros del torneo en la hoja de vida de los equipos y sus jugadores?')) return
+    if (!(await confirmar('¿Guardar los logros del torneo en la hoja de vida de los equipos y sus jugadores?'))) return
     setGuardandoLogros(true)
 
     const campeonEq    = llaveFinal.ganador
@@ -3158,13 +3188,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (inserts.length === 0) { setGuardandoLogros(false); return showMsg('No hay jugadores inscritos para guardar logros', 'error') }
     const { error } = await supabase.from('tournament_logros').insert(inserts)
     setGuardandoLogros(false)
-    if (error) return showMsg(`Error al guardar los logros: ${error.message}`, 'error')
+    if (error) return showMsg(errorAmigable(error, 'Error al guardar los logros'), 'error')
 
     // Premios individuales del torneo: goleador y valla menos vencida (arquero).
     // Si todavía no se corrió la migración en Supabase, el resto de los logros igual queda guardado.
     const { data: premios, error: errPremios } = await supabase.rpc('calcular_premios_torneo', { p_tournament_id: id })
     const textoPremios = errPremios
-      ? ' · (goleador y valla: falta correr migracion_premios_torneo.sql en Supabase)'
+      ? ' · (goleador y valla: esta opción todavía no está activada, avísale al administrador de Golmebol)'
       : ` · ⚽ ${premios?.goleadores || 0} goleador${premios?.goleadores === 1 ? '' : 'es'} · 🧤 ${premios?.valla ? 'valla menos vencida' : 'sin arquero'}`
 
     // La deuda personal por inscripción sin pagar YA NO se genera sola acá al
@@ -3183,7 +3213,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setGuardandoLogros(true)
     const { data, error } = await supabase.rpc('calcular_premios_torneo', { p_tournament_id: id })
     setGuardandoLogros(false)
-    if (error) return showMsg('No se pudieron guardar los premios: ' + error.message, 'error')
+    if (error) return showMsg(errorAmigable(error, 'No se pudieron guardar los premios'), 'error')
     showMsg(`Premios guardados ✓ ⚽ ${data?.goleadores || 0} goleador${data?.goleadores === 1 ? '' : 'es'} · 🧤 ${data?.valla ? 'valla menos vencida' : 'sin arquero'}`)
   }
 
@@ -3230,7 +3260,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       delete payload[campo]
       ;({ data, error } = await supabase.from('tournaments').insert(payload).select().single())
     }
-    if (error) return showMsg(`Error al crear la edición: ${error.message}`, 'error')
+    if (error) return showMsg(errorAmigable(error, 'Error al crear la edición'), 'error')
 
     // El dominio propio (si tenía uno) se pasa a la edición nueva: así quien
     // entra por ese dominio siempre ve el torneo que se está jugando ahora,
@@ -3260,9 +3290,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       }
     } catch { faltaMigracionArchivar = true }
     if (faltaMigracionArchivar) {
-      showMsg(`${nombre} creada ✓, pero el torneo anterior NO se pudo archivar porque falta correr migracion_archivar_torneos.sql en Supabase — mientras tanto vas a ver los dos en la lista de Torneos (podés archivarlo a mano apenas corras esa migración)`, 'error')
+      showMsg(`${nombre} creada ✓, pero el torneo anterior no se pudo archivar todavía. Por ahora vas a ver los dos en la lista de Torneos. Avísale al administrador de Golmebol y podrás archivarlo a mano.`, 'error')
     } else {
-      showMsg(`${nombre} creada ✓ — con el mismo escudo, sistema de puntos y configuración de ${torneo.name} (cambiá precios, cupos o equipos cuando quieras); el torneo anterior queda guardado con todo su historial y archivado`)
+      showMsg(`${nombre} creada ✓ — con el mismo escudo, sistema de puntos y configuración de ${torneo.name} (cambia precios, cupos o equipos cuando quieras); el torneo anterior queda guardado con todo su historial y archivado`)
     }
     navigate(`/admin/torneos/${data.id}`)
     setTab('actividad')
@@ -3628,7 +3658,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   async function handleEliminarCancha(cancha) {
-    if (!confirm(`¿Eliminar cancha "${cancha.nombre}"?`)) return
+    if (!(await confirmar(`¿Eliminar cancha "${cancha.nombre}"?`))) return
     await supabase.from('canchas').delete().eq('id', cancha.id)
     setCanchas(prev => prev.filter(x => x.id !== cancha.id)); showMsg('Cancha eliminada')
   }
@@ -3729,37 +3759,37 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const wNormal = payload.w_goles_ganador === 3 && payload.w_puntos_ganador === null
       const { w_goles_ganador, w_puntos_ganador, ...resto } = payload
       payload = resto
-      if (!wNormal) avisoDegradado = 'Torneo actualizado, pero la configuración del W NO se guardó: ejecuta migracion_w_y_descuentos.sql en Supabase'
+      if (!wNormal) avisoDegradado = 'Torneo actualizado, pero la configuración del W NO se guardó. Avísale al administrador de Golmebol para activarlo'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error && (error.message?.includes('pts_victoria') || error.message?.includes('pts_empate') || error.message?.includes('pts_derrota'))) {
       // Falta correr migracion_sistema_puntos.sql en Supabase: se reintenta sin esos 3 campos
       const { pts_victoria, pts_empate, pts_derrota, ...resto } = payload
       payload = resto
-      avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó: ejecuta migracion_sistema_puntos.sql en Supabase'
+      avisoDegradado = 'Torneo actualizado, pero el sistema de puntos NO se guardó. Avísale al administrador de Golmebol para activarlo'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error && error.message?.includes('limite_jugadores_equipo')) {
       // Falta correr migracion_limite_jugadores_equipo.sql en Supabase: se reintenta sin ese campo
       const { limite_jugadores_equipo, ...resto } = payload
       payload = resto
-      avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó: ejecuta migracion_limite_jugadores_equipo.sql en Supabase'
+      avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó. Avísale al administrador de Golmebol para activarlo'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error && error.message?.includes('duracion_tiempo_min')) {
       // Falta correr migracion_duracion_tiempo.sql en Supabase: se reintenta sin ese campo
       const { duracion_tiempo_min, ...resto } = payload
       payload = resto
-      avisoDegradado = 'Torneo actualizado, pero la duración de cada tiempo NO se guardó: ejecuta migracion_duracion_tiempo.sql en Supabase'
+      avisoDegradado = 'Torneo actualizado, pero la duración de cada tiempo NO se guardó. Avísale al administrador de Golmebol para activarlo'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
-    if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(`Error al actualizar torneo: ${error.message || error.code || error.details || 'desconocido'}`, 'error'); return }
+    if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(errorAmigable(error, 'Error al actualizar torneo'), 'error'); return }
     // Si no hay error pero tampoco vino ninguna fila de vuelta, el update no
     // afectó ninguna fila (típicamente permisos/RLS en Supabase) — evita el
     // falso "guardado ✓" que hacía creer que quedó bien cuando en realidad
     // nunca se escribió en la base de datos.
     if (!data || data.length === 0) {
-      showMsg('El torneo no se actualizó: no tenés permiso para editarlo (revisa las políticas RLS de "tournaments" en Supabase)', 'error')
+      showMsg('El torneo no se actualizó: no tienes permiso para editarlo. Si crees que es un error, avísale al administrador.', 'error')
       return
     }
     setTorneo(p => ({ ...p, ...payload })); setEditandoTorneo(false)
@@ -3783,7 +3813,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     }
     let { error } = await supabase.from('matches').update(cambios).eq('id', editandoPartidoForm.id)
     if (error && (error.message || '').includes('cancha_id')) { const { cancha_id, ...sinId } = cambios; ({ error } = await supabase.from('matches').update(sinId).eq('id', editandoPartidoForm.id)) }
-    if (error) { showMsg(`Error al guardar: ${error.message}`, 'error'); return }
+    if (error) { showMsg(errorAmigable(error, 'Error al guardar'), 'error'); return }
     showMsg('Partido actualizado ✓'); setEditandoPartidoForm(null); fetchPartidos(); fetchBracket()
   }
 
@@ -4333,7 +4363,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   async function handleQuitarEquipo(equipo) {
-    if (!confirm(`¿Quitar a ${equipo.name} del torneo?`)) return
+    if (!(await confirmar(`¿Quitar a ${equipo.name} del torneo?`))) return
     await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
     showMsg(`${equipo.name} quitado del torneo`); fetchEquipos()
   }
@@ -4695,7 +4725,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Cuánto suma cada equipo en la tabla de posiciones según el resultado (ej: 3-1-0 o 2-1-0)</div>
               </div>
               <div>
-                <label style={labelStyle}>🏆 Partido ganado por W (el otro equipo no se presentó)</label>
+                <label style={labelStyle}>🏆 Partido ganado por W (el otro equipo no se presentó)<AyudaTermino texto="W: el otro equipo no se presentó, así que el partido se da por ganado sin jugarlo." /></label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <div style={{ flex: 1 }}>
                     <input type="number" min="0" value={formTorneo.w_goles_ganador ?? 3} onChange={e => setFormTorneo(p => ({ ...p, w_goles_ganador: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={{ ...inputStyle, textAlign: 'center' }} placeholder="Goles"/>
@@ -4754,7 +4784,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem', marginBottom: '6px' }}>Editar partido</div>
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '20px' }}>{editandoPartidoForm.home?.name} vs {editandoPartidoForm.away?.name}</div>
             <div className="gm-stagger" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
                 <div><label style={labelStyle}>Fecha *</label><input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/></div>
                 <div><label style={labelStyle}>Hora *</label><input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/></div>
               </div>
@@ -4837,7 +4867,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     </label>
                     <div>
                       <div style={{ fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>Escudo del equipo</div>
-                      <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{nuevoEquipoLogoPreview ? 'Imagen seleccionada' : 'Opcional — podés subirlo después'}</div>
+                      <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>{nuevoEquipoLogoPreview ? 'Imagen seleccionada' : 'Opcional — puedes subirlo después'}</div>
                     </div>
                   </div>
                   <div>
@@ -4961,9 +4991,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           </div>
           <button onClick={async () => {
               const nuevo = !torneo.archivado
-              if (!confirm(nuevo ? `¿Archivar "${torneo.name}"? Desaparece de la lista principal de Torneos (no se borra nada, y se puede desarchivar cuando quieras).` : `¿Desarchivar "${torneo.name}"? Vuelve a aparecer en la lista principal de Torneos.`)) return
+              if (!(await confirmar(nuevo ? `¿Archivar "${torneo.name}"? Desaparece de la lista principal de Torneos (no se borra nada, y se puede desarchivar cuando quieras).` : `¿Desarchivar "${torneo.name}"? Vuelve a aparecer en la lista principal de Torneos.`))) return
               const { error } = await supabase.from('tournaments').update({ archivado: nuevo }).eq('id', torneo.id)
-              if (error) return showMsg(`Falta ejecutar migracion_archivar_torneos.sql en Supabase (${error.message})`, 'error')
+              if (error) return showMsg(avisoMigracion('migracion_archivar_torneos.sql'), 'error')
               setTorneo(prev => ({ ...prev, archivado: nuevo }))
               showMsg(nuevo ? 'Torneo archivado ✓' : 'Torneo desarchivado ✓')
             }}
@@ -4979,29 +5009,82 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)', flexWrap: 'wrap' }}>
-        {TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado)).map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: '500', transition: 'all .15s', background: tab === t.id ? '#1a73e8' : 'transparent', color: tab === t.id ? '#fff' : '#5f6368' }}>
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Tabs: en el orden en que se trabaja. En computador "Más" guarda lo menos usado; en celular todas van en una sola fila que se desliza */}
+      {(() => {
+        const visibles = TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado))
+        const principales = isMobile ? visibles : visibles.filter(t => !t.mas)
+        const secundarias = isMobile ? [] : visibles.filter(t => t.mas)
+        const activaEnMas = secundarias.find(t => t.id === tab)
+        const botonTab = t => {
+          const activa = tab === t.id
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} data-tab-activa={activa ? '1' : '0'}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, whiteSpace: 'nowrap', minHeight: isMobile ? '42px' : 'auto', padding: isMobile ? '8px 14px' : '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: isMobile ? '.85rem' : '.8rem', fontWeight: activa ? '600' : '500', transition: 'all .15s', background: activa ? '#1a73e8' : 'transparent', color: activa ? '#fff' : '#5f6368' }}>
+              {t.paso
+                ? <span style={{ width: '20px', height: '20px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '.68rem', fontWeight: '700', background: activa ? '#fff' : '#e8f0fe', color: '#1a73e8' }}>{t.paso}</span>
+                : t.icon}
+              {t.label}
+            </button>
+          )
+        }
+        return (
+          <div ref={filaTabsRef} style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', ...(isMobile ? { overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', maxWidth: '100%' } : { width: 'fit-content', flexWrap: 'wrap', position: 'relative' }) }}>
+            {principales.map(botonTab)}
+            {secundarias.length > 0 && (
+              <div data-menu-mas="1" style={{ position: 'relative' }}>
+                <button onClick={() => setMenuMasAbierto(v => !v)} aria-expanded={menuMasAbierto}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: activaEnMas ? '600' : '500', background: activaEnMas ? '#1a73e8' : 'transparent', color: activaEnMas ? '#fff' : '#5f6368' }}>
+                  {activaEnMas ? activaEnMas.label : 'Más'} <ChevronDown size={14}/>
+                </button>
+                {menuMasAbierto && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30, minWidth: '190px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', boxShadow: '0 6px 20px rgba(0,0,0,.14)', padding: '6px' }}>
+                    {secundarias.map(t => (
+                      <button key={t.id} onClick={() => setTab(t.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '10px 12px', border: 'none', borderRadius: '7px', cursor: 'pointer', fontSize: '.85rem', textAlign: 'left', background: tab === t.id ? '#e8f0fe' : 'transparent', color: tab === t.id ? '#1a73e8' : '#202124', fontWeight: tab === t.id ? '600' : '500' }}>
+                        {t.icon} {t.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── TAB ACTIVIDAD ── */}
-      {tab === 'actividad' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+      {tab === 'actividad' && (() => {
+        // Mismos seis pasos de siempre; solo se agrega a qué pestaña lleva cada uno.
+        const pasosInicio = [
+          { label: 'Registrar Equipos',   done: equipos.length > 0,          tab: 'equipos',       titulo: 'Registra los equipos',      detalle: 'Todavía no hay equipos inscritos. Empieza por registrarlos.', boton: 'Ir a Equipos →' },
+          { label: 'Crear Grupos',        done: grupos.length > 0,           tab: 'grupos',        titulo: 'Crea los grupos',           detalle: `Ya tienes ${equipos.length} equipo${equipos.length !== 1 ? 's' : ''}. Falta repartirlos en grupos.`, boton: 'Ir a Grupos →' },
+          { label: 'Agregar Canchas',     done: canchas.length > 0,          tab: 'calendario',    titulo: 'Agrega las canchas',        detalle: 'Las necesitas para programar los partidos. Se agregan en Calendario.', boton: 'Ir a Calendario →' },
+          { label: 'Crear Partidos',      done: partidos.length > 0,         tab: 'calendario',    titulo: 'Programa los partidos',     detalle: 'Ya tienes lo necesario. Falta crear los partidos del torneo.', boton: 'Ir a Calendario →' },
+          { label: 'Ingresar Resultados', done: partidosJugados.length > 0,  tab: 'calendario',    titulo: 'Registra los resultados',   detalle: 'Cuando se juegue un partido, anota su resultado.', boton: 'Ir a Calendario →' },
+          { label: 'Fase Eliminatorias',  done: gruposFinalizados,           tab: 'eliminatorias', titulo: 'Arma las eliminatorias',    detalle: 'Cuando termine la fase de grupos, arma las llaves finales.', boton: 'Ir a Eliminatorias →' },
+        ]
+        const siguiente = pasosInicio.find(p => !p.done)
+        const hechos = pasosInicio.filter(p => p.done).length
+        return (
+        <div>
+          <div style={{ background: siguiente ? '#e8f0fe' : '#e6f4ea', border: `1px solid ${siguiente ? '#d2e3fc' : '#ceead6'}`, borderRadius: '12px', padding: '18px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+              <div style={{ fontSize: '.68rem', fontWeight: '800', letterSpacing: '.08em', color: siguiente ? '#1a73e8' : '#1e8e3e', marginBottom: '4px' }}>{siguiente ? 'SIGUIENTE PASO' : 'TODO LISTO'}</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>{siguiente ? siguiente.titulo : 'El torneo ya pasó por todos los pasos'}</div>
+              <div style={{ fontSize: '.82rem', color: '#5f6368', lineHeight: 1.45 }}>{siguiente ? siguiente.detalle : 'Puedes revisar las estadísticas o las cuentas cuando quieras.'}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+              <span style={{ fontSize: '.78rem', color: '#5f6368', fontWeight: '600' }}>{hechos} de {pasosInicio.length}</span>
+              <button onClick={() => setTab(siguiente ? siguiente.tab : 'estadisticas')}
+                style={{ padding: '11px 20px', background: siguiente ? '#1a73e8' : '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.88rem', minHeight: '44px' }}>
+                {siguiente ? siguiente.boton : 'Ver estadísticas →'}
+              </button>
+            </div>
+          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '20px' }}>
           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
             <div style={{ fontWeight: '600', color: '#202124', marginBottom: '16px', fontSize: '.9rem' }}>✅ Actividad del torneo</div>
-            {[
-              { label: 'Registrar Equipos',   done: equipos.length > 0 },
-              { label: 'Crear Grupos',         done: grupos.length > 0 },
-              { label: 'Agregar Canchas',      done: canchas.length > 0 },
-              { label: 'Crear Partidos',       done: partidos.length > 0 },
-              { label: 'Ingresar Resultados',  done: partidosJugados.length > 0 },
-              { label: 'Fase Eliminatorias',   done: gruposFinalizados },
-            ].map((item, i) => (
+            {pasosInicio.map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < 5 ? '1px solid #f1f3f4' : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: item.done ? '#e6f4ea' : '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -5009,9 +5092,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </div>
                   <span style={{ fontSize: '.875rem', color: item.done ? '#9aa0a6' : '#202124', textDecoration: item.done ? 'line-through' : 'none' }}>{item.label}</span>
                 </div>
-                <span style={{ fontSize: '.75rem', fontWeight: '500', color: item.done ? '#1e8e3e' : '#e8710a', background: item.done ? '#e6f4ea' : '#fce8d9', borderRadius: '10px', padding: '2px 10px' }}>
-                  {item.done ? 'Completado' : 'Pendiente'}
-                </span>
+                {item.done
+                  ? <span style={{ fontSize: '.75rem', fontWeight: '500', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '2px 10px' }}>Listo</span>
+                  : <button onClick={() => setTab(item.tab)} style={{ fontSize: '.78rem', fontWeight: '700', color: '#1a73e8', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', minHeight: '34px' }}>Ir →</button>}
               </div>
             ))}
           </div>
@@ -5030,7 +5113,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             ))}
           </div>
         </div>
-      )}
+        </div>
+        )
+      })()}
 
       {/* ── TAB GRUPOS ── */}
       {tab === 'grupos' && (
@@ -5039,13 +5124,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           {!gruposFinalizados && (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
               <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>⚙️ Configurar grupos</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : '1fr 1fr 1fr 1fr', gap: isMobile ? '12px' : '14px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelStyle}>Número de grupos</label>
                   <input type="number" min="1" max="8" value={numGrupos} onChange={e => setNumGrupos(parseInt(e.target.value))} style={inputStyle}/>
                 </div>
                 <div>
-                  <label style={labelStyle}>Clasifican por grupo</label>
+                  <label style={labelStyle}>Clasifican por grupo<AyudaTermino texto="Cuántos equipos de cada grupo pasan a la siguiente fase (por ejemplo, los 2 primeros)." /></label>
                   <input type="number" min="1" max="8" value={grupos.length > 0 ? (torneo?.equipos_clasifican || clasificanPorGrupo) : clasificanPorGrupo}
                     disabled={grupos.length > 0} title={grupos.length > 0 ? 'Ya se crearon los grupos con este valor — no se puede cambiar acá' : ''}
                     onChange={e => setClasificanPorGrupo(parseInt(e.target.value))} style={{ ...inputStyle, opacity: grupos.length > 0 ? .65 : 1, cursor: grupos.length > 0 ? 'not-allowed' : 'text' }}/>
@@ -5071,6 +5156,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </button>
                 )}
               </div>
+              {grupos.length > 0 && (
+                <div style={{ fontSize: '.74rem', color: '#5f6368', marginTop: '8px', lineHeight: 1.45 }}>
+                  "Generar partidos todos vs todos" crea de una vez todos los cruces de cada grupo, empezando en la fecha y hora de arriba. Para programar por jornadas con canchas y horarios, usa la pestaña Calendario.
+                </div>
+              )}
               {grupos.length > 0 && (
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
                   🔀 Arrastra un equipo (con el ícono ⋮⋮ a la izquierda de su nombre) y suéltalo sobre otro grupo para moverlo, o toca el botón de mezclar junto al equipo. "Regenerar grupos" vuelve a sortear todo desde cero — no lo uses si ya acomodaste los grupos a mano. Si movés equipos después de haber generado los partidos, volvé a tocar "Generar partidos todos vs todos" para que se actualicen.
@@ -5393,7 +5483,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     {filtraPorGrupo && (
                       <div>
-                        <label style={labelStyle}>¿De qué grupo es el partido? *</label>
+                        <label style={labelStyle}>¿De qué grupo es el partido? *<AyudaTermino texto="Intergrupo: un partido entre equipos que están en grupos distintos." /></label>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           {grupos.map((g, gi) => {
                             const c = COLORES_GRUPO[gi % COLORES_GRUPO.length]
@@ -5577,7 +5667,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <div style={{ marginTop: '16px' }}>
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                 <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><Shuffle size={18} color="#1a73e8"/> Configurar jornada automática</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '14px' }}>
                   <div><label style={labelStyle}>Número de jornada</label><input type="number" value={configJornada.numero} onChange={e => setConfigJornada(f => ({ ...f, numero: e.target.value }))} style={inputStyle} placeholder={fechas.length + 1}/></div>
                   <div><label style={labelStyle}>Fecha inicio *</label><input type="date" value={configJornada.fecha} onChange={e => setConfigJornada(f => ({ ...f, fecha: e.target.value }))} style={inputStyle}/></div>
                 </div>
@@ -5676,7 +5766,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 </div>
 
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
-                  📅 El sorteo reparte los cruces entre esos días de ESA semana (el próximo sábado/domingo/etc que marques desde la fecha de inicio) y los horarios de cada cancha, según la preferencia de cada equipo — cada cancha juega solo en sus propias horas marcadas, aunque otra cancha del mismo escenario tenga horas distintas ese día. Si no alcanza el cupo para todos los cruces, los equipos que sobran quedan descansando (podés generar otra jornada después para ellos).
+                  📅 El sorteo reparte los cruces entre esos días de ESA semana (el próximo sábado/domingo/etc que marques desde la fecha de inicio) y los horarios de cada cancha, según la preferencia de cada equipo — cada cancha juega solo en sus propias horas marcadas, aunque otra cancha del mismo escenario tenga horas distintas ese día. Si no alcanza el cupo para todos los cruces, los equipos que sobran quedan descansando (puedes generar otra jornada después para ellos).
                 </div>
                 {/* ¿Todos juegan o algún equipo descansa en esta jornada? */}
                 <div style={{ marginTop: '16px', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '12px' }}>
@@ -5719,7 +5809,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ marginTop: '14px', border: '1px solid #f1f3f4', borderRadius: '10px', padding: '12px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '.8rem', color: '#202124', fontWeight: '600' }}>
                       <input type="checkbox" checked={permitirIntergrupo} onChange={e => setPermitirIntergrupo(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer' }}/>
-                      Permitir partidos intergrupo
+                      Permitir partidos intergrupo<AyudaTermino texto="Intergrupo: un partido entre equipos que están en grupos distintos." />
                     </label>
                     {permitirIntergrupo && (
                       <div style={{ marginTop: '10px' }}>
@@ -5744,6 +5834,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <button onClick={generarJornada} style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
                   <Shuffle size={16}/> Generar jornada aleatoria
                 </button>
+                <div style={{ fontSize: '.74rem', color: '#5f6368', marginTop: '8px', lineHeight: 1.45 }}>
+                  Arma una jornada con tus canchas, días y horarios, y reparte los cruces. Úsala cuando juegas por fechas.
+                </div>
               </div>
               {jornadaGenerada.length > 0 && (
                 <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
@@ -6043,54 +6136,78 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                         </div>
                                       )}
                                     </div>
-                                  </div>
-                                  {/* Fila 2: acciones — envuelven libremente (flexWrap) en vez de
-                                      apretarse contra el nombre en pantallas angostas. */}
-                                  <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', justifyContent:'flex-end' }}>
-                                    <label style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'6px', padding:'3px 8px', cursor: subiendoFotoId === j.player_id ? 'wait' : 'pointer', color:'#1a73e8', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
+                                    <label style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'8px', padding:'8px 12px', cursor: subiendoFotoId === j.player_id ? 'wait' : 'pointer', color:'#1a73e8', fontSize:'.74rem', flexShrink:0, fontWeight:'700', minHeight:'36px', display:'flex', alignItems:'center' }}>
                                       {subiendoFotoId === j.player_id ? 'Subiendo…' : '📷 Cambiar foto'}
                                       <input type="file" accept="image/*" disabled={subiendoFotoId === j.player_id} style={{ display:'none' }}
                                         onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cambiarFotoPerfil(j.player_id, f) }}/>
                                     </label>
-                                    {sancion ? (
-                                      esAdminRol && (
-                                        <button onClick={() => handleLevantarSancion(sancion.id)}
-                                          style={{ background:'#e6f4ea', border:'1px solid #ceead6', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1e8e3e', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                          Levantar sanción
-                                        </button>
-                                      )
-                                    ) : (
-                                      <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
-                                        style={{ background:'#fff3e0', border:'1px solid #ffcc80', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#e8710a', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                        Suspender
-                                      </button>
-                                    )}
-                                    {equipos.length > 1 && (
-                                      <button onClick={() => setMoviendoJugadorId(moviendoJugadorId === j.id ? null : j.id)}
-                                        style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#1a73e8', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                        🔁 Mover de equipo
-                                      </button>
-                                    )}
-                                    <button onClick={async () => {
-                                      if (!confirm('¿Sacar a ' + p.name + ' del equipo en este torneo? Ya no hará parte del equipo, pero sus estadísticas se conservan.')) return
-                                      await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
-                                      fetchJugadores()
-                                    }} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0 }}>
-                                      Sacar del equipo
-                                    </button>
-                                    {/* Distinto de "Sacar del equipo" (que solo desactiva, conservando el
-                                        historial): esto BORRA por completo la inscripción y la asociación
-                                        con este equipo — pensado para un jugador que se inscribió por
-                                        error y hay que corregirlo, no para uno que ya jugó y se retira. */}
-                                    <button onClick={async () => {
-                                      if (!confirm('¿Eliminar por completo a ' + p.name + ' de ' + e.name + '? Esto borra la inscripción entera (no queda como "desactivado") y su asociación con este equipo. Úsalo solo si se inscribió por error — si ya jugó algún partido, mejor usa "Sacar del equipo".')) return
-                                      await supabase.from('tournament_player_registrations').delete().eq('id', j.id)
-                                      await supabase.from('team_players').delete().eq('team_id', e.id).eq('player_id', j.player_id)
-                                      fetchJugadores()
-                                    }} style={{ background:'none', border:'1px solid #d93025', borderRadius:'6px', padding:'3px 8px', cursor:'pointer', color:'#d93025', fontSize:'.68rem', flexShrink:0, fontWeight:'600' }}>
-                                      Eliminar por error
-                                    </button>
                                   </div>
+                                  {/* Acciones del jugador, agrupadas y con una frase que explica qué hace cada una
+                                      (mismas acciones y mismas reglas de siempre). */}
+                                  {(() => {
+                                    const filaAccion = { display:'flex', alignItems:'flex-start', gap:'10px', flexWrap:'wrap', padding:'8px 0', borderTop:'1px solid #f1f3f4' }
+                                    const botonBase = { borderRadius:'8px', padding:'9px 12px', cursor:'pointer', fontSize:'.76rem', fontWeight:'700', minWidth:'140px', minHeight:'38px', flexShrink:0, textAlign:'center' }
+                                    const explica = { flex:'1 1 180px', fontSize:'.74rem', color:'#5f6368', lineHeight:1.4, paddingTop:'2px' }
+                                    return (
+                                      <div>
+                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', marginBottom:'2px' }}>CAMBIOS NORMALES</div>
+                                        {equipos.length > 1 && (
+                                          <div style={filaAccion}>
+                                            <button onClick={() => setMoviendoJugadorId(moviendoJugadorId === j.id ? null : j.id)}
+                                              style={{ ...botonBase, background:'#e8f0fe', border:'1px solid #aecbfa', color:'#1a73e8' }}>
+                                              🔁 Mover de equipo
+                                            </button>
+                                            <div style={explica}>Pasa al jugador a otro equipo del torneo. Sus partidos ya jugados se conservan.</div>
+                                          </div>
+                                        )}
+                                        {sancion ? (
+                                          esAdminRol && (
+                                            <div style={filaAccion}>
+                                              <button onClick={() => handleLevantarSancion(sancion.id)}
+                                                style={{ ...botonBase, background:'#e6f4ea', border:'1px solid #ceead6', color:'#1e8e3e' }}>
+                                                Levantar sanción
+                                              </button>
+                                              <div style={explica}>El jugador vuelve a poder jugar.</div>
+                                            </div>
+                                          )
+                                        ) : (
+                                          <div style={filaAccion}>
+                                            <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
+                                              style={{ ...botonBase, background:'#fef7e0', border:'1px solid #ffcc80', color:'#b06000' }}>
+                                              Suspender
+                                            </button>
+                                            <div style={explica}>No puede jugar hasta que termine la sanción. Sigue en el equipo.</div>
+                                          </div>
+                                        )}
+                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#c5221f', margin:'8px 0 2px' }}>SALIDA</div>
+                                        <div style={filaAccion}>
+                                          <button onClick={async () => {
+                                            if (!(await confirmar('¿Sacar a ' + p.name + ' del equipo en este torneo? Ya no hará parte del equipo, pero sus estadísticas se conservan.'))) return
+                                            await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', j.id)
+                                            fetchJugadores()
+                                          }} style={{ ...botonBase, background:'#fce8e6', border:'1px solid #fad2cf', color:'#c5221f' }}>
+                                            Sacar del equipo
+                                          </button>
+                                          <div style={explica}>Deja de estar activo, pero se conserva todo lo que jugó.</div>
+                                        </div>
+                                        {/* Distinto de "Sacar del equipo" (que solo desactiva, conservando el
+                                            historial): esto BORRA por completo la inscripción y la asociación
+                                            con este equipo — pensado para un jugador que se inscribió por
+                                            error y hay que corregirlo, no para uno que ya jugó y se retira. */}
+                                        <div style={filaAccion}>
+                                          <button onClick={async () => {
+                                            if (!(await confirmar('¿Eliminar por completo a ' + p.name + ' de ' + e.name + '? Esto borra la inscripción entera (no queda como "desactivado") y su asociación con este equipo. Úsalo solo si se inscribió por error — si ya jugó algún partido, mejor usa "Sacar del equipo".'))) return
+                                            await supabase.from('tournament_player_registrations').delete().eq('id', j.id)
+                                            await supabase.from('team_players').delete().eq('team_id', e.id).eq('player_id', j.player_id)
+                                            fetchJugadores()
+                                          }} style={{ ...botonBase, background:'#fce8e6', border:'1px solid #d93025', color:'#c5221f' }}>
+                                            Eliminar por error
+                                          </button>
+                                          <div style={explica}>Borra la inscripción como si nunca se hubiera inscrito. Úsalo solo si fue un error; si ya jugó, mejor "Sacar del equipo".</div>
+                                        </div>
+                                      </div>
+                                    )
+                                  })()}
                                   {moviendoJugadorId === j.id && (
                                     <div style={{ borderTop:'1px solid #f1f3f4', marginTop:'2px', paddingTop:'8px' }}>
                                       <div style={{ fontSize:'.68rem', color:'#5f6368', marginBottom:'6px' }}>¿A qué equipo lo movemos?</div>
@@ -6318,7 +6435,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </button>
                 </div>
                 <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '10px' }}>
-                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para intercambiar sus puestos en el orden, y ponele fecha/hora a cada llave acá abajo. Cuando ya esté como querés que se juegue, tocá el botón de acá abajo para mandar esos partidos a jugar de verdad, con esas mismas fechas.
+                  Así quedaría el árbol si la fase de grupos terminara ahora ({grupos.length > 0 ? `clasifican ${clasificanPorGrupo} por grupo` : `clasifican ${numClasifElim}`}) — se va actualizando solo con cada resultado que cargues. Arrastrá un equipo encima de otro para intercambiar sus puestos en el orden, y ponle fecha/hora a cada llave acá abajo. Cuando ya esté como quieres que se juegue, toca el botón de acá abajo para mandar esos partidos a jugar de verdad, con esas mismas fechas.
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
                   <button onClick={handleGenerarEliminatorias} disabled={generandoElim}
@@ -6475,7 +6592,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
                     {/* El cuadro para escribirle sigue disponible AUNQUE ya haya una
                         propuesta lista (elimChatListo) — así, si algo del árbol de
-                        abajo salió distinto a lo que pediste, se lo decís acá mismo
+                        abajo salió distinto a lo que pediste, se lo dices acá mismo
                         ("cambia la semifinal a partido único", etc.) y la IA ajusta
                         la MISMA propuesta sin tener que empezar de cero. */}
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -6701,7 +6818,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     )}
 
                     {/* 6. Fecha */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px', marginBottom: '10px' }}>
                       <div><label style={labelStyle}>Fecha primeros partidos *</label><input type="date" value={fechaElim} onChange={e => setFechaElim(e.target.value)} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Hora inicio</label><input type="time" value={horaElim} onChange={e => setHoraElim(e.target.value)} style={inputStyle}/></div>
                     </div>
@@ -7178,6 +7295,81 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               )}
             </div>
 
+            {/* Lo importante primero: cuánto falta cobrar, cuánto ya entró y cuánto se gastó.
+                Es solo una vista resumida: las cuentas (inscripción, W/multas y tarjetas)
+                se siguen calculando aparte, igual que siempre. */}
+            {(() => {
+              const llevar = !!fin.fc.llevar_cuentas
+              const pendiente = r => Math.max(r.saldo, 0) + (llevar ? Math.max(r.saldoInscripcion, 0) + Math.max(r.saldoMultas, 0) : 0)
+              const porCobrar = fin.filas.reduce((a, r) => a + pendiente(r), 0)
+              const yaRecaudado = fin.recaudado + (llevar ? fin.inscripcionRecaudada + fin.multasRecaudado : 0)
+              const deben = fin.filas.filter(r => pendiente(r) > 0).sort((a, b) => pendiente(b) - pendiente(a))
+              const alDia = fin.filas.filter(r => pendiente(r) <= 0)
+              const conceptos = r => [
+                llevar && r.saldoInscripcion > 0 ? 'Inscripción' : null,
+                llevar && r.saldoMultas > 0 ? 'Multa o W' : null,
+                r.saldo > 0 ? 'Tarjetas' : null,
+              ].filter(Boolean).join(' · ')
+              const abrirPago = r => {
+                const tipo = (llevar && r.saldoInscripcion > Math.max(r.saldo, 0) && r.saldoInscripcion >= (llevar ? r.saldoMultas : 0)) ? 'abono_inscripcion'
+                  : (llevar && r.saldoMultas > Math.max(r.saldo, 0)) ? 'pago_cargos' : 'pago_tarjetas'
+                setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
+              }
+              return (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ background: '#fce8e6', borderRadius: '14px', padding: '16px 18px', color: '#a50e0e' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Por cobrar</div>
+                      <div style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px' }}>{fmt(porCobrar)}</div>
+                    </div>
+                    <div style={{ background: '#e6f4ea', borderRadius: '14px', padding: '16px 18px', color: '#137333' }}>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Ya recaudado</div>
+                      <div style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px' }}>{fmt(yaRecaudado)}</div>
+                    </div>
+                    {llevar && (
+                      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', padding: '16px 18px', color: '#3c4043' }}>
+                        <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Gastos (canchas y árbitros)</div>
+                        <div style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px' }}>{fmt(fin.gastos)}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '10px' }}>¿Quién me debe?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {deben.length === 0 && (
+                      <div style={{ background: '#f8fff9', border: '1px solid #ceead6', borderRadius: '12px', padding: '14px 16px', fontSize: '.85rem', color: '#137333', fontWeight: '700' }}>Nadie te debe nada por ahora.</div>
+                    )}
+                    {deben.map(r => (
+                      <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 16px' }}>
+                        <div style={{ minWidth: 0, flex: '1 1 160px' }}>
+                          <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
+                          <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{conceptos(r)}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <b style={{ color: '#d93025', fontSize: '1.05rem' }}>{fmt(pendiente(r))}</b>
+                          <button onClick={() => abrirPago(r)}
+                            style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                            Registrar pago
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {alDia.map(r => (
+                      <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: '#f8fff9', border: '1px solid #e1f3e5', borderRadius: '12px', padding: '10px 16px' }}>
+                        <div style={{ fontSize: '.88rem', fontWeight: '700', color: '#202124' }}>{r.equipo.name}</div>
+                        <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#137333', background: '#e6f4ea', borderRadius: '999px', padding: '4px 12px' }}>Al día</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => setVerDetalleFin(v => !v)} aria-expanded={verDetalleFin}
+                    style={{ marginTop: '14px', width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '12px', cursor: 'pointer', color: '#1a73e8', fontSize: '.85rem', fontWeight: '700', minHeight: '46px' }}>
+                    {verDetalleFin ? 'Ocultar el detalle completo ▴' : 'Ver detalle completo por equipo ▾'}
+                  </button>
+                </div>
+              )
+            })()}
+
+            {verDetalleFin && (
+            <>
             {/* Resumen */}
             {fin.fc.llevar_cuentas && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
@@ -7326,7 +7518,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         )}
                       </div>
                       {r.tarifaJug <= 0 && <div style={{ fontSize: '.72rem', color: '#d93025', marginBottom: '6px' }}>Falta configurar la tarifa por jugador (botón de precios, arriba).</div>}
-                      {!migracionLista && <div style={{ fontSize: '.72rem', color: '#d93025', marginBottom: '6px' }}>Falta ejecutar migracion_inscripcion_por_jugador.sql en Supabase para poder marcar pagos.</div>}
+                      {!migracionLista && <div style={{ fontSize: '.72rem', color: '#d93025', marginBottom: '6px' }}>Por ahora no se pueden marcar pagos por jugador: esta opción todavía no está activada en tu cuenta. Avísale al administrador de Golmebol.</div>}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         {regs.map(j => {
                           const pago = j.inscripcion_pagada === true
@@ -7525,6 +7717,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               )
             })()}
 
+            </>
+            )}
+
             {/* Movimientos registrados (pagos y deudas) */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🧾 Movimientos registrados</div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
@@ -7596,20 +7791,42 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </a>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>Dominio personalizado</label>
-                <input
-                  value={formMarca.custom_domain}
-                  onChange={e => setFormMarca(f => ({ ...f, custom_domain: e.target.value }))}
-                  style={inputStyle}
-                  placeholder="miclub.com"
-                />
-                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>
-                  Ej: miclub.com — después hay que configurar el DNS aparte
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+              {/* Logo — mismo campo que el botón cámara del encabezado */}
+              <div>
+                <label style={labelStyle}>Logo del torneo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '10px', background: '#e8f0fe', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {formMarca.logo_url || torneo.logo_url
+                      ? <img src={formMarca.logo_url || torneo.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                      : <Trophy size={22} color="#1a73e8"/>}
+                  </div>
+                  <div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
+                      <Upload size={12}/> {uploadingLogoMarca ? 'Subiendo...' : 'Subir logo'}
+                      <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingLogoMarca}
+                        onChange={e => { handleUploadLogoMarca(e.target.files[0]); e.target.value = '' }}/>
+                    </label>
+                    {(formMarca.logo_url || torneo.logo_url) && (
+                      <button onClick={handleQuitarFondoLogoTorneo} disabled={uploadingLogoMarca}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#6c35de', background: '#fff', border: '1px solid #6c35de', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
+                        ✨ Quitar fondo
+                      </button>
+                    )}
+                    {(formMarca.logo_url || torneo.logo_url) && tieneOriginalLogoTorneo && (
+                      <button onClick={handleVolverOriginalLogoTorneo} disabled={uploadingLogoMarca}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#5f6368', background: '#fff', border: '1px solid #9aa0a6', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
+                        ↩️ Volver al original
+                      </button>
+                    )}
+                    <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
+                  </div>
                 </div>
               </div>
 
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
               <div>
                 <label style={labelStyle}>Color primario</label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -7649,36 +7866,23 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '16px' }}>
-              {/* Logo — mismo campo que el botón cámara del encabezado */}
-              <div>
-                <label style={labelStyle}>Logo del torneo</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '56px', height: '56px', borderRadius: '10px', background: '#e8f0fe', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {formMarca.logo_url || torneo.logo_url
-                      ? <img src={formMarca.logo_url || torneo.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
-                      : <Trophy size={22} color="#1a73e8"/>}
-                  </div>
-                  <div>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '.75rem', color: '#1a73e8', border: '1px solid #1a73e8', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
-                      <Upload size={12}/> {uploadingLogoMarca ? 'Subiendo...' : 'Subir logo'}
-                      <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploadingLogoMarca}
-                        onChange={e => { handleUploadLogoMarca(e.target.files[0]); e.target.value = '' }}/>
-                    </label>
-                    {(formMarca.logo_url || torneo.logo_url) && (
-                      <button onClick={handleQuitarFondoLogoTorneo} disabled={uploadingLogoMarca}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#6c35de', background: '#fff', border: '1px solid #6c35de', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
-                        ✨ Quitar fondo
-                      </button>
-                    )}
-                    {(formMarca.logo_url || torneo.logo_url) && tieneOriginalLogoTorneo && (
-                      <button onClick={handleVolverOriginalLogoTorneo} disabled={uploadingLogoMarca}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '6px', fontSize: '.75rem', color: '#5f6368', background: '#fff', border: '1px solid #9aa0a6', borderRadius: '6px', padding: '6px 12px', cursor: uploadingLogoMarca ? 'default' : 'pointer', opacity: uploadingLogoMarca ? .6 : 1 }}>
-                        ↩️ Volver al original
-                      </button>
-                    )}
-                    <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '4px' }}>También desde el encabezado ↑</div>
-                  </div>
+            <button type="button" onClick={() => setVerAvanzadoMarca(v => !v)} aria-expanded={verAvanzadoMarca}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: '16px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', cursor: 'pointer', minHeight: '46px' }}>
+              <span style={{ display: 'block', fontSize: '.85rem', fontWeight: '700', color: '#202124' }}>Opciones avanzadas {verAvanzadoMarca ? '▴' : '▾'}</span>
+              <span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368', marginTop: '2px' }}>Dominio propio{formMarca.custom_domain ? ` (${formMarca.custom_domain})` : ''} · favicon</span>
+            </button>
+            {verAvanzadoMarca && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '16px' }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Dominio personalizado</label>
+                <input
+                  value={formMarca.custom_domain}
+                  onChange={e => setFormMarca(f => ({ ...f, custom_domain: e.target.value }))}
+                  style={inputStyle}
+                  placeholder="miclub.com"
+                />
+                <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>
+                  Ej: miclub.com — después hay que configurar el DNS aparte
                 </div>
               </div>
 
@@ -7698,7 +7902,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </label>
                 </div>
               </div>
-            </div>
+              </div>
+            )}
 
             <button onClick={handleGuardarMarca} disabled={guardandoMarca}
               style={{ padding: '10px 22px', background: guardandoMarca ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: guardandoMarca ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
@@ -7723,7 +7928,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <div style={{ textAlign: 'center', color: '#9aa0a6', padding: '32px', fontSize: '.875rem' }}>Cargando...</div>
             ) : torneoSponsors.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#9aa0a6', padding: '28px', fontSize: '.8rem', background: '#f8f9fa', borderRadius: '10px' }}>
-                Todavía no hay patrocinadores — agregá el primero
+                Todavía no hay patrocinadores — agrega el primero
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -7806,7 +8011,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <button onClick={() => setLinkRegistroEquipo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
             </div>
             <div style={{ padding: '18px 20px' }}>
-              <label style={labelStyle}>¿Cuánto dura antes de vencer?</label>
+              <label style={labelStyle}>¿Cuánto dura antes de vencer?<AyudaTermino texto="Pasado ese tiempo, el link deja de funcionar y hay que generar uno nuevo." /></label>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                 {[1, 2, 3].map(d => (
                   <button key={d} onClick={() => setDuracionLinkDias(d)}

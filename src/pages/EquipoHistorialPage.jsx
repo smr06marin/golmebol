@@ -502,7 +502,7 @@ export default function EquipoHistorialPage() {
               )}
               {esDueno && (
                 <div style={{ fontSize:'.7rem', color:S.gold, marginTop:'6px', fontWeight:'700' }}>
-                  👑 Sos el encargado de este equipo — podés desactivar jugadores y corregir su teléfono/foto en la pestaña Jugadores.
+                  👑 Eres el encargado de este equipo — puedes desactivar jugadores y corregir su teléfono/foto en la pestaña Jugadores.
                 </div>
               )}
             </div>
@@ -775,12 +775,12 @@ export default function EquipoHistorialPage() {
                       el link de registro — este portal no lo genera, hay que
                       pedírselo al organizador del torneo. */}
                   <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'8px', lineHeight:1.5 }}>
-                    ℹ️ Acá solo podés sumar jugadores que <b>ya hacen parte del equipo</b>. La única manera de inscribir a alguien nuevo (que nunca ha jugado con este equipo) es con el <b>link de registro</b> — pedíselo al organizador del torneo.
+                    ℹ️ Acá solo puedes sumar jugadores que <b>ya hacen parte del equipo</b>. La única manera de inscribir a alguien nuevo (que nunca ha jugado con este equipo) es con el <b>link de registro</b> — pedíselo al organizador del torneo.
                   </div>
 
                   {cupoLleno && (
                     <div style={{ marginTop:'10px' }}>
-                      <div style={{ fontSize:'.76rem', color:S.muted, marginBottom:'8px' }}>Ya llegaste al límite de jugadores de este torneo. Para inscribir uno más, pedile al organizador que te habilite un cupo extra.</div>
+                      <div style={{ fontSize:'.76rem', color:S.muted, marginBottom:'8px' }}>Ya llegaste al límite de jugadores de este torneo. Para inscribir uno más, pídele al organizador que te habilite un cupo extra.</div>
                       <a href={`https://wa.me/573178940448?text=${encodeURIComponent(mensajeWa)}`} target="_blank" rel="noreferrer"
                         style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:'#25d366', borderRadius:'8px', padding:'8px 14px', color:'#04250f', fontSize:'.78rem', fontWeight:'800', textDecoration:'none' }}>
                         📲 Pedir cupo extra por WhatsApp
@@ -979,7 +979,7 @@ export default function EquipoHistorialPage() {
               {partidos.length === 0 ? (
                 <div style={{ textAlign:'center', color:S.muted, fontSize:'.78rem', padding:'16px 0 2px' }}>El equipo aún no tiene partidos jugados</div>
               ) : busqueda.trim() && resultadosBusqueda.length === 0 ? (
-                <div style={{ textAlign:'center', color:S.muted, fontSize:'.78rem', padding:'16px 0 2px' }}>Sin resultados — probá con rival, goles, goleador o títulos</div>
+                <div style={{ textAlign:'center', color:S.muted, fontSize:'.78rem', padding:'16px 0 2px' }}>Sin resultados — prueba con rival, goles, goleador o títulos</div>
               ) : busqueda.trim() ? (
                 <div style={{ marginTop:'10px', display:'flex', flexDirection:'column' }}>
                   {resultadosBusqueda.map((r, i) => (

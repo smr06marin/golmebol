@@ -126,7 +126,7 @@ export default function EscenarioDashboardPage() {
   )
   if (notFound) return (
     <div style={{ minHeight:'100vh', background:S.navy, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem', padding:20, textAlign:'center', gap:'14px' }}>
-      No tenés acceso a este escenario.
+      No tienes acceso a este escenario.
       <button onClick={()=>navigate('/escenario')} style={{ padding:'9px 18px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.8rem' }}>Ver mis escenarios</button>
     </div>
   )
@@ -182,7 +182,7 @@ export default function EscenarioDashboardPage() {
             <div style={{ fontSize:'2rem', marginBottom:'10px' }}>⚠️</div>
             <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'8px' }}>Recordatorio</div>
             <div style={{ fontSize:'.82rem', color:S.text2, lineHeight:1.5, marginBottom:'18px' }}>
-              Recuerda que cualquier modificación que hagas acá — ventas, precios, cancelaciones, pagos, lo que sea — queda registrada con tu nombre, la fecha y la hora. Todos los que tienen acceso a este escenario van a poder ver que fuiste vos quien lo hizo.
+              Recuerda que cualquier modificación que hagas acá — ventas, precios, cancelaciones, pagos, lo que sea — queda registrada con tu nombre, la fecha y la hora. Todos los que tienen acceso a este escenario van a poder ver que fuiste tú quien lo hizo.
             </div>
             <button onClick={cerrarAviso} style={{ width:'100%', padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Entendido</button>
           </div>

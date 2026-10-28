@@ -61,11 +61,11 @@ export default function EscenarioHomePage() {
         {escenarios.length === 0 ? (
           <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', textAlign:'center' }}>
             <div style={{ marginBottom:'8px' }}><Hourglass size={28} color={S.muted}/></div>
-            <div style={{ fontSize:'.85rem', color:S.muted }}>Todavía no tenés ningún escenario asignado. Avisale al admin de Golmebol para que te asigne uno desde /admin/escenarios.</div>
+            <div style={{ fontSize:'.85rem', color:S.muted }}>Todavía no tienes ningún escenario asignado. Avísale al admin de Golmebol para que te asigne uno desde /admin/escenarios.</div>
           </div>
         ) : (
           <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'2px' }}>Elegí cuál escenario querés administrar:</div>
+            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'2px' }}>Elige cuál escenario quieres administrar:</div>
             {escenarios.map(e => (
               <button key={e.id} onClick={() => navigate(`/escenario/${e.id}`)}
                 style={{ display:'flex', alignItems:'center', gap:'12px', padding:'16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left' }}>

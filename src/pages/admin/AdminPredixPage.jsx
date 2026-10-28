@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
 import { Plus, X, Ticket, Users, Search, Calendar, Send } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
+import { confirmar } from '../../lib/confirmar'
 
 // Supabase devuelve máximo 1000 filas por consulta: se pide por páginas.
 async function traerTodosJugadores() {
@@ -109,7 +111,7 @@ function ModalPlan({ plan, torneos, onClose, onGuardado }) {
       ? await supabase.from('predix_planes').update(data).eq('id', plan.id)
       : await supabase.from('predix_planes').insert(data)
     setSaving(false)
-    if (err) return setError('Error al guardar: ' + err.message)
+    if (err) return setError(errorAmigable(err, 'No se pudo guardar'))
     onGuardado()
   }
 
@@ -245,7 +247,7 @@ function ModalSuscripcion({ jugadores, planes, suscripciones, presetPlayer, onCl
       meses_seguidos: mesesSeguidos,
     })
     setSaving(false)
-    if (err) return setError('Error al guardar: ' + err.message)
+    if (err) return setError(errorAmigable(err, 'No se pudo guardar'))
     onGuardado()
   }
 
@@ -375,7 +377,7 @@ function ModalRonda({ ronda, torneos, onClose, onGuardado }) {
       ? await supabase.from('predix_rondas').update(data).eq('id', ronda.id)
       : await supabase.from('predix_rondas').insert(data)
     setSaving(false)
-    if (err) return setError('Error al guardar: ' + err.message)
+    if (err) return setError(errorAmigable(err, 'No se pudo guardar'))
     onGuardado()
   }
 
@@ -464,7 +466,7 @@ export default function AdminPredixPage() {
   function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000) }
 
   async function handleCancelar(s) {
-    if (!confirm(`¿Cancelar la suscripción de ${s.players?.name}?`)) return
+    if (!(await confirmar(`¿Cancelar la suscripción de ${s.players?.name}?`))) return
     await supabase.from('predix_suscripciones').update({ estado: 'cancelada' }).eq('id', s.id)
     showMsg('Suscripción cancelada')
     fetchTodo()
@@ -475,9 +477,9 @@ export default function AdminPredixPage() {
   // avisando que las predicciones de esta ronda ya se pueden hacer.
   async function handleNotificarApertura(ronda) {
     const yaNotificada = !!ronda.notificado_at
-    if (!confirm(yaNotificada
+    if (!(await confirmar(yaNotificada
       ? `Ya se notificó esta ronda el ${fmtFechaHora(ronda.notificado_at)}. ¿Reenviar el aviso a todos los jugadores?`
-      : `¿Avisar a todos los jugadores activos que "${ronda.nombre}" se habilita?`)) return
+      : `¿Avisar a todos los jugadores activos que "${ronda.nombre}" se habilita?`))) return
 
     setNotificando(ronda.id)
     const activos = jugadores.filter(j => j.activo_membresia)
@@ -493,7 +495,7 @@ export default function AdminPredixPage() {
     }
     if (!err) await supabase.from('predix_rondas').update({ notificado_at: new Date().toISOString() }).eq('id', ronda.id)
     setNotificando(null)
-    if (err) return showMsg('Error al notificar: ' + err.message, 'error')
+    if (err) return showMsg(errorAmigable(err, 'Error al notificar'), 'error')
     showMsg(`✅ Notificados ${filas.length} jugadores`)
     fetchTodo()
   }

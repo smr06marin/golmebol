@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Trophy, Shield, Users, CalendarDays, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
+import ConfirmHost from '../../components/ConfirmHost'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { notify } from '../../lib/notify'
@@ -57,7 +59,7 @@ export default function AdminLayout() {
     setErrorPass('')
     const { error } = await supabase.auth.updateUser({ password: passActual1 })
     setGuardandoPass(false)
-    if (error) { setErrorPass('Error: ' + error.message); return }
+    if (error) { setErrorPass(errorAmigable(error, 'No se pudo cambiar la contraseña')); return }
     setPassActual1(''); setPassActual2('')
     notify('Contraseña actualizada ✓')
     // Se quita de una en la sesión (para que la pantalla desaparezca al
@@ -100,10 +102,11 @@ export default function AdminLayout() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f4f6f8', fontFamily: 'system-ui, sans-serif' }}>
+      <ConfirmHost/>
 
       {/* Sidebar (solo escritorio) */}
       {!isMobile && (
-        <div style={{ width: '64px', background: '#fff', borderRight: '1px solid #e8eaed', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100, boxShadow: '2px 0 8px rgba(0,0,0,.06)' }}>
+        <div style={{ width: '92px', background: '#fff', borderRight: '1px solid #e8eaed', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100, boxShadow: '2px 0 8px rgba(0,0,0,.06)' }}>
           {/* Logo */}
           <div onClick={() => navigate('/admin')} style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '24px', flexShrink: 0 }}>
             <span style={{ color: '#fff', fontSize: '1rem', fontWeight: 'bold' }}>G</span>
@@ -115,10 +118,11 @@ export default function AdminLayout() {
               const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
               return (
                 <div key={item.ruta} onClick={() => navigate(item.ruta)} title={item.label}
-                  style={{ width: '44px', height: '44px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent', transition: 'all .15s', flexShrink: 0 }}
+                  style={{ width: '84px', minHeight: '54px', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', padding: '6px 2px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent', transition: 'background .15s' }}
                   onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f1f3f4' }}
                   onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
                   {item.icon}
+                  <span style={{ fontSize: item.label.length > 11 ? '.5rem' : '.58rem', fontWeight: active ? '700' : '500', letterSpacing: '.01em', textAlign: 'center', lineHeight: 1.15, maxWidth: '100%', whiteSpace: 'nowrap' }}>{item.label}</span>
                 </div>
               )
             })}
@@ -127,10 +131,11 @@ export default function AdminLayout() {
           {/* Logout */}
           <div style={{ marginTop: 'auto' }}>
             <div onClick={handleLogout} title="Cerrar sesión"
-              style={{ width: '44px', height: '44px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '1.1rem' }}
+              style={{ width: '84px', minHeight: '54px', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', cursor: 'pointer', color: '#d93025' }}
               onMouseEnter={e => e.currentTarget.style.background = '#fce8e6'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              🚪
+              <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>🚪</span>
+              <span style={{ fontSize: '.58rem', fontWeight: 500 }}>SALIR</span>
             </div>
           </div>
         </div>
@@ -158,7 +163,7 @@ export default function AdminLayout() {
       )}
 
       {/* Contenido */}
-      <div style={{ marginLeft: isMobile ? 0 : '64px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ marginLeft: isMobile ? 0 : '92px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Topbar */}
         <div style={{ height: '52px', background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', padding: isMobile ? '0 14px' : '0 24px', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>

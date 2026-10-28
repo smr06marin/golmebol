@@ -378,7 +378,7 @@ export default function EscenarioVentasPage() {
 
         {productos.length>0 && (
           <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>
-            {soloLectura ? '👁️ Modo solo lectura — no podés registrar ventas' : 'Toca dos veces un producto para agregarlo al carrito'}
+            {soloLectura ? '👁️ Modo solo lectura — no puedes registrar ventas' : 'Toca dos veces un producto para agregarlo al carrito'}
           </div>
         )}
 

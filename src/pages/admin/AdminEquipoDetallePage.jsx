@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
@@ -9,6 +10,7 @@ import { Shield, Users, Trophy, Calendar, ArrowLeft, Award, Camera, Pencil, Lock
 import { responderPregunta } from '../../lib/motorPreguntas'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { useAuthStore } from '../../store/authStore'
+import { confirmar } from '../../lib/confirmar'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
 
@@ -443,7 +445,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   async function handleCopiarLinkRegistro(t, dias = duracionLinkDias) {
     const link = `${window.location.origin}/registro/equipo/${equipo.registro_token}/${t.tournament_id}`
     const dTexto = dias === 1 ? '1 día' : `${dias} días`
-    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPodés inscribir vos mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
+    const mensaje = `📋 Registro de jugadores — ${equipo.name}\n\nEste link es para inscribir a los jugadores del equipo ${equipo.name} en el torneo ${t.tournaments?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPuedes inscribir tú mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
     navigator.clipboard.writeText(mensaje)
     // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
     // duración que se haya elegido (1, 2 o 3 días). Antes esto se mandaba
@@ -564,7 +566,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   async function handleLogoUpload(file) {
     if (!file) return
-    if (!puedeEditar) { showMsg('No podés editar este equipo (ver el aviso arriba)', 'error'); return }
+    if (!puedeEditar) { showMsg('No puedes editar este equipo (ver el aviso arriba)', 'error'); return }
     setSubiendoLogo(true)
     // Si el escudo trae fondo liso (blanco) se lo quita; si ya es transparente se conserva
     const { archivo, estado } = await prepararLogoParaSubir(file, { maxSize: 500 })
@@ -601,7 +603,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   // Devuelve el escudo a como estaba antes de quitarle el fondo
   async function handleVolverOriginalLogo() {
     if (!puedeEditar || !equipo?.logo_url) return
-    if (!confirm('¿Volver al escudo original (con su fondo)?')) return
+    if (!(await confirmar('¿Volver al escudo original (con su fondo)?'))) return
     setSubiendoLogo(true)
     try {
       const url = await restaurarOriginal('teams', equipo.logo_url, `logos/${id}`)
@@ -642,12 +644,12 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   }
 
   async function handleGuardarNombre() {
-    if (!puedeEditar) { showMsg('No podés editar este equipo (ver el aviso arriba)', 'error'); return }
+    if (!puedeEditar) { showMsg('No puedes editar este equipo (ver el aviso arriba)', 'error'); return }
     const nombre = nombreEditado.trim()
     if (!nombre) return showMsg('El nombre no puede quedar vacío', 'error')
     setGuardandoNombre(true)
     const { data: actualizado, error } = await supabase.from('teams').update({ name: nombre }).eq('id', id).select('id')
-    if (error) { showMsg(`No se pudo guardar: ${error.message}`, 'error'); setGuardandoNombre(false); return }
+    if (error) { showMsg(errorAmigable(error, 'No se pudo guardar'), 'error'); setGuardandoNombre(false); return }
     if (!actualizado || actualizado.length === 0) { showMsg('No se pudo guardar: sin permisos para editar este equipo', 'error'); setGuardandoNombre(false); return }
     setEquipo(prev => ({ ...prev, name: nombre }))
     setEditandoNombre(false)
@@ -708,7 +710,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
       representante_cedula:   cedula || null,
       representante_telefono: telefono || null,
     }).eq('id', id)
-    if (error) { showMsg(`No se pudo guardar: ${error.message}`, 'error'); setGuardandoDueno(false); return }
+    if (error) { showMsg(errorAmigable(error, 'No se pudo guardar'), 'error'); setGuardandoDueno(false); return }
     setEquipo(prev => ({ ...prev, representante_nombre: nombre, representante_cedula: cedula || null, representante_telefono: telefono || null }))
     setEditandoDueno(false)
     setPersonaCedulaDueno(null)
@@ -815,7 +817,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
         // columnas todavía no existen — se lo decimos claro en vez de un
         // "Error al guardar" genérico que no explica qué pasó.
         const faltaMigracion = error.message?.includes('es_mayor_35') || error.message?.includes('es_elite') || error.message?.includes('es_profesional') || error.message?.includes('etiqueta_personalizada') || error.code === '42703'
-        showMsg(faltaMigracion ? 'Falta ejecutar migracion_jugador_etiquetas.sql en Supabase' : `Error al guardar: ${error.message || error.code || 'desconocido'}`, 'error')
+        showMsg(faltaMigracion ? avisoMigracion('migracion_jugador_etiquetas.sql') : errorAmigable(error, 'Error al guardar'), 'error')
         return
       }
       setJugadoresEquipoGlobal(prev => prev.map(j => j.id === playerId ? { ...j, ...payload } : j))
@@ -1037,7 +1039,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
               </label>
             )}
             {!modoLectura && !puedeEditar && esOrganizador && (
-              <div title="No podés editar el escudo de este equipo" style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div title="No puedes editar el escudo de este equipo" style={{ position: 'absolute', bottom: '-6px', right: '-6px', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: '3px solid #17296b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Lock size={12} color="rgba(255,255,255,.8)"/>
               </div>
             )}
@@ -1083,7 +1085,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
             )}
             {!modoLectura && esOrganizador && esDueño && bloqueadoPorFechas && (
               <div style={{ fontSize: '.72rem', color: '#ffd43b', fontWeight: '700', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Lock size={12}/> Ya jugaron {fechasJugadas} fechas — no podés editar nombre/escudo. Si hay un error, avisale al admin.
+                <Lock size={12}/> Ya jugaron {fechasJugadas} fechas — no puedes editar nombre/escudo. Si hay un error, avísale al admin.
               </div>
             )}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

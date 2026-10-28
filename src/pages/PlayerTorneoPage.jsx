@@ -1009,7 +1009,7 @@ export default function PlayerTorneoPage() {
                   misPartidosProximos.length === 0 ? (
                     <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '48px', textAlign: 'center', color: '#9aa0a6' }}>
                       <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📅</div>
-                      <div style={{ fontSize: '.875rem' }}>No tenés próximos partidos programados</div>
+                      <div style={{ fontSize: '.875rem' }}>No tienes próximos partidos programados</div>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

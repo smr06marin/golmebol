@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import PortadaInicioAdmin from '../../components/PortadaInicioAdmin'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { Megaphone, Upload, X, Plus, Trash2 } from 'lucide-react'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
+import { confirmar } from '../../lib/confirmar'
 
 const inputStyle = {
   width: '100%', background: '#fff', border: '1px solid #dadce0',
@@ -29,7 +31,7 @@ export default function AdminPatrocinadoresPage() {
   async function fetchPatrocinadores() {
     setLoading(true)
     const { data, error } = await supabase.from('patrocinadores_golmebol').select('*').order('orden').order('created_at')
-    if (error) showMsg('Falta ejecutar migracion_patrocinadores_golmebol.sql en Supabase', 'error')
+    if (error) showMsg(avisoMigracion('migracion_patrocinadores_golmebol.sql'), 'error')
     setPatrocinadores(data || [])
     setLoading(false)
   }
@@ -46,7 +48,7 @@ export default function AdminPatrocinadoresPage() {
       const maxOrden = patrocinadores.reduce((m, p) => Math.max(m, p.orden || 0), 0)
       const { data, error } = await supabase.from('patrocinadores_golmebol')
         .insert({ nombre: 'Nuevo patrocinador', orden: maxOrden + 1, activo: true }).select().single()
-      if (error) { console.error('patrocinadores_golmebol insert', error); showMsg('Error al crear: ' + (error.message || error.code || 'desconocido'), 'error'); return }
+      if (error) { console.error('patrocinadores_golmebol insert', error); showMsg(errorAmigable(error, 'Error al crear'), 'error'); return }
       setPatrocinadores(prev => [...prev, data])
       showMsg('Patrocinador agregado ✓')
     } finally {
@@ -64,7 +66,7 @@ export default function AdminPatrocinadoresPage() {
         facebook: patro.facebook, instagram: patro.instagram, tiktok: patro.tiktok,
         orden: patro.orden, activo: patro.activo,
       }).eq('id', patro.id)
-      if (error) showMsg('Error al guardar: ' + (error.message || error.code || 'desconocido'), 'error')
+      if (error) showMsg(errorAmigable(error, 'Error al guardar'), 'error')
       else showMsg('Guardado ✓')
     } finally {
       guardandoRef.current[patro.id] = false
@@ -73,7 +75,7 @@ export default function AdminPatrocinadoresPage() {
   }
 
   async function handleEliminar(patro) {
-    if (!confirm(`¿Eliminar "${patro.nombre}"? Esto no se puede deshacer.`)) return
+    if (!(await confirmar(`¿Eliminar "${patro.nombre}"? Esto no se puede deshacer.`))) return
     const { error } = await supabase.from('patrocinadores_golmebol').delete().eq('id', patro.id)
     if (error) { showMsg('Error al eliminar', 'error'); return }
     if (patro.logo_url) {

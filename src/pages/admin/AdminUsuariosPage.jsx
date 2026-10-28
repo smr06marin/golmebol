@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { UserCog, Plus, Trash2 } from 'lucide-react'
+import { confirmar } from '../../lib/confirmar'
 
 const input = {
   width: '100%', background: '#fff', border: '1px solid #dadce0',
@@ -64,7 +65,7 @@ export default function AdminUsuariosPage() {
   }
 
   async function handleEliminar(u) {
-    if (!confirm(`¿Quitar el rol de ${u.email}? Volverá a ser una cuenta normal de jugador.`)) return
+    if (!(await confirmar(`¿Quitar el rol de ${u.email}? Volverá a ser una cuenta normal de jugador.`))) return
     await supabase.from('roles_plataforma').delete().eq('id', u.id)
     fetchUsuarios()
     showMsg('Rol eliminado')

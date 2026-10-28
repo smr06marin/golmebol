@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
 import { CARD_DESIGNS } from '../../components/card/designs/cardDesigns'
 import PlayerCard from '../../components/card/PlayerCard'
+import { confirmar } from '../../lib/confirmar'
 
 const inp = {
   background: '#fff', border: '1px solid #dadce0', borderRadius: '8px',
@@ -189,7 +191,7 @@ export default function AdminTarjetasPage() {
   // guardado de jugadores, sponsor) y le quita esa tarjeta a quien la tuviera
   // activa, para no dejar nada huérfano.
   async function handleEliminarTarjetaCustom(card) {
-    if (!confirm(`¿Eliminar la tarjeta "${card.nombre}"? Esto no se puede deshacer.`)) return
+    if (!(await confirmar(`¿Eliminar la tarjeta "${card.nombre}"? Esto no se puede deshacer.`))) return
     const levelIds = (card.card_levels || []).map(l => l.id)
     const designId = `custom_${card.id}`
     try {
@@ -214,13 +216,13 @@ export default function AdminTarjetasPage() {
       const { data: borradas, error } = await supabase.from('cards').delete().eq('id', card.id).select('id')
       if (error) throw error
       if (!borradas || borradas.length === 0) {
-        showMsg('No se pudo eliminar: la base de datos no dejó borrar esta tarjeta (revisa los permisos/RLS de la tabla "cards")', 'error')
+        showMsg('No se pudo eliminar la tarjeta: no tienes permiso para hacerlo. Si crees que es un error, avísale al administrador.', 'error')
         return
       }
       showMsg(`Tarjeta "${card.nombre}" eliminada ✓`)
       fetchTodo()
     } catch (err) {
-      showMsg('Error al eliminar: ' + err.message, 'error')
+      showMsg(errorAmigable(err, 'Error al eliminar'), 'error')
     }
   }
 

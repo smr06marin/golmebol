@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { ArrowLeft, User, Camera, Upload, CreditCard, MessageCircle, Download } from 'lucide-react'
 import PlayerCard from '../../components/card/PlayerCard'
 import BuscadorJugador from '../../components/BuscadorJugador'
 import { useAuthStore } from '../../store/authStore'
+import { confirmar } from '../../lib/confirmar'
 
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 
@@ -229,14 +231,14 @@ export default function AdminJugadorDetallePage() {
       player_id: id, tournament_id: null, motivo: formSancion.motivo.trim(), fecha_fin, activa: true,
     })
     setGuardandoSancion(false)
-    if (error) return showMsg('Error al sancionar (¿ejecutaste migracion_sanciones.sql?)', 'error')
+    if (error) return showMsg(errorAmigable(error, 'No se pudo registrar la sanción'), 'error')
     showMsg('Jugador sancionado ⛔ — aplica en todos los torneos')
     setFormSancion({ motivo: '', duracion: '8' })
     fetchSanciones()
   }
 
   async function handleLevantarSancion(s) {
-    if (!confirm('¿Levantar esta sanción? El jugador podrá volver a jugar.')) return
+    if (!(await confirmar('¿Levantar esta sanción? El jugador podrá volver a jugar.'))) return
     await supabase.from('sanciones').update({ activa: false }).eq('id', s.id)
     showMsg('Sanción levantada ✓')
     fetchSanciones()
@@ -309,7 +311,7 @@ export default function AdminJugadorDetallePage() {
   }
 
   async function handleEliminarFoto(tipo) {
-    if (!confirm('¿Eliminar esta foto? El jugador podrá subir una nueva.')) return
+    if (!(await confirmar('¿Eliminar esta foto? El jugador podrá subir una nueva.'))) return
     const campo = tipo === 'tarjeta' ? 'photo_url' : 'photo_face_url'
     const { error } = await supabase.from('players').update({ [campo]: null }).eq('id', id)
     if (error) { showMsg('Error al eliminar foto', 'error'); return }
@@ -338,7 +340,7 @@ export default function AdminJugadorDetallePage() {
   // aquí, en el listado de jugadores, en el propio perfil del jugador y como
   // advertencia en la planilla del próximo partido.
   async function handleFlagFoto(campoFlag, marcar, etiqueta) {
-    if (marcar && !confirm(`¿Marcar "${etiqueta}" para que el jugador deba subir otra? Se le avisará en su perfil y en la próxima planilla.`)) return
+    if (marcar && !(await confirmar(`¿Marcar "${etiqueta}" para que el jugador deba subir otra? Se le avisará en su perfil y en la próxima planilla.`))) return
     const { error } = await supabase.from('players').update({ [campoFlag]: marcar }).eq('id', id)
     if (error) { showMsg('Error al actualizar', 'error'); return }
     setJugador(j => ({ ...j, [campoFlag]: marcar }))

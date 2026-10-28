@@ -191,7 +191,7 @@ export default function BuscadorJugador({ playerId }) {
       {!datos ? null : respuestas.length === 0 ? (
         <div style={{ textAlign: 'center', color: '#5b6478', fontSize: '.74rem', padding: '14px 0 2px' }}>Este jugador aún no tiene partidos guardados</div>
       ) : busqueda.trim() && resultados.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#5b6478', fontSize: '.74rem', padding: '14px 0 2px' }}>Sin resultados — probá con goles, rival, tarjetas o arquero</div>
+        <div style={{ textAlign: 'center', color: '#5b6478', fontSize: '.74rem', padding: '14px 0 2px' }}>Sin resultados — prueba con goles, rival, tarjetas o arquero</div>
       ) : busqueda.trim() ? (
         <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column' }}>
           {resultados.slice(0, 5).map((r, i) => (

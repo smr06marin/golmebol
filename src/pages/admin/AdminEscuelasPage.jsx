@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Upload, X, GraduationCap } from 'lucide-react'
+import { confirmar } from '../../lib/confirmar'
 
 const EMPTY = { name: '', telefono: '', numero_cedula: '', city: '', genero: '' }
 const inp = { width:'100%', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'8px 12px', color:'#202124', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
@@ -101,7 +102,7 @@ export default function AdminEscuelasPage() {
   }
 
   async function handleQuitarProfesor(jugador) {
-    if (!confirm(`¿Quitar rol de profesor a ${jugador.name}?`)) return
+    if (!(await confirmar(`¿Quitar rol de profesor a ${jugador.name}?`))) return
     await supabase.from('players').update({ es_profesor: false, es_profesor_coordinador: false }).eq('id', jugador.id)
     showMsgFn(`Rol de profesor removido`)
     fetchProfesores()
@@ -247,7 +248,7 @@ export default function AdminEscuelasPage() {
   }
 
   async function handleDesactivar(profesor) {
-    if (!confirm(`¿Desactivar acceso de ${profesor.name}?`)) return
+    if (!(await confirmar(`¿Desactivar acceso de ${profesor.name}?`))) return
     await supabase.from('players').update({ activo_membresia: false }).eq('id', profesor.id)
     showMsgFn('Acceso desactivado'); fetchProfesores()
   }
@@ -307,7 +308,7 @@ export default function AdminEscuelasPage() {
       )}
 
       <div style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'10px', padding:'14px 16px', marginBottom:'20px', fontSize:'.8rem', color:'#1a4a8c' }}>
-        💡 Acá solo se le da acceso al primer profesor de una escuela (marcándolo con 👑 queda como <b>coordinador</b>). El coordinador entra con su cédula en <b>/jugador/login</b>, crea el nombre y la categoría de su escuela, y desde ahí agrega a los jugadores y a los demás profesores. Si preferís, ahora también podés crear la escuela vos mismo con el botón <b>Crear escuela</b> de arriba y después asignarle un profesor.
+        💡 Acá solo se le da acceso al primer profesor de una escuela (marcandolo con 👑 queda como <b>coordinador</b>). El coordinador entra con su cédula en <b>/jugador/login</b>, crea el nombre y la categoría de su escuela, y desde ahí agrega a los jugadores y a los demás profesores. Si prefieres, ahora también puedes crear la escuela tú mismo con el botón <b>Crear escuela</b> de arriba y después asignarle un profesor.
       </div>
 
       {/* Form: editar profesor existente */}

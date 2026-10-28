@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useMemo, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, User } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
+import { confirmar } from '../../lib/confirmar'
 
 // Posición simplificada (Arquero/Jugador, sin detalle por modalidad) — se
 // sigue guardando en las 3 columnas posicion_futbol5/7/11 para no romper
@@ -542,14 +544,14 @@ export default function AdminJugadoresPage() {
       const { data, error } = await supabase.from('players').delete().eq('id', j.id).select('id')
       if (error) {
         if (error.code === '23503' || (error.message || '').includes('foreign key')) {
-          showMsg('No se pudo terminar de eliminar: todavía queda algún dato relacionado sin borrar (' + error.message + ')', 'error')
+          showMsg('No se pudo eliminar del todo: este jugador todavía tiene información relacionada (partidos, tarjetas o pagos). Revisa eso primero.', 'error'); console.error('[Golmebol] eliminar jugador', error)
         } else {
-          showMsg('Error al eliminar: ' + (error.message || 'desconocido'), 'error')
+          showMsg(errorAmigable(error, 'Error al eliminar'), 'error')
         }
         return
       }
       if (!data || data.length === 0) {
-        showMsg('No se eliminó: no tienes permiso para borrar este jugador (revisa las políticas RLS de "players" en Supabase)', 'error')
+        showMsg('No se eliminó: no tienes permiso para borrar este jugador. Si crees que es un error, avísale al administrador.', 'error')
         return
       }
 
@@ -630,7 +632,7 @@ export default function AdminJugadoresPage() {
     fetchJugadores()
   }
   async function handleRechazarJugador(j) {
-    if (!confirm(`¿Bloquear la cuenta de ${j.name}? No podrá entrar hasta que la reactives.`)) return
+    if (!(await confirmar(`¿Bloquear la cuenta de ${j.name}? No podrá entrar hasta que la reactives.`))) return
     await supabase.from('players').update({ activo_membresia: false }).eq('id', j.id)
     showMsg(`Cuenta de ${j.name} bloqueada`)
     fetchJugadores()
@@ -684,7 +686,7 @@ export default function AdminJugadoresPage() {
   // jugador (admin y el propio jugador) y como advertencia en la planilla del
   // próximo partido.
   async function handleFlagFoto(jugador, campoFlag, marcar, etiqueta) {
-    if (marcar && !confirm(`¿Marcar "${etiqueta}" de ${jugador.name} para que deba subir otra? Se le avisará en su perfil y en la próxima planilla.`)) return
+    if (marcar && !(await confirmar(`¿Marcar "${etiqueta}" de ${jugador.name} para que deba subir otra? Se le avisará en su perfil y en la próxima planilla.`))) return
     const { error } = await supabase.from('players').update({ [campoFlag]: marcar }).eq('id', jugador.id)
     if (error) { showMsg('Error al actualizar', 'error'); return }
     setJugadores(prev => prev.map(j => j.id === jugador.id ? { ...j, [campoFlag]: marcar } : j))

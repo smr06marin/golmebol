@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { errorAmigable } from '../../lib/mensajesError'
 import { calcularRecordsAutomaticos } from '../../lib/recordsAutomaticos'
+import { confirmar } from '../../lib/confirmar'
 
 const COLORES = ['#f9a825','#00ddd0','#e8710a','#9955ff','#d93025','#00ee55','#1a73e8','#ff69b4','#4488ff','#a1887f']
 const ICONOS  = ['⭐','⚽','🏆','🔥','⚡','🎩','🧤','✅','💥','🎮','🥇','👑','🎯','💪','🛡️']
@@ -69,7 +71,7 @@ export default function AdminRecordsPage() {
       // hubiera cambiado pero al volver a entrar se "reactiva solo" — por eso
       // es clave no tocar el estado local si esto falla, y avisar qué pasó
       // (la causa más común es que falte correr la migración records_config).
-      showMsg(`No se pudo guardar: ${error.message}`, 'error')
+      showMsg(errorAmigable(error, 'No se pudo guardar'), 'error')
       return
     }
     setAutoOcultos(prev => {
@@ -127,7 +129,7 @@ export default function AdminRecordsPage() {
   }
 
   async function handleEliminar(id) {
-    if (!confirm('¿Eliminar este récord?')) return
+    if (!(await confirmar('¿Eliminar este récord?'))) return
     await supabase.from('records_historicos').delete().eq('id', id)
     showMsg('Récord eliminado')
     fetchRecords()

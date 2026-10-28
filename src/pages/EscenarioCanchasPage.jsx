@@ -55,7 +55,7 @@ function ModalRevisar({ reserva, canchas, encargado, soloLectura, onClose, onRes
           <div style={{ fontSize:'.8rem', color:S.text2 }}>Duración: {reserva.duracion} min</div>
         </div>
         {soloLectura ? (
-          <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no podés aceptar ni rechazar.</div>
+          <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no puedes aceptar ni rechazar.</div>
         ) : (
           <div style={{ display:'flex', gap:'8px' }}>
             <button onClick={rechazar} disabled={procesando} style={{ flex:1, padding:'12px', background:'none', border:`1px solid ${S.loss}`, borderRadius:'10px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.85rem', opacity:procesando?.7:1 }}>Rechazar</button>
@@ -203,7 +203,7 @@ function ModalGestionar({ reserva, canchas, soloLectura, onClose, onResuelto }) 
           <>
             <div style={{ fontSize:'.8rem', color:S.text2, marginBottom:'16px' }}>Este horario está marcado como mantenimiento, no acepta reservas.</div>
             {soloLectura ? (
-              <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no podés desbloquearlo.</div>
+              <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no puedes desbloquearlo.</div>
             ) : (
               <button onClick={desbloquear} disabled={procesando} style={{ width:'100%', padding:'12px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem', opacity:procesando?.7:1 }}>
                 {procesando ? '...' : 'Desbloquear horario'}
@@ -242,7 +242,7 @@ function ModalGestionar({ reserva, canchas, soloLectura, onClose, onResuelto }) 
               {reserva.motivo_pago && <div style={{ fontSize:'.74rem', color:S.gold, marginTop:'4px' }}>Pagó menos por: {reserva.motivo_pago}</div>}
             </div>
             {soloLectura ? (
-              <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no podés cambiar el pago, reprogramar ni cancelar.</div>
+              <div style={{ fontSize:'.76rem', color:S.muted, textAlign:'center' }}>👁️ Modo solo lectura — no puedes cambiar el pago, reprogramar ni cancelar.</div>
             ) : (
               <>
                 <div style={{ marginBottom:'16px' }}>

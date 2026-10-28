@@ -1093,8 +1093,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const seguiaCorriendo = corriendo
     if (tiempoAgotado && periodo === 2 && !window.confirm('⚠️ El partido YA TERMINÓ.\n\nSi sales ahora, el resultado NO queda guardado y el partido se quita de la transmisión en vivo.\n\nLo correcto es tocar 🏁 FINALIZAR y guardar el resultado.\n\n¿Salir de todas formas SIN guardar?')) return
     if (!window.confirm(seguiaCorriendo
-      ? 'Se va a pausar el cronómetro y salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir jugando el tiempo que falta.\n\n¿Continuar?'
-      : 'Vas a salir SIN guardar el resultado.\n\nEl partido queda pendiente — podés volver a entrar después y seguir donde quedó.\n\n¿Continuar?')) return
+      ? 'Se va a pausar el cronómetro y salir SIN guardar el resultado.\n\nEl partido queda pendiente — puedes volver a entrar después y seguir jugando el tiempo que falta.\n\n¿Continuar?'
+      : 'Vas a salir SIN guardar el resultado.\n\nEl partido queda pendiente — puedes volver a entrar después y seguir donde quedó.\n\n¿Continuar?')) return
     pararAlarma()
     inicioEpochRef.current = null
     if (seguiaCorriendo) { nuevaAccionReloj(); setCorriendo(false) }

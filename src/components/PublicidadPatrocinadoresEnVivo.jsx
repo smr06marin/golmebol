@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Upload, X, Plus, Trash2, Film, Image as IconoImagen, ChevronDown, ChevronUp } from 'lucide-react'
+import { confirmar } from '../lib/confirmar'
 
 // Publicidad de patrocinadores DE UNA TRANSMISIÓN (cada transmisión tiene los suyos).
 // Por patrocinador: logo, banners (varios) y un video corto. Lo que se sube queda
@@ -187,7 +188,7 @@ export default function PublicidadPatrocinadoresEnVivo({ patrocinadores, onGuard
 
   async function eliminar(p) {
     if (ocupado) return
-    if (!confirm(`¿Quitar "${p.nombre}" de esta transmisión? Se borran también sus archivos.`)) return
+    if (!(await confirmar(`¿Quitar "${p.nombre}" de esta transmisión? Se borran también sus archivos.`))) return
     onGuardar(patrocinadores.filter(x => x.id !== p.id))
     await quitarArchivos([p.logo_url, p.video_url, ...(p.banners || [])].filter(Boolean))
   }

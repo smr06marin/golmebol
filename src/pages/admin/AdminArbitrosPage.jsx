@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Upload, Shield } from 'lucide-react'
+import { confirmar } from '../../lib/confirmar'
 
 const EMPTY = { name: '', telefono: '', numero_cedula: '', city: '', genero: '' }
 const inp = { width:'100%', background:'#fff', border:'1px solid #dadce0', borderRadius:'8px', padding:'8px 12px', color:'#202124', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
@@ -43,7 +44,7 @@ export default function AdminArbitrosPage() {
   }
 
   async function handleQuitarArbitro(jugador) {
-    if (!confirm(`¿Quitar rol de árbitro a ${jugador.name}?`)) return
+    if (!(await confirmar(`¿Quitar rol de árbitro a ${jugador.name}?`))) return
     await supabase.from('players').update({ es_arbitro: false }).eq('id', jugador.id)
     showMsgFn(`Rol de árbitro removido`)
     fetchArbitros()
