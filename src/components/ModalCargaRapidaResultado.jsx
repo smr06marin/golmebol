@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { conPlayers } from '../lib/planillaJugadores'
 import { resolverPrediccionesPartido } from '../lib/predix'
 import { limpiarStatsObsoletas } from '../lib/statsPartido'
+import { necesitaPreguntarPenales, eliminacionDirecta } from '../lib/penales'
 
 // Carga rápida de resultado — pensada para el ORGANIZADOR, para cuando el
 // árbitro no llenó ninguna planilla y hay que meter los datos a mano desde
@@ -89,7 +90,7 @@ const tarjetaJugador = (destacado, apagado) => ({
 // (a nivel de módulo), no adentro. Si se declaran adentro, cada tecla vuelve a
 // crear la función y React desmonta/remonta toda la lista, botando el foco del
 // campo apenas se escribe un carácter.
-function Columna({ roster, extras, esLocal, filas, cambiar, cambiarExtra, quitarExtra, agregarExtra }) {
+function Columna({ roster, extras, esLocal, filas, cambiar, cambiarExtra, quitarExtra, agregarExtra, sinGoles }) {
   const jugaron = roster.filter(j => (filas[j.id] || { jugo: true }).jugo).length
   return (
     <div>
@@ -106,7 +107,7 @@ function Columna({ roster, extras, esLocal, filas, cambiar, cambiarExtra, quitar
       )}
       {roster.map(j => {
         const f = filas[j.id] || { jugo: true, goles: 0, amarilla: false, azul: false, roja: false }
-        const destacado = f.jugo && (Number(f.goles || 0) > 0 || f.amarilla || f.azul || f.roja)
+        const destacado = f.jugo && ((!sinGoles && Number(f.goles || 0) > 0) || f.amarilla || f.azul || f.roja)
         return (
           <div key={j.id} style={tarjetaJugador(destacado, !f.jugo)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: f.jugo ? '10px' : 0 }}>
@@ -116,7 +117,7 @@ function Columna({ roster, extras, esLocal, filas, cambiar, cambiarExtra, quitar
             </div>
             {f.jugo && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', paddingLeft: '38px' }}>
-                <CampoGoles value={f.goles} onChange={v => cambiar(j.id, 'goles', v)}/>
+                {!sinGoles && <CampoGoles value={f.goles} onChange={v => cambiar(j.id, 'goles', v)}/>}
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <Tarjetita tipo="amarilla" activa={f.amarilla} onClick={() => cambiar(j.id, 'amarilla', !f.amarilla)}/>
                   <Tarjetita tipo="azul" activa={f.azul} onClick={() => cambiar(j.id, 'azul', !f.azul)}/>
@@ -142,7 +143,7 @@ function Columna({ roster, extras, esLocal, filas, cambiar, cambiarExtra, quitar
           </div>
           <div style={{ fontSize: '.68rem', color: '#b45309', marginBottom: '10px', lineHeight: 1.4 }}>Sin registro (falta cédula): solo cuenta para este partido. Regístralo después para que sus estadísticas cuenten.</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <CampoGoles value={e.goles} onChange={v => cambiarExtra(esLocal, e.tempId, 'goles', v)}/>
+            {!sinGoles && <CampoGoles value={e.goles} onChange={v => cambiarExtra(esLocal, e.tempId, 'goles', v)}/>}
             <div style={{ display: 'flex', gap: '6px' }}>
               <Tarjetita tipo="amarilla" activa={e.amarilla} onClick={() => cambiarExtra(esLocal, e.tempId, 'amarilla', !e.amarilla)}/>
               <Tarjetita tipo="azul" activa={e.azul} onClick={() => cambiarExtra(esLocal, e.tempId, 'azul', !e.azul)}/>
@@ -173,6 +174,18 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
   const [extrasVis, setExtrasVis] = useState([])
   const extraIdRef = useRef(0)
   const [equipoActivo, setEquipoActivo] = useState('local') // pestaña visible: 'local' | 'vis'
+  // Marcador: 'auto' = se suma de los goles de cada jugador; 'manual' = se escribe
+  // directo (ej. 3-0 cuando no se quiere anotar a ningún goleador).
+  const [modoMarcador, setModoMarcador] = useState('auto')
+  const [manualLocal, setManualLocal] = useState('0')
+  const [manualVis, setManualVis] = useState('0')
+  // Penales (solo se pide cuando el marcador queda empatado)
+  const [penHubo, setPenHubo] = useState(false)
+  const [penLocal, setPenLocal] = useState('')
+  const [penVis, setPenVis] = useState('')
+  // Nota del partido (se guarda como informe tipo "otro")
+  const [nota, setNota] = useState('')
+  const notaInicialRef = useRef('')
 
   useEffect(() => {
     let cancelado = false
@@ -232,6 +245,26 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
       })
       setExtrasLocal(preLocal)
       setExtrasVis(preVis)
+
+      // Partido ya cerrado con marcador pero sin goleadores anotados: se abre en
+      // modo "escribir marcador" con ese resultado, para no mostrarlo como 0-0.
+      const sumaGoles = (statsExistentes || []).reduce((a, st) => a + (st.goals_scored || 0), 0)
+        + [...preLocal, ...preVis].reduce((a, e) => a + (e.goles || 0), 0)
+      if (partido.status === 'finished' && sumaGoles === 0 && (Number(partido.home_score || 0) + Number(partido.away_score || 0)) > 0) {
+        setModoMarcador('manual')
+        setManualLocal(String(partido.home_score || 0))
+        setManualVis(String(partido.away_score || 0))
+      }
+      if (partido.penales_ganador) {
+        setPenHubo(true)
+        setPenLocal(String(partido.penales_local ?? ''))
+        setPenVis(String(partido.penales_visitante ?? ''))
+      }
+      try {
+        const { data: inf } = await supabase.from('match_informes').select('descripcion').eq('match_id', partido.id).eq('tipo', 'otro').limit(1)
+        if (!cancelado && inf?.[0]?.descripcion) { setNota(inf[0].descripcion); notaInicialRef.current = inf[0].descripcion }
+      } catch { /* sin nota previa */ }
+      if (cancelado) return
       setCargando(false)
     }
     cargar()
@@ -254,13 +287,29 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
     ;(esLocal ? setExtrasLocal : setExtrasVis)(prev => prev.filter(e => e.tempId !== tempId))
   }
 
-  const golesLocal = rosterLocal.reduce((a, j) => a + (filas[j.id]?.jugo ? Number(filas[j.id]?.goles || 0) : 0), 0)
+  const esManual = modoMarcador === 'manual'
+  const sumaLocal = rosterLocal.reduce((a, j) => a + (filas[j.id]?.jugo ? Number(filas[j.id]?.goles || 0) : 0), 0)
     + extrasLocal.reduce((a, e) => a + (e.nombre.trim() ? Number(e.goles || 0) : 0), 0)
-  const golesVis = rosterVis.reduce((a, j) => a + (filas[j.id]?.jugo ? Number(filas[j.id]?.goles || 0) : 0), 0)
+  const sumaVis = rosterVis.reduce((a, j) => a + (filas[j.id]?.jugo ? Number(filas[j.id]?.goles || 0) : 0), 0)
     + extrasVis.reduce((a, e) => a + (e.nombre.trim() ? Number(e.goles || 0) : 0), 0)
+  const golesLocal = esManual ? Number(manualLocal || 0) : sumaLocal
+  const golesVis = esManual ? Number(manualVis || 0) : sumaVis
+  const empatado = golesLocal === golesVis
+  const penGanador = penLocal !== '' && penVis !== '' && Number(penLocal) !== Number(penVis)
+    ? (Number(penLocal) > Number(penVis) ? 'home' : 'away') : null
 
   async function guardar() {
     if (guardandoRef.current) return
+    const manual = esManual
+    // Penales: solo cuentan si el partido quedó empatado y se marcó que hubo tanda
+    const hayPenales = empatado && penHubo
+    if (hayPenales && !penGanador) {
+      alert('Escribe los penales de cada equipo. No pueden quedar iguales ni vacíos: alguien tiene que ganar la tanda.')
+      return
+    }
+    if (empatado && !penHubo && necesitaPreguntarPenales({ fase: partido.fase, golesLocal, golesVis, globalLlave: null, eliminacion: eliminacionDirecta(partido) })) {
+      if (!window.confirm('Este partido es de eliminatoria y quedó empatado, pero no marcaste penales.\n\nSin penales no se sabe qué equipo avanza.\n\n¿Guardar de todas formas sin penales?')) return
+    }
     guardandoRef.current = true
     setGuardando(true)
     const erroresGuardado = []
@@ -287,7 +336,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
       const eventosDB = []
       todos.forEach(({ j, team_id }) => {
         const f = filas[j.id]
-        for (let i = 0; i < Number(f.goles || 0); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'goal', minute: null, periodo: 1 })
+        for (let i = 0; i < (manual ? 0 : Number(f.goles || 0)); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'goal', minute: null, periodo: 1 })
         if (f.amarilla) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'yellow_card', minute: null, periodo: 1 })
         if (f.azul) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'blue_card', minute: null, periodo: 1 })
         if (f.roja) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: j.id, event_type: 'red_card', minute: null, periodo: 1 })
@@ -304,7 +353,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
           const nombreLimpio = e.nombre.trim()
           if (!nombreLimpio) return
           nombresSinRegistro.push(nombreLimpio)
-          for (let i = 0; i < Number(e.goles || 0); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'goal', minute: null, periodo: 1 })
+          for (let i = 0; i < (manual ? 0 : Number(e.goles || 0)); i++) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'goal', minute: null, periodo: 1 })
           if (e.amarilla) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'yellow_card', minute: null, periodo: 1 })
           if (e.azul) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'blue_card', minute: null, periodo: 1 })
           if (e.roja) eventosDB.push({ match_id: partido.id, tournament_id: partido.tournament_id, team_id, player_id: null, player_nombre: nombreLimpio, event_type: 'red_card', minute: null, periodo: 1 })
@@ -322,8 +371,32 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
         if (error) erroresGuardado.push('Eventos: ' + error.message)
       }
 
-      const { error: errPartido } = await supabase.from('matches').update({ home_score: golesLocal, away_score: golesVis, status: 'finished' }).eq('id', partido.id)
+      const updatePartido = {
+        home_score: golesLocal, away_score: golesVis, status: 'finished',
+        penales_local: hayPenales ? Number(penLocal) : null,
+        penales_visitante: hayPenales ? Number(penVis) : null,
+        penales_ganador: hayPenales ? penGanador : null,
+      }
+      let { error: errPartido } = await supabase.from('matches').update(updatePartido).eq('id', partido.id)
+      // Si todavía no se corrió la migración de penales, se guarda el resultado igual
+      if (errPartido && (errPartido.message || '').includes('penales')) {
+        const { penales_local, penales_visitante, penales_ganador, ...sinPenales } = updatePartido
+        ;({ error: errPartido } = await supabase.from('matches').update(sinPenales).eq('id', partido.id))
+        if (!errPartido && hayPenales) alert('El resultado se guardó, pero los penales NO (falta correr la migración de penales en Supabase).')
+      }
       if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
+
+      // Nota del partido: se guarda como informe. Si no cambió desde que se abrió, no se repite.
+      const notaLimpia = nota.trim()
+      if (notaLimpia.length >= 3 && notaLimpia !== notaInicialRef.current.trim()) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          let creadoPor = user?.email || null
+          if (user?.id) { const { data: pRow } = await supabase.from('players').select('name').eq('user_id', user.id).maybeSingle(); if (pRow?.name) creadoPor = pRow.name }
+          const { error: errNota } = await supabase.from('match_informes').insert({ match_id: partido.id, tournament_id: partido.tournament_id, tipo: 'otro', descripcion: notaLimpia, creado_por: creadoPor })
+          if (errNota) erroresGuardado.push('Nota: ' + errNota.message)
+        } catch (e) { erroresGuardado.push('Nota: no se pudo guardar') }
+      }
 
       const calcResultado = (gF, gC) => gF > gC ? 'win' : gF === gC ? 'draw' : 'loss'
       const statsRows = todos.map(({ j, team_id, esLocal }) => {
@@ -333,7 +406,7 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
         return {
           match_id: partido.id, tournament_id: partido.tournament_id, player_id: j.id, team_id,
           numero_camiseta: null,
-          goals_scored: Number(f.goles || 0), goals_conceded: 0,
+          goals_scored: manual ? 0 : Number(f.goles || 0), goals_conceded: 0,
           fue_arquero: false, own_goals: 0,
           yellow_cards: f.amarilla ? 1 : 0, blue_cards: f.azul ? 1 : 0, red_cards: f.roja ? 1 : 0,
           fouls: 0, team_result: calcResultado(gF, gC),
@@ -423,11 +496,65 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
           <>
             {/* Marcador + pestañas de equipo (siempre a la vista) */}
             <div style={{ padding: '0 16px 12px', borderBottom: '1px solid #eceff1' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '10px 0 12px' }}>
+              {/* Marcador: se suma solo o se escribe a mano */}
+              <div style={{ display: 'flex', gap: '4px', background: '#f1f3f4', borderRadius: '12px', padding: '3px', margin: '4px 0 8px' }}>
+                {[['auto', 'Sumar goles de jugadores'], ['manual', 'Escribir marcador']].map(([clave, texto]) => (
+                  <button key={clave} type="button" onClick={() => setModoMarcador(clave)} aria-pressed={modoMarcador === clave}
+                    style={{ flex: 1, minHeight: '38px', padding: '4px 6px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '.74rem', fontWeight: '800', lineHeight: 1.2, touchAction: 'manipulation',
+                      background: modoMarcador === clave ? '#fff' : 'transparent', color: modoMarcador === clave ? '#1a73e8' : '#5f6368', boxShadow: modoMarcador === clave ? '0 1px 4px rgba(0,0,0,.12)' : 'none' }}>{texto}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '6px 0 12px' }}>
                 <span style={{ flex: 1, textAlign: 'right', fontSize: '.8rem', fontWeight: '700', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipoLocal}</span>
-                <span style={{ fontWeight: '900', fontSize: '2rem', color: '#202124', letterSpacing: '.04em', lineHeight: 1 }}>{golesLocal}<span style={{ color: '#c9cdd1', margin: '0 8px' }}>-</span>{golesVis}</span>
+                {esManual ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={2} aria-label={`Goles de ${equipoLocal}`} value={manualLocal}
+                      onFocus={e => e.target.select()} onChange={e => setManualLocal(e.target.value.replace(/\D/g, '').slice(0, 2))} onBlur={() => { if (manualLocal === '') setManualLocal('0') }}
+                      style={{ width: '62px', height: '56px', textAlign: 'center', fontSize: '1.8rem', fontWeight: '900', border: '2px solid #1a73e8', borderRadius: '12px', boxSizing: 'border-box', outline: 'none', color: '#202124' }}/>
+                    <span style={{ color: '#c9cdd1', fontSize: '1.6rem', fontWeight: '900' }}>-</span>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={2} aria-label={`Goles de ${equipoVis}`} value={manualVis}
+                      onFocus={e => e.target.select()} onChange={e => setManualVis(e.target.value.replace(/\D/g, '').slice(0, 2))} onBlur={() => { if (manualVis === '') setManualVis('0') }}
+                      style={{ width: '62px', height: '56px', textAlign: 'center', fontSize: '1.8rem', fontWeight: '900', border: '2px solid #1a73e8', borderRadius: '12px', boxSizing: 'border-box', outline: 'none', color: '#202124' }}/>
+                  </span>
+                ) : (
+                  <span style={{ fontWeight: '900', fontSize: '2rem', color: '#202124', letterSpacing: '.04em', lineHeight: 1 }}>{golesLocal}<span style={{ color: '#c9cdd1', margin: '0 8px' }}>-</span>{golesVis}</span>
+                )}
                 <span style={{ flex: 1, textAlign: 'left', fontSize: '.8rem', fontWeight: '700', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipoVis}</span>
               </div>
+              {esManual && <div style={{ fontSize: '.7rem', color: '#80868b', textAlign: 'center', margin: '-6px 0 10px' }}>Los goles no se anotan por jugador; solo quién jugó y las tarjetas.</div>}
+
+              {/* Empate: se puede marcar la tanda de penales para saber quién ganó */}
+              {empatado && (
+                <div style={{ background: '#fff8e8', border: '1px solid #fde1b8', borderRadius: '14px', padding: '10px 12px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <span style={{ fontSize: '.82rem', fontWeight: '800', color: '#92400e' }}>Quedó empatado · ¿Hubo penales?</span>
+                    <div style={{ display: 'flex', gap: '4px', background: '#fdebc8', borderRadius: '10px', padding: '3px', flexShrink: 0 }}>
+                      {[[false, 'No'], [true, 'Sí']].map(([v, t]) => (
+                        <button key={t} type="button" onClick={() => setPenHubo(v)} aria-pressed={penHubo === v}
+                          style={{ minWidth: '46px', minHeight: '34px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '.8rem', background: penHubo === v ? '#fff' : 'transparent', color: penHubo === v ? '#92400e' : '#b45309', touchAction: 'manipulation' }}>{t}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {penHubo && (
+                    <div style={{ marginTop: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                        <span style={{ flex: 1, textAlign: 'right', fontSize: '.74rem', fontWeight: '700', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipoLocal}</span>
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={2} aria-label={`Penales de ${equipoLocal}`} placeholder="0" value={penLocal}
+                          onFocus={e => e.target.select()} onChange={e => setPenLocal(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                          style={{ width: '56px', height: '48px', textAlign: 'center', fontSize: '1.3rem', fontWeight: '900', border: `2px solid ${penGanador === 'home' ? '#1e8e3e' : '#e5c78a'}`, borderRadius: '10px', boxSizing: 'border-box', outline: 'none', background: '#fff' }}/>
+                        <span style={{ color: '#c9a45c', fontWeight: '900' }}>-</span>
+                        <input type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={2} aria-label={`Penales de ${equipoVis}`} placeholder="0" value={penVis}
+                          onFocus={e => e.target.select()} onChange={e => setPenVis(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                          style={{ width: '56px', height: '48px', textAlign: 'center', fontSize: '1.3rem', fontWeight: '900', border: `2px solid ${penGanador === 'away' ? '#1e8e3e' : '#e5c78a'}`, borderRadius: '10px', boxSizing: 'border-box', outline: 'none', background: '#fff' }}/>
+                        <span style={{ flex: 1, textAlign: 'left', fontSize: '.74rem', fontWeight: '700', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipoVis}</span>
+                      </div>
+                      <div style={{ textAlign: 'center', marginTop: '8px', fontSize: '.8rem', fontWeight: '800', color: penGanador ? '#1e8e3e' : '#b45309' }}>
+                        {penGanador ? `🏆 Gana ${penGanador === 'home' ? equipoLocal : equipoVis} por penales` : 'Escribe los penales de cada equipo para saber quién ganó'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '4px', background: '#f1f3f4', borderRadius: '14px', padding: '4px' }}>
                 {pestana('local', equipoLocal, golesLocal)}
                 {pestana('vis', equipoVis, golesVis)}
@@ -437,12 +564,19 @@ export default function ModalCargaRapidaResultado({ partido, onClose, onGuardado
             {/* Lista del equipo escogido, con scroll propio: el marcador y el botón de guardar quedan siempre visibles */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 16px 6px' }}>
               {esLocalActivo
-                ? <Columna roster={rosterLocal} extras={extrasLocal} esLocal={true} filas={filas} cambiar={cambiar} cambiarExtra={cambiarExtra} quitarExtra={quitarExtra} agregarExtra={agregarExtra}/>
-                : <Columna roster={rosterVis} extras={extrasVis} esLocal={false} filas={filas} cambiar={cambiar} cambiarExtra={cambiarExtra} quitarExtra={quitarExtra} agregarExtra={agregarExtra}/>}
+                ? <Columna roster={rosterLocal} extras={extrasLocal} esLocal={true} filas={filas} cambiar={cambiar} cambiarExtra={cambiarExtra} quitarExtra={quitarExtra} agregarExtra={agregarExtra} sinGoles={esManual}/>
+                : <Columna roster={rosterVis} extras={extrasVis} esLocal={false} filas={filas} cambiar={cambiar} cambiarExtra={cambiarExtra} quitarExtra={quitarExtra} agregarExtra={agregarExtra} sinGoles={esManual}/>}
               <button type="button" onClick={() => setEquipoActivo(esLocalActivo ? 'vis' : 'local')}
                 style={{ margin: '12px 0 8px', width: '100%', minHeight: '46px', background: '#f1f3f4', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#202124', fontSize: '.88rem', fontWeight: '800' }}>
                 {esLocalActivo ? `Siguiente: ${equipoVis} →` : `← Volver a ${equipoLocal}`}
               </button>
+              {/* Nota del partido */}
+              <div style={{ margin: '4px 0 12px', background: '#f8f9fa', border: '1px solid #eceff1', borderRadius: '14px', padding: '12px' }}>
+                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#202124', marginBottom: '2px' }}>📝 Nota del partido <span style={{ color: '#9aa0a6', fontWeight: '700' }}>(opcional)</span></div>
+                <div style={{ fontSize: '.72rem', color: '#80868b', marginBottom: '8px', lineHeight: 1.4 }}>Por si pasó algo: una pelea, una suspensión, un cambio de cancha, jugadores que no se presentaron…</div>
+                <textarea value={nota} onChange={e => setNota(e.target.value)} rows={3} maxLength={1000} placeholder="Escribe aquí lo que pasó en el partido"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1.5px solid #dadce0', borderRadius: '10px', fontSize: '1rem', fontFamily: 'inherit', resize: 'vertical', outline: 'none', background: '#fff' }}/>
+              </div>
             </div>
           </>
         )}
