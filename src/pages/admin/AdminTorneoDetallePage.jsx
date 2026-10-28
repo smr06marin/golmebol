@@ -7,6 +7,7 @@ import { getPuntosTorneo, puntosVictoria, cargarDescuentos, reaplicarMarcadorW }
 import { getRondaNombre, getFaseValue } from '../../lib/bracketHelpers'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, compararPosiciones, aplicarDescuentos } from '../../lib/torneoTablas'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
+import AdminCalendarioPage from './AdminCalendarioPage'
 import ModalCargaRapidaResultado from '../../components/ModalCargaRapidaResultado'
 import RankingPoster from '../../components/RankingPoster'
 import TablaPosiciones from '../../components/TablaPosiciones'
@@ -5822,82 +5823,26 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 </div>
               )}
 
-              {/* Lista partidos — acordeón por jornada */}
+              {/* Lista de partidos: la misma del resto de la app (filas compactas, se abren al tocar) */}
               {partidos.length === 0 && !showFormPartido ? (
                 <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
                   <Calendar size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay partidos programados</div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {agruparPartidosPorJornada(partidos).map(jornada => {
-                    const isOpen    = !!abiertosJornada[jornada.key]
-                    const jugados   = jornada.partidos.filter(p => p.status === 'finished').length
-                    const pendientes= jornada.partidos.length - jugados
-                    const esFase    = jornada.key.startsWith('fase_') || jornada.key.startsWith('otro_')
-                    return (
-                      <div key={jornada.key} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                        {/* Header */}
-                        <div onClick={() => toggleJornada(jornada.key)}
-                          style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', background: esFase ? 'linear-gradient(135deg,#1a73e8,#6c35de)' : '#fff' }}
-                          onMouseEnter={e => !esFase && (e.currentTarget.style.background='#f8f9fa')}
-                          onMouseLeave={e => !esFase && (e.currentTarget.style.background='#fff')}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: '700', fontSize: '.9rem', color: esFase?'#fff':'#202124' }}>{jornada.label}</div>
-                            <div style={{ fontSize: '.68rem', color: esFase?'rgba(255,255,255,.75)':'#9aa0a6', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              {jornada.fechas.length > 0 && <span>📅 {jornada.fechas.join(' · ')}</span>}
-                              <span>{jornada.partidos.length} partido{jornada.partidos.length!==1?'s':''}</span>
-                              {jugados   > 0 && <span style={{ color: esFase?'rgba(255,255,255,.85)':'#1e8e3e' }}>✓ {jugados} jugado{jugados!==1?'s':''}</span>}
-                              {pendientes> 0 && <span style={{ color: esFase?'rgba(255,255,255,.85)':'#e8710a' }}>⏳ {pendientes} pendiente{pendientes!==1?'s':''}</span>}
-                            </div>
-                          </div>
-                          {isOpen ? <ChevronUp size={16} color={esFase?'rgba(255,255,255,.8)':'#9aa0a6'}/> : <ChevronDown size={16} color={esFase?'rgba(255,255,255,.8)':'#9aa0a6'}/>}
-                        </div>
-                        {/* Partidos */}
-                        {isOpen && jornada.partidos.map((p, i) => {
-                          const esJugado = p.status === 'finished'
-                          return (
-                            <div key={p.id} style={{ padding: '10px 16px', borderTop: '1px solid #f1f3f4', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{ minWidth: '58px', flexShrink: 0 }}>
-                                  {p.played_at && <>
-                                    <div style={{ fontSize: '.65rem', color: '#5f6368', fontWeight: '600' }}>{new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}</div>
-                                    <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>{fmtHoraDate(p.played_at)}</div>
-                                  </>}
-                                  {p.location && <div style={{ fontSize: '.6rem', color: '#1a73e8' }}>📍 {p.location}</div>}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
-                                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name}</span>
-                                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={24}/></div>
-                                  </div>
-                                  {esJugado ? (
-                                    <div style={{ fontWeight: '800', fontSize: '.92rem', color: '#202124', background: '#f1f3f4', padding: '3px 10px', borderRadius: '7px', flexShrink: 0 }} onClick={() => setModalPartidoAdmin(p)}>
-                                      {p.home_score} - {p.away_score}
-                                    </div>
-                                  ) : (
-                                    <div style={{ fontWeight: '700', fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', padding: '3px 9px', borderRadius: '7px', flexShrink: 0 }}>VS</div>
-                                  )}
-                                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={24}/></div>
-                                    <span style={{ fontWeight: '600', color: '#202124', fontSize: '.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name}</span>
-                                  </div>
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {!esJugado && <button onClick={() => { const { fecha, hora } = playedAtToLocal(p.played_at); setFormEditPartido({played_at:fecha,hora,location:p.location||'',cancha_id:idCanchaDePartido(p),matchday:p.matchday||'',fase:p.fase||'grupo',arbitro1_id:p.arbitro1_id||'',arbitro2_id:p.arbitro2_id||'',arbitro3_id:p.arbitro3_id||''}); setEditandoPartidoForm(p) }} style={{ background:'none', border:'1px solid #dadce0', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#5f6368', fontSize:'.75rem' }}>✏️ Editar</button>}
-                                <button onClick={() => abrirPlanilla(p)} style={{ background: esJugado?'none':'#1a73e8', border: esJugado?'1px solid #dadce0':'none', borderRadius:'6px', padding:'5px 10px', cursor:'pointer', color: esJugado?'#5f6368':'#fff', fontSize:'.75rem', fontWeight: '600', display:'flex', alignItems:'center', gap:'4px' }}>
-                                  {esJugado ? '✏️ Resultado' : <><Check size={12}/> Resultado</>}
-                                </button>
-                                <button onClick={() => setCargaRapidaPartido(p)} title="Cargar goles y tarjetas a mano, rápido — para cuando el árbitro no llenó planilla" style={{ background:'none', border:'1px solid #ceead6', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#1e8e3e', fontSize:'.75rem', fontWeight:'600' }}>⚡ Carga rápida</button>
-                                <button onClick={() => setPartidoAEliminar(p)} style={{ background:'none', border:'1px solid #fad2cf', borderRadius:'6px', padding:'5px 9px', cursor:'pointer', color:'#d93025', display:'flex', alignItems:'center', gap:'4px', fontSize:'.75rem' }}><X size={13}/> Eliminar</button>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )
-                  })}
-                </div>
+                <AdminCalendarioPage
+                  torneo={torneo}
+                  partidosExternos={partidos}
+                  acciones={{
+                    planilla: p => abrirPlanilla(partidos.find(x => x.id === p.id) || p),
+                    editar: p => {
+                      const m = partidos.find(x => x.id === p.id) || p
+                      const { fecha, hora } = playedAtToLocal(m.played_at)
+                      setFormEditPartido({ played_at: fecha, hora, location: m.location || '', cancha_id: idCanchaDePartido(m), matchday: m.matchday || '', fase: m.fase || 'grupo', arbitro1_id: m.arbitro1_id || '', arbitro2_id: m.arbitro2_id || '', arbitro3_id: m.arbitro3_id || '' })
+                      setEditandoPartidoForm(m)
+                    },
+                    cargaRapida: p => setCargaRapidaPartido(partidos.find(x => x.id === p.id) || p),
+                    eliminar: p => setPartidoAEliminar(partidos.find(x => x.id === p.id) || p),
+                  }}/>
               )}
             </div>
           )}

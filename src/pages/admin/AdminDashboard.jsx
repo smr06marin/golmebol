@@ -287,12 +287,12 @@ export default function AdminDashboard() {
             <div className="gm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
               <StatCard icon="🏆" label="Mis torneos"      value={misTorneos.length} sub={`${misTorneos.filter(t => !finalizados.has(t.id)).length} activos`} color="#6c35de" onClick={() => navigate('/admin/torneos')}/>
               <StatCard icon="⚽" label="Equipos"          value={totalEquipos}     sub="Inscritos en mis torneos"                    color="#1a73e8" onClick={() => navigate('/admin/torneos')}/>
-              <StatCard icon="📅" label="Partidos hoy"     value={partidosHoy}      sub="Programados hoy"                              color="#e8710a" onClick={() => navigate('/admin/calendario')}/>
-              <StatCard icon="✅" label="Partidos jugados" value={partidosJugados}  sub="Finalizados"                                   color="#1e8e3e" onClick={() => navigate('/admin/calendario')}/>
+              <StatCard icon="📅" label="Partidos hoy"     value={partidosHoy}      sub="Programados hoy"                              color="#e8710a" onClick={() => navigate('/admin/torneos')}/>
+              <StatCard icon="✅" label="Partidos jugados" value={partidosJugados}  sub="Finalizados"                                   color="#1e8e3e" onClick={() => navigate('/admin/torneos')}/>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
-              <Section title="⚽ Últimos partidos" action="Ver calendario" onAction={() => navigate('/admin/calendario')}>
+              <Section title="⚽ Últimos partidos" action="Ver torneos" onAction={() => navigate('/admin/torneos')}>
                 {ultimosPartidos.length === 0 ? (
                   <div style={{ padding: '24px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Sin partidos jugados aún</div>
                 ) : ultimosPartidos.map((p, i) => (
@@ -342,7 +342,6 @@ export default function AdminDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
             {[
               { label: 'Mi torneo',   icon: '🏆', ruta: '/admin/torneos' },
-              { label: 'Calendario',  icon: '📅', ruta: '/admin/calendario' },
               { label: 'Noticias',    icon: '📰', ruta: '/admin/noticias' },
             ].map(a => (
               <button key={a.label} onClick={() => navigate(a.ruta)}
@@ -386,13 +385,13 @@ export default function AdminDashboard() {
         <StatCard icon="✅" label="Jugadores activos" value={jugadoresActivos} sub="Sin vencimientos" color="#1e8e3e" onClick={() => navigate('/admin/jugadores')}/>
         <StatCard icon="⚠️" label="Por activar"      value={jugadoresSinCuenta} sub="Sin cuenta creada"                          color="#e8710a" onClick={() => navigate('/admin/jugadores')}/>
         <StatCard icon="🏆" label="Torneos"          value={totalTorneos}     sub={`${totalEquipos} equipos registrados`}        color="#6c35de" onClick={() => navigate('/admin/torneos')}/>
-        <StatCard icon="⚽" label="Partidos jugados"  value={partidosJugados}  sub={`${partidosHoy} programados hoy`}            color="#1a73e8" onClick={() => navigate('/admin/calendario')}/>
+        <StatCard icon="⚽" label="Partidos jugados"  value={partidosJugados}  sub={`${partidosHoy} programados hoy`}            color="#1a73e8" onClick={() => navigate('/admin/torneos')}/>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '20px' }}>
 
         {/* Últimos partidos */}
-        <Section title="⚽ Últimos partidos" action="Ver todos" onAction={() => navigate('/admin/calendario')}>
+        <Section title="⚽ Últimos partidos" action="Ver todos" onAction={() => navigate('/admin/torneos')}>
           {ultimosPartidos.length === 0 ? (
             <div style={{ padding: '24px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Sin partidos jugados aún</div>
           ) : ultimosPartidos.map((p, i) => (

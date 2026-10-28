@@ -42,7 +42,7 @@ function etiquetaDia(iso) {
 }
 
 // Solo lo que la lista pinta y lo que usan los flyers (FlyerPartido / FlyerProgramacion).
-const COLUMNAS_LISTA = 'id,tournament_id,home_team_id,away_team_id,home_score,away_score,status,played_at,location,matchday,fase,'
+const COLUMNAS_LISTA = 'id,tournament_id,home_team_id,away_team_id,home_score,away_score,status,played_at,location,matchday,fase,ronda,'
   + 'tournaments(id,name,modalidad,logo_url,season,categoria,status),'
   + 'home:home_team_id(id,name,logo_url),away:away_team_id(id,name,logo_url)'
 // Planilla: el partido completo, igual que cuando se abre desde ?planilla=
@@ -203,6 +203,7 @@ const ESTILOS_CAL = `
 .gcal-btn:disabled{opacity:.6;cursor:default}
 .gcal-btn.primary{background:#1a73e8;border-color:#1a73e8;color:#fff}
 .gcal-btn.dark{background:#fff;border-color:#202124;color:#202124}
+.gcal-btn.danger{border-color:#fad2cf;color:#d93025}
 .gcal-btn svg{flex-shrink:0}
 .gcal-chip{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:600;border-radius:999px;padding:2px 9px;background:#f1f3f4;color:#5f6368;white-space:nowrap}
 .gcal-chip.ok{background:#e6f4ea;color:#137333}.gcal-chip.pend{background:#fef3e6;color:#b45309}
@@ -312,7 +313,16 @@ const FilaPartido = memo(function FilaPartido({ p, abriendo, acc }) {
                 <Watch size={14} color="#6c35de"/> Link reloj
               </button>
             )}
-            <button className="gcal-btn" onClick={() => acc.verTorneo(p.tournament_id)}>Ver torneo →</button>
+            {acc.editar && !esJugado && (
+              <button className="gcal-btn" onClick={() => acc.editar(p)}><Pencil size={14}/> Editar fecha y cancha</button>
+            )}
+            {acc.cargaRapida && (
+              <button className="gcal-btn" onClick={() => acc.cargaRapida(p)} title="Cargar goles y tarjetas a mano, rápido — para cuando el árbitro no llenó planilla">⚡ Carga rápida</button>
+            )}
+            {acc.eliminar && (
+              <button className="gcal-btn danger" onClick={() => acc.eliminar(p)}>Eliminar partido</button>
+            )}
+            {!acc.embebido && <button className="gcal-btn" onClick={() => acc.verTorneo(p.tournament_id)}>Ver torneo →</button>}
           </div>
         </div>
       )}
@@ -593,15 +603,20 @@ function linkGrupoVigente(m) {
 
 const porHora = (a, b) => (a.played_at ? new Date(a.played_at).getTime() : Infinity) - (b.played_at ? new Date(b.played_at).getTime() : Infinity)
 
-export default function AdminCalendarioPage() {
+// Si recibe `torneo` + `partidosExternos`, funciona "embebido" dentro de la
+// pestaña Calendario del torneo: usa los partidos que ya tiene esa pantalla,
+// no abre su propia planilla (usa la de la pantalla) y suma Editar / Carga
+// rápida / Eliminar a cada partido. Sin props es el calendario global de siempre.
+export default function AdminCalendarioPage({ torneo = null, partidosExternos = null, acciones = null }) {
+  const embebido = !!(torneo && partidosExternos)
   const navigate = useNavigate()
   const { user, rol } = useAuthStore()
   const esOrganizador = rol?.rol === 'organizador'
   const claveCache = esOrganizador ? `org:${user?.id}` : 'admin'
-  const hayCache = cacheCalendario.clave === claveCache
+  const hayCache = !embebido && cacheCalendario.clave === claveCache
   const [searchParams, setSearchParams] = useSearchParams()
-  const [partidos,        setPartidos]        = useState(() => hayCache ? cacheCalendario.partidos : [])
-  const [loading,         setLoading]         = useState(!hayCache)
+  const [partidosFetch,    setPartidos]        = useState(() => hayCache ? cacheCalendario.partidos : [])
+  const [loading,         setLoading]         = useState(!hayCache && !embebido)
   const [cargandoMas,     setCargandoMas]     = useState(false)
   const [errorCarga,      setErrorCarga]      = useState('')
   // Lo que la persona dejó puesto (Pendientes/Jugados, torneo, secciones
@@ -609,7 +624,8 @@ export default function AdminCalendarioPage() {
   // al volver de WhatsApp (o de copiar un link), todo queda donde estaba en
   // vez de tener que escoger el torneo y buscar el partido otra vez.
   const [filtro,          setFiltro]          = useEstadoUI('gm_ui_calendario_filtro', 'todos')
-  const [torneoFiltro,    setTorneoFiltro]    = useEstadoUI('gm_ui_calendario_torneo', '')
+  const [torneoFiltroUI,  setTorneoFiltro]    = useEstadoUI('gm_ui_calendario_torneo', '')
+  const torneoFiltro = embebido ? torneo.id : torneoFiltroUI
   const [abiertos,        setAbiertos]        = useEstadoUI('gm_ui_calendario_abiertos', {})
   const [busqueda,        setBusqueda]        = useState('')
   const [flyerPartido,    setFlyerPartido]    = useState(null)
@@ -622,15 +638,18 @@ export default function AdminCalendarioPage() {
   const [generandoLink,   setGenerandoLink]   = useState(false)
   // Ventana del botón Link reloj: { partido, conFaltas }
   const [relojModal,      setRelojModal]      = useState(null)
+  const partidosExt = useMemo(() => embebido ? partidosExternos.map(p => ({ ...p, tournaments: torneo })) : null, [embebido, partidosExternos, torneo])
+  const partidos = embebido ? partidosExt : partidosFetch
   const reqId = useRef(0)
   const ocupado = useRef(false)
 
-  useEffect(() => { fetchTodo(hayCache) }, [esOrganizador, user?.id])
+  useEffect(() => { if (!embebido) fetchTodo(hayCache) }, [esOrganizador, user?.id])
   // La planilla abierta queda marcada en la URL (?planilla=<id>): así, sin
   // importar qué haga el navegador al volver (recargar, matar la pestaña,
   // etc.), se reabre exactamente la misma planilla. Solo el botón "Salir"
   // (cerrarPlanilla) puede sacar de la planilla.
   useEffect(() => {
+    if (embebido) return
     const matchId = searchParams.get('planilla')
     if (matchId) {
       supabase.from('matches')
@@ -839,16 +858,20 @@ export default function AdminCalendarioPage() {
   // Acciones estables para las filas (así React no las vuelve a dibujar todas
   // cada vez que cambia algo de la pantalla): siempre llaman a la versión más reciente.
   const ultimo = useRef({})
-  useEffect(() => { ultimo.current = { handleLinkArbitro, abrirPlanilla, navigate } })
+  useEffect(() => { ultimo.current = { handleLinkArbitro, abrirPlanilla, navigate, acciones } })
   const acc = useMemo(() => ({
     flyer: p => setFlyerPartido(p),
     link: p => ultimo.current.handleLinkArbitro(p),
     reloj: p => setRelojModal({ partido: p, conFaltas: false }),
-    planilla: p => ultimo.current.abrirPlanilla(p),
+    planilla: p => ultimo.current.acciones?.planilla ? ultimo.current.acciones.planilla(p) : ultimo.current.abrirPlanilla(p),
     verTorneo: id => ultimo.current.navigate(`/admin/torneos/${id}`),
     flyerGrupo: ps => setFlyerGrupo({ torneo: construirTorneoFlyer(ps), partidos: ps }),
     toggle: (key, def) => setAbiertos(prev => ({ ...prev, [key]: !(prev[key] ?? def) })),
-  }), [setAbiertos])
+    embebido,
+    editar: embebido && acciones?.editar ? p => ultimo.current.acciones.editar(p) : null,
+    cargaRapida: embebido && acciones?.cargaRapida ? p => ultimo.current.acciones.cargaRapida(p) : null,
+    eliminar: embebido && acciones?.eliminar ? p => ultimo.current.acciones.eliminar(p) : null,
+  }), [setAbiertos, embebido, !!acciones?.editar, !!acciones?.cargaRapida, !!acciones?.eliminar])
 
   // ── Datos derivados (se recalculan solo cuando cambian de verdad) ──
   const torneosTodos = useMemo(() => agruparPorTorneo(partidos), [partidos])
@@ -869,11 +892,11 @@ export default function AdminCalendarioPage() {
 
   // El torneo recordado ya no existe / no es mío: se limpia el filtro
   useEffect(() => {
-    if (!loading && !cargandoMas && torneoFiltro && !torneosTodos.some(g => g.id === torneoFiltro)) setTorneoFiltro('')
+    if (!embebido && !loading && !cargandoMas && torneoFiltro && !torneosTodos.some(g => g.id === torneoFiltro)) setTorneoFiltro('')
   }, [loading, cargandoMas, torneoFiltro, torneosTodos, setTorneoFiltro])
 
   // Vuelve a la misma altura donde estaba cuando la lista ya cargó
-  useRestaurarScroll('gm_ui_calendario_scroll', !loading && partidos.length > 0)
+  useRestaurarScroll('gm_ui_calendario_scroll', !embebido && !loading && partidos.length > 0)
 
   const buscando = termino.length > 0
   const activos = torneosTodos.filter(g => g.torneo?.status === 'active')
@@ -886,7 +909,7 @@ export default function AdminCalendarioPage() {
         ? <FlyerResultadoAdmin partido={flyerPartido} onClose={() => setFlyerPartido(null)}/>
         : <FlyerPartido partido={flyerPartido} onClose={() => setFlyerPartido(null)}/>)}
       {flyerGrupo      && <FlyerProgramacion torneo={flyerGrupo.torneo} partidos={flyerGrupo.partidos} onClose={() => setFlyerGrupo(null)}/>}
-      {planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
+      {!embebido && planillaPartido && <PlanillaSegunPartido partido={planillaPartido} onClose={cerrarPlanilla}/>}
       {relojModal && <ModalLinkReloj modal={relojModal} generando={generandoLink}
         onCambiar={v => setRelojModal(m => m && ({ ...m, conFaltas: v }))}
         onConfirmar={confirmarLinkReloj} onClose={() => !generandoLink && setRelojModal(null)}/>}
@@ -894,10 +917,10 @@ export default function AdminCalendarioPage() {
         generando={generandoLink} onToggle={toggleSel} onToggleDia={toggleDia}
         onConfirmar={confirmarLinkModal} onClose={() => !generandoLink && setLinkModal(null)}/>}
 
-      <div style={{ marginBottom: '20px' }}>
+      {!embebido && <div style={{ marginBottom: '20px' }}>
         <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>{esOrganizador ? 'Mi calendario' : 'Calendario Global'}</h1>
         <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{esOrganizador ? 'Partidos de mis torneos' : 'Todos los partidos de todos los torneos'}</p>
-      </div>
+      </div>}
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -909,7 +932,7 @@ export default function AdminCalendarioPage() {
             </button>
           ))}
         </div>
-        <select value={torneoFiltro} onChange={e => setTorneoFiltro(e.target.value)}
+        {!embebido && <select value={torneoFiltro} onChange={e => setTorneoFiltro(e.target.value)}
           style={{ flex: '1 1 200px', minWidth: 0, minHeight: '40px', padding: '7px 12px', border: '1px solid #dadce0', borderRadius: '10px', fontSize: '.875rem', color: '#202124', outline: 'none', background: '#fff', maxWidth: '100%' }}>
           <option value="">Todos los torneos</option>
           {activos.length > 0 && (
@@ -922,13 +945,13 @@ export default function AdminCalendarioPage() {
               {otros.map(g => <option key={g.id} value={g.id}>{g.torneo?.name}</option>)}
             </optgroup>
           )}
-        </select>
+        </select>}
         <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 0, maxWidth: '360px' }}>
           <Search size={14} color="#9aa0a6" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}/>
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar equipo o cancha…"
             style={{ width: '100%', boxSizing: 'border-box', minHeight: '40px', padding: '7px 12px 7px 32px', border: '1px solid #dadce0', borderRadius: '10px', fontSize: '.875rem', color: '#202124', outline: 'none', background: '#fff' }}/>
         </div>
-        {torneoFiltro && filtrados.length > 0 && (
+        {!embebido && torneoFiltro && filtrados.length > 0 && (
           <button onClick={() => setFlyerGrupo({ torneo: construirTorneoFlyer(filtrados), partidos: filtrados })}
             style={{ background: '#6c35de', border: 'none', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}>
             <Image size={13}/> Crear flyer (todos)

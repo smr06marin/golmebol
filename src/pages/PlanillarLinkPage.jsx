@@ -7,7 +7,7 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 
 // Entrada pública (sin cuenta ni login) para que cualquiera que tenga el
 // link entre directo a planillar — el link es de 24h y lo genera el
-// organizador (ver botón "Link árbitro" en /admin/calendario).
+// organizador (ver botón "Link árbitro" en la pestaña Calendario de cada torneo).
 //
 // El link puede ser de UN partido (se muestra el partido grande y un botón
 // para entrar) o de VARIOS partidos del mismo torneo (link de grupo: se
