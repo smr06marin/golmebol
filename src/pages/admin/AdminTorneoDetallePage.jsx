@@ -2544,7 +2544,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     partidosW.forEach(m => {
       const presentaId = (m.home_score || 0) > (m.away_score || 0) ? m.home_team_id : m.away_team_id
       const ausenteId  = presentaId === m.home_team_id ? m.away_team_id : m.home_team_id
-      if (porEquipo[presentaId]) porEquipo[presentaId].w     += fc.valor_w_presenta || 0
+      // Quien gana por W ya pagó ese W para poder jugar: no queda como deuda
+      // (por eso `w` se queda en 0). Solo se cobra multa al que no se presentó.
       if (porEquipo[ausenteId])  porEquipo[ausenteId].multas += fc.multa_no_presenta || 0
     })
 
@@ -2721,7 +2722,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   function cambiarTipoPago(tipo) {
     const sugerido = tipo === 'pago_tarjetas' && tarjetasAPagar.length > 0 ? montoTarjetasMarcadas(tarjetasAPagar) : 0
     if (tipo !== 'pago_tarjetas') setTarjetasAPagar([])
-    setPagoForm(f => ({ ...f, tipo, monto: sugerido > 0 ? String(Math.round(sugerido)) : '', concepto: (f.concepto || '').startsWith('Tarjeta') ? '' : f.concepto }))
+    setPagoForm(f => ({ ...f, tipo, modo: '', monto: sugerido > 0 ? String(Math.round(sugerido)) : '', concepto: (f.concepto || '').startsWith('Tarjeta') ? '' : f.concepto }))
+  }
+
+  // Casillas "Pago total" / "Abono" de multas e inscripción: el total llena
+  // el monto con lo que falta; el abono lo deja vacío para escribir el valor.
+  function seleccionarModoPago(modo, saldo) {
+    setPagoForm(f => f.modo === modo
+      ? { ...f, modo: '', monto: '' }
+      : { ...f, modo, monto: modo === 'total' && saldo > 0 ? String(Math.round(saldo)) : '' })
   }
 
   async function handleRegistrarPago() {
@@ -2733,8 +2742,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
       concepto: pagoForm.concepto || (esDeuda ? 'Deuda anotada'
         : pagoForm.tipo === 'pago_tarjetas' ? 'Pago de tarjetas'
-        : pagoForm.tipo === 'abono_inscripcion' ? 'Abono a inscripción'
-        : 'Pago de W/multa'),
+        : pagoForm.tipo === 'abono_inscripcion' ? (pagoForm.modo === 'total' ? 'Pago total de inscripción' : 'Abono a inscripción')
+        : (pagoForm.modo === 'total' ? 'Pago total de multa' : pagoForm.modo === 'abono' ? 'Abono a multa' : 'Pago de W/multa')),
     })
     if (error) { setGuardandoPago(false); return showMsg(errorAmigable(error, 'No se pudo registrar el pago'), 'error') }
 
@@ -7283,7 +7292,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         ? { k: 'inscripcion_jugador', l: '📝 Inscripción por JUGADOR' }
                         : { k: 'inscripcion',         l: '📝 Inscripción por equipo' },
                       { k: 'arbitraje_equipo',     l: '🧑‍⚖️ Arbitraje por equipo/partido' },
-                      { k: 'valor_w_presenta',     l: '🏆 Cobro al que gana por W' },
                       { k: 'multa_no_presenta',    l: '⛔ Multa al que no se presenta' },
                       { k: 'pago_cancha_partido',  l: '🏟️ Gasto cancha por partido (por defecto)' },
                       { k: 'pago_cancha_w',        l: '🏟️ Gasto cancha por W (por defecto)' },
@@ -7370,7 +7378,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   lineas.push({
                     clave: 'multa', etiqueta: '⛔ Multa / W', valor: r.saldoMultas,
                     detalle: [
-                      r.w > 0 ? `W: ${fmt(r.w)}` : null,
                       r.multas > 0 ? `Multa por no presentarse: ${fmt(r.multas)}` : null,
                       r.deudas > 0 ? `Deudas anotadas: ${fmt(r.deudas)}` : null,
                       r.pagosMultas > 0 ? `ya pagó ${fmt(r.pagosMultas)}` : null,
@@ -8227,6 +8234,31 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   Este pago cubre <b>W y multas</b> (cobro por ganar/perder W, o deudas anotadas a mano) — es una cuenta aparte, no se mezcla con arbitrajes, tarjetas ni inscripción.
                 </div>
               )}
+              {(pagoForm.tipo === 'pago_cargos' || pagoForm.tipo === 'abono_inscripcion') && (() => {
+                const filaEq = calcFinanzas().filas.find(r => r.equipo.id === pagoModal.id)
+                const esInsc = pagoForm.tipo === 'abono_inscripcion'
+                const saldo = Math.max(0, (esInsc ? filaEq?.saldoInscripcion : filaEq?.saldoMultas) || 0)
+                const opciones = [
+                  { k: 'total', titulo: esInsc ? 'Pago total de la inscripción' : 'Pago total de la multa', sub: saldo > 0 ? `Debe ${fmt(saldo)}` : 'No debe nada por ahora', off: saldo <= 0 },
+                  { k: 'abono', titulo: 'Abono', sub: 'Escribe el valor que entregan', off: false },
+                ]
+                return (
+                  <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {opciones.map(o => {
+                      const on = pagoForm.modo === o.k
+                      return (
+                        <label key={o.k} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', minHeight: '48px', borderRadius: '10px', cursor: o.off ? 'not-allowed' : 'pointer', opacity: o.off ? .5 : 1, border: on ? '2px solid #1a73e8' : '1px solid #dadce0', background: on ? '#e8f0fe' : '#fff' }}>
+                          <input type="checkbox" checked={on} disabled={o.off} onChange={() => seleccionarModoPago(o.k, saldo)} style={{ width: '18px', height: '18px', flexShrink: 0 }}/>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>{o.titulo}</span>
+                            <span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368' }}>{o.sub}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
               {pagoForm.tipo === 'pago_tarjetas' && (() => {
                 // Lista de tarjetas sin pagar de este equipo (de pendientesTarjetas,
                 // que sí refleja yellow_paid/blue_paid/red_paid en vivo) — marcar
@@ -8259,7 +8291,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               })()}
               <div style={{ marginBottom: '12px' }}>
                 <label style={labelStyle}>Monto ($) *</label>
-                <input type="text" inputMode="numeric" value={formatMiles(pagoForm.monto)} onChange={e => setPagoForm(f => ({ ...f, monto: soloDigitos(e.target.value) }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
+                <input type="text" inputMode="numeric" value={formatMiles(pagoForm.monto)} onChange={e => setPagoForm(f => ({ ...f, monto: soloDigitos(e.target.value), modo: f.modo === 'total' ? 'abono' : f.modo }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
               </div>
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>Concepto (opcional)</label>
