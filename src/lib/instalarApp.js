@@ -2,16 +2,15 @@
 // Sabe qué celular y qué navegador es, si ya está instalada y si el navegador permite instalar con un solo toque.
 import { Capacitor } from '@capacitor/core'
 
-const K_INSTALADA = 'gm_app_instalada'   // se guarda cuando ya la instaló (o dijo "ya la instalé")
-const K_CERRADO = 'gm_instalar_cerrado'  // cuándo cerró el aviso con "Ahora no"
-const DIAS_SIN_MOLESTAR = 3
+const K_CERRADO = 'gm_instalar_cerrado_visita'  // cerró el aviso: no vuelve a salir en ESTA visita (al volver a entrar sale otra vez)
+const VIEJAS = ['gm_app_instalada', 'gm_instalar_cerrado']  // claves de la versión anterior, ya no se usan
 
 let promptDiferido = null
 const escuchas = new Set()
 const avisar = () => escuchas.forEach(f => { try { f() } catch { /* nada */ } })
 
-function leer(k) { try { return localStorage.getItem(k) } catch { return null } }
-function guardar(k, v) { try { localStorage.setItem(k, v) } catch { /* modo privado: no pasa nada */ } }
+function leerVisita(k) { try { return sessionStorage.getItem(k) } catch { return null } }
+function guardarVisita(k, v) { try { sessionStorage.setItem(k, v) } catch { /* modo privado: no pasa nada */ } }
 
 // Se llama una vez al arrancar la app: guarda el aviso de "instalar" que lanza Chrome en Android
 // (sale solo, a veces antes de que se dibuje la pantalla) y detecta cuando ya quedó instalada.
@@ -19,8 +18,9 @@ let iniciado = false
 export function iniciarInstalacion() {
   if (iniciado || typeof window === 'undefined') return
   iniciado = true
+  try { VIEJAS.forEach(k => localStorage.removeItem(k)) } catch { /* nada */ }
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptDiferido = e; avisar() })
-  window.addEventListener('appinstalled', () => { guardar(K_INSTALADA, '1'); promptDiferido = null; avisar() })
+  window.addEventListener('appinstalled', () => { promptDiferido = null; avisar() })
 }
 
 export function alCambiar(fn) { escuchas.add(fn); return () => escuchas.delete(fn) }
@@ -32,29 +32,32 @@ export async function instalarDirecto() {
     promptDiferido.prompt()
     const r = await promptDiferido.userChoice
     promptDiferido = null
-    if (r?.outcome === 'accepted') { guardar(K_INSTALADA, '1'); avisar(); return true }
+    if (r?.outcome === 'accepted') { avisar(); return true }
   } catch { /* el navegador no dejó */ }
   avisar()
   return false
 }
 
-export function marcarInstalada() { guardar(K_INSTALADA, '1'); avisar() }
-export function posponer() { guardar(K_CERRADO, String(Date.now())); avisar() }
+export function posponer() { guardarVisita(K_CERRADO, '1'); avisar() }
+export const fuePospuesta = () => leerVisita(K_CERRADO) === '1'
 
+// "Instalada" = se está abriendo DESDE la app (pantalla de inicio / app nativa). Abierta en el navegador, el aviso siempre sale.
 export function estaInstalada() {
   try { if (Capacitor.isNativePlatform()) return true } catch { /* nada */ }
   try {
-    if (window.matchMedia?.('(display-mode: standalone)').matches || window.matchMedia?.('(display-mode: fullscreen)').matches || window.navigator.standalone === true) {
-      guardar(K_INSTALADA, '1')
-      return true
-    }
-  } catch { /* nada */ }
-  return leer(K_INSTALADA) === '1'
+    return !!(window.matchMedia?.('(display-mode: standalone)').matches || window.matchMedia?.('(display-mode: fullscreen)').matches || window.navigator.standalone === true)
+  } catch { return false }
 }
 
-export function fuePospuesta() {
-  const t = parseInt(leer(K_CERRADO) || '0', 10)
-  return !!t && Date.now() - t < DIAS_SIN_MOLESTAR * 86400000
+// Copia el enlace de Golmebol (para pegarlo en Safari)
+export async function copiarEnlace() {
+  const url = 'https://golmebol.com'
+  try { await navigator.clipboard.writeText(url); return true } catch { /* sigue abajo */ }
+  try {
+    const t = document.createElement('textarea'); t.value = url; t.style.position = 'fixed'; t.style.opacity = '0'
+    document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); document.body.removeChild(t)
+    return !!ok
+  } catch { return false }
 }
 
 // Qué celular y qué navegador es
@@ -105,26 +108,21 @@ export function pasosParaInstalar(d, directo) {
     }
   }
   if (d.esIOS) {
-    if (d.navegador === 'firefox-ios' || d.navegador === 'opera-ios') {
-      return {
-        titulo: 'iPhone · ' + (d.navegador === 'firefox-ios' ? 'Firefox' : 'Opera'),
-        pasos: [
-          { escena: { tipo: 'icono', nombre: 'copiar' }, titulo: 'Copia el enlace golmebol.com', texto: 'En este navegador no se puede instalar.' },
-          { escena: { tipo: 'icono', nombre: 'safari' }, titulo: 'Ábrelo en Safari', texto: 'Safari es el navegador azul con una brújula. Pega el enlace y entra.' },
-          { escena: { tipo: 'icono', nombre: 'celular' }, titulo: 'Vuelve a tocar «Ver cómo»', texto: 'Ya en Safari, esta guía te muestra los pasos.' },
-        ],
-      }
-    }
-    const esSafari = d.navegador === 'safari'
+    const pasosSafari = [
+      { escena: { tipo: 'barra-abajo', iconos: ['atras', 'adelante', 'compartir', 'libro', 'pestanas'], objetivo: 2 }, titulo: 'Toca el botón «Compartir»', texto: 'Es el cuadrito con una flecha hacia arriba. Si solo ves tres puntos (⋯), tócalos y luego «Compartir».' },
+      { escena: { tipo: 'menu', filas: ['Copiar', 'Agregar a marcadores', 'Agregar a pantalla de inicio', 'Buscar en la página'], objetivo: 2 }, titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Desliza el menú hacia abajo con el dedo hasta verla.' },
+      { escena: { tipo: 'dialogo-ios', boton: 'Agregar' }, titulo: 'Toca «Agregar»', texto: 'Está arriba a la derecha.' },
+      inicio,
+    ]
+    if (d.navegador === 'safari') return { titulo: 'iPhone · Safari', pasos: pasosSafari }
+    // En iPhone la app SOLO se instala desde Safari: si está en otro navegador (Chrome, Firefox, el de WhatsApp…) primero hay que pasarse a Safari
     return {
-      titulo: 'iPhone · ' + (esSafari ? 'Safari' : d.navegador === 'chrome-ios' ? 'Chrome' : 'Edge'),
+      titulo: 'iPhone · hay que usar Safari',
       pasos: [
-        esSafari
-          ? { escena: { tipo: 'barra-abajo', iconos: ['atras', 'adelante', 'compartir', 'libro', 'pestanas'], objetivo: 2 }, titulo: 'Toca el botón «Compartir»', texto: 'Es el cuadrito con una flecha hacia arriba. Si solo ves tres puntos (⋯), tócalos y luego «Compartir».' }
-          : { escena: { tipo: 'barra-arriba', objetivo: 'compartir' }, titulo: 'Toca el botón «Compartir»', texto: 'Es el cuadrito con una flecha hacia arriba, arriba a la derecha. Si no lo ves, abre golmebol.com en Safari.' },
-        { escena: { tipo: 'menu', filas: ['Copiar', 'Agregar a marcadores', 'Agregar a pantalla de inicio', 'Buscar en la página'], objetivo: 2 }, titulo: 'Toca «Agregar a pantalla de inicio»', texto: 'Desliza el menú hacia abajo con el dedo hasta verla.' },
-        { escena: { tipo: 'dialogo-ios', boton: 'Agregar' }, titulo: 'Toca «Agregar»', texto: 'Está arriba a la derecha.' },
-        inicio,
+        { escena: { tipo: 'safari-inicio' }, titulo: 'En iPhone se instala desde Safari', texto: 'Safari es el navegador azul con una brújula que ya trae tu iPhone. Búscalo y ábrelo.' },
+        { escena: { tipo: 'copiar' }, accion: 'copiar', titulo: 'Copia el enlace de Golmebol', texto: 'Toca el botón de abajo. Después lo pegas en Safari.' },
+        { escena: { tipo: 'direccion' }, titulo: 'En Safari, pega el enlace y entra', texto: 'Toca la barra de abajo, mantén el dedo, elige «Pegar y buscar». Cuando cargue Golmebol, esta guía te sigue explicando.' },
+        ...pasosSafari,
       ],
     }
   }

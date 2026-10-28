@@ -7,7 +7,7 @@ import {
   Share, MoreVertical, MoreHorizontal, Menu, ExternalLink, Smartphone, Copy, Compass, X, Lock,
   ChevronLeft, ChevronRight, BookOpen, Copy as Pestanas, Home, Plus, ArrowDown, ArrowUp, ArrowRight, Check,
 } from 'lucide-react'
-import { iniciarInstalacion, alCambiar, puedeInstalarDirecto, instalarDirecto, marcarInstalada, posponer, estaInstalada, fuePospuesta, detectarDispositivo, pasosParaInstalar } from '../lib/instalarApp'
+import { iniciarInstalacion, alCambiar, puedeInstalarDirecto, instalarDirecto, copiarEnlace, posponer, estaInstalada, fuePospuesta, detectarDispositivo, pasosParaInstalar } from '../lib/instalarApp'
 
 const RUTAS = ['/', '/torneos', '/jugador/login', '/jugador', '/arbitro']
 const ROJO = '#ff2d55'
@@ -62,6 +62,18 @@ function Objetivo({ children, redondo = true, estilo }) {
     <div className="gm-late" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: redondo ? '50%' : 10, ...estilo }}>
       {children}
     </div>
+  )
+}
+
+function SafariLogo({ size = 48 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-label="Safari" role="img" style={{ display: 'block' }}>
+      <defs><linearGradient id="gmSaf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2fd3ff"/><stop offset="1" stopColor="#0a63f0"/></linearGradient></defs>
+      <circle cx="50" cy="50" r="48" fill="url(#gmSaf)"/>
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#fff" strokeWidth="2.5" strokeDasharray="1.2 5.6" strokeLinecap="round"/>
+      <g transform="rotate(45 50 50)"><polygon points="50,16 59,50 41,50" fill="#ff3b30"/><polygon points="50,84 59,50 41,50" fill="#fff"/></g>
+      <circle cx="50" cy="50" r="3.2" fill="#fff"/>
+    </svg>
   )
 }
 
@@ -177,6 +189,46 @@ function Escena({ e }) {
       </div>
     )
   }
+  if (e.tipo === 'safari-inicio') {
+    return (
+      <div style={{ ...pantalla, background: 'linear-gradient(160deg,#1b3a6b,#2b1d5c)' }}>
+        <div style={{ position: 'absolute', inset: 0, padding: '22px 14px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gridTemplateRows: 'repeat(3, 1fr)', gap: 10, justifyItems: 'center', alignItems: 'center' }}>
+          {Array.from({ length: 12 }, (_, i) => i).map(i => i === 6 ? (
+            <div key={i} style={{ position: 'relative' }}>
+              <div className="gm-late" style={{ borderRadius: 16, border: `2px solid ${ROJO}`, padding: 2, display: 'flex' }}><SafariLogo size={46}/></div>
+              <Flecha dir="arriba" estilo={{ top: 56, left: '50%', marginLeft: -26 }}/>
+            </div>
+          ) : <div key={i} style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255,255,255,.16)' }}/>)}
+        </div>
+      </div>
+    )
+  }
+  if (e.tipo === 'copiar') {
+    return (
+      <div style={{ ...pantalla, background: '#121827', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1c2438', border: '1px solid #2a3347', borderRadius: 14, padding: '12px 16px' }}>
+          <img src="/icon-192.png" alt="" width={34} height={34} style={{ borderRadius: 8 }}/>
+          <b style={{ fontSize: 19 }}>golmebol.com</b>
+        </div>
+        <Copy size={30} color="#00ddd0"/>
+      </div>
+    )
+  }
+  if (e.tipo === 'direccion') {
+    return (
+      <div style={pantalla}>
+        {pagina}
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 62, background: '#fff', borderTop: '1px solid #cfd6e2', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px' }}>
+          <div style={{ position: 'relative', width: '100%' }}>
+            <Objetivo redondo={false} estilo={{ width: '100%', height: 38, borderRadius: 19, background: 'rgba(255,45,85,.1)', border: `2px solid ${ROJO}`, justifyContent: 'flex-start', gap: 8, padding: '0 14px', boxSizing: 'border-box', color: '#444', fontWeight: 700, fontSize: 15 }}>
+              <Lock size={13}/> golmebol.com
+            </Objetivo>
+            <Flecha dir="abajo" estilo={{ bottom: 46, left: '50%', marginLeft: -26 }}/>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (e.tipo === 'inicio') {
     const casillas = Array.from({ length: 12 }, (_, i) => i)
     return (
@@ -206,6 +258,7 @@ export default function InstalarApp() {
   const [visible, setVisible] = useState(false)
   const [abierta, setAbierta] = useState(false)
   const [paso, setPaso] = useState(0)
+  const [copiado, setCopiado] = useState(false)
 
   useEffect(() => { iniciarInstalacion(); return alCambiar(() => forzar(n => n + 1)) }, [])
   // Sale unos segundos después de entrar, para no tapar la carga de la pantalla
@@ -277,6 +330,13 @@ export default function InstalarApp() {
 
         <Escena key={paso} e={actual.escena}/>
 
+        {actual.accion === 'copiar' && (
+          <button onClick={async () => { const ok = await copiarEnlace(); setCopiado(ok); if (!ok) window.prompt?.('Copia este enlace:', 'https://golmebol.com') }}
+            style={{ width: '100%', marginTop: 12, background: copiado ? '#1e8e3e' : '#fff', color: copiado ? '#fff' : '#0b0f17', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {copiado ? <><Check size={20}/> ¡Copiado! Ahora abre Safari</> : <><Copy size={20}/> Copiar enlace</>}
+          </button>
+        )}
+
         {actual.texto ? <div style={{ color: '#b4bed2', fontSize: '1.05rem', lineHeight: 1.3, textAlign: 'center', margin: '12px 6px 0' }}>{actual.texto}</div> : null}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
@@ -292,9 +352,9 @@ export default function InstalarApp() {
               Siguiente
             </button>
           ) : (
-            <button onClick={() => { marcarInstalada(); cerrar() }}
+            <button onClick={() => { posponer(); cerrar() }}
               style={{ flex: 2, background: '#00ddd0', color: '#04211f', border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              <Check size={20}/> ¡Ya la instalé!
+              <Check size={20}/> Listo
             </button>
           )}
         </div>
