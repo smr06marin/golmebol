@@ -71,3 +71,32 @@ export async function descargarFlyer(container, { filename, opcionesCanvas = {},
   const blob = await capturarFlyerBlob(container, opcionesCanvas)
   await compartirOBajarBlob(blob, { filename, shareTitle, shareText })
 }
+
+// Igual que compartirOBajarBlob pero con VARIAS imágenes (flyer que se reparte
+// en varias páginas): en el celular se mandan todas juntas a la hoja de
+// compartir; si no se puede, se descargan una por una.
+export async function compartirOBajarBlobs(items, { shareTitle, shareText } = {}) {
+  const lista = (items || []).filter(i => i?.blob)
+  if (!lista.length) return
+  if (lista.length === 1) return compartirOBajarBlob(lista[0].blob, { filename: lista[0].filename, shareTitle, shareText })
+  if (navigator.canShare && navigator.share) {
+    const files = lista.map(i => new File([i.blob], i.filename, { type: 'image/png' }))
+    if (navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files, title: shareTitle || lista[0].filename, ...(shareText ? { text: shareText } : {}) })
+        return
+      } catch (e) {
+        if (e?.name === 'AbortError') return
+      }
+    }
+  }
+  for (const i of lista) {
+    const url = URL.createObjectURL(i.blob)
+    const a = document.createElement('a')
+    a.download = i.filename
+    a.href = url
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 4000)
+    await new Promise(r => setTimeout(r, 400))
+  }
+}

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { AlertTriangle, CheckCircle2, Lock, RefreshCw, Shield } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Image as ImageIcon, Lock, RefreshCw, Shield } from 'lucide-react'
+import FlyerDeudoresTarjetas from '../components/FlyerDeudoresTarjetas'
 
 // Entrada pública (con contraseña si el torneo la tiene puesta) para ver
 // quién debe tarjeta en un torneo, filtrar por equipo y registrar el pago
@@ -61,6 +62,7 @@ export default function DeudoresTarjetasLinkPage() {
   const [pagando, setPagando] = useState(null) // player_id en proceso
   const [msg, setMsg] = useState(null)
   const [actualizando, setActualizando] = useState(false)
+  const [verFlyer, setVerFlyer] = useState(false)
   const primeraCarga = useRef(true)
 
   // ── Paso 1: ¿este torneo pide contraseña? ───────────────────────────────
@@ -267,6 +269,13 @@ export default function DeudoresTarjetasLinkPage() {
             : <>{historialFiltrado.length} pago{historialFiltrado.length !== 1 ? 's' : ''} · {totalTarjetas} tarjeta{totalTarjetas !== 1 ? 's' : ''} · Total recogido <b style={{ color: S.green }}>{fmt(totalPagado)}</b></>}
         </div>
 
+        {tab === 'deben' && filtrados.length > 0 && (
+          <button onClick={() => setVerFlyer(true)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '14px', padding: '11px', background: S.gold, border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#1a1a1a', fontWeight: 800, fontSize: '.85rem' }}>
+            <ImageIcon size={16}/> Crear flyer para enviar a los grupos
+          </button>
+        )}
+
         {msg && (
           <div style={{ padding: '10px 14px', borderRadius: '10px', marginBottom: '14px', fontSize: '.82rem', fontWeight: 700,
             background: msg.tipo === 'error' ? 'rgba(217,48,37,.15)' : 'rgba(34,197,94,.15)',
@@ -355,6 +364,14 @@ export default function DeudoresTarjetasLinkPage() {
           </>
         )}
       </div>
+      {verFlyer && (
+        <FlyerDeudoresTarjetas
+          torneo={data.torneo}
+          deudores={filtrados}
+          subtituloEquipo={equipoFiltro ? (equipos.find(e => e.id === equipoFiltro)?.nombre || '') : ''}
+          onClose={() => setVerFlyer(false)}
+        />
+      )}
     </div>
   )
 }
