@@ -286,6 +286,22 @@ const ESTILOS_FORM_PARTIDO = `
   .gpf-vs::before,.gpf-vs::after{content:'';flex:1;height:1px;background:#e8eaed}
 }
 `
+const ESTILOS_CAL_TORNEO = `
+.gcz-sec{font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#80868b;margin:4px 2px 10px}
+.gcz-opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.gcz-opt{text-align:left;background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:14px 16px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;font-family:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);min-width:0}
+.gcz-opt.on{border:2px solid #1a73e8;background:#f5f9ff;padding:13px 15px}
+.gcz-ico{width:42px;height:42px;border-radius:12px;background:#e8f0fe;color:#1a73e8;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gcz-t{font-weight:700;color:#202124;font-size:.95rem;line-height:1.25}
+.gcz-d{font-size:.78rem;color:#5f6368;line-height:1.4;margin-top:3px}
+.gcz-prog{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 2px 16px;font-size:.8rem;color:#5f6368}
+.gcz-flyer{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #1e8e3e;color:#1e8e3e;border-radius:9px;min-height:38px;padding:0 14px;font-size:.8rem;font-weight:700;font-family:inherit;cursor:pointer}
+.gcz-canchas-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.gcz-canchas-grid input{min-width:0;width:100%;box-sizing:border-box;min-height:44px}
+.gcz-add{margin-top:10px;width:100%;min-height:44px;background:#1a73e8;border:0;border-radius:10px;color:#fff;font-weight:700;font-size:.86rem;font-family:inherit;cursor:pointer}
+.gcz-ayuda{font-size:.76rem;color:#5f6368;line-height:1.4;margin:-4px 0 12px}
+@media (max-width:600px){.gcz-opts{grid-template-columns:minmax(0,1fr)}.gcz-canchas-grid{grid-template-columns:minmax(0,1fr)}}
+`
 const NOMBRE_FASE_CHIP = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final', tercer_puesto: '3.er puesto', otro: 'Otra fase' }
 const FASES_CON_LLAVE = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto']
 const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final', otra:'✨ Otra fase' }
@@ -1124,6 +1140,7 @@ export default function AdminTorneoDetallePage() {
   // La pestaña Grupos solo tiene sentido si el torneo es por grupos: un todos contra todos
   // (un solo grupo) o una eliminación directa no la necesitan.
   const mostrarGrupos = !(['Todos contra todos', 'Eliminación directa'].includes(torneo?.formato) && grupos.length <= 1)
+  const [canchasAbiertas, setCanchasAbiertas] = useState(false) // lista de canchas plegada cuando ya hay canchas
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
@@ -5558,10 +5575,26 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       {/* ── TAB CALENDARIO ── */}
       {tab === 'calendario' && (
         <div>
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <MapPin size={15} color="#1a73e8"/> Canchas
+          <style>{ESTILOS_CAL_TORNEO}</style>
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 18px', marginBottom: '18px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: (canchasAbiertas || canchas.length === 0) ? '10px' : 0 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MapPin size={16} color="#1a73e8"/> Canchas del torneo
+                </div>
+                {canchas.length > 0 && !canchasAbiertas && (
+                  <div style={{ fontSize: '.76rem', color: '#5f6368', marginTop: '3px' }}>{canchas.length} cancha{canchas.length !== 1 ? 's' : ''}: {canchas.map(c => c.nombre).join(', ')}</div>
+                )}
+              </div>
+              {canchas.length > 0 && (
+                <button type="button" onClick={() => setCanchasAbiertas(v => !v)} aria-expanded={canchasAbiertas}
+                  style={{ flexShrink: 0, background: '#fff', border: '1px solid #dadce0', borderRadius: '9px', minHeight: '38px', padding: '0 14px', color: '#1a73e8', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                  {canchasAbiertas ? 'Cerrar' : 'Ver / editar'}
+                </button>
+              )}
             </div>
+            {(canchasAbiertas || canchas.length === 0) && (<>
+            <div className="gcz-ayuda">Son los lugares donde se juega. Agrégalos primero: los necesitas para programar los partidos.</div>
             {(() => {
               const grupos_ = {}
               canchas.forEach(c => { const k = c.escenario || 'Sin sede'; (grupos_[k] = grupos_[k] || []).push(c) })
@@ -5585,38 +5618,50 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 </div>
               )
             })()}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input value={nuevaCanchaEscenario} onChange={e => setNuevaCanchaEscenario(e.target.value)} placeholder="Sede/escenario (opcional, ej: Centegol)..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleAgregarCancha()}/>
-              <input value={nuevaCancha} onChange={e => setNuevaCancha(e.target.value)} placeholder="Nombre de la cancha..." style={{ ...inputStyle, flex: 1 }} onKeyDown={e => e.key === 'Enter' && handleAgregarCancha()}/>
-              <button onClick={handleAgregarCancha} style={{ padding: '8px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem' }}>+ Agregar</button>
+            <div className="gcz-canchas-grid">
+              <div>
+                <label style={labelStyle}>Sede (opcional)</label>
+                <input value={nuevaCanchaEscenario} onChange={e => setNuevaCanchaEscenario(e.target.value)} placeholder="Ej: Centegol" style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAgregarCancha()}/>
+              </div>
+              <div>
+                <label style={labelStyle}>Nombre de la cancha</label>
+                <input value={nuevaCancha} onChange={e => setNuevaCancha(e.target.value)} placeholder="Ej: Cancha 1" style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleAgregarCancha()}/>
+              </div>
             </div>
+            <button type="button" className="gcz-add" onClick={handleAgregarCancha}>+ Agregar cancha</button>
+            </>)}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {['partidos','jornada'].map(st => (
-                <button key={st} onClick={() => setSubTab(st)}
-                  style={{ padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '.875rem', fontWeight: '500', background: subTab === st ? '#1a73e8' : '#fff', color: subTab === st ? '#fff' : '#5f6368', border: subTab === st ? 'none' : '1px solid #dadce0' }}>
-                  {st === 'partidos' ? 'Crear Partido' : 'Jornada Automática'}
-                </button>
-              ))}
-            </div>
-            {partidos.length > 0 && (
-              <button onClick={() => setShowFlyerProgramacion(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1e8e3e', border: 'none', borderRadius: '8px', padding: '7px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
-                <ImageIcon size={16}/> Crear flyer
-              </button>
-            )}
+          <div className="gcz-sec">¿Qué quieres hacer?</div>
+          <div className="gcz-opts">
+            <button type="button" className={`gcz-opt ${subTab === 'partidos' ? 'on' : ''}`} aria-pressed={subTab === 'partidos'}
+              onClick={() => { setSubTab('partidos'); setShowFormPartido(true) }}>
+              <span className="gcz-ico"><Plus size={22}/></span>
+              <span style={{ minWidth: 0 }}>
+                <span className="gcz-t" style={{ display: 'block' }}>Crear un solo partido</span>
+                <span className="gcz-d" style={{ display: 'block' }}>Eliges tú los dos equipos, el día, la hora y la cancha. Sirve para un partido suelto o de eliminatorias.</span>
+              </span>
+            </button>
+            <button type="button" className={`gcz-opt ${subTab === 'jornada' ? 'on' : ''}`} aria-pressed={subTab === 'jornada'}
+              onClick={() => setSubTab('jornada')}>
+              <span className="gcz-ico"><Shuffle size={22}/></span>
+              <span style={{ minWidth: 0 }}>
+                <span className="gcz-t" style={{ display: 'block' }}>Armar una jornada completa</span>
+                <span className="gcz-d" style={{ display: 'block' }}>El sistema sortea todos los cruces de la jornada y los reparte solo en los días, canchas y horarios que marques.</span>
+              </span>
+            </button>
           </div>
+          {partidos.length > 0 && (
+            <div className="gcz-prog">
+              <span><b style={{ color: '#202124' }}>{partidos.length}</b> partido{partidos.length !== 1 ? 's' : ''} programado{partidos.length !== 1 ? 's' : ''}</span>
+              <button type="button" className="gcz-flyer" onClick={() => setShowFlyerProgramacion(true)}>
+                <ImageIcon size={16}/> Crear flyer de la programación
+              </button>
+            </div>
+          )}
 
           {subTab === 'partidos' && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-                <button onClick={() => setShowFormPartido(!showFormPartido)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
-                  <Plus size={16}/> Crear partido
-                </button>
-              </div>
               {showFormPartido && (
                 <div className="gpf">
                   <style>{ESTILOS_FORM_PARTIDO}</style>
