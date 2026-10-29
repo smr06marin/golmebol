@@ -13,13 +13,12 @@ import { EnVivoEstilos, Escudo, PieGolmebol } from './enVivoUI'
 
 const MAX_LINEAS = 5
 
-// "Danilo López" -> "Danilo L." · "Juan David Pérez Gómez" -> "Juan P." (primer nombre
-// + inicial del primer apellido; con 4 palabras el apellido es la tercera).
+// Nombre COMPLETO, sin iniciales ni cortes: "Danilo López" · "Juan David Pérez" · con 4 o más
+// palabras ("Juan David Pérez Gómez") se deja primer nombre + primer apellido: "Juan Pérez".
 function nombreCorto(nombre) {
   const p = String(nombre || '').trim().split(/\s+/).filter(Boolean)
-  if (p.length < 2) return p[0] || ''
-  const apellido = p.length >= 4 ? p[2] : p[p.length - 1]
-  return `${p[0]} ${apellido.charAt(0)}.`
+  if (p.length <= 3) return p.join(' ')
+  return `${p[0]} ${p[2]}`
 }
 
 // Minuto "corrido" del partido, sin decir primer/segundo tiempo: el reloj del 2.º

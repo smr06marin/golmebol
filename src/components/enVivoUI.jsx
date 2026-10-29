@@ -80,7 +80,7 @@ export const CSS_EV = `
 .ev-bt-fila { display: grid; grid-template-columns: 1fr calc(var(--u) * 17) 1fr; align-items: stretch; }
 .ev-bt-fgol { padding-top: calc(var(--u) * 1.6); border-bottom: 1px solid var(--linea); padding-bottom: calc(var(--u) * 1.2); }
 .ev-bt-gs { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: calc(var(--u) * .5); padding: 0 calc(var(--u) * 3); min-width: 0; }
-.ev-bt-g { display: block; white-space: nowrap; text-align: center; max-width: 100%; min-width: 0; font-weight: 600; text-transform: uppercase; font-size: calc(var(--u) * 2.9); letter-spacing: .01em; line-height: 1.25; }
+.ev-bt-g { display: block; white-space: normal; text-align: center; max-width: 100%; min-width: 0; font-weight: 600; text-transform: uppercase; font-size: calc(var(--u) * 2.9); letter-spacing: .01em; line-height: 1.25; }
 .ev-bt-gj { }
 .ev-bt-gn { color: var(--tenue); font-weight: 800; }
 .ev-bt-balon { display: inline-block; width: 1em; height: 1em; vertical-align: -.14em; margin-right: .22em; }
@@ -147,7 +147,9 @@ export const CSS_EV = `
 .ev-av-ct b { font-weight: 800; font-size: calc(var(--u) * 9); line-height: 1; }
 .ev-av-ct span { font-weight: 800; font-size: calc(var(--u) * 2.7); letter-spacing: .08em; text-transform: uppercase; margin-top: calc(var(--u) * .4); }
 .ev-av-ct i { font-style: normal; font-weight: 700; font-size: calc(var(--u) * 1.9); letter-spacing: .04em; text-transform: uppercase; opacity: .8; margin-top: calc(var(--u) * .3); white-space: nowrap; }
-.ev-av-nom { font-weight: 800; font-size: calc(var(--u) * 5.6); line-height: 1.12; text-transform: uppercase; letter-spacing: 0; }
+.ev-av-nom { font-weight: 800; font-size: calc(var(--u) * 5.6); line-height: 1.12; text-transform: uppercase; letter-spacing: 0; min-width: 0; white-space: normal; overflow-wrap: break-word; }
+.ev-av-nom.largo { font-size: calc(var(--u) * 4.5); }
+.ev-av-nom.muy-largo { font-size: calc(var(--u) * 3.7); }
 .ev-av-eq { display: flex; align-items: center; gap: calc(var(--u) * 1.4); min-width: 0; font-weight: 600; font-size: calc(var(--u) * 3.2); color: #d3d9e3; }
 .ev-av-sc { margin-left: auto; flex-shrink: 0; font-weight: 800; font-size: calc(var(--u) * 5.2); color: #fff; }
 

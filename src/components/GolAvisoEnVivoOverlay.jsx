@@ -95,7 +95,7 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '17%', arriba 
               <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span>
                 {totalJugador >= 2 && <span className="ev-av-cant">{nombreMarcaGoles(totalJugador).toUpperCase()}</span>}
               </div>
-              <div className="ev-av-nom ev-txt">{aviso.jugador}</div>
+              <div className={`ev-av-nom${String(aviso.jugador || '').length > 30 ? ' muy-largo' : String(aviso.jugador || '').length > 20 ? ' largo' : ''}`}>{aviso.jugador}</div>
               <div className="ev-av-eq">
                 <Escudo url={equipo?.logo_url} name={equipo?.name} size={4.6}/>
                 <span className="ev-txt">{equipo?.name || ''}</span>
