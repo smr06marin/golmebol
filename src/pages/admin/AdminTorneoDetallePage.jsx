@@ -301,7 +301,9 @@ const ESTILOS_CAL_TORNEO = `
 .gcz-canchas-grid input{min-width:0;width:100%;box-sizing:border-box;min-height:44px}
 .gcz-add{margin-top:10px;width:100%;min-height:44px;background:#1a73e8;border:0;border-radius:10px;color:#fff;font-weight:700;font-size:.86rem;font-family:inherit;cursor:pointer}
 .gcz-ayuda{font-size:.76rem;color:#5f6368;line-height:1.4;margin:-4px 0 12px}
-.gcz-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 2px 12px}
+.gcz-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 12px}
+.gcz-top .gcz-main{flex:1;max-width:320px}
+.gcz-top .gcz-chip{min-height:48px;flex-shrink:0}
 .gcz-resumen{font-size:.9rem;color:#202124}
 .gcz-resumen span{color:#5f6368}
 .gcz-main{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border:0;border-radius:12px;background:#1a73e8;color:#fff;font-weight:800;font-size:.95rem;font-family:inherit;cursor:pointer;box-shadow:0 2px 8px rgba(26,115,232,.3);touch-action:manipulation}
@@ -5649,10 +5651,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               ) : (
                 <>
                   <div className="gcz-top">
-                    <div className="gcz-resumen">
-                      <b>{partidos.length}</b> partido{partidos.length !== 1 ? 's' : ''}
-                      <span> · {partidos.filter(p => p.status !== 'finished').length} pendiente{partidos.filter(p => p.status !== 'finished').length !== 1 ? 's' : ''}</span>
-                    </div>
+                    <button type="button" className="gcz-chip" onClick={() => setCanchasAbiertas(v => !v)} aria-expanded={canchasAbiertas}><MapPin size={16}/> Canchas ({canchas.length})</button>
                     <button type="button" className="gcz-main" aria-expanded={elegirCrear} onClick={() => setElegirCrear(v => !v)}>
                       <Plus size={18}/> Programar partidos
                     </button>
@@ -5669,10 +5668,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       </button>
                     </div>
                   )}
-                  <div className="gcz-chips">
-                    <button type="button" className="gcz-chip" onClick={() => setCanchasAbiertas(v => !v)} aria-expanded={canchasAbiertas}><MapPin size={14}/> Canchas ({canchas.length})</button>
-                    <button type="button" className="gcz-chip" onClick={() => setShowFlyerProgramacion(true)}><ImageIcon size={14}/> Flyer de la programación</button>
-                  </div>
                 </>
               )}
 
