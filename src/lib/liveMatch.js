@@ -120,9 +120,12 @@ export function derivarFaltasYTarjetas(match) {
   if (!picked) return vacio
   const { snap, tipo } = picked
   const periodoActual = snap.periodo || 1
-  // Las faltas acumuladas solo existen en Fútbol 5; si no se sabe la modalidad, se muestran solo cuando ya hay alguna.
+  // Las faltas acumuladas solo existen en Fútbol 5. El letrero FALTAS solo sale si en este
+  // partido ya se marcó alguna falta (en cualquier tiempo): si el planillador no las está
+  // marcando, no se muestra un "FALTAS 0" que no significa nada. Una vez que se marca la
+  // primera, el letrero se queda (y cada tiempo arranca en 0).
   const modalidad = match?.tournaments?.modalidad || null
-  const mostrarFaltas = modalidad ? modalidad === 'Fútbol 5' : null
+  const sinFaltas = modalidad ? modalidad !== 'Fútbol 5' : false
 
   if (tipo === 'rapida') {
     const eventos = snap.eventos || []
@@ -139,7 +142,8 @@ export function derivarFaltasYTarjetas(match) {
       rojasLocal:          contar('local',      'red_card', false),
       rojasVisitante:      contar('visitante',  'red_card', false),
     }
-    return { ...r, mostrarFaltas: mostrarFaltas ?? (r.faltasLocal > 0 || r.faltasVisitante > 0) }
+    const hayFaltas = eventos.some(e => e.tipo === 'falta_acum')
+    return { ...r, mostrarFaltas: !sinFaltas && hayFaltas }
   }
 
   const faltasPeriodo = (faltasAcum) => (faltasAcum?.[`p${periodoActual}`] || []).filter(Boolean).length
@@ -154,7 +158,8 @@ export function derivarFaltasYTarjetas(match) {
     rojasLocal:          conTarjeta(snap.jugadoresLocal, 'roja'),
     rojasVisitante:      conTarjeta(snap.jugadoresVisitante, 'roja'),
   }
-  return { ...r, mostrarFaltas: mostrarFaltas ?? (r.faltasLocal > 0 || r.faltasVisitante > 0) }
+  const hayFaltas = [snap.faltasAcumLocal, snap.faltasAcumVis].some(fa => fa && Object.values(fa).some(arr => Array.isArray(arr) && arr.some(Boolean)))
+  return { ...r, mostrarFaltas: !sinFaltas && hayFaltas }
 }
 
 // Lista de goles (jugador + número de camiseta + minuto) del partido, sacada
