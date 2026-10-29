@@ -7,6 +7,8 @@ export function errorAmigable(error, accion = 'No se pudo completar la acción')
   try { console.error('[Golmebol]', accion, error) } catch { /* sin consola */ }
   const texto = String(error?.message || error?.details || error || '').toLowerCase()
   const codigo = String(error?.code || '')
+  // Jugador vetado de Golmebol (lo rechaza la base de datos al inscribirlo): se muestra su mensaje tal cual
+  if (/vetado de golmebol/.test(texto)) return String(error?.message || '').trim()
   let causa
   if (/failed to fetch|network|timeout|timed out|load failed|conexi/.test(texto)) {
     causa = 'Parece un problema de conexión. Revisa tu internet e intenta de nuevo.'

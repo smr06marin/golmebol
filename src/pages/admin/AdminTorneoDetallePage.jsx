@@ -301,6 +301,34 @@ const ESTILOS_CAL_TORNEO = `
 .gcz-canchas-grid input{min-width:0;width:100%;box-sizing:border-box;min-height:44px}
 .gcz-add{margin-top:10px;width:100%;min-height:44px;background:#1a73e8;border:0;border-radius:10px;color:#fff;font-weight:700;font-size:.86rem;font-family:inherit;cursor:pointer}
 .gcz-ayuda{font-size:.76rem;color:#5f6368;line-height:1.4;margin:-4px 0 12px}
+.gcz-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 2px 12px}
+.gcz-resumen{font-size:.9rem;color:#202124}
+.gcz-resumen span{color:#5f6368}
+.gcz-main{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border:0;border-radius:12px;background:#1a73e8;color:#fff;font-weight:800;font-size:.95rem;font-family:inherit;cursor:pointer;box-shadow:0 2px 8px rgba(26,115,232,.3);touch-action:manipulation}
+.gcz-menu{background:#fff;border:1px solid #e8eaed;border-radius:14px;margin:0 0 12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.gcz-fila{width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:0;border-bottom:1px solid #f1f3f4;cursor:pointer;font-family:inherit;min-height:64px;touch-action:manipulation}
+.gcz-fila:last-child{border-bottom:0}
+.gcz-fila-c{display:flex;flex-direction:column;gap:2px;min-width:0}
+.gcz-fila-c b{font-size:.95rem;color:#202124}
+.gcz-fila-c span{font-size:.78rem;color:#5f6368;line-height:1.35}
+.gcz-chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.gcz-chip{display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 14px;border-radius:999px;border:1px solid #dadce0;background:#fff;color:#3c4043;font-size:.8rem;font-weight:700;font-family:inherit;cursor:pointer;touch-action:manipulation}
+.gcz-hint{font-size:.76rem;color:#80868b;margin:0 2px 10px;line-height:1.4}
+.gcz-flujo{display:flex;align-items:center;gap:12px;margin:0 0 14px;flex-wrap:wrap}
+.gcz-back{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 16px 0 12px;border-radius:12px;border:1.5px solid #dadce0;background:#fff;color:#202124;font-weight:800;font-size:.9rem;font-family:inherit;cursor:pointer;touch-action:manipulation}
+.gcz-flujo-t{font-weight:800;font-size:1rem;color:#202124}
+.gcz-pasos{background:#fff;border:1px solid #e8eaed;border-radius:16px;padding:16px;margin:0 0 14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.gcz-pasos-t{font-weight:800;font-size:1rem;color:#202124;margin-bottom:12px}
+.gcz-paso{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid #f1f3f4}
+.gcz-paso:first-of-type{border-top:0}
+.gcz-n{width:30px;height:30px;border-radius:50%;background:#e8f0fe;color:#1a73e8;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.9rem}
+.gcz-n.ok{background:#e6f4ea;color:#1e8e3e}
+.gcz-paso-c{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.gcz-paso-c b{font-size:.92rem;color:#202124}
+.gcz-paso-c span{font-size:.8rem;color:#5f6368;line-height:1.4}
+.gcz-paso-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.gcz-mini{min-height:38px;padding:0 14px;border-radius:10px;border:1px solid #dadce0;background:#fff;color:#1a73e8;font-weight:800;font-size:.8rem;font-family:inherit;cursor:pointer;flex-shrink:0;touch-action:manipulation}
+.gcz-mini.azul{background:#1a73e8;border-color:#1a73e8;color:#fff}
 @media (max-width:600px){.gcz-opts{grid-template-columns:minmax(0,1fr)}.gcz-canchas-grid{grid-template-columns:minmax(0,1fr)}}
 `
 const NOMBRE_FASE_CHIP = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final', tercer_puesto: '3.er puesto', otro: 'Otra fase' }
@@ -1142,6 +1170,8 @@ export default function AdminTorneoDetallePage() {
   // (un solo grupo) o una eliminación directa no la necesitan.
   const mostrarGrupos = !(['Todos contra todos', 'Eliminación directa'].includes(torneo?.formato) && grupos.length <= 1)
   const [canchasAbiertas, setCanchasAbiertas] = useState(false) // lista de canchas plegada cuando ya hay canchas
+  const [elegirCrear, setElegirCrear] = useState(false) // menú "Programar partidos" (un partido / una jornada)
+  const enFlujoCal = subTab === 'jornada' || (subTab === 'partidos' && showFormPartido) // creando algo: se muestra "‹ Calendario" para volver
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
@@ -4247,7 +4277,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       total += inserts.length
     }
     showMsg(`${numeros.length > 1 ? `${numeros.length} jornadas creadas` : 'Jornada creada'} con ${total} partidos ✓`)
-    salirJornada(); fetchPartidos(); fetchFechas()
+    salirJornada(); setSubTab('partidos'); fetchPartidos(); fetchFechas()
     setLoadingPartido(false)
   }
 
@@ -5577,7 +5607,77 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       {tab === 'calendario' && (
         <div>
           <style>{ESTILOS_CAL_TORNEO}</style>
-          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 18px', marginBottom: '18px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+          {enFlujoCal ? (
+            <div className="gcz-flujo">
+              <button type="button" className="gcz-back" onClick={() => { setShowFormPartido(false); setSubTab('partidos') }}>
+                <ArrowLeft size={18}/> Calendario
+              </button>
+              <span className="gcz-flujo-t">{subTab === 'jornada' ? 'Armar una jornada completa' : 'Crear un solo partido'}</span>
+            </div>
+          ) : (
+            <>
+              {partidos.length === 0 ? (
+                <div className="gcz-pasos">
+                  <div className="gcz-pasos-t">Así se arma el calendario</div>
+                  <div className="gcz-paso">
+                    <span className={`gcz-n ${canchas.length > 0 ? 'ok' : ''}`}>{canchas.length > 0 ? '✓' : '1'}</span>
+                    <div className="gcz-paso-c">
+                      <b>Agrega las canchas</b>
+                      <span>{canchas.length > 0 ? `${canchas.length} cancha${canchas.length !== 1 ? 's' : ''} lista${canchas.length !== 1 ? 's' : ''}: dónde se juega.` : 'Dónde se juega (ej. Cancha 1). Agrégalas en el recuadro de abajo.'}</span>
+                    </div>
+                    {canchas.length > 0 && <button type="button" className="gcz-mini" onClick={() => setCanchasAbiertas(v => !v)}>{canchasAbiertas ? 'Cerrar' : 'Ver'}</button>}
+                  </div>
+                  <div className="gcz-paso">
+                    <span className="gcz-n">2</span>
+                    <div className="gcz-paso-c">
+                      <b>Programa los partidos</b>
+                      <span>Uno por uno, o una jornada completa que el sistema sortea por ti.</span>
+                      <div className="gcz-paso-btns">
+                        <button type="button" className="gcz-mini azul" onClick={() => { setSubTab('partidos'); setShowFormPartido(true) }}>+ Un solo partido</button>
+                        <button type="button" className="gcz-mini azul" onClick={() => { if (canchas.length === 0) { setCanchasAbiertas(true); showMsg('Primero agrega las canchas (paso 1)', 'error') } else setSubTab('jornada') }}>🔀 Jornada completa</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="gcz-paso">
+                    <span className="gcz-n">3</span>
+                    <div className="gcz-paso-c">
+                      <b>Registra los resultados</b>
+                      <span>Cuando se juegue, toca el partido en la lista y escoge “Registrar resultado”.</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="gcz-top">
+                    <div className="gcz-resumen">
+                      <b>{partidos.length}</b> partido{partidos.length !== 1 ? 's' : ''}
+                      <span> · {partidos.filter(p => p.status !== 'finished').length} pendiente{partidos.filter(p => p.status !== 'finished').length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <button type="button" className="gcz-main" aria-expanded={elegirCrear} onClick={() => setElegirCrear(v => !v)}>
+                      <Plus size={18}/> Programar partidos
+                    </button>
+                  </div>
+                  {elegirCrear && (
+                    <div className="gcz-menu">
+                      <button type="button" className="gcz-fila" onClick={() => { setElegirCrear(false); setSubTab('partidos'); setShowFormPartido(true) }}>
+                        <span className="gcz-ico"><Plus size={20}/></span>
+                        <span className="gcz-fila-c"><b>Un solo partido</b><span>Tú escoges los equipos, el día, la hora y la cancha.</span></span>
+                      </button>
+                      <button type="button" className="gcz-fila" onClick={() => { setElegirCrear(false); if (canchas.length === 0) { setCanchasAbiertas(true); showMsg('Primero agrega las canchas', 'error') } else setSubTab('jornada') }}>
+                        <span className="gcz-ico"><Shuffle size={20}/></span>
+                        <span className="gcz-fila-c"><b>Una jornada completa</b><span>El sistema sortea los cruces y los reparte en tus días y canchas.</span></span>
+                      </button>
+                    </div>
+                  )}
+                  <div className="gcz-chips">
+                    <button type="button" className="gcz-chip" onClick={() => setCanchasAbiertas(v => !v)} aria-expanded={canchasAbiertas}><MapPin size={14}/> Canchas ({canchas.length})</button>
+                    <button type="button" className="gcz-chip" onClick={() => setShowFlyerProgramacion(true)}><ImageIcon size={14}/> Flyer de la programación</button>
+                  </div>
+                </>
+              )}
+
+              {(canchasAbiertas || canchas.length === 0) && (
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '16px 18px', marginBottom: '14px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: (canchasAbiertas || canchas.length === 0) ? '10px' : 0 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -5632,33 +5732,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <button type="button" className="gcz-add" onClick={handleAgregarCancha}>+ Agregar cancha</button>
             </>)}
           </div>
+              )}
 
-          <div className="gcz-sec">¿Qué quieres hacer?</div>
-          <div className="gcz-opts">
-            <button type="button" className={`gcz-opt ${subTab === 'partidos' ? 'on' : ''}`} aria-pressed={subTab === 'partidos'}
-              onClick={() => { setSubTab('partidos'); setShowFormPartido(true) }}>
-              <span className="gcz-ico"><Plus size={22}/></span>
-              <span style={{ minWidth: 0 }}>
-                <span className="gcz-t" style={{ display: 'block' }}>Crear un solo partido</span>
-                <span className="gcz-d" style={{ display: 'block' }}>Eliges tú los dos equipos, el día, la hora y la cancha. Sirve para un partido suelto o de eliminatorias.</span>
-              </span>
-            </button>
-            <button type="button" className={`gcz-opt ${subTab === 'jornada' ? 'on' : ''}`} aria-pressed={subTab === 'jornada'}
-              onClick={() => setSubTab('jornada')}>
-              <span className="gcz-ico"><Shuffle size={22}/></span>
-              <span style={{ minWidth: 0 }}>
-                <span className="gcz-t" style={{ display: 'block' }}>Armar una jornada completa</span>
-                <span className="gcz-d" style={{ display: 'block' }}>El sistema sortea todos los cruces de la jornada y los reparte solo en los días, canchas y horarios que marques.</span>
-              </span>
-            </button>
-          </div>
-          {partidos.length > 0 && (
-            <div className="gcz-prog">
-              <span><b style={{ color: '#202124' }}>{partidos.length}</b> partido{partidos.length !== 1 ? 's' : ''} programado{partidos.length !== 1 ? 's' : ''}</span>
-              <button type="button" className="gcz-flyer" onClick={() => setShowFlyerProgramacion(true)}>
-                <ImageIcon size={16}/> Crear flyer de la programación
-              </button>
-            </div>
+              {partidos.length > 0 && <div className="gcz-hint">Toca un partido para registrar el resultado, crear su flyer o mandarle el link al árbitro.</div>}
+            </>
           )}
 
           {subTab === 'partidos' && (
@@ -5824,11 +5901,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               )}
 
               {/* Lista de partidos: la misma del resto de la app (filas compactas, se abren al tocar) */}
-              {partidos.length === 0 && !showFormPartido ? (
-                <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', borderRadius: '12px', border: '1px solid #e8eaed' }}>
-                  <Calendar size={36} style={{ opacity: .3, marginBottom: '8px' }}/><div>No hay partidos programados</div>
-                </div>
-              ) : (
+              {partidos.length === 0 || showFormPartido ? null : (
                 <AdminCalendarioPage
                   torneo={torneo}
                   partidosExternos={partidos}
