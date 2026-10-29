@@ -316,7 +316,7 @@ export default function PlayerHistorialPage() {
     { id:'g25',   label:'25 goles en su carrera', logrado: goles >= 25, meta: 25, actual: goles, icon:'⚽' },
     { id:'g50',   label:'50 goles en su carrera', logrado: goles >= 50, meta: 50, actual: goles, icon:'⚽' },
     { id:'mvp5',  label:'5 veces MVP del partido', logrado: mvpsCount >= 5, meta: 5, actual: mvpsCount, icon:'⭐' },
-    { id:'hat',   label:'Un hat-trick (3+ goles en un partido)', logrado: hatTricks > 0, meta: 1, actual: hatTricks, icon:'🎩' },
+    { id:'hat',   label:'Un triplete (3 goles o más en un partido)', logrado: hatTricks > 0, meta: 1, actual: hatTricks, icon:'🎩' },
   ]
 
   const fotos = [player?.photo_face_url, player?.photo_url].filter((v, i, arr) => v && arr.indexOf(v) === i)

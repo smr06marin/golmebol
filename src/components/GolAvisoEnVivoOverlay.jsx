@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { extraerGoles } from '../lib/liveMatch'
 import { supabase } from '../lib/supabase'
+import { nombreMarcaGoles } from '../lib/marcasGoles'
 import { EnVivoEstilos, Escudo, textoContraste } from './enVivoUI'
 
 const DURACION_MS = 8000
@@ -92,7 +93,7 @@ export default function GolAvisoEnVivoOverlay({ partido, bottom = '17%', arriba 
             )}
             <div className="ev-av-body">
               <div className="ev-av-top"><span className="ev-av-gol">¡GOL!</span>
-                {totalJugador === 3 && <span className="ev-av-cant">HAT-TRICK</span>}
+                {totalJugador >= 2 && <span className="ev-av-cant">{nombreMarcaGoles(totalJugador).toUpperCase()}</span>}
               </div>
               <div className="ev-av-nom ev-txt">{aviso.jugador}</div>
               <div className="ev-av-eq">

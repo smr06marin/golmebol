@@ -166,11 +166,11 @@ export default function JugadorPublicoPage() {
                       { k: 'penAt', v: arq.penalesEnfrentados == null ? '—' : `${arq.penalesAtajados}/${arq.penalesEnfrentados}`, e: 'Penales atajados' },
                     ] : [
                       { k: 'gpp', v: promedio, e: 'Goles por partido' },
-                      { k: 'hat', v: totales.hatTricks, e: 'Hat-tricks' },
+                      { k: 'marca', v: totales.maxGoles >= 2 ? totales.mejorMarca : '—', e: 'Mejor marca en un partido', chico: totales.maxGoles >= 2 },
                       { k: 'rojas', v: totales.rojas, e: 'Rojas' },
                     ]).map((x, i) => (
                       <div key={x.e} style={{ padding: '14px 6px', borderLeft: i ? `1px solid ${C.soft}` : 'none' }}>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: C.text }}>{x.v}</div>
+                        <div style={{ fontSize: x.chico ? '.95rem' : '1.4rem', lineHeight: x.chico ? '1.9rem' : undefined, fontWeight: 800, color: C.text }}>{x.v}</div>
                         <div style={{ fontSize: '.68rem', color: C.muted, fontWeight: 600 }}>{x.e}</div>
                         {PL[x.k] && <div style={{ marginTop: '6px' }}><ChipPuesto p={PL[x.k]}/></div>}
                       </div>
@@ -337,14 +337,14 @@ export default function JugadorPublicoPage() {
               </Tarjeta>
             )}
             <Tarjeta titulo="Reconocimientos">
-              {totales.mvp === 0 && totales.hatTricks === 0 && campeonatos.length === 0 && palmares.premios.length === 0 && !(arq && (arq.penalesAtajados > 0 || arq.golesComoArquero > 0))
+              {totales.mvp === 0 && !(totales.marcas || []).length && campeonatos.length === 0 && palmares.premios.length === 0 && !(arq && (arq.penalesAtajados > 0 || arq.golesComoArquero > 0))
                 ? <Vacio>Aún no tiene reconocimientos</Vacio>
                 : (
                   <div style={{ padding: '6px 0' }}>
                     {arq && arq.penalesAtajados > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🧤 <b>{arq.penalesAtajados}</b> {arq.penalesAtajados === 1 ? 'penal atajado' : 'penales atajados'} en tandas <ChipPuesto p={PL.penAt}/></div>}
                     {arq && arq.golesComoArquero > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⚽ <b>{arq.golesComoArquero}</b> {arq.golesComoArquero === 1 ? 'gol' : 'goles'} de arquero <ChipPuesto p={PL.golesArq}/></div>}
                     {totales.mvp > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>⭐ <b>{totales.mvp}</b> {totales.mvp === 1 ? 'vez' : 'veces'} jugador del partido <ChipPuesto p={PL.mvp}/></div>}
-                    {totales.hatTricks > 0 && <div style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>🎩 <b>{totales.hatTricks}</b> {totales.hatTricks === 1 ? 'hat-trick' : 'hat-tricks'} <ChipPuesto p={PL.hat}/></div>}
+                    {(totales.marcas || []).map(m => <div key={m.n} style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>{m.n >= 3 ? '🎩' : '⚽'} <b>{m.veces}</b> {m.veces === 1 ? m.nombre : m.plural} <span style={{ color: C.muted, fontSize: '.75rem' }}>({m.n >= 10 ? '10+' : m.n} goles en un partido)</span></div>)}
                     {campeonatos.length > 0 && PL.camp && <div style={{ padding: '4px 16px 8px', fontSize: '.78rem', color: C.muted }}>Títulos: <b style={{ color: C.text }}>{campeonatos.length}</b> <ChipPuesto p={PL.camp}/></div>}
                     {palmares.premios.map(p => (
                       <div key={p.tipo} style={{ padding: '10px 16px', fontSize: '.85rem', color: C.text2 }}>

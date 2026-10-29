@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { hydratePlayersPublico } from './playersPublico'
+import { contarMarcasGoles, nombreMarcaGoles } from './marcasGoles'
 
 // ── Datos de los perfiles PÚBLICOS de equipo (/e/:id) y jugador (/j/:id) ────
 //
@@ -168,7 +169,8 @@ export async function cargarJugadorPublico(id) {
   const logros = rLogros.data || []
   const mvpPartidos = new Set(logros.filter(l => l.tipo === 'mvp').map(l => l.match_id))
 
-  const tot = { pj: stats.length, goles: 0, amarillas: 0, rojas: 0, mvp: logros.filter(l => l.tipo === 'mvp').length, g: 0, e: 0, p: 0, hatTricks: 0 }
+  const tot = { pj: stats.length, goles: 0, amarillas: 0, rojas: 0, mvp: logros.filter(l => l.tipo === 'mvp').length, g: 0, e: 0, p: 0, hatTricks: 0, maxGoles: 0, marcas: [] }
+  const golesPorPartido = []
   const porTorneoMap = {}
   stats.forEach(s => {
     const g = s.goals_scored || 0
@@ -176,6 +178,8 @@ export async function cargarJugadorPublico(id) {
     tot.amarillas += (s.yellow_cards || 0) + (s.blue_cards || 0)
     tot.rojas += s.red_cards || 0
     if (g >= 3) tot.hatTricks++
+    if (g > tot.maxGoles) tot.maxGoles = g
+    golesPorPartido.push(g)
     const r = s.team_result
     if (r === 'win' || r === 'G') tot.g++; else if (r === 'draw' || r === 'E') tot.e++; else if (r === 'loss' || r === 'P') tot.p++
     const key = s.tournament_id || 'sin'
@@ -187,6 +191,8 @@ export async function cargarJugadorPublico(id) {
       if (golesContraEquipo(s) === 0) t.arqCero = (t.arqCero || 0) + 1
     }
   })
+  tot.marcas = contarMarcasGoles(golesPorPartido)
+  tot.mejorMarca = nombreMarcaGoles(tot.maxGoles)
   // ¿De cuántos partidos de su equipo participó? Jugar = quedar anotado en la
   // planilla; los partidos en que estuvo en la plantilla pero no se anotó no
   // suman a "jugados", pero SÍ cuentan en el total del equipo.

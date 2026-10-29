@@ -115,7 +115,7 @@ export function armarModelo({ jugador, totales, puestos, equipoActual, posicion,
       ]
     : [
         { valor: torneosJugados.length, etiqueta: 'Torneos' },
-        { valor: totales.hatTricks || 0, etiqueta: 'Hat-tricks' },
+        { valor: totales.maxGoles || 0, etiqueta: 'Máx. goles en un partido' },
         { valor: totales.pj > 0 ? (totales.goles / totales.pj).toFixed(2) : '0.00', etiqueta: 'Goles / partido' },
         { valor: partidosResultado > 0 ? `${Math.round(((totales.g || 0) / partidosResultado) * 100)}%` : '—', etiqueta: '% victorias' },
       ]

@@ -7,6 +7,7 @@ import { getPuntosTorneo } from '../../lib/puntosTorneo'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { apiUrl } from '../../lib/apiBase'
 import { confirmar } from '../../lib/confirmar'
+import { nombreMarcaGoles } from '../../lib/marcasGoles'
 
 // La llamada a la IA ya NO se hace directo desde el navegador (eso dejaba la
 // clave de Anthropic visible en el código fuente de la página, cualquiera
@@ -161,7 +162,7 @@ function buildContextoPost(partido, datos) {
     : 'Sin goles registrados'
 
   // Hat-tricks en este partido
-  const hatsPartido = datos.golesPartido.filter(g => g.goles >= 3).map(g => `${g.nombre}(${g.goles} goles)`).join(', ')
+  const hatsPartido = datos.golesPartido.filter(g => g.goles >= 2).map(g => `${g.nombre}(${nombreMarcaGoles(g.goles)}, ${g.goles} goles)`).join(', ')
 
   // Racha de resultados de cada equipo
   const rachaHome = datos.rachaHome
@@ -170,7 +171,7 @@ function buildContextoPost(partido, datos) {
   return `RESULTADO: ${partido.home?.name} ${partido.home_score} - ${partido.away_score} ${partido.away?.name}
 GANADOR: ${ganador}${esFaseElim ? ` | ${FASES_LABEL[partido.fase]} ⚡ELIMINATORIA` : ''}
 FECHA: ${fecha}${partido.location ? ` · ${partido.location}` : ''}
-GOLEADORES DEL PARTIDO: ${golesPartido}${hatsPartido ? ` | 🎩 HAT-TRICK: ${hatsPartido}` : ''}
+GOLEADORES DEL PARTIDO: ${golesPartido}${hatsPartido ? ` | 🎩 MARCA DE GOLES (doblete, triplete, póker…): ${hatsPartido}` : ''}
 LÍNEA DE TIEMPO DE GOLES: ${datos.lineaTiempoGoles || 'Sin datos minuto a minuto'}
 CÓMO SE DIO EL PARTIDO: ${datos.narrativaPartido || 'Sin datos suficientes para narrar el desarrollo'}
 TABLA ANTES: ${tablaAntes}
@@ -313,7 +314,7 @@ export default function AdminNoticiasPage() {
       Object.entries(golesHist).filter(([,g])=>g>0).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n,gTotal])=>{
         const gT=golesTorneo[n]||0; const hts=hatTricks[n]||0
         const hitos=[10,15,20,25,30,40,50,75,100].filter(j=>gTotal<j&&gTotal+4>=j).map(j=>`a ${j-gTotal} del hito ${j}`)
-        return `${n}:${gTotal}g(${gT}t)${hts?` ${hts}HT`:''}${hitos.length?' ⚠️'+hitos.join(','):''}`
+        return `${n}:${gTotal}g(${gT}t)${hts?` ${hts} partido(s) de 3+ goles`:''}${hitos.length?' ⚠️'+hitos.join(','):''}`
       }).join(' | ') || 'Sin registro'
 
     const formatFases = (fases, nombre) => {
@@ -433,7 +434,7 @@ export default function AdminNoticiasPage() {
       Object.entries(golesHist).filter(([,g])=>g>0).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n,gTotal])=>{
         const hts=hatTricks[n]||0
         const hitos=[10,15,20,25,30,40,50,75,100].filter(j=>gTotal<j&&gTotal+4>=j).map(j=>`a ${j-gTotal} del hito ${j}`)
-        return `${n}:${gTotal}g hist${hts?` ${hts}HT`:''}${hitos.length?' ⚠️'+hitos.join(','):''}`
+        return `${n}:${gTotal}g hist${hts?` ${hts} partido(s) de 3+ goles`:''}${hitos.length?' ⚠️'+hitos.join(','):''}`
       }).join(' | ') || 'Sin registro'
 
     const formatFases = (fases, nombre) => {
@@ -495,7 +496,7 @@ export default function AdminNoticiasPage() {
 
     const golesFecha = (statsFecha || []).reduce((acc,s) => { const n = s.players?.name; if (n) acc[n] = (acc[n]||0) + s.goals_scored; return acc }, {})
     const golesFechaArr = Object.entries(golesFecha).map(([nombre,goles]) => ({ nombre, goles })).sort((a,b) => b.goles - a.goles)
-    const hatTricks = golesFechaArr.filter(g => g.goles >= 3)
+    const hatTricks = golesFechaArr.filter(g => g.goles >= 2)
 
     const golear = [...partidosFecha].sort((a,b) => Math.abs(b.home_score-b.away_score) - Math.abs(a.home_score-a.away_score))[0] || null
 
@@ -516,14 +517,14 @@ export default function AdminNoticiasPage() {
     const tablaAntesStr   = datos.tablaOrdenadaAntes.length   ? resumirTabla(datos.tablaOrdenadaAntes, equiposFecha)   : 'Sin datos previos'
     const tablaDespuesStr = datos.tablaOrdenadaDespues.length ? resumirTabla(datos.tablaOrdenadaDespues, equiposFecha) : 'Sin datos'
     const golesStr = datos.golesFecha.length ? datos.golesFecha.map(g=>`${g.nombre}(${g.goles})`).join(', ') : 'Sin goleadores registrados'
-    const hatsStr  = datos.hatTricks.length ? datos.hatTricks.map(g=>`${g.nombre}(${g.goles} goles)`).join(', ') : 'Ninguno'
+    const hatsStr  = datos.hatTricks.length ? datos.hatTricks.map(g=>`${g.nombre}(${nombreMarcaGoles(g.goles)}, ${g.goles} goles)`).join(', ') : 'Ninguno'
     const golearStr = datos.golear ? `${datos.golear.home?.name} ${datos.golear.home_score}-${datos.golear.away_score} ${datos.golear.away?.name}` : 'N/A'
     return `FECHA ${jornadaNum} — ${datos.cantidadPartidos} partido(s) jugado(s)
 RESULTADOS DE LA FECHA: ${datos.resultados.join(' | ') || 'Sin resultados'}
 TABLA ANTES DE LA FECHA: ${tablaAntesStr}
 TABLA DESPUÉS DE LA FECHA: ${tablaDespuesStr}
 GOLEADORES DE LA FECHA: ${golesStr}
-HAT-TRICKS DE LA FECHA: ${hatsStr}
+MARCAS DE GOLES DE LA FECHA (doblete, triplete, póker…): ${hatsStr}
 RESULTADO MÁS CONTUNDENTE: ${golearStr}`
   }
 
