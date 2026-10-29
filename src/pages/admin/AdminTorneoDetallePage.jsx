@@ -6423,13 +6423,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                             </div>
                                           )
                                         ) : (
-                                          <div style={filaAccion}>
-                                            <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
-                                              style={{ ...botonBase, background:'#fef7e0', border:'1px solid #ffcc80', color:'#b06000' }}>
-                                              Suspender
-                                            </button>
-                                            <div style={explica}>No puede jugar hasta que termine la sanción. Sigue en el equipo.</div>
-                                          </div>
+                                          // Suspender: solo el administrador principal (el organizador no tiene este permiso aquí)
+                                          esAdminRol && (
+                                            <div style={filaAccion}>
+                                              <button onClick={() => { setModalSuspender(j); setFormSancion({ motivo:'', meses:'1' }) }}
+                                                style={{ ...botonBase, background:'#fef7e0', border:'1px solid #ffcc80', color:'#b06000' }}>
+                                                Suspender
+                                              </button>
+                                              <div style={explica}>No puede jugar hasta que termine la sanción. Sigue en el equipo.</div>
+                                            </div>
+                                          )
                                         )}
                                         <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#c5221f', margin:'8px 0 2px' }}>SALIDA</div>
                                         <div style={filaAccion}>
@@ -6446,7 +6449,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                             historial): esto BORRA por completo la inscripción y la asociación
                                             con este equipo — pensado para un jugador que se inscribió por
                                             error y hay que corregirlo, no para uno que ya jugó y se retira. */}
-                                        <div style={filaAccion}>
+                                        {esAdminRol && (<div style={filaAccion}>
                                           <button onClick={async () => {
                                             if (!(await confirmar('¿Eliminar por completo a ' + p.name + ' de ' + e.name + '? Esto borra la inscripción entera (no queda como "desactivado") y su asociación con este equipo. Úsalo solo si se inscribió por error — si ya jugó algún partido, mejor usa "Sacar del equipo".'))) return
                                             await supabase.from('tournament_player_registrations').delete().eq('id', j.id)
@@ -6456,7 +6459,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                             Eliminar por error
                                           </button>
                                           <div style={explica}>Borra la inscripción como si nunca se hubiera inscrito. Úsalo solo si fue un error; si ya jugó, mejor "Sacar del equipo".</div>
-                                        </div>
+                                        </div>)}
                                       </div>
                                     )
                                   })()}
