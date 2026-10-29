@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, duracionPeriodo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
-import { tablasConVivo } from '../lib/torneoTablas'
+import { tablasConVivo, gruposConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import { useLogosTorneos } from '../lib/useLogosTorneos'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
@@ -19,6 +19,8 @@ import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverl
 import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 import IntermedioDescansoOverlay from '../components/IntermedioDescansoOverlay'
+import TablaDescansoOverlay from '../components/TablaDescansoOverlay'
+import ProximosPartidosOverlay from '../components/ProximosPartidosOverlay'
 import MvpPartidoOverlay, { DURACION_MVP_MS } from '../components/MvpPartidoOverlay'
 
 // Página de overlay para OBS (u otro programa de transmisión): dibuja SOLO
@@ -95,6 +97,26 @@ function useEscala() {
   }, [])
   const escala = medidas.w / ANCHO_ESCENARIO
   return { escala, altoEscenario: medidas.h / escala }
+}
+
+// Partidos que siguen DESPUÉS del que está en descanso: mismo torneo, misma cancha (si el partido tiene),
+// ese mismo día, todavía sin jugar. Ordenados por hora. Si no hay ninguno devuelve [].
+async function cargarProximos(partidoId) {
+  try {
+    const { data: actual } = await supabase.from('matches').select('id, tournament_id, cancha_id, played_at').eq('id', partidoId).maybeSingle()
+    if (!actual?.tournament_id || !actual.played_at) return []
+    const desde = new Date(actual.played_at)
+    const finDia = new Date(desde)
+    finDia.setHours(23, 59, 59, 999)
+    let q = supabase.from('matches')
+      .select('id, status, fase, matchday, played_at, cancha_id, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+      .eq('tournament_id', actual.tournament_id).eq('status', 'scheduled')
+      .gt('played_at', desde.toISOString()).lte('played_at', finDia.toISOString())
+      .order('played_at', { ascending: true })
+    if (actual.cancha_id) q = q.eq('cancha_id', actual.cancha_id)
+    const { data } = await q
+    return (data || []).filter(m => m.id !== partidoId && m.home && m.away)
+  } catch { return [] }
 }
 
 export default function OverlayEnVivoPage() {
@@ -202,7 +224,10 @@ export default function OverlayEnVivoPage() {
   //    alineación de los dos equipos, hasta 2 min; si el árbitro toca
   //    "Iniciar" antes, se quita;
   //  · en el descanso: primero el tablero grande de goles (con quién hizo cada
-  //    gol) 1 min, después la tabla de posiciones otro minuto y, si la
+  //    gol) 1 min; después la tabla de posiciones (2 min por cada 10 equipos,
+  //    cada grupo por separado si el torneo tiene grupos, ver
+  //    TablaDescansoOverlay); luego los próximos partidos de esa cancha, 1 min
+  //    cada uno (si ya no quedan, no sale); y, si la
   //    transmisión tiene jugadas o videos de patrocinadores subidos, estos
   //    hasta que arranque el 2.º tiempo: jugada (2 veces) → patrocinador →
   //    jugada (2 veces) → otro patrocinador… (ver IntermedioDescansoOverlay);
@@ -217,6 +242,8 @@ export default function OverlayEnVivoPage() {
   const [mvpFinal, setMvpFinal] = useState(null)
   // Torneo de la tabla automática (descanso / final); en el final ya no hay partido en vivo del cual sacarlo
   const [torneoAuto, setTorneoAuto] = useState(null)
+  // Próximos partidos de la misma cancha ese día (se buscan al empezar el descanso)
+  const [proximos, setProximos] = useState([])
   const autoRef = useRef({ partidoId: null, inicioHecho: false, descansoHecho: false, timers: [], finalesHechos: new Set(), desmontado: false })
   const ultimoPartidoRef = useRef(null)
   const idAnteriorRef = useRef(null)
@@ -245,6 +272,16 @@ export default function OverlayEnVivoPage() {
     a.timers.push(setTimeout(() => setAutoOverlay(act => (act === cual ? null : act)), retrasoMs + duracionMs))
   }
 
+  // Qué sigue cuando termina una pantalla del descanso: tabla → próximos partidos (si hay) → jugadas y patrocinadores (si hay)
+  const proximosRef = useRef([])
+  const hayIntermedioRef = useRef(false)
+  useEffect(() => { proximosRef.current = proximos; hayIntermedioRef.current = hayIntermedio })
+  function siguienteDelDescanso(actual) {
+    const hayProx = actual === 'tabla_descanso' && proximosRef.current.length > 0
+    const sig = hayProx ? 'proximos' : (hayIntermedioRef.current ? 'intermedio' : null)
+    setAutoOverlay(act => (act === actual ? sig : act))
+  }
+
   useEffect(() => {
     if (!graficosAuto || !partidoIdAuto || !hayVivoAuto) return
     const a = autoRef.current
@@ -268,9 +305,10 @@ export default function OverlayEnVivoPage() {
       const tid = partido?.tournament_id || null
       a.timers.push(setTimeout(() => setTorneoAuto(tid), 0))
       programarAuto('resumen', 0, DURACION_TABLERO_MS)
-      programarAuto('tabla', DURACION_TABLERO_MS, DURACION_TABLERO_MS)
-      // jugadas y patrocinadores: desde el minuto 2 hasta que arranque el 2.º tiempo (se quita solo)
-      if (hayIntermedio) programarAuto('intermedio', DURACION_TABLERO_MS * 2, 60 * 60 * 1000)
+      // Tabla (dura según los equipos), próximos partidos y jugadas/patrocinadores van encadenados:
+      // cada uno avisa cuando termina (ver siguienteDelDescanso).
+      a.timers.push(setTimeout(() => setAutoOverlay('tabla_descanso'), DURACION_TABLERO_MS))
+      cargarProximos(partidoIdAuto).then(l => { if (!a.desmontado) setProximos(l) })
     }
   }, [graficosAuto, partidoIdAuto, hayVivoAuto, periodoAuto, descansoAuto, segsReloj, segundoTiempoCorriendo, partidoYaInicio]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -343,7 +381,7 @@ export default function OverlayEnVivoPage() {
   // arranca el 2.º tiempo antes de los 2 minutos, se quita. Y con el 2.º tiempo
   // corriendo no sale ningún gráfico automático.
   // La alineación se quita apenas el árbitro inicia el reloj.
-  const autoVisible = ((autoOverlay === 'resumen' || autoOverlay === 'intermedio') && !descansoAuto && !esperandoSegundoTiempo) || (autoOverlay === 'jugadores' && partidoYaInicio) || segundoTiempoCorriendo ? null : autoOverlay
+  const autoVisible = ((autoOverlay === 'resumen' || autoOverlay === 'intermedio' || autoOverlay === 'tabla_descanso' || autoOverlay === 'proximos') && !descansoAuto && !esperandoSegundoTiempo) || (autoOverlay === 'jugadores' && partidoYaInicio) || segundoTiempoCorriendo ? null : autoOverlay
   const overlayActivo = control?.overlay || (graficosAuto ? autoVisible : null)
   // Los gráficos que salen SOLOS llevan el mensaje institucional; los que
   // prende el panel de control llevan la leyenda normal de cada gráfica.
@@ -352,12 +390,14 @@ export default function OverlayEnVivoPage() {
   // Tabla de posiciones: se trae cuando se prende el gráfico (a mano o automático)
   // y se refresca cada 30s mientras siga prendido (la transmisión dura horas y
   // la tabla cambia al terminar cada partido).
-  const tablaTorneoId = overlayActivo === 'tabla' ? (control?.overlay === 'tabla' ? control.overlay_tournament_id : (torneoAuto || partido?.tournament_id)) || null : null
+  const quiereTabla = overlayActivo === 'tabla' || overlayActivo === 'tabla_descanso' || (overlayActivo === 'resumen' && !control?.overlay) // en el tablero del descanso ya se va cargando la tabla
+  const tablaTorneoId = quiereTabla ? (control?.overlay === 'tabla' ? control.overlay_tournament_id : (torneoAuto || partido?.tournament_id)) || null : null
   // Los partidos guardados se refrescan cada 30 s; lo que se está jugando AHORA
   // viene de matchesVivoRaw (cada 5 s + tiempo real) y se suma encima: así la
   // tabla muestra "así va" con el gol apenas lo marca el árbitro (provisional).
-  const basesTabla = useTablasBase(tablaTorneoId ? [tablaTorneoId] : [])
+  const basesTabla = useTablasBase(tablaTorneoId ? [tablaTorneoId] : [], { conGrupos: true })
   const tablas = useMemo(() => { void tick; return tablasConVivo(basesTabla, matchesVivoRaw) }, [basesTabla, matchesVivoRaw, tick])
+  const gruposTabla = useMemo(() => { void tick; return tablaTorneoId ? gruposConVivo(basesTabla[tablaTorneoId], matchesVivoRaw) : [] }, [basesTabla, tablaTorneoId, matchesVivoRaw, tick])
 
   // Publicidad rápida de un patrocinador: aparece 8s y se apaga sola, igual
   // que en la portada. Se ignora la marca que ya estaba cuando se abrió la
@@ -429,6 +469,8 @@ export default function OverlayEnVivoPage() {
             <>
               {overlayActivo === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
               {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pagina={control?.overlay === 'tabla' ? control.tabla_pagina : null} pie={pieInstitucional}/>}
+              {overlayActivo === 'tabla_descanso' && <TablaDescansoOverlay filas={tablas[tablaTorneoId]} grupos={gruposTabla} pie={pieInstitucional} onTerminar={() => siguienteDelDescanso('tabla_descanso')}/>}
+              {overlayActivo === 'proximos' && <ProximosPartidosOverlay partidos={proximos} pie={pieInstitucional} onTerminar={() => siguienteDelDescanso('proximos')}/>}
               {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido} pie={pieInstitucional}/>}
               {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}
               {overlayActivo === 'intermedio' && <IntermedioDescansoOverlay jugadas={control?.jugadas} patrocinadores={patrocinadoresDeControl(control)}/>}

@@ -83,16 +83,31 @@ export function aplicarDescuentos(filas, descuentos) {
 // guardados, puntos) más lo que se está jugando AHORA. `vivos` son los
 // partidos con su snapshot en vivo (se emparejan por id con los de la base),
 // así la tabla muestra "así va" mientras se juega, de forma provisional.
-export function tablaConVivo(base, vivos) {
-  if (!base) return undefined
+function partidosConVivo(base, vivos) {
   const lista = Array.isArray(vivos) ? vivos : []
-  const partidos = (base.partidos || []).map(p => {
+  return (base.partidos || []).map(p => {
     if (p.status === 'finished') return p
     const v = lista.find(m => m.id === p.id)
     if (!v) return p
     return { ...p, live_state: v.live_state, live_state_updated_at: v.live_state_updated_at, live_state_rapida: v.live_state_rapida, live_state_rapida_updated_at: v.live_state_rapida_updated_at }
   })
-  return computeTablaGeneral(base.equipos || [], partidos, base.torneo || {})
+}
+export function tablaConVivo(base, vivos) {
+  if (!base) return undefined
+  return computeTablaGeneral(base.equipos || [], partidosConVivo(base, vivos), base.torneo || {})
+}
+
+// Una tabla por GRUPO (solo cuenta los partidos entre equipos del mismo grupo, igual que la tabla del torneo).
+// Devuelve [] si el torneo no tiene más de un grupo (ahí se usa la tabla general).
+export function gruposConVivo(base, vivos) {
+  if (!base || !Array.isArray(base.grupos) || base.grupos.length < 2) return []
+  const partidos = partidosConVivo(base, vivos)
+  return base.grupos.map(g => {
+    const ids = new Set((base.grupoEquipos || []).filter(ge => ge.grupo_id === g.id).map(ge => ge.team_id))
+    const equipos = (base.equipos || []).filter(e => ids.has(e.id))
+    const delGrupo = partidos.filter(p => ids.has(p.home_team_id) && ids.has(p.away_team_id))
+    return { id: g.id, nombre: g.nombre, filas: computeTablaGeneral(equipos, delGrupo, base.torneo || {}) }
+  }).filter(g => g.filas.length > 0)
 }
 export function tablasConVivo(bases, vivos) {
   const out = {}

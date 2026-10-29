@@ -17,7 +17,8 @@ const PARTE_MS = 9000
 
 // `pagina`: número de parte fija (1 = primeros 10…) o null/'auto' para que roten solas
 // `pie`: leyenda de abajo (por defecto la de la tabla; en el descanso la página de overlay manda el mensaje institucional)
-export default function TablaEnVivoOverlay({ filas, pagina = null, pie = 'Tabla actualizada automáticamente · tecnología GOLMEBOL' }) {
+// `etiqueta`: reemplaza el título rojo (ej. "Grupo A" en la tabla del descanso)
+export default function TablaEnVivoOverlay({ filas, pagina = null, etiqueta = null, pie = 'Tabla actualizada automáticamente · tecnología GOLMEBOL' }) {
   // Cuántas filas caben LEGIBLES en el video: en un celular chico no caben 10
   // con letra cómoda, así que cada parte muestra menos y las demás salen al
   // rotar. En pantalla grande / OBS salen las 10.
@@ -92,7 +93,7 @@ export default function TablaEnVivoOverlay({ filas, pagina = null, pie = 'Tabla 
     <div className="ev-p ev-u" ref={ref}>
       <EnVivoEstilos/>
       <div className="ev-h">
-        <div className="ev-tag">{hayVivo ? 'Así va la tabla' : 'Tabla de posiciones'}</div>
+        <div className="ev-tag">{etiqueta || (hayVivo ? 'Así va la tabla' : 'Tabla de posiciones')}</div>
         <div className="ev-sub">
           {hayVivo && <><span className="ev-dot"/>En vivo</>}
           {partesTotal > 1 && <span className="ev-parte">Parte {parteActual}/{partesTotal}</span>}
