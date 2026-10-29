@@ -23,6 +23,7 @@ import { compararPosiciones, aplicarDescuentos } from '../lib/torneoTablas'
 // desde la BD — o si no, uno de estos componentes SVG según el tipo)
 const ICONOS_RECORD = {
   max_goleador: GiSoccerBall, goles_partido: Flame, hat_tricks: Sparkles, victorias: Medal,
+  marca_2: Sparkles, marca_3: Sparkles, marca_4: Sparkles, marca_5: Sparkles, marca_6: Sparkles, marca_7: Sparkles, marca_8: Sparkles, marca_9: Sparkles, marca_10: Sparkles,
   mas_partidos: GiTShirt, racha_vic: Flame, racha_gol: Flame, arcos_cero: GiGoalKeeper,
   fair_play: Handshake, partido_goles: Zap, goleada: Rocket, eq_goles: Shield, eq_victorias: Crown,
 }

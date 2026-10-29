@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { hydratePlayersPublico } from './playersPublico'
+import { MARCAS_GOLES, marcaDeGoles } from './marcasGoles'
 
 // Calcula los récords que se generan solos con los datos de la liga
 // (máximo goleador, hat-tricks, rachas, etc.). Se usa tanto en la página
@@ -49,22 +50,31 @@ export async function calcularRecordsAutomaticos() {
   const topGolPar = statsPorPartido[0]
   if (topGolPar?.goals_scored >= 2) recs.push({
     id: 'goles_partido',
-    titulo: `${topGolPar.goals_scored} goles en un partido`,
+    titulo: `${topGolPar.goals_scored} goles en un partido (${marcaDeGoles(topGolPar.goals_scored)?.nombre || ''})`,
     nombre: topGolPar.players?.name || '?',
     subtitulo: `${topGolPar.matches?.home?.name} vs ${topGolPar.matches?.away?.name}`,
     descripcion: topGolPar.matches?.played_at ? new Date(topGolPar.matches.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
     color: '#e8710a',
   })
 
-  // 3. Hat-tricks
-  const topHat = [...cache].sort((a, b) => b.hat_tricks - a.hat_tricks)[0]
-  if (topHat?.hat_tricks > 0) recs.push({
-    id: 'hat_tricks',
-    titulo: `${topHat.hat_tricks} hat-trick${topHat.hat_tricks > 1 ? 's' : ''}`,
-    nombre: topHat.players?.name || '?',
-    subtitulo: 'más hat-tricks en la historia',
-    descripcion: '3 o más goles en un solo partido',
-    color: GOLD,
+  // 3. Marcas de goles por tipo (doblete, triplete, póker… gesta histórica): quién tiene más de cada una
+  MARCAS_GOLES.filter(m => m.n >= 2).forEach(m => {
+    const porJugador = new Map()
+    statsPorPartido.forEach(s => {
+      if (!s.player_id || marcaDeGoles(s.goals_scored)?.n !== m.n) return
+      const act = porJugador.get(s.player_id) || { nombre: s.players?.name || '?', veces: 0 }
+      act.veces++
+      porJugador.set(s.player_id, act)
+    })
+    const top = [...porJugador.values()].sort((a, b) => b.veces - a.veces)[0]
+    if (top) recs.push({
+      id: `marca_${m.n}`,
+      titulo: `${top.veces} ${top.veces === 1 ? m.nombre : m.plural}`,
+      nombre: top.nombre,
+      subtitulo: `más ${m.plural.toLowerCase()} en la historia`,
+      descripcion: `${m.n >= 10 ? '10 o más' : m.n} goles en un solo partido`,
+      color: GOLD,
+    })
   })
 
   // 4. Más victorias

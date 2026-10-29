@@ -20,7 +20,7 @@ import MarcaTransmision from '../components/MarcaTransmision'
 import ResumenGolesOverlay from '../components/ResumenGolesOverlay'
 import IntermedioDescansoOverlay from '../components/IntermedioDescansoOverlay'
 import TablaDescansoOverlay from '../components/TablaDescansoOverlay'
-import ProximosPartidosOverlay from '../components/ProximosPartidosOverlay'
+import ProximosPartidosOverlay, { MS_POR_PROXIMO_FINAL } from '../components/ProximosPartidosOverlay'
 import MvpPartidoOverlay, { DURACION_MVP_MS } from '../components/MvpPartidoOverlay'
 
 // Página de overlay para OBS (u otro programa de transmisión): dibuja SOLO
@@ -364,6 +364,13 @@ export default function OverlayEnVivoPage() {
         if (mvp) { setMvpFinal(mvp); programarAuto('mvp', 0, DURACION_MVP_MS) }
         programarAuto('final', espera, DURACION_TABLERO_MS)
         programarAuto('tabla', espera + DURACION_TABLERO_MS, DURACION_TABLERO_MS)
+        // Después de la tabla: los partidos que siguen en esa cancha, 1 min y medio cada uno (si ya no hay más, no sale)
+        const prox = await cargarProximos(previo)
+        if (a.desmontado) return
+        if (prox.length) {
+          setProximos(prox)
+          programarAuto('proximos_final', espera + DURACION_TABLERO_MS * 2, prox.length * MS_POR_PROXIMO_FINAL)
+        }
         return
       }
       if (intentos < 6) a.timers.push(setTimeout(revisar, 5000))
@@ -470,6 +477,7 @@ export default function OverlayEnVivoPage() {
               {overlayActivo === 'goles' && partido && <GolesEnVivoOverlay partido={partido}/>}
               {overlayActivo === 'tabla' && <TablaEnVivoOverlay filas={tablas[tablaTorneoId]} pagina={control?.overlay === 'tabla' ? control.tabla_pagina : null} pie={pieInstitucional}/>}
               {overlayActivo === 'tabla_descanso' && <TablaDescansoOverlay filas={tablas[tablaTorneoId]} grupos={gruposTabla} pie={pieInstitucional} onTerminar={() => siguienteDelDescanso('tabla_descanso')}/>}
+              {overlayActivo === 'proximos_final' && <ProximosPartidosOverlay partidos={proximos} pie={pieInstitucional} msPorPartido={MS_POR_PROXIMO_FINAL} onTerminar={() => setAutoOverlay(act => (act === 'proximos_final' ? null : act))}/>}
               {overlayActivo === 'proximos' && <ProximosPartidosOverlay partidos={proximos} pie={pieInstitucional} onTerminar={() => siguienteDelDescanso('proximos')}/>}
               {overlayActivo === 'jugadores' && partido && <JugadoresEnVivoOverlay partido={partido} pie={pieInstitucional}/>}
               {overlayActivo === 'resumen' && partido && <ResumenGolesOverlay partido={partido} goles={extraerGoles(partido)} modo="descanso"/>}

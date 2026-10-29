@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { errorAmigable } from '../../lib/mensajesError'
 import { calcularRecordsAutomaticos } from '../../lib/recordsAutomaticos'
 import { confirmar } from '../../lib/confirmar'
+import { MARCAS_GOLES } from '../../lib/marcasGoles'
 
 const COLORES = ['#f9a825','#00ddd0','#e8710a','#9955ff','#d93025','#00ee55','#1a73e8','#ff69b4','#4488ff','#a1887f']
 const ICONOS  = ['⭐','⚽','🏆','🔥','⚡','🎩','🧤','✅','💥','🎮','🥇','👑','🎯','💪','🛡️']
@@ -11,7 +12,7 @@ const ICONOS  = ['⭐','⚽','🏆','🔥','⚡','🎩','🧤','✅','💥','�
 const RECORDS_AUTOMATICOS = [
   { id: 'max_goleador',  icono: '⚽', nombre: 'Máximo goleador histórico' },
   { id: 'goles_partido', icono: '💥', nombre: 'Más goles en un partido' },
-  { id: 'hat_tricks',    icono: '🎩', nombre: 'Más hat-tricks' },
+  ...MARCAS_GOLES.filter(m => m.n >= 2).map(m => ({ id: `marca_${m.n}`, icono: m.n >= 3 ? '🎩' : '⚽', nombre: `Más ${m.plural.toLowerCase()}` })),
   { id: 'victorias',     icono: '🏅', nombre: 'Más victorias' },
   { id: 'mas_partidos',  icono: '🎽', nombre: 'Más partidos jugados' },
   { id: 'racha_vic',     icono: '🔥', nombre: 'Racha de victorias' },

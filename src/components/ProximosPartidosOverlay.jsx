@@ -5,9 +5,11 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 // "Próximo partido" del DESCANSO: después de la tabla salen, uno por uno, los partidos que siguen
 // en la misma cancha ese día. Cada partido dura 1 minuto. Si no hay más partidos, no se muestra
 // (el que lo muestra ni siquiera lo prende). Al terminar el último avisa con `onTerminar`.
+// Al terminar el partido en vivo se usa el mismo con 1 min y medio por partido (`msPorPartido`).
 // `partidos`: [{ id, played_at, matchday, fase, home:{name,logo_url}, away:{name,logo_url} }] ya ordenados por hora.
 
-export const MS_POR_PROXIMO = 60000
+export const MS_POR_PROXIMO = 60000 // en el descanso: 1 minuto cada uno
+export const MS_POR_PROXIMO_FINAL = 90000 // al terminar el partido: 1 minuto y medio cada uno
 const FASES = { octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final', tercer_puesto: '3.er puesto' }
 
 const CSS = `
@@ -25,7 +27,7 @@ function etiquetaPartido(p) {
   return ''
 }
 
-export default function ProximosPartidosOverlay({ partidos, pie, onTerminar }) {
+export default function ProximosPartidosOverlay({ partidos, pie, onTerminar, msPorPartido = MS_POR_PROXIMO }) {
   const lista = Array.isArray(partidos) ? partidos : []
   const [idx, setIdx] = useState(0)
   const alTerminar = useRef(onTerminar)
@@ -36,13 +38,12 @@ export default function ProximosPartidosOverlay({ partidos, pie, onTerminar }) {
     const t = setTimeout(() => {
       if (idx + 1 < n) setIdx(idx + 1)
       else alTerminar.current?.()
-    }, n ? MS_POR_PROXIMO : 0)
+    }, n ? msPorPartido : 0)
     return () => clearTimeout(t)
-  }, [idx, n])
+  }, [idx, n, msPorPartido])
 
   const p = lista[idx]
   if (!p) return null
-  const ultimo = idx === n - 1
   const hora = p.played_at ? fmtHoraDate(p.played_at) : ''
   const detalle = etiquetaPartido(p)
   return (
@@ -50,7 +51,7 @@ export default function ProximosPartidosOverlay({ partidos, pie, onTerminar }) {
       <EnVivoEstilos/>
       <style>{CSS}</style>
       <div className="ev-h">
-        <div className="ev-tag">{idx === 0 ? 'Próximo partido' : ultimo && n > 1 ? 'Último partido' : 'Sigue'}</div>
+        <div className="ev-tag">Próximo partido</div>
         <div className="ev-sub">
           {detalle && <span>{detalle}</span>}
           {n > 1 && <span className="ev-parte">{idx + 1}/{n}</span>}
