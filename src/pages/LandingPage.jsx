@@ -331,7 +331,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
   const [streamsOk, setStreamsOk] = useState({}) // { [idTransmisión]: url } transmisiones ya verificadas como directo (no una vieja)
-  const [avisoSinVivo, setAvisoSinVivo] = useState(false) // aviso grande "no hay partidos en vivo" (se quita solo a los 10 s)
+  const [avisoSinVivo, setAvisoSinVivo] = useState(false) // aviso grande "no hay partidos en vivo" (se quita solo a los 5 s)
   const [senalVivo, setSenalVivo] = useState(0) // sube cada vez que tocan "VER EN VIVO": la lista de partidos salta al filtro En vivo
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
   const [escenarios, setEscenarios] = useState(() => leerCacheRapido('landing_escenarios') || [])
@@ -454,7 +454,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
   useEffect(() => {
     if (!avisoSinVivo) return undefined
-    const t = setTimeout(() => setAvisoSinVivo(false), 10000)
+    const t = setTimeout(() => setAvisoSinVivo(false), 5000)
     return () => clearTimeout(t)
   }, [avisoSinVivo])
   const logoDeTorneoAuto = useLogosTorneos(idsTorneoAuto)
@@ -978,14 +978,14 @@ export default function LandingPage({ modo = 'inicio' }) {
 
       {/* ── En vivo (YouTube/Facebook/Instagram) — configurable desde /admin/config-sitio, puede haber varias a la vez ── */}
       {avisoSinVivo && (
-        <div role="status" onClick={() => setAvisoSinVivo(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: 'rgba(0,0,0,.55)', animation: 'gmAvisoVivo 10s ease both', cursor: 'pointer' }}>
+        <div role="status" onClick={() => setAvisoSinVivo(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: 'rgba(0,0,0,.55)', animation: 'gmAvisoVivo 5s ease both', cursor: 'pointer' }}>
           <style>{`@keyframes gmAvisoVivo { 0% { opacity: 0 } 4% { opacity: 1 } 90% { opacity: 1 } 100% { opacity: 0 } } @keyframes gmAvisoBarra { from { width: 100% } to { width: 0% } }`}</style>
           <div style={{ width: 'min(92vw, 460px)', background: S.card, border: `1px solid ${S.border}`, borderRadius: '20px', padding: '30px 24px 22px', textAlign: 'center', boxShadow: '0 24px 70px rgba(0,0,0,.6)' }}>
             <div style={{ width: 58, height: 58, borderRadius: '50%', margin: '0 auto 14px', background: 'rgba(229,67,61,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Radio size={28} color={S.red}/></div>
             <div style={{ fontSize: 'clamp(1.25rem, 5vw, 1.6rem)', fontWeight: 900, lineHeight: 1.2, color: S.text }}>No hay partidos en vivo en este momento</div>
             <div style={{ color: S.text2, fontSize: '.92rem', marginTop: '10px', lineHeight: 1.5 }}>Cuando empiece uno, aparecerá aquí.</div>
             <div style={{ height: 4, borderRadius: 2, background: S.border, marginTop: '20px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: S.red, animation: 'gmAvisoBarra 10s linear both' }}/>
+              <div style={{ height: '100%', background: S.red, animation: 'gmAvisoBarra 5s linear both' }}/>
             </div>
           </div>
         </div>
