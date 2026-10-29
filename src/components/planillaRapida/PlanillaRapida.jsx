@@ -22,6 +22,7 @@ import PantallaPapel from '../planillaPapel/PantallaPapel'
 import ModalCierrePapel from '../planillaPapel/ModalCierrePapel'
 import { papelVacio, normalizarPapel, papelParaGuardar } from '../../lib/planillaPapel'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../../lib/alarmaTiempo'
+import { useCierreAutomatico, textoCierreAutomatico } from '../../lib/cierreAutomatico'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -147,6 +148,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [segundos, setSegundos] = useState(0)
   const [corriendo, setCorriendo] = useState(false)
   const [tiempoAgotado, setTiempoAgotado] = useState(false)
+  const [finTiempoEn, setFinTiempoEn] = useState(null) // cuándo terminó el 2.º tiempo (epoch ms): de ahí corren los 15 min del cierre automático
 
   const [modalFoto, setModalFoto] = useState(null) // { team, index, jugador }
   const [alertaNumero, setAlertaNumero] = useState(null) // { team, numero, tipo }
@@ -344,6 +346,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (typeof snap.periodo === 'number') setPeriodo(snap.periodo)
       setSegundos1T(typeof snap.segundos1T === 'number' ? snap.segundos1T : null)
       setTiempoAgotado(!!snap.tiempoAgotado)
+      if (snap.finTiempoEn) setFinTiempoEn(snap.finTiempoEn)
       setSegundos(segs)
       setCorriendo(!!snap.corriendo)
     } else if (relojRemoto === relojVRef.current && snap.corriendo && snap.relojAutor && snap.relojAutor === snap.autor && inicioEpochRef.current != null) {
@@ -852,6 +855,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     setSegundos(segs)
     setCorriendo(!!snap.corriendo && !snap.tiempoAgotado)
     setTiempoAgotado(!!snap.tiempoAgotado)
+    setFinTiempoEn(snap.finTiempoEn || null)
   }
 
   // Reconstruye una planilla rápida ya cerrada (para que el árbitro líder / admin pueda reeditarla)
@@ -945,7 +949,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (firmaHoja !== papelSigRef.current) { papelSigRef.current = firmaHoja; papelVRef.current += 1; papelAutorRef.current = deviceIdRef.current }
       extraPapel = { papel, papelV: papelVRef.current, papelAutor: papelAutorRef.current }
     }
-    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current }
+    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, finTiempoEn, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current }
   }
   // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
   restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
@@ -1343,7 +1347,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   }
 
   // ── Guardado final ─────────────────────────────────────────────────────
-  async function guardarFinal({ informeTexto, mvpId }, tanda = null) {
+  async function guardarFinal({ informeTexto, mvpId, autoCierre = false }, tanda = null) {
     finalizandoRef.current = true
     setGuardandoDB(true)
     // Hoja de papel: el informe sale de la hoja; si se definió por la tanda de penales, la hoja queda con ese marcador/ganador.
@@ -1351,7 +1355,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       ? { ...papel, penales: { hubo: true, local: String(tanda.penalesLocal), visitante: String(tanda.penalesVisitante), ganador: tanda.ganador === 'home' ? 'local' : 'visitante' } }
       : papel
     if (esPapel && tanda) setPapel(hojaFinal)
-    if (esPapel) informeTexto = hojaFinal.informe
+    if (esPapel && !autoCierre) informeTexto = hojaFinal.informe
+    if (autoCierre) informeTexto = [esPapel ? hojaFinal.informe : '', textoCierreAutomatico(eventos.some(e => e.tipo === 'red_card'))].filter(Boolean).join('\n\n')
     const golesLocalTotal = eventos.filter(e => e.team === 'local' && e.tipo === 'goal').length
     const golesVisTotal = eventos.filter(e => e.team === 'visitante' && e.tipo === 'goal').length
     const erroresGuardado = []
@@ -1560,7 +1565,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         const { data: previos } = await supabase.from('match_informes').select('id').eq('match_id', partido.id).eq('descripcion', informeTexto.trim()).limit(1)
         yaEsta = !!(previos && previos.length > 0)
       }
-      if (!yaEsta) await supabase.from('match_informes').insert({ match_id: partido.id, tournament_id: partido.tournament_id, tipo: (esPapel && !hayRoja) ? 'otro' : 'roja', descripcion: informeTexto.trim(), creado_por: creadoPor })
+      if (!yaEsta) await supabase.from('match_informes').insert({ match_id: partido.id, tournament_id: partido.tournament_id, tipo: (autoCierre ? !hayRoja : (esPapel && !hayRoja)) ? 'otro' : 'roja', descripcion: informeTexto.trim(), creado_por: creadoPor })
     }
 
     if (mvpId) {
@@ -1596,6 +1601,30 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     }
     guardarFinal(datos)
   }
+
+  // ── Cierre automático: 15 min después de terminar el partido sin que nadie cierre la planilla ──
+  // Se guarda todo como está, SIN MVP y con un informe que lo explica. Si es una eliminatoria empatada que
+  // necesita la tanda de penales, no se cierra sola (haría falta saber quién ganó).
+  async function cierreAutomatico() {
+    if (finalizandoRef.current || guardandoDB) return
+    try {
+      const { data: m } = await supabase.from('matches').select('status').eq('id', partido.id).maybeSingle()
+      if (m?.status === 'finished' && partido.status !== 'finished') { onClose && onClose(); return } // otro celular ya la cerró
+    } catch { /* sin señal: se intenta igual */ }
+    const gl = eventosLocal.filter(e => e.tipo === 'goal').length
+    const gv = eventosVis.filter(e => e.tipo === 'goal').length
+    if (necesitaPreguntarPenales({ fase: partido?.fase, golesLocal: gl, golesVis: gv, globalLlave, eliminacion: eliminacionDirecta(partido) }) && !(esPapel && papel.penales.hubo)) return
+    setMostrarCierre(false)
+    await guardarFinal({ informeTexto: '', mvpId: null, autoCierre: true })
+  }
+  useCierreAutomatico({ activo: !!listo && partido.status !== 'finished' && periodo === 2 && !!finTiempoEn, finTiempoEn, onVencido: cierreAutomatico })
+  // El plazo corre desde que se cumple el tiempo del 2.º tiempo (o desde que el árbitro lo da por terminado)
+  const pasoElLimite = periodo === 2 && (tiempoAgotado || segundos >= duracionMinutos * 60)
+  useEffect(() => {
+    if (!pasoElLimite) { if (finTiempoEn != null) setFinTiempoEn(null); return }
+    if (finTiempoEn == null && partido.status !== 'finished') setFinTiempoEn(Date.now() - Math.max(0, segundos - duracionMinutos * 60) * 1000)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasoElLimite])
 
   // ── Guardado de partido por W o Desierto (no se jugó) ──────────────────
   // Construido desde cero: la rápida no tenía este concepto (a diferencia de

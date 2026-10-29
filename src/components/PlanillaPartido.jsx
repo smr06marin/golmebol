@@ -13,6 +13,7 @@ import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido
 import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
 import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador, sumarGlobal, criterioLlave, eliminacionDirecta } from '../lib/penales'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../lib/alarmaTiempo'
+import { useCierreAutomatico, guardarInformeCierreAuto } from '../lib/cierreAutomatico'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -612,6 +613,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [corriendo,        setCorriendo]        = useState(false)
   const [miniCrono,        setMiniCrono]        = useState(true)
   const [tiempoAgotado,    setTiempoAgotado]    = useState(false)
+  const [finTiempoEn,      setFinTiempoEn]      = useState(null) // cuándo terminó el 2.º tiempo (epoch ms): de ahí corren los 15 min del cierre automático
   const [tiempoExtra,      setTiempoExtra]      = useState(0)
   const [duracionMinutos,  setDuracionMinutos]  = useState(20)
   const [editandoDuracion, setEditandoDuracion] = useState(false)
@@ -718,7 +720,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
       arbitro1, arbitro2, arbitro3, anotador, cronometroNombre, observaciones,
       horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, tiempoP1, tiempoP2, colorLocal, colorVisitante,
       duracionMinutos, mvpId, huboPenales: hubopenales, penalesGanador, penalesLocal, penalesVisitante,
-      periodo, segundos, corriendo, tiempoAgotado, tiempoExtra,
+      periodo, segundos, corriendo, tiempoAgotado, finTiempoEn, tiempoExtra,
       arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis,
       firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido,
       savedAt: new Date().toISOString(), pendienteSync: true,
@@ -801,6 +803,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
     // (si el tiempo ya se cumplió y no lo cerraron, sigue corriendo en EXTRA)
     setCorriendo(!!snap.corriendo && !snap.tiempoAgotado); if (snap.tiempoAgotado) setTiempoAgotado(true)
+    if (snap.finTiempoEn) setFinTiempoEn(snap.finTiempoEn)
     setSegundos(segs)
 
     setHayDatosLocales(true)
@@ -1737,6 +1740,40 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     if (empate && !tandaPenales && !hubopenales && !penalesDeclinado) { setPreguntaPenales(true); return }
     setShowMVP(true)
   }
+
+  // ── Cierre automático: 15 min después de terminar el partido sin que nadie cierre la planilla ──
+  // Se guarda todo como está, SIN MVP (y sin exigir firmas ni arquero) y queda un informe que lo explica.
+  // Si es una eliminatoria empatada que necesita la tanda de penales, no se cierra sola.
+  const guardandoAutoRef = useRef(false)
+  async function cierreAutomatico() {
+    if (guardandoAutoRef.current || guardandoDB || partido.status === 'finished') return
+    try {
+      const { data: m } = await supabase.from('matches').select('status').eq('id', partido.id).maybeSingle()
+      if (m?.status === 'finished') { onClose(); return } // otro celular ya la cerró
+    } catch { /* sin señal: se intenta igual */ }
+    const empate = necesitaPreguntarPenales({
+      fase: partido.fase,
+      golesLocal: golesLocal.filter(Boolean).length,
+      golesVis: golesVisitante.filter(Boolean).length,
+      globalLlave,
+      eliminacion: eliminacionDirecta(partido),
+    })
+    if (empate && !tandaPenales && !hubopenales && !penalesDeclinado) return
+    guardandoAutoRef.current = true
+    const hayRoja = [...jugadoresLocal, ...jugadoresVisitante].some(j => j.roja)
+    await guardarInformeCierreAuto({ partidoId: partido.id, tournamentId: partido.tournament_id, hayRoja: hayRoja && !informeGuardado })
+    setShowMVP(false)
+    await guardarEnDB(null, null)
+    guardandoAutoRef.current = false
+  }
+  useCierreAutomatico({ activo: !loading && partido.status !== 'finished' && periodo === 2 && !!finTiempoEn, finTiempoEn, onVencido: cierreAutomatico })
+  // El plazo corre desde que se cumple el tiempo del 2.º tiempo (o desde que el árbitro lo da por terminado)
+  const pasoElLimite = periodo === 2 && (tiempoAgotado || segundos >= limiteSegundos)
+  useEffect(() => {
+    if (!pasoElLimite) { if (finTiempoEn != null) setFinTiempoEn(null); return }
+    if (finTiempoEn == null && partido.status !== 'finished') setFinTiempoEn(Date.now() - Math.max(0, segundos - limiteSegundos) * 1000)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasoElLimite])
 
   async function handleGuardarMVP(playerId) {
     setShowMVP(false)

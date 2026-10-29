@@ -5,6 +5,7 @@ import { derivarEnVivo, extraerGoles, duracionPeriodo, derivarColoresUniforme, d
 import { tablasConVivo, gruposConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import { useLogosTorneos } from '../lib/useLogosTorneos'
+import { hydratePlayersPublico } from '../lib/playersPublico'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
@@ -338,12 +339,16 @@ export default function OverlayEnVivoPage() {
       if (m?.status === 'finished') {
         a.finalesHechos.add(previo)
         const [ev, st] = await Promise.all([
-          supabase.from('match_events').select('*, players!player_id(name)').eq('match_id', previo).eq('event_type', 'goal'),
+          supabase.from('match_events').select('*').eq('match_id', previo).eq('event_type', 'goal'),
           supabase.from('player_match_stats').select('player_id, numero_camiseta').eq('match_id', previo),
         ])
         if (a.desmontado) return
         const numeros = new Map((st.data || []).map(r => [r.player_id, r.numero_camiseta]))
-        const goles = (ev.data || []).map(e => ({
+        // Los nombres salen de players_publico (la tabla players no es pública y el overlay corre sin sesión)
+        let eventosGol = ev.data || []
+        try { eventosGol = await hydratePlayersPublico(eventosGol, { columns: 'id, name' }) } catch { /* sin nombres: sale "Jugador" */ }
+        if (a.desmontado) return
+        const goles = eventosGol.map(e => ({
           equipo: e.team_id === m.home_team_id ? 'local' : 'visitante',
           jugador: e.players?.name || e.player_nombre || 'Jugador',
           numero: String(numeros.get(e.player_id) ?? '').trim(),
