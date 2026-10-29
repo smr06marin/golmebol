@@ -196,7 +196,7 @@ function ModalInscripcionJugador({ jugador, tarifa, onClose }) {
         <div style={{ fontSize: '1.6rem', marginBottom: '4px' }}>💵</div>
         <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>{jugador?.nombre || 'Jugador'}</div>
         <div style={{ fontSize: '.82rem', color: '#5f6368', marginBottom: '14px' }}>
-          Su inscripción no está pagada. No puede salir con número de camiseta en esta planilla hasta que el organizador registre su pago en Finanzas — se libera solo, sin recargar.
+          Su inscripción no está pagada. Es solo un aviso: puede salir con su número de camiseta y jugar normal. El pago lo registra el organizador en Finanzas.
         </div>
         {tarifa > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid #eee', fontWeight: '800', fontSize: '.95rem' }}>
@@ -2133,10 +2133,6 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
                   j.debeTarjeta ? (
                     <td onClick={() => setModalDeudaJugador(j)} title="Debe tarjeta sin pagar — no puede registrar número hasta ponerse al día. Click para ver el detalle." style={{ ...cell, background: '#ffd6d6', padding: '1px', cursor: 'pointer' }}>
                       {j.numero ? <span style={{ fontSize: '9px', fontWeight: '800', color: '#d93025' }}>{j.numero} 🔒</span> : <span style={{ fontSize: '12px' }}>🔒</span>}
-                    </td>
-                  ) : j.debeInscripcion ? (
-                    <td onClick={() => setModalInscripcionJugador(j)} title="Inscripción sin pagar — no puede registrar número hasta que se marque su pago en Finanzas. Click para ver el detalle." style={{ ...cell, background: '#ffe8cc', padding: '1px', cursor: 'pointer' }}>
-                      {j.numero ? <span style={{ fontSize: '9px', fontWeight: '800', color: '#e8710a' }}>{j.numero} 🔒</span> : <span style={{ fontSize: '12px' }}>🔒</span>}
                     </td>
                   ) : (
                     <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>

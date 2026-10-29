@@ -140,7 +140,7 @@ const celda = (extra = {}) => ({ borderRight: LINEA, display: 'flex', alignItems
 
 function FilaJugador({ j, eventos, ancha, onNumero, onAbrir, onGol, onTarjeta, onQuitar }) {
   const tieneNumero = (j.numero || '').trim() !== ''
-  const bloqueado = !!(j.debeTarjeta || j.debeInscripcion)
+  const bloqueado = !!j.debeTarjeta // la inscripción sin pagar solo avisa: se puede planillar normal
   const goles = eventos.filter(e => e.tipo === 'goal')
   const amarillas = eventos.filter(e => e.tipo === 'yellow_card')
   const rojas = eventos.filter(e => e.tipo === 'red_card')

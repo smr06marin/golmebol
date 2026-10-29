@@ -14,10 +14,10 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
   const foto = jugador?.photo_face_url || jugador?.photo_url
   const esSinRegistro = !jugador?.id
   const debeTarjeta = !!jugador?.debeTarjeta
-  // Inscripción por jugador sin pagar: bloqueado igual que la deuda de tarjeta,
-  // pero acá el árbitro no cobra nada — se libera cuando el organizador marca el pago en Finanzas.
+  // Inscripción por jugador sin pagar: solo se AVISA (el árbitro no cobra nada). El jugador se puede planillar
+  // normal con su número; el pago lo marca el organizador en Finanzas.
   const debeInscripcion = !!jugador?.debeInscripcion
-  const bloqueado = debeTarjeta || debeInscripcion
+  const bloqueado = debeTarjeta
   const puedeConfirmar = !bloqueado && numero.trim() && (!esSinRegistro || nombre.trim())
   const iconoTipo = { Amarilla: '🟨', Azul: '🟦', Roja: '🟥' }
   const totalDeuda = deudaItems.reduce((a, it) => a + (it.monto || 0), 0)
@@ -97,16 +97,17 @@ export default function ModalFotoNumero({ jugador, deudaItems = [], equiposNombr
               <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, marginTop: '8px' }}>No se le puede poner número hasta ponerse al día. En cuanto se registre el pago, se libera solo — sin recargar.</div>
             )}
           </div>
-        ) : debeInscripcion ? (
-          <div style={{ background: 'rgba(232,113,10,.12)', border: '1px solid rgba(232,113,10,.5)', borderRadius: '12px', padding: '12px 14px', marginBottom: '18px', textAlign: 'left' }}>
+        ) : (
+          <>
+          {debeInscripcion && (
+          <div style={{ background: 'rgba(232,113,10,.12)', border: '1px solid rgba(232,113,10,.5)', borderRadius: '12px', padding: '12px 14px', marginBottom: '14px', textAlign: 'left' }}>
             <div style={{ fontWeight: '800', color: '#ffa94d', fontSize: '.82rem', marginBottom: '6px' }}>💵 Inscripción sin pagar</div>
             {tarifaInscripcion > 0 && (
               <div style={{ fontSize: '.78rem', color: TEXTO, fontWeight: '700', marginBottom: '6px' }}>Cobro por jugador: ${tarifaInscripcion.toLocaleString('es-CO')}</div>
             )}
-            <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, lineHeight: 1.4 }}>No se le puede poner número hasta que pague su inscripción. En cuanto el organizador registre el pago en Finanzas, se libera solo — sin recargar.</div>
+            <div style={{ fontSize: '.68rem', color: TEXTO_TENUE, lineHeight: 1.4 }}>Puedes ponerle su número y planillarlo normal. El pago lo registra el organizador en Finanzas.</div>
           </div>
-        ) : (
-          <>
+          )}
             <div style={{ fontSize: '.72rem', color: TEXTO_TENUE, marginBottom: '6px', fontWeight: '600' }}>Número de camiseta</div>
             <input value={numero} onChange={e => setNumero(e.target.value.replace(/\D/g, '').slice(0, 2))}
               inputMode="numeric" placeholder="Ej: 10" maxLength={2}

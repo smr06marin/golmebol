@@ -1282,7 +1282,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const setHist = team === 'local' ? setHistArquerosLocal : setHistArquerosVis
     const j = arr[index]
     if (!j) return null
-    if (j.debeTarjeta || j.debeInscripcion) return 'Tiene una deuda pendiente'
+    if (j.debeTarjeta) return 'Tiene una deuda pendiente' // la inscripción sin pagar solo avisa, no bloquea
     const n = (numeroNuevo || '').trim()
     if (n && arr.some((x, i) => i !== index && (x.numero || '').trim() === n)) return `El ${n} ya lo tiene otro jugador`
     const tieneEventos = eventos.some(e => e.team === team && (j.id ? e.jugadorId === j.id : (!e.jugadorId && (e.jugadorNombre || '') === (j.nombre || ''))))
@@ -1322,7 +1322,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   function eventoPapel(team, index, tipo) {
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
     const j = arr[index]
-    if (!j || !(j.numero || '').trim() || j.debeTarjeta || j.debeInscripcion) return
+    if (!j || !(j.numero || '').trim() || j.debeTarjeta) return
     agregarEventoParaJugador(team, j, tipo)
   }
   function agregarJugadorPapel(team, { cedula, nombre, numero }) {
