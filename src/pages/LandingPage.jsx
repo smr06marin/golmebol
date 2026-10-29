@@ -330,6 +330,8 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [torneosCargados, setTorneosCargados] = useState(() => !!leerCacheRapido('landing_torneos'))
   const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
+  const [streamsOk, setStreamsOk] = useState({}) // { [idTransmisión]: url } transmisiones ya verificadas como directo (no una vieja)
+  const [avisoSinVivo, setAvisoSinVivo] = useState(false) // aviso grande "no hay partidos en vivo" (se quita solo a los 10 s)
   const [senalVivo, setSenalVivo] = useState(0) // sube cada vez que tocan "VER EN VIVO": la lista de partidos salta al filtro En vivo
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
   const [escenarios, setEscenarios] = useState(() => leerCacheRapido('landing_escenarios') || [])
@@ -448,6 +450,13 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [streamsCaidos, setStreamsCaidos] = useState({}) // { [idTransmisión]: url }
   const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo).filter(s => streamsCaidos[s.id] !== s.url), [streamsConfig, canalesEnVivo, streamsCaidos])
   const idsTorneoAuto = useMemo(() => streamsVivos.map(s => s.torneo_auto).filter(Boolean), [streamsVivos])
+  const streamsVisibles = streamsVivos.filter(s => streamsOk[s.id] === s.url)
+  const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
+  useEffect(() => {
+    if (!avisoSinVivo) return undefined
+    const t = setTimeout(() => setAvisoSinVivo(false), 10000)
+    return () => clearTimeout(t)
+  }, [avisoSinVivo])
   const logoDeTorneoAuto = useLogosTorneos(idsTorneoAuto)
 
   // Mientras haya alguna transmisión con marcador activa, escucha los
@@ -941,7 +950,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             <button className="gm-hover" onClick={() => navigate('/torneos')} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
               VER TORNEOS <ArrowRight size={16}/>
             </button>
-            <button className="gm-hover" onClick={() => { setSenalVivo(n => n + 1); scrollA(vivoRef) }} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
+            <button className="gm-hover" onClick={() => { if (!hayVivoAhora) { setAvisoSinVivo(true); return } setSenalVivo(n => n + 1); scrollA(vivoRef) }} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
               <Radio size={15} color={S.red}/> VER EN VIVO
             </button>
           </div>
@@ -968,9 +977,22 @@ export default function LandingPage({ modo = 'inicio' }) {
       </div>
 
       {/* ── En vivo (YouTube/Facebook/Instagram) — configurable desde /admin/config-sitio, puede haber varias a la vez ── */}
+      {avisoSinVivo && (
+        <div role="status" onClick={() => setAvisoSinVivo(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: 'rgba(0,0,0,.55)', animation: 'gmAvisoVivo 10s ease both', cursor: 'pointer' }}>
+          <style>{`@keyframes gmAvisoVivo { 0% { opacity: 0 } 4% { opacity: 1 } 90% { opacity: 1 } 100% { opacity: 0 } } @keyframes gmAvisoBarra { from { width: 100% } to { width: 0% } }`}</style>
+          <div style={{ width: 'min(92vw, 460px)', background: S.card, border: `1px solid ${S.border}`, borderRadius: '20px', padding: '30px 24px 22px', textAlign: 'center', boxShadow: '0 24px 70px rgba(0,0,0,.6)' }}>
+            <div style={{ width: 58, height: 58, borderRadius: '50%', margin: '0 auto 14px', background: 'rgba(229,67,61,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Radio size={28} color={S.red}/></div>
+            <div style={{ fontSize: 'clamp(1.25rem, 5vw, 1.6rem)', fontWeight: 900, lineHeight: 1.2, color: S.text }}>No hay partidos en vivo en este momento</div>
+            <div style={{ color: S.text2, fontSize: '.92rem', marginTop: '10px', lineHeight: 1.5 }}>Cuando empiece uno, aparecerá aquí.</div>
+            <div style={{ height: 4, borderRadius: 2, background: S.border, marginTop: '20px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: S.red, animation: 'gmAvisoBarra 10s linear both' }}/>
+            </div>
+          </div>
+        </div>
+      )}
       {streamsVivos.length > 0 && (
-        <div style={{ maxWidth: '860px', margin: '44px auto 0', padding: '0 16px' }}>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ maxWidth: '860px', margin: streamsVisibles.length > 0 ? '44px auto 0' : '0 auto', padding: streamsVisibles.length > 0 ? '0 16px' : 0 }}>
+          <h2 style={{ display: streamsVisibles.length > 0 ? undefined : 'none', fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', alignItems: 'center', gap: '8px', ...(streamsVisibles.length > 0 ? { display: 'flex' } : {}) }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: S.red }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
             </span>
@@ -985,10 +1007,10 @@ export default function LandingPage({ modo = 'inicio' }) {
               // Con el tablero de goles abajo se esconde el marcador de arriba (la mirada se queda en el minuto a minuto)
               const tapaMarcador = overlayTapaMarcador(controlStream?.overlay) && !!partidoDeStream && !(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream))
               return (
-                <div key={s.id}>
+                <div key={s.id} style={streamsOk[s.id] === s.url ? undefined : { position: 'fixed', left: '-200vw', top: 0, width: 'min(860px, 100vw)', pointerEvents: 'none' }}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
                   <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} onVerificado={() => setStreamsOk(o => (o[s.id] === s.url ? o : { ...o, [s.id]: s.url }))} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
                         {partidoDeStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}

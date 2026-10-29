@@ -238,12 +238,24 @@ export function cargarYouTubeAPI() {
 // panel de control (admin o el link de otro celular) para leer hasta dónde
 // se devolvió Sebas a mano con la barra de YouTube, justo antes de armar la
 // repetición manual.
-const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false, onNoDisponible }, ref) {
+const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false, onNoDisponible, onVerificado }, ref) {
   const plataforma = detectarPlataforma(url)
   // `onNoDisponible`: se llama cuando YouTube dice que el video ya no existe, es privado o no se puede incrustar
   // (códigos 100 / 101 / 150). La portada lo usa para esconder la transmisión en vez de mostrar "Video no disponible".
   const noDisponibleRef = useRef(onNoDisponible)
   useEffect(() => { noDisponibleRef.current = onNoDisponible })
+  // `onVerificado`: avisa que esta transmisión SÍ se puede mostrar (no es una transmisión vieja ya terminada).
+  // En YouTube se espera a que el reproductor diga si el video es un directo (o a lo sumo 6 s); en Facebook/Instagram avisa de una.
+  const verificadoRef = useRef(onVerificado)
+  useEffect(() => { verificadoRef.current = onVerificado })
+  useEffect(() => {
+    if (plataforma === 'youtube') {
+      const t = setTimeout(() => verificadoRef.current?.(), 6000)
+      return () => clearTimeout(t)
+    }
+    verificadoRef.current?.()
+    return undefined
+  }, [plataforma, url])
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
   const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
@@ -316,6 +328,18 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
     if (!id) return
     let cancelado = false
     let player = null
+    let revisado = false
+    // Una transmisión vieja (el directo de otro día, que YouTube ya convirtió en video normal) NO debe salir como
+    // "en vivo": se esconde. Un directo de verdad, o uno que aún no empieza, se queda.
+    function revisarDirecto() {
+      if (revisado || !player) return
+      try {
+        const d = typeof player.getVideoData === 'function' ? player.getVideoData() : null
+        const dur = typeof player.getDuration === 'function' ? player.getDuration() : 0
+        if (d && d.isLive === true) { revisado = true; verificadoRef.current?.(); return }
+        if (d && d.isLive === false && dur > 0) { revisado = true; noDisponibleRef.current?.(); return }
+      } catch { /* si el reproductor no responde, se espera al siguiente aviso (o al tiempo máximo) */ }
+    }
     cargarYouTubeAPI().then(YT => {
       if (cancelado || !YT || !document.getElementById(idIframeYoutube)) return
       player = new YT.Player(idIframeYoutube, {
@@ -324,7 +348,10 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
             if (cancelado) return
             ytPlayerRef.current = player
             iframeRef.current = player.getIframe()
+            revisarDirecto()
           },
+          // Los datos del video a veces llegan un instante DESPUÉS de onReady: se vuelve a revisar al cambiar de estado
+          onStateChange: () => { if (!cancelado) revisarDirecto() },
           // Si YouTube no deja controlar este video puntual (pasa con algunos
           // videos/streams según cómo los configuró el dueño del canal), que
           // quede al menos en la consola — así no se ve como un error
