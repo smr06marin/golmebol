@@ -1177,6 +1177,7 @@ export default function AdminTorneoDetallePage() {
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
+  const [inscJugPagadosAbierto, setInscJugPagadosAbierto] = useState({}) // { [team_id]: bool } lista "Ya pagaron" desplegada
   const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
   const [guardandoEdicionMov, setGuardandoEdicionMov] = useState(false)
   const [modalLinkDeudores, setModalLinkDeudores] = useState(null) // { link, password } al abrir el cuadro de "Link deudores de tarjetas"
@@ -7785,6 +7786,87 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 )}
               </div>
             )}
+
+            {/* Inscripción POR JUGADOR: cada equipo con los nombres de quienes todavía deben. Un toque en el nombre = ya pagó y se descuenta de la cuenta del equipo. */}
+            {fin.filas.some(r => r.modoJugador && r.inscritos > 0) && (() => {
+              const filasJug = fin.filas.filter(r => r.modoJugador && r.inscritos > 0)
+              const tarifa = filasJug[0]?.tarifaJug || 0
+              const ordenadas = [...filasJug].sort((a, b) => ((b.inscritos - b.pagadosJug) - (a.inscritos - a.pagadosJug)) || (a.equipo.name || '').localeCompare(b.equipo.name || ''))
+              const totalDeben = filasJug.reduce((acc, r) => acc + (r.inscritos - r.pagadosJug), 0)
+              return (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '4px' }}>💵 Inscripciones por jugador</div>
+                  <div style={{ fontSize: '.76rem', color: '#5f6368', lineHeight: 1.45, marginBottom: '10px' }}>
+                    {totalDeben > 0
+                      ? <>Toca el <b>nombre del jugador que ya pagó</b>: se marca como pagado y se descuenta de la cuenta de su equipo ({fmt(tarifa)} c/u). Faltan <b style={{ color: '#d93025' }}>{totalDeben}</b> jugador{totalDeben === 1 ? '' : 'es'} por pagar.</>
+                      : <>✓ Todos los jugadores inscritos ya pagaron.</>}
+                  </div>
+                  {tarifa <= 0 && <div style={{ fontSize: '.76rem', color: '#d93025', marginBottom: '8px' }}>Falta configurar la tarifa por jugador (botón de precios, arriba).</div>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {ordenadas.map(r => {
+                      const regs = jugadores.filter(j => j.team_id === r.equipo.id && j.activo !== false).sort((a, b) => (a.players?.name || '').localeCompare(b.players?.name || ''))
+                      const migracionLista = regs.length === 0 || 'inscripcion_pagada' in regs[0]
+                      const deben = regs.filter(j => j.inscripcion_pagada !== true)
+                      const pagaron = regs.filter(j => j.inscripcion_pagada === true)
+                      const abierto = !!inscJugPagadosAbierto[r.equipo.id]
+                      return (
+                        <div key={r.equipo.id} style={{ background: '#fff', border: `1px solid ${deben.length > 0 ? '#f3c2c0' : '#ceead6'}`, borderRadius: '12px', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={28}/></div>
+                            <div style={{ flex: 1, minWidth: '140px' }}>
+                              <div style={{ fontWeight: '700', fontSize: '.88rem', color: '#202124' }}>{r.equipo.name}</div>
+                              <div style={{ fontSize: '.72rem', color: '#5f6368' }}>{pagaron.length} de {regs.length} pagaron · lleva {fmt(pagaron.length * tarifa)} de {fmt(regs.length * tarifa)}</div>
+                            </div>
+                            {deben.length > 0
+                              ? <span style={{ fontSize: '.78rem', fontWeight: '800', color: '#d93025', background: '#fce8e6', borderRadius: '10px', padding: '4px 10px' }}>Debe {fmt(deben.length * tarifa)}</span>
+                              : <span style={{ fontSize: '.78rem', fontWeight: '800', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '10px', padding: '4px 10px' }}>✓ Al día</span>}
+                          </div>
+                          {deben.length > 0 && (
+                            <>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                                {deben.map(j => (
+                                  <button key={j.id} disabled={pagandoInscJug || !migracionLista || tarifa <= 0} onClick={() => pagarInscripcionJugadores(r.equipo, [j])}
+                                    title={`Marcar que ${j.players?.name || 'el jugador'} ya pagó ${fmt(tarifa)}`}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff7f6', border: '1px solid #f3c2c0', borderRadius: '10px', padding: '9px 12px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', color: '#202124', cursor: pagandoInscJug ? 'wait' : 'pointer', opacity: (pagandoInscJug || !migracionLista || tarifa <= 0) ? .6 : 1, textAlign: 'left' }}>
+                                    <span style={{ color: '#d93025' }}>○</span> {j.players?.name || 'Jugador'}
+                                  </button>
+                                ))}
+                              </div>
+                              {deben.length > 1 && migracionLista && tarifa > 0 && (
+                                <button disabled={pagandoInscJug} onClick={() => pagarInscripcionJugadores(r.equipo, regs)}
+                                  style={{ marginTop: '10px', background: 'none', border: '1px solid #dcc6f7', color: '#6c35de', borderRadius: '8px', padding: '7px 12px', fontSize: '.72rem', fontWeight: '700', cursor: 'pointer' }}>
+                                  Marcar a todos como pagados ({deben.length} · {fmt(deben.length * tarifa)})
+                                </button>
+                              )}
+                            </>
+                          )}
+                          {!migracionLista && <div style={{ fontSize: '.72rem', color: '#d93025', marginTop: '8px' }}>Por ahora no se pueden marcar pagos por jugador: esta opción todavía no está activada en tu cuenta. Avísale al administrador de Golmebol.</div>}
+                          {pagaron.length > 0 && (
+                            <div style={{ marginTop: '10px' }}>
+                              <button onClick={() => setInscJugPagadosAbierto(o => ({ ...o, [r.equipo.id]: !o[r.equipo.id] }))}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '.72rem', fontWeight: '700', color: '#1e8e3e' }}>
+                                {abierto ? '▾' : '▸'} Ya pagaron ({pagaron.length})
+                              </button>
+                              {abierto && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
+                                  {pagaron.map(j => (
+                                    <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.78rem' }}>
+                                      <span style={{ flex: 1, minWidth: 0, color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>✓ {j.players?.name || 'Jugador'}</span>
+                                      <button disabled={pagandoInscJug} onClick={() => deshacerPagoInscripcionJugador(r.equipo, j)}
+                                        style={{ background: 'none', border: '1px solid #dadce0', borderRadius: '6px', padding: '3px 8px', fontSize: '.66rem', color: '#5f6368', cursor: 'pointer' }}>Deshacer</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Cuentas por equipo */}
             <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
