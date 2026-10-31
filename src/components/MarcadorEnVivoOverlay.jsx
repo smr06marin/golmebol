@@ -10,7 +10,19 @@
 // mismo estado en vivo que ya sube la planilla del árbitro — ver
 // src/lib/liveMatch.js.
 
+import { useEffect, useRef, useState } from 'react'
+
 const ROJO_VIVO = '#e5433d'
+
+// ── Transición de GOL ────────────────────────────────────────────────────────
+// El logo del torneo (izquierda) y el de Golmebol (derecha) viajan al centro y se juntan mientras el marcador
+// se cierra como unas puertas; luego se separan y en medio queda "APP GOLMEBOL" con el nombre del torneo
+// debajo; por último las puertas se abren, los logos vuelven a sus lados y sale el marcador ya actualizado.
+const T_CIERRE_MS = 750   // logos se juntan y las puertas se cierran
+const T_MARCA_MS  = 1600  // se ve "APP GOLMEBOL" + torneo
+const T_ABRIR_MS  = 800   // las puertas se abren (el número nuevo hace "pop")
+const EASE = 'cubic-bezier(.65,0,.35,1)'
+const CSS_TRANSICION = `@keyframes gmMarcadorPop{0%{transform:scale(1)}30%{transform:scale(1.55);color:#f9c400}100%{transform:scale(1)}}`
 
 const LADO = { display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.2vw, 12px)', minWidth: 0 }
 
@@ -107,8 +119,44 @@ function EtiquetaEquipo({ nombre, color, lado }) {
 //   colores?: {colorLocal, colorVisitante}, detalle?: {faltasLocal, faltasVisitante, mostrarFaltas, amarillas*, azules*, rojas*}, global? }
 // Si no hay partido en vivo que mostrar, no renderiza nada.
 export default function MarcadorEnVivoOverlay({ partido }) {
+  const golesL = partido?.vivo?.golesLocal ?? 0
+  const golesV = partido?.vivo?.golesVis ?? 0
+  const idPartido = partido?.id
+  // fase: 0 normal · 1 los logos se juntan y se cierran las puertas · 2 se ve APP GOLMEBOL (el marcador ya cambió, tapado)
+  const [fase, setFase] = useState(0)
+  const [congelado, setCongelado] = useState(null) // marcador anterior, mientras dura la transición
+  const [pop, setPop] = useState({ lado: null, n: 0 })
+  const previoRef = useRef(null)
+  const idRef = useRef(idPartido)
+  const animandoRef = useRef(false)
+  const timersRef = useRef([])
+  useEffect(() => () => { timersRef.current.forEach(clearTimeout) }, [])
+  useEffect(() => {
+    if (idRef.current !== idPartido) { idRef.current = idPartido; previoRef.current = null }
+    const ant = previoRef.current
+    previoRef.current = { l: golesL, v: golesV }
+    if (!ant || animandoRef.current) return // primera lectura (no es un gol nuevo) o ya hay una transición en curso
+    const subeLocal = golesL > ant.l, subeVis = golesV > ant.v
+    if (!subeLocal && !subeVis) return // gol anulado o corrección: el marcador se actualiza directo
+    animandoRef.current = true
+    setCongelado(ant)
+    setFase(1)
+    const t = (fn, ms) => { timersRef.current.push(setTimeout(fn, ms)) }
+    t(() => { setCongelado(null); setFase(2) }, T_CIERRE_MS)
+    t(() => { setFase(0); setPop(p => ({ lado: subeLocal ? 'l' : 'v', n: p.n + 1 })) }, T_CIERRE_MS + T_MARCA_MS)
+    t(() => { animandoRef.current = false }, T_CIERRE_MS + T_MARCA_MS + T_ABRIR_MS)
+  }, [golesL, golesV, idPartido])
+
   if (!partido?.vivo) return null
   const { home, away, vivo, global } = partido
+  const marcaL = congelado ? congelado.l : vivo.golesLocal
+  const marcaV = congelado ? congelado.v : vivo.golesVis
+  const logoTorneo = partido.tournaments?.logo_url || null
+  const nombreTorneo = partido.tournaments?.name || ''
+  const trans = (props) => props.map(x => `${x} .6s ${EASE}`).join(', ')
+  const logoBase = { position: 'absolute', top: '50%', width: 'var(--gm-lg)', height: 'var(--gm-lg)', marginTop: 'calc(var(--gm-lg) / -2)', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: trans(['left', 'right']) }
+  const posIzq = fase === 0 ? '7px' : fase === 1 ? 'calc(50% - var(--gm-lg) * .7)' : 'calc(50% - var(--gm-bw) - var(--gm-lg))'
+  const puerta = { position: 'absolute', top: 0, bottom: 0, width: '50%', background: '#060608', zIndex: 3, transition: trans(['transform']) }
   const col = partido.colores || {}
   const det = partido.detalle || {}
 
@@ -119,12 +167,30 @@ export default function MarcadorEnVivoOverlay({ partido }) {
       width: 'max-content', maxWidth: '96%', pointerEvents: 'none',
     }}>
       {/* ── Barra principal: equipo · escudo · marcador · escudo · equipo ── */}
+      <style>{CSS_TRANSICION}</style>
       <div style={{
+        position: 'relative', '--gm-lg': 'clamp(26px, 7.4vw, 36px)', '--gm-bw': 'clamp(72px, 24vw, 122px)',
         display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: 'clamp(4px, 2.2vw, 12px)',
-        background: 'rgba(6,6,8,.94)', borderRadius: '0 0 12px 12px', boxSizing: 'border-box',
-        // sin margen negro antes del 1.er equipo ni despues del 2.o: las placas llegan hasta las puntas
-        padding: 'clamp(4px, 1.4vw, 7px) 0', boxShadow: '0 3px 14px rgba(0,0,0,.5)', overflow: 'hidden',
+        background: 'rgba(6,6,8,.94)', borderRadius: '0 0 12px 12px', boxSizing: 'border-box', minWidth: 'min(94vw, 330px)',
+        // a los lados van los logos (torneo · Golmebol): el marcador queda centrado
+        padding: 'clamp(4px, 1.4vw, 7px) calc(var(--gm-lg) + 12px)', boxShadow: '0 3px 14px rgba(0,0,0,.5)', overflow: 'hidden',
       }}>
+        {/* Logos de los extremos (viajan al centro cuando hay gol) */}
+        {logoTorneo && (
+          <div style={{ ...logoBase, left: posIzq }}>
+            <img src={logoTorneo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.6))' }}/>
+          </div>
+        )}
+        <div style={{ ...logoBase, left: 'auto', right: posIzq }}>
+          <img src="/marca/watermark-logo.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+        </div>
+        {/* Puertas: tapan el marcador durante la transición */}
+        <div style={{ ...puerta, left: 0, transform: fase === 0 ? 'translateX(-101%)' : 'translateX(0)' }}/>
+        <div style={{ ...puerta, right: 0, transform: fase === 0 ? 'translateX(101%)' : 'translateX(0)' }}/>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', pointerEvents: 'none', opacity: fase === 2 ? 1 : 0, transform: fase === 2 ? 'scale(1)' : 'scale(.85)', transition: 'opacity .35s, transform .35s' }}>
+          <span style={{ fontFamily: FUENTE, fontWeight: 800, fontSize: 'clamp(.85rem, 4vw, 1.2rem)', letterSpacing: '.14em', color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' }}>APP GOLMEBOL</span>
+          {nombreTorneo && <span style={{ fontFamily: FUENTE, fontWeight: 700, fontSize: 'clamp(.5rem, 2.3vw, .66rem)', letterSpacing: '.08em', color: '#f5a623', marginTop: '4px', textTransform: 'uppercase', whiteSpace: 'nowrap', maxWidth: 'calc(var(--gm-bw) * 2)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombreTorneo}</span>}
+        </div>
         {/* Las dos mitades miden SIEMPRE lo mismo (la del nombre más largo), así el marcador
             queda exactamente en el centro, igual que el cronómetro de abajo */}
         <div style={LADO}>
@@ -132,9 +198,9 @@ export default function MarcadorEnVivoOverlay({ partido }) {
           <Escudo logo_url={home?.logo_url} name={home?.name}/>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(4px, 2.1vw, 9px)', flexShrink: 0, padding: '0 2px' }}>
-          <span style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesLocal}</span>
+          <span key={pop.lado === 'l' ? `l${pop.n}` : 'l'} style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center', display: 'inline-block', animation: pop.lado === 'l' ? 'gmMarcadorPop .7s ease-out' : undefined }}>{marcaL}</span>
           <span style={{ ...NUMEROS, fontSize: 'clamp(.9rem, 3.9vw, 1.2rem)', color: '#8b9097' }}>–</span>
-          <span style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center' }}>{vivo.golesVis}</span>
+          <span key={pop.lado === 'v' ? `v${pop.n}` : 'v'} style={{ ...NUMEROS, fontSize: 'clamp(1.4rem, 7.2vw, 1.95rem)', color: '#fff', minWidth: '1ch', textAlign: 'center', display: 'inline-block', animation: pop.lado === 'v' ? 'gmMarcadorPop .7s ease-out' : undefined }}>{marcaV}</span>
         </div>
         <div style={LADO}>
           <Escudo logo_url={away?.logo_url} name={away?.name}/>
