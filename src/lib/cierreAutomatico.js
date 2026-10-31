@@ -2,12 +2,12 @@ import { useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 
 // CIERRE AUTOMÁTICO de la planilla: si el partido ya terminó (se cumplió el tiempo del 2.º tiempo, o el
-// árbitro tocó "Finalizar partido") y pasan 15 minutos sin que nadie cierre la planilla, se cierra sola:
+// árbitro tocó "Finalizar partido") y pasan 5 minutos sin que nadie cierre la planilla, se cierra sola:
 // se guarda el resultado, los goles, las tarjetas y las estadísticas tal como estaban, SIN MVP, y queda un
 // informe que dice "planilla cerrada automáticamente". Lo ejecuta la propia planilla (rápida o profesional)
 // mientras esté abierta en algún celular; si estaba cerrada, se cierra apenas se vuelva a abrir pasado el plazo.
 
-export const CIERRE_AUTO_MIN = 15
+export const CIERRE_AUTO_MIN = 5
 export const CIERRE_AUTO_MS = CIERRE_AUTO_MIN * 60 * 1000
 
 export function textoCierreAutomatico(hayRoja) {
@@ -27,7 +27,39 @@ export async function guardarInformeCierreAuto({ partidoId, tournamentId, hayRoj
   } catch (e) { console.error('informe de cierre automático:', e) }
 }
 
-// Hook: llama a `onVencido` cuando llega `finTiempoEn + 15 min` (epoch en ms). `activo` apaga el control.
+// ¿Cuándo terminó el 2.º tiempo según un borrador guardado? (epoch en ms; null si todavía no terminó).
+// Sirve para saber el plazo aunque nadie tenga la planilla abierta: con el reloj andando se calcula desde la
+// hora del guardado (savedAt) y los segundos que llevaba.
+export function calcularFinTiempoSnap(snap, { limiteSegundos, updatedAt } = {}) {
+  if (!snap || (snap.periodo || 1) !== 2) return null
+  let fin = null
+  if (snap.finTiempoEn) fin = Number(snap.finTiempoEn)
+  else {
+    const base = new Date(snap.savedAt || updatedAt || 0).getTime()
+    if (!base) return null
+    const segs = typeof snap.segundos === 'number' ? snap.segundos : 0
+    const limite = typeof limiteSegundos === 'number' ? limiteSegundos : ((snap.duracionMinutos || 0) + (snap.tiempoExtra || 0)) * 60
+    if (snap.tiempoAgotado) fin = base
+    else if (limite > 0 && segs >= limite) fin = base - (segs - limite) * 1000
+    else if (limite > 0 && snap.corriendo) fin = base + (limite - segs) * 1000
+  }
+  if (!fin || !Number.isFinite(fin) || fin > Date.now() + 1000) return null // todavía no terminó
+  return fin
+}
+
+// Planillas abiertas en ESTE celular (para que el vigilante no se meta con una que ya está a la vista)
+const planillasAbiertas = new Map()
+export function registrarPlanillaAbierta(partidoId) {
+  if (!partidoId) return undefined
+  planillasAbiertas.set(partidoId, (planillasAbiertas.get(partidoId) || 0) + 1)
+  return () => {
+    const n = (planillasAbiertas.get(partidoId) || 1) - 1
+    if (n <= 0) planillasAbiertas.delete(partidoId); else planillasAbiertas.set(partidoId, n)
+  }
+}
+export function planillaEstaAbierta(partidoId) { return planillasAbiertas.has(partidoId) }
+
+// Hook: llama a `onVencido` cuando llega `finTiempoEn + 5 min` (epoch en ms). `activo` apaga el control.
 // También revisa al volver a la pantalla (si el celular estuvo bloqueado, el navegador pudo retrasar el temporizador).
 export function useCierreAutomatico({ activo, finTiempoEn, onVencido }) {
   const alVencer = useRef(onVencido)

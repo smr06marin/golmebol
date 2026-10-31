@@ -84,7 +84,7 @@ export function derivarEnVivo(match) {
 // Junta el snapshot más reciente entre planilla completa y rápida — mismo
 // criterio que usa derivarEnVivo, factorizado acá para no repetirlo en cada
 // función nueva que necesite leer datos del partido en vivo.
-function snapshotMasReciente(match) {
+export function snapshotMasReciente(match) {
   const candidatos = []
   if (match?.live_state)        candidatos.push({ snap: match.live_state,        updatedAt: match.live_state_updated_at,        tipo: 'completa' })
   if (match?.live_state_rapida) candidatos.push({ snap: match.live_state_rapida, updatedAt: match.live_state_rapida_updated_at, tipo: 'rapida' })

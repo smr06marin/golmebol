@@ -13,7 +13,7 @@ import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido
 import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
 import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador, sumarGlobal, criterioLlave, eliminacionDirecta } from '../lib/penales'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../lib/alarmaTiempo'
-import { useCierreAutomatico, guardarInformeCierreAuto } from '../lib/cierreAutomatico'
+import { useCierreAutomatico, guardarInformeCierreAuto, calcularFinTiempoSnap, registrarPlanillaAbierta } from '../lib/cierreAutomatico'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -571,7 +571,7 @@ function SlotSeleccion({ equipo, i, valores, setArr, jugs, dropKeyPrefix, ultima
   )
 }
 
-export default function PlanillaPartido({ partido, onClose, onGuardarResultado }) {
+export default function PlanillaPartido({ partido, onClose, onGuardarResultado, oculta = false }) {
   const [loading,            setLoading]            = useState(true)
   const [arbitrosTorneo,     setArbitrosTorneo]     = useState([])
   const [arbitroInput1,      setArbitroInput1]      = useState('')
@@ -613,7 +613,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   const [corriendo,        setCorriendo]        = useState(false)
   const [miniCrono,        setMiniCrono]        = useState(true)
   const [tiempoAgotado,    setTiempoAgotado]    = useState(false)
-  const [finTiempoEn,      setFinTiempoEn]      = useState(null) // cuándo terminó el 2.º tiempo (epoch ms): de ahí corren los 15 min del cierre automático
+  const [finTiempoEn,      setFinTiempoEn]      = useState(null) // cuándo terminó el 2.º tiempo (epoch ms): de ahí corren los 5 min del cierre automático
   const [tiempoExtra,      setTiempoExtra]      = useState(0)
   const [duracionMinutos,  setDuracionMinutos]  = useState(20)
   const [editandoDuracion, setEditandoDuracion] = useState(false)
@@ -803,7 +803,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     }
     // (si el tiempo ya se cumplió y no lo cerraron, sigue corriendo en EXTRA)
     setCorriendo(!!snap.corriendo && !snap.tiempoAgotado); if (snap.tiempoAgotado) setTiempoAgotado(true)
-    if (snap.finTiempoEn) setFinTiempoEn(snap.finTiempoEn)
+    { const fin = calcularFinTiempoSnap(snap, { limiteSegundos: dur * 60 + extra * 60 }); if (fin) setFinTiempoEn(fin) }
     setSegundos(segs)
 
     setHayDatosLocales(true)
@@ -970,7 +970,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     const snap = construirSnap()
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch(e) {}
     sincronizarRemoto(snap)
-  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido])
+  }, [jugadoresLocal, jugadoresVisitante, golesLocal, golesVisitante, faltasAcumLocal, faltasAcumVis, finalistasLocal, finalistasVis, ingresosLocal, ingresosVis, cuerpoLocal, cuerpoVis, arbitro1, arbitro2, anotador, cronometroNombre, observaciones, horaInicio1, horaFin1, horaInicio2, horaFin2, tiroInicial, colorLocal, colorVisitante, duracionMinutos, mvpId, hubopenales, penalesGanador, penalesLocal, penalesVisitante, periodo, tiempoExtra, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, firmas, capitanes, informeTexto, informeTipo, informeGuardado, modoRapido, finTiempoEn])
 
   useEffect(() => { fetchTodo() }, [])
 
@@ -1741,7 +1741,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     setShowMVP(true)
   }
 
-  // ── Cierre automático: 15 min después de terminar el partido sin que nadie cierre la planilla ──
+  // ── Cierre automático: 5 min después de terminar el partido sin que nadie cierre la planilla ──
   // Se guarda todo como está, SIN MVP (y sin exigir firmas ni arquero) y queda un informe que lo explica.
   // Si es una eliminatoria empatada que necesita la tanda de penales, no se cierra sola.
   const guardandoAutoRef = useRef(false)
@@ -1766,6 +1766,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
     await guardarEnDB(null, null)
     guardandoAutoRef.current = false
   }
+  useEffect(() => registrarPlanillaAbierta(partido?.id), [partido?.id])
   useCierreAutomatico({ activo: !loading && partido.status !== 'finished' && periodo === 2 && !!finTiempoEn, finTiempoEn, onVencido: cierreAutomatico })
   // El plazo corre desde que se cumple el tiempo del 2.º tiempo (o desde que el árbitro lo da por terminado)
   const pasoElLimite = periodo === 2 && (tiempoAgotado || segundos >= limiteSegundos)
@@ -1973,7 +1974,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado }
   }
   // ── ALARMA DE FIN DE TIEMPO (no para hasta que la paren) ────────────────
   function iniciarAlarma() {
-    if (alarmaRef.current) return
+    if (oculta || alarmaRef.current) return // oculta = la abrió el vigilante del cierre automático: sin sonido
     sonarAlarmaUnaVez()
     alarmaRef.current = setInterval(sonarAlarmaUnaVez, 2200)
     setAlarmaActiva(true)

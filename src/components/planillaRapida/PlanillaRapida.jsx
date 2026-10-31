@@ -22,7 +22,7 @@ import PantallaPapel from '../planillaPapel/PantallaPapel'
 import ModalCierrePapel from '../planillaPapel/ModalCierrePapel'
 import { papelVacio, normalizarPapel, papelParaGuardar } from '../../lib/planillaPapel'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../../lib/alarmaTiempo'
-import { useCierreAutomatico, textoCierreAutomatico } from '../../lib/cierreAutomatico'
+import { useCierreAutomatico, textoCierreAutomatico, calcularFinTiempoSnap, registrarPlanillaAbierta } from '../../lib/cierreAutomatico'
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -119,7 +119,7 @@ const COLOR_VIS_PAPEL = '#d93025'
 // vista="papel": MISMO motor (guardado en vivo, cronómetro, varios celulares,
 // cierre, estadísticas, penales) pero con la pantalla de la hoja de papel
 // (planillaPapel/PantallaPapel.jsx): Documento, Nombre, N°, Amarilla, Roja, GOL.
-export default function PlanillaRapida({ partido, onClose, onGuardarResultado, vista }) {
+export default function PlanillaRapida({ partido, onClose, onGuardarResultado, vista, oculta = false }) {
   const esPapel = vista === 'papel'
   const colorLocalDef = esPapel ? COLOR_LOCAL_PAPEL : null
   const colorVisDef = esPapel ? COLOR_VIS_PAPEL : null
@@ -148,7 +148,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [segundos, setSegundos] = useState(0)
   const [corriendo, setCorriendo] = useState(false)
   const [tiempoAgotado, setTiempoAgotado] = useState(false)
-  const [finTiempoEn, setFinTiempoEn] = useState(null) // cuándo terminó el 2.º tiempo (epoch ms): de ahí corren los 15 min del cierre automático
+  const [finTiempoEn, setFinTiempoEn] = useState(null) // cuándo terminó el 2.º tiempo (epoch ms): de ahí corren los 5 min del cierre automático
 
   const [modalFoto, setModalFoto] = useState(null) // { team, index, jugador }
   const [alertaNumero, setAlertaNumero] = useState(null) // { team, numero, tipo }
@@ -855,7 +855,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     setSegundos(segs)
     setCorriendo(!!snap.corriendo && !snap.tiempoAgotado)
     setTiempoAgotado(!!snap.tiempoAgotado)
-    setFinTiempoEn(snap.finTiempoEn || null)
+    setFinTiempoEn(calcularFinTiempoSnap(snap, { limiteSegundos: (snap.duracionMinutos || duracionMinutos) * 60 }) || null)
   }
 
   // Reconstruye una planilla rápida ya cerrada (para que el árbitro líder / admin pueda reeditarla)
@@ -970,7 +970,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
     guardarRemotoDebounced(snap)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, sincronizado, papel])
+  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, sincronizado, papel, finTiempoEn])
 
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
@@ -1036,7 +1036,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   }, [corriendo, duracionMinutos, tiempoAgotado])
 
   function iniciarAlarma() {
-    if (alarmaRef.current) return
+    if (oculta || alarmaRef.current) return // oculta = la abrió el vigilante del cierre automático: sin sonido
     sonarAlarmaUnaVez()
     alarmaRef.current = setInterval(sonarAlarmaUnaVez, 2200)
     setAlarmaActiva(true)
@@ -1602,7 +1602,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     guardarFinal(datos)
   }
 
-  // ── Cierre automático: 15 min después de terminar el partido sin que nadie cierre la planilla ──
+  // ── Cierre automático: 5 min después de terminar el partido sin que nadie cierre la planilla ──
   // Se guarda todo como está, SIN MVP y con un informe que lo explica. Si es una eliminatoria empatada que
   // necesita la tanda de penales, no se cierra sola (haría falta saber quién ganó).
   async function cierreAutomatico() {
@@ -1617,6 +1617,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     setMostrarCierre(false)
     await guardarFinal({ informeTexto: '', mvpId: null, autoCierre: true })
   }
+  useEffect(() => registrarPlanillaAbierta(partido?.id), [partido?.id])
   useCierreAutomatico({ activo: !!listo && partido.status !== 'finished' && periodo === 2 && !!finTiempoEn, finTiempoEn, onVencido: cierreAutomatico })
   // El plazo corre desde que se cumple el tiempo del 2.º tiempo (o desde que el árbitro lo da por terminado)
   const pasoElLimite = periodo === 2 && (tiempoAgotado || segundos >= duracionMinutos * 60)
