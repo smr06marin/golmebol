@@ -17,11 +17,25 @@ const PlanillaPartido = lazy(() => import('./PlanillaPartido'))
 const PlanillaRapida  = lazy(() => import('./planillaRapida/PlanillaRapida'))
 const PlanillaPapel   = lazy(() => import('./planillaPapel/PlanillaPapel'))
 
-const REVISAR_CADA_MS = 60 * 1000
+const REVISAR_CADA_MS = 3 * 60 * 1000 // cada 3 min (sin cargar la base de datos con tantos celulares a la vez)
 const VENTANA_DIAS = 3
 const MAX_INTENTOS = 2
 const ESPERA_ENTRE_INTENTOS_MS = 30 * 60 * 1000
 const MAX_OCULTA_MS = 120 * 1000
+// Consulta LIVIANA: en vez de bajar todo el borrador de cada partido (jugadores, eventos...), solo se piden los ~8 datos
+// del reloj de cada borrador (con la sintaxis live_state->campo de PostgREST). El partido completo se baja solo si está vencido.
+const CAMPOS_RELOJ = ['periodo', 'finTiempoEn', 'savedAt', 'segundos', 'tiempoAgotado', 'corriendo', 'duracionMinutos', 'tiempoExtra']
+const SELECT_LIVIANO = ['id', 'status', 'tournament_id', 'live_state_updated_at', 'live_state_rapida_updated_at',
+  ...CAMPOS_RELOJ.map(c => `a_${c}:live_state->${c}`), ...CAMPOS_RELOJ.map(c => `b_${c}:live_state_rapida->${c}`)].join(',')
+function armarLiviano(r) {
+  const sacar = (pref) => {
+    if (r[`${pref}_periodo`] == null) return null
+    const o = {}
+    CAMPOS_RELOJ.forEach(c => { if (r[`${pref}_${c}`] != null) o[c] = r[`${pref}_${c}`] })
+    return o
+  }
+  return { id: r.id, status: r.status, tournament_id: r.tournament_id, live_state: sacar('a'), live_state_updated_at: r.live_state_updated_at, live_state_rapida: sacar('b'), live_state_rapida_updated_at: r.live_state_rapida_updated_at }
+}
 const SELECT_PARTIDO = '*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
 
 // partidoId -> { n, ultimo } (para no insistir con un partido que no se deja cerrar solo, ej. eliminatoria empatada)
@@ -53,13 +67,13 @@ export default function CierreAutomaticoGlobal() {
       try {
         const desde = new Date(Date.now() - VENTANA_DIAS * 86400000).toISOString()
         const { data, error } = await supabase.from('matches')
-          .select('id, status, tournament_id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at')
+          .select(SELECT_LIVIANO)
           .neq('status', 'finished')
           .or(`live_state_updated_at.gte.${desde},live_state_rapida_updated_at.gte.${desde}`)
-          .limit(60)
+          .limit(40)
         if (error || !data) { ocupadoRef.current = false; return }
         const ahora = Date.now()
-        const candidato = data.find(m => {
+        const candidato = data.map(armarLiviano).find(m => {
           if (planillaEstaAbierta(m.id)) return false
           const it = intentos.get(m.id)
           if (it && (it.n >= MAX_INTENTOS || ahora - it.ultimo < ESPERA_ENTRE_INTENTOS_MS)) return false
