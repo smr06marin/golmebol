@@ -52,6 +52,8 @@ function haySalonLocal(id) {
 // partido que alguien abrió "de curioso" antes de escoger la planilla no queda
 // pegado a Fútbol 11 para siempre.
 //
+// (Lo mismo vale para la cuenta de árbitro: un borrador de papel vacío no la deja pegada a la hoja de papel.)
+//
 // Dos protecciones para no dañar trabajo que ya existe (mandan sobre lo anterior):
 //  · Un partido YA JUGADO se reedita con la planilla con la que se llenó: si se
 //    llenó con la de Fútbol 11 (tiene datos de papel) o con la rápida ("sin
@@ -61,14 +63,16 @@ function haySalonLocal(id) {
 export function usaPlanillaCompleta(p, contexto = 'admin', tipoTorneo = null) {
   if (!p) return false
   if (p.status === 'finished') return !(p.planilla_papel || p.sin_planillador)
-  // Admin/organizador con planilla escogida para el torneo: un borrador de papel
-  // vacío (solo abierto, sin datos) no ata el partido a Fútbol 11.
-  if (contexto !== 'arbitro' && (tipoTorneo === 'salon' || tipoTorneo === 'futbol11')
-      && !p.planilla_papel && borradorRapidaVacio(p.live_state_rapida) && borradorLocalRapidaVacio(p.id)) {
+  // Un borrador de papel VACÍO (solo abierto, sin goles/tarjetas/números/cronómetro) no ata el partido a Fútbol 11.
+  // Vale para TODOS (también para la cuenta de árbitro): si alguien abrió el partido "de curioso" con la hoja de papel
+  // antes de escoger la planilla, ese borrador vacío ya no manda — manda lo que se escogió (partido o torneo) y, si no
+  // hay nada escogido, la cuenta de árbitro/coordinador abre la profesional de Fútbol de salón.
+  const sinTrabajoDePapel = !p.planilla_papel && borradorRapidaVacio(p.live_state_rapida) && borradorLocalRapidaVacio(p.id)
+  if (sinTrabajoDePapel && (contexto === 'arbitro' || tipoTorneo === 'salon' || tipoTorneo === 'futbol11')) {
     if (p.live_state || haySalonLocal(p.id)) return true // ya hay trabajo en la de salón
     if (p.planilla_tipo === 'salon') return true
     if (p.planilla_tipo === 'futbol11') return false
-    return tipoTorneo === 'salon'
+    return contexto === 'arbitro' ? true : tipoTorneo === 'salon'
   }
   if (p.live_state && !p.live_state_rapida && !p.planilla_papel) return true
   try {
