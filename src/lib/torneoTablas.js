@@ -174,7 +174,9 @@ export function computeVallaEquipos(equipos, partidos, arqueros) {
 export function mergeGoleadoresConVivo(goleadoresDB, partidos, equipos) {
   const golesVivo = new Map() // player_id -> { goles, teamId, nombre }
   ;(partidos || []).forEach(p => {
-    if (p.status === 'finished') return
+    // Solo cuenta si el partido está EN VIVO de verdad (mismo criterio de la portada): un borrador
+    // abandonado (más de 25 min sin movimiento) o un partido suspendido NO debe sumar goles "en vivo".
+    if (p.status === 'finished' || !derivarEnVivo(p)) return
     extraerGolesConJugador(p).forEach(g => {
       if (!g.jugadorId) return
       const actual = golesVivo.get(g.jugadorId) || { goles: 0, teamId: g.teamId, nombre: g.jugadorNombre }
