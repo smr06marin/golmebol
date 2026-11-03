@@ -25,6 +25,7 @@ import { fmtHora12, fmtHoraDate } from '../../lib/horaHelpers'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
 import { comprimirImagen } from '../../lib/imageCompress'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
+import LinkFinanzasEquipos from '../../components/LinkFinanzasEquipos'
 import { guardarOriginal, guardarOriginalDesdeUrl, restaurarOriginal, useTieneOriginal } from '../../lib/logoOriginal'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
@@ -1214,6 +1215,7 @@ export default function AdminTorneoDetallePage() {
   const [inscJugPagadosAbierto, setInscJugPagadosAbierto] = useState({}) // { [team_id]: bool } lista "Ya pagaron" desplegada
   const [editandoMov,      setEditandoMov]      = useState(null) // { id, monto, concepto } — corregir un movimiento ya registrado (por si hubo un error)
   const [guardandoEdicionMov, setGuardandoEdicionMov] = useState(false)
+  const [modalLinkFinanzas, setModalLinkFinanzas] = useState(false) // panel "Link de finanzas para los equipos"
   const [modalLinkDeudores, setModalLinkDeudores] = useState(null) // { link, password } al abrir el cuadro de "Link deudores de tarjetas"
   const [passwordDeudoresForm, setPasswordDeudoresForm] = useState('')
   const [guardandoPasswordDeudores, setGuardandoPasswordDeudores] = useState(false)
@@ -7501,6 +7503,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.8rem', fontWeight: '700' }}>
                     <ExternalLink size={13}/> Link deudores de tarjetas
                   </button>
+                  <button onClick={() => setModalLinkFinanzas(true)} title="Un link para que cada equipo vea todos sus movimientos de plata (entra con la cédula de su representante) y tú veas quién ya entró"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.8rem', fontWeight: '700' }}>
+                    <ExternalLink size={13}/> Link para equipos
+                  </button>
                   <button onClick={() => showConfigFin ? setShowConfigFin(false) : abrirConfigFin()}
                     style={{ padding: '8px 16px', background: showConfigFin ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: showConfigFin ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '700' }}>
                     {showConfigFin ? 'Cerrar' : '✏️ Modificar precios'}
@@ -8655,6 +8661,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           </div>
         </div>
       )}
+      {modalLinkFinanzas && <LinkFinanzasEquipos torneoId={id} torneoNombre={torneo?.name} onClose={() => setModalLinkFinanzas(false)}/>}
       {modalLinkDeudores && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
           onClick={e => e.target === e.currentTarget && setModalLinkDeudores(null)}>

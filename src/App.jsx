@@ -50,6 +50,7 @@ const RegistroEquipoPage      = lazy(() => import('./pages/RegistroEquipoPage'))
 const PlanillarLinkPage       = lazy(() => import('./pages/PlanillarLinkPage'))
 const RelojLinkPage           = lazy(() => import('./pages/RelojLinkPage'))
 const DeudoresTarjetasLinkPage = lazy(() => import('./pages/DeudoresTarjetasLinkPage'))
+const FinanzasEquiposLinkPage = lazy(() => import('./pages/FinanzasEquiposLinkPage'))
 const EnVivoControlLinkPage   = lazy(() => import('./pages/EnVivoControlLinkPage'))
 const OverlayEnVivoPage        = lazy(() => import('./pages/OverlayEnVivoPage'))
 const TestTarjetas            = lazy(() => import('./pages/TestTarjetas')) // TEMPORAL
@@ -545,6 +546,7 @@ export default function App() {
           {/* Link fijo por torneo (no vence) para ver deudores de tarjetas,
               filtrar por equipo y registrar sus pagos — sin login */}
           <Route path="/deudores-tarjetas/:token" element={<DeudoresTarjetasLinkPage/>}/>
+          <Route path="/finanzas/:token" element={<FinanzasEquiposLinkPage/>}/>
           {/* Panel de control en vivo por link — para manejar la transmisión
               (repetición, cámara lenta, tabla/goles/jugadores, patrocinador)
               desde otro celular, sin iniciar sesión. El token se genera por
