@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
+import EstadoSistema from '../../components/EstadoSistema'
 
 // Solo el administrador PRINCIPAL ve las analíticas del sitio
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -378,6 +379,9 @@ export default function AdminDashboard() {
           {new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      {/* Semáforo del sistema — solo administrador principal */}
+      <EstadoSistema/>
 
       {/* Stats principales */}
       <div className="gm-stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
