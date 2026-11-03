@@ -102,7 +102,9 @@ grant execute on function public.finanzas_link_info(uuid) to anon, authenticated
 -- ── 3) Entrar a UN equipo con la cédula del representante ────────────────────────────────────
 -- Devuelve { ok:false, error } si algo falla (NO se usa "raise" porque eso desharía el registro del intento)
 -- o { ok:true, ...datos } con TODO lo necesario para armar la cuenta de ESE equipo.
-create or replace function public.finanzas_equipo_ver(p_token uuid, p_team_id uuid, p_cedula text)
+-- (si ya habías corrido una versión anterior, se quita la firma vieja para que no queden dos funciones iguales)
+drop function if exists public.finanzas_equipo_ver(uuid, uuid, text);
+create or replace function public.finanzas_equipo_ver(p_token uuid, p_team_id uuid, p_cedula text, p_registrar boolean default true)
 returns jsonb
 language plpgsql
 security definer
@@ -154,7 +156,7 @@ begin
   -- Un "ingreso" nuevo se anota si el último fue hace más de 10 minutos (así no se llena de filas al refrescar)
   select max(created_at) into v_ultimo_ok from finanzas_accesos
    where tournament_id = v_t and team_id = p_team_id and ok;
-  if v_ultimo_ok is null or v_ultimo_ok < now() - interval '10 minutes' then
+  if p_registrar and (v_ultimo_ok is null or v_ultimo_ok < now() - interval '10 minutes') then
     insert into finanzas_accesos (tournament_id, team_id, ok) values (v_t, p_team_id, true);
   end if;
 
@@ -193,6 +195,7 @@ begin
       select jsonb_agg(jsonb_build_object(
         'match_id', s.match_id, 'player_id', s.player_id,
         'yellow_cards', s.yellow_cards, 'blue_cards', s.blue_cards, 'red_cards', s.red_cards,
+        'yellow_paid', coalesce(s.yellow_paid, false), 'blue_paid', coalesce(s.blue_paid, false), 'red_paid', coalesce(s.red_paid, false),
         'nombre', p.name
       ))
       from player_match_stats s
@@ -216,7 +219,7 @@ begin
   );
 end;
 $$;
-grant execute on function public.finanzas_equipo_ver(uuid, uuid, text) to anon, authenticated;
+grant execute on function public.finanzas_equipo_ver(uuid, uuid, text, boolean) to anon, authenticated;
 
 -- ── 4) Para el ORGANIZADOR: quién entró, cuándo y cuántas veces (y quién nunca) ──────────────
 create or replace function public.finanzas_accesos_resumen(p_tournament_id uuid)

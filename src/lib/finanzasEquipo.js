@@ -61,15 +61,26 @@ export function armarCuentaEquipo(d) {
     a.am += f.am; a.az += f.az; a.rj += f.rj
     porJugadorPartido.set(key, a)
   })
+  // Qué tarjeta de cada jugador/partido ya está marcada como pagada (yellow_paid / blue_paid / red_paid):
+  // es EXACTAMENTE lo que usa el admin y el link de deudores para saber quién debe. Así los tres coinciden.
+  const flags = new Map((d?.tarjetas_stats || []).filter(s => s.player_id).map(s => [`${s.player_id}|${s.match_id}`, s]))
   porJugadorPartido.forEach(f => {
     const valor = Math.max(f.am > 0 ? pA : 0, f.az > 0 ? pZ : 0, f.rj > 0 ? pR : 0)
     if (valor <= 0) return
     const p = porId.get(f.match_id)
     const icono = (f.am > 0 ? '🟨'.repeat(f.am) : '') + (f.az > 0 ? '🟦'.repeat(f.az) : '') + (f.rj > 0 ? '🟥'.repeat(f.rj) : '')
-    add({ fecha: p?.played_at || null, tipo: 'cargo', grupo: 'tarjetas', titulo: `${icono} ${f.nombre}`, detalle: p ? `Partido vs ${rivalDe(p)}` : 'Tarjeta', monto: valor })
+    const st = f.player_id ? flags.get(`${f.player_id}|${f.match_id}`) : null
+    // Con marcas de pago: debe lo más caro de lo que siga sin pagar de ese partido. Sin ellas (jugador sin registro): se toma como pendiente.
+    const pendiente = st
+      ? Math.max((st.yellow_cards || 0) > 0 && !st.yellow_paid ? pA : 0, (st.blue_cards || 0) > 0 && !st.blue_paid ? pZ : 0, (st.red_cards || 0) > 0 && !st.red_paid ? pR : 0)
+      : valor
+    add({ fecha: p?.played_at || null, tipo: 'cargo', grupo: 'tarjetas', titulo: `${icono} ${f.nombre}`, detalle: p ? `Partido vs ${rivalDe(p)}` : 'Tarjeta', monto: valor, pendiente })
   })
   movimientos.filter(m => m.tipo === 'pago_tarjetas').forEach(m => {
-    add({ fecha: m.created_at, tipo: 'pago', grupo: 'tarjetas', titulo: m.jugador ? `Pagó la tarjeta de ${m.jugador}` : 'Pagó una tarjeta', detalle: m.concepto || '', monto: num(m.monto) })
+    // El nombre sale del jugador del pago o, si no lo trae, del concepto ("Tarjeta(s) de NOMBRE — ...")
+    const deConcepto = (m.concepto || '').match(/^Tarjeta\(s\) de (.+?)(?: — |$)/)
+    const nombre = m.jugador || (deConcepto ? deConcepto[1] : '')
+    add({ fecha: m.created_at, tipo: 'pago', grupo: 'tarjetas', titulo: nombre ? `Pagó la tarjeta de ${nombre}` : 'Pagó una tarjeta', detalle: nombre ? '' : (m.concepto || ''), monto: num(m.monto) })
   })
 
   if (llevar) {
@@ -111,7 +122,11 @@ export function armarCuentaEquipo(d) {
     const cargos = ls.filter(l => l.tipo === 'cargo').reduce((a, l) => a + l.monto, 0)
     const pagos = ls.filter(l => l.tipo === 'pago').reduce((a, l) => a + l.monto, 0)
     const informativo = ls.filter(l => l.tipo === 'info').reduce((a, l) => a + l.monto, 0)
-    return { clave, ...ETIQUETAS[clave], cargos, pagos, informativo, saldo: cargos - pagos, hay: ls.length > 0 }
+    // Tarjetas: lo que se debe es lo que sigue sin marcar como pagado (igual que el admin), no cargos - pagos
+    const saldo = clave === 'tarjetas'
+      ? ls.filter(l => l.tipo === 'cargo').reduce((a, l) => a + l.pendiente, 0)
+      : cargos - pagos
+    return { clave, ...ETIQUETAS[clave], cargos, pagos, informativo, saldo, hay: ls.length > 0 }
   }).filter(g => g.hay)
 
   const totalDebe = grupos.filter(g => g.clave !== 'arbitraje').reduce((a, g) => a + Math.max(g.saldo, 0), 0)
@@ -131,6 +146,7 @@ export function armarCuentaEquipo(d) {
   grupos.forEach(g => {
     let restante = g.clave === 'arbitraje' ? 0 : Math.max(g.saldo, 0)
     lineas.filter(l => l.grupo === g.clave && l.tipo === 'cargo').forEach(l => {
+      if (l.pendiente !== undefined) return // tarjetas: ya viene de las marcas de pago de cada jugador
       l.pendiente = Math.min(l.monto, restante)
       restante -= l.pendiente
     })

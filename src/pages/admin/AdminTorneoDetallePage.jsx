@@ -1278,6 +1278,17 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
+  // Finanzas se refresca SOLO mientras la pestaña está abierta: cada 30 s y apenas vuelves a la app
+  // (así un pago o una tarjeta marcada desde otro celular o desde el link aparece sin recargar).
+  useEffect(() => {
+    if (tab !== 'finanzas') return
+    const refrescar = () => { if (document.visibilityState === 'visible') fetchFinanzas() }
+    const intervalo = setInterval(refrescar, 30000)
+    document.addEventListener('visibilitychange', refrescar)
+    window.addEventListener('focus', refrescar)
+    return () => { clearInterval(intervalo); document.removeEventListener('visibilitychange', refrescar); window.removeEventListener('focus', refrescar) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
   // En Calendario (donde se programa) solo hacen falta los movimientos de dinero para saber quién debe multas
   useEffect(() => {
     if (tab !== 'calendario') return

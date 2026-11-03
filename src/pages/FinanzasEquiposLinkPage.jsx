@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Lock, RefreshCw, Search } from 'lucide-react'
@@ -84,7 +84,7 @@ export default function FinanzasEquiposLinkPage() {
   const entrar = useCallback(async (eq, ced, { silencioso = false } = {}) => {
     if (!silencioso) { setEntrando(true); setErrorCedula('') }
     try {
-      const { data, error } = await supabase.rpc('finanzas_equipo_ver', { p_token: token, p_team_id: eq.id, p_cedula: ced })
+      const { data, error } = await supabase.rpc('finanzas_equipo_ver', { p_token: token, p_team_id: eq.id, p_cedula: ced, p_registrar: !silencioso })
       if (error) throw error
       if (!data?.ok) {
         try { localStorage.removeItem(claveLocal(eq.id)) } catch { /* sin almacenamiento */ }
@@ -127,6 +127,20 @@ export default function FinanzasEquiposLinkPage() {
     await entrar(equipo, ced, { silencioso: true })
     setActualizando(false)
   }
+
+  // Se actualiza SOLA: cada 30 s con la pantalla abierta y en cuanto la persona vuelve a la app/pestaña
+  // (así un pago que se acaba de registrar aparece sin tener que tocar "Actualizar").
+  const actualizarRef = useRef(actualizar)
+  useEffect(() => { actualizarRef.current = actualizar })
+  const hayCuenta = !!datos
+  useEffect(() => {
+    if (!hayCuenta) return
+    const refrescar = () => { if (document.visibilityState === 'visible') actualizarRef.current() }
+    const intervalo = setInterval(refrescar, 30000)
+    document.addEventListener('visibilitychange', refrescar)
+    window.addEventListener('focus', refrescar)
+    return () => { clearInterval(intervalo); document.removeEventListener('visibilitychange', refrescar); window.removeEventListener('focus', refrescar) }
+  }, [hayCuenta])
 
   const cuenta = useMemo(() => (datos ? armarCuentaEquipo(datos) : null), [datos])
   const equiposFiltrados = useMemo(() => {
@@ -264,7 +278,7 @@ export default function FinanzasEquiposLinkPage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: '.88rem' }}>{g.etiqueta}</div>
                 <div style={{ color: S.muted, fontSize: '.72rem' }}>
-                  {g.clave === 'arbitraje' ? 'Se paga en efectivo en la cancha' : (g.clave === 'inscripcion' || g.clave === 'multas') ? `Cobrado ${fmt(g.cargos)} · Pagado ${fmt(g.pagos)}` : g.saldo > 0 ? 'Tienes pendiente' : 'Sin deuda'}
+                  {g.clave === 'arbitraje' ? 'Se paga en efectivo en la cancha' : (g.clave === 'inscripcion' || g.clave === 'multas') ? `Cobrado ${fmt(g.cargos + g.informativo)} · Pagado ${fmt(g.pagos)}` : g.saldo > 0 ? 'Tienes pendiente' : 'Sin deuda'}
                 </div>
               </div>
               {g.clave === 'arbitraje'
