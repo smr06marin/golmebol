@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
@@ -428,6 +428,17 @@ function analizarRotacionEquipo(partidosTorneo, teamId, { fecha, hora, canchaId,
 // Bloque de avisos de rotación para un partido: una línea gris con la última
 // programación de cada equipo y, si repite cancha/hora/día, un aviso naranja
 // por equipo. items: [{ nombre, a: resultado de analizarRotacionEquipo }]
+// Recomendación al programar: el equipo tiene una multa / W / deuda anotada sin pagar. No bloquea nada: solo avisa
+// para que el organizador decida si lo programa o no.
+function AvisoMulta({ monto, derecha = false }) {
+  if (!(monto > 0)) return null
+  return (
+    <div style={{ marginTop: '3px', fontSize: '.68rem', lineHeight: 1.3, color: '#b45309', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px', padding: '3px 8px', fontWeight: '700', textAlign: derecha ? 'right' : 'left', whiteSpace: 'normal' }}>
+      ⛔ Este equipo debe una multa ({'$' + Math.round(monto).toLocaleString('es-CO')}) · mira si lo programas
+    </div>
+  )
+}
+
 function AvisosRotacion({ items }) {
   const conUltima = items.filter(it => it.a?.ultima)
   const conAlerta = items.filter(it => it.a?.alerta)
@@ -1179,6 +1190,24 @@ export default function AdminTorneoDetallePage() {
   const [elegirCrear, setElegirCrear] = useState(false) // menú "Programar partidos" (un partido / una jornada)
   const enFlujoCal = subTab === 'jornada' || (subTab === 'partidos' && showFormPartido) // creando algo: se muestra "‹ Calendario" para volver
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
+  // Multas pendientes por equipo (W + deudas anotadas − pagos de multa), para avisar al programar partidos.
+  // Misma cuenta que "W / Multas" de Finanzas.
+  const multasPorEquipo = useMemo(() => {
+    const fc = torneo?.finanzas_config || {}
+    const m = {}
+    partidos.filter(p => p.status === 'finished' && p.tipo_resultado === 'w').forEach(p => {
+      const presentaId = (p.home_score || 0) > (p.away_score || 0) ? p.home_team_id : p.away_team_id
+      const ausenteId = presentaId === p.home_team_id ? p.away_team_id : p.home_team_id
+      if (ausenteId) m[ausenteId] = (m[ausenteId] || 0) + (fc.multa_no_presenta || 0)
+    })
+    movimientos.forEach(mv => {
+      if (!mv.team_id) return
+      if (mv.tipo === 'cargo_manual' && !mv.pagado) m[mv.team_id] = (m[mv.team_id] || 0) + (mv.monto || 0)
+      if (mv.tipo === 'pago_cargos') m[mv.team_id] = (m[mv.team_id] || 0) - (mv.monto || 0)
+    })
+    Object.keys(m).forEach(k => { if (!(m[k] > 0)) delete m[k] })
+    return m
+  }, [partidos, torneo, movimientos])
   const [verSoloMultas, setVerSoloMultas] = useState(false) // Finanzas: botón para ver SOLO los equipos que deben multas
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
@@ -1247,6 +1276,12 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
+  // En Calendario (donde se programa) solo hacen falta los movimientos de dinero para saber quién debe multas
+  useEffect(() => {
+    if (tab !== 'calendario') return
+    supabase.from('torneo_finanzas').select('*, teams(name), players(name)').eq('tournament_id', id).order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setMovimientos(data) })
+  }, [tab, id])
   useEffect(() => {
     if (tab !== 'personalizacion' || !torneo) return
     setFormMarca({
@@ -5778,6 +5813,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         <select value={formPartido.home_team_id} disabled={filtraPorGrupo && !tipoPartidoForm} onChange={e => setFormPartido(f => ({ ...f, home_team_id: e.target.value, away_team_id: tipoPartidoForm === 'inter' ? '' : f.away_team_id }))} style={inputStyle}>
                           <option value="">Seleccionar...</option>{equiposParaPartido('home').map(e => <option key={e.id} value={e.id}>{e.name}{tipoPartidoForm === 'inter' ? ` (${nombreGrupo(grupoDeEquipo(e.id))})` : ''}</option>)}
                         </select>
+                        <AvisoMulta monto={multasPorEquipo[formPartido.home_team_id]}/>
                       </div>
                       <div className="gpf-vs">VS</div>
                       <div>
@@ -5785,6 +5821,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         <select value={formPartido.away_team_id} disabled={filtraPorGrupo && (!tipoPartidoForm || (tipoPartidoForm === 'inter' && !formPartido.home_team_id))} onChange={e => setFormPartido(f => ({ ...f, away_team_id: e.target.value }))} style={inputStyle}>
                           <option value="">{tipoPartidoForm === 'inter' && !formPartido.home_team_id ? 'Elige primero el local...' : 'Seleccionar...'}</option>{equiposParaPartido('away').filter(e => e.id !== formPartido.home_team_id).map(e => <option key={e.id} value={e.id}>{e.name}{tipoPartidoForm === 'inter' ? ` (${nombreGrupo(grupoDeEquipo(e.id))})` : ''}</option>)}
                         </select>
+                        <AvisoMulta monto={multasPorEquipo[formPartido.away_team_id]}/>
                       </div>
                       {formPartido.home_team_id && formPartido.away_team_id && formPartido.home_team_id !== formPartido.away_team_id && (() => {
                         const yaJugaron = partidos.some(p =>
@@ -6142,7 +6179,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'local' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'local' ? '2px dashed #1a73e8' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'local' ? 'rgba(26,115,232,.06)' : 'transparent' }}>
                               <GripVertical size={13} color="#9aa0a6"/>
                               <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.local?.logo_url} name={p.local?.name} size={24}/></div>
-                              <div style={{ minWidth: 0 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.local?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Local</div></div>
+                              <div style={{ minWidth: 0 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.local?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Local</div><AvisoMulta monto={multasPorEquipo[p.local?.id]}/></div>
                             </div>
                             <span style={{ fontWeight: '700', color: '#9aa0a6', fontSize: '.75rem', flexShrink: 0 }}>VS</span>
                             <div data-drop-pi={i} data-drop-slot="visitante"
@@ -6151,7 +6188,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               onPointerUp={e => soltarDragEquipo(e.clientX, e.clientY)}
                               onPointerCancel={cancelarDragEquipo}
                               style={{ flex: 1, minWidth: '120px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end', padding: '6px 10px', borderRadius: '8px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: drag?.pi === i && drag?.slot === 'visitante' ? .4 : 1, border: dragOver?.pi === i && dragOver?.slot === 'visitante' ? '2px dashed #e8710a' : '2px solid transparent', background: dragOver?.pi === i && dragOver?.slot === 'visitante' ? 'rgba(232,113,10,.06)' : 'transparent' }}>
-                              <div style={{ textAlign: 'right', minWidth: 0 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.visitante?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Visitante</div></div>
+                              <div style={{ textAlign: 'right', minWidth: 0 }}><div style={{ fontWeight: '600', color: '#202124', fontSize: '.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.visitante?.name}</div><div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>Visitante</div><AvisoMulta monto={multasPorEquipo[p.visitante?.id]} derecha/></div>
                               <div style={{ width: '24px', height: '24px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={p.visitante?.logo_url} name={p.visitante?.name} size={24}/></div>
                               <GripVertical size={13} color="#9aa0a6"/>
                             </div>
