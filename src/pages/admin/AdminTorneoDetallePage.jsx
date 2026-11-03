@@ -7695,6 +7695,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   : (llevar && r.saldoMultas > Math.max(r.saldo, 0)) ? 'pago_cargos' : 'pago_tarjetas'
                 setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
               }
+              const abrirDeuda = r => { setPagoForm({ tipo: 'cargo_manual', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }
               return (
                 <div style={{ marginBottom: '20px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px', marginBottom: '16px' }}>
@@ -7744,11 +7745,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
                           <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{soloMultas ? 'Multa / W / deuda anotada' : (conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto')}</div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <b style={{ color: '#d93025', fontSize: '1.05rem' }}>{fmt(soloMultas ? r.saldoMultas : pendiente(r))}</b>
                           <button onClick={() => abrirPago(r, soloMultas ? 'pago_cargos' : undefined)}
                             style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
                             Registrar pago
+                          </button>
+                          <button onClick={() => abrirDeuda(r)} title="Anotarle una deuda a este equipo (ej: se fue sin pagar el arbitraje)"
+                            style={{ background: '#fff', color: '#d93025', border: '1px solid #fad2cf', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                            ➖ Anotar deuda
                           </button>
                         </div>
                         <div style={{ flexBasis: '100%', borderTop: '1px solid #f1f3f4', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -8553,7 +8558,19 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
               <button onClick={() => setPagoModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
             </div>
-            <div style={{ padding: '18px 20px' }}>
+            <div style={{ padding: '18px 20px', maxHeight: '80vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', gap: '4px', background: '#f1f3f4', borderRadius: '10px', padding: '3px', marginBottom: '14px' }}>
+                {[['pago', '💵 Registrar pago'], ['deuda', '➖ Anotar deuda']].map(([k, t]) => {
+                  const activo = (k === 'deuda') === (pagoForm.tipo === 'cargo_manual')
+                  return (
+                    <button key={k} aria-pressed={activo}
+                      onClick={() => { if (activo) return; setTarjetasAPagar([]); setPagoForm(k === 'deuda' ? { tipo: 'cargo_manual', monto: '', concepto: '' } : { tipo: 'pago_tarjetas', monto: '', concepto: '' }) }}
+                      style={{ flex: 1, minHeight: '40px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '700', background: activo ? '#fff' : 'transparent', color: activo ? (k === 'deuda' ? '#d93025' : '#1a73e8') : '#5f6368', boxShadow: activo ? '0 1px 3px rgba(0,0,0,.15)' : 'none' }}>
+                      {t}
+                    </button>
+                  )
+                })}
+              </div>
               {pagoForm.tipo === 'cargo_manual' ? (
                 <div style={{ marginBottom: '12px', background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#c5221f', lineHeight: 1.5 }}>
                   Se sumará como <b>cargo pendiente</b> al equipo (sube su saldo en rojo). Ej.: quedó debiendo $10.000 del arbitraje, daño en la cancha, etc.
@@ -8650,6 +8667,23 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <label style={labelStyle}>Concepto (opcional)</label>
                 <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : pagoForm.tipo === 'abono_inscripcion' ? 'Ej: primer abono de inscripción' : pagoForm.tipo === 'pago_cargos' ? 'Ej: pago de W jornada 3' : 'Ej: pago tarjetas jornada 3'}/>
               </div>
+              {pagoForm.tipo === 'cargo_manual' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '.7rem', fontWeight: '600', color: '#5f6368', marginBottom: '6px' }}>Motivo rápido (toca uno)</div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[
+                      { t: '🧑‍⚖️ Arbitraje sin pagar', c: 'Arbitraje sin pagar', m: (torneo?.finanzas_config || {}).arbitraje_equipo },
+                      { t: '🏟️ Daño en la cancha', c: 'Daño en la cancha' },
+                      { t: '⛔ Multa', c: 'Multa' },
+                    ].map(o => (
+                      <button key={o.c} onClick={() => setPagoForm(f => ({ ...f, concepto: o.c, monto: !f.monto && o.m > 0 ? String(Math.round(o.m)) : f.monto }))}
+                        style={{ minHeight: '36px', padding: '6px 12px', borderRadius: '999px', cursor: 'pointer', fontSize: '.76rem', fontWeight: '700', border: pagoForm.concepto === o.c ? '2px solid #d93025' : '1px solid #dadce0', background: pagoForm.concepto === o.c ? '#fce8e6' : '#fff', color: pagoForm.concepto === o.c ? '#c5221f' : '#3c4043' }}>
+                        {o.t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
                 <button onClick={handleRegistrarPago} disabled={guardandoPago}
@@ -8657,6 +8691,34 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   {guardandoPago ? 'Guardando...' : pagoForm.tipo === 'cargo_manual' ? '➖ Anotar deuda' : 'Registrar pago'}
                 </button>
               </div>
+              {(() => {
+                const movsEq = movimientos.filter(m => m.team_id === pagoModal.id && ['pago_tarjetas', 'pago_cargos', 'abono_inscripcion', 'cargo_manual'].includes(m.tipo))
+                  .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                if (movsEq.length === 0) return null
+                const nombreMov = m => m.tipo === 'cargo_manual' ? 'Deuda anotada' : m.tipo === 'pago_tarjetas' ? 'Pago de tarjetas' : m.tipo === 'abono_inscripcion' ? 'Abono a inscripción' : 'Pago de W/multa'
+                return (
+                  <div style={{ marginTop: '18px', borderTop: '1px solid #e8eaed', paddingTop: '12px' }}>
+                    <div style={{ fontSize: '.78rem', fontWeight: '800', color: '#202124', marginBottom: '2px' }}>¿Te equivocaste? Quita un pago o una deuda</div>
+                    <div style={{ fontSize: '.7rem', color: '#80868b', marginBottom: '8px' }}>Al quitarlo, el saldo del equipo se recalcula solo.</div>
+                    <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden' }}>
+                      {movsEq.map((m, i) => (
+                        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderTop: i > 0 ? '1px solid #f1f3f4' : 'none' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '.78rem', fontWeight: '700', color: '#202124' }}>{nombreMov(m)} · <span style={{ color: m.tipo === 'cargo_manual' ? '#d93025' : '#1e8e3e' }}>{m.tipo === 'cargo_manual' ? '−' : '+'}{fmt(m.monto)}</span></div>
+                            <div style={{ fontSize: '.68rem', color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {new Date(m.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}{m.concepto ? ` · ${m.concepto}` : ''}
+                            </div>
+                          </div>
+                          <button onClick={() => handleEliminarPago(m)}
+                            style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', padding: '6px 10px', minHeight: '36px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                            🗑 Quitar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
