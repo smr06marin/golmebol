@@ -264,10 +264,12 @@ export default function FinanzasEquiposLinkPage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: '.88rem' }}>{g.etiqueta}</div>
                 <div style={{ color: S.muted, fontSize: '.72rem' }}>
-                  {(g.clave === 'inscripcion' || g.clave === 'multas') ? `Cobrado ${fmt(g.cargos)} · Pagado ${fmt(g.pagos)}` : g.saldo > 0 ? 'Tienes pendiente' : 'Sin deuda'}
+                  {g.clave === 'arbitraje' ? 'Se paga en efectivo en la cancha' : (g.clave === 'inscripcion' || g.clave === 'multas') ? `Cobrado ${fmt(g.cargos)} · Pagado ${fmt(g.pagos)}` : g.saldo > 0 ? 'Tienes pendiente' : 'Sin deuda'}
                 </div>
               </div>
-              {g.saldo > 0
+              {g.clave === 'arbitraje'
+                ? <span style={{ fontSize: '.72rem', fontWeight: 800, color: S.green, background: 'rgba(34,197,94,.12)', borderRadius: 999, padding: '4px 10px' }}>✓ Pagado</span>
+                : g.saldo > 0
                 ? <b style={{ color: S.red, fontSize: '.95rem' }}>{fmt(g.saldo)}</b>
                 : <span style={{ fontSize: '.72rem', fontWeight: 800, color: S.green, background: 'rgba(34,197,94,.12)', borderRadius: 999, padding: '4px 10px' }}>Al día</span>}
             </div>
@@ -298,7 +300,7 @@ export default function FinanzasEquiposLinkPage() {
               const parcial = l.tipo === 'cargo' && l.pendiente > 0 && l.pendiente < l.monto
               const verde = esPago || esInfo || cubierto
               const valor = filtro === 'cargos' && parcial ? l.pendiente : l.monto
-              const ocultarMonto = verde && l.grupo === 'tarjetas' // lo pagado en tarjetas no muestra plata (inscripción y multas sí)
+              const ocultarMonto = verde && (l.grupo === 'tarjetas' || l.grupo === 'arbitraje') // lo pagado en tarjetas y arbitraje no muestra plata (inscripción y multas sí)
               const nota = ocultarMonto ? null : esInfo ? 'Pagado' : cubierto ? 'Pagado' : parcial ? `Falta ${fmt(l.pendiente)} de ${fmt(l.monto)}` : null
               return (
                 <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderTop: i > 0 ? `1px solid ${S.border}` : 'none' }}>

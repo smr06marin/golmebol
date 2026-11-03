@@ -33,11 +33,10 @@ export function armarCuentaEquipo(d) {
   let n = 0
   const add = l => lineas.push({ id: `l${n++}`, fecha: null, detalle: '', ...l })
 
-  // ── Arbitraje (se paga en la cancha: solo informativo) ──
-  const arb = num(fc.arbitraje_equipo)
-  if (arb > 0) {
+  // ── Arbitraje: se paga en efectivo en la cancha el día del partido → siempre sale como pagado, sin valor ──
+  if (num(fc.arbitraje_equipo) > 0) {
     partidos.filter(p => p.status === 'finished' && p.tipo_resultado !== 'w').forEach(p => {
-      add({ fecha: p.played_at, tipo: 'info', grupo: 'arbitraje', titulo: `Arbitraje · vs ${rivalDe(p)}`, detalle: 'Pagado en efectivo en la cancha el día del partido', monto: arb })
+      add({ fecha: p.played_at, tipo: 'info', grupo: 'arbitraje', titulo: `Arbitraje · vs ${rivalDe(p)}`, detalle: 'Pagado en la cancha el día del partido', monto: 0 })
     })
   }
 
@@ -70,7 +69,7 @@ export function armarCuentaEquipo(d) {
     add({ fecha: p?.played_at || null, tipo: 'cargo', grupo: 'tarjetas', titulo: `${icono} ${f.nombre}`, detalle: p ? `Partido vs ${rivalDe(p)}` : 'Tarjeta', monto: valor })
   })
   movimientos.filter(m => m.tipo === 'pago_tarjetas').forEach(m => {
-    add({ fecha: m.created_at, tipo: 'pago', grupo: 'tarjetas', titulo: 'Pago de tarjetas', detalle: [m.jugador, m.concepto].filter(Boolean).join(' · '), monto: num(m.monto) })
+    add({ fecha: m.created_at, tipo: 'pago', grupo: 'tarjetas', titulo: m.jugador ? `Pagó la tarjeta de ${m.jugador}` : 'Pagó una tarjeta', detalle: m.concepto || '', monto: num(m.monto) })
   })
 
   if (llevar) {
@@ -102,7 +101,7 @@ export function armarCuentaEquipo(d) {
       })
     })
     movimientos.filter(m => m.tipo === 'pago_cargos').forEach(m => {
-      add({ fecha: m.created_at, tipo: 'pago', grupo: 'multas', titulo: 'Pago de multa / W', detalle: m.concepto || '', monto: num(m.monto) })
+      add({ fecha: m.created_at, tipo: 'pago', grupo: 'multas', titulo: 'Pagó una multa / W', detalle: m.concepto || '', monto: num(m.monto) })
     })
   }
 
@@ -116,7 +115,7 @@ export function armarCuentaEquipo(d) {
   }).filter(g => g.hay)
 
   const totalDebe = grupos.filter(g => g.clave !== 'arbitraje').reduce((a, g) => a + Math.max(g.saldo, 0), 0)
-  const totalPagado = grupos.reduce((a, g) => a + g.pagos + (g.clave === 'arbitraje' ? g.informativo : 0), 0) // incluye el arbitraje ya pagado en la cancha
+  const totalPagado = grupos.reduce((a, g) => a + g.pagos, 0)
 
   // Más nuevo primero; lo que no tiene fecha (la inscripción) va al final
   lineas.sort((a, b) => {
