@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { CANAL_PRESENCIA, contarPresencia } from '../lib/presenciaSitio'
 
 // SEMÁFORO DEL SISTEMA — solo administrador principal, arriba del panel.
 // Cada 30 s (y solo con la pantalla a la vista) mide qué tan rápido responde la base de datos y, si se corrió
@@ -29,12 +30,35 @@ function evaluar({ ms, error, est }) {
   return { nivel, titulo, motivos }
 }
 
+function Dato({ titulo, valor, nota }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,.7)', borderRadius: '10px', padding: '8px 10px' }}>
+      <div style={{ fontSize: '.68rem', color: '#5f6368', fontWeight: 700 }}>{titulo}</div>
+      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#202124', lineHeight: 1.2 }}>{valor}</div>
+      {nota ? <div style={{ fontSize: '.68rem', color: '#80868b' }}>{nota}</div> : null}
+    </div>
+  )
+}
+
 export default function EstadoSistema() {
   const { user } = useAuthStore()
   const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
   const [lectura, setLectura] = useState(null) // { nivel, titulo, motivos, ms, est, hora }
   const [abierto, setAbierto] = useState(false)
   const ocupado = useRef(false)
+  const [gente, setGente] = useState(null) // { enSitio, viendoVivo } — personas con la portada abierta ahora
+
+  // Cuenta de personas en el sitio AHORA (canal de presencia; este panel solo cuenta, no se anota)
+  useEffect(() => {
+    if (!esPrincipal) return undefined
+    let canal = null
+    try {
+      canal = supabase.channel(CANAL_PRESENCIA)
+      const actualizar = () => { try { setGente(contarPresencia(canal.presenceState())) } catch { /* nada */ } }
+      canal.on('presence', { event: 'sync' }, actualizar).subscribe()
+    } catch { /* sin presencia: no se muestra la cuenta */ }
+    return () => { try { if (canal) supabase.removeChannel(canal) } catch { /* nada */ } }
+  }, [esPrincipal])
 
   useEffect(() => {
     if (!esPrincipal) return undefined
@@ -73,11 +97,17 @@ export default function EstadoSistema() {
       <button onClick={() => setAbierto(a => !a)} style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
         <span style={{ width: '14px', height: '14px', borderRadius: '50%', background: lectura ? COLOR[n] : '#9aa0a6', flexShrink: 0 }}/>
         <span style={{ fontWeight: 800, fontSize: '.92rem', color: '#202124', flex: 1 }}>{lectura ? lectura.titulo : 'Revisando el sistema…'}</span>
-        {lectura && <span style={{ fontSize: '.75rem', color: '#5f6368' }}>{lectura.est ? `${lectura.est.conexiones}/${lectura.est.max_conexiones} conexiones · ` : ''}{(lectura.ms / 1000).toFixed(1)} s</span>}
+        {lectura && <span style={{ fontSize: '.75rem', color: '#5f6368' }}>{gente ? `👥 ${gente.enSitio} · ` : ''}{lectura.est ? `${lectura.est.conexiones}/${lectura.est.max_conexiones} conexiones · ` : ''}{(lectura.ms / 1000).toFixed(1)} s</span>}
         <span style={{ fontSize: '.8rem', color: '#5f6368' }}>{abierto ? '▲' : '▼'}</span>
       </button>
       {abierto && lectura && (
         <div style={{ marginTop: '10px', fontSize: '.82rem', color: '#202124', lineHeight: 1.5 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '10px' }}>
+            <Dato titulo="Personas en el sitio ahora" valor={gente ? gente.enSitio : '—'} nota={gente ? 'con la portada abierta' : 'conectando…'}/>
+            <Dato titulo="Viendo el en vivo" valor={gente ? gente.viendoVivo : '—'} nota="con la transmisión a la vista"/>
+            <Dato titulo="Conexiones a la base" valor={lectura.est ? `${lectura.est.conexiones} / ${lectura.est.max_conexiones}` : '—'} nota={lectura.est ? `${Math.round(100 * lectura.est.conexiones / Math.max(1, lectura.est.max_conexiones))} % en uso` : 'falta correr el SQL'}/>
+            <Dato titulo="Respuesta de la base" valor={`${(lectura.ms / 1000).toFixed(1)} s`} nota={lectura.est ? `${lectura.est.consultas_lentas} consultas lentas` : ''}/>
+          </div>
           {lectura.motivos.length > 0 && <div style={{ marginBottom: '6px' }}>{lectura.motivos.map(m => <div key={m}>• {m}</div>)}</div>}
           {n === 'verde' && <div>Todo normal. Se actualiza solo cada 30 segundos.</div>}
           {n === 'amarillo' && <div>Aún funciona. Si sigue así, no recarguen las planillas y revisa Supabase → Infrastructure.</div>}

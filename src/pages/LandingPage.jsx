@@ -8,6 +8,7 @@ import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
+import { usePresenciaSitio } from '../lib/presenciaSitio'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 // El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
 // una transmisión en vivo: se descarga aparte, sin frenar la portada.
@@ -452,6 +453,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   const idsTorneoAuto = useMemo(() => streamsVivos.map(s => s.torneo_auto).filter(Boolean), [streamsVivos])
   const streamsVisibles = streamsVivos.filter(s => streamsOk[s.id] === s.url)
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
+  usePresenciaSitio(streamsVisibles.length > 0) // cuenta de personas en el sitio (semáforo del admin)
   useEffect(() => {
     if (!avisoSinVivo) return undefined
     const t = setTimeout(() => setAvisoSinVivo(false), 5000)
