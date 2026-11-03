@@ -58,6 +58,7 @@ export function registrarPlanillaAbierta(partidoId) {
   }
 }
 export function planillaEstaAbierta(partidoId) { return planillasAbiertas.has(partidoId) }
+export function hayAlgunaPlanillaAbierta() { return planillasAbiertas.size > 0 }
 
 // Hook: llama a `onVencido` cuando llega `finTiempoEn + 5 min` (epoch en ms). `activo` apaga el control.
 // También revisa al volver a la pantalla (si el celular estuvo bloqueado, el navegador pudo retrasar el temporizador).

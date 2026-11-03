@@ -357,7 +357,7 @@ function useConfirmarSalida() {
 export default function App() {
   const { setUser, setLoading, setRol, empezarCargaRol, user } = useAuthStore()
   useConfirmarSalida()
-  const hayVersionNueva = useVersionCheck()
+  const { hayNueva: hayVersionNueva, segundos: segundosActualizar, posponer: posponerActualizacion } = useVersionCheck()
   // Cuando un organizador/admin toca el link de "recuperar contraseña" que le
   // llega por correo, Supabase arma sola una sesión temporal y dispara este
   // evento — hay que detectarlo para mostrarle el formulario de "crea tu
@@ -474,8 +474,14 @@ export default function App() {
     <GlobalToast/>
     {hayVersionNueva && (
       <div className="gm-banner-version" onClick={() => recargarSinCache()}
-        style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#1a73e8', color: '#fff', textAlign: 'center', padding: '10px 16px', fontSize: '.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'system-ui, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
-        🔄 Hay una versión nueva de Golmebol — toca para actualizar
+        style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, background: '#1a73e8', color: '#fff', textAlign: 'center', padding: '10px 16px', fontSize: '.85rem', fontWeight: '700', cursor: 'pointer', fontFamily: 'system-ui, sans-serif', boxShadow: '0 2px 10px rgba(0,0,0,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <span>{segundosActualizar !== null ? `🔄 Hay una versión nueva de Golmebol — actualizando en ${segundosActualizar} s…` : '🔄 Hay una versión nueva de Golmebol — toca para actualizar'}</span>
+        {segundosActualizar !== null && (
+          <button onClick={e => { e.stopPropagation(); posponerActualizacion() }}
+            style={{ background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.55)', color: '#fff', borderRadius: '8px', padding: '4px 12px', fontSize: '.78rem', fontWeight: '700', cursor: 'pointer' }}>
+            Después
+          </button>
+        )}
       </div>
     )}
     <DominioPersonalizadoGate>
