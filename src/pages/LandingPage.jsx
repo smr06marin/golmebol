@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import { usePresenciaSitio } from '../lib/presenciaSitio'
+import { useIntervaloVisible } from '../lib/useIntervaloVisible'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 // El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
 // una transmisión en vivo: se descarga aparte, sin frenar la portada.
@@ -396,17 +397,11 @@ export default function LandingPage({ modo = 'inicio' }) {
   // solo, sin que nadie tenga que recargar la página.
   useEffect(() => {
     const tRelog = setInterval(() => setTick(x => x + 1), 1000)
-    const tRefetch = setInterval(fetchPartidosVivo, 20000)
-    const tVisitas = setInterval(fetchVisitasHoy, 30000)
-    // site_config trae el panel de control en vivo (en_vivo_control): el
-    // realtime de más abajo ya lo refresca casi al instante, pero este
-    // refresco de respaldo cada 5s asegura que el botón de repetición/tabla/
-    // goles igual llegue aunque el realtime de esa tabla falle por lo que
-    // sea (hay que correr migracion_realtime_site_config.sql para que
-    // funcione bien de una, esto es solo el respaldo).
-    const tControl = setInterval(fetchSiteConfig, 5000)
-    return () => { clearInterval(tRelog); clearInterval(tRefetch); clearInterval(tVisitas); clearInterval(tControl) }
+    return () => clearInterval(tRelog)
   }, [])
+  // Los refrescos de datos (partidos en vivo, visitas, panel de control) solo corren con la pantalla a la vista y
+  // más espaciados: antes cada visitante hacía ~17 consultas por minuto a la base aunque tuviera la pestaña escondida.
+  // (se declaran más abajo, después de saber si hay algo en vivo)
 
   // Carrusel de fotos de escenarios: avanza solo cada 5 segundos, para que se
   // vean todas sin que nadie tenga que hacer nada.
@@ -454,6 +449,11 @@ export default function LandingPage({ modo = 'inicio' }) {
   const streamsVisibles = streamsVivos.filter(s => streamsOk[s.id] === s.url)
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
   usePresenciaSitio(streamsVisibles.length > 0) // cuenta de personas en el sitio (semáforo del admin)
+  // Con algo en vivo: partidos cada 20 s; sin nada en vivo basta cada minuto. El panel de control (repetición/tabla/goles)
+  // ya llega casi al instante por tiempo real; este refresco es solo el respaldo.
+  useIntervaloVisible(fetchPartidosVivo, hayVivoAhora ? 20000 : 60000)
+  useIntervaloVisible(fetchVisitasHoy, 120000)
+  useIntervaloVisible(fetchSiteConfig, hayVivoAhora ? 15000 : 45000)
   useEffect(() => {
     if (!avisoSinVivo) return undefined
     const t = setTimeout(() => setAvisoSinVivo(false), 5000)

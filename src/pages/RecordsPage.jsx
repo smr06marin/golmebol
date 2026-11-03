@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase'
 import TablaPosiciones from '../components/TablaPosiciones'
 import { PantallaCargando } from '../components/PantallaCargando'
 import { registrarVisita } from '../lib/visitas'
+import { useIntervaloVisible } from '../lib/useIntervaloVisible'
 import { calcularRecordsAutomaticos } from '../lib/recordsAutomaticos'
 import { derivarEnVivo, extraerGoles, extraerTarjetas } from '../lib/liveMatch'
 import { getPuntosTorneo, puntosVictoria, cargarTorneoPuntos } from '../lib/puntosTorneo'
@@ -616,9 +617,9 @@ export default function RecordsPage() {
   // hubo un gol nuevo, terminó el partido, o empezó uno nuevo.
   useEffect(() => {
     const tRelog = setInterval(() => setTick(x => x + 1), 1000)
-    const tRefetch = setInterval(fetchPartidosVivo, 20000)
-    return () => { clearInterval(tRelog); clearInterval(tRefetch) }
+    return () => clearInterval(tRelog)
   }, [])
+  useIntervaloVisible(fetchPartidosVivo, 20000) // solo con la pantalla a la vista
 
   // Además del poll de 20s (respaldo), escuchar por websocket cualquier
   // cambio en matches (ej. el árbitro marca un gol en la planilla) y

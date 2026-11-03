@@ -45,7 +45,7 @@ export function useTablasBase(ids, { intervalo = 30000, conVivo = false, conGrup
       } catch { /* se queda con la tabla anterior hasta el próximo intento */ }
     })
     cargar()
-    const t = setInterval(cargar, intervalo)
+    const t = setInterval(() => { if (!document.hidden) cargar() }, intervalo) // con la pantalla escondida no se consulta
     return () => { vivo = false; clearInterval(t) }
   }, [key, intervalo, conVivo, conGrupos])
   return bases
