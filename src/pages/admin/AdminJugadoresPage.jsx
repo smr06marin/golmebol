@@ -5,7 +5,7 @@ import { errorAmigable } from '../../lib/mensajesError'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
-import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, CreditCard, AlertTriangle, CheckCircle, User } from 'lucide-react'
+import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, AlertTriangle, CheckCircle, User } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { confirmar } from '../../lib/confirmar'
 
@@ -181,11 +181,11 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '420px', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: 'min(420px, 92vw)', boxSizing: 'border-box', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <div style={{ fontWeight: '700', color: '#202124', fontSize: '1rem' }}>
-              Activar cuenta
+              🔄 Crear acceso y contraseña
             </div>
             <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '2px' }}>{jugador.name}</div>
           </div>
@@ -194,7 +194,7 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {(
             <div style={{ background: '#e8f0fe', borderRadius: '8px', padding: '10px 14px', fontSize: '.78rem', color: '#1a73e8' }}>
-              🔐 La contraseña inicial será la cédula: <b>{jugador.numero_cedula}</b>. El jugador deberá cambiarla al primer ingreso.
+              🔐 Este jugador todavía no tiene cuenta de acceso. Se le crea con la contraseña igual a su cédula: <b>{jugador.numero_cedula}</b>. Deberá cambiarla al primer ingreso.
             </div>
           )}
           {error && (
@@ -202,7 +202,7 @@ function ModalMembresia({ jugador, onClose, onActivar }) {
           )}
           <button onClick={handleActivar} disabled={loading}
             style={{ padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: loading ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', opacity: loading ? .7 : 1 }}>
-            {loading ? 'Procesando...' : '✅ Activar cuenta'}
+            {loading ? 'Procesando...' : '🔄 Sí, crear acceso'}
           </button>
         </div>
       </div>
@@ -707,7 +707,7 @@ export default function AdminJugadoresPage() {
 
       {modalReset && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '400px', boxShadow: '0 8px 32px rgba(0,0,0,.3)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: 'min(400px, 92vw)', boxSizing: 'border-box', boxShadow: '0 8px 32px rgba(0,0,0,.3)' }}>
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#fce8e6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                 <AlertTriangle size={28} color="#d93025"/>
@@ -929,14 +929,9 @@ export default function AdminJugadoresPage() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    {!j.user_id && (
-                      <button onClick={() => setModalMembresia(j)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#1e8e3e', border: 'none', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '600' }}>
-                        <CreditCard size={12}/> Activar
-                      </button>
-                    )}
-                    {j.user_id && (
-                      <button onClick={() => setModalReset(j)}
+                    {/* Todos los jugadores están activos: el botón es siempre el de resetear la contraseña. Si todavía no tienen cuenta, se les crea el acceso con la cédula. */}
+                    {(
+                      <button onClick={() => (j.user_id ? setModalReset(j) : setModalMembresia(j))}
                         style={{ background: 'none', border: '1px solid #fad2cf', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#d93025', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
                         🔄 Reset
                       </button>
