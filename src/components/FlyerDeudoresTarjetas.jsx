@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download, X, ChevronLeft, ChevronRight } from 'lucide-react'
-import { capturarFlyerBlob, compartirOBajarBlobs } from '../lib/flyerDescarga'
+import { capturarFlyerBlob, compartirOBajarBlob, compartirOBajarBlobs } from '../lib/flyerDescarga'
 import { TEMAS_RESULTADO } from '../lib/flyerTemas'
 import SelectorTemaFlyer from './SelectorTemaFlyer'
 
@@ -140,6 +140,11 @@ export default function FlyerDeudoresTarjetas({ torneo, deudores, subtituloEquip
   const [descargando, setDescargando] = useState(false)
   const [errorDescarga, setErrorDescarga] = useState('')
   const [hoy] = useState(() => new Date())
+  // Imágenes ya generadas de antemano: así, al tocar el botón, se abre de una la hoja de compartir del celular
+  // (si se generaran después del toque, con varias imágenes el navegador ya no deja abrirla y falla).
+  const [listas, setListas] = useState({ clave: '', items: [] })
+  const [progreso, setProgreso] = useState('')
+  const [modoManual, setModoManual] = useState(false)
 
   const formato = FORMATOS.find(f => f.id === formatoId) || FORMATOS[0]
   const tema = TEMAS_RESULTADO.find(t => t.id === temaId) || TEMAS_RESULTADO[0]
@@ -168,22 +173,51 @@ export default function FlyerDeudoresTarjetas({ torneo, deudores, subtituloEquip
     return () => obs.disconnect()
   }, [])
 
+  const claveImagenes = `${formatoId}|${temaId}|${ordenados.length}|${totalGeneral}|${subtituloEquipo}|${paginas.length}`
+  const nombreBase = `${torneo || 'golmebol'}_deudores_tarjetas${subtituloEquipo ? `_${subtituloEquipo}` : ''}`.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
+
+  // Genera las imágenes en segundo plano apenas cambia algo (formato, color, lista). Una por una, para no ahogar el celular.
+  useEffect(() => {
+    if (!ordenados.length) return undefined
+    let cancelado = false
+    const t = setTimeout(async () => {
+      try {
+        setProgreso(`Preparando imágenes… 0 de ${paginas.length}`)
+        const items = []
+        for (let i = 0; i < paginas.length; i++) {
+          if (cancelado) return
+          const b = await capturarFlyerBlob(refs.current[i], { scale: 1, width: ANCHO, height: formato.alto, backgroundColor: tema.abajo })
+          if (b) items.push({ blob: b, filename: `${nombreBase}${paginas.length > 1 ? `_${i + 1}de${paginas.length}` : ''}_${formato.id}.png`, url: URL.createObjectURL(b) })
+          if (!cancelado) setProgreso(`Preparando imágenes… ${i + 1} de ${paginas.length}`)
+          await new Promise(r => setTimeout(r, 60)) // respiro entre imágenes
+        }
+        if (!cancelado) { setListas({ clave: claveImagenes, items }); setProgreso('') }
+        else items.forEach(x => URL.revokeObjectURL(x.url))
+      } catch (e) {
+        console.error('Flyer de deudores: no se pudieron preparar las imágenes', e)
+        if (!cancelado) setProgreso('')
+      }
+    }, 500)
+    return () => { cancelado = true; clearTimeout(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveImagenes])
+  // Al cambiar de imágenes (o cerrar), se liberan las anteriores de la memoria
+  useEffect(() => () => { listas.items.forEach(x => URL.revokeObjectURL(x.url)) }, [listas])
+  const imagenesAlDia = listas.clave === claveImagenes && listas.items.length === paginas.length
+
   const propsFlyer = { torneo, totalPaginas: paginas.length, totalGeneral, cantidad: ordenados.length, subtituloEquipo, mostrarEquipo: !subtituloEquipo, fecha, tema, formato }
 
   async function handleDescargar() {
+    if (!imagenesAlDia) return
     setDescargando(true)
     setErrorDescarga('')
     try {
-      const base = `${torneo || 'golmebol'}_deudores_tarjetas${subtituloEquipo ? `_${subtituloEquipo}` : ''}`.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
-      const blobs = []
-      for (let i = 0; i < paginas.length; i++) {
-        const b = await capturarFlyerBlob(refs.current[i], { scale: 1, width: ANCHO, height: formato.alto, backgroundColor: tema.abajo })
-        if (b) blobs.push({ blob: b, filename: `${base}${paginas.length > 1 ? `_${i + 1}de${paginas.length}` : ''}_${formato.id}.png` })
-      }
-      await compartirOBajarBlobs(blobs, { shareTitle: `Deudores de tarjetas — ${torneo || ''}` })
+      const r = await compartirOBajarBlobs(listas.items, { shareTitle: `Deudores de tarjetas — ${torneo || ''}`, sinDescargaMultiple: true })
+      if (r === 'manual') setModoManual(true)
     } catch (e) {
-      console.error('Flyer de deudores: no se pudo generar la imagen', e)
-      setErrorDescarga('No se pudo generar la imagen. Intenta de nuevo.')
+      console.error('Flyer de deudores: no se pudo compartir', e)
+      setErrorDescarga('No se pudo compartir. Prueba guardando las imágenes de a una (abajo).')
+      setModoManual(true)
     } finally {
       setDescargando(false)
     }
@@ -248,10 +282,25 @@ export default function FlyerDeudoresTarjetas({ torneo, deudores, subtituloEquip
         </div>
 
         {errorDescarga && <div style={{ marginTop: 12, color: '#d93025', fontSize: '.8rem', textAlign: 'center' }}>{errorDescarga}</div>}
-        <button onClick={handleDescargar} disabled={descargando || !ordenados.length}
+        <button onClick={handleDescargar} disabled={descargando || !ordenados.length || !imagenesAlDia}
           style={{ marginTop: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#1a73e8', border: 'none', borderRadius: 12, padding: '14px', cursor: descargando ? 'default' : 'pointer', color: '#fff', fontWeight: 800, fontSize: '.95rem', opacity: descargando || !ordenados.length ? 0.7 : 1 }}>
-          <Download size={18}/> {descargando ? 'Generando imagen...' : paginas.length > 1 ? `Descargar / Compartir (${paginas.length} imágenes)` : 'Descargar / Compartir'}
+          <Download size={18}/> {!imagenesAlDia && ordenados.length ? (progreso || 'Preparando imágenes…') : descargando ? 'Abriendo…' : paginas.length > 1 ? `Descargar / Compartir (${paginas.length} imágenes)` : 'Descargar / Compartir'}
         </button>
+        {paginas.length > 1 && imagenesAlDia && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: modoManual ? '#fef7e0' : '#f8f9fa', border: `1px solid ${modoManual ? '#f9ab00' : '#e8eaed'}` }}>
+            <div style={{ fontSize: '.78rem', fontWeight: 700, color: '#3c4043', marginBottom: 8 }}>
+              {modoManual ? 'Guarda las imágenes de a una:' : '¿No se abre? Guarda las imágenes de a una:'}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {listas.items.map((it, n) => (
+                <button key={it.filename} type="button" onClick={() => compartirOBajarBlob(it.blob, { filename: it.filename, shareTitle: `Deudores de tarjetas — ${torneo || ''}` })}
+                  style={{ flex: '1 1 40%', padding: '10px 8px', borderRadius: 10, border: '1px solid #1a73e8', background: '#fff', color: '#1a73e8', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
+                  Imagen {n + 1} de {listas.items.length}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <button onClick={onClose}
           style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#f1f3f4', border: '1px solid #dadce0', borderRadius: 12, padding: '13px', cursor: 'pointer', color: '#3c4043', fontWeight: 800, fontSize: '.95rem' }}>
           <X size={18}/> Cerrar flyer

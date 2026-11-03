@@ -75,21 +75,25 @@ export async function descargarFlyer(container, { filename, opcionesCanvas = {},
 // Igual que compartirOBajarBlob pero con VARIAS imágenes (flyer que se reparte
 // en varias páginas): en el celular se mandan todas juntas a la hoja de
 // compartir; si no se puede, se descargan una por una.
-export async function compartirOBajarBlobs(items, { shareTitle, shareText } = {}) {
+// `sinDescargaMultiple`: si la hoja de compartir no se pudo abrir (ej. el navegador la bloqueó), NO se disparan varias
+// descargas seguidas (el celular las bloquea): se devuelve 'manual' para que la pantalla ofrezca guardar de a una.
+// Devuelve: 'compartido' | 'cancelado' | 'descargado' | 'manual'.
+export async function compartirOBajarBlobs(items, { shareTitle, shareText, sinDescargaMultiple = false } = {}) {
   const lista = (items || []).filter(i => i?.blob)
-  if (!lista.length) return
-  if (lista.length === 1) return compartirOBajarBlob(lista[0].blob, { filename: lista[0].filename, shareTitle, shareText })
+  if (!lista.length) return 'cancelado'
+  if (lista.length === 1) { await compartirOBajarBlob(lista[0].blob, { filename: lista[0].filename, shareTitle, shareText }); return 'compartido' }
   if (navigator.canShare && navigator.share) {
     const files = lista.map(i => new File([i.blob], i.filename, { type: 'image/png' }))
     if (navigator.canShare({ files })) {
       try {
         await navigator.share({ files, title: shareTitle || lista[0].filename, ...(shareText ? { text: shareText } : {}) })
-        return
+        return 'compartido'
       } catch (e) {
-        if (e?.name === 'AbortError') return
+        if (e?.name === 'AbortError') return 'cancelado'
       }
     }
   }
+  if (sinDescargaMultiple && /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent)) return 'manual'
   for (const i of lista) {
     const url = URL.createObjectURL(i.blob)
     const a = document.createElement('a')
@@ -99,4 +103,5 @@ export async function compartirOBajarBlobs(items, { shareTitle, shareText } = {}
     setTimeout(() => URL.revokeObjectURL(url), 4000)
     await new Promise(r => setTimeout(r, 400))
   }
+  return 'descargado'
 }
