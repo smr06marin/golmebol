@@ -26,6 +26,7 @@ import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransp
 import { comprimirImagen } from '../../lib/imageCompress'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
 import LinkFinanzasEquipos from '../../components/LinkFinanzasEquipos'
+import DetalleTarjetasEquipo from '../../components/DetalleTarjetasEquipo'
 import { guardarOriginal, guardarOriginalDesdeUrl, restaurarOriginal, useTieneOriginal } from '../../lib/logoOriginal'
 import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
@@ -1172,6 +1173,7 @@ export default function AdminTorneoDetallePage() {
   // ── FINANZAS ────────────────────────────────────────
   const [movimientos,      setMovimientos]      = useState([])
   const [statsTarjetas,    setStatsTarjetas]    = useState([])
+  const [marcasPago, setMarcasPago] = useState({}) // { 'player|match': { am, amPaid, az, azPaid, rj, rjPaid } } marcas de pago de cada tarjeta
   const [pendientesTarjetas, setPendientesTarjetas] = useState({}) // { player_id: { am, az, rj } } tarjetas sin pagar
   const [pendientesPartidos, setPendientesPartidos] = useState({}) // { player_id: [{ am, az, rj }] } una fila por partido con tarjeta sin pagar (para calcular el monto exacto)
   const [showConfigFin,    setShowConfigFin]    = useState(false)
@@ -2629,8 +2631,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // que deje de salirle la advertencia en la planilla del próximo partido.
     const pendientes = {}
     const pendientesPorPartido = {}
+    const marcas = {}
     ;(st || []).forEach(s => {
       if (!s.player_id) return
+      marcas[`${s.player_id}|${s.match_id}`] = { am: (s.yellow_cards || 0) > 0, amPaid: !!s.yellow_paid, az: (s.blue_cards || 0) > 0, azPaid: !!s.blue_paid, rj: (s.red_cards || 0) > 0, rjPaid: !!s.red_paid }
       if (!pendientes[s.player_id]) pendientes[s.player_id] = { am: 0, az: 0, rj: 0 }
       const filaPartido = { am: (s.yellow_cards || 0) > 0 && !s.yellow_paid, az: (s.blue_cards || 0) > 0 && !s.blue_paid, rj: (s.red_cards || 0) > 0 && !s.red_paid }
       if (filaPartido.am || filaPartido.az || filaPartido.rj) (pendientesPorPartido[s.player_id] = pendientesPorPartido[s.player_id] || []).push(filaPartido)
@@ -2638,6 +2642,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       if ((s.blue_cards   || 0) > 0 && !s.blue_paid)   pendientes[s.player_id].az += 1
       if ((s.red_cards    || 0) > 0 && !s.red_paid)    pendientes[s.player_id].rj += 1
     })
+    setMarcasPago(marcas)
     setPendientesTarjetas(pendientes)
     setPendientesPartidos(pendientesPorPartido)
 
@@ -2956,7 +2961,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
   async function handleEliminarPago(mv) {
     const queEs = mv.tipo === 'cargo_manual' ? 'esta deuda anotada' : 'este pago'
-    if (!(await confirmar(`¿Eliminar ${queEs} de ${fmt(mv.monto)}${mv.teams?.name ? ` de ${mv.teams.name}` : ''}${mv.concepto ? ` (${mv.concepto})` : ''}? El saldo del equipo se recalcula.`))) return
+    if (!(await confirmar(`¿Eliminar ${queEs} de ${fmt(mv.monto)}${mv.teams?.name ? ` de ${mv.teams.name}` : ''}${mv.concepto ? ` (${mv.concepto})` : ''}? El saldo del equipo se recalcula.${mv.tipo === 'pago_tarjetas' ? ' Ojo: si este pago había marcado tarjetas como pagadas, esas tarjetas siguen marcadas como pagadas.' : ''}`))) return
     const { error } = await supabase.from('torneo_finanzas').delete().eq('id', mv.id)
     if (error) return showMsg(errorAmigable(error, 'No se pudo eliminar'), 'error')
     showMsg('Movimiento eliminado ✓')
@@ -7789,6 +7794,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             </div>
                           ))}
                         </div>
+                        {!soloMultas && r.tarjetas > 0 && (
+                          <DetalleTarjetasEquipo
+                            filas={statsTarjetas.filter(f => f.team_id === r.equipo.id)} marcas={marcasPago} partidos={partidos}
+                            precios={{ am: (torneo?.finanzas_config || {}).precio_amarilla || 0, az: (torneo?.finanzas_config || {}).precio_azul || 0, rj: (torneo?.finanzas_config || {}).precio_roja || 0 }}
+                            saldo={r.saldoTarjetas}
+                            onRegistrarDiferencia={monto => { setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(monto)), concepto: 'Ajuste: tarjetas marcadas como pagadas sin pago registrado' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                          />
+                        )}
                         {historialEquipo(r)}
                       </div>
                     ))}
