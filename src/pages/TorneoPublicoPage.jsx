@@ -361,101 +361,81 @@ function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
   )
 }
 
-// PRÓXIMOS partidos del torneo: mismo estilo de tarjeta que RESULTADOS, agrupado por día.
+// PRÓXIMOS partidos del torneo: un panel por día (colores del torneo) y cada partido en una franja blanca:
+// escudo | EQUIPO · VS · EQUIPO | escudo, con la hora y la sede debajo. Limpio y fácil de leer en celular.
 function ProximosPartidos({ partidos, abrirRoster }) {
-          const ordenados = partidos.slice().sort((x, y) => (x.played_at ? new Date(x.played_at).getTime() : Infinity) - (y.played_at ? new Date(y.played_at).getTime() : Infinity))
-          const inicioHoy = new Date(); inicioHoy.setHours(0, 0, 0, 0)
-          const claveDia = d => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}` }
-          const grupos = []
-          ordenados.forEach(p => {
-            const k = p.played_at ? claveDia(p.played_at) : 'sin-fecha'
-            let g = grupos[grupos.length - 1]
-            if (!g || g.k !== k) { g = { k, fecha: p.played_at || null, partidos: [] }; grupos.push(g) }
-            g.partidos.push(p)
-          })
-          const etiquetaDia = fecha => {
-            if (!fecha) return { titulo: 'Por programar', sub: 'Sin fecha asignada', marca: null, dia: '?', semana: '—', mes: '', fondo: '#80868b' }
-            const d = new Date(fecha)
-            const dia = new Date(d); dia.setHours(0, 0, 0, 0)
-            const diff = Math.round((dia - inicioHoy) / 86400000)
-            const t = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
-            const base = {
-              titulo: t.charAt(0).toUpperCase() + t.slice(1),
-              dia: String(d.getDate()),
-              semana: d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '').toUpperCase(),
-              mes: d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '').toUpperCase(),
-              fondo: 'var(--color-primario)', sub: null, marca: null,
-            }
-            if (diff === 0) return { ...base, fondo: '#188038', marca: { txt: 'HOY', bg: '#e6f4ea', color: '#137333' } }
-            if (diff === 1) return { ...base, marca: { txt: 'MAÑANA', bg: '#e8f0fe', color: '#1a73e8' } }
-            if (diff < 0)   return { ...base, fondo: '#e37400', sub: 'Pasó la fecha y no tiene resultado', marca: { txt: 'SIN JUGAR', bg: '#fef3e0', color: '#b06000' } }
-            return base
-          }
-          const chip = { fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }
-          const escudo = { width: '50px', height: '50px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, background: '#fff', padding: '3px', boxSizing: 'border-box', boxShadow: '0 3px 10px rgba(0,0,0,.28)' }
-          return (
-            <div>
-              <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#3c4043', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '2px' }}>Próximos partidos</div>
-              <div style={{ fontSize: '.72rem', color: '#80868b', marginBottom: '14px', paddingLeft: '2px' }}>👆 Toca un equipo para ver sus jugadores registrados</div>
-              {ordenados.length === 0 ? (
-                <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)', padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>No hay partidos programados</div>
-              ) : grupos.map(g => {
-                const et = etiquetaDia(g.fecha)
+  const ordenados = partidos.slice().sort((x, y) => (x.played_at ? new Date(x.played_at).getTime() : Infinity) - (y.played_at ? new Date(y.played_at).getTime() : Infinity))
+  const inicioHoy = new Date(); inicioHoy.setHours(0, 0, 0, 0)
+  const claveDia = d => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}` }
+  const grupos = []
+  ordenados.forEach(p => {
+    const k = p.played_at ? claveDia(p.played_at) : 'sin-fecha'
+    let g = grupos[grupos.length - 1]
+    if (!g || g.k !== k) { g = { k, fecha: p.played_at || null, partidos: [] }; grupos.push(g) }
+    g.partidos.push(p)
+  })
+  const etiquetaDia = fecha => {
+    if (!fecha) return { titulo: 'Por programar', sub: 'Sin fecha asignada', marca: null }
+    const d = new Date(fecha)
+    const dia = new Date(d); dia.setHours(0, 0, 0, 0)
+    const diff = Math.round((dia - inicioHoy) / 86400000)
+    const titulo = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
+    if (diff === 0) return { titulo, sub: null, marca: { txt: 'HOY', bg: '#1e8e3e', color: '#fff' } }
+    if (diff === 1) return { titulo, sub: null, marca: { txt: 'MAÑANA', bg: '#fff', color: '#1a56db' } }
+    if (diff < 0)   return { titulo, sub: 'Pasó la fecha y no tiene resultado', marca: { txt: 'SIN JUGAR', bg: '#fbbc04', color: '#3c2a00' } }
+    return { titulo, sub: null, marca: null }
+  }
+  const escudo = { width: '46px', height: '46px', borderRadius: '10px', overflow: 'hidden', background: '#fff', padding: '3px', boxSizing: 'border-box', boxShadow: '0 3px 8px rgba(0,0,0,.3)', flexShrink: 0, cursor: 'pointer' }
+  const nombre = (n, alinear) => ({ flex: 1, minWidth: 0, textAlign: alinear, fontWeight: 800, textTransform: 'uppercase', color: '#14213d', fontSize: tamNombreEquipo(n), lineHeight: 1.15, wordBreak: 'break-word', cursor: 'pointer', padding: '0 4px' })
+  return (
+    <div>
+      <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#3c4043', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '2px' }}>Próximos partidos</div>
+      <div style={{ fontSize: '.72rem', color: '#80868b', marginBottom: '14px', paddingLeft: '2px' }}>👆 Toca un equipo para ver sus jugadores registrados</div>
+      {ordenados.length === 0 ? (
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)', padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>No hay partidos programados</div>
+      ) : grupos.map(g => {
+        const et = etiquetaDia(g.fecha)
+        return (
+          <div key={g.k} style={{ marginBottom: '22px', borderRadius: '16px', overflow: 'hidden', background: 'linear-gradient(160deg, var(--color-secundario) 0%, var(--color-primario) 85%)', boxShadow: '0 6px 16px rgba(0,0,0,.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', padding: '12px 14px', background: 'rgba(255,255,255,.16)' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: '#fff', fontWeight: '900', fontSize: '1rem', letterSpacing: '.03em', textTransform: 'uppercase', lineHeight: 1.2 }}>{et.titulo}</div>
+                <div style={{ color: 'rgba(255,255,255,.82)', fontSize: '.7rem', marginTop: '2px' }}>{g.partidos.length} {g.partidos.length === 1 ? 'partido' : 'partidos'}{et.sub ? ` · ${et.sub}` : ''}</div>
+              </div>
+              {et.marca && <span style={{ fontSize: '.68rem', fontWeight: '900', letterSpacing: '.06em', background: et.marca.bg, color: et.marca.color, borderRadius: '8px', padding: '4px 10px', flexShrink: 0 }}>{et.marca.txt}</span>}
+            </div>
+            <div style={{ padding: '16px 12px 4px' }}>
+              {g.partidos.map(p => {
+                const detalle = [p.location, p.matchday ? `Jornada ${p.matchday}` : null, p.fase && p.fase !== 'grupo' ? FASE_LABEL[p.fase] : null].filter(Boolean).join(' · ')
                 return (
-                  <div key={g.k} style={{ marginBottom: '26px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '0 0 12px', paddingBottom: '10px', borderBottom: `2px solid ${et.marca?.color || '#dadce0'}33` }}>
-                      <div style={{ width: '54px', flexShrink: 0, borderRadius: '12px', overflow: 'hidden', background: '#fff', border: '1px solid #e8eaed', boxShadow: '0 2px 6px rgba(0,0,0,.08)', textAlign: 'center' }}>
-                        <div style={{ background: et.fondo, color: '#fff', fontSize: '.6rem', fontWeight: '800', letterSpacing: '.08em', padding: '3px 0' }}>{et.semana}</div>
-                        <div style={{ fontSize: '1.45rem', fontWeight: '900', color: '#202124', lineHeight: 1.1, paddingTop: '3px' }}>{et.dia}</div>
-                        <div style={{ fontSize: '.58rem', fontWeight: '800', color: '#5f6368', letterSpacing: '.06em', paddingBottom: '4px' }}>{et.mes}</div>
+                  <div key={p.id} style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })} style={escudo}>
+                        <TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={40}/>
                       </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: '800', fontSize: '1rem', color: '#202124', lineHeight: 1.2 }}>{et.titulo}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                          {et.marca && <span style={{ fontSize: '.64rem', fontWeight: '800', letterSpacing: '.05em', background: et.marca.bg, color: et.marca.color, borderRadius: '8px', padding: '2px 8px' }}>{et.marca.txt}</span>}
-                          <span style={{ fontSize: '.72rem', color: '#5f6368' }}>{g.partidos.length} {g.partidos.length === 1 ? 'partido' : 'partidos'}{et.sub ? ` · ${et.sub}` : ''}</span>
-                        </div>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', background: '#fff', minHeight: '46px', padding: '0 4px' }}>
+                        <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })} style={nombre(p.home?.name, 'right')}>{p.home?.name}</div>
+                        <div style={{ flexShrink: 0, width: '30px', height: '30px', margin: '0 2px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-primario)', color: '#fff', fontWeight: '900', fontSize: '.62rem', borderRadius: '50%' }}>VS</div>
+                        <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })} style={nombre(p.away?.name, 'left')}>{p.away?.name}</div>
+                      </div>
+                      <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })} style={escudo}>
+                        <TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={40}/>
                       </div>
                     </div>
-                    {g.partidos.map(p => (
-                      <div key={p.id} style={{
-                        position: 'relative', overflow: 'hidden', borderRadius: '16px', marginBottom: '12px',
-                        padding: '14px 14px 14px',
-                        background: 'linear-gradient(135deg, var(--color-secundario) 0%, var(--color-primario) 65%, #00bcd4 130%)',
-                        boxShadow: '0 6px 16px rgba(0,0,0,.18)',
-                      }}>
-                        <div style={{ position: 'absolute', inset: 0, opacity: .08, backgroundImage: 'radial-gradient(circle at 15% 25%, #fff 1px, transparent 1px), radial-gradient(circle at 85% 75%, #fff 1px, transparent 1px)', backgroundSize: '32px 32px', pointerEvents: 'none' }}/>
-                        <div style={{ position: 'relative', zIndex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                            {p.matchday && <span style={chip}>Jornada {p.matchday}</span>}
-                            {p.fase && p.fase !== 'grupo' && <span style={chip}>{FASE_LABEL[p.fase]}</span>}
-                            {p.location && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.85)', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} color="rgba(255,255,255,.85)"/>{p.location}</span>}
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '6px' }}>
-                            <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })} style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer' }}>
-                              <div style={escudo}><TeamLogo logo_url={p.home?.logo_url} name={p.home?.name} size={44}/></div>
-                            </div>
-                            <div style={{ minWidth: '84px', textAlign: 'center', background: 'rgba(255,255,255,.16)', border: '1px solid rgba(255,255,255,.3)', borderRadius: '10px', padding: '8px 12px', flexShrink: 0 }}>
-                              <span style={{ fontWeight: '900', fontSize: p.played_at ? '1.05rem' : '1.2rem', color: '#fff', whiteSpace: 'nowrap' }}>{p.played_at ? fmtHoraDate(p.played_at) : 'VS'}</span>
-                            </div>
-                            <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })} style={{ display: 'flex', justifyContent: 'center', cursor: 'pointer' }}>
-                              <div style={escudo}><TeamLogo logo_url={p.away?.logo_url} name={p.away?.name} size={44}/></div>
-                            </div>
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '6px', marginTop: '9px' }}>
-                            <div onClick={() => abrirRoster({ id: p.home_team_id, name: p.home?.name, logo_url: p.home?.logo_url })} style={{ textAlign: 'center', fontWeight: '700', color: '#fff', fontSize: tamNombreEquipo(p.home?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px', cursor: 'pointer' }}>{p.home?.name}</div>
-                            <div style={{ minWidth: '84px' }}/>
-                            <div onClick={() => abrirRoster({ id: p.away_team_id, name: p.away?.name, logo_url: p.away?.logo_url })} style={{ textAlign: 'center', fontWeight: '700', color: '#fff', fontSize: tamNombreEquipo(p.away?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px', cursor: 'pointer' }}>{p.away?.name}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    <div style={{ textAlign: 'center', marginTop: '7px' }}>
+                      <span style={{ display: 'inline-block', background: 'rgba(255,255,255,.95)', color: '#14213d', fontWeight: '800', fontSize: '.78rem', letterSpacing: '.03em', borderRadius: '6px', padding: '3px 14px' }}>{p.played_at ? fmtHoraDate(p.played_at) : 'Hora por definir'}</span>
+                      {detalle && <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.85)', marginTop: '4px' }}>{detalle}</div>}
+                    </div>
                   </div>
                 )
               })}
             </div>
-          )
-        }
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function TorneoPublicoPage({ tournamentId } = {}) {
   const params = useParams()
