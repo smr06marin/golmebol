@@ -2895,6 +2895,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const monto = parseFloat(pagoForm.monto)
     const esDeuda = pagoForm.tipo === 'cargo_manual'
     if (!monto || monto <= 0) return showMsg(esDeuda ? 'Ingresa el monto de la deuda' : 'Ingresa el monto del pago', 'error')
+    // Un pago de tarjetas SIEMPRE debe decir de quién es: marcando al jugador en la lista, o con su nombre en el
+    // concepto ("Tarjeta(s) de NOMBRE"); la única excepción es el "Ajuste:" que cuadra una diferencia. Sin nombre, la cuenta descuenta plata pero nadie queda como pagado.
+    if (pagoForm.tipo === 'pago_tarjetas' && tarjetasAPagar.length === 0 && !/^(Tarjeta\(s\) de\s+\S{2,}|Ajuste:)/i.test(pagoForm.concepto || '')) {
+      return showMsg('Marca el jugador al que le pagas la tarjeta (o escribe su nombre en el concepto). No se puede registrar un pago de tarjetas sin nombre.', 'error')
+    }
     setGuardandoPago(true)
     const { error } = await supabase.from('torneo_finanzas').insert({
       tournament_id: id, team_id: pagoModal.id, tipo: pagoForm.tipo, monto,
@@ -7799,6 +7804,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             filas={statsTarjetas.filter(f => f.team_id === r.equipo.id)} marcas={marcasPago} partidos={partidos}
                             precios={{ am: (torneo?.finanzas_config || {}).precio_amarilla || 0, az: (torneo?.finanzas_config || {}).precio_azul || 0, rj: (torneo?.finanzas_config || {}).precio_roja || 0 }}
                             saldo={r.saldoTarjetas}
+                            pagos={movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'pago_tarjetas').map(m => ({ player_id: m.player_id, jugador: m.players?.name, concepto: m.concepto, monto: m.monto }))}
+                            onRegistrarPagoJugador={(nombre, monto) => { setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(monto)), concepto: `Tarjeta(s) de ${nombre}` }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                             onRegistrarDiferencia={monto => { setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(monto)), concepto: 'Ajuste: tarjetas marcadas como pagadas sin pago registrado' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                           />
                         )}
@@ -8688,8 +8695,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <input type="text" inputMode="numeric" value={formatMiles(pagoForm.monto)} onChange={e => setPagoForm(f => ({ ...f, monto: soloDigitos(e.target.value), modo: f.modo === 'total' ? 'abono' : f.modo }))} style={{ ...inputStyle, fontWeight: '700', fontSize: '1rem' }} placeholder="0" autoFocus/>
               </div>
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Concepto (opcional)</label>
-                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : pagoForm.tipo === 'abono_inscripcion' ? 'Ej: primer abono de inscripción' : pagoForm.tipo === 'pago_cargos' ? 'Ej: pago de W jornada 3' : 'Ej: pago tarjetas jornada 3'}/>
+                <label style={labelStyle}>{pagoForm.tipo === 'pago_tarjetas' ? 'Concepto — debe llevar el nombre del jugador *' : 'Concepto (opcional)'}</label>
+                <input value={pagoForm.concepto} onChange={e => setPagoForm(f => ({ ...f, concepto: e.target.value }))} style={inputStyle} placeholder={pagoForm.tipo === 'cargo_manual' ? 'Ej: quedó debiendo arbitraje jornada 3' : pagoForm.tipo === 'abono_inscripcion' ? 'Ej: primer abono de inscripción' : pagoForm.tipo === 'pago_cargos' ? 'Ej: pago de W jornada 3' : 'Ej: Tarjeta(s) de Juan Pérez'}/>
               </div>
               {pagoForm.tipo === 'cargo_manual' && (
                 <div style={{ marginBottom: '16px' }}>
