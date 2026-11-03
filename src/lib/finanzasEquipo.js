@@ -37,7 +37,7 @@ export function armarCuentaEquipo(d) {
   const arb = num(fc.arbitraje_equipo)
   if (arb > 0) {
     partidos.filter(p => p.status === 'finished' && p.tipo_resultado !== 'w').forEach(p => {
-      add({ fecha: p.played_at, tipo: 'info', grupo: 'arbitraje', titulo: `Arbitraje · vs ${rivalDe(p)}`, detalle: 'Se paga en efectivo en la cancha el día del partido', monto: arb })
+      add({ fecha: p.played_at, tipo: 'info', grupo: 'arbitraje', titulo: `Arbitraje · vs ${rivalDe(p)}`, detalle: 'Pagado en efectivo en la cancha el día del partido', monto: arb })
     })
   }
 
@@ -116,7 +116,7 @@ export function armarCuentaEquipo(d) {
   }).filter(g => g.hay)
 
   const totalDebe = grupos.filter(g => g.clave !== 'arbitraje').reduce((a, g) => a + Math.max(g.saldo, 0), 0)
-  const totalPagado = grupos.filter(g => g.clave !== 'arbitraje').reduce((a, g) => a + g.pagos, 0)
+  const totalPagado = grupos.reduce((a, g) => a + g.pagos + (g.clave === 'arbitraje' ? g.informativo : 0), 0) // incluye el arbitraje ya pagado en la cancha
 
   // Más nuevo primero; lo que no tiene fecha (la inscripción) va al final
   lineas.sort((a, b) => {
@@ -124,6 +124,17 @@ export function armarCuentaEquipo(d) {
     if (!a.fecha) return 1
     if (!b.fecha) return -1
     return new Date(b.fecha) - new Date(a.fecha)
+  })
+
+  // ── Qué cargos siguen SIN pagar ──
+  // Los pagos se anotan por concepto (no por línea), así que se asume que se paga primero lo más viejo:
+  // lo que sigue debiéndose son los cargos más nuevos hasta completar el saldo del concepto.
+  grupos.forEach(g => {
+    let restante = g.clave === 'arbitraje' ? 0 : Math.max(g.saldo, 0)
+    lineas.filter(l => l.grupo === g.clave && l.tipo === 'cargo').forEach(l => {
+      l.pendiente = Math.min(l.monto, restante)
+      restante -= l.pendiente
+    })
   })
 
   return { grupos, lineas, totalDebe, totalPagado }

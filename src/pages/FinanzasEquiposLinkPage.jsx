@@ -222,7 +222,8 @@ export default function FinanzasEquiposLinkPage() {
   }
 
   // ── 3) Cuenta del equipo ──
-  const lineasVista = cuenta.lineas.filter(l => filtro === 'todos' ? true : filtro === 'pagos' ? l.tipo === 'pago' : l.tipo === 'cargo' || l.tipo === 'info')
+  // "Lo que debo": solo cargos que siguen sin pagar (por el valor que falta). "Mis pagos": pagos + lo ya pagado en cancha (arbitraje).
+  const lineasVista = cuenta.lineas.filter(l => filtro === 'todos' ? true : filtro === 'pagos' ? (l.tipo === 'pago' || l.tipo === 'info') : (l.tipo === 'cargo' && l.pendiente > 0))
   const porDia = []
   lineasVista.forEach(l => {
     const k = claveDia(l.fecha)
@@ -267,7 +268,7 @@ export default function FinanzasEquiposLinkPage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: '.88rem' }}>{g.etiqueta}</div>
                 <div style={{ color: S.muted, fontSize: '.72rem' }}>
-                  {g.clave === 'arbitraje' ? `${fmt(g.informativo)} · se paga en la cancha el día del partido` : `Cobrado ${fmt(g.cargos)} · Pagado ${fmt(g.pagos)}`}
+                  {g.clave === 'arbitraje' ? `${fmt(g.informativo)} · pagado en efectivo en la cancha el día del partido` : `Cobrado ${fmt(g.cargos)} · Pagado ${fmt(g.pagos)}`}
                 </div>
               </div>
               {g.clave === 'arbitraje'
@@ -299,14 +300,19 @@ export default function FinanzasEquiposLinkPage() {
           <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, overflow: 'hidden' }}>
             {g.lineas.map((l, i) => {
               const esPago = l.tipo === 'pago', esInfo = l.tipo === 'info'
+              const cubierto = l.tipo === 'cargo' && !(l.pendiente > 0) // cargo que ya quedó pago con los abonos
+              const parcial = l.tipo === 'cargo' && l.pendiente > 0 && l.pendiente < l.monto
+              const verde = esPago || esInfo || cubierto
+              const valor = filtro === 'cargos' && parcial ? l.pendiente : l.monto
+              const nota = esInfo ? 'Pagado' : cubierto ? 'Pagado' : parcial ? `Falta ${fmt(l.pendiente)} de ${fmt(l.monto)}` : null
               return (
                 <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderTop: i > 0 ? `1px solid ${S.border}` : 'none' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: '.88rem', lineHeight: 1.3, wordBreak: 'break-word' }}>{l.titulo}</div>
-                    {(l.detalle || l.fecha) && <div style={{ color: S.muted, fontSize: '.72rem', marginTop: 2, lineHeight: 1.35 }}>{[l.detalle, l.fecha && esPago ? fmtFecha(l.fecha) : null].filter(Boolean).join(' · ')}</div>}
+                    {(l.detalle || l.fecha) && <div style={{ color: S.muted, fontSize: '.72rem', marginTop: 2, lineHeight: 1.35 }}>{[nota, l.detalle, l.fecha && esPago ? fmtFecha(l.fecha) : null].filter(Boolean).join(' · ')}</div>}
                   </div>
-                  <b style={{ fontSize: '.95rem', whiteSpace: 'nowrap', color: esPago ? S.green : esInfo ? S.muted : S.red }}>
-                    {esPago ? '+' : esInfo ? '' : '−'}{fmt(l.monto)}
+                  <b style={{ fontSize: '.95rem', whiteSpace: 'nowrap', color: verde ? S.green : S.red }}>
+                    {esPago ? '+' : verde ? '✓ ' : '−'}{fmt(valor)}
                   </b>
                 </div>
               )
