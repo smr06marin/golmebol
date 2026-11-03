@@ -726,6 +726,10 @@ function EquiposDesactivadosTorneo({ torneoId, onReactivar, showMsg }) {
   )
 }
 
+// Finanzas: los equipos SIEMPRE van en orden alfabético (A-Z, sin importar tildes ni mayúsculas) y no se mueven
+// de lugar cuando cambia lo que deben — así cada equipo siempre está en el mismo sitio de la lista.
+const porNombreEquipo = (a, b) => ((a.equipo?.name || a.name || '')).localeCompare((b.equipo?.name || b.name || ''), 'es', { sensitivity: 'base' })
+
 export default function AdminTorneoDetallePage() {
   const { id } = useParams()
   const { rol } = useAuthStore()
@@ -1175,6 +1179,7 @@ export default function AdminTorneoDetallePage() {
   const [elegirCrear, setElegirCrear] = useState(false) // menú "Programar partidos" (un partido / una jornada)
   const enFlujoCal = subTab === 'jornada' || (subTab === 'partidos' && showFormPartido) // creando algo: se muestra "‹ Calendario" para volver
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
+  const [verSoloMultas, setVerSoloMultas] = useState(false) // Finanzas: botón para ver SOLO los equipos que deben multas
   const [verDetalleFin, setVerDetalleFin] = useState(false) // detalle completo de cuentas: escondido hasta que se pida
   const [pagandoInscJug,   setPagandoInscJug]   = useState(false)
   const [inscJugPagadosAbierto, setInscJugPagadosAbierto] = useState({}) // { [team_id]: bool } lista "Ya pagaron" desplegada
@@ -2715,7 +2720,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         saldoTarjetas: r.tarjetas - r.pagosTarjetas, saldoInscripcion: r.inscripcion - r.pagosInscripcion,
         cargosMultas, saldoMultas: cargosMultas - r.pagosMultas,
       }
-    }).sort((a, b) => b.saldo - a.saldo)
+    }).sort(porNombreEquipo)
 
     // Gasto de cancha, DESGLOSADO por cancha — a veces una cancha cuesta más
     // que otra, así que cada cancha puede tener su propio precio_partido/
@@ -7558,8 +7563,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               const pendiente = r => Math.max(r.saldo, 0) + (llevar ? Math.max(r.saldoInscripcion, 0) + Math.max(r.saldoMultas, 0) : 0)
               const porCobrar = fin.filas.reduce((a, r) => a + pendiente(r), 0)
               const yaRecaudado = fin.recaudado + (llevar ? fin.inscripcionRecaudada + fin.multasRecaudado : 0)
-              const deben = fin.filas.filter(r => pendiente(r) > 0).sort((a, b) => pendiente(b) - pendiente(a))
+              const deben = fin.filas.filter(r => pendiente(r) > 0).sort(porNombreEquipo)
               const alDia = fin.filas.filter(r => pendiente(r) <= 0)
+              // Filtro "Solo multas": equipos con multa / W / deuda anotada sin pagar (en orden alfabético, ya vienen así)
+              const conMultas = fin.filas.filter(r => r.saldoMultas > 0)
+              const totalMultas = conMultas.reduce((a, r) => a + r.saldoMultas, 0)
+              const hayMultas = llevar && fin.multasTotal > 0
+              const soloMultas = verSoloMultas && hayMultas
+              const lista = soloMultas ? conMultas : deben
               // Qué debe el equipo, concepto por concepto y con su monto.
               const conceptos = r => {
                 const lineas = []
@@ -7636,8 +7647,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </div>
                 )
               }
-              const abrirPago = r => {
-                const tipo = (llevar && r.saldoInscripcion > Math.max(r.saldo, 0) && r.saldoInscripcion >= (llevar ? r.saldoMultas : 0)) ? 'abono_inscripcion'
+              const abrirPago = (r, tipoForzado) => {
+                const tipo = tipoForzado || (llevar && r.saldoInscripcion > Math.max(r.saldo, 0) && r.saldoInscripcion >= (llevar ? r.saldoMultas : 0)) ? 'abono_inscripcion'
                   : (llevar && r.saldoMultas > Math.max(r.saldo, 0)) ? 'pago_cargos' : 'pago_tarjetas'
                 setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
               }
@@ -7660,25 +7671,45 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     )}
                   </div>
                   <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '10px' }}>¿Quién me debe?</div>
+                  {hayMultas && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      <button onClick={() => setVerSoloMultas(false)} aria-pressed={!soloMultas}
+                        style={{ minHeight: '40px', padding: '8px 16px', borderRadius: '999px', cursor: 'pointer', fontSize: '.82rem', fontWeight: '700', border: soloMultas ? '1px solid #dadce0' : '1px solid #1a73e8', background: soloMultas ? '#fff' : '#e8f0fe', color: soloMultas ? '#5f6368' : '#1a73e8' }}>
+                        Todos los que deben ({deben.length})
+                      </button>
+                      <button onClick={() => setVerSoloMultas(true)} aria-pressed={soloMultas}
+                        style={{ minHeight: '40px', padding: '8px 16px', borderRadius: '999px', cursor: 'pointer', fontSize: '.82rem', fontWeight: '700', border: soloMultas ? '1px solid #b45309' : '1px solid #dadce0', background: soloMultas ? '#fef3c7' : '#fff', color: soloMultas ? '#b45309' : '#5f6368' }}>
+                        ⛔ Solo multas ({conMultas.length})
+                      </button>
+                    </div>
+                  )}
+                  {soloMultas && conMultas.length > 0 && (
+                    <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '12px', padding: '12px 16px', marginBottom: '12px', fontSize: '.84rem', color: '#92400e', fontWeight: '700' }}>
+                      ⛔ {conMultas.length} {conMultas.length === 1 ? 'equipo debe' : 'equipos deben'} multas · Total por cobrar: {fmt(totalMultas)}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {deben.length === 0 && (
+                    {lista.length === 0 && soloMultas && (
+                      <div style={{ background: '#f8fff9', border: '1px solid #ceead6', borderRadius: '12px', padding: '14px 16px', fontSize: '.85rem', color: '#137333', fontWeight: '700' }}>Ningún equipo debe multas ✓</div>
+                    )}
+                    {lista.length === 0 && !soloMultas && (
                       <div style={{ background: '#f8fff9', border: '1px solid #ceead6', borderRadius: '12px', padding: '14px 16px', fontSize: '.85rem', color: '#137333', fontWeight: '700' }}>Nadie te debe nada por ahora.</div>
                     )}
-                    {deben.map(r => (
+                    {lista.map(r => (
                       <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 16px' }}>
                         <div style={{ minWidth: 0, flex: '1 1 160px' }}>
                           <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
-                          <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto'}</div>
+                          <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{soloMultas ? 'Multa / W / deuda anotada' : (conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto')}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <b style={{ color: '#d93025', fontSize: '1.05rem' }}>{fmt(pendiente(r))}</b>
-                          <button onClick={() => abrirPago(r)}
+                          <b style={{ color: '#d93025', fontSize: '1.05rem' }}>{fmt(soloMultas ? r.saldoMultas : pendiente(r))}</b>
+                          <button onClick={() => abrirPago(r, soloMultas ? 'pago_cargos' : undefined)}
                             style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
                             Registrar pago
                           </button>
                         </div>
                         <div style={{ flexBasis: '100%', borderTop: '1px solid #f1f3f4', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {conceptos(r).map(c => (
+                          {(soloMultas ? conceptos(r).filter(c => c.clave === 'multa') : conceptos(r)).map(c => (
                             <div key={c.clave}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>
                                 <span>{c.etiqueta}</span><span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
@@ -7702,7 +7733,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         {historialEquipo(r)}
                       </div>
                     ))}
-                    {alDia.map(r => (
+                    {(soloMultas ? [] : alDia).map(r => (
                       <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 10px', background: '#f8fff9', border: '1px solid #e1f3e5', borderRadius: '12px', padding: '10px 16px' }}>
                         <div style={{ fontSize: '.88rem', fontWeight: '700', color: '#202124' }}>{r.equipo.name}</div>
                         <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#137333', background: '#e6f4ea', borderRadius: '999px', padding: '4px 12px' }}>Al día</span>
@@ -7791,7 +7822,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             {fin.filas.some(r => r.modoJugador && r.inscritos > 0) && (() => {
               const filasJug = fin.filas.filter(r => r.modoJugador && r.inscritos > 0)
               const tarifa = filasJug[0]?.tarifaJug || 0
-              const ordenadas = [...filasJug].sort((a, b) => ((b.inscritos - b.pagadosJug) - (a.inscritos - a.pagadosJug)) || (a.equipo.name || '').localeCompare(b.equipo.name || ''))
+              const ordenadas = [...filasJug].sort(porNombreEquipo)
               const totalDeben = filasJug.reduce((acc, r) => acc + (r.inscritos - r.pagadosJug), 0)
               return (
                 <div style={{ marginBottom: '20px' }}>
