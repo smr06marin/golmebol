@@ -14,6 +14,14 @@ function rapidaYaIniciada(snap) {
   return !!snap.partidoIniciado || snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || (snap.eventos || []).length > 0
 }
 
+// ¿La planilla completa ya tiene el partido en juego? Reloj corriendo o con tiempo, segundo período, tiempo
+// agotado, o algún gol cargado.
+function completaYaIniciada(snap) {
+  const hay = (a) => Array.isArray(a) && a.some(Boolean)
+  return snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || !!snap.tiempoAgotado
+    || hay(snap.golesLocal) || hay(snap.golesVisitante)
+}
+
 export function derivarEnVivo(match) {
   if (!match || match.status === 'finished') return null
 
@@ -29,6 +37,9 @@ export function derivarEnVivo(match) {
   // (Si el árbitro YA estaba planillando y salió un momento a otra pantalla —ej. a
   // asignar el número de un jugador nuevo— el partido sigue en vivo.)
   if (tipo === 'rapida' && snap.step !== 'partido' && !rapidaYaIniciada(snap)) return null
+  // Planilla completa: abrirla (o dejarla abierta preparando jugadores) ya crea un borrador, pero el partido
+  // NO está en vivo hasta que arranca el reloj o hay algo jugado. Sin esto salía "EN VIVO 0-0 0:00".
+  if (tipo === 'completa' && !completaYaIniciada(snap)) return null
   // El árbitro tocó "Suspender" (parar el partido sin guardar resultado, para
   // seguirlo después) — no está en cancha ahora mismo, así que no debe salir
   // como "en vivo" hasta que vuelva a entrar y siga jugando.
