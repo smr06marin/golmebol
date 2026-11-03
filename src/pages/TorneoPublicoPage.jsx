@@ -374,16 +374,22 @@ function ProximosPartidos({ partidos, abrirRoster }) {
             g.partidos.push(p)
           })
           const etiquetaDia = fecha => {
-            if (!fecha) return { titulo: 'Por programar', marca: null }
+            if (!fecha) return { titulo: 'Por programar', sub: 'Sin fecha asignada', marca: null, dia: '?', semana: '—', mes: '', fondo: '#80868b' }
             const d = new Date(fecha)
             const dia = new Date(d); dia.setHours(0, 0, 0, 0)
             const diff = Math.round((dia - inicioHoy) / 86400000)
             const t = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
-            const titulo = t.charAt(0).toUpperCase() + t.slice(1)
-            if (diff === 0) return { titulo, marca: { txt: 'HOY', bg: '#e6f4ea', color: '#137333' } }
-            if (diff === 1) return { titulo, marca: { txt: 'MAÑANA', bg: '#e8f0fe', color: '#1a73e8' } }
-            if (diff < 0)   return { titulo, marca: { txt: 'SIN JUGAR', bg: '#fef3e0', color: '#b06000' } }
-            return { titulo, marca: null }
+            const base = {
+              titulo: t.charAt(0).toUpperCase() + t.slice(1),
+              dia: String(d.getDate()),
+              semana: d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '').toUpperCase(),
+              mes: d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '').toUpperCase(),
+              fondo: 'var(--color-primario)', sub: null, marca: null,
+            }
+            if (diff === 0) return { ...base, fondo: '#188038', marca: { txt: 'HOY', bg: '#e6f4ea', color: '#137333' } }
+            if (diff === 1) return { ...base, marca: { txt: 'MAÑANA', bg: '#e8f0fe', color: '#1a73e8' } }
+            if (diff < 0)   return { ...base, fondo: '#e37400', sub: 'Pasó la fecha y no tiene resultado', marca: { txt: 'SIN JUGAR', bg: '#fef3e0', color: '#b06000' } }
+            return base
           }
           const chip = { fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }
           const escudo = { width: '50px', height: '50px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, background: '#fff', padding: '3px', boxSizing: 'border-box', boxShadow: '0 3px 10px rgba(0,0,0,.28)' }
@@ -396,10 +402,20 @@ function ProximosPartidos({ partidos, abrirRoster }) {
               ) : grupos.map(g => {
                 const et = etiquetaDia(g.fecha)
                 return (
-                  <div key={g.k} style={{ marginBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '6px 2px 10px', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: '800', fontSize: '.8rem', color: '#202124' }}>{et.titulo}</span>
-                      {et.marca && <span style={{ fontSize: '.62rem', fontWeight: '800', letterSpacing: '.05em', background: et.marca.bg, color: et.marca.color, borderRadius: '8px', padding: '2px 8px' }}>{et.marca.txt}</span>}
+                  <div key={g.k} style={{ marginBottom: '26px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '0 0 12px', paddingBottom: '10px', borderBottom: `2px solid ${et.marca?.color || '#dadce0'}33` }}>
+                      <div style={{ width: '54px', flexShrink: 0, borderRadius: '12px', overflow: 'hidden', background: '#fff', border: '1px solid #e8eaed', boxShadow: '0 2px 6px rgba(0,0,0,.08)', textAlign: 'center' }}>
+                        <div style={{ background: et.fondo, color: '#fff', fontSize: '.6rem', fontWeight: '800', letterSpacing: '.08em', padding: '3px 0' }}>{et.semana}</div>
+                        <div style={{ fontSize: '1.45rem', fontWeight: '900', color: '#202124', lineHeight: 1.1, paddingTop: '3px' }}>{et.dia}</div>
+                        <div style={{ fontSize: '.58rem', fontWeight: '800', color: '#5f6368', letterSpacing: '.06em', paddingBottom: '4px' }}>{et.mes}</div>
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: '800', fontSize: '1rem', color: '#202124', lineHeight: 1.2 }}>{et.titulo}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                          {et.marca && <span style={{ fontSize: '.64rem', fontWeight: '800', letterSpacing: '.05em', background: et.marca.bg, color: et.marca.color, borderRadius: '8px', padding: '2px 8px' }}>{et.marca.txt}</span>}
+                          <span style={{ fontSize: '.72rem', color: '#5f6368' }}>{g.partidos.length} {g.partidos.length === 1 ? 'partido' : 'partidos'}{et.sub ? ` · ${et.sub}` : ''}</span>
+                        </div>
+                      </div>
                     </div>
                     {g.partidos.map(p => (
                       <div key={p.id} style={{
@@ -411,7 +427,7 @@ function ProximosPartidos({ partidos, abrirRoster }) {
                         <div style={{ position: 'absolute', inset: 0, opacity: .08, backgroundImage: 'radial-gradient(circle at 15% 25%, #fff 1px, transparent 1px), radial-gradient(circle at 85% 75%, #fff 1px, transparent 1px)', backgroundSize: '32px 32px', pointerEvents: 'none' }}/>
                         <div style={{ position: 'relative', zIndex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                            {p.matchday && <span style={chip}>J{p.matchday}</span>}
+                            {p.matchday && <span style={chip}>Jornada {p.matchday}</span>}
                             {p.fase && p.fase !== 'grupo' && <span style={chip}>{FASE_LABEL[p.fase]}</span>}
                             {p.location && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.85)', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} color="rgba(255,255,255,.85)"/>{p.location}</span>}
                           </div>
