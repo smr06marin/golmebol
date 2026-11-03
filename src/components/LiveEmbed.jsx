@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from 'react'
 import { Maximize2, Minimize2 } from 'lucide-react'
+import { apiUrl } from '../lib/apiBase'
 
 // Saca el ID del video de cualquier formato de link de YouTube: watch?v=,
 // youtu.be/, /embed/, /live/, /shorts/. Si no reconoce el formato (por
@@ -248,10 +249,40 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   // En YouTube se espera a que el reproductor diga si el video es un directo (o a lo sumo 6 s); en Facebook/Instagram avisa de una.
   const verificadoRef = useRef(onVerificado)
   useEffect(() => { verificadoRef.current = onVerificado })
+  // Directo PROGRAMADO que todavía no empezó (la "sala de espera" de YouTube, que el reproductor también marca como
+  // directo): null = aún no se sabe, true = es sala de espera → no se muestra, false = ya transmite / no aplica.
+  // Se pregunta a /api/yt-video-estado; si esa consulta falla se comporta como antes (se muestra).
+  const programadoRef = useRef(null)
   useEffect(() => {
     if (plataforma === 'youtube') {
-      const t = setTimeout(() => verificadoRef.current?.(), 6000)
-      return () => clearTimeout(t)
+      const id = parseYouTubeId(url)
+      programadoRef.current = null
+      let activo = true
+      let sondeo = null
+      async function estado() {
+        try {
+          const r = await fetch(apiUrl('/api/yt-video-estado?v=' + encodeURIComponent(id)))
+          if (!r.ok) return null
+          return (await r.json()).estado || null
+        } catch { return null }
+      }
+      function esperarQueEmpiece() {
+        sondeo = setInterval(async () => {
+          const e = await estado()
+          if (!activo || e === 'programado' || e === null) return
+          programadoRef.current = false
+          clearInterval(sondeo)
+          verificadoRef.current?.() // ya empezó: ahora sí aparece en la portada
+        }, 45000)
+      }
+      if (id) {
+        estado().then(e => {
+          if (!activo) return
+          if (e === 'programado') { programadoRef.current = true; esperarQueEmpiece() } else programadoRef.current = false
+        })
+      } else programadoRef.current = false
+      const t = setTimeout(() => { if (programadoRef.current !== true) verificadoRef.current?.() }, 6000)
+      return () => { activo = false; clearTimeout(t); clearInterval(sondeo) }
     }
     verificadoRef.current?.()
     return undefined
@@ -336,7 +367,11 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
       try {
         const d = typeof player.getVideoData === 'function' ? player.getVideoData() : null
         const dur = typeof player.getDuration === 'function' ? player.getDuration() : 0
-        if (d && d.isLive === true) { revisado = true; verificadoRef.current?.(); return }
+        if (d && d.isLive === true) {
+          // Sala de espera de un directo programado: no cuenta como en vivo (ni mientras no se sepa si lo es)
+          if (programadoRef.current !== false) return
+          revisado = true; verificadoRef.current?.(); return
+        }
         if (d && d.isLive === false && dur > 0) { revisado = true; noDisponibleRef.current?.(); return }
       } catch { /* si el reproductor no responde, se espera al siguiente aviso (o al tiempo máximo) */ }
     }
