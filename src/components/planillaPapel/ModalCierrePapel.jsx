@@ -53,7 +53,7 @@ export default function ModalCierrePapel({
             <div style={{ maxHeight: '180px', overflowY: 'auto', border: `1px solid ${BORDE}`, borderRadius: '10px' }}>
               {numerados.map(j => (
                 <button key={j.id} type="button" onClick={() => setMvpId(j.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', textAlign: 'left', padding: '8px 10px', background: mvpId === j.id ? 'rgba(249,168,37,.12)' : 'none', border: 'none', borderBottom: `1px solid ${BORDE}`, cursor: 'pointer', color: mvpId === j.id ? '#f9a825' : TEXTO, fontSize: '.78rem', fontWeight: mvpId === j.id ? '800' : '500' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', textAlign: 'left', padding: '12px 10px', background: mvpId === j.id ? 'rgba(249,168,37,.12)' : 'none', border: 'none', borderBottom: `1px solid ${BORDE}`, cursor: 'pointer', color: mvpId === j.id ? '#f9a825' : TEXTO, fontSize: '.78rem', fontWeight: mvpId === j.id ? '800' : '500' }}>
                   <span style={{ fontWeight: '900' }}>#{j.numero}</span>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.nombre}</span>
                   <span style={{ fontSize: '.65rem', color: TEXTO_TENUE }}>{j.equipo}</span>
