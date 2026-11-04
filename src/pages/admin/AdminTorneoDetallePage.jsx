@@ -1429,13 +1429,15 @@ export default function AdminTorneoDetallePage() {
     }
   }
 
-  async function handleCopiarLinkRegistroTorneo() {
+  async function handleCopiarLinkRegistroTorneo(modo = 'copiar') {
     const e = linkRegistroEquipo
     if (!e) return
     const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
     const dTexto = duracionLinkDias === 1 ? '1 día' : `${duracionLinkDias} días`
     const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPuedes inscribir tú mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`
-    navigator.clipboard.writeText(mensaje)
+    // WhatsApp se abre YA (antes de cualquier espera) para que el navegador no bloquee la ventana
+    if (modo === 'whatsapp') window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener')
+    else navigator.clipboard.writeText(mensaje)
     // Reinicia el reloj del link cada vez que se comparte de nuevo, con la
     // duración que se haya elegido (1, 2 o 3 días). Antes se mandaba "y se
     // olvidaba" sin mirar si falló — si la BD no tenía todavía la columna
@@ -1457,7 +1459,7 @@ export default function AdminTorneoDetallePage() {
       showMsg('⚠️ El link se copió pero no se pudo reiniciar su fecha de vencimiento — puede salir vencido al abrirlo. Avisale al admin.', 'error')
       return
     }
-    showMsg('Link copiado con la descripción ✓')
+    showMsg(modo === 'whatsapp' ? 'Listo: elige a quién enviarlo en WhatsApp ✓' : 'Link copiado con la descripción ✓')
     setLinkRegistroEquipo(null)
   }
 
@@ -6521,7 +6523,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         {e.city && <span>📍 {e.city}</span>}
                         {e.modalidad && <span>{e.modalidad}</span>}
                       </div>
+                      {jugsEquipo.length === 0 && <div style={{ fontSize: '.7rem', color: '#e8710a', fontWeight: '600', marginTop: '3px' }}>Aún sin jugadores · toca «Link» para que el delegado los inscriba</div>}
                     </div>
+                    <button type="button" onClick={() => { setDuracionLinkDias(1); setLinkRegistroEquipo(e); setMenuEquipoId(null) }}
+                      title="Enviar el link para que el delegado inscriba a los jugadores de este equipo"
+                      style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 13px', minHeight: '38px', borderRadius: '19px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '800', border: jugsEquipo.length === 0 ? 'none' : '1px solid #dadce0', background: jugsEquipo.length === 0 ? '#1a73e8' : '#fff', color: jugsEquipo.length === 0 ? '#fff' : '#1a73e8' }}>
+                      🔗 Link
+                    </button>
                     {/* Menú 3 puntos */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       <button onClick={() => setMenuEquipoId(menuAbierto ? null : e.id)}
@@ -6529,27 +6537,36 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         ···
                       </button>
                       {menuAbierto && (
-                        <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 200, minWidth: '190px', padding: '6px 0' }}>
+                        <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 200, minWidth: '230px', padding: '6px 0' }}>
                           {[
-                            { label: 'Ver jugadores',     icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
-                            { label: 'Planilla del equipo (PDF)', icon: '📄', action: () => { abrirPlanillaEquipo(e); setMenuEquipoId(null) } },
-                            { label: 'Editar equipo',     icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
-                            { label: 'Descargar escudo',  icon: '⬇️', action: () => { descargarEscudo(e); setMenuEquipoId(null) } },
-                            { label: 'Compartir link',    icon: '🔗', action: () => {
-                                setDuracionLinkDias(1)
-                                setLinkRegistroEquipo(e)
-                                setMenuEquipoId(null)
-                              } },
-                            { label: 'Poster bienvenida', icon: '🖼️', action: () => { setPosterEquipo(e); setMenuEquipoId(null) } },
-                            { label: 'Uniforme',          icon: '👕', action: () => { setUniformeEquipo(e); setMenuEquipoId(null) } },
-                            ...(esOrganizador ? [] : [{ label: 'Desactivar equipo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' }]),
-                          ].map((op, idx) => (
-                            <button key={idx} onClick={op.action}
-                              style={{ width: '100%', padding: '9px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.875rem', color: op.color||'#202124', textAlign: 'left' }}
-                              onMouseEnter={e2 => e2.currentTarget.style.background='#f8f9fa'}
-                              onMouseLeave={e2 => e2.currentTarget.style.background='none'}>
-                              <span>{op.icon}</span>{op.label}
-                            </button>
+                            { titulo: 'Jugadores', ops: [
+                              { label: 'Ver jugadores', icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
+                              { label: 'Enviar link de registro', icon: '🔗', action: () => { setDuracionLinkDias(1); setLinkRegistroEquipo(e); setMenuEquipoId(null) } },
+                            ] },
+                            { titulo: 'Documentos e imagen', ops: [
+                              { label: 'Planilla del equipo (PDF)', icon: '📄', action: () => { abrirPlanillaEquipo(e); setMenuEquipoId(null) } },
+                              { label: 'Poster bienvenida', icon: '🖼️', action: () => { setPosterEquipo(e); setMenuEquipoId(null) } },
+                              { label: 'Uniforme', icon: '👕', action: () => { setUniformeEquipo(e); setMenuEquipoId(null) } },
+                              { label: 'Descargar escudo', icon: '⬇️', action: () => { descargarEscudo(e); setMenuEquipoId(null) } },
+                            ] },
+                            { titulo: 'Equipo', ops: [
+                              { label: 'Editar equipo', icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
+                            ] },
+                            ...(esOrganizador ? [] : [{ titulo: '', ops: [
+                              { label: 'Desactivar equipo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' },
+                            ] }]),
+                          ].map((gr, gi) => (
+                            <div key={gi} style={{ borderTop: gi > 0 ? '1px solid #f1f3f4' : 'none', marginTop: gi > 0 ? '4px' : 0, paddingTop: gi > 0 ? '4px' : 0 }}>
+                              {gr.titulo && <div style={{ padding: '4px 16px 2px', fontSize: '.62rem', fontWeight: '800', letterSpacing: '.08em', color: '#9aa0a6', textTransform: 'uppercase' }}>{gr.titulo}</div>}
+                              {gr.ops.map((op, idx) => (
+                                <button key={idx} onClick={op.action}
+                                  style={{ width: '100%', padding: '9px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.875rem', color: op.color||'#202124', textAlign: 'left' }}
+                                  onMouseEnter={e2 => e2.currentTarget.style.background='#f8f9fa'}
+                                  onMouseLeave={e2 => e2.currentTarget.style.background='none'}>
+                                  <span>{op.icon}</span>{op.label}
+                                </button>
+                              ))}
+                            </div>
                           ))}
                         </div>
                       )}
@@ -8739,11 +8756,15 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </button>
                 ))}
               </div>
+              <button onClick={() => handleCopiarLinkRegistroTorneo('whatsapp')}
+                style={{ width: '100%', padding: '13px', marginBottom: '10px', background: '#1faa59', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.92rem', fontWeight: '800', minHeight: '46px' }}>
+                💬 Enviar por WhatsApp
+              </button>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={() => setLinkRegistroEquipo(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
-                <button onClick={handleCopiarLinkRegistroTorneo}
-                  style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
-                  🔗 Copiar link
+                <button onClick={() => handleCopiarLinkRegistroTorneo('copiar')}
+                  style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #1e8e3e', borderRadius: '8px', cursor: 'pointer', color: '#1e8e3e', fontSize: '.85rem', fontWeight: '700' }}>
+                  🔗 Solo copiar
                 </button>
               </div>
             </div>
