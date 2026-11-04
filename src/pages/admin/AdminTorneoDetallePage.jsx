@@ -7697,19 +7697,29 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginTop: '2px' }}>Tarjetas, inscripción, arbitrajes, multas y gastos — al cambiarlos, todas las cuentas se recalculan solas</div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button onClick={handleLinkDeudores} title="Copia un link público para ver quién debe tarjeta, filtrar por equipo y registrar pagos — sin entrar al admin"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.8rem', fontWeight: '700' }}>
-                    <ExternalLink size={13}/> Link deudores de tarjetas
-                  </button>
-                  <button onClick={() => setModalLinkFinanzas(true)} title="Un link para que cada equipo vea todos sus movimientos de plata (entra con la cédula de su representante) y tú veas quién ya entró"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.8rem', fontWeight: '700' }}>
-                    <ExternalLink size={13}/> Link para equipos
-                  </button>
                   <button onClick={() => showConfigFin ? setShowConfigFin(false) : abrirConfigFin()}
-                    style={{ padding: '8px 16px', background: showConfigFin ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: showConfigFin ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '700' }}>
+                    style={{ padding: '10px 16px', minHeight: '42px', background: showConfigFin ? '#f1f3f4' : '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: showConfigFin ? '#5f6368' : '#fff', fontSize: '.8rem', fontWeight: '700' }}>
                     {showConfigFin ? 'Cerrar' : '✏️ Modificar precios'}
                   </button>
                 </div>
+              </div>
+              {!showConfigFin && !['precio_amarilla', 'precio_azul', 'precio_roja', 'inscripcion', 'inscripcion_jugador', 'arbitraje_equipo', 'multa_no_presenta', 'pago_cancha_partido', 'pago_arbitro_partido'].some(k => (fin.fc[k] || 0) > 0) && (
+                <div style={{ marginTop: '12px', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '.82rem', color: '#7a5b00', lineHeight: 1.45, flex: '1 1 220px' }}><b>Paso 1: pon los precios.</b> Tarjetas, inscripción, arbitraje y multas. Sin precios las cuentas salen en cero.</div>
+                  <button onClick={abrirConfigFin} style={{ padding: '10px 16px', minHeight: '42px', background: '#f9ab00', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.82rem', fontWeight: '800' }}>Poner los precios</button>
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginTop: '12px' }}>
+                <button onClick={handleLinkDeudores}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', padding: '10px 14px', minHeight: '58px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.82rem', fontWeight: '800', color: '#202124' }}><ExternalLink size={13}/> Cobrar tarjetas por link</span>
+                  <span style={{ fontSize: '.72rem', color: '#5f6368', lineHeight: 1.4 }}>Un link público para ver quién debe tarjetas y marcar sus pagos, sin entrar al admin. Al tocar se copia.</span>
+                </button>
+                <button onClick={() => setModalLinkFinanzas(true)}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', padding: '10px 14px', minHeight: '58px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.82rem', fontWeight: '800', color: '#202124' }}><ExternalLink size={13}/> Estado de cuenta para equipos</span>
+                  <span style={{ fontSize: '.72rem', color: '#5f6368', lineHeight: 1.4 }}>Cada equipo ve sus movimientos de plata con la cédula de su representante, y tú ves quién ya entró.</span>
+                </button>
               </div>
               {showConfigFin && (
                 <div style={{ marginTop: '16px' }}>
@@ -7817,7 +7827,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 const lineas = []
                 if (llevar && r.saldoInscripcion > 0) {
                   lineas.push({
-                    clave: 'insc', etiqueta: '📝 Inscripción', valor: r.saldoInscripcion,
+                    clave: 'insc', etiqueta: '📝 Inscripción', ayuda: 'Lo que le falta pagar al equipo de la inscripción al torneo.', valor: r.saldoInscripcion,
                     detalle: [
                       r.modoJugador ? `${r.inscritos} jugador(es) × ${fmt(r.tarifaJug)} = ${fmt(r.inscripcion)}` : `Total ${fmt(r.inscripcion)}`,
                       r.pagosInscripcion > 0 ? `ya pagó ${fmt(r.pagosInscripcion)}` : null,
@@ -7826,7 +7836,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 }
                 if (llevar && r.saldoMultas > 0) {
                   lineas.push({
-                    clave: 'multa', etiqueta: '⛔ Multa / W', valor: r.saldoMultas,
+                    clave: 'multa', etiqueta: '⛔ Multa / W', ayuda: 'W es cuando un equipo no se presenta al partido. Aquí van esas multas y las deudas que tú anotaste a mano (daños, arbitrajes sin pagar).', valor: r.saldoMultas,
                     detalle: [
                       r.multas > 0 ? `Multa por no presentarse: ${fmt(r.multas)}` : null,
                       r.deudas > 0 ? `Deudas anotadas: ${fmt(r.deudas)}` : null,
@@ -7836,7 +7846,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 }
                 if (r.saldo > 0) {
                   lineas.push({
-                    clave: 'tarj', etiqueta: '💳 Tarjetas', valor: r.saldo,
+                    clave: 'tarj', etiqueta: '💳 Tarjetas', ayuda: 'Plata de las tarjetas amarillas, azules y rojas, junto con los arbitrajes que el equipo todavía no ha pagado.', valor: r.saldo,
                     detalle: r.pagosTarjetas > 0 ? `ya pagó ${fmt(r.pagosTarjetas)}` : '',
                     jugadores: r.deudoresTarjetas,
                     equipo: r.equipo,
@@ -7884,21 +7894,30 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   : (llevar && r.saldoMultas > Math.max(r.saldo, 0)) ? 'pago_cargos' : 'pago_tarjetas'
                 setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
               }
+              // "Cobrar" en cada concepto: abre el pago ya listo (con el total que falta en inscripción y multas)
+              const abrirPagoConcepto = (r, clave) => {
+                const porJugador = r.modoJugador && r.inscritos > 0
+                const tipo = clave === 'insc' ? 'abono_inscripcion' : clave === 'multa' ? 'pago_cargos' : 'pago_tarjetas'
+                const saldo = clave === 'insc' ? r.saldoInscripcion : clave === 'multa' ? r.saldoMultas : 0
+                const total = clave !== 'tarj' && !(clave === 'insc' && porJugador) && saldo > 0
+                setPagoForm({ tipo, modo: total ? 'total' : '', monto: total ? String(Math.round(saldo)) : '', concepto: '' })
+                setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle })
+              }
               const abrirDeuda = r => { setPagoForm({ tipo: 'cargo_manual', monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }
               return (
                 <div style={{ marginBottom: '20px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: '12px', marginBottom: '16px' }}>
                     <div style={{ background: '#fce8e6', borderRadius: '14px', padding: '16px 18px', color: '#a50e0e' }}>
-                      <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Por cobrar</div>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Por cobrar<AyudaTermino texto="Todo lo que los equipos todavía te deben: inscripción, tarjetas, arbitrajes, multas y deudas anotadas." /></div>
                       <div style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px' }}>{fmt(porCobrar)}</div>
                     </div>
                     <div style={{ background: '#e6f4ea', borderRadius: '14px', padding: '16px 18px', color: '#137333' }}>
-                      <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Ya recaudado</div>
+                      <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Ya recaudado<AyudaTermino texto="Lo que los equipos ya te pagaron hasta hoy." /></div>
                       <div style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px' }}>{fmt(yaRecaudado)}</div>
                     </div>
                     {llevar && (
                       <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', padding: '16px 18px', color: '#3c4043' }}>
-                        <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Gastos (canchas y árbitros)</div>
+                        <div style={{ fontSize: '.8rem', fontWeight: '700' }}>Gastos (canchas y árbitros)<AyudaTermino texto="Lo que tú pagas por el torneo: el alquiler de las canchas y el pago a los árbitros." /></div>
                         <div style={{ fontSize: '1.9rem', fontWeight: '800', marginTop: '4px' }}>{fmt(fin.gastos)}</div>
                       </div>
                     )}
@@ -7968,7 +7987,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               {(soloMultas ? conceptos(r).filter(c => c.clave === 'multa') : conceptos(r)).map(c => (
                                 <div key={c.clave}>
                                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>
-                                    <span>{c.etiqueta}</span><span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
+                                    <span>{c.etiqueta}{c.ayuda && <AyudaTermino texto={c.ayuda} />}</span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      <span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
+                                      <button onClick={() => abrirPagoConcepto(r, c.clave)} title="Registrar el pago de este concepto"
+                                        style={{ background: '#e8f0fe', color: '#1a73e8', border: 'none', borderRadius: '8px', padding: '7px 14px', minHeight: '36px', fontSize: '.78rem', fontWeight: '800', cursor: 'pointer' }}>Cobrar</button>
+                                    </span>
                                   </div>
                                   {c.detalle && <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '1px' }}>{c.detalle}</div>}
                                   {c.clave === 'tarj' && c.jugadores && c.jugadores.length > 0 && (
@@ -8177,11 +8201,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
                 <div>EQUIPO</div>
                 <div style={{ textAlign: 'right' }}>INSCRIP.</div>
-                <div style={{ textAlign: 'right' }}>ARBITRAJES</div>
-                <div style={{ textAlign: 'right' }}>W/MULTAS</div>
+                <div style={{ textAlign: 'right' }}>ARBITRAJES<AyudaTermino texto="Lo que se le cobra a cada equipo por el árbitro de sus partidos." /></div>
+                <div style={{ textAlign: 'right' }}>W/MULTAS<AyudaTermino texto="Multas por no presentarse (W) y deudas que anotaste a mano." /></div>
                 <div style={{ textAlign: 'right' }}>TARJETAS</div>
-                <div style={{ textAlign: 'right' }}>PAGADO</div>
-                <div style={{ textAlign: 'right' }}>SALDO</div>
+                <div style={{ textAlign: 'right' }}>PAGADO<AyudaTermino texto="Lo que el equipo ya pagó de tarjetas y arbitrajes." /></div>
+                <div style={{ textAlign: 'right' }}>SALDO<AyudaTermino texto="Lo que todavía debe el equipo en tarjetas y arbitrajes, ya descontado lo que pagó. Si es cero, está al día." /></div>
                 <div/>
               </div>
               {fin.filas.map((r, i) => (
@@ -8804,7 +8828,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 </div>
               ) : (
               <div style={{ marginBottom: '12px' }}>
-                <label style={labelStyle}>¿Qué paga?</label>
+                <label style={labelStyle}>¿Qué paga?<AyudaTermino texto="Tarjetas: pago de tarjetas y arbitrajes. W / Multas: multas por no presentarse y deudas anotadas. Inscripción: el pago de entrada al torneo." /></label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => cambiarTipoPago('pago_tarjetas')}
                     style={{ flex: 1, padding: '9px', borderRadius: '8px', cursor: 'pointer', fontSize: '.78rem', fontWeight: '600', border: pagoForm.tipo === 'pago_tarjetas' ? '2px solid #e8710a' : '1px solid #dadce0', background: pagoForm.tipo === 'pago_tarjetas' ? '#fff4e5' : '#fff', color: pagoForm.tipo === 'pago_tarjetas' ? '#e8710a' : '#5f6368' }}>
