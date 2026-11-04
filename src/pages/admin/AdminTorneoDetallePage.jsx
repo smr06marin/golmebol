@@ -888,6 +888,8 @@ export default function AdminTorneoDetallePage() {
   const [showFormPartido, setShowFormPartido] = useState(false)
   const [formPartido,     setFormPartido]     = useState({ home_team_id: '', away_team_id: '', played_at: '', hora: '', location: '', cancha_id: '', matchday: '', fase: 'grupo', arbitro1_id: '', arbitro2_id: '', arbitro3_id: '', ida_vuelta: false })
   const [arbitrosAdmin,   setArbitrosAdmin]   = useState([])
+  const [canchaMasiva,    setCanchaMasiva]    = useState('') // cancha elegida para asignar a todos los partidos sin cancha
+  const [asignandoMasiva, setAsignandoMasiva] = useState(false)
   const [nuevaCancha,     setNuevaCancha]     = useState('')
   const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
 
@@ -2869,7 +2871,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const porCancha = {}
     canchas.forEach(c => { porCancha[c.id] = { cancha: c, jugados: 0, ws: 0, total: 0 } })
     let jugadosSinCancha = 0, wsSinCancha = 0, gastoSinCancha = 0
-    const canchaDeMatch = m => (m.location && canchas.find(c => c.nombre === m.location)) || null
+    const canchaDeMatch = m => (m.cancha_id != null && m.cancha_id !== '' && canchas.find(c => String(c.id) === String(m.cancha_id))) || (m.location && canchas.find(c => c.nombre === m.location)) || null
     jugados.forEach(m => {
       const c = canchaDeMatch(m)
       const precio = c && c.precio_partido != null ? (c.precio_partido || 0) : (fc.pago_cancha_partido || 0)
@@ -4065,6 +4067,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       if (tipoPartidoForm !== 'inter' && (gl !== tipoPartidoForm || gv !== tipoPartidoForm)) return showMsg('Los dos equipos deben ser del grupo elegido', 'error')
     }
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
+    if (canchas.length > 0 && !formPartido.cancha_id) return showMsg('Elige la cancha donde se juega: así los equipos saben a dónde llegar', 'error')
     const esTercero = formPartido.fase === 'tercer_puesto'
     const esOtro = formPartido.fase === 'otro'
     const nombreOtro = (formPartido.nombre_otro ?? '').trim()
@@ -4206,8 +4209,31 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     showMsg((avisoDegradado || 'Torneo actualizado ✓') + avisoW, avisoDegradado || (avisoW && avisoW.includes('no se pudo')) ? 'error' : 'ok')
   }
 
+  // Abre la edición de un partido (la misma de la lista de partidos)
+  function abrirEdicionPartido(m) {
+    const { fecha, hora } = playedAtToLocal(m.played_at)
+    setFormEditPartido({ played_at: fecha, hora, location: m.location || '', cancha_id: idCanchaDePartido(m), matchday: m.matchday || '', fase: m.fase || 'grupo', arbitro1_id: m.arbitro1_id || '', arbitro2_id: m.arbitro2_id || '', arbitro3_id: m.arbitro3_id || '' })
+    setEditandoPartidoForm(m)
+  }
+
+  // Asigna una misma cancha a todos los partidos que no tienen (grupos y eliminatorias nacen sin cancha)
+  async function asignarCanchaASinCancha() {
+    const cancha = canchas.find(c => String(c.id) === String(canchaMasiva))
+    const ids = partidos.filter(p => !idCanchaDePartido(p)).map(p => p.id)
+    if (!cancha || ids.length === 0) return
+    if (!(await confirmar(`¿Asignar "${etiquetaCancha(cancha)}" a ${ids.length} partido${ids.length > 1 ? 's' : ''}? Solo cambia los que no tienen cancha. Después puedes ajustar uno por uno.`))) return
+    setAsignandoMasiva(true)
+    const cambios = { location: cancha.nombre, cancha_id: String(cancha.id) }
+    let { error } = await supabase.from('matches').update(cambios).in('id', ids)
+    if (error && (error.message || '').includes('cancha_id')) { ({ error } = await supabase.from('matches').update({ location: cancha.nombre }).in('id', ids)) }
+    setAsignandoMasiva(false)
+    if (error) { showMsg(errorAmigable(error, 'No se pudo asignar la cancha'), 'error'); return }
+    setCanchaMasiva(''); showMsg(`Cancha asignada a ${ids.length} partido${ids.length > 1 ? 's' : ''} ✓`); fetchPartidos()
+  }
+
   async function handleGuardarEditPartido() {
     if (!formEditPartido.played_at || !formEditPartido.hora) return showMsg('Fecha y hora son obligatorias', 'error')
+    if (canchas.length > 0 && !formEditPartido.cancha_id) return showMsg('Elige la cancha donde se juega: así los equipos saben a dónde llegar', 'error')
     const cambios = {
       played_at: `${formEditPartido.played_at}T${formEditPartido.hora}:00-05:00`,
       location: formEditPartido.location || null, cancha_id: formEditPartido.cancha_id ? String(formEditPartido.cancha_id) : null,
@@ -5196,7 +5222,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div><label style={labelStyle}>Fecha *</label><input type="date" value={formEditPartido.played_at || ''} onChange={e => setFormEditPartido(p => ({ ...p, played_at: e.target.value }))} style={inputStyle}/></div>
                 <div><label style={labelStyle}>Hora *</label><input type="time" value={formEditPartido.hora || ''} onChange={e => setFormEditPartido(p => ({ ...p, hora: e.target.value }))} style={inputStyle}/></div>
               </div>
-              <div><label style={labelStyle}>Cancha</label><select value={formEditPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormEditPartido(p => ({ ...p, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">{formEditPartido.location && !formEditPartido.cancha_id ? `${formEditPartido.location} (elige escenario)` : 'Seleccionar...'}</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
+              <div><label style={labelStyle}>Cancha (obligatoria)</label><select value={formEditPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormEditPartido(p => ({ ...p, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">{formEditPartido.location && !formEditPartido.cancha_id ? `${formEditPartido.location} (elige escenario)` : 'Elige la cancha...'}</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: '-10px' }}>
                 {(() => {
                   const opts = { fecha: formEditPartido.played_at, hora: formEditPartido.hora, canchaId: formEditPartido.cancha_id, excluirId: editandoPartidoForm.id }
@@ -5949,6 +5975,41 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           </div>
               )}
 
+              {partidos.length > 0 && canchas.length > 0 && (() => {
+                const sinCancha = partidos.filter(p => !idCanchaDePartido(p))
+                if (sinCancha.length === 0) return null
+                return (
+                  <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '12px', padding: '12px 14px', margin: '0 0 12px' }}>
+                    <div style={{ fontSize: '.86rem', fontWeight: '800', color: '#7a5b00' }}>⚠️ {sinCancha.length} partido{sinCancha.length > 1 ? 's' : ''} sin cancha</div>
+                    <div style={{ fontSize: '.76rem', color: '#7a5b00', lineHeight: 1.45, margin: '2px 0 10px' }}>Los equipos no saben dónde llegar y la plata de la cancha no se puede cuadrar. Elige una cancha para todos de una vez, o asígnala uno por uno.</div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <select value={canchaMasiva} onChange={e => setCanchaMasiva(e.target.value)} style={{ flex: '1 1 200px', minHeight: '44px', borderRadius: '8px', border: '1px solid #dadce0', padding: '0 10px', fontSize: '.84rem', background: '#fff' }}>
+                        <option value="">Elige la cancha...</option>
+                        {canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}
+                      </select>
+                      <button disabled={!canchaMasiva || asignandoMasiva} onClick={asignarCanchaASinCancha}
+                        style={{ minHeight: '44px', padding: '0 16px', background: '#f9ab00', border: 'none', borderRadius: '8px', cursor: !canchaMasiva || asignandoMasiva ? 'default' : 'pointer', opacity: !canchaMasiva || asignandoMasiva ? .5 : 1, color: '#202124', fontSize: '.84rem', fontWeight: '800' }}>
+                        {asignandoMasiva ? 'Asignando...' : `Asignar a los ${sinCancha.length}`}
+                      </button>
+                    </div>
+                    <details>
+                      <summary style={{ cursor: 'pointer', fontSize: '.78rem', fontWeight: '700', color: '#1a73e8', minHeight: '36px', display: 'flex', alignItems: 'center' }}>Ver cuáles son</summary>
+                      {sinCancha.map(p => {
+                        const { fecha, hora } = playedAtToLocal(p.played_at)
+                        return (
+                          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderTop: '1px solid #ffe9a8' }}>
+                            <div style={{ flex: 1, minWidth: 0, fontSize: '.78rem', color: '#202124' }}>
+                              <b>{p.home?.name || 'Local'} vs {p.away?.name || 'Visitante'}</b>
+                              <div style={{ fontSize: '.7rem', color: '#5f6368' }}>{fecha ? new Date(fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }) : 'Sin fecha'}{hora ? ` · ${fmtHora12(hora)}` : ''}</div>
+                            </div>
+                            <button onClick={() => abrirEdicionPartido(p)} style={{ minHeight: '38px', padding: '0 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#1a73e8', fontSize: '.76rem', fontWeight: '700', flexShrink: 0 }}>Asignar cancha</button>
+                          </div>
+                        )
+                      })}
+                    </details>
+                  </div>
+                )
+              })()}
               {partidos.length > 0 && <div className="gcz-hint">Toca un partido para registrar el resultado, crear su flyer o mandarle el link al árbitro.</div>}
             </>
           )}
@@ -6025,7 +6086,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     <div className="gpf-grid2">
                       <div><label style={labelStyle}>Fecha *</label><input type="date" value={formPartido.played_at} onChange={e => setFormPartido(f => ({ ...f, played_at: e.target.value }))} style={inputStyle}/></div>
                       <div><label style={labelStyle}>Hora</label><input type="time" value={formPartido.hora} onChange={e => setFormPartido(f => ({ ...f, hora: e.target.value }))} style={inputStyle}/></div>
-                      <div><label style={labelStyle}>Cancha</label><select value={formPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormPartido(f => ({ ...f, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
+                      <div><label style={labelStyle}>Cancha (obligatoria)</label><select value={formPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormPartido(f => ({ ...f, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
                     </div>
                     <div className="gpf-titulo">Tipo de partido</div>
@@ -8170,6 +8231,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                       <div style={{ fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>🏟️ {x.escenario ? `${x.escenario} · ` : ''}{x.nombre}</div>
                       <div style={{ fontSize: '.72rem', color: '#5f6368' }}>{x.jugados} jugados{x.ws > 0 ? ` · ${x.ws} W` : ''}</div>
+                      {x.id === 'sin-cancha' && <div style={{ fontSize: '.72rem', color: '#b45309', fontWeight: '600' }}>⚠️ Estos partidos no tienen cancha. Asígnala en la pestaña Partidos para saber a quién pagar.</div>}
                     </div>
                     <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>{fmt(x.total)}</div>
                     <button onClick={() => descargarLiquidacionCancha(x, torneo)} style={btnPdf}>📄 PDF</button>

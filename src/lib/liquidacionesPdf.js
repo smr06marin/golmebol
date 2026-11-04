@@ -22,7 +22,7 @@ const slug = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').repla
 
 export function armarLiquidaciones({ torneo, partidos = [], canchas = [], arbitros = [] }) {
   const fc = torneo?.finanzas_config || {}
-  const canchaDe = m => (m.location && canchas.find(c => c.nombre === m.location)) || null
+  const canchaDe = m => (m.cancha_id != null && m.cancha_id !== '' && canchas.find(c => String(c.id) === String(m.cancha_id))) || (m.location && canchas.find(c => c.nombre === m.location)) || null
   const nombreArb = id => arbitros.find(a => a.id === id)?.name || ''
   const ordenados = [...partidos].sort((a, b) => String(a.played_at || '').localeCompare(String(b.played_at || '')))
   const terminados = ordenados.filter(p => p.status === 'finished')
