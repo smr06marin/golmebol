@@ -5,6 +5,7 @@ import { supabase, supabaseSilent } from '../../lib/supabase'
 import { errorAmigable } from '../../lib/mensajesError'
 import ConfirmHost from '../../components/ConfirmHost'
 import { useAuthStore } from '../../store/authStore'
+import ChatSoporte from '../../components/ChatSoporte'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { notify } from '../../lib/notify'
 
@@ -200,6 +201,7 @@ export default function AdminLayout() {
           <Outlet />
         </div>
       </div>
+      <ChatSoporte />
     </div>
   )
 }

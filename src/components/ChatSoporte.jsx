@@ -1,0 +1,197 @@
+// Chat de ayuda dentro del admin: el organizador escribe aquí, a Golmebol le llega por
+// WhatsApp, y las respuestas vuelven a este mismo chat. Todo el historial queda a la vista.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { ChevronLeft, MessageCircle, Send } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import { apiUrl } from '../lib/apiBase'
+import { useAuthStore } from '../store/authStore'
+import { useIsMobile } from '../hooks/useIsMobile'
+
+const BIENVENIDA = '¡Hola! 👋 Cuéntanos qué necesitas y te respondemos por aquí mismo. Si algo no funciona, dinos en qué pantalla estabas y qué esperabas que pasara.'
+
+const hora = iso => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })
+function diaTexto(iso) {
+  const d = new Date(iso), hoy = new Date()
+  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1)
+  if (d.toDateString() === hoy.toDateString()) return 'Hoy'
+  if (d.toDateString() === ayer.toDateString()) return 'Ayer'
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })
+}
+
+export default function ChatSoporte() {
+  const { user } = useAuthStore()
+  const isMobile = useIsMobile()
+  const location = useLocation()
+  const [abierto, setAbierto] = useState(false)
+  const [chat, setChat] = useState(null)
+  const [mensajes, setMensajes] = useState([])
+  const [texto, setTexto] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [aviso, setAviso] = useState('')
+  const [vv, setVv] = useState(null) // área visible real (con teclado abierto en el celular)
+  const fin = useRef(null)
+  const secuencia = useRef(0)
+
+  const cargar = useCallback(async chatId => {
+    const { data } = await supabase.from('soporte_mensajes').select('id, de, texto, created_at, wa_estado').eq('chat_id', chatId).order('created_at', { ascending: true }).limit(300)
+    if (!data) return
+    setMensajes(prev => {
+      const pendientes = prev.filter(m => m.local && !data.some(d => d.id === m.id))
+      return [...data, ...pendientes]
+    })
+  }, [])
+
+  // Chat del usuario (se crea la primera vez) + sus mensajes
+  useEffect(() => {
+    if (!user?.id) return
+    let vivo = true
+    ;(async () => {
+      const { data, error } = await supabase.rpc('soporte_mi_chat')
+      if (!vivo || error || !data) return
+      const c = Array.isArray(data) ? data[0] : data
+      setChat(c)
+      cargar(c.id)
+    })()
+    return () => { vivo = false }
+  }, [user?.id, cargar])
+
+  // Respuestas en vivo + respaldo por si el tiempo real falla
+  useEffect(() => {
+    if (!chat?.id) return
+    const canal = supabase.channel(`soporte-${chat.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'soporte_mensajes', filter: `chat_id=eq.${chat.id}` },
+        p => setMensajes(prev => prev.some(m => m.id === p.new.id) ? prev : [...prev.filter(m => !(m.local && m.texto === p.new.texto && p.new.de === 'usuario')), p.new]))
+      .subscribe()
+    const t = setInterval(() => { if (document.visibilityState === 'visible') cargar(chat.id) }, abierto ? 15000 : 60000)
+    return () => { clearInterval(t); supabase.removeChannel(canal) }
+  }, [chat?.id, abierto, cargar])
+
+  const sinLeer = useMemo(() => chat ? mensajes.filter(m => m.de === 'soporte' && new Date(m.created_at) > new Date(chat.leido_usuario_at)).length : 0, [mensajes, chat])
+
+  // Al abrir (o llegar algo con el chat abierto) se marcan como vistas
+  useEffect(() => {
+    if (!abierto || !chat?.id) return
+    const ultimo = mensajes.filter(m => m.de === 'soporte').at(-1)
+    if (!ultimo || new Date(ultimo.created_at) <= new Date(chat.leido_usuario_at)) return
+    supabase.rpc('soporte_marcar_leido').then(() => setChat(c => (c ? { ...c, leido_usuario_at: new Date().toISOString() } : c)), () => {})
+  }, [abierto, mensajes, chat?.id, chat?.leido_usuario_at])
+
+  useEffect(() => { if (abierto) fin.current?.scrollIntoView({ block: 'end' }) }, [mensajes, abierto, vv?.h])
+
+  // En el celular, el chat usa el área que deja libre el teclado
+  useEffect(() => {
+    if (!abierto || !isMobile || !window.visualViewport) return
+    const vp = window.visualViewport
+    const medir = () => setVv({ h: vp.height, top: vp.offsetTop })
+    medir()
+    vp.addEventListener('resize', medir); vp.addEventListener('scroll', medir)
+    return () => { vp.removeEventListener('resize', medir); vp.removeEventListener('scroll', medir); setVv(null) }
+  }, [abierto, isMobile])
+
+  useEffect(() => {
+    if (!abierto || !isMobile) return
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = antes }
+  }, [abierto, isMobile])
+
+  async function enviar(textoReintento) {
+    const t = (textoReintento ?? texto).trim()
+    if (!t || enviando || !chat) return
+    setEnviando(true); setAviso('')
+    const tmp = { id: `tmp-${++secuencia.current}`, de: 'usuario', texto: t, created_at: new Date().toISOString(), local: true }
+    setMensajes(prev => [...prev.filter(m => !(m.fallo && m.texto === t)), tmp])
+    if (textoReintento === undefined) setTexto('')
+    try {
+      const { data: s } = await supabase.auth.getSession()
+      const r = await fetch(apiUrl('/api/soporte-enviar'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.session?.access_token || ''}` },
+        body: JSON.stringify({ texto: t, contexto: location.pathname }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error || 'No se pudo enviar')
+      setMensajes(prev => prev.some(m => m.id === j.id) ? prev.filter(m => m.id !== tmp.id) : prev.map(m => m.id === tmp.id ? { ...m, id: j.id, local: false } : m))
+      if (j.wa_estado === 'error') setAviso('Tu mensaje quedó guardado, pero no pudimos avisarnos por WhatsApp. Lo veremos en cuanto entremos.')
+      if (j.wa_estado === 'sin_configurar') setAviso('Tu mensaje quedó guardado, pero el chat todavía no está conectado a WhatsApp, así que nadie lo recibe en el momento.')
+    } catch (e) {
+      setMensajes(prev => prev.map(m => m.id === tmp.id ? { ...m, fallo: true } : m))
+      setAviso(e.message === 'Failed to fetch' ? 'Sin conexión. Revisa tu internet e intenta otra vez.' : e.message)
+    }
+    setEnviando(false)
+  }
+
+  if (!user?.id) return null
+
+  const bottomFab = isMobile ? 'calc(84px + env(safe-area-inset-bottom) + 10px)' : '24px'
+  const panelStyle = isMobile
+    ? { position: 'fixed', left: 0, right: 0, top: vv ? vv.top : 0, height: vv ? vv.h : '100dvh', zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column' }
+    : { position: 'fixed', right: '24px', bottom: '24px', width: '380px', height: 'min(560px, calc(100vh - 48px))', zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column', borderRadius: '16px', boxShadow: '0 12px 40px rgba(0,0,0,.22)', overflow: 'hidden', border: '1px solid #e8eaed' }
+
+  return (
+    <>
+      {!abierto && (
+        <button onClick={() => setAbierto(true)} aria-label="Abrir el chat de ayuda"
+          style={{ position: 'fixed', right: '14px', bottom: bottomFab, zIndex: 120, minWidth: '56px', height: '56px', padding: '0 18px 0 16px', borderRadius: '28px', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1a73e8,#6c35de)', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 6px 20px rgba(26,115,232,.4)', fontSize: '.86rem', fontWeight: '700' }}>
+          <MessageCircle size={22} />
+          <span>Ayuda</span>
+          {sinLeer > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-2px', minWidth: '20px', height: '20px', borderRadius: '10px', background: '#d93025', color: '#fff', fontSize: '.7rem', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', border: '2px solid #fff' }}>{sinLeer}</span>}
+        </button>
+      )}
+
+      {abierto && (
+        <div style={panelStyle} role="dialog" aria-label="Chat de ayuda">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderBottom: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
+            <button onClick={() => setAbierto(false)} aria-label="Volver"
+              style={{ display: 'flex', alignItems: 'center', gap: '2px', minHeight: '44px', padding: '0 10px 0 4px', background: 'none', border: 'none', cursor: 'pointer', color: '#1a73e8', fontSize: '.86rem', fontWeight: '700' }}>
+              <ChevronLeft size={22} /> Volver
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '.92rem', fontWeight: '800', color: '#202124', lineHeight: 1.2 }}>Ayuda de Golmebol</div>
+              <div style={{ fontSize: '.7rem', color: '#80868b', lineHeight: 1.2 }}>Escríbenos y te respondemos aquí mismo</div>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', padding: '14px 12px', background: '#f6f7f9', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ alignSelf: 'flex-start', maxWidth: '86%', background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', color: '#202124', lineHeight: 1.45 }}>
+              <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>Soporte Golmebol</div>
+              {BIENVENIDA}
+            </div>
+            {mensajes.map((m, i) => {
+              const mio = m.de === 'usuario'
+              const nuevoDia = i === 0 || new Date(m.created_at).toDateString() !== new Date(mensajes[i - 1].created_at).toDateString()
+              return (
+                <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {nuevoDia && <div style={{ alignSelf: 'center', fontSize: '.68rem', color: '#80868b', background: '#e8eaed', borderRadius: '999px', padding: '2px 10px' }}>{diaTexto(m.created_at)}</div>}
+                  <div style={{ alignSelf: mio ? 'flex-end' : 'flex-start', maxWidth: '86%', background: mio ? '#1a73e8' : '#fff', color: mio ? '#fff' : '#202124', border: mio ? 'none' : '1px solid #e8eaed', borderRadius: mio ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', lineHeight: 1.45, opacity: m.local ? .7 : 1, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                    {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>Soporte Golmebol</div>}
+                    {m.texto}
+                    <div style={{ fontSize: '.62rem', marginTop: '3px', textAlign: 'right', color: mio ? 'rgba(255,255,255,.75)' : '#9aa0a6' }}>
+                      {m.fallo ? 'No se envió' : m.local ? 'Enviando…' : hora(m.created_at)}
+                    </div>
+                  </div>
+                  {m.fallo && <button onClick={() => enviar(m.texto)} style={{ alignSelf: 'flex-end', minHeight: '36px', background: 'none', border: 'none', color: '#d93025', fontSize: '.76rem', fontWeight: '700', cursor: 'pointer' }}>Reintentar</button>}
+                </div>
+              )
+            })}
+            <div ref={fin} />
+          </div>
+
+          {aviso && <div style={{ padding: '8px 12px', background: '#fef3c7', color: '#7a5b00', fontSize: '.74rem', lineHeight: 1.4, flexShrink: 0 }}>{aviso}</div>}
+
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1} maxLength={1000} placeholder="Escribe tu mensaje…"
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); enviar() } }}
+              style={{ flex: 1, resize: 'none', maxHeight: '110px', minHeight: '44px', border: '1px solid #dadce0', borderRadius: '22px', padding: '11px 14px', fontSize: '16px', fontFamily: 'inherit', outline: 'none', lineHeight: 1.3, boxSizing: 'border-box' }}
+              onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 110) + 'px' }} />
+            <button onClick={() => enviar()} disabled={!texto.trim() || enviando || !chat} aria-label="Enviar mensaje"
+              style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: texto.trim() ? '#1a73e8' : '#dadce0', color: '#fff', cursor: texto.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Send size={19} />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
