@@ -2983,6 +2983,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setPagandoInscJug(false)
     showMsg(pendientes.length === 1 ? `Pago de ${pendientes[0].players?.name || 'jugador'} registrado ✓ — ya sale en la planilla` : `${pendientes.length} jugadores pagados ✓ — ya salen en la planilla`)
     fetchFinanzas(); fetchJugadores()
+    return true
   }
 
   async function deshacerPagoInscripcionJugador(equipo, j) {
@@ -8739,6 +8740,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 </div>
               </div>
               )}
+              {(() => {
+                // Torneo con inscripción POR JUGADOR: en vez de escribir un monto, se marcan los jugadores que pagan.
+                const filaJ = pagoForm.tipo === 'abono_inscripcion' && !pagoForm.abonoSuelto
+                  ? calcFinanzas().filas.find(r => r.equipo.id === pagoModal.id && r.modoJugador && r.inscritos > 0) : null
+                if (!filaJ) return (
+                  <>
               {pagoForm.tipo === 'abono_inscripcion' && (
                 <div style={{ marginBottom: '12px', background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '10px', padding: '10px 14px', fontSize: '.75rem', color: '#6c35de', lineHeight: 1.5 }}>
                   Este abono es <b>independiente</b> de tarjetas, arbitrajes, W y multas — solo se suma al saldo de inscripción del equipo, con la fecha de hoy.
@@ -8836,6 +8843,89 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   {guardandoPago ? 'Guardando...' : pagoForm.tipo === 'cargo_manual' ? '➖ Anotar deuda' : 'Registrar pago'}
                 </button>
               </div>
+                  </>
+                )
+                const tarifa = filaJ.tarifaJug || 0
+                const regs = jugadores.filter(j => j.team_id === pagoModal.id && j.activo !== false).sort((a, b) => (a.players?.name || '').localeCompare(b.players?.name || ''))
+                const migracionLista = regs.length === 0 || 'inscripcion_pagada' in regs[0]
+                const deben = regs.filter(j => j.inscripcion_pagada !== true)
+                const pagaron = regs.filter(j => j.inscripcion_pagada === true)
+                const sel = (pagoForm.selJug || []).filter(rid => deben.some(j => j.id === rid))
+                const elegidos = deben.filter(j => sel.includes(j.id))
+                const saldoInsc = Math.max(0, filaJ.saldoInscripcion || 0)
+                const alternar = rid => setPagoForm(f => { const cur = f.selJug || []; return { ...f, selJug: cur.includes(rid) ? cur.filter(x => x !== rid) : [...cur, rid] } })
+                const bloqueado = tarifa <= 0 || !migracionLista
+                return (
+                  <div>
+                    <div style={{ marginBottom: '12px', background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '10px', padding: '10px 14px', fontSize: '.78rem', color: '#4a2a9a', lineHeight: 1.5 }}>
+                      Inscripción por jugador: <b>{fmt(tarifa)}</b> c/u · {pagaron.length} de {regs.length} ya pagaron.<br/>
+                      Marca <b>quién está pagando ahora</b>: se descuenta de lo que debe el equipo ({saldoInsc > 0 ? <>hoy debe <b style={{ color: '#d93025' }}>{fmt(saldoInsc)}</b></> : <>ya está al día</>}).
+                    </div>
+                    {tarifa <= 0 && <div style={{ fontSize: '.76rem', color: '#d93025', marginBottom: '8px' }}>Falta configurar la tarifa por jugador (botón de precios, arriba).</div>}
+                    {!migracionLista && <div style={{ fontSize: '.76rem', color: '#d93025', marginBottom: '8px' }}>Esta opción todavía no está activada en tu cuenta. Avísale al administrador de Golmebol.</div>}
+                    {deben.length > 0 && (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                          <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368' }}>DEBEN ({deben.length})</div>
+                          <button disabled={bloqueado} onClick={() => setPagoForm(f => ({ ...f, selJug: sel.length === deben.length ? [] : deben.map(j => j.id) }))}
+                            style={{ background: 'none', border: 'none', cursor: bloqueado ? 'not-allowed' : 'pointer', color: '#6c35de', fontSize: '.72rem', fontWeight: '700', padding: '4px 0' }}>
+                            {sel.length === deben.length ? 'Quitar todos' : 'Marcar todos'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                          {deben.map(j => {
+                            const on = sel.includes(j.id)
+                            return (
+                              <label key={j.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', minHeight: '46px', borderRadius: '10px', cursor: bloqueado ? 'not-allowed' : 'pointer', border: on ? '2px solid #1e8e3e' : '1px solid #e8eaed', background: on ? '#e6f4ea' : '#fff' }}>
+                                <input type="checkbox" checked={on} disabled={bloqueado} onChange={() => alternar(j.id)} style={{ width: '18px', height: '18px', flexShrink: 0 }}/>
+                                <span style={{ flex: 1, minWidth: 0, fontSize: '.84rem', fontWeight: '600', color: '#202124', wordBreak: 'break-word' }}>{j.players?.name || 'Jugador'}</span>
+                                <span style={{ fontSize: '.78rem', fontWeight: '700', color: on ? '#137333' : '#d93025', whiteSpace: 'nowrap' }}>{fmt(tarifa)}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
+                    {pagaron.length > 0 && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#1e8e3e', marginBottom: '6px' }}>YA PAGARON ({pagaron.length})</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {pagaron.map(j => (
+                            <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '8px', background: '#f6fbf7', border: '1px solid #ceead6' }}>
+                              <span style={{ color: '#1e8e3e', fontWeight: '800' }}>✓</span>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: '.8rem', color: '#3c4043', wordBreak: 'break-word' }}>{j.players?.name || 'Jugador'}</span>
+                              <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#1e8e3e', whiteSpace: 'nowrap' }}>Pagó {fmt(tarifa)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {deben.length === 0 && (
+                      <div style={{ marginBottom: '12px', background: '#e6f4ea', border: '1px solid #ceead6', borderRadius: '10px', padding: '10px 14px', fontSize: '.8rem', fontWeight: '700', color: '#137333' }}>
+                        ✓ Todos los jugadores inscritos ya pagaron.
+                      </div>
+                    )}
+                    {elegidos.length > 0 && (
+                      <div style={{ marginBottom: '12px', fontSize: '.8rem', color: '#202124', lineHeight: 1.5 }}>
+                        Pagan ahora: <b>{elegidos.length}</b> jugador{elegidos.length === 1 ? '' : 'es'} = <b style={{ color: '#137333' }}>{fmt(elegidos.length * tarifa)}</b><br/>
+                        <span style={{ color: '#5f6368' }}>Después de este pago el equipo debe: <b>{fmt(Math.max(0, saldoInsc - elegidos.length * tarifa))}</b></span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={() => setPagoModal(null)} style={{ flex: 1, padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Cancelar</button>
+                      <button disabled={pagandoInscJug || elegidos.length === 0 || bloqueado}
+                        onClick={async () => { if (await pagarInscripcionJugadores(pagoModal, elegidos)) setPagoModal(null) }}
+                        style={{ flex: 2, minHeight: '44px', padding: '10px', background: (pagandoInscJug || elegidos.length === 0 || bloqueado) ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', cursor: (pagandoInscJug || elegidos.length === 0 || bloqueado) ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '700' }}>
+                        {pagandoInscJug ? 'Guardando...' : elegidos.length === 0 ? 'Marca quién paga' : `✓ Registrar pago de ${elegidos.length} jugador${elegidos.length === 1 ? '' : 'es'}`}
+                      </button>
+                    </div>
+                    <button onClick={() => setPagoForm(f => ({ ...f, abonoSuelto: true }))}
+                      style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#80868b', fontSize: '.7rem', textDecoration: 'underline' }}>
+                      Anotar un abono suelto (sin marcar jugadores)
+                    </button>
+                  </div>
+                )
+              })()}
               {(() => {
                 const movsEq = movimientos.filter(m => m.team_id === pagoModal.id && ['pago_tarjetas', 'pago_cargos', 'abono_inscripcion', 'cargo_manual'].includes(m.tipo))
                   .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
