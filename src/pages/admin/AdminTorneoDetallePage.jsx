@@ -37,6 +37,7 @@ import { apiUrl } from '../../lib/apiBase'
 import AyudaTermino from '../../components/AyudaTermino'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { confirmar } from '../../lib/confirmar'
+import { armarLiquidaciones, descargarLiquidacionCancha, descargarLiquidacionArbitros } from '../../lib/liquidacionesPdf'
 
 // Le pone un límite de tiempo a una consulta a Supabase para que un botón
 // nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
@@ -8110,14 +8111,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             {fin.fc.llevar_cuentas && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
                 {[
-                  { label: '💵 Ingresos esperados', value: fmt(fin.ingresosEsperados), color: '#1a73e8' },
-                  { label: '✅ Recaudado',          value: fmt(fin.recaudado),          color: '#1e8e3e' },
-                  { label: '📤 Gastos',             value: fmt(fin.gastos),             color: '#d93025' },
-                  { label: '📈 Ganancia esperada',  value: fmt(fin.gananciaEsperada),   color: '#6c35de' },
-                  { label: '💰 Ganancia actual',    value: fmt(fin.gananciaActual),     color: fin.gananciaActual >= 0 ? '#1e8e3e' : '#d93025' },
+                  { label: '💵 Ingresos esperados', ayuda: 'Todo lo que los equipos deberían pagar en total (tarjetas, arbitrajes, inscripción y multas).', value: fmt(fin.ingresosEsperados), color: '#1a73e8' },
+                  { label: '✅ Recaudado', ayuda: 'Lo que los equipos ya pagaron de tarjetas y arbitrajes. La inscripción y las multas van en sus cuadros de abajo.', value: fmt(fin.recaudado), color: '#1e8e3e' },
+                  { label: '📤 Gastos', ayuda: 'Lo que tú pagas por el torneo: canchas y árbitros.', value: fmt(fin.gastos), color: '#d93025' },
+                  { label: '📈 Ganancia esperada', ayuda: 'Lo que te quedaría si todos los equipos pagaran todo: ingresos esperados menos gastos.', value: fmt(fin.gananciaEsperada), color: '#6c35de' },
+                  { label: '💰 Ganancia actual', ayuda: 'Lo que llevas hasta hoy: lo recaudado menos los gastos. Si sale en rojo, todavía has gastado más de lo que ha entrado.', value: fmt(fin.gananciaActual), color: fin.gananciaActual >= 0 ? '#1e8e3e' : '#d93025' },
                 ].map(c => (
                   <div key={c.label} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>{c.label}</div>
+                    <div style={{ fontSize: '.72rem', color: '#5f6368', fontWeight: '600', marginBottom: '4px' }}>{c.label}{c.ayuda && <AyudaTermino texto={c.ayuda} />}</div>
                     <div style={{ fontSize: '1.15rem', fontWeight: '800', color: c.color }}>{c.value}</div>
                   </div>
                 ))}
@@ -8128,50 +8129,68 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 el Resumen de arriba (PAGADO/SALDO es solo arbitrajes+tarjetas)
                 ni entre sí. Ver calcFinanzas. */}
             {fin.fc.llevar_cuentas && (fin.inscripcionTotal > 0 || fin.multasTotal > 0) && (
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                {fin.inscripcionTotal > 0 && (
-                  <div style={{ flex: '1 1 260px', background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '12px', padding: '14px 20px', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ fontWeight: '700', color: '#6c35de', fontSize: '.85rem' }}>📝 Inscripción <span style={{ fontWeight: '400', fontSize: '.7rem' }}>(cuenta aparte)</span></div>
-                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Total: <b style={{ color: '#202124' }}>{fmt(fin.inscripcionTotal)}</b></span>
-                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Recaudado: <b style={{ color: '#1e8e3e' }}>{fmt(fin.inscripcionRecaudada)}</b></span>
-                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Falta: <b style={{ color: fin.inscripcionSaldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(fin.inscripcionSaldo)}</b></span>
-                  </div>
-                )}
-                {fin.multasTotal > 0 && (
-                  <div style={{ flex: '1 1 260px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '12px', padding: '14px 20px', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <div style={{ fontWeight: '700', color: '#b45309', fontSize: '.85rem' }}>⛔ W / Multas <span style={{ fontWeight: '400', fontSize: '.7rem' }}>(cuenta aparte)</span></div>
-                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Total: <b style={{ color: '#202124' }}>{fmt(fin.multasTotal)}</b></span>
-                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Recaudado: <b style={{ color: '#1e8e3e' }}>{fmt(fin.multasRecaudado)}</b></span>
-                    <span style={{ fontSize: '.78rem', color: '#5f6368' }}>Falta: <b style={{ color: fin.multasSaldo > 0 ? '#d93025' : '#1e8e3e' }}>{fmt(fin.multasSaldo)}</b></span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Gastos detalle */}
-            {fin.fc.llevar_cuentas && (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '.78rem', color: '#5f6368' }}>
-                  <span>🏟️ Canchas: <b style={{ color: '#202124' }}>{fmt(fin.gastoCanchas)}</b> ({fin.jugados} jugados · {fin.ws} W)</span>
-                  <span>🧑‍⚖️ Árbitros: <b style={{ color: '#202124' }}>{fmt(fin.gastoArbitros)}</b></span>
-                  <span>PAGADO/SALDO de arriba es solo arbitrajes + tarjetas. El arbitraje se da por pagado solo (se cobra en efectivo en la cancha) — las tarjetas se registran a mano. Inscripción y W/Multas se llevan cada una en su propia cuenta, aparte.</span>
-                </div>
-                {fin.canchasDetalle.length > 1 && (
-                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f1f3f4' }}>
-                    <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px' }}>DESPIECE POR CANCHA</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {fin.canchasDetalle.map(x => (
-                        <div key={x.cancha.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '.75rem' }}>
-                          <span style={{ flex: 1, color: '#202124' }}>{x.cancha.escenario ? `${x.cancha.escenario} · ` : ''}{x.cancha.nombre}</span>
-                          <span style={{ color: '#9aa0a6' }}>{x.jugados} jugados{x.ws > 0 ? ` · ${x.ws} W` : ''}</span>
-                          <span style={{ fontWeight: '700', color: '#202124', minWidth: '80px', textAlign: 'right' }}>{fmt(x.total)}</span>
-                        </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  fin.inscripcionTotal > 0 && { t: '📝 Inscripción', ayuda: 'Lo que pagan los equipos por entrar al torneo. Se abona aparte con el botón Abono.', total: fin.inscripcionTotal, rec: fin.inscripcionRecaudada, falta: fin.inscripcionSaldo, fondo: '#f2ebfd', borde: '#dcc6f7', color: '#6c35de' },
+                  fin.multasTotal > 0 && { t: '⛔ W / Multas', ayuda: 'W es cuando un equipo no se presenta. Aquí van esas multas y las deudas que anotaste a mano.', total: fin.multasTotal, rec: fin.multasRecaudado, falta: fin.multasSaldo, fondo: '#fef3c7', borde: '#fcd34d', color: '#b45309' },
+                ].filter(Boolean).map(b => (
+                  <div key={b.t} style={{ background: b.fondo, border: `1px solid ${b.borde}`, borderRadius: '12px', padding: '14px 16px' }}>
+                    <div style={{ fontWeight: '700', color: b.color, fontSize: '.88rem' }}>{b.t}<AyudaTermino texto={b.ayuda} /></div>
+                    <div style={{ fontSize: '.7rem', color: '#5f6368', margin: '2px 0 10px' }}>Cuenta aparte: no se mezcla con tarjetas ni arbitrajes</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      {[['Total', b.total, '#202124'], ['Recaudado', b.rec, '#1e8e3e'], ['Falta', b.falta, b.falta > 0 ? '#d93025' : '#1e8e3e']].map(([l, v, c]) => (
+                        <div key={l}><div style={{ fontSize: '.68rem', color: '#5f6368', fontWeight: '600' }}>{l}</div><div style={{ fontSize: '1rem', fontWeight: '800', color: c }}>{fmt(v)}</div></div>
                       ))}
                     </div>
                   </div>
-                )}
+                ))}
               </div>
             )}
+
+            {/* Gastos detalle — lo que se le paga a canchas y árbitros, con PDF para entregarles */}
+            {fin.fc.llevar_cuentas && (() => {
+              const liq = armarLiquidaciones({ torneo, partidos, canchas, arbitros: arbitrosAdmin })
+              const btnPdf = { minHeight: '40px', padding: '7px 14px', background: '#e8f0fe', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#1a73e8', fontSize: '.78rem', fontWeight: '800', whiteSpace: 'nowrap', flexShrink: 0 }
+              const fila = { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid #f1f3f4' }
+              return (
+              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                <div style={{ fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>💸 Lo que pagas por el torneo<AyudaTermino texto="Se calcula con los partidos ya jugados y los precios que pusiste en Precios del torneo. El PDF de cada fila es para entregarlo a quien recibe ese pago." /></div>
+                <div style={{ fontSize: '.74rem', color: '#5f6368', lineHeight: 1.45, margin: '2px 0 8px' }}>Descarga el PDF de cada cancha y de los árbitros: trae cada partido con fecha, hora y valor, y el total.</div>
+                <div style={fila}>
+                  <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                    <div style={{ fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>🧑‍⚖️ Árbitros (escuela)</div>
+                    <div style={{ fontSize: '.72rem', color: '#5f6368' }}>{fin.jugados} jugados{fin.ws > 0 ? ` · ${fin.ws} W` : ''}</div>
+                  </div>
+                  <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>{fmt(fin.gastoArbitros)}</div>
+                  <button disabled={liq.arbitros.filas.length === 0} onClick={() => descargarLiquidacionArbitros(liq.arbitros, torneo)}
+                    style={{ ...btnPdf, opacity: liq.arbitros.filas.length === 0 ? .5 : 1 }}>📄 PDF</button>
+                </div>
+                {liq.canchas.map(x => (
+                  <div key={x.id} style={fila}>
+                    <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                      <div style={{ fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>🏟️ {x.escenario ? `${x.escenario} · ` : ''}{x.nombre}</div>
+                      <div style={{ fontSize: '.72rem', color: '#5f6368' }}>{x.jugados} jugados{x.ws > 0 ? ` · ${x.ws} W` : ''}</div>
+                    </div>
+                    <div style={{ fontWeight: '800', color: '#202124', fontSize: '.95rem' }}>{fmt(x.total)}</div>
+                    <button onClick={() => descargarLiquidacionCancha(x, torneo)} style={btnPdf}>📄 PDF</button>
+                  </div>
+                ))}
+                <div style={{ ...fila, background: '#f8f9fa', borderRadius: '8px', padding: '10px', marginTop: '6px', borderTop: 'none' }}>
+                  <div style={{ flex: 1, fontSize: '.82rem', fontWeight: '700', color: '#202124' }}>Total de gastos</div>
+                  <div style={{ fontWeight: '800', color: '#d93025', fontSize: '1rem' }}>{fmt(fin.gastos)}</div>
+                </div>
+                <details style={{ marginTop: '10px' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '.78rem', fontWeight: '700', color: '#1a73e8', minHeight: '36px', display: 'flex', alignItems: 'center' }}>¿Cómo se manejan las cuentas de los equipos?</summary>
+                  <div style={{ fontSize: '.76rem', color: '#5f6368', lineHeight: 1.55, paddingTop: '4px' }}>
+                    <b>Arbitrajes:</b> se cobran en efectivo en la cancha y se dan por pagados solos al jugarse el partido.<br/>
+                    <b>Tarjetas:</b> las registras tú a mano cuando el equipo paga.<br/>
+                    <b>Inscripción y W/Multas:</b> cada una lleva su propia cuenta, aparte.<br/>
+                    <b>Pagado y Saldo</b> de la tabla de equipos cuentan solo arbitrajes y tarjetas.
+                  </div>
+                </details>
+              </div>
+              )
+            })()}
 
             {/* Inscripción POR JUGADOR: cada equipo con los nombres de quienes todavía deben. Un toque en el nombre = ya pagó y se descuenta de la cuenta del equipo. */}
             {fin.filas.some(r => r.modoJugador && r.inscritos > 0) && (() => {
