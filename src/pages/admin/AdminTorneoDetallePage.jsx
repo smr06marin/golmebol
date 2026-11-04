@@ -2610,9 +2610,24 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
   const soloDigitos = s => s.replace(/\D/g, '')
 
+  // Supabase entrega como máximo 1000 filas por consulta. En torneos grandes las planillas pasan de 1000 filas y
+  // las MÁS NUEVAS quedaban fuera (por eso tarjetas recientes salían "al día" en Finanzas pero sí en el link de
+  // deudores, que calcula en el servidor). Esto trae TODAS pidiendo de a 1000 hasta que no quede nada.
+  async function traerTodas(armar) {
+    const PAGINA = 1000
+    let todo = []
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data, error } = await armar().range(desde, desde + PAGINA - 1)
+      if (error) return { data: null, error }
+      todo = todo.concat(data || [])
+      if (!data || data.length < PAGINA) break
+    }
+    return { data: todo, error: null }
+  }
+
   async function fetchFinanzas() {
     const [{ data: movs }, { data: evs }, { data: st }] = await Promise.all([
-      supabase.from('torneo_finanzas').select('*, teams(name), players(name)').eq('tournament_id', id).order('created_at', { ascending: false }),
+      traerTodas(() => supabase.from('torneo_finanzas').select('*, teams(name), players(name)').eq('tournament_id', id).order('created_at', { ascending: false }).order('id')),
       // Tarjetas de DOS fuentes combinadas:
       // 1. Eventos del partido: incluyen jugadores sin registro (con su nombre)
       // 2. Estadísticas: respaldo para partidos viejos guardados sin eventos
@@ -2620,10 +2635,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       // de una relación hacia players, así que hay que decirle a PostgREST
       // cuál columna usar para el embed, si no tira "more than one
       // relationship was found".
-      supabase.from('match_events').select('match_id, player_id, team_id, event_type, player_nombre, players!player_id(name)')
-        .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']),
-      supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid, players(name)')
-        .eq('tournament_id', id),
+      traerTodas(() => supabase.from('match_events').select('match_id, player_id, team_id, event_type, player_nombre, players!player_id(name)')
+        .eq('tournament_id', id).in('event_type', ['yellow_card', 'blue_card', 'red_card']).order('id')),
+      traerTodas(() => supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid, players(name)')
+        .eq('tournament_id', id).order('match_id').order('player_id')),
     ])
     setMovimientos(movs || [])
 
