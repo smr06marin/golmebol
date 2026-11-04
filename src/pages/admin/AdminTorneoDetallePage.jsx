@@ -3035,44 +3035,88 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     fetchFinanzas()
   }
 
-  // Bloquear equipo por inscripción sin pagar — MANUAL. Antes esto se hacía
-  // solo, para TODOS los equipos que quedaran debiendo, apenas se guardaban
-  // los logros del torneo. Ahora el organizador decide, equipo por equipo y
-  // cuando quiera (típicamente ya terminado el torneo), a quién bloquear con
-  // este botón. Duplica el saldo pendiente de inscripción de ese equipo y lo
-  // reparte entre sus jugadores inscritos, como deuda personal — eso es lo
-  // único que sigue al jugador a próximos torneos del MISMO organizador (ver
-  // jugador_tiene_deuda en la BD). Si se usa más de una vez para el mismo
-  // equipo, reemplaza la deuda anterior (no la duplica).
-  async function handleBloquearEquipoPorInscripcion(equipo, saldoInscripcion) {
-    if (!(await confirmar(`¿Bloquear a los jugadores inscritos de ${equipo.name} por inscripción sin pagar (${fmt(saldoInscripcion)} x2)?\n\nQuedarán sin poder inscribirse en próximos torneos tuyos hasta que se marque la deuda como pagada.`))) return
-    try {
-      const { data: registros, error: errReg } = await supabase
-        .from('tournament_player_registrations')
-        .select('player_id')
-        .eq('tournament_id', id).eq('team_id', equipo.id).eq('activo', true)
-      if (errReg) throw errReg
-      const jugadoresEquipo = (registros || []).filter(r => r.player_id)
-      if (jugadoresEquipo.length === 0) return showMsg('Este equipo no tiene jugadores inscritos en el torneo', 'error')
+  // Todo lo que el equipo sigue debiendo en este torneo: inscripción + multas/W/deudas
+  // anotadas + tarjetas sin pagar (lo mismo que ves como "debe" en su tarjeta de Finanzas).
+  function deudaTotalEquipo(r) {
+    const llevar = !!torneo?.finanzas_config?.llevar_cuentas
+    return Math.max(r.saldo || 0, 0) + (llevar ? Math.max(r.saldoInscripcion || 0, 0) + Math.max(r.saldoMultas || 0, 0) : 0)
+  }
 
-      const montoDoble = saldoInscripcion * 2
-      const montoPorJugador = Math.round(montoDoble / jugadoresEquipo.length)
-      if (montoPorJugador <= 0) return showMsg('No hay saldo de inscripción pendiente para este equipo', 'error')
+  // Pasa la deuda del equipo a sus jugadores — MANUAL, equipo por equipo o todos a la vez
+  // (típicamente ya terminado el torneo). La deuda que el equipo deja se DUPLICA y se
+  // divide entre los jugadores que hicieron parte del equipo EN ESTE torneo (inscritos
+  // activos de este torneo + este equipo; no los que solo están en el equipo en otros
+  // torneos). Queda como deuda personal: sigue al jugador a próximos torneos del MISMO
+  // organizador (ver jugador_tiene_deuda en la BD) y se paga desde Jugadores → su ficha.
+  // Si se usa otra vez para el mismo equipo, reemplaza la deuda anterior que siga sin
+  // pagar (no la duplica) y no vuelve a cobrarle a quien ya la pagó.
+  async function crearDeudasPersonalesEquipo(equipo, deudaEquipo) {
+    const { data: registros, error: errReg } = await supabase
+      .from('tournament_player_registrations')
+      .select('player_id')
+      .eq('tournament_id', id).eq('team_id', equipo.id).eq('activo', true)
+    if (errReg) throw errReg
+    const idsJugadores = [...new Set((registros || []).map(r => r.player_id).filter(Boolean))]
+    if (idsJugadores.length === 0) return { sinJugadores: true }
 
-      // Reemplaza deudas anteriores de este equipo en este torneo (por si se
-      // bloquea más de una vez, ej: cambió el saldo o los jugadores).
-      await supabase.from('torneo_finanzas').delete().eq('tournament_id', id).eq('team_id', equipo.id).eq('tipo', 'deuda_personal')
-      const deudas = jugadoresEquipo.map(r => ({
-        tournament_id: id, team_id: equipo.id, player_id: r.player_id, tipo: 'deuda_personal', monto: montoPorJugador,
-        concepto: `Inscripción sin pagar (x2) de ${equipo.name} en ${torneo?.name || 'el torneo'}`.trim(), pagado: false,
-      }))
+    const montoDoble = Math.round(deudaEquipo * 2)
+    const montoPorJugador = Math.round(montoDoble / idsJugadores.length)
+    if (montoPorJugador <= 0) return { sinDeuda: true }
+
+    const { data: previas, error: errPrev } = await supabase
+      .from('torneo_finanzas').select('id, player_id, pagado')
+      .eq('tournament_id', id).eq('team_id', equipo.id).eq('tipo', 'deuda_personal')
+    if (errPrev) throw errPrev
+    const yaPagaron = new Set((previas || []).filter(p => p.pagado).map(p => p.player_id))
+    const idsSinPagar = (previas || []).filter(p => !p.pagado).map(p => p.id)
+    if (idsSinPagar.length > 0) {
+      const { error: errDel } = await supabase.from('torneo_finanzas').delete().in('id', idsSinPagar)
+      if (errDel) throw errDel
+    }
+
+    const concepto = `Equipo ${equipo.name} · ${torneo?.name || 'torneo'}: quedó debiendo ${fmt(deudaEquipo)}; se duplicó a ${fmt(montoDoble)} y se dividió entre ${idsJugadores.length} jugadores del equipo en ese torneo`
+    const deudas = idsJugadores.filter(pid => !yaPagaron.has(pid)).map(pid => ({
+      tournament_id: id, team_id: equipo.id, player_id: pid, tipo: 'deuda_personal',
+      monto: montoPorJugador, concepto, pagado: false,
+    }))
+    if (deudas.length > 0) {
       const { error } = await supabase.from('torneo_finanzas').insert(deudas)
       if (error) throw error
-      showMsg(`${deudas.length} jugador(es) de ${equipo.name} quedaron bloqueados por inscripción sin pagar ✓`)
+    }
+    return { jugadores: deudas.length, montoPorJugador, montoDoble }
+  }
+
+  async function handleBloquearEquipoPorInscripcion(equipo, deudaEquipo) {
+    if (!(await confirmar(`¿Pasar la deuda de ${equipo.name} a sus jugadores?\n\nEl equipo debe ${fmt(deudaEquipo)} → se duplica a ${fmt(deudaEquipo * 2)} y se divide entre los jugadores que hicieron parte del equipo en ESTE torneo.\n\nCada jugador queda con su parte como deuda personal: no podrá inscribirse en próximos torneos tuyos hasta pagarla.`))) return
+    try {
+      const res = await crearDeudasPersonalesEquipo(equipo, deudaEquipo)
+      if (res.sinJugadores) return showMsg('Este equipo no tiene jugadores inscritos en el torneo', 'error')
+      if (res.sinDeuda) return showMsg('Este equipo no tiene deuda pendiente', 'error')
+      showMsg(`${res.jugadores} jugador(es) de ${equipo.name} quedaron con ${fmt(res.montoPorJugador)} cada uno ✓`)
       fetchFinanzas()
     } catch (e) {
-      showMsg(`Error al bloquear el equipo: ${e.message}`, 'error')
+      showMsg(`Error al pasar la deuda a los jugadores: ${e.message}`, 'error')
     }
+  }
+
+  // Lo mismo, para TODOS los equipos que quedaron debiendo (al terminar el torneo).
+  async function handleBloquearTodosLosEquipos(filas) {
+    const lista = filas.filter(r => deudaTotalEquipo(r) > 0)
+    if (lista.length === 0) return showMsg('Ningún equipo tiene deuda pendiente', 'error')
+    const resumen = lista.map(r => `• ${r.equipo.name}: ${fmt(deudaTotalEquipo(r))} → ${fmt(deudaTotalEquipo(r) * 2)}`).join('\n')
+    if (!(await confirmar(`¿Pasar la deuda de ${lista.length} equipo(s) a sus jugadores?\n\nCada deuda se duplica y se divide entre los jugadores del equipo en este torneo:\n\n${resumen}`))) return
+    let ok = 0
+    const sinJug = []
+    try {
+      for (const r of lista) {
+        const res = await crearDeudasPersonalesEquipo(r.equipo, deudaTotalEquipo(r))
+        if (res.sinJugadores) sinJug.push(r.equipo.name); else if (!res.sinDeuda) ok++
+      }
+      showMsg(`${ok} equipo(s) pasaron su deuda a los jugadores ✓${sinJug.length ? ` · Sin jugadores inscritos (no se cobró): ${sinJug.join(', ')}` : ''}`)
+    } catch (e) {
+      showMsg(`Error al pasar las deudas: ${e.message}`, 'error')
+    }
+    fetchFinanzas()
   }
 
   // Marca como pagada una deuda anotada a mano (➖ Deuda) — sea de arbitraje,
@@ -3474,10 +3518,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       ? ' · (goleador y valla: esta opción todavía no está activada, avísale al administrador de Golmebol)'
       : ` · ⚽ ${premios?.goleadores || 0} goleador${premios?.goleadores === 1 ? '' : 'es'} · 🧤 ${premios?.valla ? 'valla menos vencida' : 'sin arquero'}`
 
-    // La deuda personal por inscripción sin pagar YA NO se genera sola acá al
-    // guardar los logros — quedó como acción MANUAL del organizador (botón
-    // "🚫 Bloquear" en Finanzas, por equipo), para que él decida caso por
-    // caso a quién perseguir. Ver handleBloquearEquipoPorInscripcion.
+    // La deuda personal del equipo (x2, dividida entre sus jugadores) NO se genera sola
+    // acá al guardar los logros — es acción MANUAL del organizador (botón "🚫 Pasar deuda
+    // a jugadores" en Finanzas), para que él decida caso por caso. Ver crearDeudasPersonalesEquipo.
     const equiposSinJugadores = equipos.filter(e => !jugadores.some(j => j.team_id === e.id))
     showMsg(`Logros guardados ✓ 🏆 ${campeonEq.name} · 🥈 ${subcampeonEq.name}${tercerEq ? ` · 🥉 ${tercerEq.name}` : ''}${textoPremios}${equiposSinJugadores.length > 0 ? ` (${equiposSinJugadores.length} equipos sin jugadores inscritos quedaron sin logro)` : ''}`)
     // Ya quedaron guardados los logros — el botón de guardarlos desaparece
@@ -7783,6 +7826,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     )}
                   </div>
                   <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '10px' }}>¿Quién me debe?</div>
+                  {llevar && deben.length > 0 && (
+                    <div style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '.78rem', color: '#5f6368', lineHeight: 1.45, marginBottom: '8px' }}>
+                        ¿Se acabó el torneo? Lo que cada equipo sigue debiendo se <b>duplica</b> y se <b>divide entre los jugadores que fueron de ese equipo en este torneo</b>. Esa parte les sale como deuda personal en los próximos torneos tuyos.
+                      </div>
+                      <button onClick={() => handleBloquearTodosLosEquipos(fin.filas)}
+                        style={{ minHeight: '42px', width: '100%', padding: '9px 14px', background: '#a30000', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.84rem', fontWeight: '700' }}>
+                        🚫 Pasar la deuda de los {deben.length} equipos a sus jugadores
+                      </button>
+                    </div>
+                  )}
                   {hayMultas && (
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
                       <button onClick={() => setVerSoloMultas(false)} aria-pressed={!soloMultas}
@@ -8089,11 +8143,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
                       </button>
-                      {fin.fc.llevar_cuentas && r.saldoInscripcion > 0 && (
-                        <button onClick={e => { e.stopPropagation(); handleBloquearEquipoPorInscripcion(r.equipo, r.saldoInscripcion) }}
-                          title="Bloquea a los jugadores inscritos de este equipo en próximos torneos tuyos, hasta que se marque la deuda como pagada"
+                      {deudaTotalEquipo(r) > 0 && (
+                        <button onClick={e => { e.stopPropagation(); handleBloquearEquipoPorInscripcion(r.equipo, deudaTotalEquipo(r)) }}
+                          title="Duplica lo que debe el equipo y lo divide entre los jugadores que fueron del equipo en este torneo. Cada uno queda con su parte como deuda personal."
                           style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#a30000', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                          🚫 Bloquear
+                          🚫 Pasar deuda a jugadores
                         </button>
                       )}
                     </div>
@@ -8287,7 +8341,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             </div>
 
             {/* Deudas personales — inscripción sin pagar (x2), repartida entre
-                jugadores. Se generan MANUALMENTE con el botón "🚫 Bloquear" de
+                jugadores. Se generan MANUALMENTE con el botón "🚫 Pasar deuda a jugadores" de
                 cada equipo, arriba en "Cuentas por equipo" — ya no se crean
                 solas al guardar los logros del torneo. Es lo único que sigue
                 al jugador a próximos torneos del MISMO organizador — las

@@ -176,6 +176,8 @@ export default function AdminJugadorDetallePage() {
   const [formJugador,   setFormJugador]   = useState({})
   const [guardandoForm, setGuardandoForm] = useState(false)
   const [sanciones,        setSanciones]        = useState([])
+  const [deudas,           setDeudas]           = useState([])
+  const [pagandoDeuda,     setPagandoDeuda]     = useState('')
   const [formSancion,      setFormSancion]      = useState({ motivo: '', duracion: '8' })
   const [guardandoSancion, setGuardandoSancion] = useState(false)
   const [cedulaThumbUrls,  setCedulaThumbUrls]  = useState({})
@@ -207,8 +209,32 @@ export default function AdminJugadorDetallePage() {
 
   async function fetchTodo() {
     setLoading(true)
-    await Promise.all([fetchJugador(), fetchStats(), fetchTorneos(), fetchSanciones()])
+    await Promise.all([fetchJugador(), fetchStats(), fetchTorneos(), fetchSanciones(), fetchDeudas()])
     setLoading(false)
+  }
+
+  // Deudas personales SIN PAGAR del jugador: la parte que le tocó cuando un equipo suyo quedó
+  // debiendo plata en un torneo (la deuda se duplicó y se dividió entre los jugadores de ese
+  // torneo). Mientras exista, no puede inscribirse en torneos del mismo organizador.
+  async function fetchDeudas() {
+    try {
+      const { data } = await supabase.from('torneo_finanzas')
+        .select('id, monto, concepto, tournaments(name), teams(name)')
+        .eq('player_id', id).eq('tipo', 'deuda_personal').eq('pagado', false)
+        .order('created_at', { ascending: true })
+      setDeudas(data || [])
+    } catch { setDeudas([]) }
+  }
+
+  async function handlePagarDeuda(d) {
+    const monto = '$' + Math.round(d.monto || 0).toLocaleString('es-CO')
+    if (!(await confirmar(`¿Marcar como PAGADA la deuda de ${monto} (${d.teams?.name || 'equipo'} · ${d.tournaments?.name || 'torneo'})?\n\nEl jugador podrá volver a inscribirse en torneos de ese organizador.`))) return
+    setPagandoDeuda(d.id)
+    const { error } = await supabase.from('torneo_finanzas').update({ pagado: true }).eq('id', d.id)
+    setPagandoDeuda('')
+    if (error) return showMsg(errorAmigable(error, 'No se pudo marcar la deuda como pagada'), 'error')
+    showMsg('Deuda personal pagada ✓')
+    fetchDeudas()
   }
 
   async function fetchSanciones() {
@@ -606,6 +632,31 @@ export default function AdminJugadorDetallePage() {
           })}
         </div>
       </div>
+
+      {/* Deuda personal: lo que le tocó pagar por deudas de sus equipos en torneos anteriores */}
+      {deudas.length > 0 && (
+        <div style={{ background: '#fce8e6', border: '2px solid #d93025', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px' }}>
+          <div style={{ fontWeight: '800', color: '#d93025', fontSize: '.9rem', marginBottom: '4px' }}>
+            🚫 DEUDA PERSONAL: ${Math.round(deudas.reduce((a, d) => a + (Number(d.monto) || 0), 0)).toLocaleString('es-CO')}
+          </div>
+          <div style={{ fontSize: '.74rem', color: '#5f6368', marginBottom: '6px' }}>
+            Mientras no la pague, no puede inscribirse en torneos del mismo organizador.
+          </div>
+          {deudas.map(d => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderTop: '1px solid #fad2cf', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <div style={{ fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>{d.teams?.name || 'Equipo'} · {d.tournaments?.name || 'Torneo'}</div>
+                {d.concepto && <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '2px', lineHeight: 1.4 }}>{d.concepto}</div>}
+              </div>
+              <span style={{ fontSize: '.95rem', fontWeight: '800', color: '#d93025', whiteSpace: 'nowrap' }}>${Math.round(d.monto || 0).toLocaleString('es-CO')}</span>
+              <button onClick={() => handlePagarDeuda(d)} disabled={!!pagandoDeuda}
+                style={{ minHeight: '40px', background: pagandoDeuda === d.id ? '#dadce0' : '#1e8e3e', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: pagandoDeuda ? 'not-allowed' : 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700', flexShrink: 0 }}>
+                {pagandoDeuda === d.id ? 'Guardando…' : '✓ Pagar deuda personal'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '4px', width: 'fit-content', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>

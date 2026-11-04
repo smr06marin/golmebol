@@ -214,6 +214,7 @@ export default function AdminJugadoresPage() {
   const navigate = useNavigate()
   const { rol } = useAuthStore()
   const [jugadores,       setJugadores]       = useState([])
+  const [deudasPorJugador, setDeudasPorJugador] = useState({}) // player_id -> total de deuda personal sin pagar
   const [form,            setForm]            = useState(EMPTY)
   const [editId,          setEditId]          = useState(null)
   // Si el celular mata la pestaña al salir a otra app mientras se llena este
@@ -335,6 +336,14 @@ export default function AdminJugadoresPage() {
       if (!data || data.length < PAGINA) break
     }
     setJugadores(todos)
+    // Deudas personales sin pagar (parte que le tocó al jugador por deudas de sus equipos) — se marcan con "Debe $X"
+    try {
+      const { data: deu } = await supabase.from('torneo_finanzas').select('player_id, monto')
+        .eq('tipo', 'deuda_personal').eq('pagado', false).limit(5000)
+      const mapa = {}
+      ;(deu || []).forEach(d => { if (d.player_id) mapa[d.player_id] = (mapa[d.player_id] || 0) + (Number(d.monto) || 0) })
+      setDeudasPorJugador(mapa)
+    } catch { setDeudasPorJugador({}) }
   }
 
   function showMsg(text, type = 'ok') {
@@ -896,6 +905,7 @@ export default function AdminJugadoresPage() {
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       {j.name}
                       <span style={{ fontSize: '.65rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>✓ Activo</span>
+                      {deudasPorJugador[j.id] > 0 && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>🚫 Debe ${Math.round(deudasPorJugador[j.id]).toLocaleString('es-CO')}</span>}
                       {!j.user_id  && <span style={{ fontSize: '.65rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '600' }}>Sin cuenta</span>}
                       {tieneFotoPendiente(j) && <span style={{ fontSize: '.65rem', color: '#d93025', background: '#fce8e6', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>⚠️ Foto por cambiar</span>}
                     </div>

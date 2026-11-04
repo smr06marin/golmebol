@@ -398,7 +398,7 @@ export default function RegistroEquipoPage() {
       supabase.rpc('jugador_sancion_activa', { p_player_id: res.id, p_tournament_id: tournamentId }),
     ])
     if (deuda?.tiene_deuda) {
-      setDeudaJugador({ total: deuda.total, concepto: deuda.concepto || 'un torneo anterior de este organizador' })
+      setDeudaJugador({ total: deuda.total, concepto: deuda.concepto || 'un torneo anterior de este organizador', detalles: Array.isArray(deuda.detalles) ? deuda.detalles : [] })
     }
     if (sanc?.sancionado) {
       setSancionJugador({ motivo: sanc.motivo, fecha_fin: sanc.fecha_fin })
@@ -411,7 +411,7 @@ export default function RegistroEquipoPage() {
   function handleConfirmarExistente() {
     if (limiteAlcanzado) return showMsg(`🚫 ${equipo.name} ya llegó al límite de ${torneo.limite_jugadores_equipo} jugadores para este torneo. Comunícate con la organización si necesitas más cupo.`, 'warning')
     if (sancionJugador) return showMsg(`⛔ No puedes inscribirte: estás sancionado${sancionJugador.fecha_fin ? ` hasta el ${new Date(sancionJugador.fecha_fin).toLocaleDateString('es-CO')}` : ' de forma permanente'}.`, 'warning')
-    if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: debes $${Math.round(deudaJugador.total).toLocaleString('es-CO')} de ${deudaJugador.concepto}. Comunícate con la organización para pagarla.`, 'warning')
+    if (deudaJugador) return showMsg(`🚫 No puedes inscribirte: tienes una multa de $${Math.round(deudaJugador.total).toLocaleString('es-CO')} porque tu equipo de un torneo anterior de este organizador quedó debiendo plata y se dividió entre los jugadores. Comunícate con la organización para pagarla.`, 'warning')
     // Si el jugador ya existe pero todavía no tiene foto de perfil, se exige
     // subirla acá mismo antes de dejarlo inscribir — sea registro simple o
     // completo, así ningún jugador queda sin su foto.
@@ -732,10 +732,29 @@ export default function RegistroEquipoPage() {
             )}
             {deudaJugador && (
               <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '4px' }}>🚫 NO PUEDES INSCRIBIRTE POR DEUDA PENDIENTE</div>
-                <div style={{ fontSize: '.8rem', color: '#5f6368' }}>
-                  Debes <strong style={{ color: '#d93025' }}>${Math.round(deudaJugador.total).toLocaleString('es-CO')}</strong> de {deudaJugador.concepto}.
-                  Comunícate con la organización para ponerte al día y poder inscribirte.
+                <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#d93025', marginBottom: '6px' }}>🚫 NO PUEDES INSCRIBIRTE: TIENES UNA MULTA PENDIENTE</div>
+                {deudaJugador.detalles && deudaJugador.detalles.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {deudaJugador.detalles.map((d, i) => (
+                      <div key={d.id || i} style={{ fontSize: '.8rem', color: '#3c4043', lineHeight: 1.45 }}>
+                        Tienes una multa porque el equipo <strong>{d.equipo || 'tu equipo'}</strong> del torneo <strong>{d.torneo || 'anterior'}</strong> quedó debiendo plata en ese torneo.
+                        La deuda se dividió entre los jugadores que hacían parte del equipo en ese torneo, y a ti te corresponde{' '}
+                        <strong style={{ color: '#d93025' }}>${Math.round(d.monto).toLocaleString('es-CO')}</strong> (solo lo que te toca a ti).
+                      </div>
+                    ))}
+                    {deudaJugador.detalles.length > 1 && (
+                      <div style={{ fontSize: '.8rem', color: '#202124', fontWeight: '700' }}>
+                        Total que debes: <span style={{ color: '#d93025' }}>${Math.round(deudaJugador.total).toLocaleString('es-CO')}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '.8rem', color: '#5f6368' }}>
+                    Debes <strong style={{ color: '#d93025' }}>${Math.round(deudaJugador.total).toLocaleString('es-CO')}</strong> de {deudaJugador.concepto}.
+                  </div>
+                )}
+                <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '8px' }}>
+                  Comunícate con la organización para pagarla y poder inscribirte.
                 </div>
               </div>
             )}
