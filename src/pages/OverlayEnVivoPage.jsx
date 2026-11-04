@@ -473,8 +473,8 @@ export default function OverlayEnVivoPage() {
         background: modoPrueba ? 'linear-gradient(135deg,#1f6b2c,#2f8f3f 50%,#1f6b2c)' : 'transparent',
       }}>
         <div style={{ position: 'absolute', left: 0, top: 0, width: ANCHO_ESCENARIO, height: altoEscenario, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
-          {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)}/>}
-          {partido && !tapaMarcador && <MarcadorEnVivoOverlay partido={partido}/>}
+          {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)} conMarcador={!!partido?.vivo && !tapaMarcador} anchoEscenario={ANCHO_ESCENARIO}/>}
+          {partido && <MarcadorEnVivoOverlay partido={partido} entrada oculto={tapaMarcador}/>}
           {partido && <GolAvisoEnVivoOverlay partido={partido} {...propsAvisoGol(overlayActivo, tapaMarcador)}/>}
           {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={descansoAuto} onTerminar={() => setPatrocinadorMostrando(null)}/>}
           {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto)) && (

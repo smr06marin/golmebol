@@ -118,12 +118,18 @@ function EtiquetaEquipo({ nombre, color, lado }) {
 // { home, away: {name, logo_url}, vivo: {golesLocal, golesVis, reloj, descanso},
 //   colores?: {colorLocal, colorVisitante}, detalle?: {faltasLocal, faltasVisitante, mostrarFaltas, amarillas*, azules*, rojas*}, global? }
 // Si no hay partido en vivo que mostrar, no renderiza nada.
-export default function MarcadorEnVivoOverlay({ partido }) {
+// entrada: el marcador "nace" desde el centro (los logos llegan juntos, las puertas se abren y cada logo se va a su lado);
+// oculto: lo contrario — los logos se juntan, el marcador se cierra y se desvanece. Solo lo usa el overlay de OBS.
+const T_ENTRADA_ABRIR_MS = 650
+const BORDE_CAPSULA = '1px solid rgba(255,255,255,.16)'
+export default function MarcadorEnVivoOverlay({ partido, entrada = false, oculto = false }) {
   const golesL = partido?.vivo?.golesLocal ?? 0
   const golesV = partido?.vivo?.golesVis ?? 0
   const idPartido = partido?.id
   // fase: 0 normal · 1 los logos se juntan y se cierran las puertas · 2 se ve APP GOLMEBOL (el marcador ya cambió, tapado)
   const [fase, setFase] = useState(0)
+  const [abierto, setAbierto] = useState(!entrada)  // false = logos juntos en el centro y puertas cerradas
+  const [visible, setVisible] = useState(!entrada)  // false = marcador invisible
   const [congelado, setCongelado] = useState(null) // marcador anterior, mientras dura la transición
   const [pop, setPop] = useState({ lado: null, n: 0 })
   const previoRef = useRef(null)
@@ -131,6 +137,15 @@ export default function MarcadorEnVivoOverlay({ partido }) {
   const animandoRef = useRef(false)
   const timersRef = useRef([])
   useEffect(() => () => { timersRef.current.forEach(clearTimeout) }, [])
+  // Entrada / salida del marcador (solo overlay de OBS). Todo con temporizadores para que el navegador alcance a animar.
+  useEffect(() => {
+    if (!entrada) return
+    const ts = []
+    const t = (fn, ms) => ts.push(setTimeout(fn, ms))
+    if (!oculto) { t(() => setVisible(true), 30); t(() => setAbierto(true), T_ENTRADA_ABRIR_MS) }
+    else { t(() => setAbierto(false), 30); t(() => setVisible(false), T_ENTRADA_ABRIR_MS + 50) }
+    return () => ts.forEach(clearTimeout)
+  }, [entrada, oculto])
   useEffect(() => {
     if (idRef.current !== idPartido) { idRef.current = idPartido; previoRef.current = null }
     const ant = previoRef.current
@@ -149,13 +164,15 @@ export default function MarcadorEnVivoOverlay({ partido }) {
 
   if (!partido?.vivo) return null
   const { home, away, vivo, global } = partido
+  const faseVis = abierto ? fase : 1
   const marcaL = congelado ? congelado.l : vivo.golesLocal
   const marcaV = congelado ? congelado.v : vivo.golesVis
   const logoTorneo = partido.tournaments?.logo_url || null
   const nombreTorneo = partido.tournaments?.name || ''
   const trans = (props) => props.map(x => `${x} .6s ${EASE}`).join(', ')
   const logoBase = { position: 'absolute', top: '50%', width: 'var(--gm-lg)', height: 'var(--gm-lg)', marginTop: 'calc(var(--gm-lg) / -2)', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: trans(['left', 'right']) }
-  const posIzq = fase === 0 ? '7px' : fase === 1 ? 'calc(50% - var(--gm-lg) * .7)' : 'calc(50% - var(--gm-bw) - var(--gm-lg))'
+  const posIzq = faseVis === 0 ? '7px' : faseVis === 1 ? 'calc(50% - var(--gm-lg) * .7)' : 'calc(50% - var(--gm-bw) - var(--gm-lg))'
+  const capsula = { position: 'absolute', top: 0, bottom: 0, width: 'calc(var(--gm-lg) + 14px)', background: 'rgba(255,255,255,.075)', zIndex: 1 }
   const puerta = { position: 'absolute', top: 0, bottom: 0, width: '50%', background: '#060608', zIndex: 3, transition: trans(['transform']) }
   const col = partido.colores || {}
   const det = partido.detalle || {}
@@ -165,6 +182,7 @@ export default function MarcadorEnVivoOverlay({ partido }) {
       position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 2,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       width: 'max-content', maxWidth: '96%', pointerEvents: 'none',
+      opacity: visible ? 1 : 0, transition: entrada ? 'opacity .35s ease' : undefined,
     }}>
       {/* ── Barra principal: equipo · escudo · marcador · escudo · equipo ── */}
       <style>{CSS_TRANSICION}</style>
@@ -173,8 +191,12 @@ export default function MarcadorEnVivoOverlay({ partido }) {
         display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: 'clamp(4px, 2.2vw, 12px)',
         background: 'rgba(6,6,8,.94)', borderRadius: '0 0 12px 12px', boxSizing: 'border-box', minWidth: 'min(94vw, 330px)',
         // a los lados van los logos (torneo · Golmebol): el marcador queda centrado
-        padding: 'clamp(4px, 1.4vw, 7px) calc(var(--gm-lg) + 12px)', boxShadow: '0 3px 14px rgba(0,0,0,.5)', overflow: 'hidden',
+        padding: 'clamp(4px, 1.4vw, 7px) calc(var(--gm-lg) + 24px)', boxShadow: '0 3px 14px rgba(0,0,0,.5)', overflow: 'hidden',
       }}>
+        {/* Cápsulas de los extremos: panel un poco más claro, pegado al borde y con una línea divisoria, para que logos y marcador
+            se vean como una sola pieza. Los logos de abajo se posan encima (y viajan al centro en la entrada/salida y en los goles) */}
+        {logoTorneo && <div aria-hidden="true" style={{ ...capsula, left: 0, borderRight: BORDE_CAPSULA }}/>}
+        <div aria-hidden="true" style={{ ...capsula, right: 0, borderLeft: BORDE_CAPSULA }}/>
         {/* Logos de los extremos (viajan al centro cuando hay gol) */}
         {logoTorneo && (
           <div style={{ ...logoBase, left: posIzq }}>
@@ -185,9 +207,9 @@ export default function MarcadorEnVivoOverlay({ partido }) {
           <img src="/marca/watermark-logo.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
         </div>
         {/* Puertas: tapan el marcador durante la transición */}
-        <div style={{ ...puerta, left: 0, transform: fase === 0 ? 'translateX(-101%)' : 'translateX(0)' }}/>
-        <div style={{ ...puerta, right: 0, transform: fase === 0 ? 'translateX(101%)' : 'translateX(0)' }}/>
-        <div style={{ position: 'absolute', inset: 0, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', pointerEvents: 'none', opacity: fase === 2 ? 1 : 0, transform: fase === 2 ? 'scale(1)' : 'scale(.85)', transition: 'opacity .35s, transform .35s' }}>
+        <div style={{ ...puerta, left: 0, transform: faseVis === 0 ? 'translateX(-101%)' : 'translateX(0)' }}/>
+        <div style={{ ...puerta, right: 0, transform: faseVis === 0 ? 'translateX(101%)' : 'translateX(0)' }}/>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', pointerEvents: 'none', opacity: faseVis === 2 ? 1 : 0, transform: fase === 2 ? 'scale(1)' : 'scale(.85)', transition: 'opacity .35s, transform .35s' }}>
           <span style={{ fontFamily: FUENTE, fontWeight: 800, fontSize: 'clamp(.85rem, 4vw, 1.2rem)', letterSpacing: '.14em', color: '#fff', lineHeight: 1, whiteSpace: 'nowrap' }}>APP GOLMEBOL</span>
           {nombreTorneo && <span style={{ fontFamily: FUENTE, fontWeight: 700, fontSize: 'clamp(.5rem, 2.3vw, .66rem)', letterSpacing: '.08em', color: '#f5a623', marginTop: '4px', textTransform: 'uppercase', whiteSpace: 'nowrap', maxWidth: 'calc(var(--gm-bw) * 2)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nombreTorneo}</span>}
         </div>
