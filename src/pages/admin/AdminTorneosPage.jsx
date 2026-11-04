@@ -8,7 +8,6 @@ import { Plus, Pencil, Trash2, Trophy, Eye, Star, X, Archive, ArchiveRestore } f
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { ubicacionDeTorneo } from '../../lib/ubicaciones'
 import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
-import SelectorPlanillaTorneo from '../../components/SelectorPlanillaTorneo'
 import { confirmar } from '../../lib/confirmar'
 
 
@@ -61,7 +60,6 @@ export default function AdminTorneosPage() {
   const [fin, setFin] = useState(FIN_EMPTY)
   const [editId, setEditId] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [errorPlanilla, setErrorPlanilla] = useState(false) // se intentó guardar sin escoger planilla
   const [msg, setMsg] = useState(null)
   const [showForm, setShowForm] = useState(false)
   // Crear torneo: primero solo lo básico; puntos, W, límites y dinero van en "Opciones avanzadas" (con los valores de siempre).
@@ -149,11 +147,6 @@ export default function AdminTorneosPage() {
       : !form.formato ? 'El formato es obligatorio'
       : !form.fecha_inicio ? 'La fecha de inicio es obligatoria' : ''
     if (falta) return showMsg(falta, 'error')
-    if (!form.planilla_tipo) {
-      setErrorPlanilla(true)
-      try { document.getElementById('selector-planilla-torneo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* sin scroll */ }
-      return showMsg('Escoge con qué planilla se va a manejar el torneo (Fútbol de salón o Fútbol 11)', 'error')
-    }
     setVerAvanzado(true)
     try { document.getElementById('form-torneo-nuevo')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* sin scroll */ }
   }
@@ -172,12 +165,6 @@ export default function AdminTorneosPage() {
     if (!form.categoria) return showMsg('La categoría es obligatoria (ej: Senior, Sub-20)', 'error')
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
     if (!form.fecha_inicio) return showMsg('La fecha de inicio es obligatoria', 'error')
-    // Planilla: obligatoria al CREAR (sin nada marcado de antemano); al editar un torneo viejo queda opcional.
-    if (!editId && !form.planilla_tipo) {
-      setErrorPlanilla(true)
-      try { document.getElementById('selector-planilla-torneo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* sin scroll */ }
-      return showMsg('Escoge con qué planilla se va a manejar el torneo (Fútbol de salón o Fútbol 11)', 'error')
-    }
     // Plan gratuito de organizador: 1 torneo (cada torneo Premium pagado libera otro cupo)
     if (!editId && esOrganizador) {
       const sinPremium = torneos.filter(t => !t.premium).length
@@ -208,8 +195,9 @@ export default function AdminTorneosPage() {
       // y de todos modos la base de datos revierte el cambio si quien
       // actualiza no es admin principal (ver migracion_asignar_organizador.sql).
       organizador_id: form.organizador_id || null,
-      // '' (sin elegir) viaja como null: la columna solo acepta 'salon' | 'futbol11'.
-      planilla_tipo: form.planilla_tipo || null,
+      // Ya no se escoge planilla al crear: todos los torneos son 'futbol11' (la planilla normal). La planilla profesional de
+      // Fútbol de salón solo se abre con la cuenta propia de un árbitro (ver src/lib/tipoPlanilla.js). Al editar se respeta lo guardado.
+      planilla_tipo: editId ? (form.planilla_tipo || null) : 'futbol11',
     }
     const finanzasConfig = {
       llevar_cuentas:       !!fin.llevar_cuentas,
@@ -350,7 +338,6 @@ export default function AdminTorneosPage() {
       else showMsg(avisoDegradado || 'Torneo creado ✓', avisoDegradado ? 'error' : 'ok')
     }
     setForm(EMPTY)
-    setErrorPlanilla(false)
     setFin(FIN_EMPTY)
     setShowForm(false)
     setLoading(false)
@@ -462,7 +449,7 @@ export default function AdminTorneosPage() {
           <h1 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#202124', margin: 0 }}>Torneos</h1>
           <p style={{ color: '#5f6368', margin: '4px 0 0', fontSize: '.875rem' }}>{torneos.length - archivadosCount} torneos activos{archivadosCount > 0 ? ` · ${archivadosCount} archivados` : ''}</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setErrorPlanilla(false); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setVerAvanzado(false); setShowForm(true) }}
+        <button onClick={() => { setForm(EMPTY); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setVerAvanzado(false); setShowForm(true) }}
           style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
           <Plus size={18}/> Nuevo torneo
         </button>
@@ -543,15 +530,6 @@ export default function AdminTorneosPage() {
               </div>
             </div>
 
-            {/* Planilla del torneo: Fútbol de salón o Fútbol 11 (capturas reales de las dos) */}
-            <div id="selector-planilla-torneo">
-              <SelectorPlanillaTorneo
-                value={form.planilla_tipo}
-                onChange={v => { setForm(f => ({ ...f, planilla_tipo: v })); setErrorPlanilla(false) }}
-                mostrarError={errorPlanilla}
-                requerido={!editId}
-                isMobile={isMobile}/>
-            </div>
 
 
               </>
@@ -738,10 +716,25 @@ export default function AdminTorneosPage() {
       </div>
 
       {/* Lista de torneos en tarjetas */}
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && torneos.length === 0 ? (
+        <div style={{ padding: isMobile ? '28px 20px' : '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', textAlign: 'center' }}>
+          <Trophy size={40} color="#1a73e8" style={{ marginBottom: '12px' }}/>
+          <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#202124', marginBottom: '6px' }}>Crea tu primer torneo</div>
+          <div style={{ fontSize: '.85rem', color: '#5f6368', lineHeight: 1.5, maxWidth: '420px', margin: '0 auto 18px' }}>Son solo 2 pasos: primero el nombre y las fechas, luego las reglas y el dinero. Después la app te va diciendo qué sigue.</div>
+          <button onClick={() => { setForm(EMPTY); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setVerAvanzado(false); setShowForm(true) }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '10px', padding: '13px 26px', minHeight: '48px', cursor: 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: '700' }}>
+            <Plus size={18}/> Crear mi primer torneo
+          </button>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '22px' }}>
+            {['1 Registrar equipos', '2 Crear grupos', '3 Programar partidos', '4 Anotar resultados'].map(t => (
+              <span key={t} style={{ fontSize: '.72rem', fontWeight: '600', color: '#5f6368', background: '#f1f3f4', borderRadius: '14px', padding: '5px 12px' }}>{t}</span>
+            ))}
+          </div>
+        </div>
+      ) : filtered.length === 0 ? (
         <div style={{ padding: '48px', textAlign: 'center', color: '#9aa0a6', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px' }}>
           <Trophy size={40} style={{ opacity: .3, marginBottom: '12px' }}/>
-          <div style={{ fontSize: '.875rem' }}>No hay torneos aún</div>
+          <div style={{ fontSize: '.875rem' }}>{search ? 'No encontramos torneos con ese nombre' : 'No hay torneos aún'}</div>
         </div>
       ) : (
         <div className="gm-stagger" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

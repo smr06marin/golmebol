@@ -9,11 +9,11 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { notify } from '../../lib/notify'
 
 const MENU_COMPLETO = [
-  { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos' },
+  { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos', ayuda: 'Crea y maneja tus torneos, equipos, calendario y resultados' },
   { icon: <Globe size={22}/>,        label: 'MI DOMINIO', ruta: '/admin/perfil-organizador', ocultoOrganizador: true },
-  { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true },
-  { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true },
-  { icon: <Ban size={22}/>,          label: 'SUSPENSIONES', ruta: '/admin/suspensiones' },
+  { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true, ayuda: 'Todos los equipos registrados en la plataforma' },
+  { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true, ayuda: 'Todos los jugadores registrados en la plataforma' },
+  { icon: <Ban size={22}/>,          label: 'SUSPENSIONES', ruta: '/admin/suspensiones', ayuda: 'Jugadores sancionados: quita o extiende sanciones y pide vetos' },
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias', ocultoOrganizador: true },
@@ -21,7 +21,7 @@ const MENU_COMPLETO = [
   { icon: <UserCheck size={22}/>,    label: 'ÁRBITROS',   ruta: '/admin/arbitros',  soloAdmin: true },
   { icon: <GraduationCap size={22}/>,label: 'ESCUELAS',   ruta: '/admin/escuelas',  soloAdmin: true },
   { icon: <Building2 size={22}/>,    label: 'ESCENARIOS', ruta: '/admin/escenarios',soloAdmin: true },
-  { icon: <Radio size={22}/>,        label: 'EN VIVO',    ruta: '/admin/config-sitio' },
+  { icon: <Radio size={22}/>,        label: 'EN VIVO',    ruta: '/admin/config-sitio', ayuda: 'Transmite tus partidos y controla el marcador en pantalla' },
   { icon: <Megaphone size={22}/>,    label: 'PATROCINADORES', ruta: '/admin/patrocinadores', soloAdmin: true },
   { icon: <UserCog size={22}/>,      label: 'USUARIOS',   ruta: '/admin/usuarios',  soloAdmin: true },
 ]
@@ -117,7 +117,7 @@ export default function AdminLayout() {
             {MENU.map(item => {
               const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
               return (
-                <div key={item.ruta} onClick={() => navigate(item.ruta)} title={item.label}
+                <div key={item.ruta} onClick={() => navigate(item.ruta)} title={item.ayuda ? `${item.label} — ${item.ayuda}` : item.label}
                   style={{ width: '84px', minHeight: '54px', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', padding: '6px 2px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent', transition: 'background .15s' }}
                   onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f1f3f4' }}
                   onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
@@ -172,9 +172,15 @@ export default function AdminLayout() {
                 <span style={{ color: '#fff', fontSize: '.85rem', fontWeight: 'bold' }}>G</span>
               </div>
             )}
-            <div style={{ fontSize: '.95rem', fontWeight: '600', color: '#202124', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {MENU.find(m => location.pathname === m.ruta || location.pathname.startsWith(m.ruta + '/'))?.label || 'PANEL ADMIN'}
-            </div>
+            {(() => {
+              const actual = MENU.find(m => location.pathname === m.ruta || location.pathname.startsWith(m.ruta + '/'))
+              return (
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '.95rem', fontWeight: '600', color: '#202124', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.25 }}>{actual?.label || 'PANEL ADMIN'}</div>
+                  {actual?.ayuda && <div style={{ fontSize: '.68rem', color: '#80868b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{actual.ayuda}</div>}
+                </div>
+              )
+            })()}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
             <button onClick={() => navigate('/')}
