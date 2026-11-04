@@ -3038,6 +3038,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
   // Todo lo que el equipo sigue debiendo en este torneo: inscripción + multas/W/deudas
   // anotadas + tarjetas sin pagar (lo mismo que ves como "debe" en su tarjeta de Finanzas).
+  // La deuda personal (x2 repartida entre jugadores) es SOLO para los torneos que organiza Golmebol
+  // (sin organizador externo). En torneos de organizadores externos no se ofrece ni se cobra.
+  const esTorneoGolmebol = !!torneo && !torneo.organizador_id
+
   function deudaTotalEquipo(r) {
     const llevar = !!torneo?.finanzas_config?.llevar_cuentas
     return Math.max(r.saldo || 0, 0) + (llevar ? Math.max(r.saldoInscripcion || 0, 0) + Math.max(r.saldoMultas || 0, 0) : 0)
@@ -3052,6 +3056,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // Si se usa otra vez para el mismo equipo, reemplaza la deuda anterior que siga sin
   // pagar (no la duplica) y no vuelve a cobrarle a quien ya la pagó.
   async function crearDeudasPersonalesEquipo(equipo, deudaEquipo) {
+    if (!esTorneoGolmebol) throw new Error('Esto solo aplica a torneos organizados por Golmebol')
     const { data: registros, error: errReg } = await supabase
       .from('tournament_player_registrations')
       .select('player_id')
@@ -3088,7 +3093,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   async function handleBloquearEquipoPorInscripcion(equipo, deudaEquipo) {
-    if (!(await confirmar(`¿Pasar la deuda de ${equipo.name} a sus jugadores?\n\nEl equipo debe ${fmt(deudaEquipo)} → se duplica a ${fmt(deudaEquipo * 2)} y se divide entre los jugadores que hicieron parte del equipo en ESTE torneo.\n\nCada jugador queda con su parte como deuda personal: no podrá inscribirse en próximos torneos tuyos hasta pagarla.`))) return
+    if (!(await confirmar(`¿Pasar la deuda de ${equipo.name} a sus jugadores?\n\nEl equipo debe ${fmt(deudaEquipo)} → se duplica a ${fmt(deudaEquipo * 2)} y se divide entre los jugadores que hicieron parte del equipo en ESTE torneo.\n\nCada jugador queda con su parte como deuda personal: no podrá inscribirse en próximos torneos de Golmebol hasta pagarla.`))) return
     try {
       const res = await crearDeudasPersonalesEquipo(equipo, deudaEquipo)
       if (res.sinJugadores) return showMsg('Este equipo no tiene jugadores inscritos en el torneo', 'error')
@@ -7827,10 +7832,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     )}
                   </div>
                   <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '10px' }}>¿Quién me debe?</div>
-                  {llevar && deben.length > 0 && (
+                  {llevar && esTorneoGolmebol && deben.length > 0 && (
                     <div style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
                       <div style={{ fontSize: '.78rem', color: '#5f6368', lineHeight: 1.45, marginBottom: '8px' }}>
-                        ¿Se acabó el torneo? Lo que cada equipo sigue debiendo se <b>duplica</b> y se <b>divide entre los jugadores que fueron de ese equipo en este torneo</b>. Esa parte les sale como deuda personal en los próximos torneos tuyos.
+                        ¿Se acabó el torneo? Lo que cada equipo sigue debiendo se <b>duplica</b> y se <b>divide entre los jugadores que fueron de ese equipo en este torneo</b>. Esa parte les sale como deuda personal en los próximos torneos de Golmebol.
                       </div>
                       <button onClick={() => handleBloquearTodosLosEquipos(fin.filas)}
                         style={{ minHeight: '42px', width: '100%', padding: '9px 14px', background: '#a30000', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.84rem', fontWeight: '700' }}>
@@ -8144,7 +8149,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
                       </button>
-                      {deudaTotalEquipo(r) > 0 && (
+                      {esTorneoGolmebol && deudaTotalEquipo(r) > 0 && (
                         <button onClick={e => { e.stopPropagation(); handleBloquearEquipoPorInscripcion(r.equipo, deudaTotalEquipo(r)) }}
                           title="Duplica lo que debe el equipo y lo divide entre los jugadores que fueron del equipo en este torneo. Cada uno queda con su parte como deuda personal."
                           style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#a30000', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
@@ -8345,7 +8350,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 jugadores. Se generan MANUALMENTE con el botón "🚫 Pasar deuda a jugadores" de
                 cada equipo, arriba en "Cuentas por equipo" — ya no se crean
                 solas al guardar los logros del torneo. Es lo único que sigue
-                al jugador a próximos torneos del MISMO organizador — las
+                al jugador a próximos torneos de Golmebol — las
                 tarjetas sin pagar no bloquean nada. */}
             {(() => {
               const deudasPersonales = movimientos.filter(m => m.tipo === 'deuda_personal' && !m.pagado)
@@ -8355,7 +8360,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>🚫 Deudas personales pendientes ({deudasPersonales.length})</div>
                   <div style={{ background: '#fff', border: '1px solid #fad2cf', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                     <div style={{ padding: '10px 16px', background: '#fce8e6', fontSize: '.72rem', color: '#a30000' }}>
-                      Bloquean la inscripción del jugador en próximos torneos de este mismo organizador, hasta que se marquen pagadas.
+                      Bloquean la inscripción del jugador en próximos torneos de Golmebol, hasta que se marquen pagadas.
                     </div>
                     {deudasPersonales.map((mv, i) => (
                       <div key={mv.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 16px', borderBottom: i < deudasPersonales.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
