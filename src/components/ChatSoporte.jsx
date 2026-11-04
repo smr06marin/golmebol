@@ -63,8 +63,19 @@ function ChatInterno() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'soporte_mensajes', filter: `chat_id=eq.${chat.id}` },
         p => setMensajes(prev => prev.some(m => m.id === p.new.id) ? prev : [...prev.filter(m => !(m.local && m.texto === p.new.texto && p.new.de === 'usuario')), p.new]))
       .subscribe()
-    const t = setInterval(() => { if (document.visibilityState === 'visible') cargar(chat.id) }, abierto ? 15000 : 60000)
-    return () => { clearInterval(t); supabase.removeChannel(canal) }
+    const t = setInterval(() => { if (document.visibilityState === 'visible') cargar(chat.id) }, abierto ? 8000 : 30000)
+    // Al volver a la ventana (app instalada, otra pestaña, internet que regresa) se actualiza de inmediato
+    const alVolver = () => { if (document.visibilityState === 'visible') cargar(chat.id) }
+    document.addEventListener('visibilitychange', alVolver)
+    window.addEventListener('focus', alVolver)
+    window.addEventListener('online', alVolver)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', alVolver)
+      window.removeEventListener('focus', alVolver)
+      window.removeEventListener('online', alVolver)
+      supabase.removeChannel(canal)
+    }
   }, [chat?.id, abierto, cargar])
 
   const sinLeer = useMemo(() => chat ? mensajes.filter(m => m.de === 'soporte' && new Date(m.created_at) > new Date(chat.leido_usuario_at)).length : 0, [mensajes, chat])
