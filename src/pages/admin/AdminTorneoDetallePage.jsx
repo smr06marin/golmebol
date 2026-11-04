@@ -1192,6 +1192,7 @@ export default function AdminTorneoDetallePage() {
   const [canchasAbiertas, setCanchasAbiertas] = useState(false) // lista de canchas plegada cuando ya hay canchas
   const [elegirCrear, setElegirCrear] = useState(false) // menú "Programar partidos" (un partido / una jornada)
   const enFlujoCal = subTab === 'jornada' || (subTab === 'partidos' && showFormPartido) // creando algo: se muestra "‹ Calendario" para volver
+  const [equiposAbiertos, setEquiposAbiertos] = useState({}) // { team_id: true } equipo desplegado en la lista de pendientes de Finanzas
   const [histEquipos, setHistEquipos] = useState({}) // { team_id: true } historial de pagos abierto por equipo
   // Multas pendientes por equipo (W + deudas anotadas − pagos de multa), para avisar al programar partidos.
   // Misma cuenta que "W / Multas" de Finanzas.
@@ -7791,46 +7792,78 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     {lista.length === 0 && !soloMultas && (
                       <div style={{ background: '#f8fff9', border: '1px solid #ceead6', borderRadius: '12px', padding: '14px 16px', fontSize: '.85rem', color: '#137333', fontWeight: '700' }}>Nadie te debe nada por ahora.</div>
                     )}
-                    {lista.map(r => (
-                      <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 16px' }}>
-                        <div style={{ minWidth: 0, flex: '1 1 160px' }}>
-                          <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
-                          <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{soloMultas ? 'Multa / W / deuda anotada' : (conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto')}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <b style={{ color: '#d93025', fontSize: '1.05rem' }}>{fmt(soloMultas ? r.saldoMultas : pendiente(r))}</b>
-                          <button onClick={() => abrirPago(r, soloMultas ? 'pago_cargos' : undefined)}
-                            style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
-                            Registrar pago
-                          </button>
-                          <button onClick={() => abrirDeuda(r)} title="Anotarle una deuda a este equipo (ej: se fue sin pagar el arbitraje)"
-                            style={{ background: '#fff', color: '#d93025', border: '1px solid #fad2cf', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
-                            ➖ Anotar deuda
-                          </button>
-                        </div>
-                        <div style={{ flexBasis: '100%', borderTop: '1px solid #f1f3f4', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {(soloMultas ? conceptos(r).filter(c => c.clave === 'multa') : conceptos(r)).map(c => (
-                            <div key={c.clave}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>
-                                <span>{c.etiqueta}</span><span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
-                              </div>
-                              {c.detalle && <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '1px' }}>{c.detalle}</div>}
-                              {c.clave === 'tarj' && c.jugadores && c.jugadores.length > 0 && (
-                                <DetalleTarjetasEquipo jugadores={c.jugadores} partidos={partidos} onYaPago={j => handleYaPagoMarcada(c.equipo, j)} />
-                              )}
+                    {lista.map(r => {
+                      const abierto = !!equiposAbiertos[r.equipo.id]
+                      return (
+                      <div key={r.equipo.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', overflow: 'hidden' }}>
+                        <button onClick={() => setEquiposAbiertos(m => ({ ...m, [r.equipo.id]: !m[r.equipo.id] }))} aria-expanded={abierto}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', minHeight: '56px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
+                            <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{soloMultas ? 'Multa / W / deuda anotada' : (conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto')}</div>
+                          </div>
+                          <b style={{ color: '#d93025', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>{fmt(soloMultas ? r.saldoMultas : pendiente(r))}</b>
+                          <span style={{ color: '#5f6368', fontSize: '.9rem' }}>{abierto ? '▴' : '▾'}</span>
+                        </button>
+                        {abierto && (
+                          <div style={{ borderTop: '1px solid #f1f3f4', padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <button onClick={() => abrirPago(r, soloMultas ? 'pago_cargos' : undefined)}
+                                style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                                Registrar pago
+                              </button>
+                              <button onClick={() => abrirDeuda(r)} title="Anotarle una deuda a este equipo (ej: se fue sin pagar el arbitraje)"
+                                style={{ background: '#fff', color: '#d93025', border: '1px solid #fad2cf', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                                ➖ Anotar deuda
+                              </button>
                             </div>
-                          ))}
-                        </div>
-                        {historialEquipo(r)}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {(soloMultas ? conceptos(r).filter(c => c.clave === 'multa') : conceptos(r)).map(c => (
+                                <div key={c.clave}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.84rem', fontWeight: '700', color: '#202124' }}>
+                                    <span>{c.etiqueta}</span><span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
+                                  </div>
+                                  {c.detalle && <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '1px' }}>{c.detalle}</div>}
+                                  {c.clave === 'tarj' && c.jugadores && c.jugadores.length > 0 && (
+                                    <DetalleTarjetasEquipo jugadores={c.jugadores} partidos={partidos} onYaPago={j => handleYaPagoMarcada(c.equipo, j)} />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            {historialEquipo(r)}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                    {(soloMultas ? [] : alDia).map(r => (
-                      <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px 10px', background: '#f8fff9', border: '1px solid #e1f3e5', borderRadius: '12px', padding: '10px 16px' }}>
-                        <div style={{ fontSize: '.88rem', fontWeight: '700', color: '#202124' }}>{r.equipo.name}</div>
-                        <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#137333', background: '#e6f4ea', borderRadius: '999px', padding: '4px 12px' }}>Al día</span>
-                        {historialEquipo(r)}
+                      )
+                    })}
+                    {(soloMultas ? [] : alDia).map(r => {
+                      const abierto = !!equiposAbiertos[r.equipo.id]
+                      return (
+                      <div key={r.equipo.id} style={{ background: '#f8fff9', border: '1px solid #e1f3e5', borderRadius: '12px', overflow: 'hidden' }}>
+                        <button onClick={() => setEquiposAbiertos(m => ({ ...m, [r.equipo.id]: !m[r.equipo.id] }))} aria-expanded={abierto}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', minHeight: '48px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                          <div style={{ flex: 1, minWidth: 0, fontSize: '.88rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
+                          <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#137333', background: '#e6f4ea', borderRadius: '999px', padding: '4px 12px' }}>Al día</span>
+                          <span style={{ color: '#5f6368', fontSize: '.9rem' }}>{abierto ? '▴' : '▾'}</span>
+                        </button>
+                        {abierto && (
+                          <div style={{ borderTop: '1px solid #e1f3e5', padding: '8px 16px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <button onClick={() => abrirPago(r)}
+                                style={{ background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                                Registrar pago
+                              </button>
+                              <button onClick={() => abrirDeuda(r)}
+                                style={{ background: '#fff', color: '#d93025', border: '1px solid #fad2cf', borderRadius: '8px', padding: '9px 14px', minHeight: '40px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                                ➖ Anotar deuda
+                              </button>
+                            </div>
+                            {historialEquipo(r)}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                   <button onClick={() => setVerDetalleFin(v => !v)} aria-expanded={verDetalleFin}
                     style={{ marginTop: '14px', width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '12px', cursor: 'pointer', color: '#1a73e8', fontSize: '.85rem', fontWeight: '700', minHeight: '46px' }}>
