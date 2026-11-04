@@ -27,8 +27,9 @@ import { comprimirImagen } from '../../lib/imageCompress'
 import ModalQuitarFondo from '../../components/ModalQuitarFondo'
 import LinkFinanzasEquipos from '../../components/LinkFinanzasEquipos'
 import DetalleTarjetasEquipo from '../../components/DetalleTarjetasEquipo'
+import InformesArbitrales from '../../components/InformesArbitrales'
 import { guardarOriginal, guardarOriginalDesdeUrl, restaurarOriginal, useTieneOriginal } from '../../lib/logoOriginal'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, FileText, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
@@ -222,6 +223,7 @@ const TABS = [
   { id: 'eliminatorias',   label: 'Eliminatorias',   icon: <GitBranch size={16}/>, paso: 4 },
   { id: 'estadisticas',    label: 'Estadísticas',    icon: <BarChart2 size={16}/>, mas: true },
   { id: 'finanzas',        label: 'Finanzas',        icon: <DollarSign size={16}/>, mas: true },
+  { id: 'informes',        label: 'Informes',        icon: <FileText size={16}/>,   mas: true },
   { id: 'personalizacion', label: 'Personalización', icon: <Palette size={16}/>,   mas: true },
 ]
 
@@ -6742,6 +6744,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           )}
         </div>
       ))}
+
+      {/* ── TAB INFORMES ARBITRALES ── */}
+      {tab === 'informes' && <InformesArbitrales torneoId={id} partidos={partidos}/>}
 
       {/* ── TAB ESTADÍSTICAS ── */}
       {tab === 'estadisticas' && (
