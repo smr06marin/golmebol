@@ -4222,7 +4222,38 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const n = normTxt(txt)
     if (!n) return null
     const c = canchas.filter(x => normTxt(x.nombre) === n || normTxt(etiquetaCancha(x)) === n || (normTxt(x.nombre).length >= 4 && n.includes(normTxt(x.nombre))))
-    return c.length === 1 ? c[0] : null
+    if (c.length === 1) return c[0]
+    // Cancha renombrada: otros partidos con el MISMO texto ya tienen su cancha asignada
+    const ids = [...new Set(partidos.filter(x => normTxt(x.location) === n && idCanchaDePartido(x)).map(x => idCanchaDePartido(x)))]
+    return ids.length === 1 ? (canchas.find(x => String(x.id) === String(ids[0])) || null) : null
+  }
+  // Si ese día TODOS los demás partidos del torneo se jugaron en una sola cancha, esa es la probable
+  function canchaDeEseDia(p) {
+    const fecha = playedAtToLocal(p.played_at).fecha
+    if (!fecha) return null
+    const ids = [...new Set(partidos.filter(x => x.id !== p.id && idCanchaDePartido(x) && playedAtToLocal(x.played_at).fecha === fecha).map(x => idCanchaDePartido(x)))]
+    return ids.length === 1 ? (canchas.find(x => String(x.id) === String(ids[0])) || null) : null
+  }
+  async function usarCanchaDelDia() {
+    const lista = partidos.filter(p => !idCanchaDePartido(p) && !p.location && canchaDeEseDia(p))
+    if (lista.length === 0) return
+    if (!(await confirmar(`¿Usar la cancha de ese día en ${lista.length} partido${lista.length > 1 ? 's' : ''}? A cada uno se le pone la cancha donde se jugaron los demás partidos de su mismo día. Revisa que sea la correcta; puedes cambiarla uno por uno.`))) return
+    setAsignandoMasiva(true)
+    let fallos = 0
+    for (const p of lista) {
+      const c = canchaDeEseDia(p)
+      let { error } = await supabase.from('matches').update({ location: c.nombre, cancha_id: String(c.id) }).eq('id', p.id)
+      if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').update({ location: c.nombre }).eq('id', p.id))
+      if (error) fallos += 1
+    }
+    setAsignandoMasiva(false)
+    showMsg(fallos ? `Se asignaron ${lista.length - fallos}; ${fallos} no se pudieron guardar` : `Cancha del día asignada a ${lista.length} partido${lista.length > 1 ? 's' : ''} ✓`, fallos ? 'error' : 'ok')
+    fetchPartidos()
+  }
+  async function crearCanchaDesdeTexto(texto) {
+    const { data, error } = await supabase.from('canchas').insert({ tournament_id: id, nombre: texto.trim(), escenario: null }).select().single()
+    if (error) return showMsg('No se pudo crear la cancha', 'error')
+    setCanchas(prev => [...prev, data]); showMsg(`Cancha «${texto.trim()}» creada ✓ Los partidos con ese lugar ya quedan ubicados`)
   }
   async function reconocerCanchasEscritas() {
     const lista = partidos.filter(p => !idCanchaDePartido(p) && canchaPorTexto(p.location))
@@ -6014,6 +6045,26 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         <div style={{ background: '#e6f4ea', border: '1px solid #b7e1c1', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                           <div style={{ flex: '1 1 200px', fontSize: '.78rem', color: '#137333', lineHeight: 1.4 }}><b>{rec.length} de estos ya tienen el lugar escrito</b> y coincide con una de tus canchas.</div>
                           <button disabled={asignandoMasiva} onClick={reconocerCanchasEscritas} style={{ minHeight: '42px', padding: '0 14px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '800' }}>Reconocer las {rec.length}</button>
+                        </div>
+                      )
+                    })()}
+                    {(() => {
+                      const textos = {}
+                      sinCancha.forEach(p => { const t = (p.location || '').trim(); if (t && !canchaPorTexto(t) && !canchas.some(c => normTxt(c.nombre).startsWith(normTxt(t)))) textos[t] = (textos[t] || 0) + 1 })
+                      return Object.entries(textos).map(([t, n]) => (
+                        <div key={t} style={{ background: '#e8f0fe', border: '1px solid #c6dafc', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 200px', fontSize: '.78rem', color: '#174ea6', lineHeight: 1.4 }}><b>«{t}»</b> está escrito en {n} partido{n > 1 ? 's' : ''}, pero no es una de tus canchas.</div>
+                          <button onClick={() => crearCanchaDesdeTexto(t)} style={{ minHeight: '42px', padding: '0 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '800' }}>Crear esa cancha</button>
+                        </div>
+                      ))
+                    })()}
+                    {(() => {
+                      const dia = sinCancha.filter(p => !p.location && canchaDeEseDia(p))
+                      if (dia.length === 0) return null
+                      return (
+                        <div style={{ background: '#f3e8fd', border: '1px solid #e1c8f7', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 200px', fontSize: '.78rem', color: '#5b2a86', lineHeight: 1.4 }}><b>{dia.length} no tienen lugar anotado</b>, pero ese mismo día los demás partidos se jugaron todos en una sola cancha. Es la probable.</div>
+                          <button disabled={asignandoMasiva} onClick={usarCanchaDelDia} style={{ minHeight: '42px', padding: '0 14px', background: '#7b3fc4', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '800' }}>Usar la cancha de ese día ({dia.length})</button>
                         </div>
                       )
                     })()}
