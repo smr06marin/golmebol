@@ -16,6 +16,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { enviarTexto, destinoSoporte, soloDigitos } from './_whatsapp.js'
+import { guardarRespuesta, AYUDA_RUTA } from './_soporteRespuesta.js'
 
 export const config = { api: { bodyParser: false } }
 
@@ -36,7 +37,6 @@ function firmaValida(crudo, cabecera) {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-const AYUDA = 'No supe a quién contestarle. Mantén presionado el mensaje del organizador y toca "Responder", o empieza tu mensaje con su número, por ejemplo: #12 hola, ya te ayudo.'
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -68,35 +68,8 @@ export default async function handler(req, res) {
             await enviarTexto('Por ahora el chat solo muestra texto. Escribe tu respuesta en letras.', m.id).catch(() => {})
             continue
           }
-          let texto = m.text.body.trim()
-          let chatId = null
-
-          // 1) Respondiste a un mensaje concreto
-          if (m.context?.id) {
-            const { data: orig } = await admin.from('soporte_mensajes').select('chat_id').eq('wa_id', m.context.id).maybeSingle()
-            chatId = orig?.chat_id || null
-          }
-          // 2) "#12 texto"
-          if (!chatId) {
-            const num = texto.match(/^#(\d+)\s+([\s\S]+)/)
-            if (num) {
-              const { data: c } = await admin.from('soporte_chats').select('id').eq('codigo', Number(num[1])).maybeSingle()
-              if (c) { chatId = c.id; texto = num[2].trim() }
-            }
-          }
-          // 3) El último que escribió y sigue sin respuesta
-          if (!chatId) {
-            const { data: ult } = await admin.from('soporte_mensajes').select('chat_id, created_at').eq('de', 'usuario').order('created_at', { ascending: false }).limit(1).maybeSingle()
-            if (ult) {
-              const { count } = await admin.from('soporte_mensajes').select('id', { count: 'exact', head: true }).eq('chat_id', ult.chat_id).eq('de', 'soporte').gt('created_at', ult.created_at)
-              if (!count) chatId = ult.chat_id
-            }
-          }
-          if (!chatId) { await enviarTexto(AYUDA, m.id).catch(() => {}); continue }
-
-          const { error } = await admin.from('soporte_mensajes').insert({ chat_id: chatId, de: 'soporte', texto: texto.slice(0, 2000), wa_id: m.id })
-          if (error && error.code !== '23505') throw error // 23505 = Meta reenvió el mismo aviso: ya estaba guardado
-          if (!error) await admin.from('soporte_chats').update({ ultimo_mensaje_at: new Date().toISOString() }).eq('id', chatId)
+          const r = await guardarRespuesta(admin, { texto: m.text.body, citadoId: m.context?.id, idMensaje: m.id })
+          if (!r.ok) await enviarTexto(AYUDA_RUTA, m.id).catch(() => {})
         }
       }
     }

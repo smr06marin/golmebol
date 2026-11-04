@@ -1,4 +1,6 @@
-# Chat de ayuda con WhatsApp — guía de puesta en marcha
+# Chat de ayuda con WhatsApp — guía de puesta en marcha (opcional, para más adelante)
+
+> Por ahora el chat funciona con **Telegram** (ver `Guia_Chat_Ayuda_Telegram.md`). Esta guía es para cuando tengas un número aparte para la línea de WhatsApp. Si las variables `TELEGRAM_*` están puestas, se usa Telegram; para pasar a WhatsApp, quítalas.
 
 **Cómo funciona:** el organizador escribe en el botón "Ayuda" del admin → el mensaje te llega a tu WhatsApp
 desde la línea de soporte → tú respondes en WhatsApp → la respuesta aparece en su chat. Todo el historial
@@ -49,6 +51,14 @@ Pasado ese tiempo hay que usar una plantilla aprobada. En **WhatsApp Manager →
 2. En el admin, abre el botón **Ayuda** y escribe algo.
 3. Te llega a WhatsApp con el número del chat (#12), el correo y la pantalla donde estaba.
 4. **Responde a ese mensaje** (mantén presionado → *Responder*). Aparece en el chat del organizador.
+
+## 7. Encender el botón "Ayuda" (interruptor de lanzamiento)
+El botón está **apagado por defecto**: no aparece para nadie hasta que tú lo enciendas.
+En Vercel → Environment Variables crea `VITE_CHAT_AYUDA` y **vuelve a desplegar**:
+- `admin` → solo lo ven los administradores (úsalo para probar con WhatsApp real).
+- `todos` → lo ven todos los usuarios del admin (cuando ya funcione al 100%).
+- vacío o borrada → apagado.
+(Es la única variable de este chat que SÍ lleva `VITE_`, porque solo decide si se muestra el botón; no guarda ninguna clave.)
 
 ## Cómo responder
 - Lo normal: mantén presionado el mensaje del organizador → **Responder**.

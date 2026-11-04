@@ -4,6 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { enviarTexto, enviarPlantilla, waConfigurado } from './_whatsapp.js'
+import { enviarTelegram, telegramConfigurado } from './_telegram.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -12,7 +13,10 @@ const MAX_POR_HORA = 60
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' })
-  if (!SUPABASE_URL || !SERVICE_KEY) return res.status(500).json({ error: 'Falta SUPABASE_SERVICE_ROLE_KEY' })
+  if (!SUPABASE_URL || !SERVICE_KEY) {
+    console.error('soporte-enviar: falta SUPABASE_SERVICE_ROLE_KEY en Vercel')
+    return res.status(500).json({ error: 'El chat no está disponible por ahora. Intenta de nuevo más tarde.' })
+  }
 
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   if (!token) return res.status(401).json({ error: 'Inicia sesión para escribir' })
@@ -41,12 +45,12 @@ export default async function handler(req, res) {
     if ((ultMin || 0) >= MAX_POR_MINUTO || (ultHora || 0) >= MAX_POR_HORA) return res.status(429).json({ error: 'Espera un momento antes de enviar más mensajes' })
 
     const { data: msg, error: em } = await admin.from('soporte_mensajes')
-      .insert({ chat_id: chat.id, de: 'usuario', texto, wa_estado: waConfigurado() ? null : 'sin_configurar' })
+      .insert({ chat_id: chat.id, de: 'usuario', texto, wa_estado: (telegramConfigurado() || waConfigurado()) ? null : 'sin_configurar' })
       .select('id, created_at').single()
     if (em) return res.status(500).json({ error: 'No se pudo guardar el mensaje' })
     await admin.from('soporte_chats').update({ ultimo_mensaje_at: msg.created_at, ultimo_contexto: contexto || null, email: user.email || chat.email }).eq('id', chat.id)
 
-    if (!waConfigurado()) return res.status(200).json({ ok: true, id: msg.id, wa_estado: 'sin_configurar' })
+    if (!telegramConfigurado() && !waConfigurado()) return res.status(200).json({ ok: true, id: msg.id, wa_estado: 'sin_configurar' })
 
     // Nombre del torneo si estaba dentro de uno
     let torneo = ''
@@ -56,7 +60,10 @@ export default async function handler(req, res) {
     const donde = torneo ? `Torneo ${torneo}` : (contexto || 'sin pantalla')
 
     let waId = null, estado = 'enviado'
-    try {
+    if (telegramConfigurado()) {
+      try { waId = await enviarTelegram(`💬 Soporte #${chat.codigo}\n👤 ${quien}\n📍 ${donde}\n\n${texto}\n\n↩️ Responde a ESTE mensaje para contestarle.`) }
+      catch (e) { estado = 'error'; console.error('soporte-enviar telegram:', e.message) }
+    } else try {
       waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n👤 ${quien}\n📍 ${donde}\n\n${texto}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
     } catch (e1) {
       // Pasadas 24 h desde tu último mensaje a la línea, WhatsApp solo deja avisar con una plantilla aprobada
@@ -69,6 +76,7 @@ export default async function handler(req, res) {
     await admin.from('soporte_mensajes').update({ wa_id: waId, wa_estado: estado }).eq('id', msg.id)
     return res.status(200).json({ ok: true, id: msg.id, wa_estado: estado })
   } catch (e) {
-    return res.status(500).json({ error: String(e.message || e).slice(0, 200) })
+    console.error('soporte-enviar:', e.message || e)
+    return res.status(500).json({ error: 'No se pudo enviar. Intenta de nuevo en un momento.' })
   }
 }

@@ -19,7 +19,7 @@ function diaTexto(iso) {
   return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })
 }
 
-export default function ChatSoporte() {
+function ChatInterno() {
   const { user } = useAuthStore()
   const isMobile = useIsMobile()
   const location = useLocation()
@@ -89,6 +89,13 @@ export default function ChatSoporte() {
     return () => { vp.removeEventListener('resize', medir); vp.removeEventListener('scroll', medir); setVv(null) }
   }, [abierto, isMobile])
 
+  // El sello "Creada por GOLMEBOL" (abajo a la derecha en celular) taparía el botón de enviar: sube mientras el chat está abierto
+  useEffect(() => {
+    if (!abierto || !isMobile) return
+    document.body.classList.add('gm-chat-abierto')
+    return () => document.body.classList.remove('gm-chat-abierto')
+  }, [abierto, isMobile])
+
   useEffect(() => {
     if (!abierto || !isMobile) return
     const antes = document.body.style.overflow
@@ -113,8 +120,8 @@ export default function ChatSoporte() {
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || 'No se pudo enviar')
       setMensajes(prev => prev.some(m => m.id === j.id) ? prev.filter(m => m.id !== tmp.id) : prev.map(m => m.id === tmp.id ? { ...m, id: j.id, local: false } : m))
-      if (j.wa_estado === 'error') setAviso('Tu mensaje quedó guardado, pero no pudimos avisarnos por WhatsApp. Lo veremos en cuanto entremos.')
-      if (j.wa_estado === 'sin_configurar') setAviso('Tu mensaje quedó guardado, pero el chat todavía no está conectado a WhatsApp, así que nadie lo recibe en el momento.')
+      if (j.wa_estado === 'error') setAviso('Tu mensaje quedó guardado, pero no pudimos avisar a soporte en este momento. Lo veremos en cuanto entremos.')
+      if (j.wa_estado === 'sin_configurar') setAviso('Tu mensaje quedó guardado, pero el chat todavía no está conectado, así que nadie lo recibe en el momento.')
     } catch (e) {
       setMensajes(prev => prev.map(m => m.id === tmp.id ? { ...m, fallo: true } : m))
       setAviso(e.message === 'Failed to fetch' ? 'Sin conexión. Revisa tu internet e intenta otra vez.' : e.message)
@@ -194,4 +201,15 @@ export default function ChatSoporte() {
       )}
     </>
   )
+}
+
+// Interruptor de lanzamiento (variable VITE_CHAT_AYUDA en Vercel; hay que volver a desplegar al cambiarla):
+//   (vacía) o "apagado" → el botón no existe para nadie, y no se crea ningún chat
+//   "admin"             → solo lo ven los administradores (para probar con WhatsApp real)
+//   "todos"             → lo ven todos los usuarios del admin
+export default function ChatSoporte() {
+  const { rol } = useAuthStore()
+  const modo = String(import.meta.env.VITE_CHAT_AYUDA || 'apagado').toLowerCase()
+  if (modo === 'todos' || (modo === 'admin' && rol?.rol === 'admin')) return <ChatInterno />
+  return null
 }

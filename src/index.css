@@ -232,6 +232,12 @@ body.gm-planilla-abierta .gm-marca-golmebol {
   }
 }
 
+/* Chat de ayuda abierto en celular: el sello sube al borde de arriba para no tapar el botón de enviar. */
+body.gm-chat-abierto .gm-marca-golmebol {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+}
+
 /* ── Logros: el "show" ───────────────────────────────
    Animaciones para que las barras y logros se sientan vivos
    e inciten a completarlos. Solo transform/opacity (rápidas
