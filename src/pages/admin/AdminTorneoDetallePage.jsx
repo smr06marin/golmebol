@@ -3100,20 +3100,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   // "✓ Ya pagó" en el detalle de tarjetas de un equipo (un toque, sin llenar el cuadro de pago).
-  // (a) Tarjeta SIN marca de pago (la planilla no la puede marcar): se anota el pago con el nombre y la fecha del partido.
-  async function handleYaPagoSinMarca(equipo, f) {
-    const nombre = f.nombre || 'jugador sin registro'
-    const partido = `${f.rivalTxt}${f.fechaTxt ? ` (${f.fechaTxt})` : ''}`
-    if (!(await confirmar(`¿${nombre} ya pagó ${fmt(f.pendiente)} de esta tarjeta — ${partido}? Se anota el pago y se descuenta de la cuenta del equipo.`))) return
-    const { error } = await supabase.from('torneo_finanzas').insert({
-      tournament_id: id, team_id: equipo.id, player_id: f.player_id || null, tipo: 'pago_tarjetas', monto: f.pendiente,
-      concepto: `Tarjeta(s) de ${nombre} — ${partido}`,
-    })
-    if (error) return showMsg(errorAmigable(error, 'No se pudo registrar el pago'), 'error')
-    showMsg(`Pago de ${nombre} anotado ✓`)
-    await fetchFinanzas()
-  }
-  // (b) Tarjeta CON marca de pago: se anota el pago y se marcan como pagadas las tarjetas pendientes del jugador
+  // Se anota el pago y se marcan como pagadas las tarjetas pendientes del jugador
   //     (eso es lo que lo desbloquea en la planilla), igual que el cuadro de pago.
   async function handleYaPagoMarcada(equipo, f) {
     const nombre = f.nombre || 'jugador'
@@ -7828,32 +7815,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                 <span>{c.etiqueta}</span><span style={{ color: '#d93025' }}>{fmt(c.valor)}</span>
                               </div>
                               {c.detalle && <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '1px' }}>{c.detalle}</div>}
-                              {c.jugadores && c.jugadores.length > 0 && (
-                                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                  {c.jugadores.map((j, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '.74rem', color: '#3c4043' }}>
-                                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {j.pend.am > 0 ? '🟨'.repeat(j.pend.am) : ''}{j.pend.az > 0 ? '🟦'.repeat(j.pend.az) : ''}{j.pend.rj > 0 ? '🟥'.repeat(j.pend.rj) : ''} {j.nombre}
-                                      </span>
-                                      <span style={{ whiteSpace: 'nowrap' }}>{fmt(j.monto)}</span>
-                                    </div>
-                                  ))}
-                                </div>
+                              {c.clave === 'tarj' && c.jugadores && c.jugadores.length > 0 && (
+                                <DetalleTarjetasEquipo jugadores={c.jugadores} partidos={partidos} onYaPago={j => handleYaPagoMarcada(c.equipo, j)} />
                               )}
                             </div>
                           ))}
                         </div>
-                        {!soloMultas && r.tarjetas > 0 && (
-                          <DetalleTarjetasEquipo
-                            filas={statsTarjetas.filter(f => f.team_id === r.equipo.id)} marcas={marcasPago} partidos={partidos}
-                            precios={{ am: (torneo?.finanzas_config || {}).precio_amarilla || 0, az: (torneo?.finanzas_config || {}).precio_azul || 0, rj: (torneo?.finanzas_config || {}).precio_roja || 0 }}
-                            saldo={r.saldoTarjetas}
-                            pagos={movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'pago_tarjetas').map(m => ({ player_id: m.player_id, jugador: m.players?.name, concepto: m.concepto, monto: m.monto }))}
-                            onYaPagoSinMarca={f => handleYaPagoSinMarca(r.equipo, f)}
-                            onYaPagoMarcada={f => handleYaPagoMarcada(r.equipo, f)}
-                            onRegistrarDiferencia={monto => { setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(monto)), concepto: 'Ajuste: tarjetas marcadas como pagadas sin pago registrado' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
-                          />
-                        )}
                         {historialEquipo(r)}
                       </div>
                     ))}

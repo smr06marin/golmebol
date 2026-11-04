@@ -5,7 +5,7 @@
 //   · totales: cuánto debe, cuánto ha pagado
 // Mismas reglas de cobro que calcFinanzas() del panel de administración (AdminTorneoDetallePage):
 //   · Arbitraje: se cobra por cada partido jugado (no W) y se paga en efectivo en la cancha → no deja deuda.
-//   · Tarjetas: por jugador y por partido solo se cobra la de mayor valor; el pago entra como 'pago_tarjetas'.
+//   · Tarjetas: igual que el link de deudores — se debe lo que siga sin marcar como pagado (por partido, la más cara).
 //   · Inscripción: por equipo, o por jugador inscrito × tarifa; los abonos entran como 'abono_inscripcion'.
 //   · Multas: la W al que NO se presentó + deudas anotadas a mano sin pagar; los pagos entran como 'pago_cargos'.
 //   · Inscripción y multas solo se muestran si el torneo "lleva cuentas" (finanzas_config.llevar_cuentas).
@@ -41,40 +41,19 @@ export function armarCuentaEquipo(d) {
   }
 
   // ── Tarjetas ──
-  const eventos = d?.tarjetas_eventos || []
-  const conEventos = new Set(eventos.map(e => e.match_id))
-  const filas = []
-  eventos.forEach(e => filas.push({
-    player_id: e.player_id, match_id: e.match_id, nombre: e.nombre || 'Jugador sin registro',
-    am: e.event_type === 'yellow_card' ? 1 : 0, az: e.event_type === 'blue_card' ? 1 : 0, rj: e.event_type === 'red_card' ? 1 : 0,
-  }))
-  ;(d?.tarjetas_stats || []).forEach(s => {
-    if (conEventos.has(s.match_id)) return
-    const am = s.yellow_cards || 0, az = s.blue_cards || 0, rj = s.red_cards || 0
-    if (am + az + rj === 0) return
-    filas.push({ player_id: s.player_id, match_id: s.match_id, nombre: s.nombre || 'Jugador sin registro', am, az, rj })
-  })
-  const porJugadorPartido = new Map()
-  filas.forEach(f => {
-    const key = `${f.player_id || 'nr:' + f.nombre}|${f.match_id || 'sp'}`
-    const a = porJugadorPartido.get(key) || { ...f, am: 0, az: 0, rj: 0 }
-    a.am += f.am; a.az += f.az; a.rj += f.rj
-    porJugadorPartido.set(key, a)
-  })
-  // Qué tarjeta de cada jugador/partido ya está marcada como pagada (yellow_paid / blue_paid / red_paid):
-  // es EXACTAMENTE lo que usa el admin y el link de deudores para saber quién debe. Así los tres coinciden.
-  const flags = new Map((d?.tarjetas_stats || []).filter(s => s.player_id).map(s => [`${s.player_id}|${s.match_id}`, s]))
-  porJugadorPartido.forEach(f => {
-    const valor = Math.max(f.am > 0 ? pA : 0, f.az > 0 ? pZ : 0, f.rj > 0 ? pR : 0)
+  // MISMA regla que el link de deudores (ver_deudores_por_link): lo que se debe son las tarjetas que siguen SIN marcar
+  // como pagadas en las estadísticas del partido (yellow_paid / blue_paid / red_paid). Si en un partido hay varias
+  // sin pagar, solo se cobra la más cara. Así el equipo ve exactamente lo mismo que el organizador en el link de deudores.
+  ;(d?.tarjetas_stats || []).forEach(st => {
+    if (!st.player_id) return
+    const am = num(st.yellow_cards) > 0, az = num(st.blue_cards) > 0, rj = num(st.red_cards) > 0
+    if (!am && !az && !rj) return
+    const valor = Math.max(am ? pA : 0, az ? pZ : 0, rj ? pR : 0)
+    const pendiente = Math.max(am && !st.yellow_paid ? pA : 0, az && !st.blue_paid ? pZ : 0, rj && !st.red_paid ? pR : 0)
     if (valor <= 0) return
-    const p = porId.get(f.match_id)
-    const icono = (f.am > 0 ? '🟨'.repeat(f.am) : '') + (f.az > 0 ? '🟦'.repeat(f.az) : '') + (f.rj > 0 ? '🟥'.repeat(f.rj) : '')
-    const st = f.player_id ? flags.get(`${f.player_id}|${f.match_id}`) : null
-    // Con marcas de pago: debe lo más caro de lo que siga sin pagar de ese partido. Sin ellas (jugador sin registro): se toma como pendiente.
-    const pendiente = st
-      ? Math.max((st.yellow_cards || 0) > 0 && !st.yellow_paid ? pA : 0, (st.blue_cards || 0) > 0 && !st.blue_paid ? pZ : 0, (st.red_cards || 0) > 0 && !st.red_paid ? pR : 0)
-      : valor
-    add({ fecha: p?.played_at || null, tipo: 'cargo', grupo: 'tarjetas', titulo: `${icono} ${f.nombre}`, detalle: p ? `Partido vs ${rivalDe(p)}` : 'Tarjeta', monto: valor, pendiente })
+    const p = porId.get(st.match_id)
+    const icono = (am ? '🟨' : '') + (az ? '🟦' : '') + (rj ? '🟥' : '')
+    add({ fecha: p?.played_at || null, tipo: 'cargo', grupo: 'tarjetas', titulo: `${icono} ${st.nombre || 'Jugador'}`, detalle: p ? `Partido vs ${rivalDe(p)}` : 'Tarjeta', monto: valor, pendiente })
   })
   movimientos.filter(m => m.tipo === 'pago_tarjetas').forEach(m => {
     // El nombre sale del jugador del pago o, si no lo trae, del concepto ("Tarjeta(s) de NOMBRE — ...")
