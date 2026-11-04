@@ -2619,6 +2619,36 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // ── FINANZAS ────────────────────────────────────────
 
   const fmt = n => '$' + Math.round(n || 0).toLocaleString('es-CO')
+  // Cuentas por equipo como tabla simple (para Excel o para imprimir). Solo lee lo que ya está calculado.
+  const filasCuentasExport = f => {
+    const llevar = !!f.fc.llevar_cuentas
+    return f.filas.map(r => {
+      const insc = llevar ? Math.max(r.saldoInscripcion, 0) : 0
+      const mult = llevar ? Math.max(r.saldoMultas, 0) : 0
+      return [r.equipo.name, llevar ? insc : '', llevar ? Math.round(r.arbitrajes || 0) : '', llevar ? mult : '',
+        Math.round(r.tarjetas || 0), Math.round(r.pagado || 0), Math.round(Math.max(r.saldo, 0)), Math.round(Math.max(r.saldo, 0) + insc + mult)]
+    }).sort((a, b) => a[0].localeCompare(b[0]))
+  }
+  const ENCABEZADO_CUENTAS = ['Equipo', 'Inscripción pendiente', 'Arbitrajes', 'W / Multas pendiente', 'Tarjetas', 'Pagado', 'Saldo tarjetas y arbitrajes', 'Total que debe']
+  const descargarCuentasCSV = f => {
+    const celda = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'
+    const csv = '\ufeff' + [ENCABEZADO_CUENTAS, ...filasCuentasExport(f)].map(l => l.map(celda).join(';')).join('\r\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    const nombre = (torneo?.name || 'torneo').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
+    a.href = url; a.download = `cuentas_${nombre}_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
+  }
+  const imprimirCuentas = f => {
+    const w = window.open('', '_blank')
+    if (!w) { alert('Tu navegador bloqueó la ventana. Permite las ventanas emergentes para imprimir.'); return }
+    const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const filas = filasCuentasExport(f)
+    const tr = l => '<tr>' + l.map((v, i) => `<td${i ? ' class="n"' : ''}>${i === 0 ? esc(v) : (v === '' ? '—' : esc(fmt(v)))}</td>`).join('') + '</tr>'
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cuentas — ${esc(torneo?.name || '')}</title><style>body{font-family:Arial,sans-serif;padding:20px;color:#202124}h1{font-size:18px;margin:0 0 4px}p{margin:0 0 14px;font-size:12px;color:#5f6368}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #dadce0;padding:6px 8px;text-align:left}th{background:#f1f3f4}td.n{text-align:right}</style></head><body><h1>Cuentas por equipo — ${esc(torneo?.name || '')}</h1><p>${new Date().toLocaleDateString('es-CO')}</p><table><thead><tr>${ENCABEZADO_CUENTAS.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${filas.map(tr).join('')}</tbody></table></body></html>`)
+    w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
+  }
 
   // Puntos de mil EN VIVO mientras se escribe un monto (ej: "50.000"), para
   // no equivocarse de ceros al registrar plata. El estado siempre guarda solo
@@ -7923,17 +7953,37 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     )}
                   </div>
                   <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '10px' }}>¿Quién me debe?</div>
-                  {llevar && esTorneoGolmebol && deben.length > 0 && (
-                    <div style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
-                      <div style={{ fontSize: '.78rem', color: '#5f6368', lineHeight: 1.45, marginBottom: '8px' }}>
-                        ¿Se acabó el torneo? Lo que cada equipo sigue debiendo se <b>duplica</b> y se <b>divide entre los jugadores que fueron de ese equipo en este torneo</b>. Esa parte les sale como deuda personal en los próximos torneos de Golmebol.
+                  {llevar && esTorneoGolmebol && (() => {
+                    const conDeuda = fin.filas.filter(r => deudaTotalEquipo(r) > 0).sort(porNombreEquipo)
+                    if (conDeuda.length === 0) return null
+                    return (
+                    <details open={torneoFinalizado} style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '12px', padding: '4px 14px', marginBottom: '12px' }}>
+                      <summary style={{ cursor: 'pointer', minHeight: '44px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '.86rem', fontWeight: '700', color: '#a30000', listStyle: 'none' }}>
+                        🔒 Cerrar cuentas del torneo <span style={{ fontWeight: '500', color: '#5f6368', fontSize: '.76rem' }}>· {torneoFinalizado ? `${conDeuda.length} equipos con deuda` : 'solo cuando termine el torneo'}</span>
+                      </summary>
+                      <div style={{ fontSize: '.78rem', color: '#5f6368', lineHeight: 1.45, margin: '2px 0 10px' }}>
+                        Hazlo <b>solo cuando se acabó el torneo</b>. Lo que cada equipo sigue debiendo se <b>duplica</b> y se <b>divide entre los jugadores que fueron de ese equipo en este torneo</b>. Esa parte les sale como deuda personal en los próximos torneos de Golmebol. No se puede deshacer desde aquí.
+                      </div>
+                      <div style={{ marginBottom: '10px' }}>
+                        {conDeuda.map(r => (
+                          <div key={r.equipo.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', borderTop: '1px solid #f1f3f4' }}>
+                            <div style={{ flex: 1, minWidth: 0, fontSize: '.82rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
+                            <div style={{ fontSize: '.78rem', color: '#d93025', fontWeight: '700', flexShrink: 0 }}>{fmt(deudaTotalEquipo(r))}</div>
+                            <button onClick={() => handleBloquearEquipoPorInscripcion(r.equipo, deudaTotalEquipo(r))}
+                              title="Duplica lo que debe este equipo y lo divide entre sus jugadores"
+                              style={{ minHeight: '38px', padding: '6px 12px', background: '#fff', border: '1px solid #f3c2c0', borderRadius: '8px', cursor: 'pointer', color: '#a30000', fontSize: '.74rem', fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              Pasar a jugadores
+                            </button>
+                          </div>
+                        ))}
                       </div>
                       <button onClick={() => handleBloquearTodosLosEquipos(fin.filas)}
-                        style={{ minHeight: '42px', width: '100%', padding: '9px 14px', background: '#a30000', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.84rem', fontWeight: '700' }}>
-                        🚫 Pasar la deuda de los {deben.length} equipos a sus jugadores
+                        style={{ minHeight: '44px', width: '100%', padding: '9px 14px', margin: '0 0 10px', background: '#a30000', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.84rem', fontWeight: '700' }}>
+                        🚫 Pasar la deuda de los {conDeuda.length} equipos a sus jugadores
                       </button>
-                    </div>
-                  )}
+                    </details>
+                    )
+                  })()}
                   {hayMultas && (
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
                       <button onClick={() => setVerSoloMultas(false)} aria-pressed={!soloMultas}
@@ -8195,10 +8245,20 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             })()}
 
             {/* Cuentas por equipo */}
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '10px' }}>💳 Cuentas por equipo</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>💳 Cuentas por equipo</div>
+              {fin.filas.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button onClick={() => descargarCuentasCSV(fin)} title="Baja las cuentas en un archivo que abre Excel"
+                    style={{ minHeight: '38px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.76rem', fontWeight: '700' }}>⬇️ Descargar (Excel)</button>
+                  <button onClick={() => imprimirCuentas(fin)} title="Abre la tabla lista para imprimir o guardar como PDF"
+                    style={{ minHeight: '38px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.76rem', fontWeight: '700' }}>🖨️ Imprimir</button>
+                </div>
+              )}
+            </div>
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', marginBottom: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-             <div style={{ minWidth: '940px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
+             <div style={{ minWidth: isMobile ? 0 : '940px' }}>
+              {!isMobile && <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', fontSize: '.68rem', fontWeight: '700', color: '#5f6368', gap: '4px' }}>
                 <div>EQUIPO</div>
                 <div style={{ textAlign: 'right' }}>INSCRIP.</div>
                 <div style={{ textAlign: 'right' }}>ARBITRAJES<AyudaTermino texto="Lo que se le cobra a cada equipo por el árbitro de sus partidos." /></div>
@@ -8207,10 +8267,47 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ textAlign: 'right' }}>PAGADO<AyudaTermino texto="Lo que el equipo ya pagó de tarjetas y arbitrajes." /></div>
                 <div style={{ textAlign: 'right' }}>SALDO<AyudaTermino texto="Lo que todavía debe el equipo en tarjetas y arbitrajes, ya descontado lo que pagó. Si es cero, está al día." /></div>
                 <div/>
-              </div>
+              </div>}
               {fin.filas.map((r, i) => (
                 <div key={r.equipo.id} style={{ borderBottom: i < fin.filas.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0 || r.inscripcion > 0 || (r.modoJugador && r.inscritos > 0); return (
+                  {(() => { const sePuedeExpandir = r.tarjetasDetalle.length > 0 || r.w > 0 || r.multas > 0 || r.inscripcion > 0 || (r.modoJugador && r.inscritos > 0); return isMobile ? (() => {
+                    const llevarM = !!fin.fc.llevar_cuentas
+                    const insc = llevarM ? Math.max(r.saldoInscripcion, 0) : 0
+                    const mult = llevarM ? Math.max(r.saldoMultas, 0) : 0
+                    const tarj = Math.max(r.saldo, 0)
+                    const debe = insc + mult + tarj
+                    const abrir = tipo => { setPagoForm({ tipo, monto: '', concepto: '' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }
+                    const btn = { flex: '1 1 0', minHeight: '44px', borderRadius: '8px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '700', whiteSpace: 'nowrap' }
+                    return (
+                    <div style={{ padding: '12px 14px' }}>
+                      <div onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: sePuedeExpandir ? 'pointer' : 'default', minHeight: '44px' }}>
+                        <div style={{ width: '30px', height: '30px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={r.equipo.logo_url} name={r.equipo.name} size={30}/></div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '.9rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
+                          {sePuedeExpandir && <div style={{ fontSize: '.68rem', color: '#9aa0a6' }}>{equipoFinAbierto === r.equipo.id ? 'Toca para cerrar el detalle' : 'Toca para ver el detalle'}</div>}
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: '.64rem', fontWeight: '700', color: '#5f6368' }}>{debe > 0 ? 'DEBE' : ''}</div>
+                          <div style={{ fontSize: '1.05rem', fontWeight: '800', color: debe > 0 ? '#d93025' : '#1e8e3e' }}>{debe > 0 ? fmt(debe) : '✓ Al día'}</div>
+                        </div>
+                        {sePuedeExpandir && <ChevronDown size={16} color="#9aa0a6" style={{ transform: equipoFinAbierto === r.equipo.id ? 'rotate(180deg)' : 'none', flexShrink: 0 }}/>}
+                      </div>
+                      {debe > 0 && (
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '4px 0 8px 40px' }}>
+                          {insc > 0 && <span style={{ fontSize: '.72rem', background: '#fce8e6', color: '#d93025', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>📝 Inscripción {fmt(insc)}</span>}
+                          {mult > 0 && <span style={{ fontSize: '.72rem', background: '#fef3c7', color: '#b45309', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>⛔ Multa / W {fmt(mult)}</span>}
+                          {tarj > 0 && <span style={{ fontSize: '.72rem', background: '#fce8e6', color: '#d93025', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>💳 Tarjetas {fmt(tarj)}</span>}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '6px', marginTop: debe > 0 ? 0 : '6px' }}>
+                        <button onClick={() => abrir('pago_tarjetas')} style={{ ...btn, background: '#1a73e8', border: 'none', color: '#fff' }}>💵 Pago</button>
+                        <button onClick={() => abrir('cargo_manual')} style={{ ...btn, background: '#fff', border: '1px solid #fad2cf', color: '#d93025' }}>➖ Deuda</button>
+                        <button onClick={() => abrir('abono_inscripcion')} style={{ ...btn, background: '#f2ebfd', border: '1px solid #dcc6f7', color: '#6c35de' }}>📝 Abono</button>
+                      </div>
+                    </div>
+                    )
+                  })() : (
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr 1fr 1fr 1fr 1fr 230px', padding: '10px 16px', alignItems: 'center', gap: '4px', cursor: sePuedeExpandir ? 'pointer' : 'default' }}
                     onClick={() => sePuedeExpandir && setEquipoFinAbierto(equipoFinAbierto === r.equipo.id ? null : r.equipo.id)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -8245,13 +8342,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         style={{ background: '#f2ebfd', border: '1px solid #dcc6f7', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#6c35de', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         📝 Abono
                       </button>
-                      {esTorneoGolmebol && deudaTotalEquipo(r) > 0 && (
-                        <button onClick={e => { e.stopPropagation(); handleBloquearEquipoPorInscripcion(r.equipo, deudaTotalEquipo(r)) }}
-                          title="Duplica lo que debe el equipo y lo divide entre los jugadores que fueron del equipo en este torneo. Cada uno queda con su parte como deuda personal."
-                          style={{ background: '#fff', border: '1px solid #f3c2c0', borderRadius: '6px', padding: '5px 7px', cursor: 'pointer', color: '#a30000', fontSize: '.68rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                          🚫 Pasar deuda a jugadores
-                        </button>
-                      )}
                     </div>
                   </div>
                   )})()}
