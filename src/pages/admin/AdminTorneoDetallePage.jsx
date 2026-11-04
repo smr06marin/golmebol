@@ -762,6 +762,9 @@ export default function AdminTorneoDetallePage() {
     try { draftJornadaRef.current = JSON.parse(localStorage.getItem(`jornada_draft_${id}`)) || null } catch { draftJornadaRef.current = null }
   }
   const draftJornada = draftJornadaRef.current
+  // Canchas, días y horarios que el organizador ya marcó: se recuerdan para la próxima jornada
+  const ajustesJornadaKey = `jornada_ajustes_${id}`
+  const [ajustesGuardados] = useState(() => { try { return JSON.parse(localStorage.getItem(`jornada_ajustes_${id}`)) || null } catch { return null } })
 
   const [torneo,    setTorneo]    = useState(null)
   const [ediciones, setEdiciones] = useState([]) // otras ediciones de este mismo torneo (hermanas), para el link "Ver ediciones"
@@ -887,7 +890,7 @@ export default function AdminTorneoDetallePage() {
   const [nuevaCancha,     setNuevaCancha]     = useState('')
   const [nuevaCanchaEscenario, setNuevaCanchaEscenario] = useState('')
 
-  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', numero: '', cancha_ids: null, horarios_por_cancha_dia: {}, dias_por_escenario: {} })
+  const [configJornada,   setConfigJornada]   = useState(draftJornada?.config || { fecha: '', numero: '', cancha_ids: ajustesGuardados?.cancha_ids ?? null, horarios_por_cancha_dia: ajustesGuardados?.horarios_por_cancha_dia || {}, dias_por_escenario: ajustesGuardados?.dias_por_escenario || {} })
   const [guardandoPref,   setGuardandoPref]   = useState(null) // tournament_team_id que se está guardando
   const [jornadaGenerada, setJornadaGenerada] = useState(draftJornada?.jornada || [])
   const [permitirIntergrupo, setPermitirIntergrupo] = useState(draftJornada?.intergrupo || false)
@@ -1316,16 +1319,29 @@ export default function AdminTorneoDetallePage() {
   // importar qué pase (recarga, cambio de pestaña, se cae el internet), al
   // volver se retoma exactamente igual. Solo Guardar o Salir lo eliminan.
   useEffect(() => {
-    const hayBorrador = jornadaGenerada.length > 0 || configJornada.fecha || configJornada.numero || Object.keys(configJornada.dias_por_escenario || {}).length > 0
+    const hayBorrador = jornadaGenerada.length > 0 || configJornada.fecha || configJornada.numero
     if (hayBorrador) {
       localStorage.setItem(draftJornadaKey, JSON.stringify({ config: configJornada, jornada: jornadaGenerada, intergrupo: permitirIntergrupo, intergrupoN: intergrupoPorEquipo }))
     }
   }, [jornadaGenerada, configJornada, permitirIntergrupo, intergrupoPorEquipo])
 
+  useEffect(() => {
+    if (!configJornada.cancha_ids && Object.keys(configJornada.dias_por_escenario || {}).length === 0 && Object.keys(configJornada.horarios_por_cancha_dia || {}).length === 0) return
+    try {
+      localStorage.setItem(ajustesJornadaKey, JSON.stringify({ cancha_ids: configJornada.cancha_ids, horarios_por_cancha_dia: configJornada.horarios_por_cancha_dia, dias_por_escenario: configJornada.dias_por_escenario }))
+    } catch { /* sin almacenamiento: simplemente no se recuerda */ }
+  }, [configJornada.cancha_ids, configJornada.horarios_por_cancha_dia, configJornada.dias_por_escenario, ajustesJornadaKey])
+
+  function olvidarAjustesJornada() {
+    try { localStorage.removeItem(ajustesJornadaKey) } catch { /* nada */ }
+    setConfigJornada(f => ({ ...f, cancha_ids: null, horarios_por_cancha_dia: {}, dias_por_escenario: {} }))
+  }
+
   function salirJornada() {
     localStorage.removeItem(draftJornadaKey)
     setJornadaGenerada([])
-    setConfigJornada({ fecha: '', numero: '', cancha_ids: null, horarios_por_cancha_dia: {}, dias_por_escenario: {} })
+    // Se conservan canchas, días y horarios: la próxima jornada no los pide otra vez
+    setConfigJornada(f => ({ fecha: '', numero: '', cancha_ids: f.cancha_ids ?? null, horarios_por_cancha_dia: f.horarios_por_cancha_dia || {}, dias_por_escenario: f.dias_por_escenario || {} }))
     setEditJornadaIdx(null)
   }
 
@@ -3575,7 +3591,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? null,
       limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null,
       // La edición nueva usa la misma planilla (salón / fútbol 11) que la anterior.
-      planilla_tipo: torneo.planilla_tipo || null,
+      planilla_tipo: torneo.planilla_tipo || 'futbol11',
     }
     let { data, error } = await supabase.from('tournaments').insert(payload).select().single()
     // El sistema de puntos y algunos campos son relativamente nuevos: si en
@@ -6103,7 +6119,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '6px' }}>Sin fecha final: se arma UNA jornada con los días de esa semana (los que marques abajo). Con fecha final (ej: diciembre): se arma una jornada por cada semana desde la fecha de inicio hasta esa fecha, sin repetir cruces. Si no alcanza el cupo de horarios/canchas, los equipos que sobran quedan descansando.</div>
 
                 <div style={{ marginTop: '16px' }}>
-                  <label style={labelStyle}>Escenarios, canchas, días y horarios de cada cancha</label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                    <label style={labelStyle}>Escenarios, canchas, días y horarios de cada cancha</label>
+                    {Object.keys(configJornada.dias_por_escenario || {}).length > 0 && (
+                      <button type="button" onClick={olvidarAjustesJornada} style={{ background: 'none', border: 'none', color: '#1a73e8', fontSize: '.72rem', fontWeight: '700', cursor: 'pointer', padding: '4px 0' }}>Empezar de cero</button>
+                    )}
+                  </div>
+                  {Object.keys(configJornada.dias_por_escenario || {}).length > 0 && <div style={{ fontSize: '.68rem', color: '#9aa0a6', margin: '-2px 0 6px' }}>Se recuerdan para la próxima jornada, no tendrás que marcarlos otra vez.</div>}
                   {(() => {
                     const grupos_ = {}
                     canchas.forEach(c => { const k = c.escenario || 'Sin sede'; (grupos_[k] = grupos_[k] || []).push(c) })
@@ -6256,6 +6278,34 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
                   ℹ️ El sorteo evita repetir cruces ya jugados o programados. Si un equipo no tiene rival nuevo, queda descansando.
                 </div>
+                {(() => {
+                  const usadas = canchas.filter(c => (configJornada.cancha_ids || canchas.map(x => x.id)).includes(c.id))
+                  let cupos = 0
+                  usadas.forEach(c => {
+                    const dias = (configJornada.dias_por_escenario || {})[c.escenario || 'Sin sede'] || []
+                    dias.forEach(d => { cupos += ((configJornada.horarios_por_cancha_dia || {})[c.id]?.[d] || []).length })
+                  })
+                  const descansan = configJornada.alguno_descansa ? (configJornada.descansan_ids || []).length : 0
+                  const juegan = Math.max(0, equipos.length - descansan)
+                  const necesarios = Math.floor(juegan / 2)
+                  let semanas = 1
+                  if (configJornada.fecha && configJornada.fecha_fin && configJornada.fecha_fin >= configJornada.fecha) {
+                    const dd = Math.round((new Date(configJornada.fecha_fin + 'T00:00:00') - new Date(configJornada.fecha + 'T00:00:00')) / 86400000)
+                    semanas = Math.min(40, Math.floor(dd / 7) + 1)
+                  }
+                  const sinDatos = cupos === 0
+                  const alcanza = cupos >= necesarios
+                  const color = sinDatos ? '#e8710a' : alcanza ? '#1e8e3e' : '#e8710a'
+                  return (
+                    <div style={{ marginTop: '14px', padding: '10px 12px', borderRadius: '10px', background: sinDatos || !alcanza ? '#fff8e1' : '#e6f4ea', borderLeft: `4px solid ${color}`, fontSize: '.78rem', color: '#202124', lineHeight: 1.45 }}>
+                      {sinDatos
+                        ? 'Marca los días y horarios de tus canchas para saber cuántos partidos caben por semana.'
+                        : alcanza
+                          ? <>✓ <b>Alcanza:</b> tus canchas tienen {cupos} horario{cupos !== 1 ? 's' : ''} por semana y se necesitan hasta {necesarios} partido{necesarios !== 1 ? 's' : ''} ({juegan} equipos).{semanas > 1 ? ` Vas a programar ${semanas} semanas.` : ''}</>
+                          : <>⚠️ <b>Faltan {necesarios - cupos} horario{necesarios - cupos !== 1 ? 's' : ''} por semana:</b> se necesitan hasta {necesarios} partidos y tus canchas solo tienen {cupos}. Agrega más horarios, canchas o días; si no, algunos partidos quedarán sin hora y tendrás que editarlos a mano.</>}
+                    </div>
+                  )
+                })()}
                 <button onClick={generarJornada} style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', background: '#1a73e8', border: 'none', borderRadius: '8px', padding: '8px 18px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500' }}>
                   <Shuffle size={16}/> Generar jornada aleatoria
                 </button>
