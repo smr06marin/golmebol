@@ -1173,7 +1173,7 @@ export default function AdminTorneoDetallePage() {
   // ── FINANZAS ────────────────────────────────────────
   const [movimientos,      setMovimientos]      = useState([])
   const [statsTarjetas,    setStatsTarjetas]    = useState([])
-  const [marcasPago, setMarcasPago] = useState({}) // { 'player|match': { am, amPaid, az, azPaid, rj, rjPaid } } marcas de pago de cada tarjeta
+  const [statsPago, setStatsPago] = useState([]) // filas de player_match_stats con marcas de pago: de aquí sale quién debe tarjetas (igual que el link de deudores)
   const [pendientesTarjetas, setPendientesTarjetas] = useState({}) // { player_id: { am, az, rj } } tarjetas sin pagar
   const [pendientesPartidos, setPendientesPartidos] = useState({}) // { player_id: [{ am, az, rj }] } una fila por partido con tarjeta sin pagar (para calcular el monto exacto)
   const [showConfigFin,    setShowConfigFin]    = useState(false)
@@ -2631,10 +2631,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // que deje de salirle la advertencia en la planilla del próximo partido.
     const pendientes = {}
     const pendientesPorPartido = {}
-    const marcas = {}
     ;(st || []).forEach(s => {
       if (!s.player_id) return
-      marcas[`${s.player_id}|${s.match_id}`] = { am: (s.yellow_cards || 0) > 0, amPaid: !!s.yellow_paid, az: (s.blue_cards || 0) > 0, azPaid: !!s.blue_paid, rj: (s.red_cards || 0) > 0, rjPaid: !!s.red_paid }
       if (!pendientes[s.player_id]) pendientes[s.player_id] = { am: 0, az: 0, rj: 0 }
       const filaPartido = { am: (s.yellow_cards || 0) > 0 && !s.yellow_paid, az: (s.blue_cards || 0) > 0 && !s.blue_paid, rj: (s.red_cards || 0) > 0 && !s.red_paid }
       if (filaPartido.am || filaPartido.az || filaPartido.rj) (pendientesPorPartido[s.player_id] = pendientesPorPartido[s.player_id] || []).push(filaPartido)
@@ -2642,7 +2640,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       if ((s.blue_cards   || 0) > 0 && !s.blue_paid)   pendientes[s.player_id].az += 1
       if ((s.red_cards    || 0) > 0 && !s.red_paid)    pendientes[s.player_id].rj += 1
     })
-    setMarcasPago(marcas)
+    setStatsPago(st || [])
     setPendientesTarjetas(pendientes)
     setPendientesPartidos(pendientesPorPartido)
 
@@ -2757,7 +2755,25 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       if (mv.tipo === 'cargo_manual' && !mv.pagado) porEquipo[mv.team_id].deudas += mv.monto || 0 // deuda anotada a mano, sin marcar pagada todavía
     })
 
+    // DEUDA DE TARJETAS = igual que el link de deudores (ver_deudores_por_link): tarjetas que siguen SIN marcar como
+    // pagadas en las estadísticas del partido; por partido solo se cobra la más cara de las pendientes.
+    const deudaTarj = {}
+    statsPago.forEach(s => {
+      if (!s.player_id || !porEquipo[s.team_id]) return
+      const amD = (s.yellow_cards || 0) > 0 && !s.yellow_paid
+      const azD = (s.blue_cards   || 0) > 0 && !s.blue_paid
+      const rjD = (s.red_cards    || 0) > 0 && !s.red_paid
+      const monto = Math.max(amD ? pA : 0, azD ? pZ : 0, rjD ? pR : 0)
+      if (monto <= 0) return
+      const d = deudaTarj[s.team_id] = deudaTarj[s.team_id] || { total: 0, jugadores: {} }
+      const j = d.jugadores[s.player_id] = d.jugadores[s.player_id] || { player_id: s.player_id, nombre: s.players?.name || 'Jugador', total: 0, items: [] }
+      j.items.push({ match_id: s.match_id, monto, am: amD, az: azD, rj: rjD })
+      j.total += monto; d.total += monto
+    })
+
     const filas = Object.values(porEquipo).map(r => {
+      const pendTarj = deudaTarj[r.equipo.id]?.total || 0
+      const deudoresTarjetas = Object.values(deudaTarj[r.equipo.id]?.jugadores || {}).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
       // Cargos SOLO de cancha: arbitrajes + tarjetas. W, multas y deudas
       // anotadas a mano viven en su propia cuenta (cargosMultas/saldoMultas),
       // igual que inscripción — ver comentario arriba.
@@ -2769,8 +2785,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const pagado = r.pagosTarjetas + r.arbitrajes
       const cargosMultas = r.w + r.multas + r.deudas
       return {
-        ...r, cargos, pagado, saldo: cargos - pagado,
-        saldoTarjetas: r.tarjetas - r.pagosTarjetas, saldoInscripcion: r.inscripcion - r.pagosInscripcion,
+        ...r, cargos, pagado, saldo: pendTarj, deudoresTarjetas,
+        saldoTarjetas: pendTarj, saldoInscripcion: r.inscripcion - r.pagosInscripcion,
         cargosMultas, saldoMultas: cargosMultas - r.pagosMultas,
       }
     }).sort(porNombreEquipo)
@@ -3081,6 +3097,43 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(j.valor || 0)), concepto: `Tarjeta(s) de ${j.nombre}` })
     setTarjetasAPagar(marcar)
     setPagoModal({ ...equipo, tarjetasDetalle: [j] })
+  }
+
+  // "✓ Ya pagó" en el detalle de tarjetas de un equipo (un toque, sin llenar el cuadro de pago).
+  // (a) Tarjeta SIN marca de pago (la planilla no la puede marcar): se anota el pago con el nombre y la fecha del partido.
+  async function handleYaPagoSinMarca(equipo, f) {
+    const nombre = f.nombre || 'jugador sin registro'
+    const partido = `${f.rivalTxt}${f.fechaTxt ? ` (${f.fechaTxt})` : ''}`
+    if (!(await confirmar(`¿${nombre} ya pagó ${fmt(f.pendiente)} de esta tarjeta — ${partido}? Se anota el pago y se descuenta de la cuenta del equipo.`))) return
+    const { error } = await supabase.from('torneo_finanzas').insert({
+      tournament_id: id, team_id: equipo.id, player_id: f.player_id || null, tipo: 'pago_tarjetas', monto: f.pendiente,
+      concepto: `Tarjeta(s) de ${nombre} — ${partido}`,
+    })
+    if (error) return showMsg(errorAmigable(error, 'No se pudo registrar el pago'), 'error')
+    showMsg(`Pago de ${nombre} anotado ✓`)
+    await fetchFinanzas()
+  }
+  // (b) Tarjeta CON marca de pago: se anota el pago y se marcan como pagadas las tarjetas pendientes del jugador
+  //     (eso es lo que lo desbloquea en la planilla), igual que el cuadro de pago.
+  async function handleYaPagoMarcada(equipo, f) {
+    const nombre = f.nombre || 'jugador'
+    const pend = (f.player_id && pendientesTarjetas[f.player_id]) || { am: 0, az: 0, rj: 0 }
+    const marcar = [
+      ...(pend.am > 0 ? [{ player_id: f.player_id, color: 'am' }] : []),
+      ...(pend.az > 0 ? [{ player_id: f.player_id, color: 'az' }] : []),
+      ...(pend.rj > 0 ? [{ player_id: f.player_id, color: 'rj' }] : []),
+    ]
+    const monto = montoTarjetasMarcadas(marcar)
+    if (marcar.length === 0 || monto <= 0) return showMsg('Esta tarjeta ya no tiene nada pendiente', 'error')
+    const cuantas = pend.am + pend.az + pend.rj
+    if (!(await confirmar(`¿${nombre} ya pagó ${fmt(monto)}? Se marcan como pagadas sus ${cuantas} tarjeta(s) pendientes y queda desbloqueado en la planilla.`))) return
+    const { error } = await supabase.from('torneo_finanzas').insert({
+      tournament_id: id, team_id: equipo.id, player_id: f.player_id, tipo: 'pago_tarjetas', monto, concepto: `Tarjeta(s) de ${nombre}`,
+    })
+    if (error) return showMsg(errorAmigable(error, 'No se pudo registrar el pago'), 'error')
+    await Promise.all(marcar.map(t => marcarTarjetaPagada(t.player_id, t.color)))
+    showMsg(`Pago de ${nombre} anotado ✓ — ya no sale como deudor`)
+    await fetchFinanzas()
   }
 
   async function handlePagarTarjetaJugador(playerId, color, nombre) {
@@ -7658,20 +7711,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   })
                 }
                 if (r.saldo > 0) {
-                  // Jugadores con tarjetas sin pagar y cuánto vale lo suyo.
-                  const jugadoresDeben = (r.tarjetasDetalle || []).map(j => {
-                    const pend = (j.player_id && pendientesTarjetas[j.player_id]) || { am: 0, az: 0, rj: 0 }
-                    const marcas = [
-                      ...(pend.am > 0 ? [{ player_id: j.player_id, color: 'am' }] : []),
-                      ...(pend.az > 0 ? [{ player_id: j.player_id, color: 'az' }] : []),
-                      ...(pend.rj > 0 ? [{ player_id: j.player_id, color: 'rj' }] : []),
-                    ]
-                    return { nombre: j.nombre, pend, monto: montoTarjetasMarcadas(marcas) }
-                  }).filter(j => j.pend.am + j.pend.az + j.pend.rj > 0)
                   lineas.push({
                     clave: 'tarj', etiqueta: '💳 Tarjetas', valor: r.saldo,
                     detalle: r.pagosTarjetas > 0 ? `ya pagó ${fmt(r.pagosTarjetas)}` : '',
-                    jugadores: jugadoresDeben,
+                    jugadores: r.deudoresTarjetas,
+                    equipo: r.equipo,
                   })
                 }
                 return lineas
@@ -7805,7 +7849,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             precios={{ am: (torneo?.finanzas_config || {}).precio_amarilla || 0, az: (torneo?.finanzas_config || {}).precio_azul || 0, rj: (torneo?.finanzas_config || {}).precio_roja || 0 }}
                             saldo={r.saldoTarjetas}
                             pagos={movimientos.filter(m => m.team_id === r.equipo.id && m.tipo === 'pago_tarjetas').map(m => ({ player_id: m.player_id, jugador: m.players?.name, concepto: m.concepto, monto: m.monto }))}
-                            onRegistrarPagoJugador={(nombre, monto) => { setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(monto)), concepto: `Tarjeta(s) de ${nombre}` }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
+                            onYaPagoSinMarca={f => handleYaPagoSinMarca(r.equipo, f)}
+                            onYaPagoMarcada={f => handleYaPagoMarcada(r.equipo, f)}
                             onRegistrarDiferencia={monto => { setPagoForm({ tipo: 'pago_tarjetas', monto: String(Math.round(monto)), concepto: 'Ajuste: tarjetas marcadas como pagadas sin pago registrado' }); setTarjetasAPagar([]); setPagoModal({ ...r.equipo, tarjetasDetalle: r.tarjetasDetalle }) }}
                           />
                         )}
