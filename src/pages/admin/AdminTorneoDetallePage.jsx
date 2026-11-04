@@ -7952,7 +7952,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       </div>
                     )}
                   </div>
-                  <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '10px' }}>¿Quién me debe?</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem' }}>¿Quién me debe?</div>
+                    {fin.filas.length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => imprimirCuentas(fin)} title="Abre la lista lista para imprimir o guardar como PDF"
+                          style={{ minHeight: '40px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.78rem', fontWeight: '700' }}>📄 PDF / Imprimir</button>
+                        <button onClick={() => descargarCuentasCSV(fin)} title="Baja las cuentas en un archivo que abre Excel"
+                          style={{ minHeight: '40px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.78rem', fontWeight: '700' }}>⬇️ Excel</button>
+                      </div>
+                    )}
+                  </div>
                   {llevar && esTorneoGolmebol && (() => {
                     const conDeuda = fin.filas.filter(r => deudaTotalEquipo(r) > 0).sort(porNombreEquipo)
                     if (conDeuda.length === 0) return null
@@ -8252,7 +8262,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <button onClick={() => descargarCuentasCSV(fin)} title="Baja las cuentas en un archivo que abre Excel"
                     style={{ minHeight: '38px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.76rem', fontWeight: '700' }}>⬇️ Descargar (Excel)</button>
                   <button onClick={() => imprimirCuentas(fin)} title="Abre la tabla lista para imprimir o guardar como PDF"
-                    style={{ minHeight: '38px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.76rem', fontWeight: '700' }}>🖨️ Imprimir</button>
+                    style={{ minHeight: '38px', padding: '7px 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#3c4043', fontSize: '.76rem', fontWeight: '700' }}>📄 PDF / Imprimir</button>
                 </div>
               )}
             </div>
