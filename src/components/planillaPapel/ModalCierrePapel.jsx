@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { PANEL, BORDE, TEXTO, TEXTO_TENUE, VERDE, ROJO, btnPrimario, btnSecundario } from '../planillaRapida/estilosRapida'
 
 // Último paso de la planilla de papel antes de guardar el resultado. Mismas
-// reglas de siempre: arquero de cada equipo, informe si hubo tarjeta roja y
-// MVP del partido. (El arquero se elige en la franja amarilla de arriba y el
-// informe se escribe en el recuadro "INFORME ARBITRAL" de la hoja.)
+// reglas de siempre: informe si hubo tarjeta roja y MVP del partido. El arquero
+// de cada equipo es OPCIONAL (se elige en el paso 2 de la hoja) y el informe
+// se escribe en el recuadro "INFORME ARBITRAL" de la hoja.
 export default function ModalCierrePapel({
   nombreLocal, nombreVis, arqueroLocal, arqueroVis, hayRoja, informe,
   jugadoresLocal, jugadoresVisitante, guardando, avisoPenales, onFinalizar, onCerrar,
@@ -17,7 +17,7 @@ export default function ModalCierrePapel({
   ]
 
   const informeOk = !hayRoja || (informe || '').trim().length >= 10
-  const puedeFinalizar = !!arqueroLocal && !!arqueroVis && informeOk && !!mvpId && !guardando && !avisoPenales
+  const puedeFinalizar = informeOk && !!mvpId && !guardando && !avisoPenales
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.9)', zIndex: 800, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -26,9 +26,9 @@ export default function ModalCierrePapel({
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
           {[{ nombre: nombreLocal, arq: arqueroLocal }, { nombre: nombreVis, arq: arqueroVis }].map((e, i) => (
-            <div key={i} style={{ flex: 1, background: e.arq ? 'rgba(30,142,62,.1)' : 'rgba(217,48,37,.1)', border: `1px solid ${e.arq ? VERDE : ROJO}`, borderRadius: '10px', padding: '8px 10px', fontSize: '.72rem' }}>
+            <div key={i} style={{ flex: 1, background: e.arq ? 'rgba(30,142,62,.1)' : 'rgba(128,128,128,.08)', border: `1px solid ${e.arq ? VERDE : BORDE}`, borderRadius: '10px', padding: '8px 10px', fontSize: '.72rem' }}>
               <div style={{ color: TEXTO_TENUE, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.nombre}</div>
-              <div style={{ fontWeight: '700', color: e.arq ? VERDE : ROJO }}>{e.arq ? `🧤 ${e.arq.nombre}` : '⚠️ Falta arquero (elígelo arriba en la franja amarilla)'}</div>
+              <div style={{ fontWeight: '700', color: e.arq ? VERDE : TEXTO_TENUE }}>{e.arq ? `🧤 ${e.arq.nombre}` : 'Sin arquero (opcional)'}</div>
             </div>
           ))}
         </div>

@@ -475,8 +475,8 @@ function SelectorArquero({ etiqueta, jugadores, arquero, onElegir, vertical }) {
     <div style={{ display: 'flex', alignItems: vertical ? 'stretch' : 'center', flexDirection: vertical ? 'column' : 'row', gap: vertical ? '3px' : '6px', minWidth: 0, flexWrap: vertical ? 'nowrap' : 'wrap' }}>
       <span style={{ fontSize: '.72rem', color: GRIS, fontWeight: '700', maxWidth: vertical ? '100%' : '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{etiqueta}{arquero ? ' ✓' : ':'}</span>
       <select value={actual >= 0 ? String(actual) : ''} onChange={e => { const k = e.target.value; if (k !== '') onElegir(jugadores[Number(k)]) }}
-        style={{ ...campo, width: vertical ? '100%' : 'auto', minWidth: vertical ? 0 : '150px', padding: '5px 4px', borderColor: arquero ? '#1e8e3e' : ROJA, fontSize: '.78rem', fontWeight: '700' }}>
-        <option value="">{numerados.length === 0 ? 'Primero pon los números' : '⚠️ Elegir arquero'}</option>
+        style={{ ...campo, width: vertical ? '100%' : 'auto', minWidth: vertical ? 0 : '150px', padding: '5px 4px', borderColor: arquero ? '#1e8e3e' : '#9aa0a6', fontSize: '.78rem', fontWeight: '700' }}>
+        <option value="">{numerados.length === 0 ? 'Primero pon los números' : 'Elegir arquero (opcional)'}</option>
         {numerados.map(({ j, i }) => <option key={j.id || `sr${i}`} value={String(i)}>#{j.numero} · {j.nombre || 'Sin nombre'}</option>)}
       </select>
     </div>
@@ -558,8 +558,6 @@ export default function PantallaPapel({
   }
   // Lo que todavía falta para poder cerrar el partido (se ve arriba, en amarillo).
   const pendientes = []
-  if (!arqueroLocal) pendientes.push({ k: 'al', txt: `Arquero de ${nombreLocal}`, informe: false })
-  if (!arqueroVis) pendientes.push({ k: 'av', txt: `Arquero de ${nombreVis}`, informe: false })
   if (hayRoja && !informeListo) pendientes.push({ k: 'inf', txt: 'Informe por tarjeta roja', informe: true })
 
   const bloque = (team, oculto) => (
@@ -712,7 +710,7 @@ export default function PantallaPapel({
             </div>
 
             <div ref={cierreRef} className="gm-papel-no-imprimir" style={{ order: 2 }}>
-              <Paso n="2" titulo="Arqueros y penales" nota="Cada equipo necesita su arquero. Aparecen los jugadores que ya tienen número."/>
+              <Paso n="2" titulo="Arqueros y penales" nota="El arquero es opcional. Aparecen los jugadores que ya tienen número."/>
               <div style={{ padding: '10px', background: '#fffde7', border: '1px solid #ffe082', borderRadius: '10px', marginBottom: '8px', display: 'grid', gridTemplateColumns: compacta ? '1fr' : '1fr 1fr', gap: '10px 16px' }}>
                 <SelectorArquero vertical etiqueta={`🧤 Arquero de ${nombreLocal}`} jugadores={jugadoresLocal} arquero={arqueroLocal} onElegir={j => onElegirArquero('local', j)}/>
                 <SelectorArquero vertical etiqueta={`🧤 Arquero de ${nombreVis}`} jugadores={jugadoresVisitante} arquero={arqueroVis} onElegir={j => onElegirArquero('visitante', j)}/>
