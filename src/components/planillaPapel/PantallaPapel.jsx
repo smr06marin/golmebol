@@ -48,8 +48,11 @@ function etiquetaMinuto(e) {
   return `${e.periodo === 2 ? '2T ' : ''}${e.minuto || ''}`
 }
 
+// Gol anotado desde el marcador, sin asignarlo a ningún jugador.
+const esGolSinJugador = e => e.tipo === 'goal' && (e.sinJugador === true || (!e.jugadorId && !(e.jugadorNombre || '').trim()))
+
 function eventosDeJugador(eventosEquipo, j) {
-  return eventosEquipo.filter(e => (j.id ? e.jugadorId === j.id : (!e.jugadorId && (e.jugadorNombre || '') === (j.nombre || ''))))
+  return eventosEquipo.filter(e => !esGolSinJugador(e) && (j.id ? e.jugadorId === j.id : (!e.jugadorId && (e.jugadorNombre || '') === (j.nombre || ''))))
 }
 
 // ── Número de camiseta (se confirma al salir del campo o con Enter) ──────────
@@ -245,21 +248,29 @@ function BloqueEquipo({ team, nombre, jugadores, eventos, datos, onDatos, onNume
   const ancho = useAncho(ref)
   const ancha = ancho >= 540
   const goles = eventos.filter(e => e.tipo === 'goal').length
+  const golesSinJugador = eventos.filter(esGolSinJugador).length
   const numerados = jugadores.map((j, i) => ({ j, i })).filter(x => (x.j.numero || '').trim() !== '')
   const set = (campoClave, valor) => onDatos(team, d => ({ ...d, [campoClave]: valor }))
   const setResp = (clave, valor) => onDatos(team, d => ({ ...d, resp: { ...d.resp, [clave]: d.resp[clave] === valor ? null : valor } }))
   const cabeza = { ...celda({ fontSize: '.64rem', fontWeight: '900', letterSpacing: '.03em', background: '#f1f3f4', minHeight: '34px' }) }
   return (
     <div ref={ref} style={{ border: LINEA, background: '#fff', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '9px 10px', background: TINTA, color: '#fff' }}>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: '.6rem', fontWeight: '800', letterSpacing: '.14em', opacity: .7 }}>{team === 'local' ? 'EQUIPO LOCAL' : 'EQUIPO VISITANTE'}</span>
+          <span style={{ display: 'block', fontSize: '1.05rem', fontWeight: '900', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</span>
+        </span>
+        <span style={{ fontSize: '.72rem', fontWeight: '700', opacity: .9, flexShrink: 0, textAlign: 'right', lineHeight: 1.3 }}>{numerados.length} jugaron<br/>{goles} gol{goles === 1 ? '' : 'es'}</span>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: ancha ? COLS_ANCHA : COLS_ESTRECHA, borderBottom: LINEA }}>
         {ancha && <div style={cabeza}>DOCUMENTO</div>}
         <div style={{ ...cabeza, justifyContent: 'flex-start', padding: '3px 6px', fontSize: '.8rem', flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', fontWeight: '900' }}>{nombre}</span>
-          {!ancha && <span style={{ fontSize: '.55rem', color: GRIS, fontWeight: '700' }}>DOCUMENTO · NOMBRE</span>}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', fontWeight: '900', fontSize: ancha ? undefined : '.7rem' }}>JUGADOR</span>
+          {!ancha && <span style={{ fontSize: '.58rem', color: GRIS, fontWeight: '700' }}>DOCUMENTO · NOMBRE</span>}
         </div>
         <div style={cabeza}>No</div>
-        <div style={{ ...cabeza, background: 'rgba(249,196,0,.35)' }}>Amarilla</div>
-        <div style={{ ...cabeza, background: 'rgba(217,48,37,.22)' }}>Roja</div>
+        <div style={{ ...cabeza, background: 'rgba(249,196,0,.35)', gap: '4px' }}>{ancha && <span style={{ width: '9px', height: '12px', background: AMARILLA, border: '1px solid #111', borderRadius: '2px', flexShrink: 0 }}/>}Amarilla</div>
+        <div style={{ ...cabeza, background: 'rgba(217,48,37,.22)', gap: '4px' }}>{ancha && <span style={{ width: '9px', height: '12px', background: ROJA, border: '1px solid #111', borderRadius: '2px', flexShrink: 0 }}/>}Roja</div>
         <div style={{ ...cabeza, borderRight: 'none', background: 'rgba(30,142,62,.18)' }}>GOL</div>
       </div>
 
@@ -284,6 +295,7 @@ function BloqueEquipo({ team, nombre, jugadores, eventos, datos, onDatos, onNume
       {/* Goles anotados */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', padding: '6px 8px', borderBottom: LINEA }}>
         <span style={{ fontSize: '.9rem', fontWeight: '900', letterSpacing: '.02em' }}>GOLES ANOTADOS:</span>
+        {golesSinJugador > 0 && <span style={{ fontSize: '.7rem', fontWeight: '700', color: GRIS, marginRight: 'auto' }}>{golesSinJugador} sin jugador asignado</span>}
         <span style={{ minWidth: '42px', textAlign: 'center', border: LINEA, padding: '4px 8px', fontSize: '1.2rem', fontWeight: '900', background: '#f1f3f4' }}>{goles}</span>
       </div>
 
@@ -364,6 +376,42 @@ function InformeArbitral({ valor, onCambio, obligatorio }) {
   )
 }
 
+// Título numerado de cada tramo de la planilla (solo en pantalla, no se imprime).
+function Paso({ n, titulo, nota }) {
+  return (
+    <div className="gm-papel-no-imprimir" style={{ display: 'flex', alignItems: 'center', gap: '9px', margin: '16px 2px 7px' }}>
+      <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: TINTA, color: '#fff', fontSize: '.8rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{n}</span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '.95rem', fontWeight: '900', color: TINTA, lineHeight: 1.15 }}>{titulo}</div>
+        {nota && <div style={{ fontSize: '.72rem', color: GRIS, lineHeight: 1.3, marginTop: '1px' }}>{nota}</div>}
+      </div>
+    </div>
+  )
+}
+
+// Botón secundario de la barra de acciones: título + una línea que explica para qué sirve.
+function BotonAccion({ color, titulo, sub, onClick, lleno = false }) {
+  return (
+    <button type="button" onClick={onClick} title={sub}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px', minHeight: '50px', padding: '6px 4px', minWidth: 0, background: lleno ? color : '#fff', color: lleno ? '#fff' : color, border: `1.5px solid ${color}`, borderRadius: '10px', cursor: 'pointer', touchAction: 'manipulation', fontFamily: 'inherit' }}>
+      <span style={{ fontSize: '.84rem', fontWeight: '800', lineHeight: 1.15 }}>{titulo}</span>
+      <span style={{ fontSize: '.62rem', fontWeight: '600', opacity: .85, lineHeight: 1.15 }}>{sub}</span>
+    </button>
+  )
+}
+
+// Número del marcador: un toque SUMA un gol (sin jugador); "− 1" quita el último.
+function NumeroMarcador({ valor, nombre, onSumar, onRestar }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+      <button type="button" onClick={onSumar} aria-label={`Sumar un gol a ${nombre}`} title="Toca para sumar un gol"
+        style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 8px', fontSize: 'clamp(2.6rem, 12vw, 4.4rem)', fontWeight: '900', lineHeight: 1, fontVariantNumeric: 'tabular-nums', minWidth: '.9em', touchAction: 'manipulation', fontFamily: 'inherit' }}>{valor}</button>
+      <button type="button" onClick={onRestar} disabled={valor === 0} aria-label={`Quitar un gol a ${nombre}`}
+        style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: '#fff', borderRadius: '10px', padding: '4px 14px', minHeight: '28px', fontSize: '.8rem', fontWeight: '800', cursor: valor === 0 ? 'default' : 'pointer', opacity: valor === 0 ? .35 : 1, touchAction: 'manipulation', fontFamily: 'inherit' }}>− 1</button>
+    </div>
+  )
+}
+
 function Cabecera({ partido, torneoNombre, papel, onPapel, compacta }) {
   const [verArbitros, setVerArbitros] = useState(false)
   const fecha = partido?.played_at ? new Date(partido.played_at) : null
@@ -439,12 +487,13 @@ export default function PantallaPapel({
   partido, torneoNombre, nombreLocal, nombreVis, jugadoresLocal, jugadoresVisitante, eventosLocal, eventosVis,
   periodo, segundos, corriendo, tiempoAgotado, globalLlave, papel, onPapel, hayRoja, guardando,
   arqueroLocal, arqueroVis, onElegirArquero,
-  onToggleCronometro, onCambiarPeriodo, onAsignarNumero, onAbrirJugador, onGol, onTarjeta, onQuitarEvento, onAgregarJugador,
+  onToggleCronometro, onCambiarPeriodo, onAsignarNumero, onAbrirJugador, onGol, onGolSinJugador, onTarjeta, onQuitarEvento, onAgregarJugador,
   onSalir, onAbrirCierre, onAbrirEspecial,
   duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo, onSilenciar,
 }) {
   const hojaRef = useRef(null)
   const informeRef = useRef(null)
+  const cierreRef = useRef(null)
   const anchoHoja = useAncho(hojaRef)
   const dosColumnas = anchoHoja >= 980
   const compacta = !dosColumnas && anchoHoja > 0 && anchoHoja < 700
@@ -485,7 +534,6 @@ export default function PantallaPapel({
   const enExtra = !tiempoAgotado && limiteReloj > 0 && segundos >= limiteReloj
   const fondoReloj = tiempoAgotado ? '#b71c1c' : enExtra ? '#b45309' : periodo === 1 ? '#1a3a8a' : '#d93025'
   const boton = { padding: '7px 12px', border: 'none', borderRadius: '9px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '800', touchAction: 'manipulation' }
-  const botonBarra = (fondo, extra = {}) => ({ padding: '7px 12px', background: fondo, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700', touchAction: 'manipulation', ...extra })
   const informeListo = (papel.informe || '').trim().length >= 10
   const pen = papel.penales
   const puedeGuardar = !guardando && enLinea
@@ -494,6 +542,25 @@ export default function PantallaPapel({
     try { informeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* nada */ }
     setTimeout(() => { try { informeRef.current?.querySelector('textarea')?.focus() } catch { /* nada */ } }, 350)
   }
+
+  // "− 1": quita primero un gol sin jugador; si no hay, el último gol de un jugador (pide confirmar).
+  function restarGol(team) {
+    const evs = team === 'local' ? eventosLocal : eventosVis
+    const goles = evs.filter(e => e.tipo === 'goal')
+    if (goles.length === 0) return
+    const sinJug = goles.filter(esGolSinJugador)
+    const e = sinJug.length ? sinJug[sinJug.length - 1] : goles[goles.length - 1]
+    if (!esGolSinJugador(e) && !window.confirm(`¿Quitar el último gol${e.jugadorNombre ? ' de ' + e.jugadorNombre : ''}?`)) return
+    onQuitarEvento(team, e.id)
+  }
+  function irAlCierre() {
+    try { cierreRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* nada */ }
+  }
+  // Lo que todavía falta para poder cerrar el partido (se ve arriba, en amarillo).
+  const pendientes = []
+  if (!arqueroLocal) pendientes.push({ k: 'al', txt: `Arquero de ${nombreLocal}`, informe: false })
+  if (!arqueroVis) pendientes.push({ k: 'av', txt: `Arquero de ${nombreVis}`, informe: false })
+  if (hayRoja && !informeListo) pendientes.push({ k: 'inf', txt: 'Informe por tarjeta roja', informe: true })
 
   const bloque = (team, oculto) => (
     <div key={team} className={oculto ? 'gm-papel-tab-oculto' : undefined}>
@@ -518,45 +585,65 @@ export default function PantallaPapel({
           .gm-papel-raiz, .gm-papel-scroll { position: static !important; overflow: visible !important; height: auto !important; }
           .gm-papel-no-imprimir { display: none !important; }
           .gm-papel-tab-oculto { display: block !important; }
+          .gm-papel-cab { order: -1 !important; }
         }
       `}</style>
 
       {/* Cronómetro + marcador (siempre a la vista) */}
-      <div className="gm-papel-no-imprimir" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 14px', padding: '6px 10px', background: fondoReloj, color: '#fff', flexShrink: 0 }}>
-        <button type="button" onClick={onSalir} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
-          style={{ ...boton, background: '#fff', color: '#202124', border: '1px solid #fff' }}>‹ Atrás</button>
-        <span style={{ fontSize: '.78rem', fontWeight: '800', background: 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '2px 8px' }}>{periodo === 1 ? '1T' : '2T'}</span>
-        <span style={{ fontSize: '2rem', fontWeight: '900', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
-          {enExtra && <span style={{ fontSize: '.7rem', letterSpacing: '.14em', color: '#ffe066', marginRight: '6px', fontFamily: 'system-ui,sans-serif' }}>EXTRA</span>}
-          {enExtra ? `+${formatTiempo(segundos - limiteReloj)}` : formatTiempo(segundos)}
-        </span>
-        {alarmaActiva && onSilenciar && (
-          <button type="button" onClick={onSilenciar} style={{ ...boton, background: '#fff', color: '#b71c1c' }}>🔕 Silenciar</button>
-        )}
-        {enExtra && onTerminarTiempo && (
-          <button type="button" onClick={() => { onTerminarTiempo(); if (periodo === 2) onAbrirCierre() }}
-            style={{ ...boton, padding: '10px 16px', fontSize: '.9rem', background: periodo === 1 ? '#e8710a' : '#1a73e8', color: '#fff', boxShadow: '0 0 0 2px #fff' }}>
-            {periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO'}
+      <div className="gm-papel-no-imprimir" style={{ background: fondoReloj, color: '#fff', flexShrink: 0, padding: '8px 10px 10px' }}>
+        {/* Fila 1: salir, tiempo y controles del reloj */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '6px 10px' }}>
+          <button type="button" onClick={onSalir} title="Salir de la planilla — si el partido no estaba terminado queda pendiente (se guarda un borrador) para seguir después"
+            style={{ ...boton, background: '#fff', color: '#202124', border: '1px solid #fff' }}>‹ Atrás</button>
+          <span style={{ fontSize: '.78rem', fontWeight: '800', background: 'rgba(0,0,0,.25)', borderRadius: '6px', padding: '3px 9px' }}>{periodo === 1 ? '1T' : '2T'}</span>
+          <span style={{ fontSize: '1.7rem', fontWeight: '900', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 2px 8px rgba(0,0,0,.35)' }}>
+            {enExtra && <span style={{ fontSize: '.7rem', letterSpacing: '.14em', color: '#ffe066', marginRight: '6px', fontFamily: 'system-ui,sans-serif' }}>EXTRA</span>}
+            {enExtra ? `+${formatTiempo(segundos - limiteReloj)}` : formatTiempo(segundos)}
+          </span>
+          {alarmaActiva && onSilenciar && (
+            <button type="button" onClick={onSilenciar} style={{ ...boton, background: '#fff', color: '#b71c1c' }}>🔕 Silenciar</button>
+          )}
+          {enExtra && onTerminarTiempo && (
+            <button type="button" onClick={() => { onTerminarTiempo(); if (periodo === 2) onAbrirCierre() }}
+              style={{ ...boton, padding: '10px 16px', fontSize: '.9rem', background: periodo === 1 ? '#e8710a' : '#1a73e8', color: '#fff', boxShadow: '0 0 0 2px #fff' }}>
+              {periodo === 1 ? '⏸ IR AL DESCANSO' : '🏁 FINALIZAR PARTIDO'}
+            </button>
+          )}
+          <button type="button" onClick={() => { if (corriendo) doble('pausa', onToggleCronometro); else onToggleCronometro() }}
+            title={corriendo ? 'Doble toque para pausar' : 'Iniciar'}
+            style={{ ...boton, background: aviso === 'pausa' ? '#ffdd44' : 'rgba(255,255,255,.92)', color: aviso === 'pausa' ? '#222' : fondoReloj }}>
+            {corriendo ? (aviso === 'pausa' ? '⏸ ¡Otra vez!' : '⏸ Pausar ×2') : '▶️ Iniciar'}
           </button>
-        )}
-        <button type="button" onClick={() => { if (corriendo) doble('pausa', onToggleCronometro); else onToggleCronometro() }}
-          title={corriendo ? 'Doble toque para pausar' : 'Iniciar'}
-          style={{ ...boton, background: aviso === 'pausa' ? '#ffdd44' : 'rgba(255,255,255,.92)', color: aviso === 'pausa' ? '#222' : fondoReloj }}>
-          {corriendo ? (aviso === 'pausa' ? '⏸ ¡Otra vez!' : '⏸ Pausar ×2') : '▶️ Iniciar'}
-        </button>
-        {periodo === 1 && (
-          <button type="button" onClick={() => doble('periodo', onCambiarPeriodo)} title="Doble toque para pasar al 2do tiempo"
-            style={{ ...boton, background: aviso === 'periodo' ? '#ffdd44' : 'rgba(255,255,255,.2)', color: aviso === 'periodo' ? '#222' : '#fff' }}>
-            {aviso === 'periodo' ? '¡Otra vez!' : '2T →'}
-          </button>
-        )}
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,.25)', borderRadius: '10px', padding: '3px 10px', minWidth: 0, maxWidth: '100%' }}>
-          <span style={{ fontSize: '.7rem', fontWeight: '700', opacity: .9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>{nombreLocal}</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: '900', whiteSpace: 'nowrap' }}>{golesLocal} - {golesVis}</span>
-          <span style={{ fontSize: '.7rem', fontWeight: '700', opacity: .9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>{nombreVis}</span>
-        </span>
-        {globalLlave && (
-          <span style={{ fontSize: '.7rem', fontWeight: '800' }}><span style={{ color: '#ffdd44', marginRight: '4px' }}>GLOBAL</span>{globalLlave.local} - {globalLlave.visitante}</span>
+          {periodo === 1 && (
+            <button type="button" onClick={() => doble('periodo', onCambiarPeriodo)} title="Doble toque para pasar al 2do tiempo"
+              style={{ ...boton, background: aviso === 'periodo' ? '#ffdd44' : 'rgba(255,255,255,.2)', color: aviso === 'periodo' ? '#222' : '#fff' }}>
+              {aviso === 'periodo' ? '¡Otra vez!' : '2T →'}
+            </button>
+          )}
+        </div>
+
+        {/* Fila 2: EL MARCADOR, grande y centrado */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+          <div style={{ textAlign: 'right', minWidth: 0 }}>
+            <div style={{ fontSize: '.58rem', fontWeight: '800', letterSpacing: '.14em', opacity: .75 }}>LOCAL</div>
+            <div style={{ fontSize: '.95rem', fontWeight: '900', lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{nombreLocal}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'rgba(0,0,0,.3)', borderRadius: '16px', padding: '4px 16px 6px', minWidth: '150px' }}>
+            <NumeroMarcador valor={golesLocal} nombre={nombreLocal} onSumar={() => onGolSinJugador && onGolSinJugador('local')} onRestar={() => restarGol('local')}/>
+            <span style={{ fontSize: '2rem', fontWeight: '700', lineHeight: 1, opacity: .7, marginTop: '-30px' }}>–</span>
+            <NumeroMarcador valor={golesVis} nombre={nombreVis} onSumar={() => onGolSinJugador && onGolSinJugador('visitante')} onRestar={() => restarGol('visitante')}/>
+          </div>
+          <div style={{ textAlign: 'left', minWidth: 0 }}>
+            <div style={{ fontSize: '.58rem', fontWeight: '800', letterSpacing: '.14em', opacity: .75 }}>VISITANTE</div>
+            <div style={{ fontSize: '.95rem', fontWeight: '900', lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{nombreVis}</div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'center', fontSize: '.64rem', fontWeight: '600', opacity: .8, marginTop: '4px' }}>Toca el número para sumar un gol · «− 1» para quitar</div>
+        {(pen.hubo || globalLlave) && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', marginTop: '6px', fontSize: '.78rem', fontWeight: '800' }}>
+            {pen.hubo && <span>Penales: {pen.local === '' ? '–' : pen.local} - {pen.visitante === '' ? '–' : pen.visitante}</span>}
+            {globalLlave && <span><span style={{ color: '#ffdd44', marginRight: '4px' }}>GLOBAL</span>{globalLlave.local} - {globalLlave.visitante}</span>}
+          </div>
         )}
       </div>
       {!corriendo && segundos === 0 && periodo === 1 && !tiempoAgotado && (
@@ -581,29 +668,55 @@ export default function PantallaPapel({
       <div className="gm-papel-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div ref={hojaRef} style={{ maxWidth: '1240px', margin: '0 auto', padding: dosColumnas ? '12px' : '0 8px 24px' }}>
 
-          {/* Botones de arriba: los mismos de la planilla profesional */}
-          <div className="gm-papel-no-imprimir" style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '8px 10px', margin: '8px 0 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-            {!compacta && <span style={{ fontWeight: '700', fontSize: '.82rem', color: '#202124', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>📋 {nombreLocal} vs {nombreVis}</span>}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {!enLinea && <span style={{ fontSize: '.72rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 8px', fontWeight: '700', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}
-              <button type="button" onClick={irAlInforme} style={botonBarra(informeListo ? '#1e8e3e' : '#7b1fa2')}>{informeListo ? '✓ Informe' : '📝 Informe'}</button>
-              <button type="button" onClick={() => onAbrirEspecial('w')} style={botonBarra('#e8710a')}>🏆 Por W</button>
-              <button type="button" onClick={() => onAbrirEspecial('desierto')} style={botonBarra('#5f6368')}>❌ Desierto</button>
-              <button type="button" onClick={onAbrirCierre} disabled={!puedeGuardar}
-                style={botonBarra(puedeGuardar ? '#1e8e3e' : '#9aa0a6', { cursor: puedeGuardar ? 'pointer' : 'not-allowed' })}>
-                {guardando ? 'Guardando...' : !enLinea ? '📵 Sin internet' : '💾 Guardar resultado'}
-              </button>
-              <button type="button" onClick={() => window.print()} style={botonBarra('#1a73e8')}>🖨 Imprimir</button>
+          {/* Panel de acciones: qué falta + GUARDAR grande + herramientas */}
+          <div className="gm-papel-no-imprimir" style={{ background: '#fff', border: '1px solid #dadce0', borderRadius: '12px', padding: '10px', margin: '10px 0 0', display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            {!enLinea && <span style={{ fontSize: '.78rem', color: '#e8710a', background: '#fff3e0', borderRadius: '8px', padding: '6px 10px', fontWeight: '700', border: '1px solid #ffe0b2' }}>📵 Sin internet: sigue anotando, para guardar necesitas conexión.</span>}
+            {pendientes.length === 0 ? (
+              <span style={{ fontSize: '.8rem', fontWeight: '800', color: VERDE }}>✓ Todo listo para guardar el resultado</span>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '.76rem', fontWeight: '800', color: '#7a5b00' }}>Antes de guardar falta:</span>
+                {pendientes.map(p => (
+                  <button key={p.k} type="button" onClick={() => { if (p.informe) irAlInforme(); else irAlCierre() }}
+                    style={{ background: '#fff4cc', color: '#664d03', border: '1px solid #f0cf65', borderRadius: '16px', padding: '4px 11px', fontSize: '.74rem', fontWeight: '800', cursor: 'pointer', touchAction: 'manipulation' }}>{p.txt} ›</button>
+                ))}
+              </div>
+            )}
+            <button type="button" onClick={onAbrirCierre} disabled={!puedeGuardar}
+              style={{ width: '100%', minHeight: '50px', background: puedeGuardar ? VERDE : '#9aa0a6', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '1rem', fontWeight: '900', cursor: puedeGuardar ? 'pointer' : 'not-allowed', touchAction: 'manipulation' }}>
+              {guardando ? 'Guardando...' : !enLinea ? '📵 Sin internet' : '💾 Guardar resultado'}
+            </button>
+            <div style={{ display: 'grid', gridTemplateColumns: compacta ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))', gap: '7px' }}>
+              <BotonAccion color={informeListo ? VERDE : '#7b1fa2'} titulo={informeListo ? '✓ Informe' : '📝 Informe'} sub="Lo que pasó en el partido" onClick={irAlInforme} lleno={informeListo}/>
+              <BotonAccion color="#e8710a" titulo="🏆 Por W" sub="Un equipo no se presentó" onClick={() => onAbrirEspecial('w')}/>
+              <BotonAccion color="#5f6368" titulo="❌ Desierto" sub="Ninguno se presentó" onClick={() => onAbrirEspecial('desierto')}/>
+              <BotonAccion color="#1a73e8" titulo="🖨 Imprimir" sub="Sacar la planilla en papel" onClick={() => window.print()}/>
             </div>
           </div>
 
-          {/* Arquero obligatorio */}
-          <div className="gm-papel-no-imprimir" style={{ padding: '8px 10px', background: '#fffde7', border: '1px solid #ffe082', borderRadius: '10px', marginBottom: '8px', display: compacta ? 'grid' : 'flex', gridTemplateColumns: compacta ? '1fr 1fr' : undefined, alignItems: compacta ? 'start' : 'center', gap: '8px 16px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '.78rem', fontWeight: '800', color: '#f57f17', gridColumn: compacta ? '1 / -1' : undefined }}>🧤 Arquero obligatorio:</span>
-            <SelectorArquero vertical={compacta} etiqueta={nombreLocal} jugadores={jugadoresLocal} arquero={arqueroLocal} onElegir={j => onElegirArquero('local', j)}/>
-            <SelectorArquero vertical={compacta} etiqueta={nombreVis} jugadores={jugadoresVisitante} arquero={arqueroVis} onElegir={j => onElegirArquero('visitante', j)}/>
-          </div>
+          {/* ── La hoja (esto es lo que se imprime) ── */}
+          <div id="planilla-papel-print" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ order: 1 }}>
+              <Paso n="1" titulo="Jugadores, goles y tarjetas" nota="Escribe el número de camiseta de quien jugó. Toca GOL cuando anote. Tarjetas: dos toques seguidos."/>
+              {dosColumnas ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
+                  {bloque('local', false)}
+                  {bloque('visitante', false)}
+                </div>
+              ) : (
+                <>
+                  {bloque('local', pestana !== 'local')}
+                  {bloque('visitante', pestana !== 'visitante')}
+                </>
+              )}
+            </div>
 
+            <div ref={cierreRef} className="gm-papel-no-imprimir" style={{ order: 2 }}>
+              <Paso n="2" titulo="Arqueros y penales" nota="Cada equipo necesita su arquero. Aparecen los jugadores que ya tienen número."/>
+              <div style={{ padding: '10px', background: '#fffde7', border: '1px solid #ffe082', borderRadius: '10px', marginBottom: '8px', display: 'grid', gridTemplateColumns: compacta ? '1fr' : '1fr 1fr', gap: '10px 16px' }}>
+                <SelectorArquero vertical etiqueta={`🧤 Arquero de ${nombreLocal}`} jugadores={jugadoresLocal} arquero={arqueroLocal} onElegir={j => onElegirArquero('local', j)}/>
+                <SelectorArquero vertical etiqueta={`🧤 Arquero de ${nombreVis}`} jugadores={jugadoresVisitante} arquero={arqueroVis} onElegir={j => onElegirArquero('visitante', j)}/>
+              </div>
           {/* Penales */}
           <div className="gm-papel-no-imprimir" style={{ padding: '8px 10px', background: '#f8f9fa', border: '1px solid #dadce0', borderRadius: '10px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px 12px', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '700', color: '#202124' }}>
@@ -632,22 +745,16 @@ export default function PantallaPapel({
             )}
           </div>
 
-          {/* ── La hoja (esto es lo que se imprime) ── */}
-          <div id="planilla-papel-print">
-            <Cabecera partido={partido} torneoNombre={torneoNombre} papel={papel} onPapel={onPapel} compacta={compacta}/>
-            {dosColumnas ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignItems: 'start' }}>
-                {bloque('local', false)}
-                {bloque('visitante', false)}
-              </div>
-            ) : (
-              <>
-                {bloque('local', pestana !== 'local')}
-                {bloque('visitante', pestana !== 'visitante')}
-              </>
-            )}
-            <div ref={informeRef}>
+            </div>
+
+            <div ref={informeRef} style={{ order: 3 }}>
+              <Paso n="3" titulo="Informe del árbitro" nota="Cuenta lo que pasó. Es obligatorio si hubo tarjeta roja. Puedes dictarlo con el micrófono."/>
               <InformeArbitral valor={papel.informe} onCambio={v => onPapel(p => ({ ...p, informe: v }))} obligatorio={hayRoja}/>
+            </div>
+
+            <div className="gm-papel-cab" style={{ order: 4 }}>
+              <Paso n="4" titulo="Datos del partido" nota="Torneo, fecha, cancha y árbitros."/>
+              <Cabecera partido={partido} torneoNombre={torneoNombre} papel={papel} onPapel={onPapel} compacta={compacta}/>
             </div>
           </div>
 

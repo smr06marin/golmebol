@@ -1325,6 +1325,10 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     if (!j || !(j.numero || '').trim() || j.debeTarjeta) return
     agregarEventoParaJugador(team, j, tipo)
   }
+  // Un toque en el número del marcador = un gol SIN jugador (sirve cuando solo se quiere llevar el resultado).
+  function golSinJugadorPapel(team) {
+    setEventos(prev => [...prev, { id: idUnico(), team, tipo: 'goal', numero: '', jugadorId: null, jugadorNombre: '', sinJugador: true, minuto: formatTiempo(segundos), periodo }])
+  }
   function agregarJugadorPapel(team, { cedula, nombre, numero }) {
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
     const setArr = team === 'local' ? setJugadoresLocal : setJugadoresVisitante
@@ -1808,7 +1812,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           arqueroLocal={arqueroLocal} arqueroVis={arqueroVis} onElegirArquero={elegirArqueroPapel}
           onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}
           onAsignarNumero={asignarNumeroPapel} onAbrirJugador={abrirJugador}
-          onGol={(team, index) => eventoPapel(team, index, 'goal')}
+          onGol={(team, index) => eventoPapel(team, index, 'goal')} onGolSinJugador={golSinJugadorPapel}
           onTarjeta={(team, index, tipo) => eventoPapel(team, index, tipo)}
           onQuitarEvento={quitarEvento} onAgregarJugador={agregarJugadorPapel}
           onSalir={pausarYSalir} onAbrirCierre={() => setMostrarCierre(true)}
