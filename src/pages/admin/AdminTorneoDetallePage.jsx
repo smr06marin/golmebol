@@ -388,6 +388,7 @@ function claveCanchaPartido(m, canchasTorneo) {
   if (coinc.length > 1) return null
   return `txt:${m.location}`
 }
+const normTxt = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 function etiquetaCancha(c) {
   return c ? `${c.escenario ? c.escenario + ' · ' : ''}${c.nombre}` : ''
 }
@@ -4216,6 +4217,30 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     setEditandoPartidoForm(m)
   }
 
+  // Si el partido guardó el nombre de la cancha escrito distinto (tildes, "Escenario · Cancha", etc.), lo reconoce
+  function canchaPorTexto(txt) {
+    const n = normTxt(txt)
+    if (!n) return null
+    const c = canchas.filter(x => normTxt(x.nombre) === n || normTxt(etiquetaCancha(x)) === n || (normTxt(x.nombre).length >= 4 && n.includes(normTxt(x.nombre))))
+    return c.length === 1 ? c[0] : null
+  }
+  async function reconocerCanchasEscritas() {
+    const lista = partidos.filter(p => !idCanchaDePartido(p) && canchaPorTexto(p.location))
+    if (lista.length === 0) return
+    if (!(await confirmar(`¿Reconocer la cancha de ${lista.length} partido${lista.length > 1 ? 's' : ''}? Tienen el lugar escrito y coincide con una de tus canchas. Solo se les asigna esa cancha.`))) return
+    setAsignandoMasiva(true)
+    let fallos = 0
+    for (const p of lista) {
+      const c = canchaPorTexto(p.location)
+      let { error } = await supabase.from('matches').update({ location: c.nombre, cancha_id: String(c.id) }).eq('id', p.id)
+      if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').update({ location: c.nombre }).eq('id', p.id))
+      if (error) fallos += 1
+    }
+    setAsignandoMasiva(false)
+    showMsg(fallos ? `Se reconocieron ${lista.length - fallos}; ${fallos} no se pudieron guardar` : `Cancha reconocida en ${lista.length} partido${lista.length > 1 ? 's' : ''} ✓`, fallos ? 'error' : 'ok')
+    fetchPartidos()
+  }
+
   // Asigna una misma cancha a todos los partidos que no tienen (grupos y eliminatorias nacen sin cancha)
   async function asignarCanchaASinCancha() {
     const cancha = canchas.find(c => String(c.id) === String(canchaMasiva))
@@ -5982,6 +6007,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '12px', padding: '12px 14px', margin: '0 0 12px' }}>
                     <div style={{ fontSize: '.86rem', fontWeight: '800', color: '#7a5b00' }}>⚠️ {sinCancha.length} partido{sinCancha.length > 1 ? 's' : ''} sin cancha</div>
                     <div style={{ fontSize: '.76rem', color: '#7a5b00', lineHeight: 1.45, margin: '2px 0 10px' }}>Los equipos no saben dónde llegar y la plata de la cancha no se puede cuadrar. Elige una cancha para todos de una vez, o asígnala uno por uno.</div>
+                    {(() => {
+                      const rec = sinCancha.filter(p => canchaPorTexto(p.location))
+                      if (rec.length === 0) return null
+                      return (
+                        <div style={{ background: '#e6f4ea', border: '1px solid #b7e1c1', borderRadius: '10px', padding: '10px 12px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 200px', fontSize: '.78rem', color: '#137333', lineHeight: 1.4 }}><b>{rec.length} de estos ya tienen el lugar escrito</b> y coincide con una de tus canchas.</div>
+                          <button disabled={asignandoMasiva} onClick={reconocerCanchasEscritas} style={{ minHeight: '42px', padding: '0 14px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '800' }}>Reconocer las {rec.length}</button>
+                        </div>
+                      )
+                    })()}
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
                       <select value={canchaMasiva} onChange={e => setCanchaMasiva(e.target.value)} style={{ flex: '1 1 200px', minHeight: '44px', borderRadius: '8px', border: '1px solid #dadce0', padding: '0 10px', fontSize: '.84rem', background: '#fff' }}>
                         <option value="">Elige la cancha...</option>
@@ -6001,6 +6036,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             <div style={{ flex: 1, minWidth: 0, fontSize: '.78rem', color: '#202124' }}>
                               <b>{p.home?.name || 'Local'} vs {p.away?.name || 'Visitante'}</b>
                               <div style={{ fontSize: '.7rem', color: '#5f6368' }}>{fecha ? new Date(fecha + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }) : 'Sin fecha'}{hora ? ` · ${fmtHora12(hora)}` : ''}</div>
+                              {p.location && <div style={{ fontSize: '.7rem', color: '#b45309' }}>Quedó escrito: «{p.location}»</div>}
+                              {(() => {
+                                const otras = [...new Set(partidos.filter(x => x.id !== p.id && idCanchaDePartido(x) && playedAtToLocal(x.played_at).fecha === fecha).map(x => etiquetaCanchaPartido(x, canchas)))]
+                                return otras.length > 0 ? <div style={{ fontSize: '.7rem', color: '#5f6368' }}>Ese día también se jugó en: {otras.join(', ')}</div> : null
+                              })()}
                             </div>
                             <button onClick={() => abrirEdicionPartido(p)} style={{ minHeight: '38px', padding: '0 12px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#1a73e8', fontSize: '.76rem', fontWeight: '700', flexShrink: 0 }}>Asignar cancha</button>
                           </div>
