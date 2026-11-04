@@ -65,6 +65,7 @@ export default function AdminTorneosPage() {
   const [msg, setMsg] = useState(null)
   const [showForm, setShowForm] = useState(false)
   // Crear torneo: primero solo lo básico; puntos, W, límites y dinero van en "Opciones avanzadas" (con los valores de siempre).
+  // Al CREAR: false = paso 1 (datos del torneo), true = paso 2 (reglas y dinero). Al EDITAR se ve todo junto.
   const [verAvanzado, setVerAvanzado] = useState(false)
   const [search, setSearch] = useState('')
   const [verArchivados, setVerArchivados] = useState(false) // por defecto los torneos archivados (ediciones viejas ya cerradas) no se muestran, para que la lista no se llene
@@ -134,6 +135,31 @@ export default function AdminTorneosPage() {
   function showMsg(text, type = 'ok') {
     setMsg({ text, type })
     setTimeout(() => setMsg(null), type === 'error' ? 8000 : 3000)
+  }
+
+  // Crear torneo en 2 pasos: 1) datos del torneo  2) reglas y dinero. Pasar al paso 2 valida lo del paso 1.
+  function irAlPaso2() {
+    const falta = !form.name ? 'El nombre del torneo es obligatorio'
+      : !form.season ? 'La temporada es obligatoria'
+      : ((form.pais || 'CO') === 'CO' && !form.municipio_codigo) ? 'Selecciona el departamento y la ciudad o municipio del torneo'
+      : !form.city ? 'La ciudad es obligatoria'
+      : !form.modalidad ? 'La modalidad es obligatoria'
+      : !form.genero ? 'El género es obligatorio'
+      : !form.categoria ? 'La categoría es obligatoria (ej: Senior, Sub-20)'
+      : !form.formato ? 'El formato es obligatorio'
+      : !form.fecha_inicio ? 'La fecha de inicio es obligatoria' : ''
+    if (falta) return showMsg(falta, 'error')
+    if (!form.planilla_tipo) {
+      setErrorPlanilla(true)
+      try { document.getElementById('selector-planilla-torneo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } catch { /* sin scroll */ }
+      return showMsg('Escoge con qué planilla se va a manejar el torneo (Fútbol de salón o Fútbol 11)', 'error')
+    }
+    setVerAvanzado(true)
+    try { document.getElementById('form-torneo-nuevo')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* sin scroll */ }
+  }
+  function volverAlPaso1() {
+    setVerAvanzado(false)
+    try { document.getElementById('form-torneo-nuevo')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) } catch { /* sin scroll */ }
   }
 
   async function handleSave() {
@@ -444,11 +470,30 @@ export default function AdminTorneosPage() {
 
       {/* Formulario */}
       {showForm && (
-        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
-          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: '20px' }}>
+        <div id="form-torneo-nuevo" style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,.08)', scrollMarginTop: '12px' }}>
+          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#202124', marginBottom: editId ? '20px' : '14px' }}>
             {editId ? 'Editar torneo' : 'Nuevo torneo'}
           </div>
+          {!editId && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '22px' }}>
+              {[{ n: 1, t: 'Datos del torneo' }, { n: 2, t: 'Reglas y dinero' }].map((p, i) => {
+                const activo = (verAvanzado ? 2 : 1) === p.n
+                const hecho = verAvanzado && p.n === 1
+                return (
+                  <div key={p.n} style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: i === 0 ? '0 1 auto' : '1 1 0', minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <span style={{ width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.8rem', fontWeight: '800', background: activo ? '#1a73e8' : hecho ? '#1e8e3e' : '#f1f3f4', color: activo || hecho ? '#fff' : '#80868b' }}>{hecho ? '✓' : p.n}</span>
+                      <span style={{ fontSize: '.84rem', fontWeight: activo ? '700' : '500', color: activo ? '#202124' : '#80868b', whiteSpace: 'nowrap' }}>{p.t}</span>
+                    </div>
+                    {i === 0 && <span style={{ flex: 1, height: '2px', background: hecho ? '#1e8e3e' : '#e8eaed', minWidth: '16px', borderRadius: '2px' }}/>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {(editId || !verAvanzado) && (
+              <>
             <div>
               <label style={label}>Nombre *</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={input} placeholder="Nombre del torneo"/>
@@ -509,17 +554,17 @@ export default function AdminTorneosPage() {
             </div>
 
 
-            {!editId && (
-              <button type="button" onClick={() => setVerAvanzado(v => !v)} aria-expanded={verAvanzado}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', width: '100%', textAlign: 'left', padding: '14px 16px', background: '#f8f9fa', border: '1px solid #e8eaed', borderRadius: '10px', cursor: 'pointer', minHeight: '48px' }}>
-                <span>
-                  <span style={{ display: 'block', fontSize: '.88rem', fontWeight: '700', color: '#202124' }}>Opciones avanzadas {verAvanzado ? '▴' : '▾'}</span>
-                  <span style={{ display: 'block', fontSize: '.74rem', color: '#5f6368', marginTop: '2px' }}>Puntos, partido por W, límite de jugadores, duración y dinero. Ya vienen listos: 3-1-0 puntos y el tiempo típico de la modalidad. Puedes cambiarlos después.</span>
-                </span>
-              </button>
+              </>
             )}
-            {(verAvanzado || editId) && (
+
+            {(editId || verAvanzado) && (
               <>
+            {!editId && (
+              <div style={{ background: '#e8f0fe', border: '1px solid #d2e3fc', borderRadius: '10px', padding: '12px 14px', fontSize: '.8rem', color: '#174ea6', lineHeight: 1.5 }}>
+                <b>Reglas y dinero del torneo.</b> Todo viene listo con los valores de siempre (3-1-0 puntos y el tiempo típico de la modalidad). Cambia solo lo que necesites; también lo puedes ajustar después.
+              </div>
+            )}
+            <div style={{ fontSize: '.72rem', fontWeight: '800', letterSpacing: '.08em', color: '#80868b', marginTop: '4px' }}>REGLAS DEL TORNEO</div>
             <div>
               <label style={label}>Fecha fin <span style={{ color: '#9aa0a6', fontWeight: '400' }}>(opcional — puede definirse después)</span></label>
               <input type="date" value={form.fecha_fin} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} style={input}/>
@@ -592,6 +637,7 @@ export default function AdminTorneosPage() {
             )}
 
             {/* Precios de tarjetas */}
+            <div style={{ fontSize: '.72rem', fontWeight: '800', letterSpacing: '.08em', color: '#80868b', marginTop: '8px' }}>DINERO</div>
             <div style={{ borderTop: '1px solid #e8eaed', paddingTop: '16px' }}>
               <div style={{ fontSize: '.8rem', fontWeight: '700', color: '#202124', marginBottom: '10px' }}>💳 Precio de las tarjetas</div>
               <div style={{ display: 'grid', gridTemplateColumns: cols3, gap: '16px' }}>
@@ -654,13 +700,26 @@ export default function AdminTorneosPage() {
               </>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-            <button onClick={handleSave} disabled={loading}
-              style={{ padding: '8px 20px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '500', opacity: loading ? .7 : 1 }}>
-              {loading ? 'Guardando...' : editId ? 'Actualizar' : 'Crear torneo'}
-            </button>
-            <button onClick={() => { setShowForm(false); setForm(EMPTY); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null) }}
-              style={{ padding: '8px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.875rem' }}>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
+            {!editId && !verAvanzado ? (
+              <button onClick={irAlPaso2}
+                style={{ minHeight: '44px', padding: '10px 22px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600' }}>
+                Siguiente: reglas y dinero →
+              </button>
+            ) : (
+              <button onClick={handleSave} disabled={loading}
+                style={{ minHeight: '44px', padding: '10px 22px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '600', opacity: loading ? .7 : 1 }}>
+                {loading ? 'Guardando...' : editId ? 'Actualizar' : 'Crear torneo'}
+              </button>
+            )}
+            {!editId && verAvanzado && (
+              <button onClick={volverAlPaso1}
+                style={{ minHeight: '44px', padding: '10px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#202124', fontSize: '.9rem', fontWeight: '500' }}>
+                ← Atrás
+              </button>
+            )}
+            <button onClick={() => { setShowForm(false); setForm(EMPTY); setUbicInferida(false); setFin(FIN_EMPTY); setEditId(null); setVerAvanzado(false) }}
+              style={{ minHeight: '44px', padding: '10px 20px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.9rem' }}>
               Cancelar
             </button>
           </div>
