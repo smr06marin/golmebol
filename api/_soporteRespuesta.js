@@ -5,6 +5,8 @@
 //   3. Si no, va al último organizador que escribió y todavía no tiene respuesta
 // Devuelve { ok: true } o { ok: false } cuando no se pudo saber a quién contestarle.
 
+import { avisarOrganizador } from './_soportePush.js'
+
 export const AYUDA_RUTA = 'No supe a quién contestarle. Responde directamente al mensaje del organizador (en Telegram: deslizar o mantener presionado → Responder), o empieza tu mensaje con su número, por ejemplo: #12 hola, ya te ayudo.'
 
 export async function guardarRespuesta(admin, { texto, citadoId, idMensaje }) {
@@ -34,6 +36,9 @@ export async function guardarRespuesta(admin, { texto, citadoId, idMensaje }) {
 
   const { error } = await admin.from('soporte_mensajes').insert({ chat_id: chatId, de: 'soporte', texto: cuerpo.slice(0, 2000), wa_id: idMensaje || null })
   if (error && error.code !== '23505') throw error // 23505 = el aviso llegó repetido: ya estaba guardado
-  if (!error) await admin.from('soporte_chats').update({ ultimo_mensaje_at: new Date().toISOString() }).eq('id', chatId)
+  if (!error) {
+    await admin.from('soporte_chats').update({ ultimo_mensaje_at: new Date().toISOString() }).eq('id', chatId)
+    await avisarOrganizador(admin, chatId, cuerpo) // notificación al organizador (si activó los avisos)
+  }
   return { ok: true }
 }

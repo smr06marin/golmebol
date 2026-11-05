@@ -2,11 +2,12 @@
 // WhatsApp, y las respuestas vuelven a este mismo chat. Todo el historial queda a la vista.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ChevronLeft, MessageCircle, Send } from 'lucide-react'
+import { Bell, ChevronLeft, MessageCircle, Send } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { apiUrl } from '../lib/apiBase'
 import { useAuthStore } from '../store/authStore'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { estadoAvisos, activarAvisos, desactivarAvisos } from '../lib/avisosChat'
 
 const BIENVENIDA = '¡Hola! 👋 Cuéntanos qué necesitas y te respondemos por aquí mismo. Si algo no funciona, dinos en qué pantalla estabas y qué esperabas que pasara.'
 
@@ -23,7 +24,9 @@ function ChatInterno() {
   const { user } = useAuthStore()
   const isMobile = useIsMobile()
   const location = useLocation()
-  const [abierto, setAbierto] = useState(false)
+  // Se abre solo si llegó tocando la notificación (…/admin?ayuda=1)
+  const [abierto, setAbierto] = useState(() => { try { return new URLSearchParams(window.location.search).get('ayuda') === '1' } catch { return false } })
+  const [avisos, setAvisos] = useState('cargando') // estado de las notificaciones del navegador
   const [chat, setChat] = useState(null)
   const [mensajes, setMensajes] = useState([])
   const [texto, setTexto] = useState('')
@@ -55,6 +58,34 @@ function ChatInterno() {
     })()
     return () => { vivo = false }
   }, [user?.id, cargar])
+
+  // Notificaciones: estado de este navegador, limpiar ?ayuda=1 de la dirección y atender al service worker
+  useEffect(() => {
+    let vivo = true
+    estadoAvisos().then(e => { if (vivo) setAvisos(e) })
+    try {
+      const u = new URL(window.location.href)
+      if (u.searchParams.get('ayuda') === '1') { u.searchParams.delete('ayuda'); window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash) }
+    } catch { /* nada */ }
+    return () => { vivo = false }
+  }, [])
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const alMensaje = e => {
+      if (e.data?.tipo === 'abrir-ayuda') setAbierto(true)
+      else if (e.data?.tipo === 'chat-nuevo' && chat?.id) cargar(chat.id)
+    }
+    navigator.serviceWorker.addEventListener('message', alMensaje)
+    return () => navigator.serviceWorker.removeEventListener('message', alMensaje)
+  }, [chat?.id, cargar])
+
+  async function alternarAvisos() {
+    if (avisos === 'activo') { setAvisos(await desactivarAvisos()); return }
+    const r = await activarAvisos()
+    setAvisos(r === 'error' ? 'pendiente' : r)
+    if (r === 'error') setAviso('No pudimos activar los avisos en este navegador. Intenta de nuevo más tarde.')
+  }
 
   // Respuestas en vivo + respaldo por si el tiempo real falla
   useEffect(() => {
@@ -170,6 +201,22 @@ function ChatInterno() {
               <div style={{ fontSize: '.7rem', color: '#80868b', lineHeight: 1.2 }}>Escríbenos y te respondemos aquí mismo</div>
             </div>
           </div>
+
+          {(avisos === 'pendiente' || avisos === 'activo' || avisos === 'bloqueado' || avisos === 'falta-instalar') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#eef4ff', borderBottom: '1px solid #d7e3fc', fontSize: '.74rem', color: '#1a4fa3', lineHeight: 1.35, flexShrink: 0 }}>
+              <Bell size={16} style={{ flexShrink: 0 }} />
+              {avisos === 'pendiente' && <>
+                <span style={{ flex: 1 }}>¿Quieres que te avisemos cuando te respondamos?</span>
+                <button onClick={alternarAvisos} style={{ minHeight: '36px', padding: '0 12px', borderRadius: '18px', border: 'none', background: '#1a73e8', color: '#fff', fontSize: '.74rem', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}>Activar avisos</button>
+              </>}
+              {avisos === 'activo' && <>
+                <span style={{ flex: 1 }}>Avisos activados: te notificamos cuando te respondan.</span>
+                <button onClick={alternarAvisos} style={{ minHeight: '36px', background: 'none', border: 'none', color: '#1a4fa3', fontSize: '.72rem', fontWeight: '700', textDecoration: 'underline', cursor: 'pointer', flexShrink: 0 }}>Desactivar</button>
+              </>}
+              {avisos === 'bloqueado' && <span style={{ flex: 1 }}>Los avisos están bloqueados en este navegador. Para activarlos, toca el candado junto a la dirección de la página y permite las notificaciones.</span>}
+              {avisos === 'falta-instalar' && <span style={{ flex: 1 }}>Para recibir avisos en el iPhone, primero agrega Golmebol a tu pantalla de inicio (botón Compartir → Agregar a pantalla de inicio) y ábrelo desde ahí.</span>}
+            </div>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', padding: '14px 12px', background: '#f6f7f9', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ alignSelf: 'flex-start', maxWidth: '86%', background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', color: '#202124', lineHeight: 1.45 }}>
