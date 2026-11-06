@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarTexto, enviarPlantilla, waConfigurado } from './_whatsapp.js'
 import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado } from './_telegram.js'
+import { aOggOpus } from './_audio.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -81,8 +82,13 @@ export default async function handler(req, res) {
         if (adj) {
           const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)
           if (ed || !archivo) throw new Error('No se pudo leer el archivo guardado')
+          let envio = archivo, nombreEnvio = `adjunto.${adj.ext}`
+          if (adj.tipo === 'audio') { // la nota de voz que graba el navegador no trae duración: se pasa a OGG/Opus para que Telegram la reproduzca
+            const ogg = await aOggOpus(Buffer.from(await archivo.arrayBuffer()), adj.ext === 'weba' ? 'webm' : adj.ext)
+            if (ogg) { envio = new Blob([ogg], { type: 'audio/ogg' }); nombreEnvio = 'voz.ogg' }
+          }
           const cabe = !texto || (cab.length + texto.length + pie.length + 2) <= 1024 // la leyenda de Telegram admite 1024 letras
-          waId = await enviarTelegramArchivo({ tipo: adj.tipo, archivo, nombre: `adjunto.${adj.ext}`, leyenda: cab + (texto && cabe ? `\n\n${texto}` : '') + pie })
+          waId = await enviarTelegramArchivo({ tipo: adj.tipo, archivo: envio, nombre: nombreEnvio, leyenda: cab + (texto && cabe ? `\n\n${texto}` : '') + pie })
           if (texto && !cabe) await enviarTelegram(texto, undefined, Number(waId.slice(3))).catch(() => {})
         } else {
           waId = await enviarTelegram(`${cab}\n\n${texto}${pie}`)
