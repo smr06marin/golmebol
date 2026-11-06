@@ -29,7 +29,7 @@ import LinkFinanzasEquipos from '../../components/LinkFinanzasEquipos'
 import DetalleTarjetasEquipo from '../../components/DetalleTarjetasEquipo'
 import InformesArbitrales from '../../components/InformesArbitrales'
 import { guardarOriginal, guardarOriginalDesdeUrl, restaurarOriginal, useTieneOriginal } from '../../lib/logoOriginal'
-import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, FileText, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Trophy, Calendar, BarChart2, Shield, Clock, MapPin, Check, X, Plus, Shuffle, GripVertical, Camera, Users, GitBranch, ChevronDown, ChevronUp, DollarSign, FileText, Pencil, Image as ImageIcon, Palette, Upload, ExternalLink, MessageSquare, Send, RefreshCw, MoreHorizontal } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
@@ -1246,6 +1246,15 @@ export default function AdminTorneoDetallePage() {
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
+  // Dónde dibujar el menú de ··· del equipo (se calcula al abrirlo para que siempre quede completo en pantalla)
+  const [menuEquipoPos,    setMenuEquipoPos]    = useState(null)
+  useEffect(() => {
+    if (!menuEquipoId) return undefined
+    const cerrar = () => setMenuEquipoId(null)
+    window.addEventListener('scroll', cerrar, true)
+    window.addEventListener('resize', cerrar)
+    return () => { window.removeEventListener('scroll', cerrar, true); window.removeEventListener('resize', cerrar) }
+  }, [menuEquipoId])
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [linkRegistroEquipo, setLinkRegistroEquipo] = useState(null) // equipo al que se le va a compartir el link — abre el modal de duración
   const [flyerTabla,        setFlyerTabla]        = useState(null)   // { filas, subtitulo } — flyer de la tabla de posiciones (general o de un grupo)
@@ -6728,12 +6737,27 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     </button>
                     {/* Menú 3 puntos */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <button onClick={() => setMenuEquipoId(menuAbierto ? null : e.id)}
-                        style={{ background: menuAbierto?'#f1f3f4':'none', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5f6368' }}>
-                        ···
+                      <button
+                        aria-label={`Opciones de ${e.name}`}
+                        onClick={ev => {
+                          if (menuAbierto) { setMenuEquipoId(null); return }
+                          // Abre hacia abajo si cabe; si no, hacia arriba; siempre dentro de la pantalla (sin tapar la barra de abajo)
+                          const r = ev.currentTarget.getBoundingClientRect()
+                          const vh = window.innerHeight, vw = window.innerWidth
+                          const BARRA_ABAJO = 76, ALTO_MENU = 370
+                          const right = Math.max(8, vw - r.right)
+                          if (vh - r.bottom - BARRA_ABAJO >= ALTO_MENU) setMenuEquipoPos({ top: r.bottom + 4, right, maxH: vh - r.bottom - BARRA_ABAJO - 4 })
+                          else if (r.top - 12 >= ALTO_MENU) setMenuEquipoPos({ bottom: vh - r.top + 4, right, maxH: r.top - 12 })
+                          else setMenuEquipoPos({ top: 8, right, maxH: vh - 16 - BARRA_ABAJO })
+                          setMenuEquipoId(e.id)
+                        }}
+                        style={{ background: menuAbierto ? '#e8f0fe' : '#f1f3f4', border: menuAbierto ? '1px solid #1a73e8' : '1px solid #dadce0', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: menuAbierto ? '#1a73e8' : '#3c4043', touchAction: 'manipulation' }}>
+                        <MoreHorizontal size={22} strokeWidth={2.6}/>
                       </button>
-                      {menuAbierto && (
-                        <div style={{ position: 'absolute', right: 0, top: '40px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 200, minWidth: '230px', padding: '6px 0' }}>
+                      {menuAbierto && menuEquipoPos && (
+                        <>
+                        <div onClick={() => setMenuEquipoId(null)} style={{ position: 'fixed', inset: 0, zIndex: 199 }}/>
+                        <div style={{ position: 'fixed', right: menuEquipoPos.right, ...(menuEquipoPos.top !== undefined ? { top: menuEquipoPos.top } : { bottom: menuEquipoPos.bottom }), maxHeight: menuEquipoPos.maxH, overflowY: 'auto', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', boxShadow: '0 8px 30px rgba(0,0,0,.2)', zIndex: 200, minWidth: '230px', padding: '6px 0' }}>
                           {[
                             { titulo: 'Jugadores', ops: [
                               { label: 'Ver jugadores', icon: '👥', action: () => { setJugadoresEquipoId(jugadoresEquipoId===e.id?null:e.id); setMenuEquipoId(null) } },
@@ -6765,6 +6789,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             </div>
                           ))}
                         </div>
+                        </>
                       )}
                     </div>
                   </div>
