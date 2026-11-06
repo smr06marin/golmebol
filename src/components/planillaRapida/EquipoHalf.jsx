@@ -6,7 +6,7 @@ const BOTONES_EVENTO = [
   { tipo: 'yellow_card', emoji: '🟨', label: 'Amarilla', color: '#f9c400' },
   { tipo: 'blue_card',   emoji: '🟦', label: 'Azul',     color: '#1a73e8' },
   { tipo: 'red_card',    emoji: '🟥', label: 'Roja',     color: '#d93025' },
-  { tipo: 'falta_acum',  emoji: '🟠', label: 'Falta',    color: '#e8710a' },
+  { tipo: 'falta_acum',  emoji: 'FALTA', label: 'Falta',  color: '#e8710a' },
 ]
 
 // Una mitad de la pantalla de partido: nombre del equipo + faltas arriba, el
@@ -40,7 +40,7 @@ export default function EquipoHalf({
         {mostrarFaltas && (
           <span title="Faltas acumuladas del equipo en este tiempo"
             style={{ background: faltasEquipo >= 5 ? '#e8710a' : 'rgba(0,0,0,.25)', color: faltasEquipo >= 5 ? '#1a1a1a' : colorTexto, borderRadius: '6px', padding: '3px 7px', fontSize: '.65rem', fontWeight: '800', flexShrink: 0 }}>
-            🟠 {faltasEquipo}
+            FALTAS {faltasEquipo}
           </span>
         )}
       </div>
@@ -90,7 +90,7 @@ export default function EquipoHalf({
           {botones.map(b => (
             <button key={b.tipo} onClick={() => handleEvento(b.tipo)} disabled={!numero.trim()}
               title={b.label}
-              style={{ padding: '6px 2px', borderRadius: '7px', border: 'none', background: b.color, cursor: numero.trim() ? 'pointer' : 'default', opacity: numero.trim() ? 1 : .55, fontSize: '1rem' }}>
+              style={{ padding: '6px 2px', borderRadius: '7px', border: 'none', background: b.color, cursor: numero.trim() ? 'pointer' : 'default', opacity: numero.trim() ? 1 : .55, fontSize: b.tipo === 'falta_acum' ? '.62rem' : '1rem', fontWeight: b.tipo === 'falta_acum' ? '900' : 'normal', color: b.tipo === 'falta_acum' ? '#1a1a1a' : 'inherit' }}>
               {b.emoji}
             </button>
           ))}
@@ -102,15 +102,15 @@ export default function EquipoHalf({
         {eventos.length === 0 ? (
           <div style={{ fontSize: '.65rem', color: colorTexto, opacity: .7, padding: '6px 4px' }}>Sin eventos aún</div>
         ) : [...eventos].reverse().map(e => (
-          // Doble toque para quitar (no un solo toque) — para que no se borre
-          // un gol o tarjeta por error al rozar la pantalla durante el partido.
-          <div key={e.id} onDoubleClick={() => onQuitarEvento(e.id)} title="Doble toque para quitar"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 4px', fontSize: '.7rem', color: colorTexto, cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-            <span>{BOTONES_EVENTO.find(b => b.tipo === e.tipo)?.emoji}</span>
+          <div key={e.id}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 4px', fontSize: '.7rem', color: colorTexto, borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+            <span style={e.tipo === 'falta_acum' ? { fontSize: '.6rem', fontWeight: '900', background: '#e8710a', color: '#1a1a1a', borderRadius: '4px', padding: '1px 4px' } : undefined}>{BOTONES_EVENTO.find(b => b.tipo === e.tipo)?.emoji}</span>
             <span style={{ fontWeight: '700' }}>#{e.numero}</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{e.jugadorNombre || ''}</span>
             <span style={{ opacity: .75 }}>{e.minuto}</span>
-            <span style={{ opacity: .55, fontSize: '.6rem' }}>✕✕</span>
+            <button type="button" aria-label="Quitar este registro" title="Quitar este registro"
+              onClick={() => { if (window.confirm('¿Quitar este registro?\n\n' + (BOTONES_EVENTO.find(b => b.tipo === e.tipo)?.label || '') + ' · #' + e.numero + (e.jugadorNombre ? ' ' + e.jugadorNombre : '') + ' · ' + e.minuto)) onQuitarEvento(e.id) }}
+              style={{ flexShrink: 0, width: '28px', height: '28px', borderRadius: '14px', border: 'none', background: 'rgba(0,0,0,.35)', color: '#fff', fontSize: '.8rem', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✕</button>
           </div>
         ))}
       </div>
