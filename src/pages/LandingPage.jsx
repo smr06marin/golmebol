@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, ChevronLeft, Search, SlidersHorizontal } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight, Search, SlidersHorizontal } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
@@ -336,6 +336,8 @@ function calcularCampeon(mts) {
 export default function LandingPage({ modo = 'inicio' }) {
   const soloTorneos = modo === 'torneos'
   const navigate = useNavigate()
+  const location = useLocation()
+  const busquedaRef = useRef(null)
   // Lo último que se vio queda guardado: al volver a entrar la portada se pinta
   // de una (números, torneos, escenarios, patrocinadores) y lo fresco llega
   // detrás y lo reemplaza — antes todo arrancaba vacío hasta terminar las consultas.
@@ -358,6 +360,12 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [patroDetalle, setPatroDetalle] = useState(null) // patrocinador abierto en el modal de detalle
 
   const torneosRef = useRef(null)
+  // Viene de la barra de búsqueda del inicio: deja el buscador de torneos listo para escribir.
+  useEffect(() => {
+    if (!soloTorneos || !location.state?.enfocar) return
+    const t = setTimeout(() => busquedaRef.current?.focus(), 200)
+    return () => clearTimeout(t)
+  }, [soloTorneos, location.state])
   const vivoRef = useRef(null)
 
   // Arrastrar con el mouse para mover el carrusel de torneos en PC — en
@@ -876,6 +884,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   }, [torneosPorAttr, filtroTorneos])
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  const escudosHero = torneosOrdenados.filter(t => t.logo_url && !t.finalizado).slice(0, 3) // escudos que acompañan el botón "Ver todos los torneos"
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: 'system-ui,sans-serif', color: S.text }}>
@@ -886,6 +895,16 @@ export default function LandingPage({ modo = 'inicio' }) {
         .gm-carousel-flecha:hover { filter: brightness(1.25) }
         @media (pointer: coarse) { .gm-carousel-flecha { display: none !important } }
         .gm-hover:hover { filter: brightness(1.08) }
+        .gm-cristal { background: rgba(14,14,14,.66); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.16); color: #fff; font-family: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: border-color .15s ease, background .15s ease, transform .1s ease }
+        .gm-cristal:hover { border-color: rgba(111,207,61,.55) }
+        .gm-cristal:active { transform: scale(.985) }
+        .gm-buscar-hero { box-shadow: 0 12px 34px rgba(0,0,0,.5), 0 0 0 1px rgba(111,207,61,.28) }
+        .gm-buscar-hero:hover { border-color: rgba(111,207,61,.7) }
+        .gm-fantasma { background: transparent; border: 1px solid rgba(111,207,61,.5); color: #6fcf3d; font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background .15s ease, border-color .15s ease, transform .1s ease }
+        .gm-fantasma:hover { background: rgba(111,207,61,.12); border-color: #6fcf3d }
+        .gm-fantasma:active { transform: scale(.985) }
+        .gm-tarjeta-org { transition: border-color .2s ease }
+        .gm-tarjeta-org:hover { border-color: rgba(111,207,61,.38) !important }
         /* Torneos: cuadrícula de escudos (2 columnas en celular) */
         .gm-tg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px }
         @media (min-width: 640px) { .gm-tg { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px } }
@@ -970,15 +989,41 @@ export default function LandingPage({ modo = 'inicio' }) {
             Torneos en vivo, tablas de posiciones, récords, escenarios deportivos{MOSTRAR_ESCUELAS ? ' y escuelas de fútbol' : ''} — todo en Golmebol.
           </p>
           </>)}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button className="gm-hover" onClick={() => navigate('/torneos')} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: 'none', background: S.green, color: '#0a1a00', fontSize: '.88rem', fontWeight: 900, cursor: 'pointer' }}>
-              VER TORNEOS <ArrowRight size={16}/>
+          <div style={{ width: '100%', maxWidth: '440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+            {/* 1) Buscar: la forma más rápida de llegar a su torneo o a su equipo */}
+            <button type="button" className="gm-cristal gm-buscar-hero" onClick={() => navigate('/torneos', { state: { enfocar: true } })} aria-label="Buscar torneo o equipo"
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', boxSizing: 'border-box', height: '58px', padding: '0 8px 0 18px', borderRadius: '999px' }}>
+              <Search size={20} color={S.green} style={{ flexShrink: 0 }}/>
+              <span style={{ flex: 1, minWidth: 0, fontSize: '.95rem', fontWeight: 600, color: S.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Busca tu torneo o tu equipo</span>
+              <span style={{ width: '42px', height: '42px', borderRadius: '50%', background: S.green, color: '#0a1a00', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><ArrowRight size={19}/></span>
             </button>
-            <button className="gm-hover" onClick={() => { if (!hayVivoAhora) { setAvisoSinVivo(true); return } setSenalVivo(n => n + 1); scrollA(vivoRef) }} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '13px 26px', borderRadius: '10px', border: `1px solid ${S.border}`, background: 'transparent', color: S.text, fontSize: '.88rem', fontWeight: 800, cursor: 'pointer' }}>
-              <Radio size={15} color={S.red}/> VER EN VIVO
+            {/* 2) Sin escribir: ver todos los torneos con sus escudos */}
+            <button type="button" className="gm-cristal" onClick={() => navigate('/torneos')}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', boxSizing: 'border-box', minHeight: '56px', padding: '8px 14px 8px 16px', borderRadius: '999px' }}>
+              {escudosHero.length > 0 && (
+                <span aria-hidden="true" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  {escudosHero.map((t, i) => (
+                    <span key={t.id} style={{ marginLeft: i === 0 ? 0 : '-10px', borderRadius: '50%', border: '2px solid #151515', display: 'flex', zIndex: escudosHero.length - i }}>
+                      <Escudo logo_url={t.logo_url} name={t.name} size={32} radius={16} urgente/>
+                    </span>
+                  ))}
+                </span>
+              )}
+              <span style={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+                <span style={{ display: 'block', fontSize: '.88rem', fontWeight: 800, whiteSpace: 'nowrap' }}>Ver todos los torneos</span>
+                {(stats.torneos > 0 || torneos.length > 0) && <span style={{ display: 'block', fontSize: '.72rem', fontWeight: 600, color: S.muted, marginTop: '2px' }}>{stats.torneos || torneos.length} torneos activos</span>}
+              </span>
+              <ChevronRight size={20} color={S.green} style={{ flexShrink: 0 }}/>
             </button>
+            {/* 3) Lo de siempre, más discreto y con la misma forma */}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="gm-cristal" onClick={() => { if (!hayVivoAhora) { setAvisoSinVivo(true); return } setSenalVivo(n => n + 1); scrollA(vivoRef) }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '42px', padding: '0 16px', borderRadius: '999px', fontSize: '.78rem', fontWeight: 800, letterSpacing: '.04em', color: hayVivoAhora ? S.text : S.text2 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: hayVivoAhora ? S.red : S.muted, flexShrink: 0 }}/> EN VIVO
+              </button>
+              <BotonAvisos cristal/>
+            </div>
           </div>
-          <BotonAvisos/>
         </div>
       </div>
 
@@ -1101,7 +1146,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             {/* Buscador */}
             <div className="gm-tbusca" style={{ display: 'flex', alignItems: 'center', gap: '10px', height: '50px', padding: '0 14px', background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', marginBottom: '12px' }}>
               <Search size={18} color={S.muted} style={{ flexShrink: 0 }}/>
-              <input data-sin-borrador type="text" inputMode="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" spellCheck={false}
+              <input ref={busquedaRef} data-sin-borrador type="text" inputMode="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" spellCheck={false}
                 value={busqueda} onChange={e => setBusqueda(e.target.value)} onFocus={cargarEquiposBusqueda}
                 placeholder="Busca tu torneo o tu equipo…" aria-label="Buscar torneo o equipo"
                 style={{ flex: 1, minWidth: 0, height: '100%', background: 'transparent', border: 'none', outline: 'none', color: S.text, fontSize: '.95rem', fontFamily: 'inherit' }}/>
@@ -1233,30 +1278,33 @@ export default function LandingPage({ modo = 'inicio' }) {
             const fotos = escenarios.filter(e => e.imagen_fondo_url)
             const actual = fotos.length > 0 ? fotos[escenarioIdx % fotos.length] : null
             return (
-              <div style={{ position: 'relative', borderRadius: '18px', overflow: 'hidden', border: `1px solid ${S.border}`, minHeight: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '20px' }}>
+              <div style={{ position: 'relative', borderRadius: '20px', overflow: 'hidden', border: `1px solid ${S.border}`, minHeight: '230px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '22px 20px 20px' }}>
                 <div key={actual?.id || 'sin-foto'} className="gm-fade"
                   style={{ position: 'absolute', inset: 0, zIndex: 0,
-                    backgroundImage: actual ? `linear-gradient(180deg, rgba(10,10,10,.2), rgba(10,10,10,.92)), url(${actual.imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
+                    backgroundImage: actual ? `linear-gradient(180deg, rgba(10,10,10,.5) 0%, rgba(10,10,10,.82) 55%, rgba(10,10,10,.96) 100%), url(${actual.imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
                     backgroundSize: 'cover', backgroundPosition: 'center' }}/>
                 <div style={{ position: 'relative', zIndex: 1 }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: S.green, color: '#0a0a0a', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.06em', padding: '5px 11px', borderRadius: '999px', marginBottom: '10px' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.16)', color: S.green, fontSize: '.64rem', fontWeight: 800, letterSpacing: '.14em', padding: '6px 12px', borderRadius: '999px', marginBottom: '12px' }}>
                     <Building2 size={13}/> RESERVAS EN LÍNEA
                   </div>
-                  <div style={{ fontWeight: 900, fontSize: '1.3rem', lineHeight: 1.15, marginBottom: '4px' }}>Reserva tu cancha</div>
-                  {actual?.name && <div style={{ fontWeight: 800, fontSize: '.88rem', color: S.green, marginBottom: '6px' }}>{actual.name}</div>}
-                  <div style={{ fontSize: '.84rem', color: '#fff', marginBottom: '12px', lineHeight: 1.4, textShadow: '0 1px 6px rgba(0,0,0,.8)' }}>Elige la cancha, el día y la hora, y reserva desde tu celular en menos de un minuto.</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
-                    {['1 · Elige la cancha', '2 · Día y hora', '3 · Reserva'].map(t => (
-                      <span key={t} style={{ fontSize: '.7rem', fontWeight: 800, color: '#fff', background: 'rgba(0,0,0,.55)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '999px', padding: '4px 10px' }}>{t}</span>
+                  <div style={{ fontWeight: 900, fontSize: '1.4rem', lineHeight: 1.15, marginBottom: '4px', letterSpacing: '-.005em' }}>Reserva tu cancha</div>
+                  {actual?.name && <div style={{ fontWeight: 700, fontSize: '.86rem', color: S.text2, marginBottom: '8px' }}>{actual.name}</div>}
+                  <div style={{ fontSize: '.84rem', color: S.text2, marginBottom: '14px', lineHeight: 1.5, maxWidth: '460px' }}>Elige la cancha, el día y la hora, y reserva desde tu celular en menos de un minuto.</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px', marginBottom: '16px', fontSize: '.74rem', fontWeight: 700, color: S.text2 }}>
+                    {['Elige la cancha', 'Día y hora', 'Reserva'].map((t, i) => (
+                      <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                        {i > 0 && <ChevronRight size={13} color={S.muted}/>}
+                        <span><span style={{ color: S.green, fontWeight: 900 }}>{i + 1}</span> {t}</span>
+                      </span>
                     ))}
                   </div>
-                  <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', minHeight: '50px', background: S.green, border: 'none', borderRadius: '25px', color: '#0a0a0a', fontSize: '.92rem', fontWeight: 900, cursor: 'pointer', padding: '0 20px', boxShadow: '0 6px 20px rgba(111,207,61,.35)' }}>
-                    RESERVAR CANCHA <ArrowRight size={18}/>
+                  <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', minHeight: '50px', background: S.green, border: 'none', borderRadius: '999px', color: '#0a1a00', fontSize: '.92rem', fontWeight: 800, cursor: 'pointer', padding: '0 20px', fontFamily: 'inherit' }}>
+                    Reservar cancha <ArrowRight size={18}/>
                   </button>
                   {fotos.length > 1 && (
-                    <div style={{ display: 'flex', gap: '5px', marginTop: '12px' }}>
+                    <div style={{ display: 'flex', gap: '5px', marginTop: '14px', justifyContent: 'center' }}>
                       {fotos.map((f, i) => (
-                        <span key={f.id} style={{ width: '6px', height: '6px', borderRadius: '50%', background: i === escenarioIdx % fotos.length ? S.green : 'rgba(255,255,255,.35)' }}/>
+                        <span key={f.id} style={{ width: i === escenarioIdx % fotos.length ? '16px' : '6px', height: '6px', borderRadius: '3px', background: i === escenarioIdx % fotos.length ? '#fff' : 'rgba(255,255,255,.3)', transition: 'width .25s ease' }}/>
                       ))}
                     </div>
                   )}
@@ -1288,15 +1336,17 @@ export default function LandingPage({ modo = 'inicio' }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
           {[
-            { tema: 'organizador', Icono: Trophy, titulo: 'Quiero organizar mi torneo con Golmebol', texto: 'Tabla de posiciones, resultados en vivo, carnets y todo lo que necesitas para tu torneo.', boton: 'ESCRIBIRNOS' },
-            { tema: 'escenario', Icono: Building2, titulo: 'Tengo una cancha o escenario', texto: 'Dale a tus clientes un sistema de reservas desde el celular, con tu propio calendario.', boton: 'QUIERO MI SISTEMA DE RESERVAS' },
+            { tema: 'organizador', Icono: Trophy, titulo: 'Quiero organizar mi torneo con Golmebol', texto: 'Tabla de posiciones, resultados en vivo, carnets y todo lo que necesitas para tu torneo.', boton: 'Escribirnos' },
+            { tema: 'escenario', Icono: Building2, titulo: 'Tengo una cancha o escenario', texto: 'Dale a tus clientes un sistema de reservas desde el celular, con tu propio calendario.', boton: 'Quiero mi sistema de reservas' },
           ].map(c => (
-            <div key={c.tema} style={{ borderRadius: '18px', border: `1px solid ${S.green}`, background: `linear-gradient(160deg, ${S.card}, ${S.bg2})`, padding: '22px', display: 'flex', flexDirection: 'column' }}>
-              <c.Icono size={24} color={S.green} style={{ marginBottom: '10px' }}/>
-              <div style={{ fontWeight: 900, fontSize: '1.05rem', marginBottom: '6px' }}>{c.titulo}</div>
-              <div style={{ fontSize: '.82rem', color: S.text2, marginBottom: '16px', lineHeight: 1.45 }}>{c.texto}</div>
-              <button onClick={() => window.dispatchEvent(new CustomEvent('gm-abrir-chat-publico', { detail: { tema: c.tema } }))}
-                style={{ marginTop: 'auto', alignSelf: 'flex-start', minHeight: '46px', padding: '0 20px', borderRadius: '23px', border: 'none', background: S.green, color: '#0a0a0a', fontSize: '.82rem', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div key={c.tema} className="gm-tarjeta-org" style={{ borderRadius: '20px', border: `1px solid ${S.border}`, background: `linear-gradient(160deg, ${S.card}, ${S.bg2})`, padding: '24px 22px 22px', display: 'flex', flexDirection: 'column' }}>
+              <span style={{ width: '46px', height: '46px', borderRadius: '14px', background: 'rgba(111,207,61,.1)', border: '1px solid rgba(111,207,61,.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '14px' }}>
+                <c.Icono size={22} color={S.green}/>
+              </span>
+              <div style={{ fontWeight: 900, fontSize: '1.08rem', lineHeight: 1.25, marginBottom: '8px' }}>{c.titulo}</div>
+              <div style={{ fontSize: '.84rem', color: S.text2, marginBottom: '20px', lineHeight: 1.55 }}>{c.texto}</div>
+              <button className="gm-fantasma" onClick={() => window.dispatchEvent(new CustomEvent('gm-abrir-chat-publico', { detail: { tema: c.tema } }))}
+                style={{ marginTop: 'auto', alignSelf: 'flex-start', minHeight: '46px', padding: '0 20px', borderRadius: '999px', fontSize: '.84rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {c.boton} <ArrowRight size={16}/>
               </button>
             </div>
