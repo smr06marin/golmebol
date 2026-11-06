@@ -117,6 +117,8 @@ function ChatInterno() {
   const [previa, setPrevia] = useState(null)     // dirección local para mostrarlo
   const [visor, setVisor] = useState(null)       // foto abierta a pantalla completa
   const inputArchivo = useRef(null)
+  const [nombreEdit, setNombreEdit] = useState('')
+  const [guardandoNombre, setGuardandoNombre] = useState(false)
   const [grabando, setGrabando] = useState(false)
   const [segundos, setSegundos] = useState(0)
   const grabadora = useRef(null)
@@ -214,6 +216,9 @@ function ChatInterno() {
   }, [chat?.id, abierto, cargar])
 
   const agenteActual = agenteDe(ahora)
+  const necesitaNombre = !!chat && chat.nombre === null // null = todavía no lo ha dicho (undefined = la columna aún no existe: no se pide)
+  const primerNombre = chat?.nombre ? chat.nombre.split(' ')[0] : ''
+  const saludo = BIENVENIDA.replace('¡Hola!', primerNombre ? `¡Hola, ${primerNombre}!` : '¡Hola!')
 
   const sinLeer = useMemo(() => chat ? mensajes.filter(m => m.de === 'soporte' && new Date(m.created_at) > new Date(chat.leido_usuario_at)).length : 0, [mensajes, chat])
 
@@ -262,6 +267,16 @@ function ChatInterno() {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = antes }
   }, [abierto, isMobile])
+
+  async function guardarNombre() {
+    const n = nombreEdit.trim().replace(/\s+/g, ' ')
+    if (n.length < 2 || guardandoNombre) return
+    setGuardandoNombre(true); setAviso('')
+    const { error } = await supabase.rpc('soporte_guardar_nombre', { p_nombre: n })
+    setGuardandoNombre(false)
+    if (error) { setAviso('No pudimos guardar tu nombre. Intenta de nuevo.'); return }
+    setChat(c => (c ? { ...c, nombre: n } : c))
+  }
 
   async function elegirArchivo(e) {
     const f = e.target.files?.[0]
@@ -405,12 +420,28 @@ function ChatInterno() {
             </div>
           )}
 
+          {necesitaNombre ? (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '28px 18px', background: '#f6f7f9', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+              <AvatarAgente agente={agenteActual} size={76} />
+              <div style={{ fontSize: '1.02rem', fontWeight: '800', color: '#202124', textAlign: 'center' }}>¡Hola! Soy {agenteActual.nombre}</div>
+              <div style={{ fontSize: '.86rem', color: '#5f6368', textAlign: 'center', lineHeight: 1.5, maxWidth: '300px' }}>Antes de empezar, ¿cómo te llamas? Así sabemos con quién hablamos. Solo te lo preguntamos esta vez.</div>
+              <input value={nombreEdit} onChange={e => setNombreEdit(e.target.value)} maxLength={60} placeholder="Tu nombre" autoComplete="name"
+                onKeyDown={e => { if (e.key === 'Enter') guardarNombre() }}
+                style={{ width: '100%', maxWidth: '300px', minHeight: '48px', border: '1px solid #dadce0', borderRadius: '24px', padding: '0 18px', fontSize: '16px', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
+              <button onClick={guardarNombre} disabled={nombreEdit.trim().length < 2 || guardandoNombre}
+                style={{ width: '100%', maxWidth: '300px', minHeight: '48px', borderRadius: '24px', border: 'none', background: nombreEdit.trim().length >= 2 ? 'linear-gradient(135deg,#1a73e8,#6c35de)' : '#dadce0', color: '#fff', fontSize: '.92rem', fontWeight: '800', cursor: nombreEdit.trim().length >= 2 ? 'pointer' : 'default' }}>
+                {guardandoNombre ? 'Guardando…' : 'Continuar'}
+              </button>
+              {aviso && <div style={{ fontSize: '.76rem', color: '#7a5b00', background: '#fef3c7', borderRadius: '10px', padding: '8px 12px', maxWidth: '300px', textAlign: 'center' }}>{aviso}</div>}
+            </div>
+          ) : (
+            <>
           <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', padding: '14px 12px', background: '#f6f7f9', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ alignSelf: 'flex-start', maxWidth: '92%', display: 'flex', alignItems: 'flex-end', gap: '6px' }}>
               <AvatarAgente agente={agenteActual} size={28} />
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', color: '#202124', lineHeight: 1.45 }}>
                 <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>{agenteActual.nombre}</div>
-                {BIENVENIDA}
+                {saludo}
               </div>
             </div>
             <div style={{ alignSelf: 'center', fontSize: '.66rem', color: '#9aa0a6', textAlign: 'center' }}>Los mensajes y archivos de este chat se borran solos a los 8 días.</div>
@@ -512,6 +543,8 @@ function ChatInterno() {
                   <Mic size={20} />
                 </button>}
           </div>
+          )}
+            </>
           )}
         </div>
       )}

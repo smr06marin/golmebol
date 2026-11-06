@@ -75,7 +75,8 @@ export default async function handler(req, res) {
     const donde = torneo ? `Torneo ${torneo}` : (contexto || 'sin pantalla')
 
     // Quién es: nombre del organizador (su perfil público), rol si no es organizador y los torneos que organiza
-    let lineasQuien = [`👤 ${quien}`]
+    const lineaNombre = chat.nombre ? [`🙋 ${chat.nombre}`] : [] // el nombre que dijo la primera vez
+    let lineasQuien = [...lineaNombre, `👤 ${quien}`]
     try {
       const [{ data: rolFila }, { data: perfil }, { data: ts }] = await Promise.all([
         admin.from('roles_plataforma').select('rol').eq('user_id', user.id).limit(1).maybeSingle(),
@@ -84,6 +85,7 @@ export default async function handler(req, res) {
       ])
       const nombres = (ts || []).map(t => t.name).filter(Boolean)
       lineasQuien = [
+        ...lineaNombre,
         ...(perfil?.nombre_publico ? [`🏷️ ${perfil.nombre_publico}`] : []),
         `👤 ${quien}`,
         ...(rolFila?.rol && rolFila.rol !== 'organizador' ? [`🔑 Rol: ${rolFila.rol}`] : []),
