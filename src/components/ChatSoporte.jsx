@@ -125,10 +125,22 @@ function ChatInterno() {
   useEffect(() => {
     if (!abierto || !isMobile || !window.visualViewport) return
     const vp = window.visualViewport
-    const medir = () => setVv({ h: vp.height, top: vp.offsetTop })
+    const medir = () => {
+      const tecladoAbierto = window.innerHeight - vp.height > 120
+      setVv(tecladoAbierto ? { h: vp.height, top: vp.offsetTop } : null)
+    }
+    // Al cerrar el teclado el iPhone a veces no avisa el cambio: se vuelve a medir un instante después
+    const medirTarde = () => { medir(); setTimeout(medir, 120); setTimeout(medir, 400) }
     medir()
     vp.addEventListener('resize', medir); vp.addEventListener('scroll', medir)
-    return () => { vp.removeEventListener('resize', medir); vp.removeEventListener('scroll', medir); setVv(null) }
+    window.addEventListener('orientationchange', medirTarde)
+    document.addEventListener('focusout', medirTarde)
+    return () => {
+      vp.removeEventListener('resize', medir); vp.removeEventListener('scroll', medir)
+      window.removeEventListener('orientationchange', medirTarde)
+      document.removeEventListener('focusout', medirTarde)
+      setVv(null)
+    }
   }, [abierto, isMobile])
 
   // El sello "Creada por GOLMEBOL" (abajo a la derecha en celular) taparía el botón de enviar: sube mientras el chat está abierto
@@ -175,7 +187,7 @@ function ChatInterno() {
 
   const bottomFab = isMobile ? 'calc(84px + env(safe-area-inset-bottom) + 10px)' : '24px'
   const panelStyle = isMobile
-    ? { position: 'fixed', left: 0, right: 0, top: vv ? vv.top : 0, height: vv ? vv.h : '100dvh', zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column' }
+    ? { position: 'fixed', left: 0, right: 0, top: vv ? vv.top : 0, ...(vv ? { height: vv.h } : { bottom: 0 }), zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column' }
     : { position: 'fixed', right: '24px', bottom: '24px', width: '380px', height: 'min(560px, calc(100vh - 48px))', zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column', borderRadius: '16px', boxShadow: '0 12px 40px rgba(0,0,0,.22)', overflow: 'hidden', border: '1px solid #e8eaed' }
 
   return (
@@ -198,21 +210,27 @@ function ChatInterno() {
             </button>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '.92rem', fontWeight: '800', color: '#202124', lineHeight: 1.2 }}>Ayuda de Golmebol</div>
-              <div style={{ fontSize: '.7rem', color: '#80868b', lineHeight: 1.2 }}>Escríbenos y te respondemos aquí mismo</div>
+              <div style={{ fontSize: '.7rem', color: '#80868b', lineHeight: 1.2 }}>Te respondemos aquí mismo</div>
             </div>
           </div>
 
-          {(avisos === 'pendiente' || avisos === 'activo' || avisos === 'bloqueado' || avisos === 'falta-instalar') && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#eef4ff', borderBottom: '1px solid #d7e3fc', fontSize: '.74rem', color: '#1a4fa3', lineHeight: 1.35, flexShrink: 0 }}>
+          {avisos === 'pendiente' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'linear-gradient(135deg,#1a73e8,#6c35de)', color: '#fff', flexShrink: 0 }}>
+              <Bell size={22} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: '.8rem', fontWeight: '700', lineHeight: 1.3 }}>Activa los avisos y te notificamos apenas te respondamos</span>
+              <button onClick={alternarAvisos} style={{ minHeight: '44px', padding: '0 16px', borderRadius: '22px', border: 'none', background: '#fff', color: '#1a4fa3', fontSize: '.82rem', fontWeight: '800', cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,.25)' }}>Activar</button>
+            </div>
+          )}
+          {avisos === 'activo' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', padding: '2px 12px', background: '#fff', borderBottom: '1px solid #f1f3f4', fontSize: '.66rem', color: '#9aa0a6', flexShrink: 0 }}>
+              <Bell size={11} />
+              <span>Avisos activados</span>
+              <button onClick={alternarAvisos} style={{ minHeight: '28px', padding: '0 4px', background: 'none', border: 'none', color: '#9aa0a6', fontSize: '.66rem', textDecoration: 'underline', cursor: 'pointer' }}>Desactivar</button>
+            </div>
+          )}
+          {(avisos === 'bloqueado' || avisos === 'falta-instalar') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: '#fff7e0', borderBottom: '1px solid #f3e2a8', fontSize: '.74rem', color: '#7a5b00', lineHeight: 1.35, flexShrink: 0 }}>
               <Bell size={16} style={{ flexShrink: 0 }} />
-              {avisos === 'pendiente' && <>
-                <span style={{ flex: 1 }}>¿Quieres que te avisemos cuando te respondamos?</span>
-                <button onClick={alternarAvisos} style={{ minHeight: '36px', padding: '0 12px', borderRadius: '18px', border: 'none', background: '#1a73e8', color: '#fff', fontSize: '.74rem', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}>Activar avisos</button>
-              </>}
-              {avisos === 'activo' && <>
-                <span style={{ flex: 1 }}>Avisos activados: te notificamos cuando te respondan.</span>
-                <button onClick={alternarAvisos} style={{ minHeight: '36px', background: 'none', border: 'none', color: '#1a4fa3', fontSize: '.72rem', fontWeight: '700', textDecoration: 'underline', cursor: 'pointer', flexShrink: 0 }}>Desactivar</button>
-              </>}
               {avisos === 'bloqueado' && <span style={{ flex: 1 }}>Los avisos están bloqueados en este navegador. Para activarlos, toca el candado junto a la dirección de la página y permite las notificaciones.</span>}
               {avisos === 'falta-instalar' && <span style={{ flex: 1 }}>Para recibir avisos en el iPhone, primero agrega Golmebol a tu pantalla de inicio (botón Compartir → Agregar a pantalla de inicio) y ábrelo desde ahí.</span>}
             </div>
