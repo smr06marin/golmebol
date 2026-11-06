@@ -27,3 +27,26 @@ export async function enviarTelegram(texto, chatId = process.env.TELEGRAM_CHAT_I
   })
   return `tg-${r.message_id}`
 }
+
+// ── Fotos y videos ────────────────────────────────────────────
+// Envía una foto o video (Blob) con leyenda. Telegram acepta hasta 10 MB en fotos y 50 MB en videos.
+export async function enviarTelegramArchivo({ tipo, archivo, nombre, leyenda, chatId = process.env.TELEGRAM_CHAT_ID }) {
+  const form = new FormData()
+  form.append('chat_id', String(chatId))
+  if (leyenda) form.append('caption', String(leyenda).slice(0, 1024))
+  if (tipo === 'video') form.append('supports_streaming', 'true')
+  form.append(tipo === 'video' ? 'video' : 'photo', archivo, nombre)
+  const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/${tipo === 'video' ? 'sendVideo' : 'sendPhoto'}`, { method: 'POST', body: form })
+  const json = await r.json().catch(() => ({}))
+  if (!r.ok || !json.ok) throw new Error(json.description || `Telegram respondió ${r.status}`)
+  return `tg-${json.result.message_id}`
+}
+
+// Baja un archivo que te mandaron al bot (Telegram solo deja descargar hasta 20 MB).
+export async function descargarTelegramArchivo(fileId) {
+  const info = await llamar('getFile', { file_id: fileId })
+  if (!info?.file_path) throw new Error('Telegram no dio el archivo')
+  const r = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${info.file_path}`)
+  if (!r.ok) throw new Error(`No se pudo bajar el archivo (${r.status})`)
+  return { datos: Buffer.from(await r.arrayBuffer()), ruta: info.file_path }
+}

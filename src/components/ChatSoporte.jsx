@@ -2,12 +2,13 @@
 // WhatsApp, y las respuestas vuelven a este mismo chat. Todo el historial queda a la vista.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, ChevronLeft, MessageCircle, Moon, Send } from 'lucide-react'
+import { Bell, ChevronLeft, MessageCircle, Moon, Paperclip, Send, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { apiUrl } from '../lib/apiBase'
 import { useAuthStore } from '../store/authStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { estadoAvisos, activarAvisos, desactivarAvisos } from '../lib/avisosChat'
+import { comprimirImagen } from '../lib/imageCompress'
 
 // Turnos de soporte (hora de Colombia). Fuera de 7:00 am – 11:00 pm se muestra a Javier con el aviso de que responde desde las 7:00 am.
 const AGENTES = [
@@ -42,6 +43,39 @@ function AvatarAgente({ agente, size = 40 }) {
   )
 }
 
+// ── Fotos y videos ────────────────────────────────────────────
+const BUCKET = 'soporte-adjuntos'
+const TIPOS_OK = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']
+const MAX_VIDEO = 50 * 1024 * 1024
+const MAX_FOTO = 10 * 1024 * 1024
+const urlsFirmadas = new Map() // path → { url, vence }: evita pedir de nuevo el permiso cada vez que se dibuja
+
+function obtenerUrl(path) {
+  const c = urlsFirmadas.get(path)
+  if (c && c.vence > Date.now()) return Promise.resolve(c.url)
+  return supabase.storage.from(BUCKET).createSignedUrl(path, 3600).then(({ data }) => {
+    if (!data?.signedUrl) return null
+    urlsFirmadas.set(path, { url: data.signedUrl, vence: Date.now() + 50 * 60000 })
+    return data.signedUrl
+  }, () => null)
+}
+
+// Foto o video dentro de una burbuja (los recién enviados se ven al instante con su vista previa local)
+function Adjunto({ m, alAbrir }) {
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    if (m.previa || !m.adjunto_path) return
+    let vivo = true
+    obtenerUrl(m.adjunto_path).then(u => { if (vivo) setUrl(u) })
+    return () => { vivo = false }
+  }, [m.previa, m.adjunto_path])
+  const src = m.previa || url
+  const caja = { display: 'block', width: 'min(240px, 62vw)', height: 'auto', maxHeight: '320px', objectFit: 'cover', borderRadius: '10px', background: '#e8eaed' }
+  if (!src) return <div style={{ ...caja, height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.72rem', color: '#80868b' }}>Cargando…</div>
+  if (m.adjunto_tipo === 'video') return <video src={`${src}#t=0.1`} controls playsInline preload="metadata" style={{ ...caja, background: '#000' }} />
+  return <img src={src} alt="Foto enviada" onClick={() => alAbrir(src)} style={{ ...caja, cursor: 'zoom-in' }} />
+}
+
 const BIENVENIDA = '¡Hola! 👋 Cuéntanos qué necesitas y te respondemos por aquí mismo. Si algo no funciona, dinos en qué pantalla estabas y qué esperabas que pasara.'
 
 const hora = iso => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })
@@ -64,6 +98,10 @@ function ChatInterno() {
   const [chat, setChat] = useState(null)
   const [mensajes, setMensajes] = useState([])
   const [texto, setTexto] = useState('')
+  const [archivo, setArchivo] = useState(null)   // foto o video elegido, listo para enviar
+  const [previa, setPrevia] = useState(null)     // dirección local para mostrarlo
+  const [visor, setVisor] = useState(null)       // foto abierta a pantalla completa
+  const inputArchivo = useRef(null)
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState('')
   const [vv, setVv] = useState(null) // área visible real (con teclado abierto en el celular)
@@ -71,7 +109,7 @@ function ChatInterno() {
   const secuencia = useRef(0)
 
   const cargar = useCallback(async chatId => {
-    const { data } = await supabase.from('soporte_mensajes').select('id, de, texto, created_at, wa_estado').eq('chat_id', chatId).order('created_at', { ascending: true }).limit(300)
+    const { data } = await supabase.from('soporte_mensajes').select('id, de, texto, created_at, wa_estado, adjunto_path, adjunto_tipo').eq('chat_id', chatId).order('created_at', { ascending: true }).limit(300)
     if (!data) return
     setMensajes(prev => {
       const pendientes = prev.filter(m => m.local && !data.some(d => d.id === m.id))
@@ -198,23 +236,64 @@ function ChatInterno() {
     return () => { document.body.style.overflow = antes }
   }, [abierto, isMobile])
 
-  async function enviar(textoReintento) {
-    const t = (textoReintento ?? texto).trim()
-    if (!t || enviando || !chat) return
+  async function elegirArchivo(e) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setAviso('')
+    try {
+      let listo = f
+      if (f.type.startsWith('image/')) listo = await comprimirImagen(f, { maxSize: 1600, calidad: 0.82 })
+      else if (!f.type.startsWith('video/')) throw new Error('Solo puedes enviar fotos y videos.')
+      if (!TIPOS_OK.includes(listo.type)) throw new Error('Ese formato no se puede enviar. Prueba con otra foto o video (JPG, PNG, MP4 o MOV).')
+      if (listo.type.startsWith('video/') && listo.size > MAX_VIDEO) throw new Error('El video pesa más de 50 MB. Grábalo más corto o en menor calidad.')
+      if (listo.type.startsWith('image/') && listo.size > MAX_FOTO) throw new Error('La foto pesa demasiado. Prueba con otra.')
+      if (previa) URL.revokeObjectURL(previa)
+      setArchivo(listo)
+      setPrevia(URL.createObjectURL(listo))
+    } catch (er) {
+      setAviso(er.message || 'No se pudo preparar el archivo.')
+    }
+  }
+
+  function quitarArchivo() {
+    if (previa) URL.revokeObjectURL(previa)
+    setArchivo(null); setPrevia(null)
+  }
+
+  // "reintento" es un mensaje que falló (trae su texto y su archivo para volver a mandarlo)
+  async function enviar(reintento) {
+    const t = (reintento ? reintento.texto : texto).trim()
+    const f = reintento ? reintento.archivo : archivo
+    if ((!t && !f) || enviando || !chat) return
     setEnviando(true); setAviso('')
-    const tmp = { id: `tmp-${++secuencia.current}`, de: 'usuario', texto: t, created_at: new Date().toISOString(), local: true }
-    setMensajes(prev => [...prev.filter(m => !(m.fallo && m.texto === t)), tmp])
-    if (textoReintento === undefined) setTexto('')
+    const tmp = {
+      id: `tmp-${++secuencia.current}`, de: 'usuario', texto: t, created_at: new Date().toISOString(), local: true,
+      archivo: f || null, previa: f ? (reintento ? reintento.previa : previa) : null, adjunto_tipo: f ? (f.type.startsWith('video/') ? 'video' : 'imagen') : null,
+    }
+    setMensajes(prev => [...prev.filter(m => !(reintento && m.id === reintento.id)), tmp])
+    if (!reintento) { setTexto(''); setArchivo(null); setPrevia(null) } // la vista previa pasa a la burbuja
     try {
       const { data: s } = await supabase.auth.getSession()
+      const cabeceras = { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.session?.access_token || ''}` }
+      let adjunto
+      if (f) {
+        const rp = await fetch(apiUrl('/api/soporte-adjunto'), { method: 'POST', headers: cabeceras, body: JSON.stringify({ contentType: f.type, size: f.size }) })
+        const jp = await rp.json().catch(() => ({}))
+        if (!rp.ok) throw new Error(jp.error || 'No se pudo preparar el archivo')
+        const { error: eu } = await supabase.storage.from(BUCKET).uploadToSignedUrl(jp.path, jp.token, f, { contentType: f.type })
+        if (eu) throw new Error('No se pudo subir el archivo. Revisa tu internet e intenta otra vez.')
+        adjunto = { path: jp.path }
+      }
       const r = await fetch(apiUrl('/api/soporte-enviar'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s?.session?.access_token || ''}` },
-        body: JSON.stringify({ texto: t, contexto: location.pathname }),
+        headers: cabeceras,
+        body: JSON.stringify({ texto: t, contexto: location.pathname, adjunto }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || 'No se pudo enviar')
-      setMensajes(prev => prev.some(m => m.id === j.id) ? prev.filter(m => m.id !== tmp.id) : prev.map(m => m.id === tmp.id ? { ...m, id: j.id, local: false } : m))
+      setMensajes(prev => prev.some(m => m.id === j.id) ? prev.filter(m => m.id !== tmp.id) : prev.map(m => m.id === tmp.id ? { ...m, id: j.id, local: false, adjunto_path: adjunto?.path || null } : m))
+      if (tmp.previa) setTimeout(() => URL.revokeObjectURL(tmp.previa), 90000)
       if (j.wa_estado === 'error') setAviso('Tu mensaje quedó guardado, pero no pudimos avisar a soporte en este momento. Lo veremos en cuanto entremos.')
       if (j.wa_estado === 'sin_configurar') setAviso('Tu mensaje quedó guardado, pero el chat todavía no está conectado, así que nadie lo recibe en el momento.')
     } catch (e) {
@@ -288,13 +367,14 @@ function ChatInterno() {
                     {!mio && <AvatarAgente agente={agenteDe(m.created_at)} size={28} />}
                   <div style={{ background: mio ? '#1a73e8' : '#fff', color: mio ? '#fff' : '#202124', border: mio ? 'none' : '1px solid #e8eaed', borderRadius: mio ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', lineHeight: 1.45, opacity: m.local ? .7 : 1, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                     {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>{agenteDe(m.created_at).nombre}</div>}
+                    {(m.adjunto_path || m.previa) && <div style={{ margin: '2px 0 6px' }}><Adjunto m={m} alAbrir={setVisor} /></div>}
                     {m.texto}
                     <div style={{ fontSize: '.62rem', marginTop: '3px', textAlign: 'right', color: mio ? 'rgba(255,255,255,.75)' : '#9aa0a6' }}>
                       {m.fallo ? 'No se envió' : m.local ? 'Enviando…' : hora(m.created_at)}
                     </div>
                   </div>
                   </div>
-                  {m.fallo && <button onClick={() => enviar(m.texto)} style={{ alignSelf: 'flex-end', minHeight: '36px', background: 'none', border: 'none', color: '#d93025', fontSize: '.76rem', fontWeight: '700', cursor: 'pointer' }}>Reintentar</button>}
+                  {m.fallo && <button onClick={() => enviar(m)} style={{ alignSelf: 'flex-end', minHeight: '36px', background: 'none', border: 'none', color: '#d93025', fontSize: '.76rem', fontWeight: '700', cursor: 'pointer' }}>Reintentar</button>}
                 </div>
               )
             })}
@@ -318,16 +398,45 @@ function ChatInterno() {
             </div>
           )}
 
+          {archivo && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: '#f6f7f9', borderTop: '1px solid #e8eaed', flexShrink: 0 }}>
+              {archivo.type.startsWith('video/')
+                ? <video src={`${previa}#t=0.1`} muted playsInline preload="metadata" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px', background: '#000', flexShrink: 0 }} />
+                : <img src={previa} alt="" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0, fontSize: '.76rem', color: '#202124', fontWeight: '700', lineHeight: 1.3 }}>
+                {archivo.type.startsWith('video/') ? 'Video listo para enviar' : 'Foto lista para enviar'}
+                <div style={{ fontWeight: '400', color: '#80868b', fontSize: '.7rem' }}>{(archivo.size / 1048576).toFixed(1)} MB · puedes añadir un mensaje</div>
+              </div>
+              <button onClick={quitarArchivo} aria-label="Quitar el archivo" style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: 'none', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={20} /></button>
+            </div>
+          )}
+
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
-            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1} maxLength={1000} placeholder="Escribe tu mensaje…"
+            <input ref={inputArchivo} type="file" accept="image/*,video/*" onChange={elegirArchivo} style={{ display: 'none' }} />
+            <button onClick={() => inputArchivo.current?.click()} disabled={enviando || !chat} aria-label="Adjuntar foto o video"
+              style={{ width: '44px', height: '44px', borderRadius: '50%', border: '1px solid #dadce0', background: '#fff', color: '#5f6368', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Paperclip size={20} />
+            </button>
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1} maxLength={1000} placeholder={archivo ? 'Añade un mensaje (opcional)…' : 'Escribe tu mensaje…'}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); enviar() } }}
               style={{ flex: 1, resize: 'none', maxHeight: '110px', minHeight: '44px', border: '1px solid #dadce0', borderRadius: '22px', padding: '11px 14px', fontSize: '16px', fontFamily: 'inherit', outline: 'none', lineHeight: 1.3, boxSizing: 'border-box' }}
               onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 110) + 'px' }} />
-            <button onClick={() => enviar()} disabled={!texto.trim() || enviando || !chat} aria-label="Enviar mensaje"
-              style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: texto.trim() ? '#1a73e8' : '#dadce0', color: '#fff', cursor: texto.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button onClick={() => enviar()} disabled={(!texto.trim() && !archivo) || enviando || !chat} aria-label="Enviar mensaje"
+              style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: (texto.trim() || archivo) ? '#1a73e8' : '#dadce0', color: '#fff', cursor: (texto.trim() || archivo) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Send size={19} />
             </button>
           </div>
+        </div>
+      )}
+
+      {visor && (
+        <div onClick={() => setVisor(null)} role="dialog" aria-label="Foto"
+          style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(0,0,0,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <img src={visor} alt="Foto enviada" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+          <button onClick={() => setVisor(null)} aria-label="Cerrar la foto"
+            style={{ position: 'absolute', top: 'calc(10px + env(safe-area-inset-top))', right: '12px', width: '48px', height: '48px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.18)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={24} />
+          </button>
         </div>
       )}
     </>

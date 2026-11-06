@@ -4,10 +4,11 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { enviarTexto, enviarPlantilla, waConfigurado } from './_whatsapp.js'
-import { enviarTelegram, telegramConfigurado } from './_telegram.js'
+import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado } from './_telegram.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const BUCKET = 'soporte-adjuntos'
 const MAX_POR_MINUTO = 8
 const MAX_POR_HORA = 60
 
@@ -30,11 +31,24 @@ export default async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
     const texto = String(body.texto || '').trim()
     const contexto = String(body.contexto || '').slice(0, 300)
-    if (!texto) return res.status(400).json({ error: 'Escribe un mensaje' })
     if (texto.length > 1000) return res.status(400).json({ error: 'El mensaje es muy largo (máximo 1000 letras)' })
 
     const { data: chat } = await admin.from('soporte_chats').select('*').eq('user_id', user.id).maybeSingle()
     if (!chat) return res.status(400).json({ error: 'Abre el chat otra vez e intenta de nuevo' })
+
+    // Foto o video (ya subido a Storage por /api/soporte-adjunto): se valida que sea de ESTE chat
+    let adj = null, urlAdj = ''
+    const ruta = String(body.adjunto?.path || '')
+    if (ruta) {
+      const m = ruta.match(/^([0-9a-f-]{36})\/[0-9a-f-]{36}\.(jpg|png|webp|mp4|mov|webm)$/i)
+      if (!m || m[1] !== chat.id) return res.status(400).json({ error: 'Archivo no válido' })
+      const ext = m[2].toLowerCase()
+      const { data: firmada, error: ef } = await admin.storage.from(BUCKET).createSignedUrl(ruta, 3600)
+      if (ef || !firmada?.signedUrl) return res.status(400).json({ error: 'No encontramos el archivo. Vuelve a intentarlo.' })
+      adj = { path: ruta, ext, tipo: ['mp4', 'mov', 'webm'].includes(ext) ? 'video' : 'imagen' }
+      urlAdj = firmada.signedUrl
+    }
+    if (!texto && !adj) return res.status(400).json({ error: 'Escribe un mensaje' })
 
     // Freno contra spam
     const hace = min => new Date(Date.now() - min * 60000).toISOString()
@@ -45,7 +59,7 @@ export default async function handler(req, res) {
     if ((ultMin || 0) >= MAX_POR_MINUTO || (ultHora || 0) >= MAX_POR_HORA) return res.status(429).json({ error: 'Espera un momento antes de enviar más mensajes' })
 
     const { data: msg, error: em } = await admin.from('soporte_mensajes')
-      .insert({ chat_id: chat.id, de: 'usuario', texto, wa_estado: (telegramConfigurado() || waConfigurado()) ? null : 'sin_configurar' })
+      .insert({ chat_id: chat.id, de: 'usuario', texto, adjunto_path: adj?.path || null, adjunto_tipo: adj?.tipo || null, wa_estado: (telegramConfigurado() || waConfigurado()) ? null : 'sin_configurar' })
       .select('id, created_at').single()
     if (em) return res.status(500).json({ error: 'No se pudo guardar el mensaje' })
     await admin.from('soporte_chats').update({ ultimo_mensaje_at: msg.created_at, ultimo_contexto: contexto || null, email: user.email || chat.email }).eq('id', chat.id)
@@ -61,10 +75,22 @@ export default async function handler(req, res) {
 
     let waId = null, estado = 'enviado'
     if (telegramConfigurado()) {
-      try { waId = await enviarTelegram(`💬 Soporte #${chat.codigo}\n👤 ${quien}\n📍 ${donde}\n\n${texto}\n\n↩️ Responde a ESTE mensaje para contestarle.`) }
+      try {
+        const cab = `💬 Soporte #${chat.codigo}\n👤 ${quien}\n📍 ${donde}`
+        const pie = '\n\n↩️ Responde a ESTE mensaje para contestarle.'
+        if (adj) {
+          const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)
+          if (ed || !archivo) throw new Error('No se pudo leer el archivo guardado')
+          const cabe = !texto || (cab.length + texto.length + pie.length + 2) <= 1024 // la leyenda de Telegram admite 1024 letras
+          waId = await enviarTelegramArchivo({ tipo: adj.tipo, archivo, nombre: `adjunto.${adj.ext}`, leyenda: cab + (texto && cabe ? `\n\n${texto}` : '') + pie })
+          if (texto && !cabe) await enviarTelegram(texto, undefined, Number(waId.slice(3))).catch(() => {})
+        } else {
+          waId = await enviarTelegram(`${cab}\n\n${texto}${pie}`)
+        }
+      }
       catch (e) { estado = 'error'; console.error('soporte-enviar telegram:', e.message) }
     } else try {
-      waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n👤 ${quien}\n📍 ${donde}\n\n${texto}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
+      waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n👤 ${quien}\n📍 ${donde}\n\n${texto}${adj ? `\n\n📎 ${adj.tipo === 'video' ? 'Video' : 'Foto'}: ${urlAdj}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
     } catch (e1) {
       // Pasadas 24 h desde tu último mensaje a la línea, WhatsApp solo deja avisar con una plantilla aprobada
       if (!process.env.SOPORTE_PLANTILLA) { estado = 'error'; console.error('soporte-enviar:', e1.message) }

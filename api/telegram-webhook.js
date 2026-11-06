@@ -6,11 +6,23 @@
 // solo se aceptan respuestas desde TU chat (TELEGRAM_CHAT_ID); cualquier otra persona que le escriba al bot es ignorada.
 
 import { createClient } from '@supabase/supabase-js'
-import { enviarTelegram } from './_telegram.js'
+import { randomUUID } from 'node:crypto'
+import { enviarTelegram, descargarTelegramArchivo } from './_telegram.js'
 import { guardarRespuesta, AYUDA_RUTA } from './_soporteRespuesta.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const BUCKET = 'soporte-adjuntos'
+const MAX_DESCARGA = 20 * 1024 * 1024 // Telegram solo deja a un bot bajar archivos de hasta 20 MB
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm' }
+
+// Foto o video que mandaste al bot (como foto, como video o como archivo). null si no trae ninguno.
+function leerMedia(m) {
+  if (m.photo?.length) { const f = m.photo[m.photo.length - 1]; return { fileId: f.file_id, mime: 'image/jpeg', tipo: 'imagen', size: f.file_size } }
+  if (m.video) return { fileId: m.video.file_id, mime: m.video.mime_type || 'video/mp4', tipo: 'video', size: m.video.file_size }
+  if (m.document) return { fileId: m.document.file_id, mime: m.document.mime_type || '', tipo: String(m.document.mime_type || '').startsWith('video/') ? 'video' : 'imagen', size: m.document.file_size }
+  return null
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -36,17 +48,37 @@ export default async function handler(req, res) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
 
   try {
-    if (!m.text) {
-      await enviarTelegram('Por ahora el chat solo muestra texto. Escribe tu respuesta en letras.', miChat, m.message_id).catch(() => {})
+    const media = leerMedia(m)
+    if (!media && !m.text) {
+      await enviarTelegram('El chat solo puede mostrar texto, fotos y videos. Envía tu respuesta en uno de esos formatos.', miChat, m.message_id).catch(() => {})
       return res.status(200).json({ ok: true })
     }
-    if (m.text.startsWith('/')) { // /start y otros comandos: no son respuestas
+    if (media && !EXT[media.mime]) {
+      await enviarTelegram('Solo puedo pasar fotos (JPG, PNG, WEBP) y videos (MP4, MOV, WEBM).', miChat, m.message_id).catch(() => {})
+      return res.status(200).json({ ok: true })
+    }
+    if (media && (media.size || 0) > MAX_DESCARGA) {
+      await enviarTelegram('Ese archivo pesa más de 20 MB y Telegram no me deja pasarlo al chat. Envíalo más liviano o más corto.', miChat, m.message_id).catch(() => {})
+      return res.status(200).json({ ok: true })
+    }
+    if (m.text?.startsWith('/')) { // /start y otros comandos: no son respuestas
       await enviarTelegram('Listo, estás conectado. Cuando un organizador escriba en el chat de ayuda, te llega aquí. Respóndele con "Responder" sobre su mensaje.', miChat).catch(() => {})
       return res.status(200).json({ ok: true })
     }
-    const r = await guardarRespuesta(admin, { texto: m.text, citadoId: m.reply_to_message ? `tg-${m.reply_to_message.message_id}` : null, idMensaje: `tg-${m.message_id}` })
+    const adjunto = media ? async chatId => {
+      const { datos } = await descargarTelegramArchivo(media.fileId)
+      const path = `${chatId}/${randomUUID()}.${EXT[media.mime]}`
+      const { error } = await admin.storage.from(BUCKET).upload(path, datos, { contentType: media.mime })
+      if (error) throw error
+      return { path, tipo: media.tipo }
+    } : undefined
+    const r = await guardarRespuesta(admin, { texto: m.text || m.caption || '', citadoId: m.reply_to_message ? `tg-${m.reply_to_message.message_id}` : null, idMensaje: `tg-${m.message_id}`, adjunto })
     if (!r.ok) await enviarTelegram(AYUDA_RUTA, miChat, m.message_id).catch(() => {})
   } catch (e) {
+    if (/too big/i.test(e.message || '')) { // Telegram no dejó bajar el archivo: no sirve reintentar
+      await enviarTelegram('Ese archivo es demasiado grande para pasarlo al chat. Envíalo más liviano o más corto.', miChat, m.message_id).catch(() => {})
+      return res.status(200).json({ ok: true })
+    }
     console.error('telegram-webhook:', e.message || e)
     return res.status(500).json({ error: 'No se pudo guardar' }) // Telegram reintenta solo
   }
