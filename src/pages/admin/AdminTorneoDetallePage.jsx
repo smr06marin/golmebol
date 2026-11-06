@@ -872,6 +872,7 @@ export default function AdminTorneoDetallePage() {
   const [modoValla,     setModoValla]     = useState('opcion1')
   const [arquerosEquipos, setArquerosEquipos] = useState([]) // arqueros registrados por equipo
   const [loadingStats, setLoadingStats] = useState(false)
+  const [statsGeneralAbierta, setStatsGeneralAbierta] = useState(false) // sección "general" desplegable dentro de Grupos
 
   const [editandoPartido, setEditandoPartido] = useState(null)
   const [scoreHome,       setScoreHome]       = useState('')
@@ -1198,6 +1199,7 @@ export default function AdminTorneoDetallePage() {
   // La pestaña Grupos solo tiene sentido si el torneo es por grupos: un todos contra todos
   // (un solo grupo) o una eliminación directa no la necesitan.
   const mostrarGrupos = !(['Todos contra todos', 'Eliminación directa'].includes(torneo?.formato) && grupos.length <= 1)
+  const tieneGrupos = mostrarGrupos && grupos.length > 0 // con grupos, la pestaña Estadísticas se une a Grupos (la general queda desplegable)
   const [canchasAbiertas, setCanchasAbiertas] = useState(false) // lista de canchas plegada cuando ya hay canchas
   const [elegirCrear, setElegirCrear] = useState(false) // menú "Programar partidos" (un partido / una jornada)
   const enFlujoCal = subTab === 'jornada' || (subTab === 'partidos' && showFormPartido) // creando algo: se muestra "‹ Calendario" para volver
@@ -1309,6 +1311,7 @@ export default function AdminTorneoDetallePage() {
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
   }
   useEffect(() => { if (tab === 'estadisticas' || tab === 'grupos') fetchGoleadores() }, [tab])
+  useEffect(() => { if (tab === 'estadisticas' && tieneGrupos) setTab('grupos') }, [tab, tieneGrupos])
   useEffect(() => { if (tab === 'eliminatorias') fetchBracket() }, [tab])
   useEffect(() => { if (tab === 'finanzas') fetchFinanzas() }, [tab])
   // Finanzas se refresca SOLO mientras la pestaña está abierta: cada 30 s y apenas vuelves a la app
@@ -2004,6 +2007,59 @@ export default function AdminTorneoDetallePage() {
       else { map[g.player_id].total_goals += g.total_goals || 0 }
     })
     return Object.values(map).filter(g => g.total_goals > 0).sort((a,b) => b.total_goals - a.total_goals).slice(0, 5)
+  }
+
+  // Tabla general (todos los equipos juntos) + goleadores + valla menos vencida del torneo.
+  // Se usa en la pestaña Estadísticas (torneos SIN grupos) y como sección desplegable dentro de Grupos (torneos CON grupos).
+  function renderEstadisticasGenerales() {
+    return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Tabla general */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Tabla de posiciones — Fase de grupos</div>
+          {tablaOrdenada.length > 0 && (
+            <button onClick={() => setFlyerTabla({ filas: tablaOrdenada, subtitulo: '' })}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 14px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+              🖼️ Crear flyer para redes
+            </button>
+          )}
+        </div>
+        <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún" onDescontar={abrirDescuento}/>
+      </div>
+
+      {/* Goleadores */}
+      <div>
+        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de goleadores</div>
+        {loadingStats ? (
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Cargando...</div>
+        ) : (
+          <RankingPoster
+            statLabel="goles" statColor="#ffd54a"
+            vacio="No hay estadísticas aún."
+            rows={goleadoresConVivo.map(g => ({
+              id: `${g.player_id}-${g.team_id}`,
+              nombre: g.player_name,
+              foto: g.photo_url,
+              teamName: g.team_name,
+              teamLogo: g.team_logo,
+              valor: g.total_goals,
+              sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_blue||0)>0?` · 🟦${g.total_blue}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
+            }))}
+          />
+        )}
+      </div>
+
+      {/* Valla menos vencida GLOBAL por equipo (igual que en jugadores y
+          pública), con botones para medir por menos goles o por promedio */}
+      <div>
+        <VallaEquipos
+          vacio="Sin resultados aún"
+          rows={calcVallaEquipos()}
+        />
+      </div>
+    </div>
+    )
   }
 
   function getVallaGrupo(grupoId) {
@@ -5523,7 +5579,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
       {/* Tabs: en el orden en que se trabaja. En computador "Más" guarda lo menos usado; en celular todas van en una sola fila que se desliza */}
       {(() => {
-        const visibles = TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado) && (t.id !== 'grupos' || mostrarGrupos) && (t.id !== 'eliminatorias' || MOSTRAR_TAB_ELIMINATORIAS))
+        const visibles = TABS.filter(t => (t.id !== 'finanzas' || finanzasActivas) && !(t.id === 'equipos' && esOrganizador && torneoFinalizado) && (t.id !== 'grupos' || mostrarGrupos) && !(t.id === 'estadisticas' && tieneGrupos) && (t.id !== 'eliminatorias' || MOSTRAR_TAB_ELIMINATORIAS))
         const pasosVisibles = visibles.filter(x => x.paso)
         const principales = isMobile ? visibles : visibles.filter(t => !t.mas)
         const secundarias = isMobile ? [] : visibles.filter(t => t.mas)
@@ -5589,7 +5645,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
               <span style={{ fontSize: '.78rem', color: '#5f6368', fontWeight: '600' }}>{hechos} de {pasosInicioVisibles.length}</span>
-              <button onClick={() => setTab(siguiente ? siguiente.tab : 'estadisticas')}
+              <button onClick={() => setTab(siguiente ? siguiente.tab : (tieneGrupos ? 'grupos' : 'estadisticas'))}
                 style={{ padding: '11px 20px', background: siguiente ? '#1a73e8' : '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.88rem', minHeight: '44px' }}>
                 {siguiente ? siguiente.boton : 'Ver estadísticas →'}
               </button>
@@ -5924,6 +5980,21 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 style={{ padding: '10px 20px', background: '#e8710a', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '700', fontSize: '.875rem', flexShrink: 0 }}>
                 ⚡ Finalizar fase de grupos →
               </button>
+            </div>
+          )}
+
+          {/* Tabla general + goleadores + valla de TODO el torneo: oculta por defecto, se despliega al tocar */}
+          {grupos.length > 0 && (
+            <div style={{ marginTop: '20px' }}>
+              <button type="button" onClick={() => setStatsGeneralAbierta(v => !v)} aria-expanded={statsGeneralAbierta}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', textAlign: 'left', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.06)', minHeight: '56px' }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>📊 Tabla general y estadísticas de todo el torneo</span>
+                  <span style={{ display: 'block', fontSize: '.74rem', color: '#80868b', marginTop: '2px' }}>Todos los equipos juntos, goleadores y valla menos vencida</span>
+                </span>
+                <ChevronDown size={20} color="#5f6368" style={{ flexShrink: 0, transition: 'transform .15s', transform: statsGeneralAbierta ? 'rotate(180deg)' : 'none' }}/>
+              </button>
+              {statsGeneralAbierta && <div style={{ marginTop: '14px' }}>{renderEstadisticasGenerales()}</div>}
             </div>
           )}
         </div>
@@ -7051,54 +7122,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       {tab === 'informes' && <InformesArbitrales torneoId={id} partidos={partidos}/>}
 
       {/* ── TAB ESTADÍSTICAS ── */}
-      {tab === 'estadisticas' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Tabla general */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Tabla de posiciones — Fase de grupos</div>
-              {tablaOrdenada.length > 0 && (
-                <button onClick={() => setFlyerTabla({ filas: tablaOrdenada, subtitulo: '' })}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 14px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
-                  🖼️ Crear flyer para redes
-                </button>
-              )}
-            </div>
-            <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún" onDescontar={abrirDescuento}/>
-          </div>
-
-          {/* Goleadores */}
-          <div>
-            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de goleadores</div>
-            {loadingStats ? (
-              <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Cargando...</div>
-            ) : (
-              <RankingPoster
-                statLabel="goles" statColor="#ffd54a"
-                vacio="No hay estadísticas aún."
-                rows={goleadoresConVivo.map(g => ({
-                  id: `${g.player_id}-${g.team_id}`,
-                  nombre: g.player_name,
-                  foto: g.photo_url,
-                  teamName: g.team_name,
-                  teamLogo: g.team_logo,
-                  valor: g.total_goals,
-                  sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_blue||0)>0?` · 🟦${g.total_blue}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
-                }))}
-              />
-            )}
-          </div>
-
-          {/* Valla menos vencida GLOBAL por equipo (igual que en jugadores y
-              pública), con botones para medir por menos goles o por promedio */}
-          <div>
-            <VallaEquipos
-              vacio="Sin resultados aún"
-              rows={calcVallaEquipos()}
-            />
-          </div>
-        </div>
-      )}
+      {tab === 'estadisticas' && renderEstadisticasGenerales()}
 
       {/* ── TAB ELIMINATORIAS ── */}
       {/* ── TAB ELIMINATORIAS ── */}
