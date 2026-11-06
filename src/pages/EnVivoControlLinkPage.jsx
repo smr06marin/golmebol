@@ -142,7 +142,11 @@ export default function EnVivoControlLinkPage() {
     if (!stream) return
     const next = { ...(siteConfig?.en_vivo_control || {}), [stream.id]: { ...control, ...cambios } }
     setSiteConfig(sc => ({ ...sc, en_vivo_control: next }))
-    await supabase.from('site_config').upsert({ id: true, en_vivo_control: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    // El link del operador no escribe la tabla directamente: la función del
+    // servidor valida el token y solo toca la llave de ESTA transmisión
+    // (ver migracion_seguridad_paso7.sql).
+    const { error } = await supabase.rpc('control_en_vivo_link', { p_token: token, p_cambios: cambios })
+    if (error) fetchSiteConfig()
   }
 
   // Ya no se calcula "cuánto rebobinar": se lee el segundo exacto donde
