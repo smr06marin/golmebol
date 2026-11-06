@@ -90,7 +90,7 @@ export default function EquipoHalf({
           {botones.map(b => (
             <button key={b.tipo} onClick={() => handleEvento(b.tipo)} disabled={!numero.trim()}
               title={b.label}
-              style={{ padding: '6px 2px', borderRadius: '7px', border: 'none', background: b.color, cursor: numero.trim() ? 'pointer' : 'default', opacity: numero.trim() ? 1 : .55, fontSize: b.tipo === 'falta_acum' ? '.62rem' : '1rem', fontWeight: b.tipo === 'falta_acum' ? '900' : 'normal', color: b.tipo === 'falta_acum' ? '#1a1a1a' : 'inherit' }}>
+              style={{ padding: '6px 2px', borderRadius: '7px', border: '1px solid rgba(255,255,255,.45)', background: b.color, cursor: numero.trim() ? 'pointer' : 'default', opacity: numero.trim() ? 1 : .55, fontSize: b.tipo === 'falta_acum' ? '.62rem' : '1rem', fontWeight: b.tipo === 'falta_acum' ? '900' : 'normal', color: b.tipo === 'falta_acum' ? '#1a1a1a' : 'inherit' }}>
               {b.emoji}
             </button>
           ))}

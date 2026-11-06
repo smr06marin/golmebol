@@ -29,17 +29,17 @@ export default function PantallaPartido({
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: FONDO, color: TEXTO, fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <style>{ESTILO_RESALTE}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: `1px solid ${BORDE}`, flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', gap: '6px', flexWrap: 'wrap', borderBottom: `1px solid ${BORDE}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button onClick={onVolverLista}
             style={nuevosSinNumero > 0
-              ? { background: AMARILLO, border: 'none', borderRadius: '8px', color: '#1a1a1a', fontSize: '.8rem', fontWeight: '900', cursor: 'pointer', padding: '7px 11px', minHeight: '36px', animation: ANIM_RESALTE, whiteSpace: 'nowrap' }
-              : { background: 'rgba(255,255,255,.14)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.8rem', fontWeight: '800', cursor: 'pointer', padding: '7px 11px', minHeight: '36px', whiteSpace: 'nowrap' }}>
-            {nuevosSinNumero > 0 ? `👥 ${nuevosSinNumero} nuevo${nuevosSinNumero > 1 ? 's' : ''} · poner N°` : '👥 Jugadores'}
+              ? { background: AMARILLO, border: 'none', borderRadius: '8px', color: '#1a1a1a', fontSize: '.78rem', fontWeight: '900', cursor: 'pointer', padding: '7px 9px', minHeight: '36px', animation: ANIM_RESALTE, whiteSpace: 'nowrap' }
+              : { background: 'rgba(255,255,255,.14)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.78rem', fontWeight: '800', cursor: 'pointer', padding: '7px 9px', minHeight: '36px', whiteSpace: 'nowrap' }}>
+            {nuevosSinNumero > 0 ? `👥 ${nuevosSinNumero} nuevo${nuevosSinNumero > 1 ? 's' : ''}` : '👥 Jugadores'}
           </button>
           {onVolverColores && (
             <button onClick={onVolverColores} title="Cambiar el color de los uniformes — el cronómetro sigue corriendo"
-              style={{ background: 'rgba(255,255,255,.14)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.8rem', fontWeight: '800', cursor: 'pointer', padding: '7px 11px', minHeight: '36px', whiteSpace: 'nowrap' }}>
+              style={{ background: 'rgba(255,255,255,.14)', border: `1px solid ${BORDE}`, borderRadius: '8px', color: TEXTO, fontSize: '.78rem', fontWeight: '800', cursor: 'pointer', padding: '7px 9px', minHeight: '36px', whiteSpace: 'nowrap' }}>
               🎨 Colores
             </button>
           )}
@@ -47,10 +47,10 @@ export default function PantallaPartido({
         <div style={{ display: 'flex', gap: '6px' }}>
           {!iniciado && (
             <button onClick={onAbrirEspecial} title="Partido por W o Desierto (no se jugó)"
-              style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '5px 8px' }}>⚠️ W</button>
+              style={{ background: 'none', border: `1px solid ${BORDE}`, borderRadius: '7px', color: TEXTO_TENUE, fontSize: '.68rem', fontWeight: '700', cursor: 'pointer', padding: '7px 8px', minHeight: '36px' }}>⚠️ W</button>
           )}
           <button onClick={onAbrirCierre}
-            style={{ background: '#1a73e8', border: 'none', borderRadius: '7px', color: '#fff', fontSize: '.72rem', fontWeight: '800', cursor: 'pointer', padding: '7px 11px', minHeight: '36px', animation: finDelPartido ? ANIM_RESALTE : 'none' }}>🏁 Finalizar</button>
+            style={{ background: '#1a73e8', border: 'none', borderRadius: '7px', color: '#fff', fontSize: '.76rem', fontWeight: '800', cursor: 'pointer', padding: '7px 9px', minHeight: '36px', animation: finDelPartido ? ANIM_RESALTE : 'none' }}>🏁 Finalizar</button>
         </div>
       </div>
 
