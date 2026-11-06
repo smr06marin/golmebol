@@ -74,10 +74,28 @@ export default async function handler(req, res) {
     const quien = user.email || chat.email || 'usuario'
     const donde = torneo ? `Torneo ${torneo}` : (contexto || 'sin pantalla')
 
+    // Quién es: nombre del organizador (su perfil público), rol si no es organizador y los torneos que organiza
+    let lineasQuien = [`👤 ${quien}`]
+    try {
+      const [{ data: rolFila }, { data: perfil }, { data: ts }] = await Promise.all([
+        admin.from('roles_plataforma').select('rol').eq('user_id', user.id).limit(1).maybeSingle(),
+        admin.from('organizador_perfiles').select('nombre_publico').eq('organizador_id', user.id).maybeSingle(),
+        admin.from('tournaments').select('name').eq('organizador_id', user.id).order('created_at', { ascending: false }).limit(20),
+      ])
+      const nombres = (ts || []).map(t => t.name).filter(Boolean)
+      lineasQuien = [
+        ...(perfil?.nombre_publico ? [`🏷️ ${perfil.nombre_publico}`] : []),
+        `👤 ${quien}`,
+        ...(rolFila?.rol && rolFila.rol !== 'organizador' ? [`🔑 Rol: ${rolFila.rol}`] : []),
+        ...(nombres.length ? [`🏆 ${nombres.slice(0, 4).join(', ')}${nombres.length > 4 ? ` (+${nombres.length - 4} más)` : ''}`] : []),
+      ]
+    } catch (e) { console.error('soporte-enviar quien:', e?.message) } // si falla, el aviso sale solo con el correo
+    const datosQuien = lineasQuien.join('\n')
+
     let waId = null, estado = 'enviado'
     if (telegramConfigurado()) {
       try {
-        const cab = `💬 Soporte #${chat.codigo}\n👤 ${quien}\n📍 ${donde}`
+        const cab = `💬 Soporte #${chat.codigo}\n${datosQuien}\n📍 ${donde}`
         const pie = '\n\n↩️ Responde a ESTE mensaje para contestarle.'
         if (adj) {
           const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)
@@ -96,7 +114,7 @@ export default async function handler(req, res) {
       }
       catch (e) { estado = 'error'; console.error('soporte-enviar telegram:', e.message) }
     } else try {
-      waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n👤 ${quien}\n📍 ${donde}\n\n${texto}${adj ? `\n\n📎 ${adj.tipo === 'video' ? 'Video' : adj.tipo === 'audio' ? 'Audio' : 'Foto'}: ${urlAdj}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
+      waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n${datosQuien}\n📍 ${donde}\n\n${texto}${adj ? `\n\n📎 ${adj.tipo === 'video' ? 'Video' : adj.tipo === 'audio' ? 'Audio' : 'Foto'}: ${urlAdj}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
     } catch (e1) {
       // Pasadas 24 h desde tu último mensaje a la línea, WhatsApp solo deja avisar con una plantilla aprobada
       if (!process.env.SOPORTE_PLANTILLA) { estado = 'error'; console.error('soporte-enviar:', e1.message) }
