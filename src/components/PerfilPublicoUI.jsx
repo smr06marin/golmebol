@@ -4,15 +4,19 @@ import { ArrowLeft, Share2, Check, Shield, User } from 'lucide-react'
 
 // Piezas compartidas por los perfiles públicos de equipo (/e/:id) y de
 // jugador (/j/:id): cabecera con botón de volver, escudo/foto, chips de
-// forma, tarjetas de números y pestañas. Mismo look claro que la página
-// pública del torneo, para que se sienta una sola app.
+// forma, tarjetas de números y pestañas. Mismo look oscuro con acento verde
+// que la página de inicio de Golmebol, para que se sienta una sola app.
 
 export const C = {
-  bg: '#f8f9fa', card: '#fff', border: '#e8eaed', soft: '#f1f3f4',
-  text: '#202124', text2: '#3c4043', muted: '#5f6368', faint: '#9aa0a6',
-  win: '#1e8e3e', winBg: '#e6f4ea', draw: '#80868b', drawBg: '#f1f3f4', loss: '#d93025', lossBg: '#fce8e6',
-  gold: '#b06000', goldBg: '#fef7e0',
+  bg: '#0a0a0a', card: '#161616', card2: '#1c1c1c', border: '#2a2a2a', soft: '#232323',
+  text: '#ffffff', text2: '#c9c9c9', muted: '#8a8a8a', faint: '#6b6b6b',
+  green: '#6fcf3d', greenDk: '#0a1a05',
+  win: '#6fcf3d', winBg: 'rgba(111,207,61,.14)', draw: '#a0a0a0', drawBg: 'rgba(255,255,255,.08)', loss: '#e5433d', lossBg: 'rgba(229,67,61,.15)',
+  gold: '#f5a623', goldBg: 'rgba(245,166,35,.15)',
+  // Fondo de la cabecera de los perfiles: negro con un resplandor verde muy suave arriba.
+  cabecera: { background: 'radial-gradient(120% 90% at 50% -15%, rgba(111,207,61,.2) 0%, rgba(111,207,61,0) 62%), linear-gradient(180deg, #111a0d 0%, #0d0d0d 100%)', borderBottom: '1px solid #2a2a2a' },
 }
+const BOTON_CABECERA = { display: 'inline-flex', alignItems: 'center', gap: '6px', borderRadius: '999px', border: `1px solid ${C.border}`, background: 'rgba(255,255,255,.06)', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent' }
 
 // Volver: a la página anterior si la hay; si se entró directo por un link, al inicio.
 // (key === 'default' → es la primera pantalla de este router, no hay "atrás".)
@@ -42,7 +46,7 @@ export function BotonCompartir({ titulo, ruta }) {
   }
   return (
     <button type="button" onClick={compartir} aria-label={`Compartir ${titulo}`}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '999px', border: '1px solid rgba(255,255,255,.35)', background: 'rgba(255,255,255,.16)', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+      style={{ ...BOTON_CABECERA, padding: '8px 14px' }}>
       {copiado ? <><Check size={15}/> Link copiado</> : <><Share2 size={15}/> Compartir</>}
     </button>
   )
@@ -51,7 +55,7 @@ export function BotonCompartir({ titulo, ruta }) {
 export function Escudo({ url, nombre, size = 32, radio = 8, fondo = '#fff' }) {
   const iniciales = (nombre || '?').split(' ').filter(Boolean).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   return (
-    <div style={{ width: size, height: size, borderRadius: radio, overflow: 'hidden', flexShrink: 0, background: url ? fondo : 'linear-gradient(135deg,#1a73e8,#6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ width: size, height: size, borderRadius: radio, overflow: 'hidden', flexShrink: 0, background: url ? fondo : 'linear-gradient(135deg,#1d3a12,#2f6a1a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {url
         ? <img src={url} alt={nombre || ''} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 40 ? '4px' : '2px' }}/>
         : <span style={{ fontSize: size * 0.34 + 'px', fontWeight: 800, color: '#fff' }}>{iniciales || <Shield size={size * 0.45} color="#fff"/>}</span>}
@@ -76,27 +80,26 @@ export function ChipForma({ letra, size = 24 }) {
 }
 
 // Chip de puesto en el ranking: "3° ranking de 48". Oro el 1°, verde del 2° al 3°, gris el resto.
-// claro=true → versión para fondo oscuro/degradado (cabecera). etiqueta → texto antes (ej. "Goles").
-// apilado=true → dos renglones ("3° RANKING" / "de 48"), para cuadros angostos como los números de la cabecera.
+// etiqueta → texto antes (ej. "Goles"). compacto (o apilado/claro, por compatibilidad) → solo "3°", para cuadros angostos
+// como los números de la cabecera (el significado se explica en una nota debajo).
 // p = { n, de } (null/undefined = no se pinta nada, así un dato sin puesto no deja un hueco raro).
-export function ChipPuesto({ p, claro = false, etiqueta, apilado = false }) {
+export function ChipPuesto({ p, claro = false, etiqueta, apilado = false, compacto = false }) {
   if (!p || !p.n) return null
   const oro = p.n === 1, top = p.n <= 3
-  const fondo = claro ? (oro ? '#fde68a' : 'rgba(255,255,255,.22)') : (oro ? '#fef3c7' : top ? '#e6f4ea' : '#f1f3f4')
-  const color = claro ? (oro ? '#6b4700' : '#fff') : (oro ? '#92400e' : top ? '#1e8e3e' : '#5f6368')
+  const fondo = oro ? C.goldBg : top ? C.winBg : 'rgba(255,255,255,.07)'
+  const color = oro ? C.gold : top ? C.win : C.muted
   const titulo = `Puesto ${p.n} del ranking, de ${p.de}`
-  if (apilado) {
+  if (compacto || apilado || claro) {
     return (
       <span title={titulo}
-        style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', background: fondo, color, borderRadius: '10px', padding: '3px 8px', lineHeight: 1.25, whiteSpace: 'nowrap' }}>
-        <span style={{ fontSize: '.72rem', fontWeight: 800 }}>{p.n}° <span style={{ fontSize: '.5rem', letterSpacing: '.08em', textTransform: 'uppercase' }}>ranking</span></span>
-        <span style={{ fontSize: '.56rem', fontWeight: 600, opacity: .85 }}>de {p.de}</span>
+        style={{ display: 'inline-flex', alignItems: 'center', background: fondo, color, borderRadius: '999px', padding: '2px 8px', fontSize: '.66rem', fontWeight: 800, lineHeight: 1.4, whiteSpace: 'nowrap' }}>
+        {p.n}°
       </span>
     )
   }
   return (
     <span title={titulo}
-      style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', background: fondo, color, borderRadius: '10px', padding: '1px 7px', fontSize: '.64rem', fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap' }}>
+      style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', background: fondo, color, borderRadius: '999px', padding: '1px 8px', fontSize: '.64rem', fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap' }}>
       {etiqueta && <span style={{ fontWeight: 600, opacity: .85 }}>{etiqueta}</span>}
       <span>{p.n}° ranking</span>
       <span style={{ fontWeight: 600, opacity: .8 }}>de {p.de}</span>
@@ -104,23 +107,30 @@ export function ChipPuesto({ p, claro = false, etiqueta, apilado = false }) {
   )
 }
 
-export function Numero({ valor, etiqueta, color = C.text, puesto }) {
+// Los colores que mandan las páginas (pensados para el degradado azul de antes) se traducen a la paleta oscura.
+const COLOR_NUMERO = { '#a7f3d0': C.win, '#fecaca': C.loss, '#fde68a': C.gold, '#fff': '#fff' }
+export function Numero({ valor, etiqueta, color = '#fff', puesto }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,.14)', borderRadius: '12px', padding: '9px 4px', textAlign: 'center', minWidth: 0 }}>
-      <div style={{ fontSize: '1.25rem', fontWeight: 800, color, lineHeight: 1 }}>{valor}</div>
-      <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'rgba(255,255,255,.75)', letterSpacing: '.06em', textTransform: 'uppercase', marginTop: '4px' }}>{etiqueta}</div>
-      {puesto && <div style={{ marginTop: '5px' }}><ChipPuesto p={puesto} claro apilado/></div>}
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '12px 4px 10px', textAlign: 'center', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ fontSize: '1.4rem', fontWeight: 900, color: COLOR_NUMERO[color] || color, lineHeight: 1 }}>{valor}</div>
+      <div style={{ fontSize: '.58rem', fontWeight: 800, color: C.muted, letterSpacing: '.08em', textTransform: 'uppercase', marginTop: '7px', lineHeight: 1.25 }}>{etiqueta}</div>
+      <div style={{ marginTop: 'auto', paddingTop: '7px', minHeight: '24px' }}>{puesto && <ChipPuesto p={puesto} compacto/>}</div>
     </div>
   )
 }
 
+// Explica el numerito de puesto ("3°") que aparece bajo los datos de la cabecera.
+export function NotaPuestos({ children }) {
+  return <div style={{ marginTop: '10px', fontSize: '.68rem', color: C.muted, lineHeight: 1.45 }}>{children}</div>
+}
+
 export function Pestanas({ tabs, activa, onCambiar }) {
   return (
-    <div role="tablist" style={{ display: 'flex', gap: '4px', margin: '0 0 16px', background: C.card, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '4px', boxShadow: '0 1px 4px rgba(0,0,0,.06)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div role="tablist" style={{ display: 'flex', gap: '4px', margin: '0 0 16px', background: C.card, border: `1px solid ${C.border}`, borderRadius: '14px', padding: '4px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       {tabs.map(t => (
         <button key={t.id} role="tab" aria-selected={activa === t.id} onClick={() => onCambiar(t.id)}
           style={{ flex: '1 0 auto', border: 'none', borderRadius: '9px', padding: '9px 14px', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
-            background: activa === t.id ? 'var(--color-primario, #1a73e8)' : 'transparent', color: activa === t.id ? '#fff' : C.muted }}>
+            background: activa === t.id ? 'rgba(111,207,61,.16)' : 'transparent', color: activa === t.id ? C.green : C.muted }}>
           {t.label}
         </button>
       ))}
@@ -130,9 +140,9 @@ export function Pestanas({ tabs, activa, onCambiar }) {
 
 export function Tarjeta({ titulo, children, aside }) {
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.06)', marginBottom: '16px' }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden', marginBottom: '16px' }}>
       {titulo && (
-        <div style={{ padding: '12px 16px', fontWeight: 700, fontSize: '.78rem', color: C.text2, borderBottom: `1px solid ${C.soft}`, background: '#fafbfc', letterSpacing: '.05em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+        <div style={{ padding: '12px 16px', fontWeight: 700, fontSize: '.78rem', color: C.muted, borderBottom: `1px solid ${C.border}`, background: C.card2, letterSpacing: '.08em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
           <span>{titulo}</span>{aside}
         </div>
       )}
@@ -155,7 +165,7 @@ export function NoEncontrado({ que }) {
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', padding: '24px', textAlign: 'center', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ fontSize: '2.2rem' }}>🔎</div>
       <div style={{ fontWeight: 800, color: C.text, fontSize: '1.05rem' }}>No encontramos {que}</div>
-      <button onClick={volver} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '999px', border: 'none', background: 'var(--color-primario, #1a73e8)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}><ArrowLeft size={16}/> Volver</button>
+      <button onClick={volver} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '999px', border: 'none', background: C.green, color: C.greenDk, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}><ArrowLeft size={16}/> Volver</button>
     </div>
   )
 }
@@ -163,7 +173,7 @@ export function NoEncontrado({ que }) {
 export function BotonVolver({ onClick }) {
   return (
     <button onClick={onClick} aria-label="Volver"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px 7px 10px', borderRadius: '999px', border: '1px solid rgba(255,255,255,.35)', background: 'rgba(255,255,255,.16)', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+      style={{ ...BOTON_CABECERA, padding: '8px 14px 8px 10px' }}>
       <ArrowLeft size={16}/> Volver
     </button>
   )

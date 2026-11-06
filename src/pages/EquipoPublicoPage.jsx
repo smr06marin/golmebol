@@ -9,7 +9,7 @@ import { esHostPropioGolmebol } from '../lib/marcaPagina'
 import BotonEstrella from '../components/BotonEstrella'
 import {
   C, useVolver, BotonVolver, BotonCompartir, Escudo, FotoJugador, ChipForma, Numero, Pestanas,
-  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, fmtHora, ChipPuesto,
+  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, fmtHora, ChipPuesto, NotaPuestos,
 } from '../components/PerfilPublicoUI'
 
 // ── Perfil PÚBLICO de un equipo (/e/:id) ────────────────────────────────────
@@ -150,7 +150,7 @@ export default function EquipoPublicoPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', paddingBottom: '70px' }}>
-      <div style={{ background: 'linear-gradient(135deg, var(--color-secundario, #0d47a1) 0%, var(--color-primario, #1a73e8) 60%, #00bcd4 100%)' }}>
+      <div style={C.cabecera}>
         <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px 16px 18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
             <BotonVolver onClick={volver}/>
@@ -158,18 +158,18 @@ export default function EquipoPublicoPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: 76, height: 76, borderRadius: 18, background: 'rgba(255,255,255,.18)', border: '2px solid rgba(255,255,255,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-              <Escudo url={equipo.logo_url} nombre={equipo.name} size={72} radio={16} fondo="transparent"/>
+            <div style={{ width: 78, height: 78, borderRadius: 20, background: '#fff', border: `2px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, boxShadow: '0 8px 24px rgba(0,0,0,.45)' }}>
+              <Escudo url={equipo.logo_url} nombre={equipo.name} size={74} radio={18} fondo="#fff"/>
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#fff', lineHeight: 1.2, overflowWrap: 'anywhere' }}>{equipo.name}</h1>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '8px' }}>
-                {equipo.modalidad && <span style={{ fontSize: '.74rem', background: 'rgba(255,255,255,.22)', color: '#fff', borderRadius: 20, padding: '3px 11px', fontWeight: 600 }}>{equipo.modalidad}</span>}
-                {equipo.genero && <span style={{ fontSize: '.74rem', background: 'rgba(255,255,255,.15)', color: '#fff', borderRadius: 20, padding: '3px 11px' }}>{equipo.genero}</span>}
-                {equipo.city && <span style={{ fontSize: '.76rem', color: 'rgba(255,255,255,.85)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><MapPin size={12}/>{equipo.city}</span>}
+                {equipo.modalidad && <span style={{ fontSize: '.72rem', background: C.winBg, color: C.green, borderRadius: 999, padding: '3px 11px', fontWeight: 700 }}>{equipo.modalidad}</span>}
+                {equipo.genero && <span style={{ fontSize: '.72rem', background: 'rgba(255,255,255,.08)', color: C.text2, borderRadius: 999, padding: '3px 11px', fontWeight: 600 }}>{equipo.genero}</span>}
+                {equipo.city && <span style={{ fontSize: '.76rem', color: C.muted, display: 'inline-flex', alignItems: 'center', gap: '4px' }}><MapPin size={12}/>{equipo.city}</span>}
               </div>
             </div>
-            <BotonEstrella activo={esFavorito(equipo.id)} onClick={() => alternar(equipo.id)} nombre={equipo.name} size={24} area={44} colorOff="rgba(255,255,255,.8)" colorOn="#ffd54f"/>
+            <BotonEstrella activo={esFavorito(equipo.id)} onClick={() => alternar(equipo.id)} nombre={equipo.name} size={24} area={44} colorOff="#6b6b6b" colorOn="#f5a623"/>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: '8px', marginTop: '18px' }}>
@@ -177,11 +177,12 @@ export default function EquipoPublicoPage() {
             <Numero valor={totales.g} etiqueta="G" color="#a7f3d0" puesto={PL.g}/>
             <Numero valor={totales.e} etiqueta="E" color="#fff"/>
             <Numero valor={totales.p} etiqueta="P" color="#fecaca" puesto={PL.p}/>
-            <Numero valor={`${dif > 0 ? '+' : ''}${dif}`} etiqueta="DG" color="#fde68a" puesto={PL.dg}/>
+            <Numero valor={`${dif > 0 ? '+' : ''}${dif}`} etiqueta="DG" color={dif > 0 ? '#a7f3d0' : dif < 0 ? '#fecaca' : '#fff'} puesto={PL.dg}/>
           </div>
+          {Object.keys(PL).length > 0 && <NotaPuestos>El número pequeño (por ejemplo 3°) es el puesto del equipo en el ranking de Golmebol.</NotaPuestos>}
           {forma.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px' }}>
-              <span style={{ fontSize: '.64rem', fontWeight: 700, color: 'rgba(255,255,255,.75)', letterSpacing: '.06em', textTransform: 'uppercase' }}>Forma</span>
+              <span style={{ fontSize: '.64rem', fontWeight: 800, color: C.muted, letterSpacing: '.08em', textTransform: 'uppercase' }}>Forma</span>
               <div style={{ display: 'flex', gap: '5px' }}>{forma.map((l, i) => <ChipForma key={i} letra={l}/>)}</div>
             </div>
           )}
@@ -201,7 +202,7 @@ export default function EquipoPublicoPage() {
             <Tarjeta titulo={`Palmarés${titulos ? ` · ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` : ''}`} aside={<ChipPuesto p={PL.camp}/>}>
               <Palmares campeonatos={campeonatos} subcampeonatos={subcampeonatos} terceros={terceros} navigate={navigate}/>
             </Tarjeta>
-            <Tarjeta titulo="Últimos resultados" aside={jugados.length > 5 ? <button onClick={() => setTab('partidos')} style={{ border: 'none', background: 'none', color: 'var(--color-primario, #1a73e8)', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'none' }}>Ver todos</button> : null}>
+            <Tarjeta titulo="Últimos resultados" aside={jugados.length > 5 ? <button onClick={() => setTab('partidos')} style={{ border: 'none', background: 'none', color: C.green, fontWeight: 800, fontSize: '.72rem', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'none' }}>Ver todos</button> : null}>
               {jugados.length === 0 ? <Vacio>Aún no ha jugado partidos</Vacio> : jugados.slice(0, 5).map(p => <FilaPartido key={p.id} p={p} equipoId={equipo.id} navigate={navigate}/>)}
             </Tarjeta>
             {totales.pj > 0 && (
@@ -230,8 +231,8 @@ export default function EquipoPublicoPage() {
               </Tarjeta>
             )}
             {Object.keys(PL).length > 0 && (
-              <div style={{ fontSize: '.68rem', color: C.faint, lineHeight: 1.5, padding: '0 4px 16px' }}>
-                <b>Puestos:</b> en la cabecera y en goles se compara con todos los equipos de Golmebol; en cada torneo (pestaña Torneos), con los de ese torneo. En derrotas y goles en contra el #1 es quien menos tiene. Los promedios cuentan desde {MIN_PJ_TASA} partidos.
+              <div style={{ fontSize: '.68rem', color: C.muted, lineHeight: 1.5, padding: '0 4px 16px' }}>
+                <b style={{ color: C.text2 }}>Puestos:</b> en la cabecera y en goles se compara con todos los equipos de Golmebol; en cada torneo (pestaña Torneos), con los de ese torneo. En derrotas y goles en contra el #1 es quien menos tiene. Los promedios cuentan desde {MIN_PJ_TASA} partidos.
               </div>
             )}
           </>
@@ -293,7 +294,7 @@ export default function EquipoPublicoPage() {
                     </div>
                   )}
                 </div>
-                {campeonatos.some(l => l.tournament_id === t.id) && <Trophy size={16} color="#f9a825"/>}
+                {campeonatos.some(l => l.tournament_id === t.id) && <Trophy size={16} color={C.gold}/>}
                 <ChevronRight size={16} color={C.faint}/>
               </div>
             ))}

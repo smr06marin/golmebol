@@ -9,7 +9,7 @@ import TarjetaResumenJugador from '../components/TarjetaResumenJugador'
 import { armarPalmares, resumenPalmares } from '../lib/palmaresJugador'
 import {
   C, useVolver, BotonVolver, BotonCompartir, Escudo, FotoJugador, Numero, Pestanas,
-  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, ChipPuesto,
+  Tarjeta, Vacio, PaginaCargando, NoEncontrado, fmtFecha, ChipPuesto, NotaPuestos,
 } from '../components/PerfilPublicoUI'
 
 // ── Perfil PÚBLICO de un jugador (/j/:id) ───────────────────────────────────
@@ -100,7 +100,7 @@ export default function JugadorPublicoPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', paddingBottom: '70px' }}>
-      <div style={{ background: 'linear-gradient(135deg, var(--color-secundario, #0d47a1) 0%, var(--color-primario, #1a73e8) 60%, #00bcd4 100%)' }}>
+      <div style={C.cabecera}>
         <div style={{ maxWidth: '720px', margin: '0 auto', padding: '20px 16px 18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
             <BotonVolver onClick={volver}/>
@@ -111,16 +111,16 @@ export default function JugadorPublicoPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ border: '3px solid rgba(255,255,255,.55)', borderRadius: '50%', flexShrink: 0, lineHeight: 0 }}>
+            <div style={{ border: `3px solid ${C.green}`, borderRadius: '50%', flexShrink: 0, lineHeight: 0 }}>
               <FotoJugador url={jugador.photo_face_url || jugador.photo_url} nombre={jugador.name} size={82}/>
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#fff', lineHeight: 1.2, overflowWrap: 'anywhere' }}>{jugador.name}</h1>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '8px' }}>
-                {posicion && <span style={{ fontSize: '.74rem', background: 'rgba(255,255,255,.22)', color: '#fff', borderRadius: 20, padding: '3px 11px', fontWeight: 600 }}>{posicion}</span>}
+                {posicion && <span style={{ fontSize: '.74rem', background: C.winBg, color: C.green, borderRadius: 999, padding: '3px 11px', fontWeight: 700 }}>{posicion}</span>}
                 {equipoActual && (
                   <span role="link" tabIndex={0} onClick={() => navigate(`/e/${equipoActual.id}`)} onKeyDown={e => { if (e.key === 'Enter') navigate(`/e/${equipoActual.id}`) }}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,.95)', borderRadius: 20, padding: '2px 11px 2px 3px', cursor: 'pointer', maxWidth: '100%' }}>
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,.08)', border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 11px 2px 3px', cursor: 'pointer', maxWidth: '100%' }}>
                     <Escudo url={equipoActual.logo_url} nombre={equipoActual.name} size={22} radio={11} fondo={C.soft}/>
                     <span style={{ fontSize: '.76rem', fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{equipoActual.name}</span>
                   </span>
@@ -146,6 +146,7 @@ export default function JugadorPublicoPage() {
               </>
             )}
           </div>
+          {Object.keys(PL).length > 0 && <NotaPuestos>El número pequeño (por ejemplo 3°) es el puesto del jugador en el ranking de Golmebol.</NotaPuestos>}
         </div>
       </div>
 
@@ -279,7 +280,7 @@ export default function JugadorPublicoPage() {
                           <span>{logrado ? '✅' : '🧤'} {meta} {meta === 1 ? 'arco en cero' : 'arcos en cero'}</span><span>{Math.min(arq.arcosEnCero, meta)}/{meta}</span>
                         </div>
                         <div style={{ height: 7, borderRadius: 4, background: C.soft, overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: logrado ? C.win : 'var(--color-primario, #1a73e8)', borderRadius: 4 }}/>
+                          <div style={{ width: `${pct}%`, height: '100%', background: logrado ? C.gold : C.green, borderRadius: 4 }}/>
                         </div>
                       </div>
                     )
@@ -303,7 +304,7 @@ export default function JugadorPublicoPage() {
                         <span>{logrado ? '✅' : '⚽'} {meta} goles</span><span>{Math.min(totales.goles, meta)}/{meta}</span>
                       </div>
                       <div style={{ height: 7, borderRadius: 4, background: C.soft, overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: logrado ? C.win : 'var(--color-primario, #1a73e8)', borderRadius: 4 }}/>
+                        <div style={{ width: `${pct}%`, height: '100%', background: logrado ? C.gold : C.green, borderRadius: 4 }}/>
                       </div>
                     </div>
                   )
