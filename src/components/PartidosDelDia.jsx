@@ -245,16 +245,6 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     navigate('/t/' + m.tournament_id)
   }
 
-  // Equipos que juegan en el día que se está viendo (para seguirlos con un toque)
-  const sugeridos = useMemo(() => {
-    const mapa = new Map()
-    lista.forEach(m => {
-      if (m.home_team_id && m.home?.name) mapa.set(m.home_team_id, { id: m.home_team_id, name: m.home.name, logo_url: m.home.logo_url })
-      if (m.away_team_id && m.away?.name) mapa.set(m.away_team_id, { id: m.away_team_id, name: m.away.name, logo_url: m.away.logo_url })
-    })
-    return [...mapa.values()]
-  }, [lista])
-
   const chips = [
     ['todos', 'Todos'],
     ['vivo', 'En vivo'],
@@ -292,7 +282,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
         })}
       </div>
 
-      {filtro === 'favoritos' && <SeguirEquipos sugeridos={sugeridos}/>}
+      {filtro === 'favoritos' && <SeguirEquipos/>}
 
       {filtro !== 'favoritos' && favoritos.length === 0 && (
         <button type="button" onClick={() => setFiltro('favoritos')}

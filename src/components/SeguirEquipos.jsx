@@ -1,24 +1,22 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { Search, X, Star, Plus, Check, BellRing } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Search, X, Plus, Check, Bell, BellRing } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFavoritos } from '../lib/favoritos'
 import { useAvisos, plataformaAvisos } from '../lib/avisos'
 import { mensajeMotivo } from '../lib/avisosTextos'
 
 // ── "Sigue a tu equipo" ─────────────────────────────────────────────────────
-// Se abre en "★ Mis equipos" (Partidos de la página de inicio). La persona escribe el nombre de su equipo, lo toca
-// y ya lo sigue: no tiene que buscar la estrellita en las tablas. También ve los equipos que juegan hoy para
-// seguirlos con un toque, y la invitación a activar los avisos apenas sigue el primero.
+// Se abre en "★ Mis equipos" (Partidos de la página de inicio). La persona escribe el nombre de su equipo, toca
+// «Seguir» y ya lo sigue: no tiene que buscar la estrellita en las tablas. Debajo ve la lista limpia de los equipos
+// que sigue y, si aún no tiene los avisos, un botón discreto para activarlos.
 // Los equipos seguidos se guardan en el celular (lib/favoritos.js): no hace falta cuenta.
-//
-// sugeridos: equipos que juegan en el día que se está viendo [{ id, name, logo_url }]
 
-const S = { card: '#161616', card2: '#1c1c1c', border: '#2a2a2a', green: '#6fcf3d', gold: '#f5a623', text: '#fff', muted: '#8a8a8a', red: '#e5433d' }
+const S = { card: '#161616', border: '#2a2a2a', green: '#6fcf3d', text: '#fff', muted: '#8a8a8a', red: '#e5433d' }
 
-function Escudo({ logo_url, name, size = 40 }) {
+function Escudo({ logo_url, name, size = 36 }) {
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   return (
-    <div style={{ width: size, height: size, borderRadius: 11, background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ width: size, height: size, borderRadius: 9, background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {logo_url
         ? <img src={logo_url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }}/>
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
@@ -26,7 +24,7 @@ function Escudo({ logo_url, name, size = 40 }) {
   )
 }
 
-export default function SeguirEquipos({ sugeridos = [] }) {
+export default function SeguirEquipos() {
   const { ids, esFavorito, alternar } = useFavoritos()
   const { activo: avisosOn, activar } = useAvisos()
   const [q, setQ] = useState('')
@@ -86,8 +84,6 @@ export default function SeguirEquipos({ sugeridos = [] }) {
   }, [idsKey])
   const seguidosVisibles = idsKey ? seguidos.filter(e => ids.includes(e.id)) : []
 
-  const sugeridosLibres = useMemo(() => sugeridos.filter(e => e?.id && !ids.includes(e.id)).slice(0, 8), [sugeridos, ids])
-
   async function pedirAvisos() {
     if (activando) return
     setActivando(true); setErrorAvisos('')
@@ -97,47 +93,41 @@ export default function SeguirEquipos({ sugeridos = [] }) {
   }
 
   const visibles = buscable ? resultados : []
+  const etiqueta = { fontSize: '.68rem', fontWeight: 800, letterSpacing: '.08em', color: S.muted, margin: '16px 0 4px' }
 
   return (
-    <div style={{ background: 'linear-gradient(160deg, #1a2410 0%, #161616 55%)', border: `1px solid ${S.green}55`, borderRadius: 18, padding: '18px 16px 16px', marginBottom: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <span style={{ width: 46, height: 46, borderRadius: 14, background: 'rgba(245,166,35,.16)', border: `1px solid ${S.gold}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Star size={24} color={S.gold} fill={S.gold}/>
-        </span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 900, fontSize: '1.1rem', lineHeight: 1.15 }}>Sigue a tu equipo</div>
-          <div style={{ color: S.muted, fontSize: '.8rem', lineHeight: 1.35, marginTop: 2 }}>Aquí verás solo sus partidos y resultados.</div>
-        </div>
-      </div>
+    <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: '16px 14px 14px', marginBottom: 14 }}>
+      <div style={{ fontWeight: 800, fontSize: '1rem', lineHeight: 1.2 }}>{ids.length === 0 ? 'Sigue a tu equipo' : 'Buscar otro equipo'}</div>
+      <div style={{ color: S.muted, fontSize: '.78rem', lineHeight: 1.4, margin: '3px 0 12px' }}>Escribe su nombre y toca «Seguir». Aquí verás solo sus partidos y resultados.</div>
 
       <div style={{ position: 'relative' }}>
-        <Search size={18} color={S.muted} style={{ position: 'absolute', left: 14, top: 15, pointerEvents: 'none' }}/>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Escribe el nombre de tu equipo…" aria-label="Buscar equipo para seguir"
+        <Search size={18} color={S.muted} style={{ position: 'absolute', left: 14, top: 14, pointerEvents: 'none' }}/>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Nombre del equipo" aria-label="Buscar equipo para seguir"
           autoComplete="off" autoCorrect="off" enterKeyHint="search"
-          style={{ width: '100%', boxSizing: 'border-box', minHeight: 50, borderRadius: 14, border: `1px solid ${S.border}`, background: '#0f0f0f', color: S.text, fontSize: '1rem', padding: '0 44px 0 42px', outline: 'none', fontFamily: 'inherit' }}/>
+          style={{ width: '100%', boxSizing: 'border-box', minHeight: 46, borderRadius: 12, border: `1px solid ${S.border}`, background: '#0f0f0f', color: S.text, fontSize: '1rem', padding: '0 42px 0 42px', outline: 'none', fontFamily: 'inherit' }}/>
         {q && (
           <button type="button" onClick={() => setQ('')} aria-label="Borrar búsqueda"
-            style={{ position: 'absolute', right: 4, top: 5, width: 40, height: 40, border: 'none', background: 'transparent', color: S.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={18}/></button>
+            style={{ position: 'absolute', right: 3, top: 3, width: 40, height: 40, border: 'none', background: 'transparent', color: S.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={18}/></button>
         )}
       </div>
 
       {buscable && (
-        <div style={{ marginTop: 10 }}>
-          {buscando && visibles.length === 0 && <div style={{ color: S.muted, fontSize: '.82rem', padding: '10px 2px' }}>Buscando…</div>}
-          {!buscando && visibles.length === 0 && <div style={{ color: S.muted, fontSize: '.82rem', padding: '10px 2px', lineHeight: 1.45 }}>No encontramos un equipo con ese nombre. Prueba con otra parte del nombre.</div>}
+        <div style={{ marginTop: 6 }}>
+          {buscando && visibles.length === 0 && <div style={{ color: S.muted, fontSize: '.82rem', padding: '12px 2px' }}>Buscando…</div>}
+          {!buscando && visibles.length === 0 && <div style={{ color: S.muted, fontSize: '.82rem', padding: '12px 2px', lineHeight: 1.45 }}>No encontramos un equipo con ese nombre. Prueba con otra parte del nombre.</div>}
           {visibles.map(e => {
             const sigue = esFavorito(e.id)
             return (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 2px', borderTop: `1px solid ${S.border}` }}>
+              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: `1px solid ${S.border}` }}>
                 <Escudo logo_url={e.logo_url} name={e.name}/>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: '.92rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.name}</div>
-                  <div style={{ color: S.muted, fontSize: '.72rem', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontWeight: 700, fontSize: '.88rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
+                  <div style={{ color: S.muted, fontSize: '.7rem', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {e.torneo}{e.mas > 0 ? ` +${e.mas}` : ''}{e.city ? ` · ${e.city}` : ''}
                   </div>
                 </div>
                 <button type="button" onClick={() => alternar(e.id)} aria-pressed={sigue} aria-label={sigue ? `Dejar de seguir a ${e.name}` : `Seguir a ${e.name}`}
-                  style={{ flexShrink: 0, minHeight: 44, minWidth: 98, borderRadius: 999, padding: '0 14px', border: sigue ? `1px solid ${S.green}` : 'none', background: sigue ? 'rgba(111,207,61,.14)' : S.green, color: sigue ? S.green : '#0a1a05', fontWeight: 900, fontSize: '.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}>
+                  style={{ flexShrink: 0, minHeight: 40, minWidth: 96, borderRadius: 10, padding: '0 12px', border: sigue ? `1px solid ${S.border}` : 'none', background: sigue ? 'transparent' : S.green, color: sigue ? S.muted : '#0a1a05', fontWeight: 800, fontSize: '.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}>
                   {sigue ? <><Check size={15}/> Siguiendo</> : <><Plus size={15}/> Seguir</>}
                 </button>
               </div>
@@ -146,51 +136,34 @@ export default function SeguirEquipos({ sugeridos = [] }) {
         </div>
       )}
 
-      {!buscable && sugeridosLibres.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: '.7rem', fontWeight: 800, letterSpacing: '.08em', color: S.muted, marginBottom: 8 }}>JUEGAN ESTE DÍA · TOCA PARA SEGUIR</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {sugeridosLibres.map(e => (
-              <button key={e.id} type="button" onClick={() => alternar(e.id)} aria-label={`Seguir a ${e.name}`}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44, maxWidth: '100%', padding: '0 12px 0 6px', borderRadius: 999, border: `1px solid ${S.border}`, background: S.card2, color: S.text, fontWeight: 700, fontSize: '.8rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-                <Escudo logo_url={e.logo_url} name={e.name} size={30}/>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{e.name}</span>
-                <Plus size={15} color={S.green} style={{ flexShrink: 0 }}/>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {seguidosVisibles.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: '.7rem', fontWeight: 800, letterSpacing: '.08em', color: S.muted, marginBottom: 8 }}>EQUIPOS QUE SIGUES</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {!buscable && seguidosVisibles.length > 0 && (
+        <>
+          <div style={etiqueta}>EQUIPOS QUE SIGUES</div>
+          <div>
             {seguidosVisibles.map(e => (
-              <span key={e.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 44, maxWidth: '100%', padding: '0 4px 0 6px', borderRadius: 999, border: `1px solid ${S.gold}77`, background: 'rgba(245,166,35,.1)', fontWeight: 800, fontSize: '.8rem' }}>
-                <Escudo logo_url={e.logo_url} name={e.name} size={30}/>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{e.name}</span>
+              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: `1px solid ${S.border}` }}>
+                <Escudo logo_url={e.logo_url} name={e.name} size={32}/>
+                <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '.86rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
                 <button type="button" onClick={() => alternar(e.id)} aria-label={`Dejar de seguir a ${e.name}`}
-                  style={{ width: 36, height: 36, border: 'none', background: 'transparent', color: S.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}><X size={16}/></button>
-              </span>
+                  style={{ flexShrink: 0, minHeight: 40, padding: '0 10px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.76rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontFamily: 'inherit' }}><X size={15}/> Quitar</button>
+              </div>
             ))}
           </div>
-        </div>
+        </>
       )}
 
-      {ids.length > 0 && !avisosOn && (
-        <div style={{ marginTop: 16, background: 'rgba(111,207,61,.09)', border: `1px solid ${S.green}55`, borderRadius: 14, padding: '12px 14px' }}>
-          <div style={{ fontWeight: 800, fontSize: '.88rem', lineHeight: 1.3 }}>¿Quieres que te avisemos cuando juegue?</div>
-          <div style={{ color: S.muted, fontSize: '.76rem', lineHeight: 1.4, marginTop: 3 }}>Te llega una notificación con la hora, los cambios y el resultado de tus equipos.</div>
-          <button type="button" onClick={pedirAvisos} disabled={activando}
-            style={{ marginTop: 10, width: '100%', minHeight: 48, borderRadius: 12, border: 'none', background: S.green, color: '#0a1a05', fontWeight: 900, fontSize: '.9rem', cursor: activando ? 'default' : 'pointer', opacity: activando ? .7 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit' }}>
-            <BellRing size={17}/> {activando ? 'Activando…' : 'Activar avisos de mis equipos'}
-          </button>
-          {errorAvisos && <div style={{ background: 'rgba(229,67,61,.12)', border: `1px solid ${S.red}`, color: '#ffb4b0', borderRadius: 10, padding: '10px 12px', fontSize: '.78rem', lineHeight: 1.45, marginTop: 10 }}>{errorAvisos}</div>}
-        </div>
-      )}
-      {ids.length > 0 && avisosOn && (
-        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, color: S.green, fontSize: '.78rem', fontWeight: 700 }}><BellRing size={15}/> Avisos activados: te avisamos de tus equipos.</div>
+      {!buscable && ids.length > 0 && (
+        avisosOn ? (
+          <div style={{ marginTop: 10, borderTop: `1px solid ${S.border}`, paddingTop: 12, display: 'flex', alignItems: 'center', gap: 8, color: S.muted, fontSize: '.76rem', fontWeight: 600 }}><BellRing size={15} color={S.green}/> Avisos activados para tus equipos</div>
+        ) : (
+          <div style={{ marginTop: 10, borderTop: `1px solid ${S.border}`, paddingTop: 12 }}>
+            <button type="button" onClick={pedirAvisos} disabled={activando}
+              style={{ width: '100%', minHeight: 46, borderRadius: 12, border: `1px solid ${S.green}`, background: 'transparent', color: S.green, fontWeight: 800, fontSize: '.86rem', cursor: activando ? 'default' : 'pointer', opacity: activando ? .7 : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: 'inherit' }}>
+              <Bell size={16}/> {activando ? 'Activando…' : 'Avisarme cuando jueguen'}
+            </button>
+            {errorAvisos && <div style={{ background: 'rgba(229,67,61,.12)', border: `1px solid ${S.red}`, color: '#ffb4b0', borderRadius: 10, padding: '10px 12px', fontSize: '.78rem', lineHeight: 1.45, marginTop: 10 }}>{errorAvisos}</div>}
+          </div>
+        )
       )}
     </div>
   )
