@@ -7,6 +7,7 @@ import { enviarTexto, enviarPlantilla, waConfigurado } from './_whatsapp.js'
 import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado } from './_telegram.js'
 import { aOggOpus } from './_audio.js'
 import { responderAuto } from './_asistente.js'
+import { lineaPrioridad, usuariosConPartidosHoy } from './_prioridadSoporte.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -118,7 +119,8 @@ export default async function handler(req, res) {
     let waId = null, estado = 'enviado'
     if (telegramConfigurado()) {
       try {
-        const cab = `💬 Soporte #${chat.codigo}${auto ? ' · 🤖 respondió el asistente' : ''}\n${datosQuien}\n📍 ${donde}`
+        const prioridad = auto ? '' : lineaPrioridad(chat, { pidioPersona, conPartidosHoy: (await usuariosConPartidosHoy(admin, [user.id])).has(user.id) })
+        const cab = `${prioridad}💬 Soporte #${chat.codigo}${auto ? ' · 🤖 respondió el asistente' : ''}\n${datosQuien}\n📍 ${donde}`
         const pie = '\n\n↩️ Responde a ESTE mensaje para contestarle.'
         if (adj) {
           const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)

@@ -29,6 +29,15 @@ export async function enviarTelegram(texto, chatId = process.env.TELEGRAM_CHAT_I
   return `tg-${r.message_id}`
 }
 
+// Menú de comandos del bot (el botón «/» de Telegram). Se registra solo al escribirle /start.
+export async function registrarComandos() {
+  await llamar('setMyCommands', { commands: [
+    { command: 'pendientes', description: 'Chats sin responder, por prioridad' },
+    { command: 'chat', description: 'Ver una conversación. Ejemplo: /chat 14' },
+    { command: 'ayuda', description: 'Cómo funciona' },
+  ] })
+}
+
 // ── Fotos y videos ────────────────────────────────────────────
 // Envía una foto o video (Blob) con leyenda. Telegram acepta hasta 10 MB en fotos y 50 MB en videos.
 // Los audios van como nota de voz (se oyen con un toque); si Telegram no acepta el formato, van como archivo.

@@ -6,7 +6,8 @@
       "api/soporte-limpiar.js": { "maxDuration": 60 }
     },
     "crons": [
-      { "path": "/api/soporte-limpiar", "schedule": "0 8 * * *" }
+      { "path": "/api/soporte-limpiar", "schedule": "0 8 * * *" },
+      { "path": "/api/soporte-resumen", "schedule": "0 12 * * *" }
     ],
     "rewrites": [
       { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }

@@ -7,7 +7,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
-import { enviarTelegram, descargarTelegramArchivo } from './_telegram.js'
+import { enviarTelegram, descargarTelegramArchivo, registrarComandos } from './_telegram.js'
+import { listarPendientes, textoPendientes, textoConversacion } from './_prioridadSoporte.js'
 import { oggAM4a } from './_audio.js'
 import { guardarRespuesta, AYUDA_RUTA } from './_soporteRespuesta.js'
 
@@ -64,8 +65,15 @@ export default async function handler(req, res) {
       await enviarTelegram('Ese archivo pesa más de 20 MB y Telegram no me deja pasarlo al chat. Envíalo más liviano o más corto.', miChat, m.message_id).catch(() => {})
       return res.status(200).json({ ok: true })
     }
-    if (m.text?.startsWith('/')) { // /start y otros comandos: no son respuestas
-      await enviarTelegram('Listo, estás conectado. Cuando un organizador escriba en el chat de ayuda, te llega aquí. Respóndele con "Responder" sobre su mensaje.', miChat).catch(() => {})
+    if (m.text?.startsWith('/')) { // comandos: no son respuestas
+      const [cmd, ...args] = m.text.trim().split(/\s+/)
+      const comando = cmd.toLowerCase().replace(/@.*$/, '')
+      if (comando === '/pendientes') await enviarTelegram(textoPendientes(await listarPendientes(admin)), miChat).catch(() => {})
+      else if (comando === '/chat') await enviarTelegram(await textoConversacion(admin, String(args[0] || '').replace(/^#/, '')), miChat).catch(() => {})
+      else {
+        await registrarComandos().catch(() => {})
+        await enviarTelegram('Listo, estás conectado. Cuando alguien escriba en el chat de ayuda, te llega aquí con su prioridad: 🔴 urgente, 🟠 importante o ⚪ normal.\n\nComandos:\n/pendientes → chats sin responder, ordenados por prioridad\n/chat 14 → ver la conversación del chat #14\n\nPara responder: usa «Responder» sobre el aviso, o escribe el número y tu mensaje: #14 Hola, ya te ayudo.', miChat).catch(() => {})
+      }
       return res.status(200).json({ ok: true })
     }
     const adjunto = media ? async chatId => {
