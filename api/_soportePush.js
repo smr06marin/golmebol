@@ -2,6 +2,13 @@
 // Nunca rompe el flujo: si algo falla (sin claves, sin suscripciones, servicio caído) solo se anota en el log.
 // Variables en Vercel: VITE_VAPID_PUBLIC_KEY (pública) y VAPID_PRIVATE_KEY (secreta).
 
+// Mismos turnos que ChatSoporte.jsx (hora de Colombia): Javier 7:00–16:00, Fernando 16:00–23:00 (de noche, Javier).
+function nombreAgente() {
+  const d = new Date()
+  const m = (d.getUTCHours() * 60 + d.getUTCMinutes() - 300 + 1440) % 1440
+  return m >= 16 * 60 && m < 23 * 60 ? 'Fernando Restrepo' : 'Javier Gonzales'
+}
+
 export async function avisarOrganizador(admin, chatId, texto) {
   try {
     const pub = process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY
@@ -15,7 +22,7 @@ export async function avisarOrganizador(admin, chatId, texto) {
     const webpush = (await import('web-push')).default
     webpush.setVapidDetails('https://golmebol.com', pub, priv)
     const payload = JSON.stringify({
-      titulo: 'Javier Gonzales · Golmebol',
+      titulo: `${nombreAgente()} · Golmebol`,
       cuerpo: String(texto || '').replace(/\s+/g, ' ').trim().slice(0, 140) || 'Tienes un mensaje nuevo',
       ruta: '/admin?ayuda=1',
       tag: 'soporte',

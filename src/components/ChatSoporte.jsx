@@ -413,6 +413,7 @@ function ChatInterno() {
                 {BIENVENIDA}
               </div>
             </div>
+            <div style={{ alignSelf: 'center', fontSize: '.66rem', color: '#9aa0a6', textAlign: 'center' }}>Los mensajes y archivos de este chat se borran solos a los 8 días.</div>
             {!enTurno(ahora) && (
               <div style={{ alignSelf: 'center', maxWidth: '92%', display: 'flex', gap: '8px', alignItems: 'flex-start', background: '#fff7e0', border: '1px solid #f3e2a8', borderRadius: '12px', padding: '9px 12px', fontSize: '.78rem', color: '#7a5b00', lineHeight: 1.45 }}>
                 <Moon size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
