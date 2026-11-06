@@ -2,7 +2,7 @@ import { useEffect, useState, lazy, Suspense } from 'react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
-import MarcaGolmebol from './MarcaGolmebol'
+// import MarcaGolmebol from './MarcaGolmebol' // desactivada por ahora
 import PantallaCargaTorneo from './PantallaCargaTorneo'
 import { aplicarMarcaPagina } from '../lib/marcaPagina'
 import BotonVolverInicio from './BotonVolverInicio'
@@ -151,7 +151,7 @@ export default function DominioPersonalizadoGate({ children }) {
             <Route path="*" element={<TorneoPublicoPage tournamentId={torneoId} />} />
           </Routes>
         </MemoryRouter>
-        <MarcaGolmebol/>
+        {/* <MarcaGolmebol/> */}
       </Suspense>
     )
   }
@@ -177,7 +177,7 @@ export default function DominioPersonalizadoGate({ children }) {
         </Routes>
         <BotonVolverInicio/>
       </MemoryRouter>
-      <MarcaGolmebol/>
+      {/* <MarcaGolmebol/> */}
     </Suspense>
   )
 }

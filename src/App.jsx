@@ -7,7 +7,7 @@ import GlobalToast from './components/GlobalToast'
 import SessionGuard from './components/SessionGuard'
 import CierreAutomaticoGlobal from './components/CierreAutomaticoGlobal'
 import InstalarApp from './components/InstalarApp'
-import MarcaGolmebol from './components/MarcaGolmebol'
+// import MarcaGolmebol from './components/MarcaGolmebol' // desactivada por ahora
 import ChatPublico from './components/ChatPublico'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
 import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
@@ -491,7 +491,7 @@ export default function App() {
       <SessionGuard/>
       <CierreAutomaticoGlobal/>
       <InstalarApp/>
-      <MarcaGolmebol conInicio/>
+      {/* <MarcaGolmebol conInicio/> */}
       <Suspense fallback={<PantallaCargando/>}>
         <Routes>
 
