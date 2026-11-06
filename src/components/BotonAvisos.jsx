@@ -3,6 +3,7 @@ import { Bell, BellRing, X, Star, Check } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFavoritos } from '../lib/favoritos'
 import { useAvisos, plataformaAvisos, activarAvisosDeTorneo } from '../lib/avisos'
+import { mensajeMotivo } from '../lib/avisosTextos'
 
 // Botón "AVISOS" + hoja para activar las notificaciones, ver los equipos que sigue y elegir torneos.
 // Funciona en la app (Android / iPhone), en el navegador y en la app instalada. En iPhone, Apple solo deja
@@ -11,18 +12,6 @@ import { useAvisos, plataformaAvisos, activarAvisosDeTorneo } from '../lib/aviso
 const C = { card: '#161616', card2: '#1c1c1c', border: '#2a2a2a', green: '#6fcf3d', text: '#fff', text2: '#c9c9c9', muted: '#8a8a8a', red: '#e5433d' }
 
 const abrirGuiaInstalar = () => { try { window.dispatchEvent(new Event('gm-abrir-instalar')) } catch { /* nada */ } }
-
-// Qué decirle a la persona cuando no se pudieron activar los avisos
-function mensajeMotivo(motivo, donde) {
-  if (motivo === 'permiso') {
-    return donde === 'nativo'
-      ? 'Golmebol no tiene permiso para enviarte notificaciones. Actívalo en Ajustes del celular → Aplicaciones → Golmebol → Notificaciones.'
-      : 'Las notificaciones de golmebol.com están bloqueadas en este navegador. Toca el candado junto a la dirección → Notificaciones → Permitir, y vuelve a intentar.'
-  }
-  if (motivo === 'falta_instalar') return 'En iPhone, Apple solo permite los avisos si Golmebol está instalada en tu pantalla de inicio. Instálala, ábrela desde su ícono y activa los avisos desde ahí.'
-  if (motivo === 'no_disponible') return 'Este navegador no permite notificaciones. Prueba con Chrome, o instala la app de Golmebol.'
-  return 'No se pudieron activar los avisos. Revisa tu internet e intenta de nuevo.'
-}
 
 function Interruptor({ activo, onClick, deshabilitado, nombre }) {
   return (

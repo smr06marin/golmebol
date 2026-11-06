@@ -6,6 +6,7 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 import { useFavoritos } from '../lib/favoritos'
 import { prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import BotonEstrella from './BotonEstrella'
+import SeguirEquipos from './SeguirEquipos'
 
 // ── "Partidos de hoy" ───────────────────────────────────────────────────────
 // Lista de partidos del día de TODOS los torneos, agrupada por torneo, como
@@ -244,12 +245,22 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     navigate('/t/' + m.tournament_id)
   }
 
+  // Equipos que juegan en el día que se está viendo (para seguirlos con un toque)
+  const sugeridos = useMemo(() => {
+    const mapa = new Map()
+    lista.forEach(m => {
+      if (m.home_team_id && m.home?.name) mapa.set(m.home_team_id, { id: m.home_team_id, name: m.home.name, logo_url: m.home.logo_url })
+      if (m.away_team_id && m.away?.name) mapa.set(m.away_team_id, { id: m.away_team_id, name: m.away.name, logo_url: m.away.logo_url })
+    })
+    return [...mapa.values()]
+  }, [lista])
+
   const chips = [
     ['todos', 'Todos'],
     ['vivo', 'En vivo'],
     ['proximos', 'Próximos'],
     ['finales', 'Finalizados'],
-    ['favoritos', '★ Mis equipos'],
+    ['favoritos', favoritos.length === 0 ? '★ Sigue tu equipo' : '★ Mis equipos'],
   ].filter(([k]) => k === 'todos' || k === 'favoritos' || conteo[k] > 0)
 
   return (
@@ -271,23 +282,36 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
         {chips.map(([k, txt]) => {
           const activo = filtro === k
           const rojo = k === 'vivo'
-          const color = activo ? (rojo ? S.red : S.green) : S.muted
+          const invita = k === 'favoritos' && favoritos.length === 0 && !activo // aún no sigue a nadie: el botón llama la atención
+          const color = activo ? (rojo ? S.red : S.green) : invita ? S.gold : S.muted
           return (
-            <button key={k} onClick={() => setFiltro(k)} style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: 999, border: `1px solid ${activo ? color : S.border}`, background: activo ? (rojo ? 'rgba(229,67,61,.15)' : 'rgba(111,207,61,.15)') : 'transparent', color, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              {txt} <span style={{ opacity: .75 }}>{conteo[k]}</span>
+            <button key={k} onClick={() => setFiltro(k)} style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: 999, border: `1px solid ${activo || invita ? color : S.border}`, background: activo ? (rojo ? 'rgba(229,67,61,.15)' : 'rgba(111,207,61,.15)') : invita ? 'rgba(245,166,35,.12)' : 'transparent', color, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {txt} {!(k === 'favoritos' && favoritos.length === 0) && <span style={{ opacity: .75 }}>{conteo[k]}</span>}
             </button>
           )
         })}
       </div>
+
+      {filtro === 'favoritos' && <SeguirEquipos sugeridos={sugeridos}/>}
+
+      {filtro !== 'favoritos' && favoritos.length === 0 && (
+        <button type="button" onClick={() => setFiltro('favoritos')}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', boxSizing: 'border-box', textAlign: 'left', marginBottom: 12, padding: '12px 14px', borderRadius: 14, border: `1px solid ${S.gold}66`, background: 'linear-gradient(100deg, rgba(245,166,35,.16), rgba(245,166,35,.04))', color: S.text, cursor: 'pointer', fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent' }}>
+          <Star size={22} color={S.gold} fill={S.gold} style={{ flexShrink: 0 }}/>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontWeight: 900, fontSize: '.92rem', lineHeight: 1.2 }}>Sigue a tu equipo</span>
+            <span style={{ display: 'block', color: S.muted, fontSize: '.74rem', lineHeight: 1.35, marginTop: 2 }}>Búscalo por nombre y recibe sus partidos y resultados.</span>
+          </span>
+          <ChevronRight size={18} color={S.gold} style={{ flexShrink: 0 }}/>
+        </button>
+      )}
 
       {!cargado && lista.length === 0 ? (
         <div aria-hidden="true" style={{ height: 120, borderRadius: 16, background: S.card, border: `1px solid ${S.border}`, animation: 'gmPdPulso 1.3s ease-in-out infinite' }}/>
       ) : grupos.length === 0 ? (
         <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: '26px 20px', textAlign: 'center', color: S.muted, fontSize: '.85rem', lineHeight: 1.5 }}>
           {filtro === 'favoritos' ? (
-            favoritos.length === 0 ? (
-              <>Toca la <Star size={13} style={{ verticalAlign: '-2px' }}/> junto al nombre de un equipo para seguirlo. Aquí verás solo sus partidos.</>
-            ) : 'Tus equipos no juegan este día.'
+            favoritos.length === 0 ? 'Cuando sigas un equipo, aquí verás sus partidos.' : 'Tus equipos no juegan este día. Usa las flechas de arriba para ver otros días.'
           ) : lista.length === 0 ? (
             <>No hay partidos programados {offset === 0 ? 'hoy' : offset === 1 ? 'mañana' : offset === -1 ? 'ayer' : 'este día'}.<br/>Usa las flechas para ver otros días.</>
           ) : 'No hay partidos con este filtro.'}
