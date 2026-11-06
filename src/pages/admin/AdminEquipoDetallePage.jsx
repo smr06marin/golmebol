@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../../lib/equiposPrivado'
 import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { comprimirImagen } from '../../lib/imageCompress'
 import { prepararLogoParaSubir, limpiarLogoGuardado } from '../../lib/logoTransparente'
@@ -484,7 +485,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   async function fetchEquipo() {
     const { data } = await supabase.from('teams').select('*').eq('id', id).single()
-    setEquipo(data)
+    const priv = data ? await cargarDatosPrivadosEquipo(id) : null
+    setEquipo(conDatosPrivados(data, priv))
   }
 
   async function fetchJugadoresGlobal() {

@@ -19,6 +19,10 @@ export async function buscarPersonaPorCedula(cedula) {
 export async function buscarDuenoEquipoPorCedula(cedula, excludeTeamId = null) {
   const c = (cedula || '').trim()
   if (!c) return null
+  // Búsqueda por función (la cédula y el teléfono del dueño ya no se pueden leer en bloque desde fuera).
+  // Si la función todavía no existe en la base, se usa la consulta directa de antes.
+  const rpc = await supabase.rpc('buscar_dueno_equipo_por_cedula', { p_cedula: c, p_excluir: excludeTeamId || null })
+  if (!rpc.error) return rpc.data || null
   let q = supabase.from('teams')
     .select('representante_nombre, representante_telefono')
     .eq('representante_cedula', c)

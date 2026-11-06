@@ -1257,6 +1257,18 @@ export default function AdminTorneoDetallePage() {
   }, [menuEquipoId])
   const [posterEquipo,     setPosterEquipo]      = useState(null)
   const [linkRegistroEquipo, setLinkRegistroEquipo] = useState(null) // equipo al que se le va a compartir el link — abre el modal de duración
+  // El token del link de registro ya no viaja en la lista de equipos (es privado): se le pide a la
+  // base cuando el organizador abre el modal de "Enviar link de registro".
+  useEffect(() => {
+    if (!linkRegistroEquipo || linkRegistroEquipo.registro_token) return
+    let cancelado = false
+    ;(async () => {
+      const { data } = await supabase.rpc('registro_tokens_torneo', { p_tournament_id: id })
+      const token = (data || []).find(x => x.team_id === linkRegistroEquipo.id)?.registro_token
+      if (!cancelado && token) setLinkRegistroEquipo(prev => (prev && prev.id === linkRegistroEquipo.id ? { ...prev, registro_token: token } : prev))
+    })()
+    return () => { cancelado = true }
+  }, [linkRegistroEquipo, id])
   const [flyerTabla,        setFlyerTabla]        = useState(null)   // { filas, subtitulo } — flyer de la tabla de posiciones (general o de un grupo)
   const [planillaEquipo,     setPlanillaEquipo]     = useState(null)   // datos de la planilla PDF de un equipo (foto, cédula, nacimiento)
   const [duracionLinkDias,   setDuracionLinkDias]   = useState(1)    // cuántos días dura el link de registro antes de vencer
@@ -1446,6 +1458,7 @@ export default function AdminTorneoDetallePage() {
   async function handleCopiarLinkRegistroTorneo(modo = 'copiar') {
     const e = linkRegistroEquipo
     if (!e) return
+    if (!e.registro_token) { showMsg('Un momento: se está preparando el link. Intenta de nuevo en un segundo.', 'error'); return }
     const link = `${window.location.origin}/registro/equipo/${e.registro_token}/${id}`
     const dTexto = duracionLinkDias === 1 ? '1 día' : `${duracionLinkDias} días`
     const mensaje = `📋 Registro de jugadores — ${e.name}\n\nEste link es para inscribir a los jugadores del equipo ${e.name} en el torneo ${torneo?.name || ''}.\n\n⏰ Válido por ${dTexto} desde ahora.\n\nPuedes inscribir tú mismo a todos los jugadores desde acá, o enviarle este mismo link a cada jugador para que se inscriba él mismo.\n\n👉 ${link}`

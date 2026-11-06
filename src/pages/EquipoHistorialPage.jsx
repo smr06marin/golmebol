@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../lib/equiposPrivado'
 import {
   ArrowLeft, Shield, Users, Trophy, Calendar, Award, Search, X,
   LayoutGrid, BarChart3, Clock, MapPin, Pencil, Camera, Power, Check,
@@ -109,7 +110,8 @@ export default function EquipoHistorialPage() {
 
   async function fetchEquipo() {
     const { data } = await supabase.from('teams').select('*').eq('id', id).single()
-    setEquipo(data)
+    const priv = data ? await cargarDatosPrivadosEquipo(id) : null
+    setEquipo(conDatosPrivados(data, priv))
   }
 
   async function fetchJugadoresGlobal() {

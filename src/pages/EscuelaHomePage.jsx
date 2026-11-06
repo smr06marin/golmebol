@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../lib/equiposPrivado'
 import PortalBanner from '../components/PortalBanner'
 import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight, Pencil, Image as ImageIcon, X, User } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
@@ -66,7 +67,8 @@ export default function EscuelaHomePage() {
 
     if (p.escuela_id) {
       const { data: esc } = await supabase.from('teams').select('*').eq('id', p.escuela_id).single()
-      setEscuela(esc || null)
+      const privEsc = esc ? await cargarDatosPrivadosEquipo(esc.id) : null
+      setEscuela(conDatosPrivados(esc, privEsc) || null)
       const { count: cJug } = await supabase.from('team_players').select('id', { count: 'exact', head: true }).eq('team_id', p.escuela_id)
       setNumJugadores(cJug || 0)
       const { count: cProf } = await supabase.from('players').select('id', { count: 'exact', head: true }).eq('escuela_id', p.escuela_id).or('rol.eq.profesor,es_profesor.eq.true')

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../../lib/equiposPrivado'
 import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { comprimirImagen } from '../../lib/imageCompress'
@@ -573,7 +574,7 @@ export default function AdminEquiposPage() {
             {/* Acciones */}
             <MenuAcciones
               equipo={equipo}
-              onEdit={eq => { setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setPersonaCedula(null); cedulaOriginalEditRef.current = eq.representante_cedula || ''; setShowForm(true) }}
+              onEdit={async eq => { eq = conDatosPrivados(eq, await cargarDatosPrivadosEquipo(eq.id)); setForm({ name:eq.name, city:eq.city||'', genero:eq.genero||'', modalidad:eq.modalidad||'', descripcion:eq.descripcion||'', logros:eq.logros||'', representante_nombre:eq.representante_nombre||'', representante_cedula:eq.representante_cedula||'', representante_telefono:eq.representante_telefono||'' }); setEditId(eq.id); setPersonaCedula(null); cedulaOriginalEditRef.current = eq.representante_cedula || ''; setShowForm(true) }}
               onJugadores={eq => navigate(`/admin/equipos/${eq.id}`)}
               onUniforme={eq => setUniforme(eq)}
               onPoster={eq => setPoster(eq)}

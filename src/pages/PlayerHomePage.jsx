@@ -178,7 +178,12 @@ export default function PlayerHomePage() {
       // dueño que no está en ninguna plantilla quedaba atrapado en la
       // pantalla de "solo PREDIX" antes de que esto terminara de llegar.
       p.numero_cedula
-        ? supabase.from('teams').select('id, name, created_at').eq('representante_cedula', String(p.numero_cedula))
+        ? (async () => {
+            const r = await supabase.rpc('mis_equipos_dueno')
+            if (!r.error) return r
+            // base sin migrar: consulta directa de antes
+            return supabase.from('teams').select('id, name, created_at').eq('representante_cedula', String(p.numero_cedula))
+          })()
         : Promise.resolve({ data: [] }),
       supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'nueva_tarjeta').eq('leida', false),
     ])
