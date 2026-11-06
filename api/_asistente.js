@@ -4,6 +4,8 @@
 // clave y arma la respuesta con los datos reales. Si no entiende la pregunta, devuelve null y el mensaje
 // le llega a una persona por Telegram como siempre. Nunca inventa: si no tiene el dato, lo dice.
 
+import { responderGuia } from './_guiasAyuda.js'
+
 const DOMINIO = 'https://golmebol.com'
 const ZONA = 'America/Bogota'
 
@@ -207,7 +209,9 @@ async function respuestaReservas(admin) {
 export async function responderAuto(admin, textoOriginal, { torneoCtx, exigirMencion = false } = {}) {
   const t = norm(textoOriginal)
   if (!t || t.length > 300) return null
-  if (RX.persona.test(t) || RX.reglamento.test(t) || RX.lead.test(t)) return null
+  if (RX.persona.test(t) || RX.reglamento.test(t)) return null
+  if (exigirMencion) { const guia = responderGuia(t); if (guia) return guia } // chat de organizadores: guías de cómo usar la plataforma
+  if (RX.lead.test(t)) return null
   if (RX.saludo.test(t)) return { texto: SALUDO }
   if (RX.horario.test(t)) return { texto: HORARIO }
   if (!exigirMencion && RX.reserva.test(t)) return respuestaReservas(admin)
