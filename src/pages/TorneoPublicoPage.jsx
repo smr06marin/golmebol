@@ -776,7 +776,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // mismo grupo en fase de grupos (misma lógica que usa el jugador/admin).
   function getTablaGrupo(grupoId) {
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    const partGrupo = conMarcadorEnVivo(partidos).filter(p => (!p.fase || p.fase === 'grupo') && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+    const partGrupo = conMarcadorEnVivo(partidos).filter(p => (!p.fase || p.fase === 'grupo') && (eqIds.includes(p.home_team_id) || eqIds.includes(p.away_team_id)))
     const t = {}
     eqIds.forEach(eid => {
       const eq = equipos.find(e => e.id === eid)

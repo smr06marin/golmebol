@@ -682,7 +682,7 @@ export default function PlayerTorneoPage() {
   function getTablaGrupoPlayer(grupoId) {
     const P = getPuntosTorneo(torneo)
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    const partGrupo = conMarcadorEnVivo(partidos).filter(p => (p.fase === 'grupo' || !p.fase) && eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+    const partGrupo = conMarcadorEnVivo(partidos).filter(p => (p.fase === 'grupo' || !p.fase) && (eqIds.includes(p.home_team_id) || eqIds.includes(p.away_team_id)))
     const t = {}
     eqIds.forEach(eid => {
       const eq = equipos.find(e => e.id === eid)

@@ -97,7 +97,7 @@ export function tablaConVivo(base, vivos) {
   return computeTablaGeneral(base.equipos || [], partidosConVivo(base, vivos), base.torneo || {})
 }
 
-// Una tabla por GRUPO (solo cuenta los partidos entre equipos del mismo grupo, igual que la tabla del torneo).
+// Una tabla por GRUPO (cuenta todos los partidos de fase de grupos de cada equipo, también los jugados contra equipos de otro grupo).
 // Devuelve [] si el torneo no tiene más de un grupo (ahí se usa la tabla general).
 export function gruposConVivo(base, vivos) {
   if (!base || !Array.isArray(base.grupos) || base.grupos.length < 2) return []
@@ -105,7 +105,8 @@ export function gruposConVivo(base, vivos) {
   return base.grupos.map(g => {
     const ids = new Set((base.grupoEquipos || []).filter(ge => ge.grupo_id === g.id).map(ge => ge.team_id))
     const equipos = (base.equipos || []).filter(e => ids.has(e.id))
-    const delGrupo = partidos.filter(p => ids.has(p.home_team_id) && ids.has(p.away_team_id))
+    // Cuenta TODOS los partidos del equipo (también los jugados contra equipos de otro grupo): así el grupo y la tabla general muestran lo mismo.
+    const delGrupo = partidos.filter(p => ids.has(p.home_team_id) || ids.has(p.away_team_id))
     return { id: g.id, nombre: g.nombre, filas: computeTablaGeneral(equipos, delGrupo, base.torneo || {}) }
   }).filter(g => g.filas.length > 0)
 }

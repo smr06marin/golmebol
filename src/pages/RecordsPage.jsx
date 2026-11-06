@@ -733,7 +733,7 @@ export default function RecordsPage() {
   // mismo grupo en fase de grupos.
   function getTablaGrupoRecords(grupoId, tt) {
     const eqIds = tt.grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    const partGrupo = tt.partidos.filter(m => (!m.fase || m.fase === 'grupo') && eqIds.includes(m.home_team_id) && eqIds.includes(m.away_team_id))
+    const partGrupo = tt.partidos.filter(m => (!m.fase || m.fase === 'grupo') && (eqIds.includes(m.home_team_id) || eqIds.includes(m.away_team_id)))
     const t = {}
     const Ppts = getPuntosTorneo(tt.torneo)
     eqIds.forEach(eid => { if (tt.equiposMap[eid]) t[eid] = { equipo: tt.equiposMap[eid], pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 } })
