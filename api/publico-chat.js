@@ -7,6 +7,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createHash } from 'node:crypto'
 import { enviarTelegram, telegramConfigurado } from './_telegram.js'
+import { responderAuto } from './_asistente.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
 
     if (body.accion === 'leer') {
       if (!chat) return res.status(200).json({ chat: false, mensajes: [] })
-      const { data: mensajes } = await admin.from('soporte_mensajes').select('id, de, texto, created_at').eq('chat_id', chat.id).order('created_at', { ascending: true }).limit(200)
+      const { data: mensajes } = await admin.from('soporte_mensajes').select('id, de, texto, created_at, automatico').eq('chat_id', chat.id).order('created_at', { ascending: true }).limit(200)
       return res.status(200).json({ chat: true, nombre: chat.nombre, mensajes: mensajes || [] })
     }
     if (body.accion !== 'enviar') return res.status(400).json({ error: 'Solicitud no válida' })
@@ -68,12 +69,32 @@ export default async function handler(req, res) {
     ])
     if ((ultMin || 0) >= MAX_POR_MINUTO || (ultHora || 0) >= MAX_POR_HORA) return res.status(429).json({ error: 'Espera un momento antes de enviar más mensajes' })
 
+    // Si pidió una persona, se le cuenta cuál era su pregunta anterior
+    const pidioPersona = /hablar con (una |un )?(persona|humano|asesor|alguien)/i.test(texto)
+    let previo = ''
+    if (pidioPersona) {
+      const { data: p } = await admin.from('soporte_mensajes').select('texto').eq('chat_id', c.id).eq('de', 'usuario').order('created_at', { ascending: false }).limit(1)
+      previo = p?.[0]?.texto || ''
+    }
+
     const { data: msg, error: em } = await admin.from('soporte_mensajes')
       .insert({ chat_id: c.id, de: 'usuario', texto, wa_estado: telegramConfigurado() ? null : 'sin_configurar' }).select('id, created_at').single()
     if (em) return res.status(500).json({ error: 'No se pudo enviar. Intenta de nuevo en un momento.' })
     const ruta = String(body.ruta || '').slice(0, 200)
     await admin.from('soporte_chats').update({ ultimo_mensaje_at: msg.created_at, ultimo_contexto: ruta || null }).eq('id', c.id)
-    if (!telegramConfigurado()) return res.status(200).json({ ok: true, id: msg.id, wa_estado: 'sin_configurar' })
+
+    // Asistente automático: contesta solo lo que se puede responder con datos de Golmebol (solo en consultas generales,
+    // no en las de organizar un torneo, reservas para una cancha o reglamento/quejas, que atiende una persona)
+    let auto = null
+    if (c.tema === 'otro') {
+      try { auto = await responderAuto(admin, texto, { torneoCtx: ruta.match(/^\/t\/([0-9a-f-]{36})/i)?.[1] }) } catch (e) { console.error('publico-chat asistente:', e?.message) }
+    }
+    if (auto) {
+      const { data: r, error: er } = await admin.from('soporte_mensajes').insert({ chat_id: c.id, de: 'soporte', texto: auto.texto.slice(0, 1900), automatico: true }).select('created_at').single()
+      if (er) { console.error('publico-chat respuesta automática:', er.message); auto = null } // si no se pudo guardar, lo atiende una persona
+      else await admin.from('soporte_chats').update({ ultimo_mensaje_at: r.created_at }).eq('id', c.id)
+    }
+    if (!telegramConfigurado()) return res.status(200).json({ ok: true, id: msg.id, auto: !!auto, wa_estado: 'sin_configurar' })
 
     // Datos del torneo y su organizador para tu aviso
     let torneoTxt = ''
@@ -87,10 +108,10 @@ export default async function handler(req, res) {
     }
     let waId = null, estado = 'enviado'
     try {
-      waId = await enviarTelegram(`💬 Soporte #${c.codigo} · 🌐 Público\n🙋 ${c.nombre}${c.contacto ? `\n📱 ${c.contacto}` : ''}\n🎯 ${TEMAS[c.tema] || TEMAS.otro}${torneoTxt}\n📍 ${ruta || 'página pública'}\n\n${texto}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
+      waId = await enviarTelegram(`💬 Soporte #${c.codigo} · 🌐 Público${auto ? ' · 🤖 respondió el asistente' : ''}\n🙋 ${c.nombre}${c.contacto ? `\n📱 ${c.contacto}` : ''}\n🎯 ${TEMAS[c.tema] || TEMAS.otro}${torneoTxt}\n📍 ${ruta || 'página pública'}\n\n${texto}${auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : ''}${pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`, undefined, undefined, !!auto)
     } catch (e) { estado = 'error'; console.error('publico-chat telegram:', e.message) }
     await admin.from('soporte_mensajes').update({ wa_id: waId, wa_estado: estado }).eq('id', msg.id)
-    return res.status(200).json({ ok: true, id: msg.id, wa_estado: estado })
+    return res.status(200).json({ ok: true, id: msg.id, auto: !!auto, wa_estado: estado })
   } catch (e) {
     console.error('publico-chat:', e?.message || e)
     return res.status(500).json({ error: 'No se pudo enviar. Intenta de nuevo en un momento.' })

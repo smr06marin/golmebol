@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react'
 // Dibujo del asistente del chat de ayuda (secretario con audífonos). SVG propio, sin imágenes externas.
 export default function AvatarAgente({ agente, size = 40 }) {
   return (
@@ -19,5 +20,14 @@ export default function AvatarAgente({ agente, size = 40 }) {
       <path d="M33.8 25.5c0 3.2-2.2 4.8-5.3 4.8" fill="none" stroke="#1a73e8" strokeWidth="1.5" strokeLinecap="round" />
       <circle cx="28.3" cy="30.3" r="1.4" fill="#1a73e8" />
     </svg>
+  )
+}
+
+// Icono del asistente automático (las respuestas que da solo el sistema, sin una persona)
+export function AvatarAsistente({ size = 40 }) {
+  return (
+    <div aria-hidden="true" style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#0f9d8a,#1a73e8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <Bot size={Math.round(size * 0.55)} />
+    </div>
   )
 }

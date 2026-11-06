@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { enviarTexto, enviarPlantilla, waConfigurado } from './_whatsapp.js'
 import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado } from './_telegram.js'
 import { aOggOpus } from './_audio.js'
+import { responderAuto } from './_asistente.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -51,6 +52,14 @@ export default async function handler(req, res) {
     }
     if (!texto && !adj) return res.status(400).json({ error: 'Escribe un mensaje' })
 
+    // Si pidió una persona, se le cuenta cuál era su pregunta anterior
+    const pidioPersona = /hablar con (una |un )?(persona|humano|asesor|alguien)/i.test(texto)
+    let previo = ''
+    if (pidioPersona) {
+      const { data: p } = await admin.from('soporte_mensajes').select('texto').eq('chat_id', chat.id).eq('de', 'usuario').order('created_at', { ascending: false }).limit(1)
+      previo = p?.[0]?.texto || ''
+    }
+
     // Freno contra spam
     const hace = min => new Date(Date.now() - min * 60000).toISOString()
     const [{ count: ultMin }, { count: ultHora }] = await Promise.all([
@@ -65,7 +74,19 @@ export default async function handler(req, res) {
     if (em) return res.status(500).json({ error: 'No se pudo guardar el mensaje' })
     await admin.from('soporte_chats').update({ ultimo_mensaje_at: msg.created_at, ultimo_contexto: contexto || null, email: user.email || chat.email }).eq('id', chat.id)
 
-    if (!telegramConfigurado() && !waConfigurado()) return res.status(200).json({ ok: true, id: msg.id, wa_estado: 'sin_configurar' })
+
+    // Asistente automático: solo si la pregunta nombra un equipo o un torneo (las demás son de cómo usar la plataforma y las atiende una persona)
+    let auto = null
+    if (texto && !adj) {
+      try { auto = await responderAuto(admin, texto, { exigirMencion: true }) } catch (e) { console.error('soporte-enviar asistente:', e?.message) }
+    }
+    if (auto) {
+      const { data: r, error: er } = await admin.from('soporte_mensajes').insert({ chat_id: chat.id, de: 'soporte', texto: auto.texto.slice(0, 1900), automatico: true }).select('created_at').single()
+      if (er) { console.error('soporte-enviar respuesta automática:', er.message); auto = null } // si no se pudo guardar, lo atiende una persona
+      else await admin.from('soporte_chats').update({ ultimo_mensaje_at: r.created_at }).eq('id', chat.id)
+    }
+
+    if (!telegramConfigurado() && !waConfigurado()) return res.status(200).json({ ok: true, id: msg.id, auto: !!auto, wa_estado: 'sin_configurar' })
 
     // Nombre del torneo si estaba dentro de uno
     let torneo = ''
@@ -97,7 +118,7 @@ export default async function handler(req, res) {
     let waId = null, estado = 'enviado'
     if (telegramConfigurado()) {
       try {
-        const cab = `💬 Soporte #${chat.codigo}\n${datosQuien}\n📍 ${donde}`
+        const cab = `💬 Soporte #${chat.codigo}${auto ? ' · 🤖 respondió el asistente' : ''}\n${datosQuien}\n📍 ${donde}`
         const pie = '\n\n↩️ Responde a ESTE mensaje para contestarle.'
         if (adj) {
           const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)
@@ -111,7 +132,8 @@ export default async function handler(req, res) {
           waId = await enviarTelegramArchivo({ tipo: adj.tipo, archivo: envio, nombre: nombreEnvio, leyenda: cab + (texto && cabe ? `\n\n${texto}` : '') + pie })
           if (texto && !cabe) await enviarTelegram(texto, undefined, Number(waId.slice(3))).catch(() => {})
         } else {
-          waId = await enviarTelegram(`${cab}\n\n${texto}${pie}`)
+          const extra = (auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : '') + (pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : '')
+          waId = await enviarTelegram(`${cab}\n\n${texto}${extra}${pie}`, undefined, undefined, !!auto)
         }
       }
       catch (e) { estado = 'error'; console.error('soporte-enviar telegram:', e.message) }
@@ -126,7 +148,7 @@ export default async function handler(req, res) {
       }
     }
     await admin.from('soporte_mensajes').update({ wa_id: waId, wa_estado: estado }).eq('id', msg.id)
-    return res.status(200).json({ ok: true, id: msg.id, wa_estado: estado })
+    return res.status(200).json({ ok: true, id: msg.id, auto: !!auto, wa_estado: estado })
   } catch (e) {
     console.error('soporte-enviar:', e.message || e)
     return res.status(500).json({ error: 'No se pudo enviar. Intenta de nuevo en un momento.' })

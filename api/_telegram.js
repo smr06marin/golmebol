@@ -18,11 +18,12 @@ async function llamar(metodo, cuerpo) {
 }
 
 // Devuelve "tg-<id del mensaje>": con ese id se sabe a qué organizador contestas cuando le das "Responder"
-export async function enviarTelegram(texto, chatId = process.env.TELEGRAM_CHAT_ID, citarId) {
+export async function enviarTelegram(texto, chatId = process.env.TELEGRAM_CHAT_ID, citarId, silencioso = false) {
   const r = await llamar('sendMessage', {
     chat_id: chatId,
     text: String(texto).slice(0, 4000),
     disable_web_page_preview: true,
+    ...(silencioso ? { disable_notification: true } : {}), // aviso sin sonido (cuando el asistente automático ya respondió)
     ...(citarId ? { reply_parameters: { message_id: citarId, allow_sending_without_reply: true } } : {}),
   })
   return `tg-${r.message_id}`
