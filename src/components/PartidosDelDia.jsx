@@ -64,14 +64,12 @@ const ESTILO = `
 .gm-pd-chips::-webkit-scrollbar { display: none }
 .gm-pd-tira { position: relative; display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .gm-pd-tira::-webkit-scrollbar { display: none }
-.gm-pd-dia { flex: 0 0 auto; width: 52px; min-height: 64px; border-radius: 14px; border: 1px solid #2a2a2a; background: #161616; color: #8a8a8a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; font-family: inherit; padding: 6px 0; -webkit-tap-highlight-color: transparent; }
+.gm-pd-dia { flex: 0 0 auto; width: 52px; height: 64px; box-sizing: border-box; touch-action: manipulation; border-radius: 14px; border: 1px solid #2a2a2a; background: #161616; color: #8a8a8a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; font-family: inherit; padding: 6px 0; -webkit-tap-highlight-color: transparent; }
 .gm-pd-dia .sem { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .gm-pd-dia .num { font-size: 1.25rem; font-weight: 900; line-height: 1.1; color: #fff; }
 .gm-pd-dia .sub { font-size: .55rem; font-weight: 900; letter-spacing: .06em; min-height: 11px; }
-.gm-pd-dia.hoy { width: 104px; min-height: 92px; border-radius: 18px; border: 2px solid #6fcf3d; background: rgba(111,207,61,.1); color: #6fcf3d; gap: 2px; }
-.gm-pd-dia.hoy .sem { font-size: .8rem; letter-spacing: .06em; }
-.gm-pd-dia.hoy .num { font-size: 2.5rem; line-height: 1; color: #fff; }
-.gm-pd-dia.hoy .sub { font-size: .8rem; letter-spacing: .12em; min-height: 14px; }
+.gm-pd-dia.hoy { width: 110px; border: 2px solid #6fcf3d; background: rgba(111,207,61,.1); color: #6fcf3d; }
+.gm-pd-dia.hoy .sub { font-size: .62rem; letter-spacing: .14em; }
 .gm-pd-dia[aria-current="date"] { background: #6fcf3d; border-color: #6fcf3d; color: #0a1a05; }
 .gm-pd-dia[aria-current="date"] .num { color: #0a1a05; }
 .gm-pd-cab { display: flex; align-items: center; gap: 11px; width: 100%; box-sizing: border-box; padding: 13px 14px; background: transparent; border: none; color: #fff; cursor: pointer; text-align: left; font-family: inherit; -webkit-tap-highlight-color: transparent; }
@@ -89,11 +87,16 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const [offset, setOffset] = useState(0)
   const [plegado, setPlegado] = useState(false) // tocar otra vez la pestaña activa esconde la lista
   const [filtro, setFiltro] = useState('todos') // todos | vivo | proximos | finales | favoritos
-  const [partidos, setPartidos] = useState([])
+  const [ventana, setVentana] = useState([]) // partidos de toda la tira de días (una sola consulta: cambiar de día es instantáneo)
   const [cargado, setCargado] = useState(false)
   const [abiertos, setAbiertos] = useState({}) // torneo.id -> true/false (lo que la persona abrió o cerró a mano)
   const [extendidos, setExtendidos] = useState({}) // torneo.id -> true: ya pidió ver también los partidos que no están en vivo
-  const cacheDias = useRef(new Map()) // offset -> partidos, para que volver a un día ya visto sea instantáneo
+  const ventanaCargada = useRef(false)
+  const partidos = useMemo(() => {
+    const ini = inicioDia(offset).getTime(), fin = inicioDia(offset + 1).getTime()
+    return ventana.filter(m => { const t = new Date(m.played_at).getTime(); return t >= ini && t < fin })
+  }, [ventana, offset])
+  const diasConPartidos = useMemo(() => new Set(ventana.map(m => new Date(m.played_at).toDateString())), [ventana])
 
   const vivoPorId = useMemo(() => {
     const m = new Map()
@@ -117,30 +120,30 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
 
   useEffect(() => {
     let cancelado = false
-    const previo = cacheDias.current.get(offset)
-    if (previo) { setPartidos(previo); setCargado(true) } else { setCargado(false) }
-
-    async function cargar() {
-      const ini = inicioDia(offset)
-      const fin = inicioDia(offset + 1)
+    const completo = !ventanaCargada.current
+    async function cargar(soloHoy) {
+      const ini = soloHoy ? inicioDia(0) : inicioDia(DIAS_TIRA[0])
+      const fin = soloHoy ? inicioDia(1) : inicioDia(DIAS_TIRA[DIAS_TIRA.length - 1] + 1)
       const { data, error } = await supabase.from('matches').select(COLS)
         .gte('played_at', ini.toISOString()).lt('played_at', fin.toISOString())
         .order('played_at', { ascending: true })
       if (cancelado) return
       if (!error) {
-        const lista = data || []
-        cacheDias.current.set(offset, lista)
-        setPartidos(lista)
+        const nuevos = data || []
+        if (soloHoy) {
+          const a = ini.getTime(), z = fin.getTime()
+          setVentana(prev => [...prev.filter(m => { const t = new Date(m.played_at).getTime(); return t < a || t >= z }), ...nuevos]
+            .sort((x, y) => new Date(x.played_at) - new Date(y.played_at)))
+        } else setVentana(nuevos)
+        ventanaCargada.current = true
       }
       setCargado(true)
     }
-    cargar()
-
-    // Solo "hoy" se refresca solo (un partido que termina pasa a "FIN").
-    let timer = null
-    if (offset === 0) timer = setInterval(() => { if (!document.hidden) cargar() }, 60000)
-    return () => { cancelado = true; if (timer) clearInterval(timer) }
-  }, [offset, nVivos])
+    cargar(!completo)
+    // "hoy" se refresca solo (un partido que termina pasa a "FIN"); los demás días no cambian.
+    const timer = setInterval(() => { if (!document.hidden) cargar(true) }, 60000)
+    return () => { cancelado = true; clearInterval(timer) }
+  }, [nVivos])
 
   // "VER EN VIVO" del inicio: vuelve a hoy y deja solo los partidos en juego.
   useEffect(() => {
@@ -308,7 +311,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
               aria-label={`${o === 0 ? 'Hoy, ' : ''}${fechaLarga(o)}`}>
               <span className="sem">{d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '')}</span>
               <span className="num">{d.getDate()}</span>
-              <span className="sub" style={{ color: sel ? '#0a1a05' : S.green }}>{o === 0 ? 'HOY' : ''}</span>
+              <span className="sub" style={{ color: sel ? '#0a1a05' : S.green }}>{o === 0 ? 'HOY' : diasConPartidos.has(d.toDateString()) ? '●' : ''}</span>
             </button>
           )
         })}
@@ -365,9 +368,9 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
       ) : grupos.length === 0 ? (
         <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: '26px 20px', textAlign: 'center', color: S.muted, fontSize: '.85rem', lineHeight: 1.5 }}>
           {filtro === 'favoritos' ? (
-            favoritos.length === 0 ? 'Cuando sigas un equipo, aquí verás sus partidos.' : 'Tus equipos no juegan este día. Usa las flechas de arriba para ver otros días.'
+            favoritos.length === 0 ? 'Cuando sigas un equipo, aquí verás sus partidos.' : 'Tus equipos no juegan este día. Elige otro día arriba.'
           ) : lista.length === 0 ? (
-            <>No hay partidos programados {offset === 0 ? 'hoy' : offset === 1 ? 'mañana' : offset === -1 ? 'ayer' : 'este día'}.<br/>Usa las flechas para ver otros días.</>
+            <>No hay partidos programados {offset === 0 ? 'hoy' : offset === 1 ? 'mañana' : offset === -1 ? 'ayer' : 'este día'}.<br/>Elige otro día arriba.</>
           ) : 'No hay partidos con este filtro.'}
         </div>
       ) : (
