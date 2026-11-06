@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../lib/puntosTorneo'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma, compararPosiciones, aplicarDescuentos } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, agregarForma, compararPosiciones, aplicarDescuentos, crearDetectorIntergrupo } from '../lib/torneoTablas'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { cargarRostersTorneo, cargarRosterEquipo } from '../lib/rosterTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
@@ -364,7 +364,7 @@ function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
 
 // PRÓXIMOS partidos del torneo: un panel por día (colores del torneo) y cada partido en una franja blanca:
 // escudo | EQUIPO · VS · EQUIPO | escudo, con la hora y la sede debajo. Limpio y fácil de leer en celular.
-function ProximosPartidos({ partidos, abrirRoster }) {
+function ProximosPartidos({ partidos, abrirRoster, esIntergrupo = () => false }) {
   const ordenados = partidos.slice().sort((x, y) => (x.played_at ? new Date(x.played_at).getTime() : Infinity) - (y.played_at ? new Date(y.played_at).getTime() : Infinity))
   const inicioHoy = new Date(); inicioHoy.setHours(0, 0, 0, 0)
   const claveDia = d => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}` }
@@ -425,6 +425,7 @@ function ProximosPartidos({ partidos, abrirRoster }) {
                     </div>
                     <div style={{ textAlign: 'center', marginTop: '7px' }}>
                       <span style={{ display: 'inline-block', background: 'rgba(255,255,255,.95)', color: '#14213d', fontWeight: '800', fontSize: '.78rem', letterSpacing: '.03em', borderRadius: '6px', padding: '3px 14px' }}>{p.played_at ? fmtHoraDate(p.played_at) : 'Hora por definir'}</span>
+                      {esIntergrupo(p) && <div style={{ marginTop: '5px' }}><span title="Partido entre equipos de grupos distintos: cuenta para la tabla de cada grupo y la general" style={{ display: 'inline-block', fontSize: '.6rem', fontWeight: '900', letterSpacing: '.06em', background: '#f9c400', color: '#1a1a1a', borderRadius: '6px', padding: '2px 8px' }}>INTERGRUPO</span></div>}
                       {detalle && <div style={{ fontSize: '.7rem', color: 'rgba(255,255,255,.85)', marginTop: '4px' }}>{detalle}</div>}
                     </div>
                   </div>
@@ -774,6 +775,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
   // Tabla de un grupo específico — solo cuenta partidos entre equipos de ese
   // mismo grupo en fase de grupos (misma lógica que usa el jugador/admin).
+  const esIntergrupo = crearDetectorIntergrupo(grupoEquipos) // partido entre equipos de grupos distintos → etiqueta INTERGRUPO
   function getTablaGrupo(grupoId) {
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
     const partGrupo = conMarcadorEnVivo(partidos).filter(p => (!p.fase || p.fase === 'grupo') && (eqIds.includes(p.home_team_id) || eqIds.includes(p.away_team_id)))
@@ -942,7 +944,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                   <span style={{ fontSize: '.65rem', fontWeight: '900', padding: '4px 9px', borderRadius: '999px', background: '#fce8e6', color: '#d93025', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/> EN VIVO
                   </span>
-                  <span style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '700' }}>{m.matchday ? `Fecha ${m.matchday}` : m.fase && m.fase !== 'grupo' ? FASE_LABEL[m.fase] : ''}</span>
+                  <span style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '700' }}>{esIntergrupo(m) ? 'Intergrupo · ' : ''}{m.matchday ? `Fecha ${m.matchday}` : m.fase && m.fase !== 'grupo' ? FASE_LABEL[m.fase] : ''}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
@@ -1174,6 +1176,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
                       {p.matchday && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>J{p.matchday}</span>}
                       {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
+                      {esIntergrupo(p) && <span title="Partido entre equipos de grupos distintos" style={{ fontSize: '.62rem', background: '#f9c400', color: '#1a1a1a', borderRadius: '10px', padding: '2px 9px', fontWeight: '900', letterSpacing: '.05em' }}>INTERGRUPO</span>}
                       {p.played_at && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)' }}>{new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</span>}
                       {p.location && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} color="rgba(255,255,255,.8)"/>{p.location}</span>}
                     </div>
@@ -1215,7 +1218,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           </div>
         )}
 
-        {tab === 'proximos' && <ProximosPartidos partidos={partidosPendientes} abrirRoster={abrirRoster}/>}
+        {tab === 'proximos' && <ProximosPartidos partidos={partidosPendientes} abrirRoster={abrirRoster} esIntergrupo={esIntergrupo}/>}
 
         {/* GOLEADORES */}
         {tab === 'goleadores' && (

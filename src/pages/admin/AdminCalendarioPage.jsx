@@ -11,6 +11,7 @@ import FlyerProgramacion from '../../components/FlyerProgramacion'
 import PlanillaSegunPartido from '../../components/PlanillaSegunPartido'
 import { recuperarPlanillaAbierta } from '../../lib/planillaRecovery'
 import { fmtHoraDate } from '../../lib/horaHelpers'
+import { crearDetectorIntergrupo } from '../../lib/torneoTablas'
 import { notify } from '../../lib/notify'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
 
@@ -287,6 +288,10 @@ const FilaPartido = memo(function FilaPartido({ p, abriendo, acc }) {
           <div className="gcal-lg"><TeamLogo logo_url={p.away?.logo_url} size={22}/></div>
           <span className={`gcal-tn ${gH ? 'lost' : ''}`}>{p.away?.name}</span>
           {esJugado && <span className={`gcal-n ${gH ? 'lost' : ''}`}>{p.away_score}</span>}
+          {p.intergrupo && (
+            <span title="Partido entre equipos de grupos distintos: cuenta para la tabla de cada grupo y la general"
+              style={{ gridColumn: '1 / -1', justifySelf: 'start', fontSize: '.6rem', fontWeight: 800, letterSpacing: '.06em', background: '#fff3c4', color: '#7a5b00', borderRadius: '999px', padding: '2px 8px' }}>INTERGRUPO</span>
+          )}
         </div>
         <ChevronDown size={18} className={`gcal-chev ${abierto ? 'on' : ''}`}/>
       </div>
@@ -607,7 +612,7 @@ const porHora = (a, b) => (a.played_at ? new Date(a.played_at).getTime() : Infin
 // pestaña Calendario del torneo: usa los partidos que ya tiene esa pantalla,
 // no abre su propia planilla (usa la de la pantalla) y suma Editar / Carga
 // rápida / Eliminar a cada partido. Sin props es el calendario global de siempre.
-export default function AdminCalendarioPage({ torneo = null, partidosExternos = null, acciones = null }) {
+export default function AdminCalendarioPage({ torneo = null, partidosExternos = null, acciones = null, grupoEquipos = null }) {
   const embebido = !!(torneo && partidosExternos)
   const navigate = useNavigate()
   const { user, rol } = useAuthStore()
@@ -638,7 +643,12 @@ export default function AdminCalendarioPage({ torneo = null, partidosExternos = 
   const [generandoLink,   setGenerandoLink]   = useState(false)
   // Ventana del botón Link reloj: { partido, conFaltas }
   const [relojModal,      setRelojModal]      = useState(null)
-  const partidosExt = useMemo(() => embebido ? partidosExternos.map(p => ({ ...p, tournaments: torneo })) : null, [embebido, partidosExternos, torneo])
+  // `intergrupo`: partido de fase de grupos entre equipos de grupos distintos (se marca con una etiqueta)
+  const partidosExt = useMemo(() => {
+    if (!embebido) return null
+    const esInter = crearDetectorIntergrupo(grupoEquipos)
+    return partidosExternos.map(p => ({ ...p, tournaments: torneo, intergrupo: esInter(p) }))
+  }, [embebido, partidosExternos, torneo, grupoEquipos])
   const partidos = embebido ? partidosExt : partidosFetch
   const reqId = useRef(0)
   const ocupado = useRef(false)

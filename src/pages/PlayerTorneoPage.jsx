@@ -8,7 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, compararPosiciones, aplicarDescuentos } from '../lib/torneoTablas'
+import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, compararPosiciones, aplicarDescuentos, crearDetectorIntergrupo } from '../lib/torneoTablas'
 
 const TABS = [
   { id: 'posiciones', label: 'Posiciones' },
@@ -679,6 +679,7 @@ export default function PlayerTorneoPage() {
   // fase de grupos (o sin fase, torneos sin llaves), igual que la
   // reclasificación que usa el admin — así no se mezclan los resultados
   // de eliminatorias directas.
+  const esIntergrupo = crearDetectorIntergrupo(grupoEquipos) // partido entre equipos de grupos distintos → etiqueta INTERGRUPO
   function getTablaGrupoPlayer(grupoId) {
     const P = getPuntosTorneo(torneo)
     const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
@@ -853,10 +854,11 @@ export default function PlayerTorneoPage() {
                               borderRadius: '16px', overflow: 'hidden',
                               boxShadow: esMiPartido ? '0 3px 12px rgba(232,113,10,.15)' : '0 1px 4px rgba(0,0,0,.06)',
                             }}>
-                            {(p.matchday || p.grupo) && (
+                            {(p.matchday || p.grupo || esIntergrupo(p)) && (
                               <div style={{ display: 'flex', gap: '6px', padding: '8px 12px 0' }}>
                                 {p.matchday && <span style={{ fontSize: '.62rem', fontWeight: '700', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 8px' }}>Fecha {p.matchday}</span>}
                                 {p.grupo && <span style={{ fontSize: '.62rem', fontWeight: '700', color: '#9955ff', background: '#f3e8fd', borderRadius: '20px', padding: '2px 8px' }}>{p.grupo}</span>}
+                                {esIntergrupo(p) && <span title="Partido entre equipos de grupos distintos" style={{ fontSize: '.62rem', fontWeight: '800', color: '#7a5b00', background: '#fff3c4', borderRadius: '20px', padding: '2px 8px' }}>INTERGRUPO</span>}
                               </div>
                             )}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 14px' }}>
@@ -927,6 +929,7 @@ export default function PlayerTorneoPage() {
                               {esMiPartido && resultLabel && <span style={{ fontSize: '.65rem', fontWeight: '700', color: resultColor, background: resultBg, borderRadius: '4px', padding: '1px 6px' }}>{resultLabel}</span>}
                               {p.matchday && <span style={{ fontSize: '.62rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 8px', fontWeight: '700' }}>Fecha {p.matchday}</span>}
                               {p.grupo && <span style={{ fontSize: '.62rem', color: '#9955ff', background: '#f3e8fd', borderRadius: '20px', padding: '2px 8px', fontWeight: '700' }}>{p.grupo}</span>}
+                              {esIntergrupo(p) && <span title="Partido entre equipos de grupos distintos" style={{ fontSize: '.62rem', color: '#7a5b00', background: '#fff3c4', borderRadius: '20px', padding: '2px 8px', fontWeight: '800' }}>INTERGRUPO</span>}
                               <span style={{ marginLeft: 'auto', fontSize: '.6rem', color: '#9aa0a6' }}>Ver detalles →</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px' }}>

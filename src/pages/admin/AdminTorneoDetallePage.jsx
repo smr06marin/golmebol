@@ -6296,6 +6296,7 @@ Tu respuesta COMPLETA debe ser ÃšNICAMENTE este bloque, sin nada antes ni despuÃ
                 <AdminCalendarioPage
                   torneo={torneo}
                   partidosExternos={partidos}
+                  grupoEquipos={grupoEquipos}
                   acciones={{
                     planilla: p => abrirPlanilla(partidos.find(x => x.id === p.id) || p),
                     editar: p => {

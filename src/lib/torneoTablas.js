@@ -5,6 +5,30 @@
 import { getPuntosTorneo, puntosVictoria } from './puntosTorneo'
 import { derivarEnVivo, extraerGolesConJugador } from './liveMatch'
 
+// PARTIDO INTERGRUPO: partido de fase de grupos entre dos equipos que están en grupos DISTINTOS.
+// Cuenta para la tabla de cada grupo y para la general; se marca con la etiqueta "INTERGRUPO".
+// `grupoEquipos` = filas de grupo_equipos ({ grupo_id, team_id }). Devuelve una función (partido) => boolean.
+export function crearDetectorIntergrupo(grupoEquipos) {
+  const gruposDe = new Map() // team_id -> Set(grupo_id)
+  ;(grupoEquipos || []).forEach(ge => {
+    if (!ge?.team_id || !ge?.grupo_id) return
+    if (!gruposDe.has(ge.team_id)) gruposDe.set(ge.team_id, new Set())
+    gruposDe.get(ge.team_id).add(ge.grupo_id)
+  })
+  return (p) => {
+    if (!p || (p.fase && p.fase !== 'grupo')) return false
+    const a = gruposDe.get(p.home_team_id), b = gruposDe.get(p.away_team_id)
+    if (!a || !b) return false
+    for (const g of a) if (b.has(g)) return false // comparten grupo: es un partido normal del grupo
+    return true
+  }
+}
+// Copia de la lista de partidos con `intergrupo: true` en los que lo son (los demás quedan igual, sin tocar).
+export function marcarIntergrupo(partidos, grupoEquipos) {
+  const es = crearDetectorIntergrupo(grupoEquipos)
+  return (partidos || []).map(p => (es(p) ? { ...p, intergrupo: true } : p))
+}
+
 // Mientras un partido se está jugando (el árbitro ya lo abrió y está
 // llenando la planilla, pero todavía no le da "Guardar resultado"), lo
 // trata como si ya hubiera terminado, usando el marcador que se ve en vivo
