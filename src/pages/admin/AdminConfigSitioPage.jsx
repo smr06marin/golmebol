@@ -718,7 +718,7 @@ export default function AdminConfigSitioPage() {
                       gráficos de esta transmisión salen DENTRO del video de YouTube.
                       Usa el id de la transmisión, no el token de control — solo
                       muestra gráficos, no deja manejar nada. */}
-                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LINK PARA OBS (GRÁFICOS DENTRO DE YOUTUBE)</div>
+                  <div style={{ fontSize:'.68rem', color:'#9aa0a6', fontWeight:'600', marginBottom:'6px' }}>LINK PARA OBS / PRISM (GRÁFICOS DENTRO DEL VIDEO)</div>
                   <div style={{ display:'flex', gap:'8px', marginBottom:'6px' }}>
                     <input readOnly value={`${window.location.origin}/overlay/${s.id}`} onFocus={e => e.target.select()}
                       style={{ flex:1, background:'#161616', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'9px 10px', color:'#9aa0a6', fontSize:'.72rem' }}/>

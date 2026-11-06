@@ -1,6 +1,6 @@
 // Asistente de 4 pasos para montar una transmisión en vivo sin saber nada de técnica.
 // Paso 1: desde dónde transmite (celular con Prism Live Studio o computador con OBS).
-// Paso 2: prepara la app de YouTube y pega el link.
+// Paso 2: escoge la plataforma (YouTube, Facebook, Instagram, TikTok — una o varias a la vez), prepara la app y pega el link.
 // Paso 3: cómo entra el marcador (árbitro con su link = automático, o desde otro celular).
 // Paso 4: listo — links para copiar y los pasos exactos de su programa (Prism u OBS).
 // No guarda nada por su cuenta: al terminar el paso 3 le pide a la pantalla EN VIVO que cree la transmisión
@@ -10,7 +10,16 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Copy, Share2, Smartphone, Monitor, Radio } from 'lucide-react'
 
 const AZUL = '#1a73e8'
-const NOMBRES_PASO = ['Dónde transmites', 'Tu link', 'Marcador', '¡Listo!']
+const NOMBRES_PASO = ['Dónde transmites', 'Plataforma y link', 'Marcador', '¡Listo!']
+
+// Plataformas donde se puede transmitir. `clave: true` = no se conecta con un botón de inicio de sesión sino con la clave de transmisión (RTMP) que da la plataforma.
+const PLATAFORMAS = [
+  { id: 'youtube', nombre: 'YouTube', clave: false },
+  { id: 'facebook', nombre: 'Facebook', clave: false },
+  { id: 'instagram', nombre: 'Instagram', clave: true },
+  { id: 'tiktok', nombre: 'TikTok', clave: true },
+]
+const PLACEHOLDER_LINK = { youtube: 'https://www.youtube.com/@tucanal', facebook: 'https://www.facebook.com/tupagina/videos/…', instagram: 'https://www.instagram.com/tuperfil/live', tiktok: 'https://www.tiktok.com/@tuperfil/live' }
 
 const inp = { width: '100%', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', padding: '12px 14px', color: '#202124', fontSize: '1rem', outline: 'none', boxSizing: 'border-box', minHeight: '46px' }
 const lbl = { fontSize: '.8rem', fontWeight: '700', color: '#3c4043', display: 'block', marginBottom: '6px' }
@@ -66,6 +75,7 @@ export default function AsistenteEnVivo({ torneos = [], canchasPorTorneo = {}, c
   const [paso, setPaso] = useState(1)
   const [metodo, setMetodo] = useState(null) // 'prism' | 'obs'
   const [url, setUrl] = useState('')
+  const [plataformas, setPlataformas] = useState(['youtube']) // una o varias a la vez
   const [titulo, setTitulo] = useState('')
   const [modo, setModo] = useState('arbitro') // 'arbitro' | 'control'
   const [torneoId, setTorneoId] = useState(torneos[0]?.id || '')
@@ -77,7 +87,14 @@ export default function AsistenteEnVivo({ torneos = [], canchasPorTorneo = {}, c
 
   const urlLimpia = url.trim()
   const urlValida = !urlLimpia || /^https?:\/\/\S+$/i.test(urlLimpia)
-  const plataforma = /youtu/i.test(urlLimpia) ? 'YouTube' : /facebook|fb\.watch/i.test(urlLimpia) ? 'Facebook' : /instagram/i.test(urlLimpia) ? 'Instagram' : ''
+  const plataforma = /youtu/i.test(urlLimpia) ? 'YouTube' : /facebook|fb\.watch/i.test(urlLimpia) ? 'Facebook' : /instagram/i.test(urlLimpia) ? 'Instagram' : /tiktok/i.test(urlLimpia) ? 'TikTok' : ''
+  const elegidas = PLATAFORMAS.filter(p => plataformas.includes(p.id))
+  const varias = elegidas.length > 1
+  const destinos = elegidas.map(p => p.nombre).join(' y ')
+  const primera = elegidas[0] || PLATAFORMAS[0]
+  const usaClave = elegidas.some(p => p.clave)
+  const sinYoutube = !plataformas.includes('youtube')
+  const alternarPlataforma = id => setPlataformas(prev => (prev.includes(id) ? (prev.length > 1 ? prev.filter(x => x !== id) : prev) : [...prev, id]))
   const canchas = canchasPorTorneo[torneoId] || []
   const nombreTorneo = torneos.find(t => t.id === torneoId)?.name || ''
   const origen = typeof window !== 'undefined' ? window.location.origin : 'https://golmebol.com'
@@ -162,34 +179,84 @@ export default function AsistenteEnVivo({ torneos = [], canchasPorTorneo = {}, c
         <div>
           <h2 style={{ margin: '0 0 4px', fontSize: '1.2rem', color: '#202124' }}>Prepara tu transmisión</h2>
           <p style={{ margin: '0 0 14px', fontSize: '.88rem', color: '#5f6368' }}>Esto se hace una sola vez. Vas por {programa}.</p>
-          <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#3c4043', margin: '0 0 8px' }}>PRIMERO, TU APP</div>
+
+          <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#3c4043', margin: '0 0 8px' }}>¿DÓNDE VAS A TRANSMITIR?</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+            {PLATAFORMAS.map(p => {
+              const on = plataformas.includes(p.id)
+              return (
+                <button key={p.id} type="button" onClick={() => alternarPlataforma(p.id)} aria-pressed={on}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minHeight: '52px', padding: '0 14px', borderRadius: '12px', cursor: 'pointer', fontSize: '.95rem', fontWeight: '800', color: '#202124', background: on ? '#e8f0fe' : '#fff', border: on ? `2px solid ${AZUL}` : '1px solid #dadce0' }}>
+                  {p.nombre}{on && <Check size={18} color={AZUL}/>}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.45 }}>Toca una o varias. Si escoges dos o más, transmites a todas al mismo tiempo.</div>
+
+          <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#3c4043', margin: '18px 0 8px' }}>PRIMERO, TU APP</div>
           {metodo === 'prism' ? (
             <Pasos items={[
               <>Instala <b>Prism Live Studio</b> desde la Play Store o la App Store.</>,
-              <>Ábrela, elige <b>YouTube</b> e inicia sesión con tu canal.</>,
+              ...elegidas.map(p => (p.clave
+                ? <>Para <b>{p.nombre}</b>: elige <b>«Custom RTMP»</b> y pega la <b>dirección y la clave de transmisión</b> que te da {p.nombre}.</>
+                : <>Para <b>{p.nombre}</b>: elige <b>{p.nombre}</b> e inicia sesión con tu cuenta.</>)),
             ]}/>
           ) : (
             <Pasos items={[
               <>Instala <b>OBS Studio</b> desde <b>obsproject.com</b> (gratis).</>,
-              <>Ábrelo y entra a <b>Ajustes → Emisión</b>. En «Servicio» elige <b>YouTube</b> y toca <b>«Conectar cuenta»</b>.</>,
+              ...elegidas.map(p => (p.clave
+                ? <>Para <b>{p.nombre}</b>: entra a <b>Ajustes → Emisión</b>, en «Servicio» elige <b>«Personalizado…»</b> y pega el <b>Servidor</b> y la <b>Clave de retransmisión</b> que te da {p.nombre}.</>
+                : <>Para <b>{p.nombre}</b>: entra a <b>Ajustes → Emisión</b>, en «Servicio» elige <b>{p.id === 'facebook' ? 'Facebook Live' : p.nombre}</b> y toca <b>«Conectar cuenta»</b>.</>)),
             ]}/>
           )}
-          <Aviso color="#fef7e0" texto="#8a5a00">
-            ⏳ <b>Importante:</b> la primera vez, YouTube puede tardar hasta 24 horas en activar las transmisiones en vivo de tu canal. Hazlo hoy, no el día del partido.
-          </Aviso>
+          {plataformas.includes('youtube') && (
+            <Aviso color="#fef7e0" texto="#8a5a00">
+              ⏳ <b>YouTube:</b> la primera vez, YouTube puede tardar hasta 24 horas en activar las transmisiones en vivo de tu canal. Hazlo hoy, no el día del partido.
+            </Aviso>
+          )}
+          {plataformas.includes('instagram') && (
+            <Aviso color="#fef7e0" texto="#8a5a00">
+              ⚠️ <b>Instagram:</b> la clave de transmisión se saca desde un <b>computador</b>, en instagram.com/live. Según las reglas actuales de Instagram pide una cuenta <b>profesional</b> (Creador o Empresa) y 1.000 seguidores. Confírmalo en tu cuenta antes del día del partido.
+            </Aviso>
+          )}
+          {plataformas.includes('tiktok') && (
+            <Aviso color="#fef7e0" texto="#8a5a00">
+              ⚠️ <b>TikTok:</b> para transmitir con clave, TikTok pide según sus reglas actuales mínimo 1.000 seguidores y activar el acceso desde TikTok LIVE Studio en el computador. Confírmalo en tu cuenta antes del día del partido.
+            </Aviso>
+          )}
+          {usaClave && (
+            <Aviso>
+              📱 Instagram y TikTok están pensados para video <b>vertical</b>; el marcador de Golmebol está hecho para video <b>horizontal</b>. Haz una prueba antes del partido para ver cómo se ve.
+            </Aviso>
+          )}
+          {varias && (
+            <Aviso color="#e6f4ea" texto="#137333">
+              🔀 <b>Varias plataformas a la vez:</b>{' '}
+              {metodo === 'prism'
+                ? <>en Prism se llama «multi-transmisión» y necesita la suscripción <b>PRISM Plus</b> (hasta 6 canales). Conecta cada cuenta, activa el interruptor de cada una y toca <b>Go Live</b>.</>
+                : <>OBS solo envía a un destino por defecto. Para varios a la vez instala el plugin gratuito <b>«Multiple RTMP outputs»</b> o usa un servicio como <b>Restream</b> (revisa sus planes).</>}
+            </Aviso>
+          )}
 
-          <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#3c4043', margin: '16px 0 8px' }}>AHORA, EL LINK DE TU CANAL</div>
+          <div style={{ fontSize: '.8rem', fontWeight: '800', color: '#3c4043', margin: '18px 0 8px' }}>AHORA, EL LINK PARA GOLMEBOL.COM</div>
           <Pasos items={[
-            <>Abre tu canal en YouTube y toca <b>Compartir</b>.</>,
+            <>Abre tu cuenta de <b>{primera.nombre}</b> y toca <b>Compartir</b>.</>,
             <>Toca <b>Copiar link</b> y pégalo aquí abajo.</>,
           ]}/>
-          <label htmlFor="av-url" style={{ ...lbl, marginTop: '12px' }}>Link de tu canal de YouTube</label>
+          {varias && <div style={{ fontSize: '.8rem', color: '#5f6368', marginTop: '8px', lineHeight: 1.45 }}>Pega el link de <b>una sola</b> plataforma: la que quieras que se vea dentro de golmebol.com.</div>}
+          <label htmlFor="av-url" style={{ ...lbl, marginTop: '12px' }}>Link de {plataforma || primera.nombre}</label>
           <input id="av-url" value={url} onChange={e => setUrl(e.target.value)} style={inp} inputMode="url" autoCapitalize="none" autoCorrect="off"
-            placeholder="https://www.youtube.com/@tucanal"/>
-          {urlLimpia && !urlValida && <div style={{ color: '#d93025', fontSize: '.8rem', marginTop: '6px' }}>El link debe empezar con https://. Cópialo de nuevo desde YouTube.</div>}
+            placeholder={PLACEHOLDER_LINK[primera.id]}/>
+          {urlLimpia && !urlValida && <div style={{ color: '#d93025', fontSize: '.8rem', marginTop: '6px' }}>El link debe empezar con https://. Cópialo de nuevo desde la plataforma.</div>}
           {urlLimpia && urlValida && plataforma && <div style={{ color: '#1e8e3e', fontSize: '.8rem', fontWeight: '700', marginTop: '6px' }}>✓ Detectado: {plataforma}</div>}
           <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.45 }}>
-            Con el link del canal no tienes que cambiarlo en cada partido: la transmisión aparece sola en golmebol.com cuando empiezas el en vivo. ¿Aún no lo tienes? Puedes dejarlo vacío y pegarlo después.
+            {(plataforma === 'TikTok' || (!plataforma && primera.id === 'tiktok'))
+              ? <>En golmebol.com saldrá un botón <b>«Ver en vivo»</b> que abre TikTok (TikTok no deja mostrar el video dentro de otra página).</>
+              : (plataforma === 'Facebook' || plataforma === 'Instagram' || (!plataforma && (primera.id === 'facebook' || primera.id === 'instagram')))
+                ? <>En Facebook e Instagram pega el link del video <b>en vivo ya iniciado</b>; cambia en cada transmisión (se actualiza desde tu panel).</>
+                : <>Con el link del canal de YouTube no tienes que cambiarlo en cada partido: la transmisión aparece sola en golmebol.com cuando empiezas el en vivo.</>}
+            {' '}¿Aún no lo tienes? Puedes dejarlo vacío y pegarlo después.
           </div>
 
           <label htmlFor="av-titulo" style={{ ...lbl, marginTop: '16px' }}>Nombre de la transmisión (opcional)</label>
@@ -275,7 +342,7 @@ export default function AsistenteEnVivo({ torneos = [], canchasPorTorneo = {}, c
               <Pasos desde={2} items={[
                 <>En Prism, desliza hacia la derecha y toca <b>«Widget»</b> → <b>«Web»</b>.</>,
                 <>Pega el link en <b>«URL»</b>, activa <b>«Lock layer»</b> y guarda.</>,
-                <>Toca el botón para <b>empezar a transmitir</b> en YouTube.</>,
+                <>Toca el botón para <b>empezar a transmitir</b> en {destinos}.</>,
               ]}/>
             </div>
           ) : (
@@ -288,6 +355,7 @@ export default function AsistenteEnVivo({ torneos = [], canchasPorTorneo = {}, c
             </div>
           )}
           <Aviso color="#fef7e0" texto="#8a5a00">Los nombres de los botones pueden cambiar un poco según la versión del programa.</Aviso>
+          {sinYoutube && <Aviso>El marcador, la tabla y la publicidad salen dentro del video en cualquier plataforma. Solo la <b>Repetición dentro del video</b> funciona únicamente con YouTube.</Aviso>}
 
           {modo === 'arbitro' ? (
             <div style={{ border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px', marginTop: '14px' }}>
