@@ -30,16 +30,24 @@ export async function enviarTelegram(texto, chatId = process.env.TELEGRAM_CHAT_I
 
 // ── Fotos y videos ────────────────────────────────────────────
 // Envía una foto o video (Blob) con leyenda. Telegram acepta hasta 10 MB en fotos y 50 MB en videos.
+// Los audios van como nota de voz (se oyen con un toque); si Telegram no acepta el formato, van como archivo.
 export async function enviarTelegramArchivo({ tipo, archivo, nombre, leyenda, chatId = process.env.TELEGRAM_CHAT_ID }) {
-  const form = new FormData()
-  form.append('chat_id', String(chatId))
-  if (leyenda) form.append('caption', String(leyenda).slice(0, 1024))
-  if (tipo === 'video') form.append('supports_streaming', 'true')
-  form.append(tipo === 'video' ? 'video' : 'photo', archivo, nombre)
-  const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/${tipo === 'video' ? 'sendVideo' : 'sendPhoto'}`, { method: 'POST', body: form })
-  const json = await r.json().catch(() => ({}))
-  if (!r.ok || !json.ok) throw new Error(json.description || `Telegram respondió ${r.status}`)
-  return `tg-${json.result.message_id}`
+  const intentar = async (metodo, campo) => {
+    const form = new FormData()
+    form.append('chat_id', String(chatId))
+    if (leyenda) form.append('caption', String(leyenda).slice(0, 1024))
+    if (campo === 'video') form.append('supports_streaming', 'true')
+    form.append(campo, archivo, nombre)
+    const r = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/${metodo}`, { method: 'POST', body: form })
+    const json = await r.json().catch(() => ({}))
+    if (!r.ok || !json.ok) throw new Error(json.description || `Telegram respondió ${r.status}`)
+    return `tg-${json.result.message_id}`
+  }
+  if (tipo === 'video') return intentar('sendVideo', 'video')
+  if (tipo === 'audio') {
+    try { return await intentar('sendVoice', 'voice') } catch { return intentar('sendDocument', 'document') }
+  }
+  return intentar('sendPhoto', 'photo')
 }
 
 // Baja un archivo que te mandaron al bot (Telegram solo deja descargar hasta 20 MB).

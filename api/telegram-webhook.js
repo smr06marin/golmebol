@@ -8,19 +8,22 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { enviarTelegram, descargarTelegramArchivo } from './_telegram.js'
+import { oggAM4a } from './_audio.js'
 import { guardarRespuesta, AYUDA_RUTA } from './_soporteRespuesta.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const BUCKET = 'soporte-adjuntos'
 const MAX_DESCARGA = 20 * 1024 * 1024 // Telegram solo deja a un bot bajar archivos de hasta 20 MB
-const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm' }
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac' }
 
 // Foto o video que mandaste al bot (como foto, como video o como archivo). null si no trae ninguno.
 function leerMedia(m) {
   if (m.photo?.length) { const f = m.photo[m.photo.length - 1]; return { fileId: f.file_id, mime: 'image/jpeg', tipo: 'imagen', size: f.file_size } }
   if (m.video) return { fileId: m.video.file_id, mime: m.video.mime_type || 'video/mp4', tipo: 'video', size: m.video.file_size }
-  if (m.document) return { fileId: m.document.file_id, mime: m.document.mime_type || '', tipo: String(m.document.mime_type || '').startsWith('video/') ? 'video' : 'imagen', size: m.document.file_size }
+  if (m.voice) return { fileId: m.voice.file_id, mime: 'audio/ogg', tipo: 'audio', size: m.voice.file_size }
+  if (m.audio) return { fileId: m.audio.file_id, mime: m.audio.mime_type || '', tipo: 'audio', size: m.audio.file_size }
+  if (m.document) { const mt = String(m.document.mime_type || ''); return { fileId: m.document.file_id, mime: mt, tipo: mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'imagen', size: m.document.file_size } }
   return null
 }
 
@@ -50,11 +53,11 @@ export default async function handler(req, res) {
   try {
     const media = leerMedia(m)
     if (!media && !m.text) {
-      await enviarTelegram('El chat solo puede mostrar texto, fotos y videos. Envía tu respuesta en uno de esos formatos.', miChat, m.message_id).catch(() => {})
+      await enviarTelegram('El chat solo puede mostrar texto, fotos, videos y audios. Envía tu respuesta en uno de esos formatos.', miChat, m.message_id).catch(() => {})
       return res.status(200).json({ ok: true })
     }
     if (media && !EXT[media.mime]) {
-      await enviarTelegram('Solo puedo pasar fotos (JPG, PNG, WEBP) y videos (MP4, MOV, WEBM).', miChat, m.message_id).catch(() => {})
+      await enviarTelegram('Solo puedo pasar fotos, videos y audios (notas de voz, MP3 o M4A).', miChat, m.message_id).catch(() => {})
       return res.status(200).json({ ok: true })
     }
     if (media && (media.size || 0) > MAX_DESCARGA) {
@@ -66,9 +69,14 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true })
     }
     const adjunto = media ? async chatId => {
-      const { datos } = await descargarTelegramArchivo(media.fileId)
-      const path = `${chatId}/${randomUUID()}.${EXT[media.mime]}`
-      const { error } = await admin.storage.from(BUCKET).upload(path, datos, { contentType: media.mime })
+      const bajado = await descargarTelegramArchivo(media.fileId)
+      let datos = bajado.datos, mime = media.mime
+      if (mime === 'audio/ogg') { // las notas de voz de Telegram: se pasan a M4A para que suenen también en iPhone
+        const m4a = await oggAM4a(datos)
+        if (m4a) { datos = m4a; mime = 'audio/mp4' }
+      }
+      const path = `${chatId}/${randomUUID()}.${EXT[mime]}`
+      const { error } = await admin.storage.from(BUCKET).upload(path, datos, { contentType: mime })
       if (error) throw error
       return { path, tipo: media.tipo }
     } : undefined

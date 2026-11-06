@@ -2,7 +2,8 @@
 // WhatsApp, y las respuestas vuelven a este mismo chat. Todo el historial queda a la vista.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, ChevronLeft, MessageCircle, Moon, Paperclip, Send, X } from 'lucide-react'
+import { Bell, ChevronLeft, MessageCircle, Mic, Moon, Paperclip, Send, Trash2, X } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase'
 import { apiUrl } from '../lib/apiBase'
 import { useAuthStore } from '../store/authStore'
@@ -45,7 +46,12 @@ function AvatarAgente({ agente, size = 40 }) {
 
 // ── Fotos y videos ────────────────────────────────────────────
 const BUCKET = 'soporte-adjuntos'
-const TIPOS_OK = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']
+const TIPOS_OK = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm', 'audio/mp4', 'audio/x-m4a', 'audio/mpeg', 'audio/aac', 'audio/webm', 'audio/ogg']
+const MAX_AUDIO = 25 * 1024 * 1024
+const EXT_AUDIO = { 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/mpeg': 'mp3', 'audio/aac': 'aac', 'audio/webm': 'weba', 'audio/ogg': 'ogg' }
+const tipoDe = f => f.type.startsWith('video/') ? 'video' : f.type.startsWith('audio/') ? 'audio' : 'imagen'
+const puedeGrabar = () => { try { return !Capacitor.isNativePlatform() && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined' } catch { return false } }
+const mmss = n => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`
 const MAX_VIDEO = 50 * 1024 * 1024
 const MAX_FOTO = 10 * 1024 * 1024
 const urlsFirmadas = new Map() // path → { url, vence }: evita pedir de nuevo el permiso cada vez que se dibuja
@@ -63,6 +69,7 @@ function obtenerUrl(path) {
 // Foto o video dentro de una burbuja (los recién enviados se ven al instante con su vista previa local)
 function Adjunto({ m, alAbrir }) {
   const [url, setUrl] = useState(null)
+  const [sinSonido, setSinSonido] = useState(false) // el navegador no puede reproducir ese audio
   useEffect(() => {
     if (m.previa || !m.adjunto_path) return
     let vivo = true
@@ -72,6 +79,14 @@ function Adjunto({ m, alAbrir }) {
   const src = m.previa || url
   const caja = { display: 'block', width: 'min(240px, 62vw)', height: 'auto', maxHeight: '320px', objectFit: 'cover', borderRadius: '10px', background: '#e8eaed' }
   if (!src) return <div style={{ ...caja, height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.72rem', color: '#80868b' }}>Cargando…</div>
+  if (m.adjunto_tipo === 'audio') {
+    return (
+      <div>
+        <audio src={src} controls preload="metadata" onError={() => setSinSonido(true)} style={{ display: 'block', width: 'min(240px, 62vw)', height: '40px' }} />
+        {sinSonido && <a href={src} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: '4px', fontSize: '.72rem', fontWeight: '700', color: 'inherit', textDecoration: 'underline' }}>No se pudo reproducir aquí: abrir o descargar el audio</a>}
+      </div>
+    )
+  }
   if (m.adjunto_tipo === 'video') return <video src={`${src}#t=0.1`} controls playsInline preload="metadata" style={{ ...caja, background: '#000' }} />
   return <img src={src} alt="Foto enviada" onClick={() => alAbrir(src)} style={{ ...caja, cursor: 'zoom-in' }} />
 }
@@ -102,6 +117,12 @@ function ChatInterno() {
   const [previa, setPrevia] = useState(null)     // dirección local para mostrarlo
   const [visor, setVisor] = useState(null)       // foto abierta a pantalla completa
   const inputArchivo = useRef(null)
+  const [grabando, setGrabando] = useState(false)
+  const [segundos, setSegundos] = useState(0)
+  const grabadora = useRef(null)
+  const trozos = useRef([])
+  const descartar = useRef(false)
+  const limite = useRef(null)
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState('')
   const [vv, setVv] = useState(null) // área visible real (con teclado abierto en el celular)
@@ -163,6 +184,12 @@ function ChatInterno() {
     setAvisos(r === 'error' ? 'pendiente' : r)
     if (r === 'error') setAviso('No pudimos activar los avisos en este navegador. Intenta de nuevo más tarde.')
   }
+
+  useEffect(() => {
+    if (!grabando) return
+    const t = setInterval(() => setSegundos(n => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [grabando])
 
   // Respuestas en vivo + respaldo por si el tiempo real falla
   useEffect(() => {
@@ -244,9 +271,10 @@ function ChatInterno() {
     try {
       let listo = f
       if (f.type.startsWith('image/')) listo = await comprimirImagen(f, { maxSize: 1600, calidad: 0.82 })
-      else if (!f.type.startsWith('video/')) throw new Error('Solo puedes enviar fotos y videos.')
-      if (!TIPOS_OK.includes(listo.type)) throw new Error('Ese formato no se puede enviar. Prueba con otra foto o video (JPG, PNG, MP4 o MOV).')
+      else if (!f.type.startsWith('video/') && !f.type.startsWith('audio/')) throw new Error('Solo puedes enviar fotos, videos y audios.')
+      if (!TIPOS_OK.includes(listo.type)) throw new Error('Ese formato no se puede enviar. Prueba con JPG, PNG, MP4, MOV, MP3 o M4A.')
       if (listo.type.startsWith('video/') && listo.size > MAX_VIDEO) throw new Error('El video pesa más de 50 MB. Grábalo más corto o en menor calidad.')
+      if (listo.type.startsWith('audio/') && listo.size > MAX_AUDIO) throw new Error('El audio pesa demasiado. Envía uno más corto.')
       if (listo.type.startsWith('image/') && listo.size > MAX_FOTO) throw new Error('La foto pesa demasiado. Prueba con otra.')
       if (previa) URL.revokeObjectURL(previa)
       setArchivo(listo)
@@ -254,6 +282,40 @@ function ChatInterno() {
     } catch (er) {
       setAviso(er.message || 'No se pudo preparar el archivo.')
     }
+  }
+
+  async function empezarGrabacion() {
+    if (enviando || !chat || grabando) return
+    setAviso('')
+    try {
+      const flujo = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t)) || ''
+      const rec = new MediaRecorder(flujo, mime ? { mimeType: mime } : undefined)
+      const inicio = Date.now()
+      trozos.current = []; descartar.current = false
+      rec.ondataavailable = e => { if (e.data?.size) trozos.current.push(e.data) }
+      rec.onstop = () => {
+        flujo.getTracks().forEach(t => t.stop())
+        clearTimeout(limite.current)
+        setGrabando(false)
+        if (descartar.current || !trozos.current.length || Date.now() - inicio < 800) return
+        const tipo = (rec.mimeType || mime || 'audio/mp4').split(';')[0]
+        const f = new File(trozos.current, `audio.${EXT_AUDIO[tipo] || 'm4a'}`, { type: tipo })
+        enviar({ texto: '', archivo: f, previa: URL.createObjectURL(f) })
+      }
+      rec.start()
+      grabadora.current = rec
+      setSegundos(0); setGrabando(true)
+      limite.current = setTimeout(() => { if (rec.state !== 'inactive') rec.stop() }, 5 * 60000) // máximo 5 minutos
+    } catch {
+      setAviso('No pudimos usar el micrófono. Permite el acceso al micrófono en tu navegador e intenta otra vez.')
+    }
+  }
+
+  function pararGrabacion(mandar) {
+    descartar.current = !mandar
+    const r = grabadora.current
+    if (r && r.state !== 'inactive') r.stop()
   }
 
   function quitarArchivo() {
@@ -269,7 +331,7 @@ function ChatInterno() {
     setEnviando(true); setAviso('')
     const tmp = {
       id: `tmp-${++secuencia.current}`, de: 'usuario', texto: t, created_at: new Date().toISOString(), local: true,
-      archivo: f || null, previa: f ? (reintento ? reintento.previa : previa) : null, adjunto_tipo: f ? (f.type.startsWith('video/') ? 'video' : 'imagen') : null,
+      archivo: f || null, previa: f ? (reintento ? reintento.previa : previa) : null, adjunto_tipo: f ? tipoDe(f) : null,
     }
     setMensajes(prev => [...prev.filter(m => !(reintento && m.id === reintento.id)), tmp])
     if (!reintento) { setTexto(''); setArchivo(null); setPrevia(null) } // la vista previa pasa a la burbuja
@@ -400,20 +462,38 @@ function ChatInterno() {
 
           {archivo && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: '#f6f7f9', borderTop: '1px solid #e8eaed', flexShrink: 0 }}>
-              {archivo.type.startsWith('video/')
+              {archivo.type.startsWith('audio/')
+                ? <div style={{ width: '52px', height: '52px', borderRadius: '8px', background: '#e8f0fe', color: '#1a73e8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Mic size={24} /></div>
+                : archivo.type.startsWith('video/')
                 ? <video src={`${previa}#t=0.1`} muted playsInline preload="metadata" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px', background: '#000', flexShrink: 0 }} />
                 : <img src={previa} alt="" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0, fontSize: '.76rem', color: '#202124', fontWeight: '700', lineHeight: 1.3 }}>
-                {archivo.type.startsWith('video/') ? 'Video listo para enviar' : 'Foto lista para enviar'}
+                {archivo.type.startsWith('audio/') ? 'Audio listo para enviar' : archivo.type.startsWith('video/') ? 'Video listo para enviar' : 'Foto lista para enviar'}
                 <div style={{ fontWeight: '400', color: '#80868b', fontSize: '.7rem' }}>{(archivo.size / 1048576).toFixed(1)} MB · puedes añadir un mensaje</div>
               </div>
               <button onClick={quitarArchivo} aria-label="Quitar el archivo" style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: 'none', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={20} /></button>
             </div>
           )}
 
+          {grabando ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
+              <button onClick={() => pararGrabacion(false)} aria-label="Cancelar el audio"
+                style={{ width: '44px', height: '44px', borderRadius: '50%', border: '1px solid #dadce0', background: '#fff', color: '#d93025', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Trash2 size={20} />
+              </button>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '.9rem', fontWeight: '700', color: '#202124' }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#d93025', flexShrink: 0 }} />
+                Grabando… {mmss(segundos)}
+              </div>
+              <button onClick={() => pararGrabacion(true)} aria-label="Enviar el audio"
+                style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: '#1a73e8', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Send size={19} />
+              </button>
+            </div>
+          ) : (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
-            <input ref={inputArchivo} type="file" accept="image/*,video/*" onChange={elegirArchivo} style={{ display: 'none' }} />
-            <button onClick={() => inputArchivo.current?.click()} disabled={enviando || !chat} aria-label="Adjuntar foto o video"
+            <input ref={inputArchivo} type="file" accept="image/*,video/*,audio/*" onChange={elegirArchivo} style={{ display: 'none' }} />
+            <button onClick={() => inputArchivo.current?.click()} disabled={enviando || !chat} aria-label="Adjuntar foto, video o audio"
               style={{ width: '44px', height: '44px', borderRadius: '50%', border: '1px solid #dadce0', background: '#fff', color: '#5f6368', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Paperclip size={20} />
             </button>
@@ -421,11 +501,17 @@ function ChatInterno() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); enviar() } }}
               style={{ flex: 1, resize: 'none', maxHeight: '110px', minHeight: '44px', border: '1px solid #dadce0', borderRadius: '22px', padding: '11px 14px', fontSize: '16px', fontFamily: 'inherit', outline: 'none', lineHeight: 1.3, boxSizing: 'border-box' }}
               onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 110) + 'px' }} />
-            <button onClick={() => enviar()} disabled={(!texto.trim() && !archivo) || enviando || !chat} aria-label="Enviar mensaje"
-              style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: (texto.trim() || archivo) ? '#1a73e8' : '#dadce0', color: '#fff', cursor: (texto.trim() || archivo) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Send size={19} />
-            </button>
+            {(texto.trim() || archivo || !puedeGrabar())
+              ? <button onClick={() => enviar()} disabled={(!texto.trim() && !archivo) || enviando || !chat} aria-label="Enviar mensaje"
+                  style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: (texto.trim() || archivo) ? '#1a73e8' : '#dadce0', color: '#fff', cursor: (texto.trim() || archivo) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Send size={19} />
+                </button>
+              : <button onClick={empezarGrabacion} disabled={enviando || !chat} aria-label="Grabar un audio"
+                  style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: '#1a73e8', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Mic size={20} />
+                </button>}
           </div>
+          )}
         </div>
       )}
 

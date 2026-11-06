@@ -40,12 +40,12 @@ export default async function handler(req, res) {
     let adj = null, urlAdj = ''
     const ruta = String(body.adjunto?.path || '')
     if (ruta) {
-      const m = ruta.match(/^([0-9a-f-]{36})\/[0-9a-f-]{36}\.(jpg|png|webp|mp4|mov|webm)$/i)
+      const m = ruta.match(/^([0-9a-f-]{36})\/[0-9a-f-]{36}\.(jpg|png|webp|mp4|mov|webm|m4a|mp3|aac|weba|ogg)$/i)
       if (!m || m[1] !== chat.id) return res.status(400).json({ error: 'Archivo no válido' })
       const ext = m[2].toLowerCase()
       const { data: firmada, error: ef } = await admin.storage.from(BUCKET).createSignedUrl(ruta, 3600)
       if (ef || !firmada?.signedUrl) return res.status(400).json({ error: 'No encontramos el archivo. Vuelve a intentarlo.' })
-      adj = { path: ruta, ext, tipo: ['mp4', 'mov', 'webm'].includes(ext) ? 'video' : 'imagen' }
+      adj = { path: ruta, ext, tipo: ['mp4', 'mov', 'webm'].includes(ext) ? 'video' : ['m4a', 'mp3', 'aac', 'weba', 'ogg'].includes(ext) ? 'audio' : 'imagen' }
       urlAdj = firmada.signedUrl
     }
     if (!texto && !adj) return res.status(400).json({ error: 'Escribe un mensaje' })
@@ -90,7 +90,7 @@ export default async function handler(req, res) {
       }
       catch (e) { estado = 'error'; console.error('soporte-enviar telegram:', e.message) }
     } else try {
-      waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n👤 ${quien}\n📍 ${donde}\n\n${texto}${adj ? `\n\n📎 ${adj.tipo === 'video' ? 'Video' : 'Foto'}: ${urlAdj}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
+      waId = await enviarTexto(`💬 *Soporte #${chat.codigo}*\n👤 ${quien}\n📍 ${donde}\n\n${texto}${adj ? `\n\n📎 ${adj.tipo === 'video' ? 'Video' : adj.tipo === 'audio' ? 'Audio' : 'Foto'}: ${urlAdj}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`)
     } catch (e1) {
       // Pasadas 24 h desde tu último mensaje a la línea, WhatsApp solo deja avisar con una plantilla aprobada
       if (!process.env.SOPORTE_PLANTILLA) { estado = 'error'; console.error('soporte-enviar:', e1.message) }

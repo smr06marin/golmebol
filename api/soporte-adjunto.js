@@ -15,6 +15,12 @@ const TIPOS = {
   'video/mp4':  { ext: 'mp4', tipo: 'video', max: 50 * 1024 * 1024 },
   'video/quicktime': { ext: 'mov', tipo: 'video', max: 50 * 1024 * 1024 },
   'video/webm': { ext: 'webm', tipo: 'video', max: 50 * 1024 * 1024 },
+  'audio/mp4':  { ext: 'm4a', tipo: 'audio', max: 25 * 1024 * 1024 },
+  'audio/x-m4a': { ext: 'm4a', tipo: 'audio', max: 25 * 1024 * 1024 },
+  'audio/mpeg': { ext: 'mp3', tipo: 'audio', max: 25 * 1024 * 1024 },
+  'audio/aac':  { ext: 'aac', tipo: 'audio', max: 25 * 1024 * 1024 },
+  'audio/webm': { ext: 'weba', tipo: 'audio', max: 25 * 1024 * 1024 },
+  'audio/ogg':  { ext: 'ogg', tipo: 'audio', max: 25 * 1024 * 1024 },
 }
 const MAX_ADJUNTOS_POR_HORA = 30
 
@@ -32,8 +38,8 @@ export default async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
     const info = TIPOS[String(body.contentType || '').toLowerCase()]
     const size = Number(body.size) || 0
-    if (!info) return res.status(400).json({ error: 'Solo se pueden enviar fotos (JPG, PNG, WEBP) y videos (MP4, MOV, WEBM)' })
-    if (size <= 0 || size > info.max) return res.status(400).json({ error: info.tipo === 'video' ? 'El video pesa más de 50 MB. Grábalo más corto o en menor calidad.' : 'La foto pesa demasiado.' })
+    if (!info) return res.status(400).json({ error: 'Solo se pueden enviar fotos, videos y audios' })
+    if (size <= 0 || size > info.max) return res.status(400).json({ error: info.tipo === 'video' ? 'El video pesa más de 50 MB. Grábalo más corto o en menor calidad.' : info.tipo === 'audio' ? 'El audio es muy largo o pesado. Envía uno más corto.' : 'La foto pesa demasiado.' })
 
     const { data: chat } = await admin.from('soporte_chats').select('id').eq('user_id', user.id).maybeSingle()
     if (!chat) return res.status(400).json({ error: 'Abre el chat otra vez e intenta de nuevo' })

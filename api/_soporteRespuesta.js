@@ -47,7 +47,7 @@ export async function guardarRespuesta(admin, { texto, citadoId, idMensaje, adju
   if (error && error.code !== '23505') throw error // 23505 = el aviso llegó repetido: ya estaba guardado
   if (!error) {
     await admin.from('soporte_chats').update({ ultimo_mensaje_at: new Date().toISOString() }).eq('id', chatId)
-    await avisarOrganizador(admin, chatId, cuerpo || (adj?.tipo === 'video' ? '🎥 Te envió un video' : '📷 Te envió una foto')) // notificación al organizador (si activó los avisos)
+    await avisarOrganizador(admin, chatId, cuerpo || (adj?.tipo === 'video' ? '🎥 Te envió un video' : adj?.tipo === 'audio' ? '🎤 Te envió un audio' : '📷 Te envió una foto')) // notificación al organizador (si activó los avisos)
   }
   return { ok: true }
 }
