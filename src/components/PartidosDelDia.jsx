@@ -83,6 +83,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const navigate = useNavigate()
   const { ids: favoritos, esFavorito, alternar } = useFavoritos()
   const [offset, setOffset] = useState(0)
+  const [plegado, setPlegado] = useState(false) // tocar otra vez la pestaña activa esconde la lista
   const [filtro, setFiltro] = useState('todos') // todos | vivo | proximos | finales | favoritos
   const [partidos, setPartidos] = useState([])
   const [cargado, setCargado] = useState(false)
@@ -286,7 +287,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
           const d = inicioDia(o)
           const sel = o === offset
           return (
-            <button key={o} type="button" className="gm-pd-dia" aria-current={sel ? 'date' : undefined} onClick={() => setOffset(o)}
+            <button key={o} type="button" className="gm-pd-dia" aria-current={sel ? 'date' : undefined} onClick={() => { setOffset(o); setPlegado(false) }}
               aria-label={`${o === 0 ? 'Hoy, ' : ''}${fechaLarga(o)}`}>
               <span className="sem">{d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '')}</span>
               <span className="num">{d.getDate()}</span>
@@ -296,21 +297,24 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
         })}
       </div>
 
-      <div role="tablist" aria-label="Qué partidos ver" style={{ display: 'grid', gridTemplateColumns: `repeat(${segmentos.length}, 1fr)`, gap: 4, background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: 4, marginBottom: verEstados ? 8 : 14 }}>
+      <div role="tablist" aria-label="Qué partidos ver" style={{ display: 'grid', gridTemplateColumns: `repeat(${segmentos.length}, 1fr)`, gap: 4, background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: 4, marginBottom: verEstados && !plegado ? 8 : 14 }}>
         {segmentos.map(([k, txt, n]) => {
           const activo = filtro === k || (k === 'todos' && (filtro === 'proximos' || filtro === 'finales'))
           const rojo = k === 'vivo'
           const invita = k === 'favoritos' && favoritos.length === 0 && !activo // aún no sigue a nadie: llama la atención
           const color = activo ? (rojo ? S.red : S.green) : invita ? S.gold : S.muted
           return (
-            <button key={k} type="button" role="tab" aria-selected={activo} onClick={() => setFiltro(k)}
+            <button key={k} type="button" role="tab" aria-selected={activo} aria-expanded={activo ? !plegado : undefined}
+              onClick={() => { if (filtro === k) setPlegado(p => !p); else { setFiltro(k); setPlegado(false) } }}
               style={{ minHeight: 42, borderRadius: 10, border: 'none', background: activo ? (rojo ? 'rgba(229,67,61,.16)' : 'rgba(111,207,61,.16)') : invita ? 'rgba(245,166,35,.1)' : 'transparent', color, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: '0 6px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, WebkitTapHighlightColor: 'transparent' }}>
               {rojo && <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.red, animation: 'gmPdPulso 1.2s ease-in-out infinite' }}/>}
               {txt}{n != null && <span style={{ opacity: .75, fontWeight: 700 }}>{n}</span>}
+              {activo && <ChevronDown size={15} style={{ transition: 'transform .2s', transform: plegado ? 'rotate(0deg)' : 'rotate(180deg)', flexShrink: 0 }}/>}
             </button>
           )
         })}
       </div>
+      {!plegado && (<>
       {verEstados && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           {[['proximos', 'Próximos', conteo.proximos], ['finales', 'Finalizados', conteo.finales]].map(([k, txt, n]) => {
@@ -441,6 +445,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
         </div>
         </>
       )}
+      </>)}
     </div>
   )
 }
