@@ -62,12 +62,16 @@ const ESTILO = `
 .gm-pd-local { justify-content: flex-end; text-align: right; }
 .gm-pd-nombre { font-size: .78rem; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; min-width: 0; }
 .gm-pd-chips::-webkit-scrollbar { display: none }
-.gm-pd-tira { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.gm-pd-tira { position: relative; display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .gm-pd-tira::-webkit-scrollbar { display: none }
 .gm-pd-dia { flex: 0 0 auto; width: 52px; min-height: 64px; border-radius: 14px; border: 1px solid #2a2a2a; background: #161616; color: #8a8a8a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; font-family: inherit; padding: 6px 0; -webkit-tap-highlight-color: transparent; }
 .gm-pd-dia .sem { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .gm-pd-dia .num { font-size: 1.25rem; font-weight: 900; line-height: 1.1; color: #fff; }
 .gm-pd-dia .sub { font-size: .55rem; font-weight: 900; letter-spacing: .06em; min-height: 11px; }
+.gm-pd-dia.hoy { width: 104px; min-height: 92px; border-radius: 18px; border: 2px solid #6fcf3d; background: rgba(111,207,61,.1); color: #6fcf3d; gap: 2px; }
+.gm-pd-dia.hoy .sem { font-size: .8rem; letter-spacing: .06em; }
+.gm-pd-dia.hoy .num { font-size: 2.5rem; line-height: 1; color: #fff; }
+.gm-pd-dia.hoy .sub { font-size: .8rem; letter-spacing: .12em; min-height: 14px; }
 .gm-pd-dia[aria-current="date"] { background: #6fcf3d; border-color: #6fcf3d; color: #0a1a05; }
 .gm-pd-dia[aria-current="date"] .num { color: #0a1a05; }
 .gm-pd-cab { display: flex; align-items: center; gap: 11px; width: 100%; box-sizing: border-box; padding: 13px 14px; background: transparent; border: none; color: #fff; cursor: pointer; text-align: left; font-family: inherit; -webkit-tap-highlight-color: transparent; }
@@ -256,10 +260,23 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   }
 
   const tiraRef = useRef(null)
+  const primeraVez = useRef(true)
   useEffect(() => {
-    const c = tiraRef.current
-    const b = c?.querySelector('[aria-current="date"]')
-    if (c && b) c.scrollTo({ left: b.offsetLeft - c.clientWidth / 2 + b.clientWidth / 2, behavior: 'smooth' })
+    const centrar = suave => {
+      const c = tiraRef.current
+      const b = c?.querySelector('[aria-current="date"]')
+      if (!c || !b || !c.clientWidth) return
+      const rc = c.getBoundingClientRect(), rb = b.getBoundingClientRect()
+      const left = c.scrollLeft + (rb.left - rc.left) - c.clientWidth / 2 + b.clientWidth / 2
+      c.scrollTo({ left, behavior: suave ? 'smooth' : 'auto' })
+    }
+    const suave = !primeraVez.current
+    primeraVez.current = false
+    centrar(suave)
+    // la primera vez la página todavía se está acomodando (imágenes, fuentes): se recentra sin animación
+    const t1 = setTimeout(() => centrar(false), 120)
+    const t2 = suave ? null : setTimeout(() => centrar(false), 600)
+    return () => { clearTimeout(t1); if (t2) clearTimeout(t2) }
   }, [offset])
 
   const segmentos = [
@@ -287,7 +304,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
           const d = inicioDia(o)
           const sel = o === offset
           return (
-            <button key={o} type="button" className="gm-pd-dia" aria-current={sel ? 'date' : undefined} onClick={() => { setOffset(o); setPlegado(false) }}
+            <button key={o} type="button" className={`gm-pd-dia${o === 0 ? ' hoy' : ''}`} aria-current={sel ? 'date' : undefined} onClick={() => { setOffset(o); setPlegado(false) }}
               aria-label={`${o === 0 ? 'Hoy, ' : ''}${fechaLarga(o)}`}>
               <span className="sem">{d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '')}</span>
               <span className="num">{d.getDate()}</span>
