@@ -49,3 +49,8 @@ self.addEventListener('notificationclick', e => {
     await self.clients.openWindow(ruta)
   })())
 })
+
+// Instalar con un toque en Android: Chrome solo ofrece el aviso de instalación automático si la página tiene un
+// service worker con un manejador "fetch". Este NO hace nada (no guarda ni cambia ninguna respuesta): la app
+// se comporta exactamente igual que antes.
+self.addEventListener('fetch', () => {})

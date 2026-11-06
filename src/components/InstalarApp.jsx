@@ -9,7 +9,7 @@ import {
   Share, MoreVertical, MoreHorizontal, Menu, ExternalLink, Smartphone, Copy, Compass, X, Lock,
   ChevronLeft, ChevronRight, BookOpen, Copy as Pestanas, Home, Plus, ArrowDown, ArrowUp, ArrowRight, Check,
 } from 'lucide-react'
-import { iniciarInstalacion, alCambiar, puedeInstalarDirecto, instalarDirecto, copiarEnlace, posponer, estaInstalada, fuePospuesta, detectarDispositivo, pasosParaInstalar, registrarEvento } from '../lib/instalarApp'
+import { iniciarInstalacion, alCambiar, puedeInstalarDirecto, instalarDirecto, copiarEnlace, puedeCompartir, abrirCompartir, posponer, estaInstalada, fuePospuesta, detectarDispositivo, pasosParaInstalar, registrarEvento } from '../lib/instalarApp'
 
 const RUTAS = ['/', '/torneos', '/jugador/login', '/jugador', '/arbitro']
 const ROJO = '#ff2d55'
@@ -345,6 +345,8 @@ export default function InstalarApp() {
   const [abierta, setAbierta] = useState(false)
   const [paso, setPaso] = useState(0)
   const [copiado, setCopiado] = useState(false)
+  const [enHoja, setEnHoja] = useState(false)             // iPhone: el menú «Compartir» del celular está abierto (la guía pasa arriba)
+  const [preguntaTras, setPreguntaTras] = useState(false)  // iPhone: se cerró el menú «Compartir» → preguntar si ya lo agregó
 
   useEffect(() => { iniciarInstalacion(); return alCambiar(() => forzar(n => n + 1)) }, [])
   // Otros botones (p. ej. «Ver cómo instalar» de los avisos) abren la guía desde cualquier pantalla
@@ -364,7 +366,7 @@ export default function InstalarApp() {
   const pasos = guia.pasos
   const actual = pasos[Math.min(paso, pasos.length - 1)]
   const ultimo = paso >= pasos.length - 1
-  const cerrar = () => { setAbierta(false); setPaso(0) }
+  const cerrar = () => { setAbierta(false); setPaso(0); setEnHoja(false); setPreguntaTras(false) }
 
   if (!abierta) {
     // Con Chrome de Android el botón instala de una vez; en los demás abre la guía paso a paso
@@ -392,6 +394,49 @@ export default function InstalarApp() {
           <button onClick={() => posponer()} aria-label="Cerrar aviso de instalar"
             style={{ flexShrink: 0, background: 'none', border: 'none', color: '#04211f', cursor: 'pointer', width: 40, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
             <X size={22} strokeWidth={3}/>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // iPhone con el menú «Compartir» abierto: el menú tapa la parte de abajo, así que la guía se queda ARRIBA, en una franja corta,
+  // diciendo qué tocar adentro del menú.
+  if (enHoja) {
+    return (
+      <div role="status" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9500, background: '#0d111b', color: '#fff', borderBottom: '3px solid #00ddd0', padding: 'calc(12px + env(safe-area-inset-top)) 14px 14px', fontFamily: "'Barlow Condensed', system-ui, sans-serif", boxShadow: '0 6px 20px rgba(0,0,0,.5)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="/icon-192.png" alt="" width={34} height={34} style={{ borderRadius: 9, flexShrink: 0 }}/>
+          <div style={{ fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.1 }}>En el menú de abajo ⬇</div>
+        </div>
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 13, background: '#00ddd0', color: '#04211f', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>1</span>
+            <span style={{ fontSize: '1.1rem', lineHeight: 1.2 }}>Desliza el menú hacia arriba y toca <b style={{ color: '#00ddd0' }}>«Agregar a Inicio»</b> (si ves «Ver más», tócalo primero)</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 13, background: '#00ddd0', color: '#04211f', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>2</span>
+            <span style={{ fontSize: '1.1rem', lineHeight: 1.2 }}>Luego toca <b style={{ color: '#00ddd0' }}>«Agregar»</b>, arriba a la derecha</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  // Se cerró el menú «Compartir»: la app no puede saber si la persona sí lo agregó, así que se le pregunta.
+  if (preguntaTras) {
+    return (
+      <div onClick={cerrar} style={{ position: 'fixed', inset: 0, zIndex: 9500, background: 'rgba(0,0,0,.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+        <style>{CSS}</style>
+        <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true"
+          style={{ width: '100%', maxWidth: 480, background: '#0d111b', borderRadius: '20px 20px 0 0', border: '1px solid #1f2738', borderBottom: 'none', padding: '20px 16px calc(18px + env(safe-area-inset-bottom))', color: '#fff', fontFamily: "'Barlow Condensed', system-ui, sans-serif", boxSizing: 'border-box' }}>
+          <div style={{ fontSize: '1.45rem', fontWeight: 800, lineHeight: 1.12, textAlign: 'center', marginBottom: 14 }}>¿Ya agregaste Golmebol a tu pantalla de inicio?</div>
+          <button onClick={() => { setPreguntaTras(false); setPaso(pasos.length - 1) }}
+            style={{ width: '100%', background: '#00ddd0', color: '#04211f', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 52 }}>
+            Sí, ya está
+          </button>
+          <button onClick={() => { setPreguntaTras(false); setPaso(Math.min(2, pasos.length - 1)) }}
+            style={{ width: '100%', marginTop: 10, background: 'transparent', color: '#cbd5e6', border: '1px solid #2a3347', borderRadius: 12, padding: '14px', fontWeight: 700, fontSize: '1.05rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 52 }}>
+            No, ver los pasos otra vez
           </button>
         </div>
       </div>
@@ -435,6 +480,14 @@ export default function InstalarApp() {
             {copiado ? <><Check size={20}/> ¡Copiado! Ahora abre Safari</> : <><Copy size={20}/> Copiar enlace</>}
           </button>
         )}
+
+        {actual.accion === 'compartir' && puedeCompartir() && (
+          <button onClick={async () => { registrarEvento('atajo_compartir'); setEnHoja(true); const abrio = await abrirCompartir(); setEnHoja(false); if (abrio) setPreguntaTras(true) }}
+            style={{ width: '100%', marginTop: 12, background: '#fff', color: '#0b0f17', border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: '1.05rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 52 }}>
+            Atajo: abrir «Compartir» de una vez
+          </button>
+        )}
+        {actual.accion === 'compartir' && puedeCompartir() && <div style={{ color: '#7c879d', fontSize: '.85rem', textAlign: 'center', margin: '8px 0 0' }}>Se abre el menú de compartir y arriba te decimos qué tocar ahí adentro.</div>}
 
         {actual.texto ? <div style={{ color: '#b4bed2', fontSize: '1.05rem', lineHeight: 1.3, textAlign: 'center', margin: '12px 6px 0' }}>{actual.texto}</div> : null}
 

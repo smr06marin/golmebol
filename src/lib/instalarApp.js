@@ -21,6 +21,15 @@ export function iniciarInstalacion() {
   iniciado = true
   try { VIEJAS.forEach(k => localStorage.removeItem(k)) } catch { /* nada */ }
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptDiferido = e; avisar() })
+  // El aviso pudo llegar ANTES de que cargara este código: lo guardó el script de index.html
+  if (window.__gmInstalar) promptDiferido = window.__gmInstalar
+  window.addEventListener('gm-instalar-listo', () => { if (window.__gmInstalar) { promptDiferido = window.__gmInstalar; avisar() } })
+  // Chrome solo ofrece "Instalar" con un toque si la página tiene service worker: se deja registrado en los celulares
+  // (solo recibe avisos push, no guarda nada en caché, ver public/sw.js).
+  try {
+    const registrar = () => { if (!Capacitor.isNativePlatform() && detectarDispositivo().movil && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}) }
+    if (document.readyState === 'complete') registrar(); else window.addEventListener('load', registrar, { once: true })
+  } catch { /* nada */ }
   window.addEventListener('appinstalled', () => { promptDiferido = null; registrarEvento('instalada'); avisar() })
   // Abrió Golmebol desde el ícono de su pantalla: así se cuentan los celulares con la app instalada (también los iPhone)
   if (estaInstalada()) registrarEvento('abre_app', { unaVezPor: 'dia' })
@@ -70,6 +79,17 @@ export async function instalarDirecto() {
   } catch { /* el navegador no dejó */ }
   avisar()
   return false
+}
+
+// iPhone: no existe forma de instalar la app con un botón (Apple no lo permite). Lo más corto es abrir el menú
+// «Compartir» del celular de una vez, donde está «Agregar a Inicio».
+export const puedeCompartir = () => typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+// Devuelve true si el menú de compartir SÍ se abrió (la promesa termina cuando la persona lo cierra o elige algo)
+// y false si el celular no lo dejó abrir.
+export async function abrirCompartir() {
+  const t0 = Date.now()
+  try { await navigator.share({ title: 'Golmebol', url: window.location.origin + '/' }); return true }
+  catch (e) { return !!(e && e.name === 'AbortError' && Date.now() - t0 > 700) }
 }
 
 export function posponer(conEvento = true) { guardarVisita(K_CERRADO, '1'); if (conEvento) registrarEvento('ahora_no', { unaVezPor: 'visita' }); avisar() }
@@ -144,7 +164,7 @@ export function pasosParaInstalar(d, directo) {
   if (d.esIOS) {
     // Así se instala en el iPhone (Safari), grabado en un iPhone real: ⋯ → Compartir → Ver más → Agregar a Inicio → Agregar
     const pasosSafari = [
-      { escena: { tipo: 'safari-barra', objetivo: 'puntos' }, titulo: 'Toca los tres puntitos ⋯', texto: 'Están abajo a la derecha, al lado de golmebol.com. (Si en tu iPhone ves abajo el cuadrito con la flecha ↑, toca ese y pasa al paso 3.)' },
+      { escena: { tipo: 'safari-barra', objetivo: 'puntos' }, accion: 'compartir', titulo: 'Toca los tres puntitos ⋯', texto: 'Están abajo a la derecha, al lado de golmebol.com. (Si en tu iPhone ves abajo el cuadrito con la flecha ↑, toca ese y pasa al paso 3.)' },
       { escena: { tipo: 'menu', filas: ['Compartir', 'Agregar a Marcadores', 'Agregar marcador a…', 'Nueva pestaña'], objetivo: 0 }, titulo: 'Toca «Compartir»', texto: 'Es la primera opción de la lista, arriba.' },
       { escena: { tipo: 'hoja-compartir' }, titulo: 'Toca «Ver más»', texto: 'Está a la derecha, debajo de WhatsApp. Si ya ves «Agregar a Inicio», pasa al paso 4.' },
       { escena: { tipo: 'menu', filas: ['Agregar marcador a…', 'Agregar a Favoritos', 'Agregar a nota rápida', 'Buscar en la página', 'Agregar a Inicio'], objetivo: 4 }, titulo: 'Toca «Agregar a Inicio»', texto: 'Si no la ves, desliza la lista hacia arriba con el dedo. En algunos iPhone dice «Agregar a pantalla de inicio».' },
