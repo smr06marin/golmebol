@@ -482,14 +482,14 @@ export default function AdminTorneosPage() {
               inputStyle={input} labelStyle={label} columnas={cols3} inferida={ubicInferida}/>
             <div style={{ display: 'grid', gridTemplateColumns: cols3, gap: '16px' }}>
               <div>
-                <label style={label}>Modalidad</label>
+                <label style={label}>Modalidad *</label>
                 <select value={form.modalidad} onChange={e => setForm(f => ({ ...f, modalidad: e.target.value }))} style={input}>
                   <option value="">Seleccionar</option>
                   {MODALIDADES.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div>
-                <label style={label}>Género</label>
+                <label style={label}>Género *</label>
                 <select value={form.genero} onChange={e => setForm(f => ({ ...f, genero: e.target.value }))} style={input}>
                   <option value="">Seleccionar</option>
                   {GENEROS.map(g => <option key={g} value={g}>{g}</option>)}
@@ -501,7 +501,7 @@ export default function AdminTorneosPage() {
               </div>
             </div>
             <div>
-              <label style={label}>Formato</label>
+              <label style={label}>Formato *</label>
               <select value={form.formato} onChange={e => setForm(f => ({ ...f, formato: e.target.value }))} style={input}>
                 <option value="">Seleccionar</option>
                 {FORMATOS.map(f => <option key={f} value={f}>{f}</option>)}
@@ -509,7 +509,7 @@ export default function AdminTorneosPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
               <div>
-                <label style={label}>Fecha inicio</label>
+                <label style={label}>Fecha inicio *</label>
                 <input type="date" value={form.fecha_inicio} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} style={input}/>
               </div>
             </div>
