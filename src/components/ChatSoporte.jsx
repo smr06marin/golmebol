@@ -2,28 +2,36 @@
 // WhatsApp, y las respuestas vuelven a este mismo chat. Todo el historial queda a la vista.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Bell, ChevronLeft, MessageCircle, Send } from 'lucide-react'
+import { Bell, ChevronLeft, MessageCircle, Moon, Send } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { apiUrl } from '../lib/apiBase'
 import { useAuthStore } from '../store/authStore'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { estadoAvisos, activarAvisos, desactivarAvisos } from '../lib/avisosChat'
 
-const AGENTE = 'Javier Gonzales'
+// Turnos de soporte (hora de Colombia). Fuera de 7:00 am – 11:00 pm se muestra a Javier con el aviso de que responde desde las 7:00 am.
+const AGENTES = [
+  { id: 'javier', nombre: 'Javier Gonzales', desde: 7 * 60, hasta: 16 * 60, fondo: '#dfe8fb', piel: '#f2c9a0', cuello: '#e3b088', pelo: '#3b2b24', corbata: '#6c35de', gafas: false },
+  { id: 'fernando', nombre: 'Fernando Restrepo', desde: 16 * 60, hasta: 23 * 60, fondo: '#fde9d9', piel: '#d9a47a', cuello: '#c98f64', pelo: '#1f1a17', corbata: '#0f9d8a', gafas: true },
+]
+const minutosColombia = f => { const d = new Date(f); return (d.getUTCHours() * 60 + d.getUTCMinutes() - 300 + 1440) % 1440 }
+const enTurno = f => { const m = minutosColombia(f); return AGENTES.some(a => m >= a.desde && m < a.hasta) }
+const agenteDe = f => { const m = minutosColombia(f); return AGENTES.find(a => m >= a.desde && m < a.hasta) || AGENTES[0] }
 
 // Dibujo del agente (secretario con audífonos). Es un SVG propio: no depende de ninguna imagen externa.
-function AvatarAgente({ size = 40 }) {
+function AvatarAgente({ agente, size = 40 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label={AGENTE} style={{ flexShrink: 0, borderRadius: '50%', display: 'block' }}>
-      <rect width="48" height="48" fill="#dfe8fb" />
+    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label={agente.nombre} style={{ flexShrink: 0, borderRadius: '50%', display: 'block' }}>
+      <rect width="48" height="48" fill={agente.fondo} />
       <path d="M5 48c0-9.5 8.5-14.5 19-14.5S43 38.5 43 48z" fill="#2f3a6b" />
       <path d="M19.2 33.8L24 41l4.8-7.2z" fill="#fff" />
-      <path d="M24 36.5l-1.9 3 1.9 8.5 1.9-8.5z" fill="#6c35de" />
-      <rect x="21" y="28" width="6" height="7" rx="2" fill="#e3b088" />
-      <ellipse cx="24" cy="21" rx="8" ry="9" fill="#f2c9a0" />
-      <path d="M15.8 20.5c-.4-6.5 3.5-10.3 8.2-10.3s8.6 3.8 8.2 10.3c-1.6-3.2-4.3-4.8-8.2-4.8s-6.6 1.6-8.2 4.8z" fill="#3b2b24" />
+      <path d="M24 36.5l-1.9 3 1.9 8.5 1.9-8.5z" fill={agente.corbata} />
+      <rect x="21" y="28" width="6" height="7" rx="2" fill={agente.cuello} />
+      <ellipse cx="24" cy="21" rx="8" ry="9" fill={agente.piel} />
+      <path d="M15.8 20.5c-.4-6.5 3.5-10.3 8.2-10.3s8.6 3.8 8.2 10.3c-1.6-3.2-4.3-4.8-8.2-4.8s-6.6 1.6-8.2 4.8z" fill={agente.pelo} />
       <circle cx="20.7" cy="22" r="1.05" fill="#3b2b24" />
       <circle cx="27.3" cy="22" r="1.05" fill="#3b2b24" />
+      {agente.gafas && <g fill="none" stroke="#2b2b2b" strokeWidth="0.9"><circle cx="20.7" cy="22" r="2.6" /><circle cx="27.3" cy="22" r="2.6" /><path d="M23.3 22h1.4" /></g>}
       <path d="M21 26q3 2.6 6 0" fill="none" stroke="#b5654a" strokeWidth="1.2" strokeLinecap="round" />
       <path d="M14.6 21c0-6.8 4.1-11 9.4-11s9.4 4.2 9.4 11" fill="none" stroke="#1a73e8" strokeWidth="2" strokeLinecap="round" />
       <rect x="12.6" y="19.5" width="3.3" height="6.2" rx="1.65" fill="#1a73e8" />
@@ -51,6 +59,7 @@ function ChatInterno() {
   const location = useLocation()
   // Se abre solo si llegó tocando la notificación (…/admin?ayuda=1)
   const [abierto, setAbierto] = useState(() => { try { return new URLSearchParams(window.location.search).get('ayuda') === '1' } catch { return false } })
+  const [ahora, setAhora] = useState(() => Date.now()) // para cambiar de agente cuando cambia el turno
   const [avisos, setAvisos] = useState('cargando') // estado de las notificaciones del navegador
   const [chat, setChat] = useState(null)
   const [mensajes, setMensajes] = useState([])
@@ -83,6 +92,11 @@ function ChatInterno() {
     })()
     return () => { vivo = false }
   }, [user?.id, cargar])
+
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 60000)
+    return () => clearInterval(t)
+  }, [])
 
   // Notificaciones: estado de este navegador, limpiar ?ayuda=1 de la dirección y atender al service worker
   useEffect(() => {
@@ -133,6 +147,8 @@ function ChatInterno() {
       supabase.removeChannel(canal)
     }
   }, [chat?.id, abierto, cargar])
+
+  const agenteActual = agenteDe(ahora)
 
   const sinLeer = useMemo(() => chat ? mensajes.filter(m => m.de === 'soporte' && new Date(m.created_at) > new Date(chat.leido_usuario_at)).length : 0, [mensajes, chat])
 
@@ -233,10 +249,10 @@ function ChatInterno() {
               style={{ display: 'flex', alignItems: 'center', gap: '2px', minHeight: '44px', padding: '0 10px 0 4px', background: 'none', border: 'none', cursor: 'pointer', color: '#1a73e8', fontSize: '.86rem', fontWeight: '700' }}>
               <ChevronLeft size={22} /> Volver
             </button>
-            <AvatarAgente size={40} />
+            <AvatarAgente agente={agenteActual} size={40} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '.92rem', fontWeight: '800', color: '#202124', lineHeight: 1.2 }}>{AGENTE}</div>
-              <div style={{ fontSize: '.7rem', color: '#80868b', lineHeight: 1.2 }}>Asistente de Golmebol</div>
+              <div style={{ fontSize: '.92rem', fontWeight: '800', color: '#202124', lineHeight: 1.2 }}>{agenteActual.nombre}</div>
+              <div style={{ fontSize: '.7rem', color: '#80868b', lineHeight: 1.2 }}>{enTurno(ahora) ? 'Asistente de Golmebol' : 'Atención desde las 7:00 a. m.'}</div>
             </div>
           </div>
 
@@ -250,12 +266,18 @@ function ChatInterno() {
 
           <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', padding: '14px 12px', background: '#f6f7f9', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ alignSelf: 'flex-start', maxWidth: '92%', display: 'flex', alignItems: 'flex-end', gap: '6px' }}>
-              <AvatarAgente size={28} />
+              <AvatarAgente agente={agenteActual} size={28} />
               <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', color: '#202124', lineHeight: 1.45 }}>
-                <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>{AGENTE}</div>
+                <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>{agenteActual.nombre}</div>
                 {BIENVENIDA}
               </div>
             </div>
+            {!enTurno(ahora) && (
+              <div style={{ alignSelf: 'center', maxWidth: '92%', display: 'flex', gap: '8px', alignItems: 'flex-start', background: '#fff7e0', border: '1px solid #f3e2a8', borderRadius: '12px', padding: '9px 12px', fontSize: '.78rem', color: '#7a5b00', lineHeight: 1.45 }}>
+                <Moon size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>Ahora estamos fuera de horario y quizá no podamos responderte enseguida. Si hay alguien disponible, te atendemos; si no, déjanos tu duda y te respondemos apenas podamos.</span>
+              </div>
+            )}
             {mensajes.map((m, i) => {
               const mio = m.de === 'usuario'
               const nuevoDia = i === 0 || new Date(m.created_at).toDateString() !== new Date(mensajes[i - 1].created_at).toDateString()
@@ -263,9 +285,9 @@ function ChatInterno() {
                 <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {nuevoDia && <div style={{ alignSelf: 'center', fontSize: '.68rem', color: '#80868b', background: '#e8eaed', borderRadius: '999px', padding: '2px 10px' }}>{diaTexto(m.created_at)}</div>}
                   <div style={{ alignSelf: mio ? 'flex-end' : 'flex-start', maxWidth: mio ? '86%' : '92%', display: 'flex', alignItems: 'flex-end', gap: '6px' }}>
-                    {!mio && <AvatarAgente size={28} />}
+                    {!mio && <AvatarAgente agente={agenteDe(m.created_at)} size={28} />}
                   <div style={{ background: mio ? '#1a73e8' : '#fff', color: mio ? '#fff' : '#202124', border: mio ? 'none' : '1px solid #e8eaed', borderRadius: mio ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', lineHeight: 1.45, opacity: m.local ? .7 : 1, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                    {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>{AGENTE}</div>}
+                    {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#6c35de', marginBottom: '2px' }}>{agenteDe(m.created_at).nombre}</div>}
                     {m.texto}
                     <div style={{ fontSize: '.62rem', marginTop: '3px', textAlign: 'right', color: mio ? 'rgba(255,255,255,.75)' : '#9aa0a6' }}>
                       {m.fallo ? 'No se envió' : m.local ? 'Enviando…' : hora(m.created_at)}
