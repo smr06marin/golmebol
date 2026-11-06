@@ -1419,8 +1419,9 @@ export default function AdminTorneoDetallePage() {
   async function handleDesactivarEquipo(equipo) {
     if (!(await confirmar(`¿Desactivar a "${equipo.name}" de este torneo? Sus jugadores quedarán inactivos y el equipo saldrá del torneo. Sus partidos y estadísticas se conservan.`))) return
     await supabase.from('tournament_player_registrations').update({ activo: false }).eq('tournament_id', id).eq('team_id', equipo.id)
-    await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id)
-    showMsg(`${equipo.name} desactivado del torneo`)
+    const { data: quitados, error: errQuitar } = await supabase.from('tournament_teams').delete().eq('tournament_id', id).eq('team_id', equipo.id).select('id')
+    if (errQuitar || !quitados || quitados.length === 0) { showMsg(errorAmigable(errQuitar, 'No se pudo quitar el equipo del torneo. Si el torneo es tuyo y sigue pasando, avísale al admin.'), 'error'); fetchEquipos(); return }
+    showMsg(`${equipo.name} quitado del torneo`)
     fetchEquipos(); fetchJugadores()
   }
 
@@ -6747,9 +6748,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             { titulo: 'Equipo', ops: [
                               { label: 'Editar equipo', icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
                             ] },
-                            ...(esOrganizador ? [] : [{ titulo: '', ops: [
-                              { label: 'Desactivar equipo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' },
-                            ] }]),
+                            { titulo: '', ops: [
+                              { label: 'Quitar equipo del torneo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' },
+                            ] },
                           ].map((gr, gi) => (
                             <div key={gi} style={{ borderTop: gi > 0 ? '1px solid #f1f3f4' : 'none', marginTop: gi > 0 ? '4px' : 0, paddingTop: gi > 0 ? '4px' : 0 }}>
                               {gr.titulo && <div style={{ padding: '4px 16px 2px', fontSize: '.62rem', fontWeight: '800', letterSpacing: '.08em', color: '#9aa0a6', textTransform: 'uppercase' }}>{gr.titulo}</div>}
