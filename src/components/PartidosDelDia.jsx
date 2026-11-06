@@ -7,6 +7,8 @@ import { useFavoritos } from '../lib/favoritos'
 import { prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import BotonEstrella from './BotonEstrella'
 import SeguirEquipos from './SeguirEquipos'
+import SeguirTorneos from './SeguirTorneos'
+import { useFavoritosTorneos } from '../lib/favoritosTorneos'
 
 // ── "Partidos de hoy" ───────────────────────────────────────────────────────
 // Lista de partidos del día de TODOS los torneos, agrupada por torneo, como
@@ -84,9 +86,10 @@ const ESTILO = `
 export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, senalVivo = 0 }) {
   const navigate = useNavigate()
   const { ids: favoritos, esFavorito, alternar } = useFavoritos()
+  const { ids: torneosSeguidos } = useFavoritosTorneos()
   const [offset, setOffset] = useState(0)
   const [plegado, setPlegado] = useState(false) // tocar otra vez la pestaña activa esconde la lista
-  const [filtro, setFiltro] = useState('todos') // todos | vivo | proximos | finales | favoritos
+  const [filtro, setFiltro] = useState('todos') // todos | vivo | proximos | finales | favoritos | torneos
   const [ventana, setVentana] = useState([]) // partidos de toda la tira de días (una sola consulta: cambiar de día es instantáneo)
   const [cargado, setCargado] = useState(false)
   const [abiertos, setAbiertos] = useState({}) // torneo.id -> true/false (lo que la persona abrió o cerró a mano)
@@ -189,16 +192,17 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const estadoDe = m => vivoPorId.has(m.id) ? 'vivo' : m.status === 'finished' ? 'final' : 'proximo'
 
   const conteo = useMemo(() => {
-    const c = { todos: lista.length, vivo: 0, proximos: 0, finales: 0, favoritos: 0 }
+    const c = { todos: lista.length, vivo: 0, proximos: 0, finales: 0, favoritos: 0, torneos: 0 }
     lista.forEach(m => {
       const e = estadoDe(m)
       if (e === 'vivo') c.vivo++
       else if (e === 'final') c.finales++
       else c.proximos++
       if (favoritos.includes(m.home_team_id) || favoritos.includes(m.away_team_id)) c.favoritos++
+      if (torneosSeguidos.includes(m.tournament_id)) c.torneos++
     })
     return c
-  }, [lista, vivoPorId, favoritos])
+  }, [lista, vivoPorId, favoritos, torneosSeguidos])
 
   // Si estaba en "En vivo" y el último partido terminó, vuelve a "Todos" en vez de quedar vacío.
   useEffect(() => { if (filtro === 'vivo' && conteo.vivo === 0) setFiltro('todos') }, [filtro, conteo.vivo])
@@ -210,6 +214,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
       if (filtro === 'proximos') return e === 'proximo'
       if (filtro === 'finales') return e === 'final'
       if (filtro === 'favoritos') return favoritos.includes(m.home_team_id) || favoritos.includes(m.away_team_id)
+      if (filtro === 'torneos') return torneosSeguidos.includes(m.tournament_id)
       return true
     })
     const mapa = new Map()
@@ -221,7 +226,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     // Los torneos con algo en vivo van primero; el resto por la hora de su primer partido.
     porTorneo.sort((a, b) => (b.partidos.some(m => vivoPorId.has(m.id)) ? 1 : 0) - (a.partidos.some(m => vivoPorId.has(m.id)) ? 1 : 0))
     return porTorneo
-  }, [lista, filtro, vivoPorId, favoritos])
+  }, [lista, filtro, vivoPorId, favoritos, torneosSeguidos])
 
   function etiquetaRonda(g) {
     const set = new Set()
@@ -237,7 +242,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const hayVivoEn = g => g.partidos.some(m => vivoPorId.has(m.id))
   const soloVivosEn = g => filtro === 'todos' && hayVivoEn(g) && !extendidos[g.id]
   const partidosVisibles = g => (soloVivosEn(g) ? g.partidos.filter(m => vivoPorId.has(m.id)) : g.partidos)
-  const estaAbierto = g => (g.id in abiertos ? abiertos[g.id] : (hayVivoEn(g) || filtro === 'favoritos'))
+  const estaAbierto = g => (g.id in abiertos ? abiertos[g.id] : (hayVivoEn(g) || filtro === 'favoritos' || filtro === 'torneos'))
   const todosAbiertos = grupos.length > 0 && grupos.every(estaAbierto)
   function alternarGrupo(g) { setAbiertos(a => ({ ...a, [g.id]: !estaAbierto(g) })) }
   function alternarTodos() {
@@ -285,7 +290,8 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
   const segmentos = [
     ['todos', 'Todos', conteo.todos],
     ...(conteo.vivo > 0 ? [['vivo', 'En vivo', conteo.vivo]] : []),
-    ['favoritos', favoritos.length === 0 ? '★ Sigue tu equipo' : '★ Mis equipos', favoritos.length === 0 ? null : conteo.favoritos],
+    ['favoritos', '★ Mis equipos', favoritos.length === 0 ? null : conteo.favoritos],
+    ['torneos', 'Mis torneos', torneosSeguidos.length === 0 ? null : conteo.torneos],
   ]
   const verEstados = ['todos', 'proximos', 'finales'].includes(filtro) && conteo.proximos > 0 && conteo.finales > 0
 
@@ -317,19 +323,21 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
         })}
       </div>
 
-      <div role="tablist" aria-label="Qué partidos ver" style={{ display: 'grid', gridTemplateColumns: `repeat(${segmentos.length}, 1fr)`, gap: 4, background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: 4, marginBottom: verEstados && !plegado ? 8 : 14 }}>
+      <div role="tablist" aria-label="Qué partidos ver" style={{ display: 'flex', gap: 4, background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: 4, marginBottom: verEstados && !plegado ? 8 : 14 }}>
         {segmentos.map(([k, txt, n]) => {
           const activo = filtro === k || (k === 'todos' && (filtro === 'proximos' || filtro === 'finales'))
           const rojo = k === 'vivo'
+          const apretado = segmentos.length >= 4 // con 4 pestañas en un celular chico no cabe el contador de "Mis equipos" / "Mis torneos"
+          const cuenta = apretado && (k === 'favoritos' || k === 'torneos') ? null : n
           const invita = k === 'favoritos' && favoritos.length === 0 && !activo // aún no sigue a nadie: llama la atención
           const color = activo ? (rojo ? S.red : S.green) : invita ? S.gold : S.muted
           return (
             <button key={k} type="button" role="tab" aria-selected={activo} aria-expanded={activo ? !plegado : undefined}
               onClick={() => { if (filtro === k) setPlegado(p => !p); else { setFiltro(k); setPlegado(false) } }}
-              style={{ minHeight: 42, borderRadius: 10, border: 'none', background: activo ? (rojo ? 'rgba(229,67,61,.16)' : 'rgba(111,207,61,.16)') : invita ? 'rgba(245,166,35,.1)' : 'transparent', color, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: '0 6px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, WebkitTapHighlightColor: 'transparent' }}>
+              style={{ flex: '1 1 auto', minWidth: 0, minHeight: 42, borderRadius: 10, border: 'none', background: activo ? (rojo ? 'rgba(229,67,61,.16)' : 'rgba(111,207,61,.16)') : invita ? 'rgba(245,166,35,.1)' : 'transparent', color, fontSize: apretado ? '.76rem' : '.8rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: apretado ? '0 4px' : '0 6px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, WebkitTapHighlightColor: 'transparent' }}>
               {rojo && <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.red, animation: 'gmPdPulso 1.2s ease-in-out infinite' }}/>}
-              {txt}{n != null && <span style={{ opacity: .75, fontWeight: 700 }}>{n}</span>}
-              {activo && <ChevronDown size={15} style={{ transition: 'transform .2s', transform: plegado ? 'rotate(0deg)' : 'rotate(180deg)', flexShrink: 0 }}/>}
+              {txt}{cuenta != null && <span style={{ opacity: .75, fontWeight: 700 }}>{cuenta}</span>}
+              {activo && <ChevronDown size={apretado ? 13 : 15} style={{ transition: 'transform .2s', transform: plegado ? 'rotate(0deg)' : 'rotate(180deg)', flexShrink: 0 }}/>}
             </button>
           )
         })}
@@ -350,8 +358,9 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
       )}
 
       {filtro === 'favoritos' && <SeguirEquipos/>}
+      {filtro === 'torneos' && <SeguirTorneos/>}
 
-      {filtro !== 'favoritos' && favoritos.length === 0 && (
+      {filtro !== 'favoritos' && filtro !== 'torneos' && favoritos.length === 0 && (
         <button type="button" onClick={() => setFiltro('favoritos')}
           style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', boxSizing: 'border-box', textAlign: 'left', marginBottom: 12, padding: '12px 14px', borderRadius: 14, border: `1px solid ${S.gold}66`, background: 'linear-gradient(100deg, rgba(245,166,35,.16), rgba(245,166,35,.04))', color: S.text, cursor: 'pointer', fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent' }}>
           <Star size={22} color={S.gold} fill={S.gold} style={{ flexShrink: 0 }}/>
@@ -367,7 +376,9 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
         <div aria-hidden="true" style={{ height: 120, borderRadius: 16, background: S.card, border: `1px solid ${S.border}`, animation: 'gmPdPulso 1.3s ease-in-out infinite' }}/>
       ) : grupos.length === 0 ? (
         <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: '26px 20px', textAlign: 'center', color: S.muted, fontSize: '.85rem', lineHeight: 1.5 }}>
-          {filtro === 'favoritos' ? (
+          {filtro === 'torneos' ? (
+            torneosSeguidos.length === 0 ? 'Cuando sigas un torneo, aquí verás sus partidos.' : 'Tus torneos no tienen partidos este día. Elige otro día arriba.'
+          ) : filtro === 'favoritos' ? (
             favoritos.length === 0 ? 'Cuando sigas un equipo, aquí verás sus partidos.' : 'Tus equipos no juegan este día. Elige otro día arriba.'
           ) : lista.length === 0 ? (
             <>No hay partidos programados {offset === 0 ? 'hoy' : offset === 1 ? 'mañana' : offset === -1 ? 'ayer' : 'este día'}.<br/>Elige otro día arriba.</>

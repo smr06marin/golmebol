@@ -884,7 +884,6 @@ export default function LandingPage({ modo = 'inicio' }) {
   }, [torneosPorAttr, filtroTorneos])
 
   function scrollA(ref) { ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-  const escudosHero = torneosOrdenados.filter(t => t.logo_url && !t.finalizado).slice(0, 3) // escudos que acompañan el botón "Ver todos los torneos"
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: 'system-ui,sans-serif', color: S.text }}>
@@ -997,25 +996,7 @@ export default function LandingPage({ modo = 'inicio' }) {
               <span style={{ flex: 1, minWidth: 0, fontSize: '.95rem', fontWeight: 600, color: S.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Busca tu torneo o tu equipo</span>
               <span style={{ width: '42px', height: '42px', borderRadius: '50%', background: S.green, color: '#0a1a00', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><ArrowRight size={19}/></span>
             </button>
-            {/* 2) Sin escribir: ver todos los torneos con sus escudos */}
-            <button type="button" className="gm-cristal" onClick={() => navigate('/torneos')}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', boxSizing: 'border-box', minHeight: '56px', padding: '8px 14px 8px 16px', borderRadius: '999px' }}>
-              {escudosHero.length > 0 && (
-                <span aria-hidden="true" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  {escudosHero.map((t, i) => (
-                    <span key={t.id} style={{ marginLeft: i === 0 ? 0 : '-10px', borderRadius: '50%', border: '2px solid #151515', display: 'flex', zIndex: escudosHero.length - i }}>
-                      <Escudo logo_url={t.logo_url} name={t.name} size={32} radius={16} urgente/>
-                    </span>
-                  ))}
-                </span>
-              )}
-              <span style={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
-                <span style={{ display: 'block', fontSize: '.88rem', fontWeight: 800, whiteSpace: 'nowrap' }}>Ver todos los torneos</span>
-                {(stats.torneos > 0 || torneos.length > 0) && <span style={{ display: 'block', fontSize: '.72rem', fontWeight: 600, color: S.muted, marginTop: '2px' }}>{stats.torneos || torneos.length} torneos activos</span>}
-              </span>
-              <ChevronRight size={20} color={S.green} style={{ flexShrink: 0 }}/>
-            </button>
-            {/* 3) Lo de siempre, más discreto y con la misma forma */}
+            {/* 2) Lo de siempre, más discreto y con la misma forma */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button type="button" className="gm-cristal" onClick={() => { if (!hayVivoAhora) { setAvisoSinVivo(true); return } setSenalVivo(n => n + 1); scrollA(vivoRef) }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '42px', padding: '0 16px', borderRadius: '999px', fontSize: '.78rem', fontWeight: 800, letterSpacing: '.04em', color: hayVivoAhora ? S.text : S.text2 }}>
