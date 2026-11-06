@@ -11,16 +11,17 @@ const MINUTOS_STALE = 25 // si nadie actualiza el snapshot hace más de esto, se
 // planilla (partidoIniciado) o se deduce de lo que ya hay cargado (por si el
 // borrador es de antes de que existiera esa marca).
 function rapidaYaIniciada(snap) {
-  // OJO: `snap.partidoIniciado` NO se usa: la planilla lo marca apenas el árbitro ENTRA a la pantalla del partido
-  // (antes de dar play), y eso hacía salir "EN VIVO 0-0 0:00" a un partido que todavía no ha empezado.
-  return snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || !!snap.tiempoAgotado || (snap.eventos || []).length > 0
+  // `snap.partidoIniciado` la planilla lo marca apenas el árbitro llega a la pantalla del partido, o sea cuando ya
+  // dejó planillados a los jugadores (antes de dar play). Desde ahí el partido sale EN VIVO (0-0, 0:00), sin esperar el cronómetro.
+  return snap.partidoIniciado === true || snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || !!snap.tiempoAgotado || (snap.eventos || []).length > 0
 }
 
-// ¿La planilla completa ya tiene el partido en juego? Reloj corriendo o con tiempo, segundo período, tiempo
-// agotado, o algún gol cargado.
+// ¿La planilla completa ya tiene el partido en juego o ya dejó planillados a los jugadores? Cuenta desde que los
+// dos equipos tienen su arquero titular elegido (último paso de la planilla de jugadores); o reloj corriendo o con
+// tiempo, segundo período, tiempo agotado, o algún gol cargado. Abrir la planilla sin elegir arqueros todavía no cuenta.
 function completaYaIniciada(snap) {
   const hay = (a) => Array.isArray(a) && a.some(Boolean)
-  return snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || !!snap.tiempoAgotado
+  return (!!snap.arqueroLocal && !!snap.arqueroVis) || snap.corriendo === true || (snap.segundos || 0) > 0 || (snap.periodo || 1) > 1 || !!snap.tiempoAgotado
     || hay(snap.golesLocal) || hay(snap.golesVisitante)
 }
 
@@ -35,12 +36,12 @@ export function derivarEnVivo(match) {
   candidatos.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
   const { snap, updatedAt, tipo } = candidatos[0]
   if (!snap || !updatedAt) return null
-  // Planilla rápida: mientras arma colores/roster todavía no empezó el partido de verdad
+  // Planilla rápida: mientras todavía arma jugadores/colores no sale en vivo; desde que llega a la pantalla del partido sí.
   // (Si el árbitro YA estaba planillando y salió un momento a otra pantalla —ej. a
   // asignar el número de un jugador nuevo— el partido sigue en vivo.)
   if (tipo === 'rapida' && !rapidaYaIniciada(snap)) return null
-  // Planilla completa: abrirla (o dejarla abierta preparando jugadores) ya crea un borrador, pero el partido
-  // NO está en vivo hasta que arranca el reloj o hay algo jugado. Sin esto salía "EN VIVO 0-0 0:00".
+  // Planilla completa: abrirla ya crea un borrador, pero no sale en vivo hasta que los dos arqueros están elegidos
+  // (jugadores planillados) o el partido ya empezó.
   if (tipo === 'completa' && !completaYaIniciada(snap)) return null
   // El árbitro tocó "Suspender" (parar el partido sin guardar resultado, para
   // seguirlo después) — no está en cancha ahora mismo, así que no debe salir
