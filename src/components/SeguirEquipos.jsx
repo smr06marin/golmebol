@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Search, X, Plus, Check, Bell, BellRing } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, X, Plus, Check, Bell, BellRing, ChevronRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFavoritos } from '../lib/favoritos'
 import { useAvisos, plataformaAvisos } from '../lib/avisos'
@@ -25,6 +26,8 @@ function Escudo({ logo_url, name, size = 36 }) {
 }
 
 export default function SeguirEquipos() {
+  const navigate = useNavigate()
+  const abrirEquipo = id => navigate('/e/' + id) // la hoja del equipo (vida futbolística)
   const { ids, esFavorito, alternar } = useFavoritos()
   const { activo: avisosOn, activar } = useAvisos()
   const [q, setQ] = useState('')
@@ -119,13 +122,16 @@ export default function SeguirEquipos() {
             const sigue = esFavorito(e.id)
             return (
               <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: `1px solid ${S.border}` }}>
-                <Escudo logo_url={e.logo_url} name={e.name}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '.88rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-                  <div style={{ color: S.muted, fontSize: '.7rem', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {e.torneo}{e.mas > 0 ? ` +${e.mas}` : ''}{e.city ? ` · ${e.city}` : ''}
-                  </div>
-                </div>
+                <button type="button" onClick={() => abrirEquipo(e.id)} aria-label={`Ver la hoja de ${e.name}`}
+                  style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', padding: 0, color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+                  <Escudo logo_url={e.logo_url} name={e.name}/>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontWeight: 700, fontSize: '.88rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                    <span style={{ display: 'block', color: S.muted, fontSize: '.7rem', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {e.torneo}{e.mas > 0 ? ` +${e.mas}` : ''}{e.city ? ` · ${e.city}` : ''}
+                    </span>
+                  </span>
+                </button>
                 <button type="button" onClick={() => alternar(e.id)} aria-pressed={sigue} aria-label={sigue ? `Dejar de seguir a ${e.name}` : `Seguir a ${e.name}`}
                   style={{ flexShrink: 0, minHeight: 40, minWidth: 96, borderRadius: 10, padding: '0 12px', border: sigue ? `1px solid ${S.border}` : 'none', background: sigue ? 'transparent' : S.green, color: sigue ? S.muted : '#0a1a05', fontWeight: 800, fontSize: '.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}>
                   {sigue ? <><Check size={15}/> Siguiendo</> : <><Plus size={15}/> Seguir</>}
@@ -142,8 +148,12 @@ export default function SeguirEquipos() {
           <div>
             {seguidosVisibles.map(e => (
               <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: `1px solid ${S.border}` }}>
-                <Escudo logo_url={e.logo_url} name={e.name} size={32}/>
-                <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '.86rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                <button type="button" onClick={() => abrirEquipo(e.id)} aria-label={`Ver la hoja de ${e.name}`}
+                  style={{ flex: 1, minWidth: 0, minHeight: 40, display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', padding: 0, color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+                  <Escudo logo_url={e.logo_url} name={e.name} size={32}/>
+                  <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '.86rem', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                  <ChevronRight size={16} color={S.muted} style={{ flexShrink: 0 }}/>
+                </button>
                 <button type="button" onClick={() => alternar(e.id)} aria-label={`Dejar de seguir a ${e.name}`}
                   style={{ flexShrink: 0, minHeight: 40, padding: '0 10px', border: 'none', background: 'transparent', color: S.muted, fontSize: '.76rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontFamily: 'inherit' }}><X size={15}/> Quitar</button>
               </div>

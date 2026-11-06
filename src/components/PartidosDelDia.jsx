@@ -313,7 +313,7 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
           const d = inicioDia(o)
           const sel = o === offset
           return (
-            <button key={o} type="button" className={`gm-pd-dia${o === 0 ? ' hoy' : ''}`} aria-current={sel ? 'date' : undefined} onClick={() => { setOffset(o); setPlegado(false) }}
+            <button key={o} type="button" className={`gm-pd-dia${o === 0 ? ' hoy' : ''}`} aria-current={sel ? 'date' : undefined} onClick={() => setOffset(o)}
               aria-label={`${o === 0 ? 'Hoy, ' : ''}${fechaLarga(o)}`}>
               <span className="sem">{d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '')}</span>
               <span className="num">{d.getDate()}</span>

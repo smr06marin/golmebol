@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, X, Plus, Check } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, X, Plus, Check, ChevronRight, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFavoritosTorneos } from '../lib/favoritosTorneos'
+import { prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 
 // ── "Mis torneos" ───────────────────────────────────────────────────────────
 // Se abre en "Mis torneos" (Partidos de la página de inicio). La persona elige los torneos que quiere seguir
@@ -26,7 +28,10 @@ function Escudo({ logo_url, name, size = 36 }) {
 }
 
 export default function SeguirTorneos() {
+  const navigate = useNavigate()
   const { ids, esFavorito, alternar } = useFavoritosTorneos()
+  // "Otros torneos" va cerrado (solo se abre al tocarlo). Si todavía no sigue ninguno, la lista va abierta para poder elegir.
+  const [otrosAbierto, setOtrosAbierto] = useState(() => ids.length === 0)
   const [lista, setLista] = useState(null) // null = cargando
   const [q, setQ] = useState('')
 
@@ -54,8 +59,12 @@ export default function SeguirTorneos() {
     const sigue = esFavorito(t.id)
     return (
       <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: `1px solid ${S.border}` }}>
-        <Escudo logo_url={t.logo_url} name={t.name}/>
-        <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '.88rem', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, wordBreak: 'break-word' }}>{t.name}</div>
+        <button type="button" onClick={() => { prefetchTorneoPublico(t.id); navigate('/t/' + t.id) }} aria-label={`Ver el torneo ${t.name}`} {...propsPrefetchTorneo(t.id)}
+          style={{ flex: 1, minWidth: 0, minHeight: 40, display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', padding: 0, color: 'inherit', fontFamily: 'inherit', textAlign: 'left', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+          <Escudo logo_url={t.logo_url} name={t.name}/>
+          <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '.88rem', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, wordBreak: 'break-word' }}>{t.name}</span>
+          <ChevronRight size={16} color={S.muted} style={{ flexShrink: 0 }}/>
+        </button>
         <button type="button" onClick={() => alternar(t.id)} aria-pressed={sigue} aria-label={sigue ? `Dejar de seguir ${t.name}` : `Seguir ${t.name}`}
           style={{ flexShrink: 0, minHeight: 40, minWidth: 96, borderRadius: 10, padding: '0 12px', border: sigue ? `1px solid ${S.border}` : 'none', background: sigue ? 'transparent' : S.green, color: sigue ? S.muted : '#0a1a05', fontWeight: 800, fontSize: '.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontFamily: 'inherit' }}>
           {sigue ? <><Check size={15}/> Siguiendo</> : <><Plus size={15}/> Seguir</>}
@@ -93,12 +102,18 @@ export default function SeguirTorneos() {
       )}
       {otros.length > 0 && (
         <>
-          {!consulta && <div style={etiqueta}>{seguidos.length > 0 ? 'OTROS TORNEOS' : 'TORNEOS ACTIVOS'}</div>}
-          <div style={consulta ? { marginTop: 6 } : undefined}>{otros.map(fila)}</div>
+          {!consulta && (
+            <button type="button" onClick={() => setOtrosAbierto(v => !v)} aria-expanded={otrosAbierto}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 44, margin: '8px 0 0', padding: '0 2px', background: 'none', border: 'none', borderTop: seguidos.length > 0 ? `1px solid ${S.border}` : 'none', color: S.muted, fontFamily: 'inherit', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+              <span style={{ fontSize: '.68rem', fontWeight: 800, letterSpacing: '.08em' }}>{seguidos.length > 0 ? 'OTROS TORNEOS' : 'TORNEOS ACTIVOS'}{!otrosAbierto && ` (${otros.length}${hayMas ? '+' : ''})`}</span>
+              <ChevronDown size={18} style={{ transition: 'transform .2s', transform: otrosAbierto ? 'rotate(180deg)' : 'rotate(0deg)' }}/>
+            </button>
+          )}
+          {(consulta || otrosAbierto) && <div style={consulta ? { marginTop: 6 } : undefined}>{otros.map(fila)}</div>}
         </>
       )}
       {consulta && lista && otros.length === 0 && <div style={{ color: S.muted, fontSize: '.82rem', padding: '12px 2px' }}>No encontramos un torneo con ese nombre.</div>}
-      {hayMas && <div style={{ color: S.muted, fontSize: '.74rem', padding: '10px 2px 2px' }}>Escribe en el buscador para ver los demás torneos.</div>}
+      {hayMas && otrosAbierto && <div style={{ color: S.muted, fontSize: '.74rem', padding: '10px 2px 2px' }}>Escribe en el buscador para ver los demás torneos.</div>}
     </div>
   )
 }
