@@ -15,7 +15,7 @@ export async function avisarOrganizador(admin, chatId, texto) {
     const webpush = (await import('web-push')).default
     webpush.setVapidDetails('https://golmebol.com', pub, priv)
     const payload = JSON.stringify({
-      titulo: 'Soporte Golmebol',
+      titulo: 'Javier Gonzales · Golmebol',
       cuerpo: String(texto || '').replace(/\s+/g, ' ').trim().slice(0, 140) || 'Tienes un mensaje nuevo',
       ruta: '/admin?ayuda=1',
       tag: 'soporte',

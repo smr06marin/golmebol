@@ -13,7 +13,7 @@ self.addEventListener('push', e => {
       ventanas.forEach(c => c.postMessage({ tipo: 'chat-nuevo' }))
       return
     }
-    await self.registration.showNotification(d.titulo || 'Soporte Golmebol', {
+    await self.registration.showNotification(d.titulo || 'Javier Gonzales · Golmebol', {
       body: d.cuerpo || 'Tienes un mensaje nuevo',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
