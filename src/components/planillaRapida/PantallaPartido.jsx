@@ -10,7 +10,7 @@ import { FONDO, TEXTO, TEXTO_TENUE, BORDE, ESTILO_RESALTE, ANIM_RESALTE, AMARILL
 export default function PantallaPartido({
   nombreLocal, nombreVis, colorLocal, colorVis, jugadoresLocal, jugadoresVisitante,
   arqueroLocal, arqueroVis, eventosLocal, eventosVis, periodo, segundos, corriendo, tiempoAgotado, modalidad,
-  onVolverLista, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
+  onVolverLista, onVolverColores, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
   onRegistrarEvento, onQuitarEvento, onSalir, onAbrirEspecial, globalLlave, cambiosReloj = [],
   puedeIniciar = true, motivoNoIniciar = '', onReiniciar, onVolverPrimero, onSilenciar, nuevosSinNumero = 0,
   duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo,
@@ -54,6 +54,12 @@ export default function PantallaPartido({
             : { background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.72rem', cursor: 'pointer', padding: '4px' }}>
           {nuevosSinNumero > 0 ? `👥 ${nuevosSinNumero} nuevo${nuevosSinNumero > 1 ? 's' : ''}` : '👥 Jugadores'}
         </button>
+        {onVolverColores && (
+          <button onClick={onVolverColores} title="Cambiar el color de los uniformes — el cronómetro sigue corriendo"
+            style={{ background: 'none', border: 'none', color: TEXTO_TENUE, fontSize: '.72rem', cursor: 'pointer', padding: '4px', whiteSpace: 'nowrap' }}>
+            🎨 Colores
+          </button>
+        )}
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
           <button onClick={onAbrirEspecial} title="Partido por W o Desierto (no se jugó)"

@@ -128,6 +128,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [listo, setListo] = useState(false) // true cuando ya se puede autoguardar sin pisar nada
   const [step, setStep] = useState(esPapel ? 'partido' : 'colores') // colores | asignar | partido (la hoja de papel siempre va directo a 'partido')
   const [volviendoDesdePartido, setVolviendoDesdePartido] = useState(false)
+  const volviendoRef = useRef(false) // mientras el árbitro está en Colores/Jugadores a mitad de partido, ningún celular lo devuelve a la fuerza
+  volviendoRef.current = volviendoDesdePartido
   const partidoIniciadoRef = useRef(false) // ya pasó por la pantalla del partido (ver construirSnap)
 
   const [jugadoresLocal, setJugadoresLocal] = useState([])
@@ -329,7 +331,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     // 2) Etapa de la planilla: solo se adelanta (colores → asignar → partido),
     // nunca se arrastra hacia atrás a quien está viendo la lista a mitad de partido.
     const RANGO = { colores: 0, asignar: 1, partido: 2 }
-    setStep(prev => ((RANGO[snap.step] ?? -1) > (RANGO[prev] ?? 0)) ? snap.step : prev)
+    if (!volviendoRef.current) setStep(prev => ((RANGO[snap.step] ?? -1) > (RANGO[prev] ?? 0)) ? snap.step : prev)
 
     // 3) Cronómetro / tiempo
     const relojRemoto = Number(snap.relojV) > 1e11 ? 0 : (snap.relojV || 0) // (versiones viejas guardadas con hora: se ignoran)
@@ -949,7 +951,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (firmaHoja !== papelSigRef.current) { papelSigRef.current = firmaHoja; papelVRef.current += 1; papelAutorRef.current = deviceIdRef.current }
       extraPapel = { papel, papelV: papelVRef.current, papelAutor: papelAutorRef.current }
     }
-    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, finTiempoEn, duracionMinutos, step: esPapel ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current }
+    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, finTiempoEn, duracionMinutos, step: (esPapel || volviendoDesdePartido) ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current }
   }
   // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
   restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
@@ -970,7 +972,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     try { localStorage.setItem(localKey, JSON.stringify(snap)) } catch (e) {}
     guardarRemotoDebounced(snap)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, sincronizado, papel, finTiempoEn])
+  }, [jugadoresLocal, jugadoresVisitante, colorLocal, colorVis, arqueroLocal, arqueroVis, histArquerosLocal, histArquerosVis, eventos, eventosEliminados, periodo, tiempoAgotado, duracionMinutos, step, volviendoDesdePartido, sincronizado, papel, finTiempoEn])
 
   useEffect(() => {
     if (!listo || partido.status === 'finished') return
@@ -1744,6 +1746,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         onElegir={(team, hex) => { team === 'local' ? setColorLocal(hex) : setColorVis(hex) }}
         onContinuar={() => setStep('asignar')}
         onSalir={() => onClose && onClose()}
+        volviendoDesdePartido={volviendoDesdePartido}
+        onVolverPartido={() => { setStep('partido'); setVolviendoDesdePartido(false) }}
       />
     </>
   )
@@ -1869,6 +1873,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
         duracionMinutos={duracionMinutos} alarmaActiva={alarmaActiva} onTerminarTiempo={terminarTiempo}
         onVolverLista={() => { setStep('asignar'); setVolviendoDesdePartido(true) }}
+        onVolverColores={() => { setStep('colores'); setVolviendoDesdePartido(true) }}
         onAbrirCierre={() => setMostrarCierre(true)}
         onToggleCronometro={toggleCronometro} onCambiarPeriodo={cambiarPeriodo}
         onSeleccionarArquero={seleccionarArquero}
