@@ -1,4 +1,4 @@
-// Envío de notificaciones push de la app (Firebase Cloud Messaging).
+// Envío de notificaciones push: app nativa (Firebase Cloud Messaging) y navegador / app instalada (Web Push con VAPID).
 //
 // Lo llama Supabase (pg_cron) cada 5 minutos con el secreto PUSH_CRON_SECRET.
 // Qué hace en cada vuelta:
@@ -15,7 +15,8 @@
 //
 // Variables de entorno en Vercel (servidor, NUNCA con prefijo VITE_):
 //   SUPABASE_SERVICE_ROLE_KEY   clave "service_role" de Supabase
-//   FIREBASE_SERVICE_ACCOUNT    el JSON completo de la cuenta de servicio de Firebase
+//   FIREBASE_SERVICE_ACCOUNT    el JSON completo de la cuenta de servicio de Firebase (celulares con la app nativa)
+//   VITE_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY   las mismas del chat de ayuda (navegador y app instalada)
 //   PUSH_CRON_SECRET            texto largo inventado por ti (el mismo del SQL del cron)
 //   (VITE_SUPABASE_URL ya existe)
 
@@ -66,6 +67,7 @@ async function accessToken() {
 
 // Devuelve 'ok' | 'invalido' (el celular ya no existe: hay que desactivarlo) | 'error'
 async function enviarUno(token, aviso) {
+  if (!leerCuenta()) return 'error'
   try {
     const r = await fetch(`https://fcm.googleapis.com/v1/projects/${leerCuenta().project_id}/messages:send`, {
       method: 'POST',
@@ -86,6 +88,34 @@ async function enviarUno(token, aviso) {
     return 'error'
   } catch {
     return 'error'
+  }
+}
+
+// ── Web Push (navegador / app instalada) ───────────────────────
+let webpushListo = null
+async function cargarWebPush() {
+  if (webpushListo !== null) return webpushListo
+  const pub = process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY
+  const priv = process.env.VAPID_PRIVATE_KEY
+  if (!pub || !priv) { webpushListo = false; return false }
+  try {
+    const wp = (await import('web-push')).default
+    wp.setVapidDetails('https://golmebol.com', pub, priv)
+    webpushListo = wp
+  } catch { webpushListo = false }
+  return webpushListo
+}
+async function enviarWeb(disp, aviso) {
+  const wp = await cargarWebPush()
+  if (!wp || !disp.suscripcion?.p256dh || !disp.suscripcion?.auth) return 'error'
+  try {
+    await wp.sendNotification(
+      { endpoint: disp.token, keys: { p256dh: disp.suscripcion.p256dh, auth: disp.suscripcion.auth } },
+      JSON.stringify({ titulo: aviso.titulo, cuerpo: aviso.cuerpo, ruta: aviso.ruta || '/', tag: aviso.tag || 'torneo', tipo: aviso.tipo || '' }),
+      { TTL: 86400, urgency: 'normal', timeout: 8000 })
+    return 'ok'
+  } catch (e) {
+    return e?.statusCode === 404 || e?.statusCode === 410 ? 'invalido' : 'error' // el navegador ya no existe
   }
 }
 
@@ -128,7 +158,7 @@ async function crearRecordatorios(db, ahora) {
 async function cargarDispositivos(db) {
   const todos = []
   for (let desde = 0; ; desde += 1000) {
-    const { data, error } = await db.from('push_dispositivos').select('token, equipos, torneos').eq('activo', true).range(desde, desde + 999)
+    const { data, error } = await db.from('push_dispositivos').select('token, plataforma, suscripcion, equipos, torneos').eq('activo', true).range(desde, desde + 999)
     if (error) throw new Error(error.message)
     todos.push(...(data || []))
     if (!data || data.length < 1000) break
@@ -172,7 +202,9 @@ export default async function handler(req, res) {
 
   const ahora = new Date()
   if (!enVentanaEnvio(ahora)) return res.status(200).json({ enviados: 0, motivo: 'fuera del horario (10 am – 10 pm)' })
-  if (!leerCuenta()) return res.status(500).json({ error: 'Falta FIREBASE_SERVICE_ACCOUNT (los avisos quedan en espera)' })
+  if (!leerCuenta() && !(process.env.VAPID_PRIVATE_KEY && (process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY))) {
+    return res.status(500).json({ error: 'Falta FIREBASE_SERVICE_ACCOUNT o las claves VAPID (los avisos quedan en espera)' })
+  }
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   try {
@@ -198,7 +230,7 @@ export default async function handler(req, res) {
     const tareas = []
     for (const d of dispositivos) {
       const suyos = items.filter(it => leAplica(d, it))
-      for (const aviso of avisosParaDispositivo(suyos)) tareas.push(async () => ({ token: d.token, r: await enviarUno(d.token, aviso) }))
+      for (const aviso of avisosParaDispositivo(suyos)) tareas.push(async () => ({ token: d.token, r: d.plataforma === 'web' ? await enviarWeb(d, aviso) : await enviarUno(d.token, aviso) }))
     }
     const resultados = await enParalelo(tareas, CONCURRENCIA)
 

@@ -1,8 +1,9 @@
-// Notificaciones push de la APP (Android / iPhone). En la web normal no hace nada.
+// Notificaciones push de Golmebol: app nativa (Android / iPhone, Firebase) Y navegador / app instalada (Web Push).
+// En iPhone el navegador solo permite avisos si Golmebol está instalada en la pantalla de inicio (regla de Apple).
 //
 // Cómo funciona:
-//  1. La persona toca "Activar avisos" -> se pide el permiso del sistema y Firebase
-//     le da un "token" a ese celular.
+//  1. La persona toca "Activar avisos" -> se pide el permiso del sistema y se obtiene un "token" de ese celular
+//     (app nativa: token de Firebase · navegador: la suscripción Web Push, con la misma clave VAPID del chat de ayuda).
 //  2. Ese token se guarda en Supabase (registrar_push) junto con los equipos que
 //     sigue (la estrella, ver favoritos.js) y los torneos que activó aquí.
 //     Es anónimo: no se guarda cédula, correo ni nombre.
@@ -13,16 +14,62 @@ import { Capacitor } from '@capacitor/core'
 import { supabase } from './supabase'
 import { notify } from './notify'
 import { leerFavoritosIds, EVENTO_FAVORITOS } from './favoritos'
+import { estaInstalada } from './instalarApp'
 
 const K_ACTIVO = 'gm_avisos_activo'
 const K_TOKEN = 'gm_push_token'
 const K_TORNEOS = 'gm_avisos_torneos'
 const EVENTO = 'gm-avisos'
 const memoria = {}
+const CLAVE_PUBLICA = import.meta.env.VITE_VAPID_PUBLIC_KEY
 
-export const avisosDisponibles = () => {
-  try { return Capacitor.isNativePlatform() } catch { return false }
+const esNativo = () => { try { return Capacitor.isNativePlatform() } catch { return false } }
+const esIphone = () => {
+  try {
+    const ua = navigator.userAgent || ''
+    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  } catch { return false }
 }
+const webSoportado = () => {
+  try { return !esNativo() && !!CLAVE_PUBLICA && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window } catch { return false }
+}
+function aBytes(b64) {
+  const relleno = '='.repeat((4 - (b64.length % 4)) % 4)
+  const bin = atob((b64 + relleno).replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(bin, c => c.charCodeAt(0))
+}
+
+// Dónde está la persona: 'nativo' (app) · 'web' (navegador o app instalada) · 'falta_instalar' (iPhone sin instalar) · 'no_disponible'
+export function plataformaAvisos() {
+  if (esNativo()) return 'nativo'
+  if (webSoportado()) return 'web'
+  if (esIphone() && !estaInstalada()) return 'falta_instalar'
+  return 'no_disponible'
+}
+
+async function suscribirWeb() {
+  const reg = await navigator.serviceWorker.register('/sw.js')
+  await navigator.serviceWorker.ready
+  let sub = await reg.pushManager.getSubscription()
+  if (!sub) {
+    const opciones = { userVisibleOnly: true, applicationServerKey: aBytes(CLAVE_PUBLICA) }
+    try { sub = await reg.pushManager.subscribe(opciones) } catch {
+      const vieja = await reg.pushManager.getSubscription() // suscripción hecha con otra clave: se renueva
+      if (vieja) await vieja.unsubscribe()
+      sub = await reg.pushManager.subscribe(opciones)
+    }
+  }
+  return sub
+}
+async function suscripcionWebActual() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js')
+    return (await reg?.pushManager.getSubscription()) || null
+  } catch { return null }
+}
+
+// El botón de avisos se muestra siempre; si el navegador no puede, la hoja explica por qué.
+export const avisosDisponibles = () => true
 
 function leer(clave, defecto) {
   try {
@@ -42,7 +89,17 @@ export const torneosConAviso = () => { const v = leer(K_TORNEOS, []); return Arr
 
 // Manda a Supabase el celular + equipos + torneos actuales.
 export async function sincronizarAvisos() {
-  if (!avisosDisponibles() || !avisosActivos()) return
+  if (!avisosActivos()) return
+  if (!esNativo()) {
+    if (!webSoportado()) return
+    const sub = await suscripcionWebActual()
+    const j = sub?.toJSON?.()
+    if (!j?.endpoint || !j.keys?.p256dh || !j.keys?.auth) return
+    try {
+      await supabase.rpc('registrar_push_web', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_equipos: leerFavoritosIds(), p_torneos: torneosConAviso() })
+    } catch { /* sin internet: se reintenta en el próximo cambio o al abrir la app */ }
+    return
+  }
   const token = leer(K_TOKEN, null)
   if (!token) return
   try {
@@ -62,8 +119,25 @@ const sincronizarPronto = () => { clearTimeout(temporizador); temporizador = set
 // Se llama una vez al abrir la app (main.jsx). Deja listos los oyentes y, si ya
 // estaban activados, renueva el token (Firebase puede cambiarlo).
 export async function iniciarAvisos() {
-  if (iniciado || !avisosDisponibles()) return
+  if (iniciado) return
   iniciado = true
+  if (!esNativo()) {
+    // Navegador / app instalada: deja lista la sincronización y, si ya estaban activados, renueva la suscripción en silencio
+    window.addEventListener(EVENTO_FAVORITOS, sincronizarPronto)
+    try {
+      navigator.serviceWorker?.addEventListener('message', ev => {
+        const m = ev.data
+        if (m?.tipo === 'aviso-torneo') notify([m.titulo, m.cuerpo].filter(Boolean).join(' — '))
+      })
+    } catch { /* ignorar */ }
+    if (avisosActivos() && webSoportado()) {
+      try {
+        if (Notification.permission === 'granted') { await suscribirWeb(); sincronizarAvisos() }
+        else if (Notification.permission === 'denied') escribir(K_ACTIVO, false)
+      } catch { /* se reintenta en la próxima visita */ }
+    }
+    return
+  }
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
     await PushNotifications.addListener('registration', t => {
@@ -95,7 +169,23 @@ export async function iniciarAvisos() {
 
 // Pide el permiso y registra el celular. Devuelve { ok, motivo }.
 export async function activarAvisos() {
-  if (!avisosDisponibles()) return { ok: false, motivo: 'no_app' }
+  if (!esNativo()) {
+    const donde = plataformaAvisos()
+    if (donde !== 'web') return { ok: false, motivo: donde }
+    try {
+      let perm = Notification.permission
+      if (perm === 'denied') return { ok: false, motivo: 'permiso' }
+      if (perm === 'default') perm = await Notification.requestPermission()
+      if (perm !== 'granted') return { ok: false, motivo: 'permiso' }
+      const sub = await suscribirWeb()
+      escribir(K_TOKEN, sub.endpoint)
+      escribir(K_ACTIVO, true)
+      await sincronizarAvisos()
+      return { ok: true }
+    } catch {
+      return { ok: false, motivo: 'error' }
+    }
+  }
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
     let perm = await PushNotifications.checkPermissions()
@@ -111,8 +201,16 @@ export async function activarAvisos() {
 
 export async function desactivarAvisos() {
   escribir(K_ACTIVO, false)
-  const token = leer(K_TOKEN, null)
+  const token = leer(K_TOKEN, null) || (esNativo() ? null : (await suscripcionWebActual())?.endpoint)
   if (token) { try { await supabase.rpc('baja_push', { p_token: token }) } catch { /* ignorar */ } }
+}
+
+// Botón "Activar avisos" de la página de un torneo: enciende los avisos (si hace falta) y deja ese torneo activado.
+export async function activarAvisosDeTorneo(id) {
+  if (!id) return { ok: false, motivo: 'error' }
+  if (!avisosActivos()) { const r = await activarAvisos(); if (!r.ok) return r }
+  if (!torneosConAviso().includes(id)) alternarTorneoAviso(id)
+  return { ok: true }
 }
 
 export function alternarTorneoAviso(id) {

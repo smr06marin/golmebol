@@ -347,11 +347,17 @@ export default function InstalarApp() {
   const [copiado, setCopiado] = useState(false)
 
   useEffect(() => { iniciarInstalacion(); return alCambiar(() => forzar(n => n + 1)) }, [])
+  // Otros botones (p. ej. «Ver cómo instalar» de los avisos) abren la guía desde cualquier pantalla
+  useEffect(() => {
+    const abrir = () => { registrarEvento('ver_como'); setPaso(0); setAbierta(true) }
+    window.addEventListener('gm-abrir-instalar', abrir)
+    return () => window.removeEventListener('gm-abrir-instalar', abrir)
+  }, [])
   const d = detectarDispositivo()
   const hayAviso = d.movil && RUTAS.includes(pathname) && !estaInstalada() && !abierta && !fuePospuesta()
   useEffect(() => { if (hayAviso) registrarEvento('banner_visto', { unaVezPor: 'visita' }) }, [hayAviso])
-  if (!d.movil || !RUTAS.includes(pathname) || estaInstalada()) return null
-  if (!abierta && fuePospuesta()) return null
+  if (!d.movil || estaInstalada()) return null
+  if (!abierta && (!RUTAS.includes(pathname) || fuePospuesta())) return null
 
   const directo = puedeInstalarDirecto()
   const guia = pasosParaInstalar(d, directo)

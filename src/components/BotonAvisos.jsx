@@ -2,11 +2,27 @@ import { useState, useEffect } from 'react'
 import { Bell, BellRing, X, Star, Check } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFavoritos } from '../lib/favoritos'
-import { useAvisos, avisosDisponibles } from '../lib/avisos'
+import { useAvisos, plataformaAvisos, activarAvisosDeTorneo } from '../lib/avisos'
 
-// Botón "AVISOS" (solo dentro de la app) + hoja para activar las notificaciones,
-// ver los equipos que sigue y elegir torneos. En la web normal no se muestra.
+// Botón "AVISOS" + hoja para activar las notificaciones, ver los equipos que sigue y elegir torneos.
+// Funciona en la app (Android / iPhone), en el navegador y en la app instalada. En iPhone, Apple solo deja
+// recibir avisos si Golmebol está instalada en la pantalla de inicio: ahí la hoja explica cómo.
+// BotonAvisosTorneo: botón "Activar avisos de este torneo" para la página pública de cada torneo.
 const C = { card: '#161616', card2: '#1c1c1c', border: '#2a2a2a', green: '#6fcf3d', text: '#fff', text2: '#c9c9c9', muted: '#8a8a8a', red: '#e5433d' }
+
+const abrirGuiaInstalar = () => { try { window.dispatchEvent(new Event('gm-abrir-instalar')) } catch { /* nada */ } }
+
+// Qué decirle a la persona cuando no se pudieron activar los avisos
+function mensajeMotivo(motivo, donde) {
+  if (motivo === 'permiso') {
+    return donde === 'nativo'
+      ? 'Golmebol no tiene permiso para enviarte notificaciones. Actívalo en Ajustes del celular → Aplicaciones → Golmebol → Notificaciones.'
+      : 'Las notificaciones de golmebol.com están bloqueadas en este navegador. Toca el candado junto a la dirección → Notificaciones → Permitir, y vuelve a intentar.'
+  }
+  if (motivo === 'falta_instalar') return 'En iPhone, Apple solo permite los avisos si Golmebol está instalada en tu pantalla de inicio. Instálala, ábrela desde su ícono y activa los avisos desde ahí.'
+  if (motivo === 'no_disponible') return 'Este navegador no permite notificaciones. Prueba con Chrome, o instala la app de Golmebol.'
+  return 'No se pudieron activar los avisos. Revisa tu internet e intenta de nuevo.'
+}
 
 function Interruptor({ activo, onClick, deshabilitado, nombre }) {
   return (
@@ -26,6 +42,9 @@ function Hoja({ onCerrar }) {
   const [cargando, setCargando] = useState(true)
   const [ocupado, setOcupado] = useState(false)
   const [aviso, setAviso] = useState('')
+  const donde = plataformaAvisos()
+  const sinSoporte = donde === 'falta_instalar' || donde === 'no_disponible'
+  const [motivoAviso, setMotivoAviso] = useState('')
 
   useEffect(() => {
     let cancelado = false
@@ -51,9 +70,7 @@ function Hoja({ onCerrar }) {
     if (activo) await desactivar()
     else {
       const r = await activar()
-      if (!r.ok) setAviso(r.motivo === 'permiso'
-        ? 'Golmebol no tiene permiso para enviarte notificaciones. Actívalo en Ajustes del celular → Aplicaciones → Golmebol → Notificaciones.'
-        : 'No se pudieron activar los avisos. Revisa tu internet e intenta de nuevo.')
+      if (!r.ok) { setMotivoAviso(r.motivo); setAviso(mensajeMotivo(r.motivo, donde)) }
     }
     setOcupado(false)
   }
@@ -73,11 +90,18 @@ function Hoja({ onCerrar }) {
         <div style={{ ...fila, borderTop: 'none' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: '.95rem' }}>Recibir notificaciones</div>
-            <div style={{ color: C.muted, fontSize: '.78rem', marginTop: 2, lineHeight: 1.4 }}>Te llegan al celular aunque la app esté cerrada.</div>
+            <div style={{ color: C.muted, fontSize: '.78rem', marginTop: 2, lineHeight: 1.4 }}>{donde === 'nativo' ? 'Te llegan al celular aunque la app esté cerrada.' : 'Te llegan al celular aunque cierres la página.'}</div>
           </div>
-          <Interruptor activo={activo} onClick={alternarGeneral} deshabilitado={ocupado} nombre="Recibir notificaciones"/>
+          <Interruptor activo={activo} onClick={alternarGeneral} deshabilitado={ocupado || sinSoporte} nombre="Recibir notificaciones"/>
         </div>
+        {sinSoporte && !aviso && <div style={{ background: 'rgba(245,166,35,.12)', border: '1px solid #f5a623', color: '#ffd9a0', borderRadius: 10, padding: '10px 12px', fontSize: '.8rem', lineHeight: 1.45, marginTop: 4 }}>{mensajeMotivo(donde, donde)}</div>}
         {aviso && <div style={{ background: 'rgba(229,67,61,.12)', border: `1px solid ${C.red}`, color: '#ffb4b0', borderRadius: 10, padding: '10px 12px', fontSize: '.8rem', lineHeight: 1.45, marginTop: 4 }}>{aviso}</div>}
+        {(donde === 'falta_instalar' || motivoAviso === 'falta_instalar') && (
+          <button type="button" onClick={() => { onCerrar(); abrirGuiaInstalar() }}
+            style={{ width: '100%', marginTop: 10, minHeight: 48, borderRadius: 12, border: 'none', background: C.green, color: '#0a1a05', fontWeight: 900, fontSize: '.95rem', cursor: 'pointer' }}>
+            Ver cómo instalar Golmebol
+          </button>
+        )}
 
         <div style={{ background: C.card2, borderRadius: 12, padding: '12px 14px', marginTop: 12, fontSize: '.8rem', color: C.text2, lineHeight: 1.5 }}>
           {[
@@ -116,10 +140,52 @@ function Hoja({ onCerrar }) {
   )
 }
 
+// Botón "Activar avisos de este torneo" para la página pública de cada torneo
+export function BotonAvisosTorneo({ torneoId, nombre, sobreColor = false }) {
+  const { activo, torneos, alternarTorneo } = useAvisos()
+  const [ocupado, setOcupado] = useState(false)
+  const [error, setError] = useState('')
+  const [motivo, setMotivo] = useState('')
+  const donde = plataformaAvisos()
+  const siguiendo = activo && torneos.includes(torneoId)
+  if (!torneoId) return null
+
+  async function tocar() {
+    if (ocupado) return
+    setError(''); setMotivo('')
+    if (activo) { alternarTorneo(torneoId); return }
+    setOcupado(true)
+    const r = await activarAvisosDeTorneo(torneoId)
+    setOcupado(false)
+    if (!r.ok) { setMotivo(r.motivo); setError(mensajeMotivo(r.motivo, donde)) }
+  }
+  const Icono = siguiendo ? BellRing : Bell
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button type="button" onClick={tocar} disabled={ocupado} aria-pressed={siguiendo}
+        aria-label={siguiendo ? `Quitar avisos de ${nombre || 'este torneo'}` : `Activar avisos de ${nombre || 'este torneo'}`}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 46, padding: '0 18px', borderRadius: 999,
+          border: siguiendo ? `1px solid ${sobreColor ? '#fff' : C.green}` : 'none',
+          background: siguiendo ? (sobreColor ? 'rgba(255,255,255,.2)' : 'rgba(111,207,61,.12)') : (sobreColor ? '#fff' : C.green),
+          color: siguiendo ? (sobreColor ? '#fff' : C.green) : (sobreColor ? '#111' : '#0a1a05'), fontSize: '.85rem', fontWeight: 900, letterSpacing: '.03em', cursor: ocupado ? 'default' : 'pointer', opacity: ocupado ? .7 : 1, WebkitTapHighlightColor: 'transparent' }}>
+        <Icono size={17}/> {ocupado ? 'ACTIVANDO…' : siguiendo ? 'AVISOS ACTIVADOS · TOCA PARA QUITAR' : 'ACTIVAR AVISOS DE ESTE TORNEO'}
+      </button>
+      {!siguiendo && !error && <div style={{ color: sobreColor ? 'rgba(255,255,255,.85)' : C.muted, fontSize: '.74rem', marginTop: 6, lineHeight: 1.4 }}>Te avisamos de partidos nuevos, cambios de horario y resultados.</div>}
+      {error && (
+        <div style={{ background: 'rgba(229,67,61,.12)', border: `1px solid ${C.red}`, color: '#ffb4b0', borderRadius: 10, padding: '10px 12px', fontSize: '.8rem', lineHeight: 1.45, marginTop: 8, maxWidth: 420 }}>
+          {error}
+          {motivo === 'falta_instalar' && (
+            <button type="button" onClick={abrirGuiaInstalar} style={{ display: 'block', width: '100%', marginTop: 8, minHeight: 44, borderRadius: 10, border: 'none', background: C.green, color: '#0a1a05', fontWeight: 900, cursor: 'pointer' }}>Ver cómo instalar Golmebol</button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function BotonAvisos() {
   const [abierto, setAbierto] = useState(false)
   const { activo } = useAvisos()
-  if (!avisosDisponibles()) return null
   const Icono = activo ? BellRing : Bell
   return (
     <>

@@ -16,6 +16,7 @@ import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 import { traerPartidosTorneo, derivarBracket } from '../lib/partidosPublicos'
 import { cargarTorneoPublico } from '../lib/torneoPublicoDatos'
 import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
+import { BotonAvisosTorneo } from '../components/BotonAvisos'
 import PartidoDetalleModal from '../components/PartidoDetalleModal'
 import { aplicarMarcaPagina, esHostPropioGolmebol } from '../lib/marcaPagina'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
@@ -892,6 +893,9 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
               )}
             </div>
           </div>
+
+          {/* Avisos de este torneo: partidos nuevos, cambios y resultados */}
+          <BotonAvisosTorneo torneoId={torneo.id} nombre={torneo.name} sobreColor/>
 
           {/* Campeón vigente — de la edición completada más reciente, aunque
               se esté jugando una edición nueva que todavía no tiene resultados */}
