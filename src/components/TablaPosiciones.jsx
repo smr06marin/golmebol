@@ -7,6 +7,8 @@
 // titulo (opcional): encabezado dentro de la tarjeta
 // row.descuento (opcional): { total, items:[{puntos, motivo}] } — puntos quitados/sumados por el organizador, se muestran con su motivo
 // onDescontar (opcional, solo organizador): botón por equipo para gestionar descuentos
+// renderInicioEquipo(row) / renderAccionesEquipo(row) (opcionales, solo admin): contenido extra al inicio y al final de la fila
+// del equipo (por ejemplo el asa para arrastrar a otro grupo y el botón de mover).
 
 import { useFavoritos } from '../lib/favoritos'
 import BotonEstrella from './BotonEstrella'
@@ -69,7 +71,7 @@ function PuntoVivo({ size = 7 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: ROJO, display: 'inline-block', flexShrink: 0, animation: 'gmVivoPulso 1.2s ease-in-out infinite' }}/>
 }
 
-export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, onDescontar }) {
+export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, onDescontar, renderInicioEquipo, renderAccionesEquipo }) {
   const { esFavorito, alternar } = useFavoritos()
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
@@ -126,6 +128,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
               <div className="gm-tp-pos" style={{ background: enZona ? '#22b86a' : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
               {/* Equipo */}
               <div className="gm-tp-eq" style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, paddingLeft: '2px' }}>
+                {renderInicioEquipo && renderInicioEquipo(row)}
                 <LogoCircular logo={row.equipo.logo_url} name={row.equipo.name}/>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                   <span className="gm-tp-name" title={row.equipo.name} style={{ color: '#fff', fontWeight: esMio ? 800 : 700, fontSize: '.78rem' }}>{row.equipo.name}</span>
@@ -146,6 +149,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
                   })}
                 </div>
                 <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                  {renderAccionesEquipo && renderAccionesEquipo(row)}
                   {onDescontar && (
                     <button onClick={e => { e.stopPropagation(); onDescontar(row) }} title="Descontar o corregir puntos" aria-label={'Descontar puntos a ' + row.equipo.name}
                       style={{ background: row.descuento ? 'rgba(255,90,82,.25)' : 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', borderRadius: 7, minWidth: 30, height: 28, fontWeight: 900, fontSize: '.78rem', cursor: 'pointer', padding: '0 6px' }}>±</button>

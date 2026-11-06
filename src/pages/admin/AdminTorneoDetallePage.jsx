@@ -868,11 +868,13 @@ export default function AdminTorneoDetallePage() {
   const [torneoFinalizado, setTorneoFinalizado] = useState(false)
 
   const [goleadores,   setGoleadores]   = useState([])
-  const [vallas,        setVallas]        = useState({ opcion1: [], opcion2: [] })
+  const [, setVallas] = useState({ opcion1: [], opcion2: [] })
   const [modoValla,     setModoValla]     = useState('opcion1')
   const [arquerosEquipos, setArquerosEquipos] = useState([]) // arqueros registrados por equipo
   const [loadingStats, setLoadingStats] = useState(false)
-  const [statsGeneralAbierta, setStatsGeneralAbierta] = useState(false) // sección "general" desplegable dentro de Grupos
+  const [statsGeneralAbierta, setStatsGeneralAbierta] = useState(false) // tabla general desplegable dentro de Grupos
+  const [configGruposAbierta, setConfigGruposAbierta] = useState(false)  // "Configurar grupos" (se muestra abierto solo si aún no hay grupos)
+  const [detalleGrupoAbierto, setDetalleGrupoAbierto] = useState({})      // { [grupo_id]: true } partidos y goleadores del grupo desplegados
 
   const [editandoPartido, setEditandoPartido] = useState(null)
   const [scoreHome,       setScoreHome]       = useState('')
@@ -2009,15 +2011,14 @@ export default function AdminTorneoDetallePage() {
     return Object.values(map).filter(g => g.total_goals > 0).sort((a,b) => b.total_goals - a.total_goals).slice(0, 5)
   }
 
-  // Tabla general (todos los equipos juntos) + goleadores + valla menos vencida del torneo.
-  // Se usa en la pestaña Estadísticas (torneos SIN grupos) y como sección desplegable dentro de Grupos (torneos CON grupos).
-  function renderEstadisticasGenerales() {
+  // Piezas de las estadísticas de TODO el torneo. Se usan en la pestaña Estadísticas (torneos SIN grupos)
+  // y dentro de Grupos (torneos CON grupos: goleadores y valla a la vista, la tabla general desplegable).
+  const ENCABEZADO_SECCION = { fontWeight: '600', color: '#202124', fontSize: '.9rem' }
+  function renderTablaGeneral() {
     return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Tabla general */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
-          <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>Tabla de posiciones — Fase de grupos</div>
+          <div style={ENCABEZADO_SECCION}>Tabla de posiciones — Fase de grupos</div>
           {tablaOrdenada.length > 0 && (
             <button onClick={() => setFlyerTabla({ filas: tablaOrdenada, subtitulo: '' })}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 14px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
@@ -2027,10 +2028,12 @@ export default function AdminTorneoDetallePage() {
         </div>
         <TablaPosiciones rows={tablaOrdenada} vacio="No hay resultados aún" onDescontar={abrirDescuento}/>
       </div>
-
-      {/* Goleadores */}
+    )
+  }
+  function renderGoleadoresTorneo() {
+    return (
       <div>
-        <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '12px' }}>Tabla de goleadores</div>
+        <div style={{ ...ENCABEZADO_SECCION, marginBottom: '12px' }}>Tabla de goleadores</div>
         {loadingStats ? (
           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '32px', textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem' }}>Cargando...</div>
         ) : (
@@ -2049,22 +2052,25 @@ export default function AdminTorneoDetallePage() {
           />
         )}
       </div>
-
-      {/* Valla menos vencida GLOBAL por equipo (igual que en jugadores y
-          pública), con botones para medir por menos goles o por promedio */}
-      <div>
-        <VallaEquipos
-          vacio="Sin resultados aún"
-          rows={calcVallaEquipos()}
-        />
-      </div>
-    </div>
     )
   }
-
-  function getVallaGrupo(grupoId) {
-    const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupoId).map(ge => ge.team_id)
-    return (vallas.opcion1 || []).filter(p => eqIds.includes(p.team_id)).slice(0, 3)
+  // Valla menos vencida (con botones para medir por menos goles o por promedio). `soloEquipos` = ids de un grupo.
+  function renderVallaTorneo(soloEquipos = null) {
+    const filas = calcVallaEquipos().filter(r => !soloEquipos || soloEquipos.includes(r.equipo?.id))
+    return (
+      <div>
+        <VallaEquipos vacio="Sin resultados aún" rows={filas}/>
+      </div>
+    )
+  }
+  function renderEstadisticasGenerales() {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {renderTablaGeneral()}
+        {renderGoleadoresTorneo()}
+        {renderVallaTorneo()}
+      </div>
+    )
   }
 
   // ── FINALIZAR GRUPOS ────────────────────────────────
@@ -5693,7 +5699,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
           {/* Configuración */}
           {!gruposFinalizados && (
             <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-              <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>⚙️ Configurar grupos</div>
+              {grupos.length > 0 ? (
+                <button type="button" onClick={() => setConfigGruposAbierta(v => !v)} aria-expanded={configGruposAbierta}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', minHeight: '28px', marginBottom: configGruposAbierta ? '16px' : 0 }}>
+                  <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>⚙️ Configurar grupos <span style={{ fontWeight: '400', color: '#80868b', fontSize: '.75rem' }}>· sortear, regenerar o crear los partidos</span></span>
+                  <ChevronDown size={18} color="#5f6368" style={{ flexShrink: 0, transition: 'transform .15s', transform: configGruposAbierta ? 'rotate(180deg)' : 'none' }}/>
+                </button>
+              ) : (
+                <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem', marginBottom: '16px' }}>⚙️ Configurar grupos</div>
+              )}
+              <div style={{ display: (grupos.length === 0 || configGruposAbierta) ? 'block' : 'none' }}>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : '1fr 1fr 1fr 1fr', gap: isMobile ? '12px' : '14px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelStyle}>Número de grupos</label>
@@ -5736,6 +5751,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   🔀 Arrastra un equipo (con el ícono ⋮⋮ a la izquierda de su nombre) y suéltalo sobre otro grupo para moverlo, o toca el botón de mezclar junto al equipo. "Regenerar grupos" vuelve a sortear todo desde cero — no lo uses si ya acomodaste los grupos a mano. Si movés equipos después de haber generado los partidos, volvé a tocar "Generar partidos todos vs todos" para que se actualicen.
                 </div>
               )}
+              </div>
             </div>
           )}
 
@@ -5784,171 +5800,143 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             )
           })()}
 
-          {/* Grupos con tablas */}
+          {/* Grupos: una tabla por grupo (mismo diseño de Estadísticas). Se puede arrastrar un equipo (⋮⋮) a otro grupo. */}
           {grupos.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 470px), 1fr))', gap: '24px', alignItems: 'start' }}>
               {grupos.map((grupo, gi) => {
                 const color = COLORES_GRUPO[gi % COLORES_GRUPO.length]
                 const tabla = getTablaGrupo(grupo.id)
+                const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupo.id).map(ge => ge.team_id)
+                const sobre = String(grupoSobre) === String(grupo.id)
+                const detalleAbierto = !!detalleGrupoAbierto[grupo.id]
+                const puedeMover = !gruposFinalizados && grupos.length > 1
+                const equipoMoviendo = moviendoEquipoId ? tabla.find(r => r.equipo?.id === moviendoEquipoId)?.equipo : null
                 return (
-                  <div key={grupo.id} data-drop-grupo={grupo.id} style={{ background: String(grupoSobre) === String(grupo.id) ? `${color}12` : '#fff', border: String(grupoSobre) === String(grupo.id) ? `2px dashed ${color}` : `1px solid ${color}33`, borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.06)', transition: 'background .12s' }}>
-                    <div style={{ background: `${color}22`, borderBottom: `2px solid ${color}`, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ fontWeight: '700', color, fontSize: '.9rem' }}>{grupo.nombre}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {tabla.length > 0 && (
-                          <button onClick={() => setFlyerTabla({ filas: tabla, subtitulo: String(grupo.nombre || '').toUpperCase() })}
-                            title="Crear flyer de esta tabla para redes"
-                            style={{ display: 'flex', alignItems: 'center', gap: '4px', background: color, color: '#fff', border: 'none', borderRadius: '20px', padding: '3px 10px', fontSize: '.72rem', fontWeight: '700', cursor: 'pointer' }}>
-                            🖼️ Flyer
-                          </button>
-                        )}
-                        <span style={{ fontSize: '.72rem', color, background: `${color}22`, borderRadius: '20px', padding: '2px 10px', fontWeight: '600' }}>
-                          {grupoEquipos.filter(ge => ge.grupo_id === grupo.id).length} equipos
-                        </span>
+                  <div key={grupo.id} data-drop-grupo={grupo.id}
+                    style={{ borderRadius: '14px', padding: sobre ? '8px' : 0, margin: sobre ? '-8px' : 0, outline: sobre ? `2px dashed ${color}` : 'none', background: sobre ? `${color}14` : 'transparent', transition: 'background .12s' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: color, flexShrink: 0 }}/>
+                        <span style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{grupo.nombre}</span>
+                        <span style={{ fontSize: '.72rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '20px', padding: '2px 10px', fontWeight: '600' }}>{eqIds.length} equipos</span>
                       </div>
+                      {tabla.length > 0 && (
+                        <button onClick={() => setFlyerTabla({ filas: tabla, subtitulo: String(grupo.nombre || '').toUpperCase() })}
+                          title="Crear flyer de esta tabla para redes"
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '8px', padding: '7px 14px', fontSize: '.8rem', fontWeight: '700', cursor: 'pointer' }}>
+                          🖼️ Crear flyer
+                        </button>
+                      )}
                     </div>
-                    {/* Tabla */}
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
-                        <thead>
-                          <tr style={{ background: '#f8f9fa' }}>
-                            <th style={{ padding: '6px 12px', textAlign: 'left', color: '#5f6368', fontWeight: '600' }}>EQUIPO</th>
-                            {['PJ','PG','PE','PP','GF','GC','PTS'].map(h => (
-                              <th key={h} style={{ padding: '6px 6px', textAlign: 'center', color: '#5f6368', fontWeight: '600', fontSize: '.68rem' }}>{h}</th>
+
+                    <TablaPosiciones rows={tabla} vacio="Este grupo no tiene equipos" clasifican={clasificanPorGrupo} onDescontar={abrirDescuento}
+                      renderInicioEquipo={row => puedeMover && row.equipo ? (
+                        <span title="Arrastra para mover a otro grupo"
+                          onPointerDown={e => iniciarDragGrupo(e, row.equipo, grupo.id)}
+                          onPointerMove={moverDragGrupo}
+                          onPointerUp={soltarDragGrupo}
+                          onPointerCancel={cancelarDragGrupo}
+                          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '32px', margin: '-4px 0 -4px -4px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: dragGrupo?.teamId === row.equipo.id ? .35 : 1 }}>
+                          <GripVertical size={16} color="#7fb3ff"/>
+                        </span>
+                      ) : null}
+                      renderAccionesEquipo={row => puedeMover && row.equipo ? (
+                        <button onClick={e => { e.stopPropagation(); setMoviendoEquipoId(moviendoEquipoId === row.equipo.id ? null : row.equipo.id) }}
+                          title="Mover a otro grupo" aria-label={'Mover ' + row.equipo.name + ' a otro grupo'}
+                          style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)', color: '#fff', borderRadius: 7, minWidth: 30, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '0 6px' }}>
+                          <Shuffle size={13}/>
+                        </button>
+                      ) : null}
+                    />
+
+                    {equipoMoviendo && (
+                      <div onClick={() => setMoviendoEquipoId(null)}
+                        style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div onClick={e => e.stopPropagation()}
+                          style={{ background: '#fff', borderRadius: '14px', boxShadow: '0 8px 32px rgba(0,0,0,.3)', overflow: 'hidden', width: '100%', maxWidth: '300px' }}>
+                          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124' }}>Mover {equipoMoviendo.name}</div>
+                            <button onClick={() => setMoviendoEquipoId(null)} aria-label="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex', minWidth: '32px', minHeight: '32px', alignItems: 'center', justifyContent: 'center' }}><X size={18}/></button>
+                          </div>
+                          <div style={{ padding: '6px' }}>
+                            {grupos.filter(g => g.id !== grupo.id).map(g => (
+                              <button key={g.id} onClick={() => { handleMoverEquipoGrupo(equipoMoviendo.id, g.id); setMoviendoEquipoId(null) }}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '.88rem', color: '#202124', fontWeight: '600', minHeight: '44px' }}>
+                                → {g.nombre}
+                              </button>
                             ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {tabla.map((row, i) => {
-                            const clasifica = i < clasificanPorGrupo
-                            return (
-                              <tr key={row.equipo?.id || i} style={{ borderTop: '1px solid #f1f3f4', background: clasifica ? `${color}08` : '#fff' }}>
-                                <td style={{ padding: '8px 12px', position: 'relative' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {!gruposFinalizados && row.equipo && grupos.length > 1 && (
-                                      <span title="Arrastra para mover a otro grupo"
-                                        onPointerDown={e => iniciarDragGrupo(e, row.equipo, grupo.id)}
-                                        onPointerMove={moverDragGrupo}
-                                        onPointerUp={soltarDragGrupo}
-                                        onPointerCancel={cancelarDragGrupo}
-                                        style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '30px', margin: '-4px 0 -4px -6px', cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', opacity: dragGrupo?.teamId === row.equipo.id ? .35 : 1 }}>
-                                        <GripVertical size={15} color="#9aa0a6"/>
-                                      </span>
-                                    )}
-                                    <span style={{ fontSize: '.65rem', fontWeight: '700', color: clasifica ? color : '#9aa0a6', minWidth: '14px' }}>{i + 1}</span>
-                                    <div style={{ width: '20px', height: '20px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={row.equipo?.logo_url} name={row.equipo?.name} size={20}/></div>
-                                    <span style={{ fontWeight: clasifica ? '700' : '500', color: '#202124', whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.equipo?.name}</span>
-                                    {clasifica && <span style={{ fontSize: '.55rem', background: color, color: '#fff', borderRadius: '4px', padding: '1px 4px', fontWeight: '700' }}>✓</span>}
-                                    {!gruposFinalizados && row.equipo && (
-                                      <button onClick={() => setMoviendoEquipoId(moviendoEquipoId === row.equipo.id ? null : row.equipo.id)}
-                                        title="Mover a otro grupo"
-                                        style={{ marginLeft: 'auto', flexShrink: 0, background: '#f1f3f4', border: 'none', borderRadius: '6px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5f6368' }}>
-                                        <Shuffle size={11}/>
-                                      </button>
-                                    )}
-                                  </div>
-                                  {moviendoEquipoId === row.equipo?.id && (
-                                    <div onClick={() => setMoviendoEquipoId(null)}
-                                      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                                      <div onClick={e => e.stopPropagation()}
-                                        style={{ background: '#fff', borderRadius: '14px', boxShadow: '0 8px 32px rgba(0,0,0,.3)', overflow: 'hidden', width: '100%', maxWidth: '280px' }}>
-                                        <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                          <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124' }}>Mover {row.equipo?.name}</div>
-                                          <button onClick={() => setMoviendoEquipoId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={18}/></button>
-                                        </div>
-                                        <div style={{ padding: '6px' }}>
-                                          {grupos.filter(g => g.id !== grupo.id).map(g => (
-                                            <button key={g.id} onClick={() => { handleMoverEquipoGrupo(row.equipo.id, g.id); setMoviendoEquipoId(null) }}
-                                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontSize: '.85rem', color: '#202124', fontWeight: '600' }}>
-                                              → {g.nombre}
-                                            </button>
-                                          ))}
-                                        </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Partidos y goleadores de este grupo: ocultos, se despliegan al tocar */}
+                    <button type="button" onClick={() => setDetalleGrupoAbierto(m => ({ ...m, [grupo.id]: !m[grupo.id] }))} aria-expanded={detalleAbierto}
+                      style={{ width: '100%', marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem', fontWeight: '600', minHeight: '44px' }}>
+                      <span>Ver partidos y goleadores de este grupo</span>
+                      <ChevronDown size={18} style={{ flexShrink: 0, transition: 'transform .15s', transform: detalleAbierto ? 'rotate(180deg)' : 'none' }}/>
+                    </button>
+                    {detalleAbierto && (
+                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                        {(() => {
+                          // Incluye los partidos contra equipos de otro grupo (INTERGRUPO), porque también cuentan en la tabla.
+                          const partGrupo = partidos.filter(p => p.fase === 'grupo' && (eqIds.includes(p.home_team_id) || eqIds.includes(p.away_team_id)))
+                          return (
+                            <div>
+                              <div style={{ ...ENCABEZADO_SECCION, marginBottom: '10px' }}>Partidos</div>
+                              {partGrupo.length === 0 ? (
+                                <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', textAlign: 'center', color: '#9aa0a6', fontSize: '.82rem' }}>Este grupo aún no tiene partidos</div>
+                              ) : (
+                                <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '4px 12px' }}>
+                                  {partGrupo.map(p => {
+                                    const inter = !(eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id))
+                                    return (
+                                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: '1px solid #f1f3f4', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '.72rem', color: '#9aa0a6', minWidth: '52px' }}>
+                                          {p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'}
+                                        </span>
+                                        <span style={{ flex: '1 1 90px', minWidth: 0, fontSize: '.76rem', color: '#202124', fontWeight: '500', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name}</span>
+                                        <span style={{ fontWeight: '700', color: '#202124', background: p.status === 'finished' ? '#f1f3f4' : '#e8f0fe', borderRadius: '6px', padding: '2px 8px', fontSize: '.78rem', flexShrink: 0 }}>
+                                          {p.status === 'finished' ? `${p.home_score} - ${p.away_score}` : 'vs'}
+                                        </span>
+                                        <span style={{ flex: '1 1 90px', minWidth: 0, fontSize: '.76rem', color: '#202124', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name}</span>
+                                        {inter && <span title="Partido contra un equipo de otro grupo" style={{ fontSize: '.58rem', fontWeight: 800, letterSpacing: '.05em', background: '#fff3c4', color: '#7a5b00', borderRadius: '999px', padding: '2px 7px' }}>INTERGRUPO</span>}
+                                        {p.status !== 'finished' && (
+                                          <button onClick={() => abrirPlanilla(p)} aria-label="Abrir planilla"
+                                            style={{ padding: '6px 10px', minHeight: '32px', background: '#1a73e8', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.72rem' }}>
+                                            ▶
+                                          </button>
+                                        )}
                                       </div>
-                                    </div>
-                                  )}
-                                </td>
-                                {[row.pj, row.pg, row.pe, row.pp, row.gf, row.gc].map((v, j) => (
-                                  <td key={j} style={{ padding: '8px 6px', textAlign: 'center', color: '#5f6368' }}>{v}</td>
-                                ))}
-                                <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: '700', color: color }}>{row.pts}</td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {/* Partidos del grupo */}
-                    {(() => {
-                      const eqIds = grupoEquipos.filter(ge => ge.grupo_id === grupo.id).map(ge => ge.team_id)
-                      const partGrupo = partidos.filter(p => eqIds.includes(p.home_team_id) && eqIds.includes(p.away_team_id) && p.fase === 'grupo')
-                      if (partGrupo.length === 0) return null
-                      return (
-                        <div style={{ borderTop: '1px solid #f1f3f4', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px', letterSpacing: '.06em' }}>PARTIDOS</div>
-                          {partGrupo.map(p => (
-                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', borderBottom: '1px solid #f8f9fa' }}>
-                              <span style={{ fontSize: '.72rem', color: '#9aa0a6', minWidth: '60px' }}>
-                                {p.played_at ? new Date(p.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) : '—'}
-                              </span>
-                              <span style={{ flex: 1, minWidth: 0, fontSize: '.75rem', color: '#202124', fontWeight: '500', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.home?.name}</span>
-                              <span style={{ fontWeight: '700', color: '#202124', background: p.status === 'finished' ? '#f1f3f4' : '#e8f0fe', borderRadius: '6px', padding: '2px 8px', fontSize: '.78rem', flexShrink: 0 }}>
-                                {p.status === 'finished' ? `${p.home_score} - ${p.away_score}` : 'vs'}
-                              </span>
-                              <span style={{ flex: 1, minWidth: 0, fontSize: '.75rem', color: '#202124', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.away?.name}</span>
-                              {p.status !== 'finished' && (
-                                <button onClick={() => abrirPlanilla(p)}
-                                  style={{ padding: '3px 8px', background: '#1a73e8', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff', fontSize: '.68rem' }}>
-                                  ▶
-                                </button>
+                                    )
+                                  })}
+                                </div>
                               )}
                             </div>
-                          ))}
+                          )
+                        })()}
+                        <div>
+                          <div style={{ ...ENCABEZADO_SECCION, marginBottom: '10px' }}>Goleadores del grupo</div>
+                          <RankingPoster
+                            statLabel="goles" statColor="#ffd54a"
+                            vacio="Aún no hay goles en este grupo."
+                            rows={getGoleadoresGrupo(grupo.id).map(g => ({
+                              id: `${g.player_id}-${g.team_id}`,
+                              nombre: g.player_name,
+                              foto: g.photo_url,
+                              teamName: g.team_name,
+                              teamLogo: g.team_logo,
+                              valor: g.total_goals,
+                              sub: `${g.partidos_jugados} PJ${(g.total_yellow||0)>0?` · 🟨${g.total_yellow}`:''}${(g.total_blue||0)>0?` · 🟦${g.total_blue}`:''}${(g.total_red||0)>0?` · 🟥${g.total_red}`:''}`,
+                            }))}
+                          />
                         </div>
-                      )
-                    })()}
-
-                    {/* Goleadores del grupo */}
-                    {(() => {
-                      const gols = getGoleadoresGrupo(grupo.id)
-                      if (gols.length === 0) return null
-                      return (
-                        <div style={{ borderTop: '1px solid #f1f3f4', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px', letterSpacing: '.06em' }}>⚽ GOLEADORES</div>
-                          {gols.map((g, i) => (
-                            <div key={g.player_id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', borderBottom: '1px solid #f8f9fa' }}>
-                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: i===0?'#f9a825':'#9aa0a6', minWidth: '14px' }}>{i+1}</span>
-                              <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {g.photo_url ? <img src={g.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize: '.6rem' }}>👤</span>}
-                              </div>
-                              <span style={{ flex: 1, fontSize: '.72rem', color: '#202124', fontWeight: '600' }}>{g.player_name}</span>
-                              <span style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '900' }}>{g.total_goals} ⚽</span>
-                            </div>
-                          ))}
+                        <div>
+                          <div style={{ ...ENCABEZADO_SECCION, marginBottom: '10px' }}>Valla menos vencida del grupo</div>
+                          {renderVallaTorneo(eqIds)}
                         </div>
-                      )
-                    })()}
-
-                    {/* Valla menos vencida del grupo */}
-                    {(() => {
-                      const valla = getVallaGrupo(grupo.id)
-                      if (valla.length === 0) return null
-                      return (
-                        <div style={{ borderTop: '1px solid #f1f3f4', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '.65rem', fontWeight: '700', color: '#9aa0a6', marginBottom: '6px', letterSpacing: '.06em' }}>🧤 VALLA MENOS VENCIDA</div>
-                          {valla.map((p, i) => (
-                            <div key={p.player_id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', borderBottom: '1px solid #f8f9fa' }}>
-                              <span style={{ fontSize: '.65rem', fontWeight: '700', color: i===0?'#1e8e3e':'#9aa0a6', minWidth: '14px' }}>{i+1}</span>
-                              <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#f1f3f4', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {p.foto ? <img src={p.foto} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize: '.6rem' }}>🧤</span>}
-                              </div>
-                              <span style={{ flex: 1, fontSize: '.72rem', color: '#202124', fontWeight: '600' }}>{p.nombre}</span>
-                              <span style={{ fontSize: '.68rem', color: '#1e8e3e', fontWeight: '700' }}>{p.promedio} GC/PJ</span>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })()}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -5983,18 +5971,22 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             </div>
           )}
 
-          {/* Tabla general + goleadores + valla de TODO el torneo: oculta por defecto, se despliega al tocar */}
+          {/* De todo el torneo: goleadores y valla a la vista; la tabla general (todos los equipos juntos) queda oculta */}
           {grupos.length > 0 && (
-            <div style={{ marginTop: '20px' }}>
-              <button type="button" onClick={() => setStatsGeneralAbierta(v => !v)} aria-expanded={statsGeneralAbierta}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', textAlign: 'left', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.06)', minHeight: '56px' }}>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>📊 Tabla general y estadísticas de todo el torneo</span>
-                  <span style={{ display: 'block', fontSize: '.74rem', color: '#80868b', marginTop: '2px' }}>Todos los equipos juntos, goleadores y valla menos vencida</span>
-                </span>
-                <ChevronDown size={20} color="#5f6368" style={{ flexShrink: 0, transition: 'transform .15s', transform: statsGeneralAbierta ? 'rotate(180deg)' : 'none' }}/>
-              </button>
-              {statsGeneralAbierta && <div style={{ marginTop: '14px' }}>{renderEstadisticasGenerales()}</div>}
+            <div style={{ marginTop: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {renderGoleadoresTorneo()}
+              {renderVallaTorneo()}
+              <div>
+                <button type="button" onClick={() => setStatsGeneralAbierta(v => !v)} aria-expanded={statsGeneralAbierta}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', textAlign: 'left', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.06)', minHeight: '56px' }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontWeight: '700', color: '#202124', fontSize: '.9rem' }}>📊 Tabla general de todos los equipos</span>
+                    <span style={{ display: 'block', fontSize: '.74rem', color: '#80868b', marginTop: '2px' }}>Todos los grupos juntos en una sola tabla</span>
+                  </span>
+                  <ChevronDown size={20} color="#5f6368" style={{ flexShrink: 0, transition: 'transform .15s', transform: statsGeneralAbierta ? 'rotate(180deg)' : 'none' }}/>
+                </button>
+                {statsGeneralAbierta && <div style={{ marginTop: '14px' }}>{renderTablaGeneral()}</div>}
+              </div>
             </div>
           )}
         </div>
