@@ -1,7 +1,11 @@
 // Limpieza automática del chat de ayuda: borra los mensajes, fotos, videos y audios con más de 8 días.
 // La llama Vercel Cron una vez al día (ver "crons" en vercel.json) con el secreto CRON_SECRET.
+// Con ?tarea=resumen hace otra cosa: te manda por Telegram el resumen de chats pendientes (cada mañana).
+// (Es la misma función a propósito: el plan Hobby de Vercel solo deja 12 funciones por proyecto.)
 // Variables en Vercel (servidor): CRON_SECRET (texto largo inventado por ti), SUPABASE_SERVICE_ROLE_KEY.
 import { createClient } from '@supabase/supabase-js'
+import { enviarTelegram, telegramConfigurado } from './_telegram.js'
+import { listarPendientes, textoPendientes } from './_prioridadSoporte.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -14,6 +18,19 @@ export default async function handler(req, res) {
   if (!secreto || req.headers.authorization !== `Bearer ${secreto}`) return res.status(401).json({ error: 'No autorizado' })
   if (!SUPABASE_URL || !SERVICE_KEY) return res.status(500).json({ error: 'Config incompleta' })
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+
+  if (req.query?.tarea === 'resumen') {
+    if (!telegramConfigurado()) return res.status(500).json({ error: 'Config incompleta' })
+    try {
+      const r = await listarPendientes(admin)
+      if (r.pendientes.length) await enviarTelegram(textoPendientes(r, '☀️ Buenos días. Pendientes por responder'))
+      return res.status(200).json({ ok: true, pendientes: r.pendientes.length })
+    } catch (e) {
+      console.error('soporte-limpiar resumen:', e?.message || e)
+      return res.status(500).json({ error: 'No se pudo enviar el resumen' })
+    }
+  }
+
   const limite = new Date(Date.now() - DIAS * 86400000)
   const inicio = Date.now()
   let mensajes = 0, archivos = 0
